@@ -76,9 +76,9 @@ Files
 
 Dependencies:
 
-* Go platform libraries
+* [Go platform libraries](https://golang.org/pkg/)
 * [GOSE](https://github.com/bifurcation/gose)
-* [CLI](github.com/codegangsta/cli)
+* [CLI](https://github.com/codegangsta/cli)
 
 
 ACME Processing
