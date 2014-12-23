@@ -76,7 +76,7 @@ Files
 
 Dependencies:
 
-* [Go platform libraries](https://golang.org)
+* [Go platform libraries](https://golang.org/pkg/)
 * [GOSE](https://github.com/bifurcation/gose)
 * [CLI](https://github.com/codegangsta/cli)
 
