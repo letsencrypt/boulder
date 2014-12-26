@@ -8,8 +8,7 @@ Quickstart
 ----------
 
 ```
-> go get github.com/letsencrypt/anvil
-> go build github.com/letsencrypt/anvil/anvil-start
+> go get github.com/letsencrypt/anvil/anvil-start
 > ./anvil-start monolithic # without AMQP
 > ./anvil-start monolithic-amqp # with AMQP
 ```
