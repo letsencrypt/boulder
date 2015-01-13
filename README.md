@@ -1,14 +1,13 @@
 Boulder - An ACME CA
 ====================
 
-This is an initial implementation of an ACME-based CA.  The [ACME protocol](https://github.com/letsencrypt/acme-spec/) allows the CA to automatically verify that an applicant for a certificate actually controls an identifier, and allows a domain holder to issue and revoke certificates for his domains.
+This is an initial implementation of an ACME-based CA.  The [ACME protocol](https://github.com/letsencrypt/acme-spec/) allows the CA to automatically verify that an applicant for a certificate actually controls an identifier, and allows domain holders to issue and revoke certificates for their domains.
 
 
 Quickstart
 ----------
 
 ```
-> go get github.com/letsencrypt/boulder
 > go build github.com/letsencrypt/boulder/boulder-start
 > ./boulder-start monolithic # without AMQP
 > ./boulder-start monolithic-amqp # with AMQP
