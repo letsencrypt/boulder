@@ -1,5 +1,5 @@
-Anvil - An ACME CA
-==================
+Boulder - An ACME CA
+====================
 
 This is an initial implementation of an ACME-based CA.  The [ACME protocol](https://github.com/letsencrypt/acme-spec/) allows the CA to automatically verify that an applicant for a certificate actually controls an identifier, and allows a domain holder to issue and revoke certificates for his domains.
 
@@ -8,10 +8,10 @@ Quickstart
 ----------
 
 ```
-> go get github.com/letsencrypt/anvil
-> go build github.com/letsencrypt/anvil/anvil-start
-> ./anvil-start monolithic # without AMQP
-> ./anvil-start monolithic-amqp # with AMQP
+> go get github.com/letsencrypt/boulder
+> go build github.com/letsencrypt/boulder/boulder-start
+> ./boulder-start monolithic # without AMQP
+> ./boulder-start monolithic-amqp # with AMQP
 ```
 
 
@@ -49,7 +49,7 @@ client <-checks->  VA ---+
 
 ```
 
-In Anvil, these components are represented by Go interfaces.  This allows us to have two operational modes: Consolidated and distributed.  In consolidated mode, the objects representing the different components interact directly, through function calls.  In distributed mode, each component runs in a separate process (possibly on a separate machine), and sees the other components' methods by way of a messaging layer.
+In Boulder, these components are represented by Go interfaces.  This allows us to have two operational modes: Consolidated and distributed.  In consolidated mode, the objects representing the different components interact directly, through function calls.  In distributed mode, each component runs in a separate process (possibly on a separate machine), and sees the other components' methods by way of a messaging layer.
 
 Internally, the logic of the system is based around two types of objects, authorizations and certificates, mapping directly to the resources of the same name in ACME.
 
@@ -57,7 +57,7 @@ Requests from ACME clients result in new objects and changes objects.  The Stora
 
 Objects are also passed from one component to another on change events.  For example, when a client provides a successful response to a validation challenge, it results in a change to the corresponding validation object.  The Validation Authority forward the new validation object to the Storage Authority for storage, and to the Registration Authority for any updates to a related Authorization object.
 
-Anvil supports distributed operation using AMQP as a message bus (e.g., via RabbitMQ).  For components that you want to be remote, it is necessary to instantiate a "client" and "server" for that component.  The client implements the component's Go interface, while the server has the actual logic for the component.  More details in `amqp-rpc.go`.
+Boulder supports distributed operation using AMQP as a message bus (e.g., via RabbitMQ).  For components that you want to be remote, it is necessary to instantiate a "client" and "server" for that component.  The client implements the component's Go interface, while the server has the actual logic for the component.  More details in `amqp-rpc.go`.
 
 Files
 -----
@@ -72,7 +72,7 @@ Files
   * `rpc-wrappers.go` - RPC wrappers for the various component type
 * `objects.go` - Objects that are passed between components
 * `util.go` - Miscellaneous utility methods
-* `anvil_test.go` - Unit tests
+* `boulder_test.go` - Unit tests
 
 Dependencies:
 
@@ -145,6 +145,9 @@ WebFE -> Client:  revocation
 
 TODO
 ----
+
+* Switch to go-jose for JOSE processing
+* Use CFSSL for the CA
 
 * Ensure that distributed mode works with multiple processes
 * Add message signing and verification to the AMQP message layer

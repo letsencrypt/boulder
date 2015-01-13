@@ -8,7 +8,7 @@ package main
 import (
 	"fmt"
 	"github.com/codegangsta/cli"
-	"github.com/letsencrypt/anvil"
+	"github.com/letsencrypt/boulder"
 	"github.com/streadway/amqp"
 	"net/http"
 	"os"
@@ -22,7 +22,7 @@ func failOnError(err error, msg string) {
 	}
 }
 
-// This is the same as amqpConnect in anvil, but with even
+// This is the same as amqpConnect in boulder, but with even
 // more aggressive error dropping
 func amqpChannel(url string) (ch *amqp.Channel) {
 	conn, err := amqp.Dial(url)
@@ -34,7 +34,7 @@ func amqpChannel(url string) (ch *amqp.Channel) {
 }
 
 // Start the server and wait around
-func runForever(server *anvil.AmqpRpcServer) {
+func runForever(server *boulder.AmqpRpcServer) {
 	forever := make(chan bool)
 	server.Start()
 	fmt.Fprintf(os.Stderr, "Server running...\n")
@@ -43,8 +43,8 @@ func runForever(server *anvil.AmqpRpcServer) {
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "anvil-start"
-	app.Usage = "Command-line utility to start Anvil's servers in stand-alone mode"
+	app.Name = "boulder-start"
+	app.Usage = "Command-line utility to start Boulder's servers in stand-alone mode"
 	app.Version = "0.0.0"
 
 	// Server URL hard-coded for now
@@ -66,11 +66,11 @@ func main() {
 			Usage: "Start the CA in monolithic mode, without using AMQP",
 			Action: func(c *cli.Context) {
 				// Create the components
-				wfe := anvil.NewWebFrontEndImpl()
-				sa := anvil.NewSimpleStorageAuthorityImpl()
-				ra := anvil.NewRegistrationAuthorityImpl()
-				va := anvil.NewValidationAuthorityImpl()
-				ca, err := anvil.NewCertificateAuthorityImpl()
+				wfe := boulder.NewWebFrontEndImpl()
+				sa := boulder.NewSimpleStorageAuthorityImpl()
+				ra := boulder.NewRegistrationAuthorityImpl()
+				va := boulder.NewValidationAuthorityImpl()
+				ca, err := boulder.NewCertificateAuthorityImpl()
 				failOnError(err, "Unable to create CA")
 
 				// Wire them up
@@ -105,25 +105,25 @@ func main() {
 				ch := amqpChannel(amqpServerURL)
 
 				// Create AMQP-RPC clients for CA, VA, RA, SA
-				cac, err := anvil.NewCertificateAuthorityClient("CA.client", "CA.server", ch)
+				cac, err := boulder.NewCertificateAuthorityClient("CA.client", "CA.server", ch)
 				failOnError(err, "Failed to create CA client")
-				vac, err := anvil.NewValidationAuthorityClient("VA.client", "VA.server", ch)
+				vac, err := boulder.NewValidationAuthorityClient("VA.client", "VA.server", ch)
 				failOnError(err, "Failed to create VA client")
-				rac, err := anvil.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
+				rac, err := boulder.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
 				failOnError(err, "Failed to create RA client")
-				sac, err := anvil.NewStorageAuthorityClient("SA.client", "SA.server", ch)
+				sac, err := boulder.NewStorageAuthorityClient("SA.client", "SA.server", ch)
 				failOnError(err, "Failed to create SA client")
 
 				// ... and corresponding servers
 				// (We need this order so that we can give the servers
 				//  references to the clients)
-				cas, err := anvil.NewCertificateAuthorityServer("CA.server", ch)
+				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch)
 				failOnError(err, "Failed to create CA server")
-				vas, err := anvil.NewValidationAuthorityServer("VA.server", ch, &rac)
+				vas, err := boulder.NewValidationAuthorityServer("VA.server", ch, &rac)
 				failOnError(err, "Failed to create VA server")
-				ras, err := anvil.NewRegistrationAuthorityServer("RA.server", ch, &vac, &cac, &sac)
+				ras, err := boulder.NewRegistrationAuthorityServer("RA.server", ch, &vac, &cac, &sac)
 				failOnError(err, "Failed to create RA server")
-				sas := anvil.NewStorageAuthorityServer("SA.server", ch)
+				sas := boulder.NewStorageAuthorityServer("SA.server", ch)
 
 				// Start the servers
 				cas.Start()
@@ -132,7 +132,7 @@ func main() {
 				sas.Start()
 
 				// Wire up the front end (wrappers are already wired)
-				wfe := anvil.NewWebFrontEndImpl()
+				wfe := boulder.NewWebFrontEndImpl()
 				wfe.RA = &rac
 				wfe.SA = &sac
 
@@ -159,14 +159,14 @@ func main() {
 				// Create necessary clients
 				ch := amqpChannel(amqpServerURL)
 
-				rac, err := anvil.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
+				rac, err := boulder.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
 				failOnError(err, "Unable to create RA client")
 
-				sac, err := anvil.NewStorageAuthorityClient("SA.client", "SA.server", ch)
+				sac, err := boulder.NewStorageAuthorityClient("SA.client", "SA.server", ch)
 				failOnError(err, "Unable to create SA client")
 
 				// Create the front-end and wire in its resources
-				wfe := anvil.NewWebFrontEndImpl()
+				wfe := boulder.NewWebFrontEndImpl()
 				wfe.RA = &rac
 				wfe.SA = &sac
 
@@ -191,7 +191,7 @@ func main() {
 			Action: func(c *cli.Context) {
 				ch := amqpChannel(amqpServerURL)
 
-				cas, err := anvil.NewCertificateAuthorityServer("CA.server", ch)
+				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch)
 				failOnError(err, "Unable to create CA server")
 				runForever(cas)
 			},
@@ -202,7 +202,7 @@ func main() {
 			Action: func(c *cli.Context) {
 				ch := amqpChannel(amqpServerURL)
 
-				sas := anvil.NewStorageAuthorityServer("SA.server", ch)
+				sas := boulder.NewStorageAuthorityServer("SA.server", ch)
 				runForever(sas)
 			},
 		},
@@ -212,10 +212,10 @@ func main() {
 			Action: func(c *cli.Context) {
 				ch := amqpChannel(amqpServerURL)
 
-				rac, err := anvil.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
+				rac, err := boulder.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
 				failOnError(err, "Unable to create RA client")
 
-				vas, err := anvil.NewValidationAuthorityServer("VA.server", ch, &rac)
+				vas, err := boulder.NewValidationAuthorityServer("VA.server", ch, &rac)
 				failOnError(err, "Unable to create VA server")
 				runForever(vas)
 			},
@@ -227,16 +227,16 @@ func main() {
 				// TODO
 				ch := amqpChannel(amqpServerURL)
 
-				vac, err := anvil.NewValidationAuthorityClient("VA.client", "VA.server", ch)
+				vac, err := boulder.NewValidationAuthorityClient("VA.client", "VA.server", ch)
 				failOnError(err, "Unable to create VA client")
 
-				cac, err := anvil.NewCertificateAuthorityClient("CA.client", "CA.server", ch)
+				cac, err := boulder.NewCertificateAuthorityClient("CA.client", "CA.server", ch)
 				failOnError(err, "Unable to create CA client")
 
-				sac, err := anvil.NewStorageAuthorityClient("SA.client", "SA.server", ch)
+				sac, err := boulder.NewStorageAuthorityClient("SA.client", "SA.server", ch)
 				failOnError(err, "Unable to create SA client")
 
-				ras, err := anvil.NewRegistrationAuthorityServer("RA.server", ch, &vac, &cac, &sac)
+				ras, err := boulder.NewRegistrationAuthorityServer("RA.server", ch, &vac, &cac, &sac)
 				failOnError(err, "Unable to create RA server")
 				runForever(ras)
 			},

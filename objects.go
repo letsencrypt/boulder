@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package anvil
+package boulder
 
 import (
 	"crypto/x509"
@@ -39,7 +39,7 @@ const (
 // An AcmeIdentifier encodes an identifier that can
 // be validated by ACME.  The protocol allows for different
 // types of identifier to be supported (DNS names, IP
-// addresses, etc.), but currently anvil only supports
+// addresses, etc.), but currently we only support
 // domain names.
 type AcmeIdentifier struct {
 	Type  IdentifierType `json:"type"`  // The type of identifier being encoded
@@ -132,7 +132,7 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 // on the wire (e.g., ID) must be made empty before marshaling.
 type Authorization struct {
 	// An identifier for this authorization, unique across
-	// authorizations and certificates within this anvil instance.
+	// authorizations and certificates within this instance.
 	ID string `json:"id,omitempty"`
 
 	// The identifier for which authorization is being given
@@ -164,11 +164,11 @@ type Authorization struct {
 	Contact []AcmeURL `json:"contact,omitempty"`
 }
 
-// Certificate objects are entirely internal to Anvil.  The only
+// Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
 	// An identifier for this authorization, unique across
-	// authorizations and certificates within this anvil instance.
+	// authorizations and certificates within this instance.
 	ID string
 
 	// The certificate itself
