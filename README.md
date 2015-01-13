@@ -146,9 +146,6 @@ WebFE -> Client:  revocation
 TODO
 ----
 
-* Switch to go-jose for JOSE processing
-* Use CFSSL for the CA
-
 * Ensure that distributed mode works with multiple processes
 * Add message signing and verification to the AMQP message layer
 * Add monitoring / syslog
