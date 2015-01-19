@@ -186,7 +186,7 @@ func main() {
 			},
 		},
 		{
-			Name:  "sa",
+			Name:  "ca",
 			Usage: "Start the CertificateAuthority",
 			Action: func(c *cli.Context) {
 				ch := amqpChannel(amqpServerURL)
@@ -197,7 +197,7 @@ func main() {
 			},
 		},
 		{
-			Name:  "ca",
+			Name:  "sa",
 			Usage: "Start the StorageAuthority",
 			Action: func(c *cli.Context) {
 				ch := amqpChannel(amqpServerURL)
