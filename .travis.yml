@@ -1,0 +1,10 @@
+language: go
+
+go:
+  - 1.3
+  - tip
+
+install:
+  - go get github.com/bifurcation/gose
+  - go get github.com/streadway/amqp
+  - go get github.com/codegangsta/cli
