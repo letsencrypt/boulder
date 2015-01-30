@@ -234,7 +234,11 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
-		response.WriteHeader(http.StatusOK)
+		httpStatus := http.StatusOK
+		if authz.Status == StatusInvalid {
+			httpStatus = http.StatusForbidden
+		}
+		response.WriteHeader(httpStatus)
 		response.Write(jsonReply)
 	}
 }
