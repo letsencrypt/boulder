@@ -225,8 +225,6 @@ func (rpc *AmqpRpcClient) DispatchSync(method string, body []byte) (response []b
 		err = errors.New("AMQP-RPC timeout")
 		return
 	}
-	err = errors.New("Unknown error in SyncDispatch")
-	return
 }
 
 func (rpc *AmqpRpcClient) SyncDispatchWithTimeout(method string, body []byte, ttl time.Duration) (response []byte, err error) {
