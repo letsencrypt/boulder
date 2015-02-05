@@ -89,7 +89,7 @@ func main() {
 				va.RA = &ra
 
 				// Go!
-				authority := "localhost:4000"
+				authority := "0.0.0.0:4000"
 				authzPath := "/acme/authz/"
 				certPath := "/acme/cert/"
 				wfe.SetAuthzBase("http://" + authority + authzPath)
@@ -144,7 +144,7 @@ func main() {
 				wfe.SA = &sac
 
 				// Go!
-				authority := "localhost:4000"
+				authority := "0.0.0.0:4000"
 				authzPath := "/acme/authz/"
 				certPath := "/acme/cert/"
 				wfe.SetAuthzBase("http://" + authority + authzPath)
@@ -178,7 +178,7 @@ func main() {
 				wfe.SA = &sac
 
 				// Connect the front end to HTTP
-				authority := "localhost:4000"
+				authority := "0.0.0.0:4000"
 				authzPath := "/acme/authz/"
 				certPath := "/acme/cert/"
 				wfe.SetAuthzBase("http://" + authority + authzPath)
