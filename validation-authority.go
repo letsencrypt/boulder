@@ -6,9 +6,9 @@
 package boulder
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
@@ -82,7 +82,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz Authorization) (chal
 			return
 		}
 
-		if bytes.Compare(body, []byte(challenge.Token)) == 0 {
+		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
 			challenge.Status = StatusValid
 			return
 		}
