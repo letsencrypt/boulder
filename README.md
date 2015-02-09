@@ -10,16 +10,16 @@ This is an initial implementation of an ACME-based CA.  The [ACME protocol](http
 Docker
 ------
 
-Boulder is available as a [Docker image from Quay.io](https://quay.io/repository/letsencrypt/boulder). You can load and run it using in monolithic mode (without AMQP) using the default run command:
+Boulder is available as a [Docker image from Quay.io](https://quay.io/repository/letsencrypt/boulder). The entrypoint is the Boulder main method; you can load and run it using in monolithic mode (without AMQP) like:
 
 ```
-docker run -p 4000:4000 quay.io/letsencrypt/boulder
+docker run -p 4000:4000 quay.io/letsencrypt/boulder monolithic
 ```
 
 To run a single module, specifying the AMQP server, you might use something more like:
 
 ```
-docker run -p 4000:4000 quay.io/letsencrypt/boulder ./boulder-start --amqp 'amqp://guest:guest@amqp-server:15672' wfe
+docker run -p 4000:4000 quay.io/letsencrypt/boulder --amqp 'amqp://guest:guest@amqp-server:15672' wfe
 ```
 
 Quickstart

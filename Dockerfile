@@ -20,8 +20,4 @@ RUN cd /go/src/github.com/letsencrypt/boulder && \
     cd boulder-start && \
     go build
 
-# Simplify run execution
-WORKDIR /go/src/github.com/letsencrypt/boulder/boulder-start
-
-# Default run configuration in Monolithic mode without AMQP
-CMD ["./boulder-start", "monolithic"]
+ENTRYPOINT ["/go/src/github.com/letsencrypt/boulder/boulder-start/boulder-start"]
