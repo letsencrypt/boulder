@@ -26,7 +26,7 @@ func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
 	return RegistrationAuthorityImpl{}
 }
 
-var dnsLabelRegexp, _ = regexp.Compile("[^a-zA-Z0-9-]")
+var dnsLabelRegexp, _ = regexp.Compile("^[a-zA-Z0-9-]*$")
 var ipAddressRegexp, _ = regexp.Compile("^[0-9.]*$")
 
 func forbiddenIdentifier(id string) bool {
@@ -46,7 +46,7 @@ func forbiddenIdentifier(id string) bool {
 		}
 		// Only alphanumerics and dash are allowed in identifiers.
 		// TODO: Before identifiers reach this function, do lowercasing.
-		if dnsLabelRegexp.MatchString(label) {
+		if ! dnsLabelRegexp.MatchString(label) {
 			return true
 		}
 
