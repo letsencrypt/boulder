@@ -3,7 +3,24 @@ Boulder - An ACME CA
 
 This is an initial implementation of an ACME-based CA.  The [ACME protocol](https://github.com/letsencrypt/acme-spec/) allows the CA to automatically verify that an applicant for a certificate actually controls an identifier, and allows domain holders to issue and revoke certificates for their domains.
 
+
 [![Build Status](https://travis-ci.org/letsencrypt/boulder.svg)](https://travis-ci.org/letsencrypt/boulder)
+[![Docker Repository on Quay.io](https://quay.io/repository/letsencrypt/boulder/status "Docker Repository on Quay.io")](https://quay.io/repository/letsencrypt/boulder)
+
+Docker
+------
+
+Boulder is available as a [Docker image from Quay.io](https://quay.io/repository/letsencrypt/boulder). The entrypoint is the Boulder main method; you can load and run it using in monolithic mode (without AMQP) like:
+
+```
+docker run -p 4000:4000 quay.io/letsencrypt/boulder monolithic
+```
+
+To run a single module, specifying the AMQP server, you might use something more like:
+
+```
+docker run -p 4000:4000 quay.io/letsencrypt/boulder --amqp 'amqp://guest:guest@amqp-server:15672' wfe
+```
 
 Quickstart
 ----------

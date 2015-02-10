@@ -47,8 +47,15 @@ func main() {
 	app.Usage = "Command-line utility to start Boulder's servers in stand-alone mode"
 	app.Version = "0.0.0"
 
-	// Server URL hard-coded for now
-	amqpServerURL := "amqp://guest:guest@localhost:5672"
+
+	// Specify AMQP Server
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+				Name: "amqp",
+				Value: "amqp://guest:guest@localhost:5672",
+				Usage: "AMQP Broker String",
+			},
+	}
 
 	// One command per element of the system
 	// * WebFrontEnd
@@ -82,7 +89,7 @@ func main() {
 				va.RA = &ra
 
 				// Go!
-				authority := "localhost:4000"
+				authority := "0.0.0.0:4000"
 				authzPath := "/acme/authz/"
 				certPath := "/acme/cert/"
 				wfe.SetAuthzBase("http://" + authority + authzPath)
@@ -102,7 +109,7 @@ func main() {
 			Usage: "Start the CA in monolithic mode, using AMQP",
 			Action: func(c *cli.Context) {
 				// Create an AMQP channel
-				ch := amqpChannel(amqpServerURL)
+				ch := amqpChannel(c.GlobalString("amqp"))
 
 				// Create AMQP-RPC clients for CA, VA, RA, SA
 				cac, err := boulder.NewCertificateAuthorityClient("CA.client", "CA.server", ch)
@@ -137,7 +144,7 @@ func main() {
 				wfe.SA = &sac
 
 				// Go!
-				authority := "localhost:4000"
+				authority := "0.0.0.0:4000"
 				authzPath := "/acme/authz/"
 				certPath := "/acme/cert/"
 				wfe.SetAuthzBase("http://" + authority + authzPath)
@@ -157,7 +164,7 @@ func main() {
 			Usage: "Start the WebFrontEnd",
 			Action: func(c *cli.Context) {
 				// Create necessary clients
-				ch := amqpChannel(amqpServerURL)
+				ch := amqpChannel(c.GlobalString("amqp"))
 
 				rac, err := boulder.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
 				failOnError(err, "Unable to create RA client")
@@ -171,7 +178,7 @@ func main() {
 				wfe.SA = &sac
 
 				// Connect the front end to HTTP
-				authority := "localhost:4000"
+				authority := "0.0.0.0:4000"
 				authzPath := "/acme/authz/"
 				certPath := "/acme/cert/"
 				wfe.SetAuthzBase("http://" + authority + authzPath)
@@ -189,7 +196,7 @@ func main() {
 			Name:  "ca",
 			Usage: "Start the CertificateAuthority",
 			Action: func(c *cli.Context) {
-				ch := amqpChannel(amqpServerURL)
+				ch := amqpChannel(c.GlobalString("amqp"))
 
 				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch)
 				failOnError(err, "Unable to create CA server")
@@ -200,7 +207,7 @@ func main() {
 			Name:  "sa",
 			Usage: "Start the StorageAuthority",
 			Action: func(c *cli.Context) {
-				ch := amqpChannel(amqpServerURL)
+				ch := amqpChannel(c.GlobalString("amqp"))
 
 				sas := boulder.NewStorageAuthorityServer("SA.server", ch)
 				runForever(sas)
@@ -210,7 +217,7 @@ func main() {
 			Name:  "va",
 			Usage: "Start the ValidationAuthority",
 			Action: func(c *cli.Context) {
-				ch := amqpChannel(amqpServerURL)
+				ch := amqpChannel(c.GlobalString("amqp"))
 
 				rac, err := boulder.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
 				failOnError(err, "Unable to create RA client")
@@ -225,7 +232,7 @@ func main() {
 			Usage: "Start the RegistrationAuthority",
 			Action: func(c *cli.Context) {
 				// TODO
-				ch := amqpChannel(amqpServerURL)
+				ch := amqpChannel(c.GlobalString("amqp"))
 
 				vac, err := boulder.NewValidationAuthorityClient("VA.client", "VA.server", ch)
 				failOnError(err, "Unable to create VA client")
