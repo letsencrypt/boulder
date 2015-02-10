@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/bifurcation/gose"
 	"regexp"
+	"strings"
 )
 
 // All of the fields in RegistrationAuthorityImpl need to be
@@ -25,18 +26,49 @@ func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
 	return RegistrationAuthorityImpl{}
 }
 
-func forbiddenIdentifier(id string) bool {
-	// XXX Flesh this out, and add real policy.  Only rough checks for now
+var dnsLabelRegexp, _ = regexp.Compile("^[a-zA-Z0-9-]*$")
+var ipAddressRegexp, _ = regexp.Compile("^[0-9.]*$")
 
-	// If it contains characters not allowed in a domain name ...
-	match, err := regexp.MatchString("[^a-zA-Z0-9.-]", id)
-	if (err != nil) || match {
+func forbiddenIdentifier(id string) bool {
+	// A DNS label is a part separated by dots, e.g. www.foo.net has labels
+	// "www", "foo", and "net".
+	const maxLabels = 10
+	labels := strings.SplitN(id, ".", maxLabels + 1)
+	if len(labels) < 2 || len(labels) > maxLabels {
 		return true
 	}
 
-	// If it is entirely numeric (like an IP address) ...
-	match, err = regexp.MatchString("[^0-9.]", id)
-	if (err != nil) || !match {
+	for _, label := range labels {
+		// DNS defines max label length as 63 characters. Some implementations allow
+		// more, but we will be conservative.
+		if len(label) < 1 || len(label) > 63 {
+			return true
+		}
+		// Only alphanumerics and dash are allowed in identifiers.
+		// TODO: Before identifiers reach this function, do lowercasing.
+		if ! dnsLabelRegexp.MatchString(label) {
+			return true
+		}
+
+		// A label cannot begin with a hyphen (-)
+		if label[0] == '-' {
+			return true
+		}
+
+		// Punycode labels are not yet allowed. May allow in future after looking at
+		// homoglyph mitigations.
+		if len(label) >= 4 && label[0:4] == "xn--" {
+			return true
+		}
+	}
+
+	// Forbid identifiers that are entirely numeric like an IP address.
+	if ipAddressRegexp.MatchString(id) {
+		return true
+	}
+
+	// Also forbid an all-numeric final label.
+	if ipAddressRegexp.MatchString(labels[len(labels) - 1]) {
 		return true
 	}
 
