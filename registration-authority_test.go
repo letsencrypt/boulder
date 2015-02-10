@@ -45,6 +45,7 @@ func TestForbiddenIdentifier(t *testing.T) {
     "\uFEFFwww.zombo.com",
     "www.zömbo.com", // No non-ASCII for now.
     "xn--hmr.net", // No punycode for now.
+    "xn--.net", // No punycode for now.
     "www.xn--hmr.net",
     "www.zom\u202Ebo.com", // Right-to-Left Override
     "\u202Ewww.zombo.com",
@@ -70,7 +71,7 @@ func TestForbiddenIdentifier(t *testing.T) {
   }
 
   for _, identifier := range shouldBeAccepted {
-    if ! forbiddenIdentifier(identifier) {
+    if forbiddenIdentifier(identifier) {
       t.Error("Identifier was incorrectly forbidden: ", identifier)
     }
   }

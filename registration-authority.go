@@ -26,6 +26,9 @@ func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
 	return RegistrationAuthorityImpl{}
 }
 
+var dnsLabelRegexp, _ = regexp.Compile("[^a-zA-Z0-9-]")
+var ipAddressRegexp, _ = regexp.Compile("^[0-9.]*$")
+
 func forbiddenIdentifier(id string) bool {
 	// A DNS label is a part separated by dots, e.g. www.foo.net has labels
 	// "www", "foo", and "net".
@@ -43,8 +46,7 @@ func forbiddenIdentifier(id string) bool {
 		}
 		// Only alphanumerics and dash are allowed in identifiers.
 		// TODO: Before identifiers reach this function, do lowercasing.
-		matched, err := regexp.MatchString("[^a-zA-Z0-9-]", id)
-		if (err != nil) || matched {
+		if dnsLabelRegexp.MatchString(label) {
 			return true
 		}
 
@@ -55,14 +57,18 @@ func forbiddenIdentifier(id string) bool {
 
 		// Punycode labels are not yet allowed. May allow in future after looking at
 		// homoglyph mitigations.
-		if label[0:4] == "xn--" {
+		if len(label) >= 4 && label[0:4] == "xn--" {
 			return true
 		}
 	}
 
 	// Forbid identifiers that are entirely numeric like an IP address.
-	matched, err := regexp.MatchString("[^0-9.]", id)
-	if err != nil || !matched {
+	if ipAddressRegexp.MatchString(id) {
+		return true
+	}
+
+	// Also forbid an all-numeric final label.
+	if ipAddressRegexp.MatchString(labels[len(labels) - 1]) {
 		return true
 	}
 
