@@ -60,6 +60,7 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		nil)
 	if err != nil {
 		log.Fatalf("Could not declare exchange: %s", err)
+		return
 	}
 
 	q, err := ch.QueueDeclare(
@@ -70,6 +71,18 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		AmqpNoWait,
 		nil)
 	if err != nil {
+		log.Fatalf("Could not declare queue: %s", err)
+		return
+	}
+
+	err = ch.QueueBind(
+		name,
+		name,
+		AmqpExchange,
+		false,
+		nil)
+	if err != nil {
+		log.Fatalf("Could not bind queue: %s", err)
 		return
 	}
 
@@ -81,6 +94,11 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		AmqpNoLocal,
 		AmqpNoWait,
 		nil)
+	if err != nil {
+		log.Fatalf("Could not subscribe to queue: %s", err)
+		return
+	}
+
 	return
 }
 
