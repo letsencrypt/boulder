@@ -44,50 +44,50 @@ func startMonitor(AmqpUrl string, logger *boulder.JsonLogger) {
 		return
 	}
 
-	err         = rpcCh.ExchangeDeclare(
-										AmqpExchange,
-										AmqpExchangeType,
-										AmqpDurable,
-										AmqpDeleteUnused,
-										AmqpInternal,
-										AmqpNoWait,
-										nil)
+	err = rpcCh.ExchangeDeclare(
+		AmqpExchange,
+		AmqpExchangeType,
+		AmqpDurable,
+		AmqpDeleteUnused,
+		AmqpInternal,
+		AmqpNoWait,
+		nil)
 	if err != nil {
 		log.Fatalf("Could not declare exchange: %s", err)
 		return
 	}
 
-	_, err      = rpcCh.QueueDeclare(
-										QueueName,
-										AmqpDurable,
-										AmqpDeleteUnused,
-										AmqpExclusive,
-										AmqpNoWait,
-										nil)
+	_, err = rpcCh.QueueDeclare(
+		QueueName,
+		AmqpDurable,
+		AmqpDeleteUnused,
+		AmqpExclusive,
+		AmqpNoWait,
+		nil)
 	if err != nil {
 		log.Fatalf("Could not declare queue: %s", err)
 		return
 	}
 
-	err         = rpcCh.QueueBind(
-										QueueName,
-										"#", //wildcard
-										AmqpExchange,
-										false,
-										nil)
+	err = rpcCh.QueueBind(
+		QueueName,
+		"#", //wildcard
+		AmqpExchange,
+		false,
+		nil)
 	if err != nil {
 		log.Fatalf("Could not bind queue: %s", err)
 		return
 	}
 
-	delveries, err   := rpcCh.Consume(
-										QueueName,
-										"",
-										AmqpAutoAck,
-										AmqpExclusive,
-										AmqpNoLocal,
-										AmqpNoWait,
-										nil)
+	delveries, err := rpcCh.Consume(
+		QueueName,
+		"", // dynamic queue name is fine
+		AmqpAutoAck,
+		AmqpExclusive,
+		AmqpNoLocal,
+		AmqpNoWait,
+		nil)
 	if err != nil {
 		log.Fatalf("Could not subscribe to queue: %s", err)
 		return
