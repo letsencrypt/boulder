@@ -32,6 +32,7 @@ type LogMessage struct {
 
 type JsonLogger struct {
   debug     bool
+  online    bool
   scheme    string
   host      string
   level     int
@@ -54,6 +55,7 @@ func (jl *JsonLogger) SetEndpoint(scheme string, host string) {
 }
 
 func (jl *JsonLogger) Connect() (error) {
+  jl.online = true
   conn, err := net.Dial(jl.scheme, jl.host)
   if err == nil {
     jl.conn = conn
@@ -116,10 +118,13 @@ func (jl *JsonLogger) Write(severity int, messageStr string, payloadObj interfac
     log.Println(fmt.Sprintf("<%d> %s", severity, string(encoded)))
   }
 
-  _, err = jl.WriteAndRetry(string(encoded))
-  if err != nil {
-    log.Fatalf("Failed to send log message, even with retry: %s", encoded)
-    return
+  if jl.online {
+    // If we've been told to be connected, write to the socket.
+    _, err = jl.WriteAndRetry(string(encoded))
+    if err != nil {
+      log.Fatalf("Failed to send log message, even with retry: %s", encoded)
+      return
+    }
   }
 }
 

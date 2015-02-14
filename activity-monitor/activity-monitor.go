@@ -120,9 +120,8 @@ func main() {
 				Usage: "AMQP Broker String",
 			},
 		cli.StringFlag{
-				Name: "syslog",
-				Value: "tcp://localhost:514",
-				Usage: "Syslog server and port",
+				Name: "jsonlog",
+				Usage: "JSON logging server and port (e.g., tcp://localhost:515)",
 			},
 		cli.BoolFlag{
 				Name: "stdout",
@@ -136,22 +135,29 @@ func main() {
 	}
 
 	app.Action = func(c *cli.Context) {
-		// Parse SysLog URL
-		syslogU, err    := url.Parse(c.GlobalString("syslog"))
-		if err != nil {
-			log.Fatalf("Could not parse Syslog URL: %s", err)
-			return
-		}
-
 		logger := &boulder.JsonLogger{}
-		logger.SetEndpoint(syslogU.Scheme, syslogU.Host)
-		err = logger.Connect()
-		if err != nil {
-			log.Fatalf("Could not open remote syslog: %s", err)
-			return
-		}
 
-		logger.SetDebugToStdOut(c.GlobalBool("stdout"))
+		// Parse SysLog URL if one was provided
+		if c.GlobalString("jsonlog") == "" {
+			log.Println("No external logging server; defaulting to stdout.")
+			logger.SetDebugToStdOut(true)
+		} else {
+			syslogU, err    := url.Parse(c.GlobalString("jsonlog"))
+			if err != nil {
+				log.Fatalf("Could not parse Syslog URL: %s", err)
+				return
+			}
+
+			logger.SetEndpoint(syslogU.Scheme, syslogU.Host)
+			err = logger.Connect()
+			if err != nil {
+				log.Fatalf("Could not open remote syslog: %s", err)
+				return
+			}
+
+			logger.SetDebugToStdOut(c.GlobalBool("stdout"))
+
+		}
 
 		logger.SetLevel(c.GlobalInt("level"))
 
