@@ -15,9 +15,6 @@ RUN mkdir -p /go/src/github.com/letsencrypt/boulder
 COPY . /go/src/github.com/letsencrypt/boulder
 
 # Build Boulder
-RUN cd /go/src/github.com/letsencrypt/boulder && \
-    go build && \
-    cd boulder-start && \
-    go build
+RUN go install github.com/letsencrypt/boulder/boulder-start
 
-ENTRYPOINT ["/go/src/github.com/letsencrypt/boulder/boulder-start/boulder-start"]
+ENTRYPOINT ["/go/bin/boulder-start"]
