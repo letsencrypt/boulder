@@ -53,7 +53,14 @@ func main() {
 		cli.StringFlag{
 				Name: "amqp",
 				Value: "amqp://guest:guest@localhost:5672",
-				Usage: "AMQP Broker String",
+				EnvVar: "AMQP_SERVER",
+				Usage: "AMQP Broker URI",
+			},
+		cli.StringFlag{
+				Name: "cfssl",
+				Value: "tcp://localhost:8888",
+				EnvVar: "CFSSL_PORT",
+				Usage: "CFSSL Server URI",
 			},
 	}
 
