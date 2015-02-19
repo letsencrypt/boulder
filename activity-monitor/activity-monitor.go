@@ -8,6 +8,7 @@ package main
 import (
 	"github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder"
+	"github.com/letsencrypt/boulder/analysisengine"
 	"github.com/streadway/amqp"
 	"log"
 	"net/url"
@@ -31,6 +32,8 @@ const (
 
 
 func startMonitor(AmqpUrl string, logger *boulder.JsonLogger) {
+
+	ae := analysisengine.NewLoggingAnalysisEngine(logger)
 
 	// For convenience at the broker, identifiy ourselves by hostname
 	consumerTag, err := os.Hostname()
@@ -100,16 +103,9 @@ func startMonitor(AmqpUrl string, logger *boulder.JsonLogger) {
 	}
 
 	// Run forever.
-	handle(delveries, logger)
-}
-
-func handle(deliveries <-chan amqp.Delivery, jsonLogger *boulder.JsonLogger) {
-	for d := range deliveries {
-
-		// Send the entire message contents to the syslog server for debugging.
-		// TODO: Track state,
-		jsonLogger.Debug("Message contents", d)
-
+	for d := range delveries {
+		// Pass each message to the Analysis Engine
+		ae.ProcessMessage(d)
 		// Only ack the delivery we actually handled (ackMultiple=false)
 		const ackMultiple = false
 		d.Ack(ackMultiple)
