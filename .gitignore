@@ -22,6 +22,7 @@ _testmain.go
 *.exe
 *.test
 *.prof
+*.coverprofile
 
 boulder-start/boulder-start
 activity-monitor/activity-monitor
