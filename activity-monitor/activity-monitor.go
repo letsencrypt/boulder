@@ -24,13 +24,19 @@ const (
 	AmqpExclusive    = false
 	AmqpNoWait       = false
 	AmqpNoLocal      = false
-	AmqpAutoAck      = true
+	AmqpAutoAck      = false
 	AmqpMandatory    = false
 	AmqpImmediate    = false
 )
 
 
 func startMonitor(AmqpUrl string, logger *boulder.JsonLogger) {
+
+	// For convenience at the broker, identifiy ourselves by hostname
+	consumerTag, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("Could not determine hostname")
+	}
 
 	conn, err   := amqp.Dial(AmqpUrl)
 	if err != nil {
@@ -82,7 +88,7 @@ func startMonitor(AmqpUrl string, logger *boulder.JsonLogger) {
 
 	delveries, err := rpcCh.Consume(
 		QueueName,
-		"", // dynamic queue name is fine
+		consumerTag,
 		AmqpAutoAck,
 		AmqpExclusive,
 		AmqpNoLocal,
@@ -103,6 +109,10 @@ func handle(deliveries <-chan amqp.Delivery, jsonLogger *boulder.JsonLogger) {
 		// Send the entire message contents to the syslog server for debugging.
 		// TODO: Track state,
 		jsonLogger.Debug("Message contents", d)
+
+		// Only ack the delivery we actually handled (ackMultiple=false)
+		const ackMultiple = false
+		d.Ack(ackMultiple)
 	}
 }
 
@@ -135,12 +145,12 @@ func main() {
 	}
 
 	app.Action = func(c *cli.Context) {
-		logger := &boulder.JsonLogger{}
+		logger := boulder.NewJsonLogger("am")
 
 		// Parse SysLog URL if one was provided
 		if c.GlobalString("jsonlog") == "" {
 			log.Println("No external logging server; defaulting to stdout.")
-			logger.SetDebugToStdOut(true)
+			logger.EnableStdOut(true)
 		} else {
 			syslogU, err    := url.Parse(c.GlobalString("jsonlog"))
 			if err != nil {
@@ -155,7 +165,7 @@ func main() {
 				return
 			}
 
-			logger.SetDebugToStdOut(c.GlobalBool("stdout"))
+			logger.EnableStdOut(c.GlobalBool("stdout"))
 
 		}
 
