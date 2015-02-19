@@ -2,7 +2,6 @@ language: go
 
 go:
   - 1.4.1
-  - tip
 
 matrix:
   fast_finish: true
