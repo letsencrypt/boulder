@@ -25,8 +25,8 @@ import (
 // be restarted by the process controller.
 
 
-// Use the same severity levels as RFC 5424.
-// Note: Facility is not used.
+// Use the same Severity levels as RFC 5424.
+// Note: RFC 5424 Facility is not used.
 const (
   EMERGENCY = 0
   ALERT     = 1
@@ -52,8 +52,8 @@ type LogMessage struct {
 
 // Structure to hold logger details.
 type JsonLogger struct {
-  stdout    bool        // True if logging to stdout
-  online    bool        // True if the remote endpoint has been setup
+  stdout    bool        // True if logging to stdout (independent of network)
+  online    bool        // True if logging to network
   scheme    string      // Golang net URI scheme (tcp/udp)
   host      string      // "address:port"
   level     int         // Maximum-transmitted log level

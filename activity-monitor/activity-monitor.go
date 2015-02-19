@@ -89,7 +89,7 @@ func startMonitor(AmqpUrl string, logger *boulder.JsonLogger) {
 		return
 	}
 
-	delveries, err := rpcCh.Consume(
+	deliveries, err := rpcCh.Consume(
 		QueueName,
 		consumerTag,
 		AmqpAutoAck,
@@ -103,7 +103,7 @@ func startMonitor(AmqpUrl string, logger *boulder.JsonLogger) {
 	}
 
 	// Run forever.
-	for d := range delveries {
+	for d := range deliveries {
 		// Pass each message to the Analysis Engine
 		ae.ProcessMessage(d)
 		// Only ack the delivery we actually handled (ackMultiple=false)
