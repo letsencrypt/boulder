@@ -24,7 +24,9 @@ import (
 // XXX: I *think* these constants are appropriate.
 // We will probably want to tweak these in the future.
 const (
-	AmqpExchange     = ""
+	AmqpExchange     = "boulder"
+	AmqpExchangeType = "topic"
+	AmqpInternal     = false
 	AmqpDurable      = false
 	AmqpDeleteUnused = false
 	AmqpExclusive    = false
@@ -48,6 +50,19 @@ func amqpConnect(url string) (ch *amqp.Channel, err error) {
 
 // A simplified way to declare and subscribe to an AMQP queue
 func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, err error) {
+	err = ch.ExchangeDeclare(
+		AmqpExchange,
+		AmqpExchangeType,
+		AmqpDurable,
+		AmqpDeleteUnused,
+		AmqpInternal,
+		AmqpNoWait,
+		nil)
+	if err != nil {
+		log.Fatalf("Could not declare exchange: %s", err)
+		return
+	}
+
 	q, err := ch.QueueDeclare(
 		name,
 		AmqpDurable,
@@ -56,6 +71,18 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		AmqpNoWait,
 		nil)
 	if err != nil {
+		log.Fatalf("Could not declare queue: %s", err)
+		return
+	}
+
+	err = ch.QueueBind(
+		name,
+		name,
+		AmqpExchange,
+		false,
+		nil)
+	if err != nil {
+		log.Fatalf("Could not bind queue: %s", err)
 		return
 	}
 
@@ -67,6 +94,11 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		AmqpNoLocal,
 		AmqpNoWait,
 		nil)
+	if err != nil {
+		log.Fatalf("Could not subscribe to queue: %s", err)
+		return
+	}
+
 	return
 }
 
