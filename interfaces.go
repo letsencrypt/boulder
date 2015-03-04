@@ -66,7 +66,7 @@ type ValidationAuthority interface {
 
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest) ([]byte, error)
+	IssueCertificate(x509.CertificateRequest) (string, []byte, error)
 }
 
 type StorageGetter interface {
@@ -83,4 +83,6 @@ type StorageUpdater interface {
 type StorageAuthority interface {
 	StorageGetter
 	StorageUpdater
+
+	AddCertificate([]byte) (string, error)
 }

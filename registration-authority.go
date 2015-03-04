@@ -33,7 +33,7 @@ func forbiddenIdentifier(id string) bool {
 	// A DNS label is a part separated by dots, e.g. www.foo.net has labels
 	// "www", "foo", and "net".
 	const maxLabels = 10
-	labels := strings.SplitN(id, ".", maxLabels + 1)
+	labels := strings.SplitN(id, ".", maxLabels+1)
 	if len(labels) < 2 || len(labels) > maxLabels {
 		return true
 	}
@@ -46,7 +46,7 @@ func forbiddenIdentifier(id string) bool {
 		}
 		// Only alphanumerics and dash are allowed in identifiers.
 		// TODO: Before identifiers reach this function, do lowercasing.
-		if ! dnsLabelRegexp.MatchString(label) {
+		if !dnsLabelRegexp.MatchString(label) {
 			return true
 		}
 
@@ -68,7 +68,7 @@ func forbiddenIdentifier(id string) bool {
 	}
 
 	// Also forbid an all-numeric final label.
-	if ipAddressRegexp.MatchString(labels[len(labels) - 1]) {
+	if ipAddressRegexp.MatchString(labels[len(labels)-1]) {
 		return true
 	}
 
@@ -151,14 +151,14 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req CertificateRequest, jwk 
 	}
 
 	// Create the certificate
-	cert, err := ra.CA.IssueCertificate(*csr)
+	certID, cert, err := ra.CA.IssueCertificate(*csr)
 	if err != nil {
 		return zero, CertificateIssuanceError("Error issuing certificate")
 	}
 
 	// Identify the certificate object by the cert's SHA-256 fingerprint
 	certObj := Certificate{
-		ID:     fingerprint256(cert),
+		ID:     certID,
 		DER:    cert,
 		Status: StatusValid,
 	}

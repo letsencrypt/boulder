@@ -12,6 +12,8 @@ import (
 	"github.com/streadway/amqp"
 	"net/http"
 	"os"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // Exit and print error message if we encountered a problem
@@ -55,24 +57,22 @@ func main() {
 			EnvVar: "AMQP_SERVER",
 			Usage:  "AMQP Broker URI",
 		},
-		/*
-			cli.StringFlag{
-				Name:   "cfssl",
-				Value:  "localhost:8888",
-				EnvVar: "CFSSL_SERVER",
-				Usage:  "CFSSL Server URI",
-			},
-			cli.StringFlag{
-				Name:   "cfsslAuthKey",
-				EnvVar: "CFSSL_AUTH_KEY",
-				Usage:  "CFSSL authentication key",
-			},
-			cli.StringFlag{
-				Name:   "cfsslProfile",
-				EnvVar: "CFSSL_PROFILE",
-				Usage:  "CFSSL signing profile",
-			},
-		*/
+		cli.StringFlag{
+			Name:   "cfssl",
+			Value:  "localhost:8888",
+			EnvVar: "CFSSL_SERVER",
+			Usage:  "CFSSL Server URI",
+		},
+		cli.StringFlag{
+			Name:   "cfsslAuthKey",
+			EnvVar: "CFSSL_AUTH_KEY",
+			Usage:  "CFSSL authentication key",
+		},
+		cli.StringFlag{
+			Name:   "cfsslProfile",
+			EnvVar: "CFSSL_PROFILE",
+			Usage:  "CFSSL signing profile",
+		},
 	}
 
 	// One command per element of the system
@@ -104,7 +104,8 @@ func main() {
 
 				// Create the components
 				wfe := boulder.NewWebFrontEndImpl()
-				sa := boulder.NewSimpleStorageAuthorityImpl()
+				sa, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
+				failOnError(err, "Unable to create SA")
 				ra := boulder.NewRegistrationAuthorityImpl()
 				va := boulder.NewValidationAuthorityImpl()
 				ca, err := boulder.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
@@ -112,9 +113,9 @@ func main() {
 
 				// Wire them up
 				wfe.RA = &ra
-				wfe.SA = &sa
+				wfe.SA = sa
 				ra.CA = ca
-				ra.SA = &sa
+				ra.SA = sa
 				ra.VA = &va
 				va.RA = &ra
 
@@ -167,7 +168,9 @@ func main() {
 				failOnError(err, "Failed to create VA server")
 				ras, err := boulder.NewRegistrationAuthorityServer("RA.server", ch, &vac, &cac, &sac)
 				failOnError(err, "Failed to create RA server")
-				sas := boulder.NewStorageAuthorityServer("SA.server", ch)
+				sai, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
+				failOnError(err, "Failed to create SA impl")
+				sas := boulder.NewStorageAuthorityServer("SA.server", ch, sai)
 
 				// Start the servers
 				cas.Start()
@@ -253,7 +256,9 @@ func main() {
 			Action: func(c *cli.Context) {
 				ch := amqpChannel(c.GlobalString("amqp"))
 
-				sas := boulder.NewStorageAuthorityServer("SA.server", ch)
+				sai, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
+				failOnError(err, "Failed to create SA impl")
+				sas := boulder.NewStorageAuthorityServer("SA.server", ch, sai)
 				runForever(sas)
 			},
 		},

@@ -6,33 +6,80 @@
 package boulder
 
 import (
-	"fmt"
+	"crypto/sha256"
+	"database/sql"
 )
 
-type SimpleStorageAuthorityImpl struct {
-	Storage map[string]interface{}
+type SQLStorageAuthority struct {
+	db     *sql.DB
+	bucket map[string]interface{} // XXX included only for backward compat
 }
 
-func (sa *SimpleStorageAuthorityImpl) dumpState() {
-	fmt.Printf("Storage state: \n%+v\n", sa.Storage)
+func digest256(data []byte) []byte {
+	d := sha256.New()
+	d.Write(data)
+	return d.Sum(nil)
 }
 
-func NewSimpleStorageAuthorityImpl() SimpleStorageAuthorityImpl {
-	return SimpleStorageAuthorityImpl{
-		Storage: make(map[string]interface{}),
+func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthority, err error) {
+	db, err := sql.Open(driver, name)
+	if err != nil {
+		return
 	}
+	if err = db.Ping(); err != nil {
+		return
+	}
+
+	ssa = &SQLStorageAuthority{
+		db:     db,
+		bucket: make(map[string]interface{}),
+	}
+	return
 }
 
-func (sa *SimpleStorageAuthorityImpl) Update(token string, object interface{}) error {
-	sa.Storage[token] = object
+func (ssa *SQLStorageAuthority) InitTables() (err error) {
+	// Create certificates table
+	query := "CREATE TABLE certificates (location INTEGER, digest TEXT, value BLOB);"
+	_, err = ssa.db.Exec(query)
+	return
+}
+
+// DEPRECATED
+func (ssa *SQLStorageAuthority) Update(key string, value interface{}) (err error) {
+	ssa.bucket[key] = value
 	return nil
 }
 
-func (sa *SimpleStorageAuthorityImpl) Get(token string) (interface{}, error) {
-	value, ok := sa.Storage[token]
-	if ok {
-		return value, nil
-	} else {
-		return struct{}{}, NotFoundError("Unknown storage token")
+// DEPRECATED
+func (ssa *SQLStorageAuthority) Get(key string) (value interface{}, err error) {
+	value, ok := ssa.bucket[key]
+	if !ok {
+		err = NotFoundError("Unknown storage key")
 	}
+	return
+}
+
+func (ssa *SQLStorageAuthority) AddCertificate(cert []byte) (id string, err error) {
+	// Manually set the index, to avoid AUTOINCREMENT issues
+	var location int64
+	var scanTarget sql.NullInt64
+	err = ssa.db.QueryRow("SELECT max(location) FROM certificates").Scan(&scanTarget)
+	switch {
+	case !scanTarget.Valid:
+		location = 0
+	case err != nil:
+		return
+	default:
+		location += scanTarget.Int64 + 1
+	}
+
+	id = fingerprint256(cert)
+	query := "INSERT INTO certificates (location, digest, value) VALUES (?,?,?);"
+	_, err = ssa.db.Exec(query, location, id, cert)
+	return
+}
+
+func (ssa *SQLStorageAuthority) GetCertificate(id string) (cert []byte, err error) {
+	err = ssa.db.QueryRow("SELECT value FROM certificates WHERE digest = ?", id).Scan(&cert)
+	return
 }

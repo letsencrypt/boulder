@@ -39,6 +39,7 @@ const (
 	MethodIssueCertificate    = "IssueCertificate"    // CA
 	MethodGet                 = "Get"                 // SA
 	MethodUpdate              = "Update"              // SA
+	MethodAddCertificate      = "AddCertificate"      // SA
 )
 
 // RegistrationAuthorityClient / Server
@@ -293,11 +294,20 @@ func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, im
 			return zero // XXX
 		}
 
-		cert, err := impl.IssueCertificate(*csr)
+		certID, cert, err := impl.IssueCertificate(*csr)
 		if err != nil {
 			return zero // XXX
 		}
-		return cert
+
+		serialized, err := json.Marshal(map[string]string{
+			"certID": certID,
+			"cert":   b64enc(cert),
+		})
+		if err != nil {
+			return zero // XXX
+		}
+
+		return serialized
 	})
 
 	return
@@ -317,12 +327,22 @@ func NewCertificateAuthorityClient(clientQueue, serverQueue string, channel *amq
 	return
 }
 
-func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest) (cert []byte, err error) {
-	cert, err = cac.rpc.DispatchSync(MethodIssueCertificate, csr.Raw)
+func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest) (certID string, cert []byte, err error) {
+	serialized, err := cac.rpc.DispatchSync(MethodIssueCertificate, csr.Raw)
 	if len(cert) == 0 {
 		// TODO: Better error handling
-		return []byte{}, errors.New("RPC resulted in error")
+		return
 	}
+
+	var parsed map[string]string
+	err = json.Unmarshal(serialized, &parsed)
+	if err != nil {
+		return
+	}
+
+	certID, _ = parsed["certID"]
+	cert64, _ := parsed["cert"]
+	cert, err = b64dec(cert64)
 	return
 }
 
@@ -347,10 +367,8 @@ type storageRecord struct {
 	Content string
 }
 
-func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel) (rpc *AmqpRpcServer) {
+func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl StorageAuthority) (rpc *AmqpRpcServer) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
-
-	impl := NewSimpleStorageAuthorityImpl()
 
 	rpc.Handle(MethodGet, func(req []byte) (response []byte) {
 		id := string(req)
@@ -375,6 +393,14 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel) (rpc *
 		}
 
 		err = impl.Update(record.ID, record)
+		return
+	})
+
+	rpc.Handle(MethodAddCertificate, func(req []byte) (response []byte) {
+		id, err := impl.AddCertificate(req)
+		if err == nil {
+			response = []byte(id)
+		}
 		return
 	})
 
@@ -466,5 +492,15 @@ func (cac StorageAuthorityClient) Get(token string) (object interface{}, err err
 
 	// assert(false) // we should not get here
 	err = errors.New("I can't serialize that!")
+	return
+}
+
+func (cac StorageAuthorityClient) AddCertificate(cert []byte) (certID string, err error) {
+	response, err := cac.rpc.DispatchSync(MethodAddCertificate, cert)
+	if len(response) == 0 {
+		err = errors.New("AddCertificate RPC failed") // XXX
+		return
+	}
+	certID = string(response)
 	return
 }

@@ -20,6 +20,7 @@ import (
 type CertificateAuthorityImpl struct {
 	signer  signer.Signer
 	profile string
+	SA      StorageAuthority
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -49,7 +50,7 @@ func NewCertificateAuthorityImpl(hostport string, authKey string, profile string
 	return
 }
 
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (cert []byte, err error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (certID string, cert []byte, err error) {
 	// XXX Take in authorizations and verify that union covers CSR?
 	// Pull hostnames from CSR
 	hostNames := csr.DNSNames // DNSNames + CN from CSR
@@ -95,7 +96,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		err = errors.New("Invalid certificate value returned")
 		return
 	}
-
 	cert = block.Bytes
+
+	// Store the cert with the certificate authority, if provided
+	certID, err = ca.SA.AddCertificate(cert)
 	return
 }
