@@ -6,117 +6,96 @@
 package boulder
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
-	"math/big"
 	"time"
+
+	"github.com/cloudflare/cfssl/auth"
+	"github.com/cloudflare/cfssl/config"
+	"github.com/cloudflare/cfssl/signer"
+	"github.com/cloudflare/cfssl/signer/remote"
 )
 
 type CertificateAuthorityImpl struct {
-	privateKey     interface{}
-	certificate    x509.Certificate
-	derCertificate []byte
+	signer  signer.Signer
+	profile string
 }
 
-var (
-	serialNumberBits        = uint(64)
-	oneYear                 = 365 * 24 * time.Hour
-	rootCertificateTemplate = x509.Certificate{
-		SignatureAlgorithm: x509.SHA256WithRSA,
-		Subject:            pkix.Name{Organization: []string{"ACME CA"}},
-		IsCA:               true,
-		KeyUsage: x509.KeyUsageKeyEncipherment |
-			x509.KeyUsageDigitalSignature |
-			x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
+// NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
+// instance.  (To use a local signer, simply instantiate CertificateAuthorityImpl
+// directly.)  Communications with the CA are authenticated with MACs,
+// using CFSSL's authenticated signature scheme.  A CA created in this way
+// issues for a single profile on the remote signer, which is indicated
+// by name in this constructor.
+func NewCertificateAuthorityImpl(hostport string, authKey string, profile string) (ca *CertificateAuthorityImpl, err error) {
+	// Create the remote signer
+	localProfile := config.SigningProfile{
+		Expiry:     60 * time.Minute, // BOGUS: Required by CFSSL, but not used
+		RemoteName: hostport,
 	}
-	eeCertificateTemplate = x509.Certificate{
-		SignatureAlgorithm: x509.SHA256WithRSA,
-		IsCA:               false,
-		KeyUsage: x509.KeyUsageKeyEncipherment |
-			x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-)
 
-func newSerialNumber() (*big.Int, error) {
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), serialNumberBits)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	localProfile.Provider, err = auth.New(authKey, nil)
 	if err != nil {
-		return nil, err
+		return
 	}
-	return serialNumber, nil
+
+	signer, err := remote.NewSigner(&config.Signing{Default: &localProfile})
+	if err != nil {
+		return
+	}
+
+	ca = &CertificateAuthorityImpl{signer: signer, profile: profile}
+	return
 }
 
-func NewCertificateAuthorityImpl() (CertificateAuthorityImpl, error) {
-	zero := CertificateAuthorityImpl{}
-
-	// Generate a key pair
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return zero, err
+func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (cert []byte, err error) {
+	// XXX Take in authorizations and verify that union covers CSR?
+	// Pull hostnames from CSR
+	hostNames := csr.DNSNames // DNSNames + CN from CSR
+	if len(hostNames) < 1 {
+		err = errors.New("Cannot issue a certificate without a hostname.")
+		return
 	}
-
-	// Sign the certificate
-	template := rootCertificateTemplate
-	template.SerialNumber, err = newSerialNumber()
-	if err != nil {
-		return zero, err
-	}
-	template.NotBefore = time.Now()
-	template.NotAfter = template.NotBefore.Add(oneYear)
-	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return zero, err
-	}
-
-	// Parse the certificate
-	certs, err := x509.ParseCertificates(der)
-	if err != nil || len(certs) == 0 {
-		return zero, err
-	}
-
-	return CertificateAuthorityImpl{
-		privateKey:     priv,
-		certificate:    *certs[0],
-		derCertificate: der,
-	}, nil
-}
-
-func (ca *CertificateAuthorityImpl) CACertificate() []byte {
-	return ca.derCertificate
-}
-
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) ([]byte, error) {
-	template := eeCertificateTemplate
-
-	// Set serial
-	serialNumber, err := newSerialNumber()
-	if err != nil {
-		return nil, err
-	}
-	template.SerialNumber = serialNumber
-
-	// Set validity
-	template.NotBefore = time.Now()
-	template.NotAfter = template.NotBefore.Add(oneYear)
-
-	// Set hostnames
-	domains := csr.DNSNames
+	var commonName string
 	if len(csr.Subject.CommonName) > 0 {
-		domains = append(domains, csr.Subject.CommonName)
+		commonName = csr.Subject.CommonName
+	} else {
+		commonName = hostNames[0]
 	}
-	if len(domains) == 0 {
-		return []byte{}, errors.New("No names provided for certificate")
-	}
-	template.Subject = pkix.Name{CommonName: domains[0]}
-	template.DNSNames = domains
 
-	// Sign
-	return x509.CreateCertificate(rand.Reader, &template, &ca.certificate, csr.PublicKey, ca.privateKey)
+	// Convert the CSR to PEM
+	csrPEM := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE REQUEST",
+		Bytes: csr.Raw,
+	}))
+
+	// Send the cert off for signing
+	req := signer.SignRequest{
+		Request:  csrPEM,
+		Profile:  ca.profile,
+		Hostname: commonName,
+		Subject: &signer.Subject{
+			CN:    commonName,
+			Hosts: hostNames,
+		},
+	}
+	certPEM, err := ca.signer.Sign(req)
+	if err != nil {
+		return
+	}
+
+	if len(certPEM) == 0 {
+		err = errors.New("No certificate returned by server")
+		return
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		err = errors.New("Invalid certificate value returned")
+		return
+	}
+
+	cert = block.Bytes
+	return
 }

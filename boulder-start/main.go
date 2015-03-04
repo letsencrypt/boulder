@@ -47,21 +47,32 @@ func main() {
 	app.Usage = "Command-line utility to start Boulder's servers in stand-alone mode"
 	app.Version = "0.0.0"
 
-
 	// Specify AMQP Server
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-				Name: "amqp",
-				Value: "amqp://guest:guest@localhost:5672",
-				EnvVar: "AMQP_SERVER",
-				Usage: "AMQP Broker URI",
+			Name:   "amqp",
+			Value:  "amqp://guest:guest@localhost:5672",
+			EnvVar: "AMQP_SERVER",
+			Usage:  "AMQP Broker URI",
+		},
+		/*
+			cli.StringFlag{
+				Name:   "cfssl",
+				Value:  "localhost:8888",
+				EnvVar: "CFSSL_SERVER",
+				Usage:  "CFSSL Server URI",
 			},
-		cli.StringFlag{
-				Name: "cfssl",
-				Value: "tcp://localhost:8888",
-				EnvVar: "CFSSL_PORT",
-				Usage: "CFSSL Server URI",
+			cli.StringFlag{
+				Name:   "cfsslAuthKey",
+				EnvVar: "CFSSL_AUTH_KEY",
+				Usage:  "CFSSL authentication key",
 			},
+			cli.StringFlag{
+				Name:   "cfsslProfile",
+				EnvVar: "CFSSL_PROFILE",
+				Usage:  "CFSSL signing profile",
+			},
+		*/
 	}
 
 	// One command per element of the system
@@ -79,18 +90,30 @@ func main() {
 			Name:  "monolithic",
 			Usage: "Start the CA in monolithic mode, without using AMQP",
 			Action: func(c *cli.Context) {
+
+				// XXX Print the config
+				fmt.Println(c.GlobalString("amqp"))
+				fmt.Println(c.GlobalString("cfssl"))
+				fmt.Println(c.GlobalString("cfsslAuthKey"))
+				fmt.Println(c.GlobalString("cfsslProfile"))
+
+				// Grab parameters
+				cfsslServer := c.GlobalString("cfssl")
+				authKey := c.GlobalString("cfsslAuthKey")
+				profile := c.GlobalString("cfsslProfile")
+
 				// Create the components
 				wfe := boulder.NewWebFrontEndImpl()
 				sa := boulder.NewSimpleStorageAuthorityImpl()
 				ra := boulder.NewRegistrationAuthorityImpl()
 				va := boulder.NewValidationAuthorityImpl()
-				ca, err := boulder.NewCertificateAuthorityImpl()
+				ca, err := boulder.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
 				failOnError(err, "Unable to create CA")
 
 				// Wire them up
 				wfe.RA = &ra
 				wfe.SA = &sa
-				ra.CA = &ca
+				ra.CA = ca
 				ra.SA = &sa
 				ra.VA = &va
 				va.RA = &ra
@@ -115,6 +138,11 @@ func main() {
 			Name:  "monolithic-amqp",
 			Usage: "Start the CA in monolithic mode, using AMQP",
 			Action: func(c *cli.Context) {
+				// Grab parameters
+				cfsslServer := c.GlobalString("cfssl")
+				authKey := c.GlobalString("cfsslAuthKey")
+				profile := c.GlobalString("cfsslProfile")
+
 				// Create an AMQP channel
 				ch := amqpChannel(c.GlobalString("amqp"))
 
@@ -131,7 +159,9 @@ func main() {
 				// ... and corresponding servers
 				// (We need this order so that we can give the servers
 				//  references to the clients)
-				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch)
+				cai, err := boulder.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
+				failOnError(err, "Failed to create CA impl")
+				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch, cai)
 				failOnError(err, "Failed to create CA server")
 				vas, err := boulder.NewValidationAuthorityServer("VA.server", ch, &rac)
 				failOnError(err, "Failed to create VA server")
@@ -203,9 +233,16 @@ func main() {
 			Name:  "ca",
 			Usage: "Start the CertificateAuthority",
 			Action: func(c *cli.Context) {
+				// Grab parameters
+				cfsslServer := c.GlobalString("cfssl")
+				authKey := c.GlobalString("cfsslAuthKey")
+				profile := c.GlobalString("cfsslProfile")
+
 				ch := amqpChannel(c.GlobalString("amqp"))
 
-				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch)
+				cai, err := boulder.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
+				failOnError(err, "Failed to create CA impl")
+				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch, cai)
 				failOnError(err, "Unable to create CA server")
 				runForever(cas)
 			},

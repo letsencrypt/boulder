@@ -282,13 +282,8 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz Authorization) erro
 
 // CertificateAuthorityClient / Server
 //  -> IssueCertificate
-func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel) (rpc *AmqpRpcServer, err error) {
+func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, impl CertificateAuthority) (rpc *AmqpRpcServer, err error) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
-
-	impl, err := NewCertificateAuthorityImpl()
-	if err != nil {
-		return
-	}
 
 	rpc.Handle(MethodIssueCertificate, func(req []byte) []byte {
 		zero := []byte{}
