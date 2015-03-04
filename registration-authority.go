@@ -120,21 +120,22 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request Authorization, key
 	return authz, nil
 }
 
-func (ra *RegistrationAuthorityImpl) NewCertificate(req CertificateRequest, jwk jose.JsonWebKey) (Certificate, error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(req CertificateRequest, jwk jose.JsonWebKey) (cert Certificate, err error) {
 	csr := req.CSR
-	zero := Certificate{}
 
 	// Verify the CSR
 	// TODO: Verify that other aspects of the CSR are appropriate
-	err := VerifyCSR(csr)
+	err = VerifyCSR(csr)
 	if err != nil {
-		return zero, UnauthorizedError("Invalid signature on CSR")
+		err = UnauthorizedError("Invalid signature on CSR")
+		return
 	}
 
 	// Get the authorized domain list for the authorization key
 	obj, err := ra.SA.Get(jwk.Thumbprint)
 	if err != nil {
-		return zero, UnauthorizedError("No authorized domains for this key")
+		err = UnauthorizedError("No authorized domains for this key")
+		return
 	}
 	domainSet := obj.(map[string]bool)
 
@@ -146,25 +147,14 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req CertificateRequest, jwk 
 	}
 	for _, name := range names {
 		if !domainSet[name] {
-			return zero, UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
+			err = UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
+			return
 		}
 	}
 
 	// Create the certificate
-	certID, cert, err := ra.CA.IssueCertificate(*csr)
-	if err != nil {
-		return zero, CertificateIssuanceError("Error issuing certificate")
-	}
-
-	// Identify the certificate object by the cert's SHA-256 fingerprint
-	certObj := Certificate{
-		ID:     certID,
-		DER:    cert,
-		Status: StatusValid,
-	}
-
-	ra.SA.Update(certObj.ID, certObj)
-	return certObj, nil
+	cert, err = ra.CA.IssueCertificate(*csr)
+	return
 }
 
 func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta Authorization) (Authorization, error) {

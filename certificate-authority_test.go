@@ -157,11 +157,11 @@ func TestIssueCertificate(t *testing.T) {
 	}
 
 	// Sign CSR
-	certID, certDER, err := ca.IssueCertificate(*csr)
+	certObj, err := ca.IssueCertificate(*csr)
 	AssertNotError(t, err, "Failed to sign certificate")
 
 	// Verify cert contents
-	cert, err := x509.ParseCertificate(certDER)
+	cert, err := x509.ParseCertificate(certObj.DER)
 	AssertNotError(t, err, "Certificate failed to parse")
 
 	AssertEquals(t, cert.Subject.CommonName, "example.com")
@@ -171,6 +171,6 @@ func TestIssueCertificate(t *testing.T) {
 	}
 
 	// Verify that the cert got stored in the DB
-	_, err = sa.GetCertificate(certID)
+	_, err = sa.GetCertificate(certObj.ID)
 	AssertNotError(t, err, "Certificate not found in database")
 }

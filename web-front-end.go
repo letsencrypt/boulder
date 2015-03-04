@@ -247,22 +247,17 @@ func (wfe *WebFrontEndImpl) Cert(response http.ResponseWriter, request *http.Req
 
 	case "GET":
 		id := parseIDFromPath(request.URL.Path)
-		obj, err := wfe.SA.Get(id)
+		cert, err := wfe.SA.GetCertificate(id)
 		if err != nil {
 			sendError(response, "Not found", http.StatusNotFound)
 			return
 		}
-		cert := obj.(Certificate)
 
 		// TODO: Content negotiation
+		// TODO: Indicate content type
 		// TODO: Link header
-		jsonReply, err := json.Marshal(cert)
-		if err != nil {
-			sendError(response, "Failed to marshal cert", http.StatusInternalServerError)
-			return
-		}
 		response.WriteHeader(http.StatusOK)
-		response.Write(jsonReply)
+		response.Write(cert)
 
 	case "POST":
 		// TODO: Handle revocation in POST

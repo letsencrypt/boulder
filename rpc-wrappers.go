@@ -294,15 +294,12 @@ func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, im
 			return zero // XXX
 		}
 
-		certID, cert, err := impl.IssueCertificate(*csr)
+		cert, err := impl.IssueCertificate(*csr)
 		if err != nil {
 			return zero // XXX
 		}
 
-		serialized, err := json.Marshal(map[string]string{
-			"certID": certID,
-			"cert":   b64enc(cert),
-		})
+		serialized, err := json.Marshal(cert)
 		if err != nil {
 			return zero // XXX
 		}
@@ -327,22 +324,14 @@ func NewCertificateAuthorityClient(clientQueue, serverQueue string, channel *amq
 	return
 }
 
-func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest) (certID string, cert []byte, err error) {
-	serialized, err := cac.rpc.DispatchSync(MethodIssueCertificate, csr.Raw)
-	if len(cert) == 0 {
+func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest) (cert Certificate, err error) {
+	jsonResponse, err := cac.rpc.DispatchSync(MethodIssueCertificate, csr.Raw)
+	if len(jsonResponse) == 0 {
 		// TODO: Better error handling
 		return
 	}
 
-	var parsed map[string]string
-	err = json.Unmarshal(serialized, &parsed)
-	if err != nil {
-		return
-	}
-
-	certID, _ = parsed["certID"]
-	cert64, _ := parsed["cert"]
-	cert, err = b64dec(cert64)
+	err = json.Unmarshal(jsonResponse, &cert)
 	return
 }
 
