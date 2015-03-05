@@ -30,7 +30,7 @@ const (
 	AmqpImmediate    = false
 )
 
-func startMonitor(AmqpUrl string, logger *boulder.JSONLogger) {
+func startMonitor(AmqpURL string, logger *boulder.JSONLogger) {
 
 	ae := analysisengine.NewLoggingAnalysisEngine(logger)
 
@@ -40,7 +40,7 @@ func startMonitor(AmqpUrl string, logger *boulder.JSONLogger) {
 		log.Fatalf("Could not determine hostname")
 	}
 
-	conn, err := amqp.Dial(AmqpUrl)
+	conn, err := amqp.Dial(AmqpURL)
 	if err != nil {
 		log.Fatalf("Could not connect to AMQP server: %s", err)
 		return
