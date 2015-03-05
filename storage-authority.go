@@ -173,7 +173,7 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization() (id string, err error)
 }
 
 func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz Authorization) (err error) {
-	tx, err = ssa.db.Begin()
+	tx, err := ssa.db.Begin()
 	if err != nil {
 		return
 	}
@@ -209,6 +209,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz Authorization) 
 	}
 
 	err = tx.Commit()
+	return
 }
 
 func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz Authorization) (err error) {
