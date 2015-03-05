@@ -82,8 +82,10 @@ func fingerprint256(data []byte) string {
 	return b64enc(d.Sum(nil))
 }
 
+var allButLastPathSegment = regexp.MustCompile("^.*/")
+
 func lastPathSegment(url AcmeURL) string {
-	return regexp.MustCompile("^.*/").ReplaceAllString(url.Path, "")
+	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request Authorization, key jose.JsonWebKey) (authz Authorization, err error) {
