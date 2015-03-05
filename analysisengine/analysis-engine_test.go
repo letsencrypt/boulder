@@ -11,7 +11,7 @@ import (
 )
 
 func TestNewLoggingAnalysisEngine(t *testing.T) {
-	log := boulder.NewJsonLogger("newEngine")
+	log := boulder.NewJSONLogger("newEngine")
 	ae := NewLoggingAnalysisEngine(log)
 
 	// Trivially check an empty mock message

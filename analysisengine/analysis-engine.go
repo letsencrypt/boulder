@@ -19,7 +19,7 @@ type AnalysisEngine interface {
 
 // An Analysis Engine that just logs to the JSON Logger.
 type LoggingAnalysisEngine struct {
-	jsonLogger *boulder.JsonLogger
+	jsonLogger *boulder.JSONLogger
 }
 
 func (eng *LoggingAnalysisEngine) ProcessMessage(delivery amqp.Delivery) {
@@ -28,6 +28,6 @@ func (eng *LoggingAnalysisEngine) ProcessMessage(delivery amqp.Delivery) {
 }
 
 // Construct a new Analysis Engine.
-func NewLoggingAnalysisEngine(logger *boulder.JsonLogger) AnalysisEngine {
+func NewLoggingAnalysisEngine(logger *boulder.JSONLogger) AnalysisEngine {
 	return &LoggingAnalysisEngine{jsonLogger: logger}
 }
