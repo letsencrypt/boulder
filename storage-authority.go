@@ -48,7 +48,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	}
 
 	// Create pending authorizations table
-	query = "CREATE TABLE pending_authz (id string, value BLOB)"
+	query = "CREATE TABLE pending_authz (id TEXT, value BLOB)"
 	_, err = ssa.db.Exec(query)
 	if err != nil {
 		return
@@ -70,23 +70,25 @@ func statusIsPending(status AcmeStatus) bool {
 }
 
 func (ssa *SQLStorageAuthority) existingPending(id string) (count int64) {
-	ssa.db.QueryRow("SELECT count(*) FROM pending_authz WHERE id = ?", id).Scan(count)
+	ssa.db.QueryRow("SELECT count(*) FROM pending_authz WHERE id = ?", id).Scan(&count)
 	return
 }
 
 func (ssa *SQLStorageAuthority) existingFinal(id string) (count int64) {
-	ssa.db.QueryRow("SELECT count(*) FROM authz WHERE id = ?", id).Scan(count)
+	ssa.db.QueryRow("SELECT count(*) FROM authz WHERE id = ?", id).Scan(&count)
 	return
 }
 
 func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz Authorization, err error) {
 	var jsonAuthz []byte
-	if statusIsPending(authz.Status) {
-		err = ssa.db.QueryRow("SELECT value FROM pending_authz WHERE id = ?", id).Scan(&jsonAuthz)
-	} else {
+	err = ssa.db.QueryRow("SELECT value FROM pending_authz WHERE id = ?", id).Scan(&jsonAuthz)
+	switch {
+	case err == sql.ErrNoRows:
 		err = ssa.db.QueryRow("SELECT value FROM authz WHERE id = ?", id).Scan(&jsonAuthz)
-	}
-	if err != nil {
+		if err != nil {
+			return
+		}
+	case err != nil:
 		return
 	}
 
@@ -142,7 +144,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz Authorization) 
 	}
 
 	if ssa.existingPending(authz.ID) != 1 {
-		err = errors.New("Requested authorization not found")
+		err = errors.New("Requested authorization not found " + authz.ID)
 		return
 	}
 
@@ -160,7 +162,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz Authorization) (err 
 		err = errors.New("Cannot finalize a authorization that is not pending")
 		return
 	}
-	if !statusIsPending(authz.Status) {
+	if statusIsPending(authz.Status) {
 		err = errors.New("Cannot finalize to a non-final status")
 		return
 	}

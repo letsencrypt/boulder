@@ -222,6 +222,9 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz Authorization) {
 	// NOTE: This only works because we only ever do one validation
 	if authz.Status != StatusValid {
 		authz.Status = StatusInvalid
+	} else {
+		// TODO: Enable configuration of expiry time
+		authz.Expires = time.Now().Add(365 * 24 * time.Hour)
 	}
 
 	// Finalize the authorization
