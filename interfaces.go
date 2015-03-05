@@ -70,13 +70,15 @@ type CertificateAuthority interface {
 }
 
 type StorageGetter interface {
-	Get(string) (interface{}, error) // XXX
 	GetCertificate(string) ([]byte, error)
+	GetAuthorization(string) (Authorization, error)
 }
 
 type StorageAdder interface {
-	Update(string, interface{}) error // XXX
 	AddCertificate([]byte) (string, error)
+	NewPendingAuthorization() (string, error)
+	UpdatePendingAuthorization(Authorization) error
+	FinalizeAuthorization(Authorization) error
 }
 
 // The StorageAuthority interface represnts a simple key/value

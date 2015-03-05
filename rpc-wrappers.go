@@ -30,16 +30,19 @@ import (
 // so it doesn't need wrappers.
 
 const (
-	MethodNewAuthorization    = "NewAuthorization"    // RA
-	MethodNewCertificate      = "NewCertificate"      // RA
-	MethodUpdateAuthorization = "UpdateAuthorization" // RA
-	MethodRevokeCertificate   = "RevokeCertificate"   // RA
-	MethodOnValidationUpdate  = "OnValidationUpdate"  // RA
-	MethodUpdateValidations   = "UpdateValidations"   // VA
-	MethodIssueCertificate    = "IssueCertificate"    // CA
-	MethodGet                 = "Get"                 // SA
-	MethodUpdate              = "Update"              // SA
-	MethodAddCertificate      = "AddCertificate"      // SA
+	MethodNewAuthorization           = "NewAuthorization"           // RA
+	MethodNewCertificate             = "NewCertificate"             // RA
+	MethodUpdateAuthorization        = "UpdateAuthorization"        // RA
+	MethodRevokeCertificate          = "RevokeCertificate"          // RA
+	MethodOnValidationUpdate         = "OnValidationUpdate"         // RA
+	MethodUpdateValidations          = "UpdateValidations"          // VA
+	MethodIssueCertificate           = "IssueCertificate"           // CA
+	MethodGetCertificate             = "GetCertificate"             // SA
+	MethodGetAuthorization           = "GetAuthorization"           // SA
+	MethodAddCertificate             = "AddCertificate"             // SA
+	MethodNewPendingAuthorization    = "NewPendingAuthorization"    // SA
+	MethodUpdatePendingAuthorization = "UpdatePendingAuthorization" // SA
+	MethodFinalizeAuthorization      = "FinalizeAuthorization"      // SA
 )
 
 // RegistrationAuthorityClient / Server
@@ -335,53 +338,27 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	return
 }
 
-// StorageAuthorityClient / Server
-// This requires a little subtlety, due to the type ambiguity.
-// Instead of storing the objects directly, we tag them on the way
-// in with what type they are ("Authorization", "Certificate",
-// "DomainSet"), and go ahead and marshal them to JSON.  Then on
-// the way out, we can unmarshal the JSON to the right type.
-//  -> Get
-//  -> Update
-const (
-	RecordTypeError = iota
-	RecordTypeAuthorization
-	RecordTypeCertificate
-	RecordTypeDomainSet
-)
-
-type storageRecord struct {
-	Type    int
-	ID      string
-	Content string
-}
-
 func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl StorageAuthority) (rpc *AmqpRpcServer) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
 
-	rpc.Handle(MethodGet, func(req []byte) (response []byte) {
-		id := string(req)
-
-		var record storageRecord
-		obj, err := impl.Get(id)
-		if err != nil {
-			record = storageRecord{RecordTypeError, id, err.Error()}
-		} else {
-			record = obj.(storageRecord)
+	rpc.Handle(MethodGetCertificate, func(req []byte) (response []byte) {
+		cert, err := impl.GetCertificate(string(req))
+		if err == nil {
+			response = []byte(cert)
 		}
-
-		response, _ = json.Marshal(record) // XXX ignoring error
 		return
 	})
 
-	rpc.Handle(MethodUpdate, func(req []byte) (response []byte) {
-		var record storageRecord
-		err := json.Unmarshal(req, &record)
+	rpc.Handle(MethodGetAuthorization, func(req []byte) (response []byte) {
+		authz, err := impl.AddCertificate(req)
 		if err != nil {
 			return
 		}
 
-		err = impl.Update(record.ID, record)
+		jsonAuthz, err := json.Marshal(authz)
+		if err == nil {
+			response = jsonAuthz
+		}
 		return
 	})
 
@@ -390,6 +367,47 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl S
 		if err == nil {
 			response = []byte(id)
 		}
+		return
+	})
+
+	rpc.Handle(MethodNewPendingAuthorization, func(req []byte) (response []byte) {
+		id, err := impl.NewPendingAuthorization()
+		if err == nil {
+			response = []byte(id)
+		}
+		return
+	})
+
+	rpc.Handle(MethodUpdatePendingAuthorization, func(req []byte) (response []byte) {
+		var authz Authorization
+		err := json.Unmarshal(req, authz)
+		if err != nil {
+			return
+		}
+
+		impl.UpdatePendingAuthorization(authz)
+		return
+	})
+
+	rpc.Handle(MethodUpdatePendingAuthorization, func(req []byte) (response []byte) {
+		var authz Authorization
+		err := json.Unmarshal(req, authz)
+		if err != nil {
+			return
+		}
+
+		impl.UpdatePendingAuthorization(authz)
+		return
+	})
+
+	rpc.Handle(MethodFinalizeAuthorization, func(req []byte) (response []byte) {
+		var authz Authorization
+		err := json.Unmarshal(req, authz)
+		if err != nil {
+			return
+		}
+
+		impl.FinalizeAuthorization(authz)
 		return
 	})
 
@@ -410,86 +428,59 @@ func NewStorageAuthorityClient(clientQueue, serverQueue string, channel *amqp.Ch
 	return
 }
 
-func (cac StorageAuthorityClient) Update(token string, object interface{}) (err error) {
-	jsonText, err := json.Marshal(object)
-	if err != nil {
-		return
-	}
-
-	// Create a storage record
-	recordType := RecordTypeError
-	switch object.(type) {
-	case Authorization:
-		recordType = RecordTypeAuthorization
-	case Certificate:
-		recordType = RecordTypeCertificate
-	case map[string]bool:
-		recordType = RecordTypeDomainSet
-	default:
-		err = errors.New("I can't serialize that!")
-		return
-	}
-
-	jsonRecord, err := json.Marshal(storageRecord{recordType, token, string(jsonText)})
-	if err != nil {
-		return
-	}
-
-	// XXX Let's assume no real errors happen, and just fire and forget
-	_, err = cac.rpc.DispatchSync(MethodUpdate, jsonRecord)
+func (cac StorageAuthorityClient) GetCertificate(id string) (cert []byte, err error) {
+	cert, err = cac.rpc.DispatchSync(MethodGetCertificate, []byte(id))
 	return
 }
 
-func (cac StorageAuthorityClient) Get(token string) (object interface{}, err error) {
-	binaryRecord, err := cac.rpc.DispatchSync(MethodGet, []byte(token))
+func (cac StorageAuthorityClient) GetAuthorization(id string) (authz Authorization, err error) {
+	jsonAuthz, err := cac.rpc.DispatchSync(MethodGetAuthorization, []byte(id))
 	if err != nil {
 		return
 	}
 
-	var record storageRecord
-	err = json.Unmarshal(binaryRecord, &record)
-	if err != nil {
-		return
-	}
-
-	switch record.Type {
-	case RecordTypeError:
-		err = errors.New(record.Content)
-		return
-	case RecordTypeAuthorization:
-		var authz Authorization
-		err = json.Unmarshal([]byte(record.Content), &authz)
-		if err == nil {
-			object = authz
-		}
-		return
-	case RecordTypeCertificate:
-		var cert Certificate
-		err = json.Unmarshal([]byte(record.Content), &cert)
-		if err == nil {
-			object = cert
-		}
-		return
-	case RecordTypeDomainSet:
-		var domainSet map[string]bool
-		err = json.Unmarshal([]byte(record.Content), &domainSet)
-		if err == nil {
-			object = domainSet
-		}
-		return
-	}
-
-	// assert(false) // we should not get here
-	err = errors.New("I can't serialize that!")
+	err = json.Unmarshal(jsonAuthz, &authz)
 	return
 }
 
-func (cac StorageAuthorityClient) AddCertificate(cert []byte) (certID string, err error) {
+func (cac StorageAuthorityClient) AddCertificate(cert []byte) (id string, err error) {
 	response, err := cac.rpc.DispatchSync(MethodAddCertificate, cert)
-	if len(response) == 0 {
+	if err != nil || len(response) == 0 {
 		err = errors.New("AddCertificate RPC failed") // XXX
 		return
 	}
-	certID = string(response)
+	id = string(response)
+	return
+}
+
+func (cac StorageAuthorityClient) NewPendingAuthorization() (id string, err error) {
+	response, err := cac.rpc.DispatchSync(MethodNewPendingAuthorization, []byte{})
+	if err != nil || len(response) == 0 {
+		err = errors.New("AddCertificate RPC failed") // XXX
+		return
+	}
+	id = string(response)
+	return
+}
+
+func (cac StorageAuthorityClient) UpdatePendingAuthorization(authz Authorization) (err error) {
+	jsonAuthz, err := json.Marshal(authz)
+	if err != nil {
+		return
+	}
+
+	// XXX: Is this catching all the errors?
+	_, err = cac.rpc.DispatchSync(MethodUpdatePendingAuthorization, jsonAuthz)
+	return
+}
+
+func (cac StorageAuthorityClient) FinalizeAuthorization(authz Authorization) (err error) {
+	jsonAuthz, err := json.Marshal(authz)
+	if err != nil {
+		return
+	}
+
+	// XXX: Is this catching all the errors?
+	_, err = cac.rpc.DispatchSync(MethodFinalizeAuthorization, jsonAuthz)
 	return
 }

@@ -176,14 +176,13 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Request) {
 	// Requests to this handler should have a path that leads to a known authz
 	id := parseIDFromPath(request.URL.Path)
-	obj, err := wfe.SA.Get(id)
+	authz, err := wfe.SA.GetAuthorization(id)
 	if err != nil {
 		sendError(response,
 			fmt.Sprintf("Unable to find authorization: %+v", err),
 			http.StatusNotFound)
 		return
 	}
-	authz := obj.(Authorization)
 
 	switch request.Method {
 	default:
