@@ -133,7 +133,8 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 			return nil
 		}
 
-		impl.RevokeCertificate(*certs[0])
+		// Error explicitly ignored since response is nil anyway
+		_ = impl.RevokeCertificate(*certs[0])
 		return nil
 	})
 
@@ -235,7 +236,8 @@ func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, imp
 			return nil
 		}
 
-		impl.UpdateValidations(authz)
+		// Error explicitly ignored since response is nil anyway
+		_ = impl.UpdateValidations(authz)
 		return nil
 	})
 
@@ -365,7 +367,8 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 			return nil
 		}
 
-		impl.UpdatePendingAuthorization(authz)
+		// Error explicitly ignored since response is nil anyway
+		_ = impl.UpdatePendingAuthorization(authz)
 		return nil
 	})
 
@@ -376,7 +379,8 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 			return nil
 		}
 
-		impl.UpdatePendingAuthorization(authz)
+		// Error explicitly ignored since response is nil anyway
+		_ = impl.UpdatePendingAuthorization(authz)
 		return nil
 	})
 
@@ -387,7 +391,8 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 			return nil
 		}
 
-		impl.FinalizeAuthorization(authz)
+		// Error explicitly ignored since response is nil anyway
+		_ = impl.FinalizeAuthorization(authz)
 		return nil
 	})
 

@@ -190,11 +190,15 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta core.Authorizatio
 	}
 
 	// Store the updated version
-	ra.SA.UpdatePendingAuthorization(authz)
+	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
+		return
+	}
 
 	// If any challenges were updated, dispatch to the VA for service
 	if newResponse {
-		ra.VA.UpdateValidations(authz)
+		if err = ra.VA.UpdateValidations(authz); err != nil {
+			return
+		}
 	}
 
 	return authz, nil
@@ -224,6 +228,6 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 		authz.Expires = time.Now().Add(365 * 24 * time.Hour)
 	}
 
-	// Finalize the authorization
-	ra.SA.FinalizeAuthorization(authz)
+	// Finalize the authorization (error ignored)
+	_ = ra.SA.FinalizeAuthorization(authz)
 }
