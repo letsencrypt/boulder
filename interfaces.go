@@ -66,15 +66,19 @@ type ValidationAuthority interface {
 
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest) ([]byte, error)
+	IssueCertificate(x509.CertificateRequest) (Certificate, error)
 }
 
 type StorageGetter interface {
-	Get(string) (interface{}, error)
+	GetCertificate(string) ([]byte, error)
+	GetAuthorization(string) (Authorization, error)
 }
 
-type StorageUpdater interface {
-	Update(string, interface{}) error
+type StorageAdder interface {
+	AddCertificate([]byte) (string, error)
+	NewPendingAuthorization() (string, error)
+	UpdatePendingAuthorization(Authorization) error
+	FinalizeAuthorization(Authorization) error
 }
 
 // The StorageAuthority interface represnts a simple key/value
@@ -82,5 +86,5 @@ type StorageUpdater interface {
 // interfaces for privilege separation.
 type StorageAuthority interface {
 	StorageGetter
-	StorageUpdater
+	StorageAdder
 }

@@ -176,14 +176,13 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Request) {
 	// Requests to this handler should have a path that leads to a known authz
 	id := parseIDFromPath(request.URL.Path)
-	obj, err := wfe.SA.Get(id)
+	authz, err := wfe.SA.GetAuthorization(id)
 	if err != nil {
 		sendError(response,
 			fmt.Sprintf("Unable to find authorization: %+v", err),
 			http.StatusNotFound)
 		return
 	}
-	authz := obj.(Authorization)
 
 	switch request.Method {
 	default:
@@ -247,22 +246,17 @@ func (wfe *WebFrontEndImpl) Cert(response http.ResponseWriter, request *http.Req
 
 	case "GET":
 		id := parseIDFromPath(request.URL.Path)
-		obj, err := wfe.SA.Get(id)
+		cert, err := wfe.SA.GetCertificate(id)
 		if err != nil {
 			sendError(response, "Not found", http.StatusNotFound)
 			return
 		}
-		cert := obj.(Certificate)
 
 		// TODO: Content negotiation
+		// TODO: Indicate content type
 		// TODO: Link header
-		jsonReply, err := json.Marshal(cert)
-		if err != nil {
-			sendError(response, "Failed to marshal cert", http.StatusInternalServerError)
-			return
-		}
 		response.WriteHeader(http.StatusOK)
-		response.Write(jsonReply)
+		response.Write(cert)
 
 	case "POST":
 		// TODO: Handle revocation in POST

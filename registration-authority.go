@@ -12,6 +12,7 @@ import (
 	"github.com/bifurcation/gose"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // All of the fields in RegistrationAuthorityImpl need to be
@@ -33,7 +34,7 @@ func forbiddenIdentifier(id string) bool {
 	// A DNS label is a part separated by dots, e.g. www.foo.net has labels
 	// "www", "foo", and "net".
 	const maxLabels = 10
-	labels := strings.SplitN(id, ".", maxLabels + 1)
+	labels := strings.SplitN(id, ".", maxLabels+1)
 	if len(labels) < 2 || len(labels) > maxLabels {
 		return true
 	}
@@ -46,7 +47,7 @@ func forbiddenIdentifier(id string) bool {
 		}
 		// Only alphanumerics and dash are allowed in identifiers.
 		// TODO: Before identifiers reach this function, do lowercasing.
-		if ! dnsLabelRegexp.MatchString(label) {
+		if !dnsLabelRegexp.MatchString(label) {
 			return true
 		}
 
@@ -68,7 +69,7 @@ func forbiddenIdentifier(id string) bool {
 	}
 
 	// Also forbid an all-numeric final label.
-	if ipAddressRegexp.MatchString(labels[len(labels) - 1]) {
+	if ipAddressRegexp.MatchString(labels[len(labels)-1]) {
 		return true
 	}
 
@@ -81,26 +82,34 @@ func fingerprint256(data []byte) string {
 	return b64enc(d.Sum(nil))
 }
 
-func (ra *RegistrationAuthorityImpl) NewAuthorization(request Authorization, key jose.JsonWebKey) (Authorization, error) {
-	zero := Authorization{}
+var allButLastPathSegment = regexp.MustCompile("^.*/")
+
+func lastPathSegment(url AcmeURL) string {
+	return allButLastPathSegment.ReplaceAllString(url.Path, "")
+}
+
+func (ra *RegistrationAuthorityImpl) NewAuthorization(request Authorization, key jose.JsonWebKey) (authz Authorization, err error) {
 	identifier := request.Identifier
 
 	// Check that the identifier is present and appropriate
 	if len(identifier.Value) == 0 {
-		return zero, MalformedRequestError("No identifier in authorization request")
+		err = MalformedRequestError("No identifier in authorization request")
+		return
 	} else if identifier.Type != IdentifierDNS {
-		return zero, NotSupportedError("Only domain validation is supported")
+		err = NotSupportedError("Only domain validation is supported")
+		return
 	} else if forbiddenIdentifier(identifier.Value) {
-		return zero, UnauthorizedError("We will not authorize use of this identifier")
+		err = UnauthorizedError("We will not authorize use of this identifier")
+		return
 	}
 
 	// Create validations
-	authID := newToken()
 	simpleHttps := SimpleHTTPSChallenge()
 	dvsni := DvsniChallenge()
+	authID, err := ra.SA.NewPendingAuthorization()
 
 	// Create a new authorization object
-	authz := Authorization{
+	authz = Authorization{
 		ID:         authID,
 		Identifier: identifier,
 		Key:        key,
@@ -112,70 +121,63 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request Authorization, key
 	}
 
 	// Store the authorization object, then return it
-	err := ra.SA.Update(authz.ID, authz)
-	if err != nil {
-		return authz, err
-	}
-
-	return authz, nil
+	err = ra.SA.UpdatePendingAuthorization(authz)
+	return
 }
 
-func (ra *RegistrationAuthorityImpl) NewCertificate(req CertificateRequest, jwk jose.JsonWebKey) (Certificate, error) {
-	csr := req.CSR
-	zero := Certificate{}
-
+func (ra *RegistrationAuthorityImpl) NewCertificate(req CertificateRequest, jwk jose.JsonWebKey) (cert Certificate, err error) {
 	// Verify the CSR
 	// TODO: Verify that other aspects of the CSR are appropriate
-	err := VerifyCSR(csr)
+	csr := req.CSR
+	err = VerifyCSR(csr)
 	if err != nil {
-		return zero, UnauthorizedError("Invalid signature on CSR")
+		err = UnauthorizedError("Invalid signature on CSR")
+		return
 	}
 
-	// Get the authorized domain list for the authorization key
-	obj, err := ra.SA.Get(jwk.Thumbprint)
-	if err != nil {
-		return zero, UnauthorizedError("No authorized domains for this key")
+	// Gather authorized domains from the referenced authorizations
+	authorizedDomains := map[string]bool{}
+	now := time.Now()
+	for _, url := range req.Authorizations {
+		id := lastPathSegment(url)
+		authz, err := ra.SA.GetAuthorization(id)
+		if err != nil || // Couldn't find authorization
+			!jwk.Equals(authz.Key) || // Not for the right account key
+			authz.Status != StatusValid || // Not finalized or not successful
+			authz.Expires.Before(now) || // Expired
+			authz.Identifier.Type != IdentifierDNS {
+			// XXX: It may be good to fail here instead of ignoring invalid authorizations.
+			//      However, it seems like this treatment is more in the spirit of Postel's
+			//      law, and it hides information from attackers.
+			continue
+		}
+
+		authorizedDomains[authz.Identifier.Value] = true
 	}
-	domainSet := obj.(map[string]bool)
 
 	// Validate that authorization key is authorized for all domains
-	// TODO: Use linked authorizations?
 	names := csr.DNSNames
 	if len(csr.Subject.CommonName) > 0 {
 		names = append(names, csr.Subject.CommonName)
 	}
 	for _, name := range names {
-		if !domainSet[name] {
-			return zero, UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
+		if !authorizedDomains[name] {
+			err = UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
+			return
 		}
 	}
 
 	// Create the certificate
-	cert, err := ra.CA.IssueCertificate(*csr)
-	if err != nil {
-		return zero, CertificateIssuanceError("Error issuing certificate")
-	}
-
-	// Identify the certificate object by the cert's SHA-256 fingerprint
-	certObj := Certificate{
-		ID:     fingerprint256(cert),
-		DER:    cert,
-		Status: StatusValid,
-	}
-
-	ra.SA.Update(certObj.ID, certObj)
-	return certObj, nil
+	cert, err = ra.CA.IssueCertificate(*csr)
+	return
 }
 
-func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta Authorization) (Authorization, error) {
-	zero := Authorization{}
-
+func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta Authorization) (authz Authorization, err error) {
 	// Fetch the copy of this authorization we have on file
-	obj, err := ra.SA.Get(delta.ID)
+	authz, err = ra.SA.GetAuthorization(delta.ID)
 	if err != nil {
-		return zero, err
+		return
 	}
-	authz := obj.(Authorization)
 
 	// Copy information over that the client is allowed to supply
 	if len(delta.Contact) > 0 {
@@ -193,7 +195,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta Authorization) (A
 	}
 
 	// Store the updated version
-	ra.SA.Update(authz.ID, authz)
+	ra.SA.UpdatePendingAuthorization(authz)
 
 	// If any challenges were updated, dispatch to the VA for service
 	if newResponse {
@@ -204,17 +206,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta Authorization) (A
 }
 
 func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) error {
-	// Attempt to fetch the corresponding certificate object
-	certID := fingerprint256(cert.Raw)
-	obj, err := ra.SA.Get(certID)
-	if err != nil {
-		return err
-	}
-	certObj := obj.(Certificate)
-
-	// Change the status and update the DB
-	certObj.Status = StatusInvalid
-	return ra.SA.Update(certID, certObj)
+	// TODO: ra.CA.RevokeCertificate()
+	return nil
 }
 
 func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz Authorization) {
@@ -231,19 +224,11 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz Authorization) {
 	// NOTE: This only works because we only ever do one validation
 	if authz.Status != StatusValid {
 		authz.Status = StatusInvalid
+	} else {
+		// TODO: Enable configuration of expiry time
+		authz.Expires = time.Now().Add(365 * 24 * time.Hour)
 	}
-	ra.SA.Update(authz.ID, authz)
 
-	// Record a new domain/key binding, if authorized
-	if authz.Status == StatusValid {
-		var domainSet map[string]bool
-		obj, err := ra.SA.Get(authz.Key.Thumbprint)
-		if err != nil {
-			domainSet = make(map[string]bool)
-		} else {
-			domainSet = obj.(map[string]bool)
-		}
-		domainSet[authz.Identifier.Value] = true
-		ra.SA.Update(authz.Key.Thumbprint, domainSet)
-	}
+	// Finalize the authorization
+	ra.SA.FinalizeAuthorization(authz)
 }
