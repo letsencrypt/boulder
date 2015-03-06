@@ -36,7 +36,7 @@ func amqpChannel(url string) (ch *amqp.Channel) {
 }
 
 // Start the server and wait around
-func runForever(server *boulder.AmqpRpcServer) {
+func runForever(server *boulder.AmqpRPCServer) {
 	forever := make(chan bool)
 	server.Start()
 	fmt.Fprintf(os.Stderr, "Server running...\n")
