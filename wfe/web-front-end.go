@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"regexp"
 
@@ -132,7 +133,9 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 
 	response.Header().Add("Location", authzURL)
 	response.WriteHeader(http.StatusCreated)
-	response.Write(responseBody)
+	if _, err = response.Write(responseBody); err != nil {
+		log.Printf("Could not write response: %s", err)
+	}
 }
 
 func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.Request) {
@@ -168,7 +171,9 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 	// TODO: Content negotiation for cert format
 	response.Header().Add("Location", certURL)
 	response.WriteHeader(http.StatusCreated)
-	response.Write(cert.DER)
+	if _, err = response.Write(cert.DER); err != nil {
+		log.Printf("Could not write response: %s", err)
+	}
 }
 
 func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Request) {
@@ -222,7 +227,9 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 			return
 		}
 		response.WriteHeader(http.StatusAccepted)
-		response.Write(jsonReply)
+		if _, err = response.Write(jsonReply); err != nil {
+			log.Printf("Could not write response: %s", err)
+		}
 
 	case "GET":
 		jsonReply, err := json.Marshal(authz)
@@ -231,7 +238,9 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 			return
 		}
 		response.WriteHeader(http.StatusOK)
-		response.Write(jsonReply)
+		if _, err = response.Write(jsonReply); err != nil {
+			log.Printf("Could not write response: %s", err)
+		}
 	}
 }
 
@@ -253,7 +262,9 @@ func (wfe *WebFrontEndImpl) Cert(response http.ResponseWriter, request *http.Req
 		// TODO: Indicate content type
 		// TODO: Link header
 		response.WriteHeader(http.StatusOK)
-		response.Write(cert)
+		if _, err = response.Write(cert); err != nil {
+			log.Printf("Could not write response: %s", err)
+		}
 
 	case "POST":
 		// TODO: Handle revocation in POST
