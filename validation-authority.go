@@ -15,7 +15,11 @@ import (
 	"io/ioutil"
 	"net/http"
 	"time"
+	"log"
 )
+
+// Set this to true when testing locally, false otherwise.
+const UseLocalhost = true
 
 type ValidationAuthorityImpl struct {
 	RA RegistrationAuthority
@@ -47,7 +51,14 @@ func DvsniChallenge() Challenge {
 // Validation methods
 
 func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz Authorization) (challenge Challenge) {
+	log.Println("SimpleHTTPS validation requested for", authz.Identifier)
+	if authz.Identifier.Type != IdentifierDNS {
+		log.Println("Invalid identifier type", authz.Identifier.Type)
+		challenge.Status = StatusInvalid
+		return
+	}
 	identifier := authz.Identifier.Value
+
 
 	challenge, ok := authz.Challenges[ChallengeTypeSimpleHTTPS]
 	if !ok {
@@ -60,18 +71,33 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz Authorization) (chal
 		return
 	}
 
-	// XXX: Local version; uncomment for real version
-	url := fmt.Sprintf("http://localhost:5001/.well-known/acme-challenge/%s", challenge.Path)
-	//url := fmt.Sprintf("https://%s/.well-known/acme-challenge/%s", identifier, challenge.Path)
-
+	// Make a connection with SNI = nonceName
+	url := fmt.Sprintf("https://%s/.well-known/acme-challenge/%s",
+											 identifier, challenge.Path)
+	if (UseLocalhost) {
+		url = fmt.Sprintf("http://localhost:5001/.well-known/acme-challenge/%s", challenge.Path)
+	}
+	log.Println("Fetching url", url)
 	httpRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
+		log.Println("Error fetching", url, err)
 		challenge.Status = StatusInvalid
 		return
 	}
 
 	httpRequest.Host = identifier
-	client := http.Client{Timeout: 5 * time.Second}
+	tr := &http.Transport{
+		// We are talking to a client that does not yet have a certificate,
+		// so we accept a temporary, invalid one.
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		// We don't expect to make multiple requests to a client, so close
+		// connection immediately.
+		DisableKeepAlives: true,
+	}
+	client := http.Client{
+		Timeout: 5 * time.Second,
+		Transport: tr,
+	}
 	httpResponse, err := client.Do(httpRequest)
 
 	if err == nil && httpResponse.StatusCode == 200 {
@@ -86,6 +112,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz Authorization) (chal
 			challenge.Status = StatusValid
 			return
 		}
+	} else if err != nil {
+		log.Println("Error fetching", url, err)
+	} else if httpResponse.StatusCode != 200 {
+		log.Println("Bad status code for", url, httpResponse.StatusCode)
 	}
 
 	challenge.Status = StatusInvalid
@@ -93,8 +123,14 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz Authorization) (chal
 }
 
 func (va ValidationAuthorityImpl) validateDvsni(authz Authorization) (challenge Challenge) {
-	// identifier := authz.Identifier.Value // XXX: Local version; uncomment for real version
+	log.Println("DVSNI validation requested for", authz.Identifier)
 	challenge, ok := authz.Challenges[ChallengeTypeDVSNI]
+	if authz.Identifier.Type != IdentifierDNS {
+		log.Println("Invalid identifier type", authz.Identifier.Type)
+		challenge.Status = StatusInvalid
+		return
+	}
+	identifier := authz.Identifier.Value
 
 	if !ok {
 		challenge.Status = StatusInvalid
@@ -123,8 +159,10 @@ func (va ValidationAuthorityImpl) validateDvsni(authz Authorization) (challenge 
 	zName := hex.EncodeToString(z)
 
 	// Make a connection with SNI = nonceName
-	hostPort := "localhost:5001"
-	//hostPort := identifier + ":443" // XXX: Local version; uncomment for real version
+	hostPort := identifier + ":443"
+	if (UseLocalhost) {
+		hostPort = "localhost:5001"
+	}
 	conn, err := tls.Dial("tcp", hostPort, &tls.Config{
 		ServerName:         nonceName,
 		InsecureSkipVerify: true,
