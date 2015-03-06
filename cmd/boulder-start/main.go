@@ -245,7 +245,8 @@ func main() {
 				http.HandleFunc("/acme/cert/", wfe.Cert)
 
 				fmt.Fprintf(os.Stderr, "Server running...\n")
-				http.ListenAndServe(authority, nil)
+				err = http.ListenAndServe(authority, nil)
+				failOnError(err, "Error starting HTTP server")
 			},
 		},
 		{
