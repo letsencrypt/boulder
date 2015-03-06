@@ -29,8 +29,8 @@ func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
 	return RegistrationAuthorityImpl{}
 }
 
-var dnsLabelRegexp, _ = regexp.Compile("^[a-zA-Z0-9-]*$")
-var ipAddressRegexp, _ = regexp.Compile("^[0-9.]*$")
+var dnsLabelRegexp = regexp.MustCompile("^[a-zA-Z0-9-]*$")
+var ipAddressRegexp = regexp.MustCompile("^[0-9.]*$")
 
 func forbiddenIdentifier(id string) bool {
 	// A DNS label is a part separated by dots, e.g. www.foo.net has labels
