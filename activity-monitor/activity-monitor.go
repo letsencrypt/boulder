@@ -7,12 +7,13 @@ package main
 
 import (
 	"github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder"
-	"github.com/letsencrypt/boulder/analysisengine"
 	"github.com/streadway/amqp"
 	"log"
 	"net/url"
 	"os"
+
+	"github.com/letsencrypt/boulder/analysisengine"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 const (
@@ -30,8 +31,7 @@ const (
 	AmqpImmediate    = false
 )
 
-
-func startMonitor(AmqpUrl string, logger *boulder.JsonLogger) {
+func startMonitor(AmqpUrl string, logger *blog.JsonLogger) {
 
 	ae := analysisengine.NewLoggingAnalysisEngine(logger)
 
@@ -41,13 +41,13 @@ func startMonitor(AmqpUrl string, logger *boulder.JsonLogger) {
 		log.Fatalf("Could not determine hostname")
 	}
 
-	conn, err   := amqp.Dial(AmqpUrl)
+	conn, err := amqp.Dial(AmqpUrl)
 	if err != nil {
 		log.Fatalf("Could not connect to AMQP server: %s", err)
 		return
 	}
 
-	rpcCh, err  := conn.Channel()
+	rpcCh, err := conn.Channel()
 	if err != nil {
 		log.Fatalf("Could not start channel: %s", err)
 		return
@@ -121,34 +121,34 @@ func main() {
 	// Specify AMQP Server
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-				Name: "amqp",
-				Value: "amqp://guest:guest@localhost:5672",
-				Usage: "AMQP Broker String",
-			},
+			Name:  "amqp",
+			Value: "amqp://guest:guest@localhost:5672",
+			Usage: "AMQP Broker String",
+		},
 		cli.StringFlag{
-				Name: "jsonlog",
-				Usage: "JSON logging server and port (e.g., tcp://localhost:515)",
-			},
+			Name:  "jsonlog",
+			Usage: "JSON logging server and port (e.g., tcp://localhost:515)",
+		},
 		cli.BoolFlag{
-				Name: "stdout",
-				Usage: "Enable debug logging to stdout",
-			},
+			Name:  "stdout",
+			Usage: "Enable debug logging to stdout",
+		},
 		cli.IntFlag{
-				Name: "level",
-				Value: 4,
-				Usage: "Minimum Level to log (0-7), 7=Debug",
-			},
+			Name:  "level",
+			Value: 4,
+			Usage: "Minimum Level to log (0-7), 7=Debug",
+		},
 	}
 
 	app.Action = func(c *cli.Context) {
-		logger := boulder.NewJsonLogger("am")
+		logger := blog.NewJsonLogger("am")
 
 		// Parse SysLog URL if one was provided
 		if c.GlobalString("jsonlog") == "" {
 			log.Println("No external logging server; defaulting to stdout.")
 			logger.EnableStdOut(true)
 		} else {
-			syslogU, err    := url.Parse(c.GlobalString("jsonlog"))
+			syslogU, err := url.Parse(c.GlobalString("jsonlog"))
 			if err != nil {
 				log.Fatalf("Could not parse Syslog URL: %s", err)
 				return
@@ -167,7 +167,7 @@ func main() {
 
 		logger.SetLevel(c.GlobalInt("level"))
 
-		startMonitor( c.GlobalString("amqp"), logger )
+		startMonitor(c.GlobalString("amqp"), logger)
 	}
 
 	err := app.Run(os.Args)

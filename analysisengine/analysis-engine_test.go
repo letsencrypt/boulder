@@ -5,19 +5,18 @@
 package analysisengine
 
 import (
-  "github.com/letsencrypt/boulder"
-  "github.com/streadway/amqp"
-  "testing"
+	"github.com/letsencrypt/boulder/log"
+	"github.com/streadway/amqp"
+	"testing"
 )
 
-
 func TestNewLoggingAnalysisEngine(t *testing.T) {
-  log := boulder.NewJsonLogger("newEngine")
-  ae  := NewLoggingAnalysisEngine(log)
+	log := log.NewJsonLogger("newEngine")
+	ae := NewLoggingAnalysisEngine(log)
 
-  // Trivially check an empty mock message
-  d := &amqp.Delivery{}
-  ae.ProcessMessage(*d)
+	// Trivially check an empty mock message
+	d := &amqp.Delivery{}
+	ae.ProcessMessage(*d)
 
-  // Nothing to assert
+	// Nothing to assert
 }
