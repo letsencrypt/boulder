@@ -16,6 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/va"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -245,7 +246,7 @@ func (rac RegistrationAuthorityClient) OnValidationUpdate(authz core.Authorizati
 func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, ra core.RegistrationAuthority) (rpc *AmqpRpcServer, err error) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
 
-	impl := NewValidationAuthorityImpl()
+	impl := va.NewValidationAuthorityImpl()
 	impl.RA = ra
 	rpc.Handle(MethodUpdateValidations, func(req []byte) []byte {
 		// Nobody's listening, so it doesn't matter what we return
