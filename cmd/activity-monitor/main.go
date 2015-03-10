@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/letsencrypt/boulder/analysisengine"
+	"github.com/letsencrypt/boulder/analysis"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
