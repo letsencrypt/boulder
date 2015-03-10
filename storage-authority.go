@@ -136,7 +136,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(cert []byte) (id string, err erro
 		sequence += scanTarget.Int64 + 1
 	}
 
-	id = fingerprint256(cert)
+	id = core.Fingerprint256(cert)
 	_, err = tx.Exec("INSERT INTO certificates (sequence, digest, value) VALUES (?,?,?);", sequence, id, cert)
 	if err != nil {
 		tx.Rollback()
@@ -251,7 +251,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		tx.Rollback()
 		return
 	}
-	digest := fingerprint256(jsonAuthz)
+	digest := core.Fingerprint256(jsonAuthz)
 
 	// Add to final table and delete from pending
 	if err != nil {

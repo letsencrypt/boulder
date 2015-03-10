@@ -16,6 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder"
 	"github.com/letsencrypt/boulder/ca"
+	"github.com/letsencrypt/boulder/ra"
 )
 
 // Exit and print error message if we encountered a problem
@@ -108,7 +109,7 @@ func main() {
 				wfe := boulder.NewWebFrontEndImpl()
 				sa, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
 				failOnError(err, "Unable to create SA")
-				ra := boulder.NewRegistrationAuthorityImpl()
+				ra := ra.NewRegistrationAuthorityImpl()
 				va := boulder.NewValidationAuthorityImpl()
 				ca, err := ca.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
 				failOnError(err, "Unable to create CA")

@@ -6,7 +6,6 @@
 package boulder
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
@@ -25,25 +24,6 @@ type ValidationAuthorityImpl struct {
 
 func NewValidationAuthorityImpl() ValidationAuthorityImpl {
 	return ValidationAuthorityImpl{}
-}
-
-// Challenge factories
-
-func SimpleHTTPSChallenge() core.Challenge {
-	return core.Challenge{
-		Status: core.StatusPending,
-		Token:  core.NewToken(),
-	}
-}
-
-func DvsniChallenge() core.Challenge {
-	nonce := make([]byte, 16)
-	rand.Read(nonce)
-	return core.Challenge{
-		Status: core.StatusPending,
-		R:      core.RandomString(32),
-		Nonce:  hex.EncodeToString(nonce),
-	}
 }
 
 // Validation methods

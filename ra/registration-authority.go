@@ -3,10 +3,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package boulder
+package ra
 
 import (
-	"crypto/sha256"
 	"crypto/x509"
 	"fmt"
 	"regexp"
@@ -79,12 +78,6 @@ func forbiddenIdentifier(id string) bool {
 	return false
 }
 
-func fingerprint256(data []byte) string {
-	d := sha256.New()
-	d.Write(data)
-	return core.B64enc(d.Sum(nil))
-}
-
 var allButLastPathSegment = regexp.MustCompile("^.*/")
 
 func lastPathSegment(url core.AcmeURL) string {
@@ -107,8 +100,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Create validations
-	simpleHttps := SimpleHTTPSChallenge()
-	dvsni := DvsniChallenge()
+	simpleHttps := core.SimpleHTTPSChallenge()
+	dvsni := core.DvsniChallenge()
 	authID, err := ra.SA.NewPendingAuthorization()
 
 	// Create a new authorization object

@@ -15,6 +15,7 @@ import (
 	"github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/ra"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -67,7 +68,7 @@ type certificateRequest struct {
 func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, va core.ValidationAuthority, ca core.CertificateAuthority, sa core.StorageAuthority) (rpc *AmqpRpcServer, err error) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
 
-	impl := NewRegistrationAuthorityImpl()
+	impl := ra.NewRegistrationAuthorityImpl()
 	impl.VA = va
 	impl.CA = ca
 	impl.SA = sa

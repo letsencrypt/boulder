@@ -78,6 +78,14 @@ func NewToken() string {
 	return RandomString(32)
 }
 
+// Fingerprints
+
+func Fingerprint256(data []byte) string {
+	d := sha256.New()
+	d.Write(data)
+	return B64enc(d.Sum(nil))
+}
+
 // URLs that automatically marshal/unmarshal to JSON strings
 type AcmeURL url.URL
 
