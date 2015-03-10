@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/va"
+	"github.com/letsencrypt/boulder/wfe"
 )
 
 // Exit and print error message if we encountered a problem
@@ -107,7 +108,7 @@ func main() {
 				profile := c.GlobalString("cfsslProfile")
 
 				// Create the components
-				wfe := boulder.NewWebFrontEndImpl()
+				wfe := wfe.NewWebFrontEndImpl()
 				sa, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
 				failOnError(err, "Unable to create SA")
 				ra := ra.NewRegistrationAuthorityImpl()
@@ -183,7 +184,7 @@ func main() {
 				sas.Start()
 
 				// Wire up the front end (wrappers are already wired)
-				wfe := boulder.NewWebFrontEndImpl()
+				wfe := wfe.NewWebFrontEndImpl()
 				wfe.RA = &rac
 				wfe.SA = &sac
 
@@ -217,7 +218,7 @@ func main() {
 				failOnError(err, "Unable to create SA client")
 
 				// Create the front-end and wire in its resources
-				wfe := boulder.NewWebFrontEndImpl()
+				wfe := wfe.NewWebFrontEndImpl()
 				wfe.RA = &rac
 				wfe.SA = &sac
 
