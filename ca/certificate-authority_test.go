@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package boulder
+package ca
 
 import (
 	"crypto/x509"
@@ -11,9 +11,8 @@ import (
 	"encoding/pem"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
-
 	"github.com/cloudflare/cfssl/signer/local"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var CA_KEY_PEM = "-----BEGIN RSA PRIVATE KEY-----\n" +

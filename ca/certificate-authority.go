@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package boulder
+package ca
 
 import (
 	"crypto/x509"
@@ -20,8 +20,8 @@ import (
 )
 
 type CertificateAuthorityImpl struct {
-	signer  signer.Signer
 	profile string
+	Signer  signer.Signer
 	SA      core.StorageAuthority
 }
 
@@ -48,7 +48,7 @@ func NewCertificateAuthorityImpl(hostport string, authKey string, profile string
 		return
 	}
 
-	ca = &CertificateAuthorityImpl{signer: signer, profile: profile}
+	ca = &CertificateAuthorityImpl{Signer: signer, profile: profile}
 	return
 }
 
@@ -83,7 +83,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 			Hosts: hostNames,
 		},
 	}
-	certPEM, err := ca.signer.Sign(req)
+	certPEM, err := ca.Signer.Sign(req)
 	if err != nil {
 		return
 	}

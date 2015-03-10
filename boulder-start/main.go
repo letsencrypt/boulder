@@ -7,13 +7,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder"
-	"github.com/streadway/amqp"
 	"net/http"
 	"os"
 
+	"github.com/codegangsta/cli"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/streadway/amqp"
+
+	"github.com/letsencrypt/boulder"
+	"github.com/letsencrypt/boulder/ca"
 )
 
 // Exit and print error message if we encountered a problem
@@ -108,7 +110,7 @@ func main() {
 				failOnError(err, "Unable to create SA")
 				ra := boulder.NewRegistrationAuthorityImpl()
 				va := boulder.NewValidationAuthorityImpl()
-				ca, err := boulder.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
+				ca, err := ca.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
 				failOnError(err, "Unable to create CA")
 
 				// Wire them up
@@ -160,7 +162,7 @@ func main() {
 				// ... and corresponding servers
 				// (We need this order so that we can give the servers
 				//  references to the clients)
-				cai, err := boulder.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
+				cai, err := ca.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
 				failOnError(err, "Failed to create CA impl")
 				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch, cai)
 				failOnError(err, "Failed to create CA server")
@@ -243,7 +245,7 @@ func main() {
 
 				ch := amqpChannel(c.GlobalString("amqp"))
 
-				cai, err := boulder.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
+				cai, err := ca.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
 				failOnError(err, "Failed to create CA impl")
 				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch, cai)
 				failOnError(err, "Unable to create CA server")
