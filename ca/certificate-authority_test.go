@@ -13,6 +13,9 @@ import (
 
 	"github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/test"
 )
 
 var CA_KEY_PEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
@@ -139,31 +142,31 @@ func TestIssueCertificate(t *testing.T) {
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, nil)
 
 	// Create an SA
-	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")
-	AssertNotError(t, err, "Failed to create SA")
+	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
+	test.AssertNotError(t, err, "Failed to create SA")
 	sa.InitTables()
 
 	// Create a CA
 	/*
 		// Uncomment to test with a remote signer
 		ca, err := NewCertificateAuthorityImpl("localhost:9000", "79999d86250c367a2b517a1ae7d409c1", "ee")
-		AssertNotError(t, err, "Failed to create CA")
+		test.AssertNotError(t, err, "Failed to create CA")
 		ca.SA = sa
 	*/
 	ca := CertificateAuthorityImpl{
-		signer: signer,
+		Signer: signer,
 		SA:     sa,
 	}
 
 	// Sign CSR
 	certObj, err := ca.IssueCertificate(*csr)
-	AssertNotError(t, err, "Failed to sign certificate")
+	test.AssertNotError(t, err, "Failed to sign certificate")
 
 	// Verify cert contents
 	cert, err := x509.ParseCertificate(certObj.DER)
-	AssertNotError(t, err, "Certificate failed to parse")
+	test.AssertNotError(t, err, "Certificate failed to parse")
 
-	AssertEquals(t, cert.Subject.CommonName, "example.com")
+	test.AssertEquals(t, cert.Subject.CommonName, "example.com")
 
 	if len(cert.DNSNames) != 2 || cert.DNSNames[0] != "example.com" || cert.DNSNames[1] != "www.example.com" {
 		t.Errorf("Improper list of domain names %v", cert.DNSNames)
@@ -171,5 +174,5 @@ func TestIssueCertificate(t *testing.T) {
 
 	// Verify that the cert got stored in the DB
 	_, err = sa.GetCertificate(certObj.ID)
-	AssertNotError(t, err, "Certificate not found in database")
+	test.AssertNotError(t, err, "Certificate not found in database")
 }

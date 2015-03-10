@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/va"
 	"github.com/letsencrypt/boulder/wfe"
 )
@@ -109,7 +110,7 @@ func main() {
 
 				// Create the components
 				wfe := wfe.NewWebFrontEndImpl()
-				sa, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
+				sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 				failOnError(err, "Unable to create SA")
 				ra := ra.NewRegistrationAuthorityImpl()
 				va := va.NewValidationAuthorityImpl()
@@ -173,7 +174,7 @@ func main() {
 				failOnError(err, "Failed to create VA server")
 				ras, err := boulder.NewRegistrationAuthorityServer("RA.server", ch, &vac, &cac, &sac)
 				failOnError(err, "Failed to create RA server")
-				sai, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
+				sai, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 				failOnError(err, "Failed to create SA impl")
 				sas := boulder.NewStorageAuthorityServer("SA.server", ch, sai)
 
@@ -261,7 +262,7 @@ func main() {
 			Action: func(c *cli.Context) {
 				ch := amqpChannel(c.GlobalString("amqp"))
 
-				sai, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
+				sai, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 				failOnError(err, "Failed to create SA impl")
 				sas := boulder.NewStorageAuthorityServer("SA.server", ch, sai)
 				runForever(sas)

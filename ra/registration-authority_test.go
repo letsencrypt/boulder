@@ -20,6 +20,8 @@ import (
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestForbiddenIdentifier(t *testing.T) {
@@ -139,12 +141,12 @@ var (
 	AuthzFinalWWW = core.Authorization{}
 )
 
-func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *SQLStorageAuthority, core.RegistrationAuthority) {
+func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
 	err := json.Unmarshal(AccountKeyJSON, &AccountKey)
-	AssertNotError(t, err, "Failed to unmarshall JWK")
+	test.AssertNotError(t, err, "Failed to unmarshall JWK")
 
-	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")
-	AssertNotError(t, err, "Failed to create SA")
+	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
+	test.AssertNotError(t, err, "Failed to create SA")
 	sa.InitTables()
 
 	va := &DummyValidationAuthority{}
@@ -167,17 +169,11 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	return &ca, va, sa, &ra
 }
 
-func assert(t *testing.T, test bool, message string) {
-	if !test {
-		t.Error(message)
-	}
-}
-
 func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
-	assert(t, a1.ID == a2.ID, "ret != DB: ID")
-	assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
-	assert(t, a1.Status == a2.Status, "ret != DB: Status")
-	assert(t, a1.Key.Equals(a2.Key), "ret != DB: Key")
+	test.Assert(t, a1.ID == a2.ID, "ret != DB: ID")
+	test.Assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
+	test.Assert(t, a1.Status == a2.Status, "ret != DB: Status")
+	test.Assert(t, a1.Key.Equals(a2.Key), "ret != DB: Key")
 	// Not testing: Contact, Challenges
 }
 
@@ -185,22 +181,22 @@ func TestNewAuthorization(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
 
 	authz, err := ra.NewAuthorization(AuthzRequest, AccountKey)
-	AssertNotError(t, err, "NewAuthorization failed")
+	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Verify that returned authz same as DB
 	dbAuthz, err := sa.GetAuthorization(authz.ID)
-	AssertNotError(t, err, "Could not fetch authorization from database")
+	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the returned authz has the right information
-	assert(t, authz.Key.Equals(AccountKey), "Initial authz did not get the right key")
-	assert(t, authz.Identifier == AuthzRequest.Identifier, "Initial authz had wrong identifier")
-	assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
+	test.Assert(t, authz.Key.Equals(AccountKey), "Initial authz did not get the right key")
+	test.Assert(t, authz.Identifier == AuthzRequest.Identifier, "Initial authz had wrong identifier")
+	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	_, ok := authz.Challenges[core.ChallengeTypeDVSNI]
-	assert(t, ok, "Initial authz does not include DVSNI challenge")
+	test.Assert(t, ok, "Initial authz does not include DVSNI challenge")
 	_, ok = authz.Challenges[core.ChallengeTypeSimpleHTTPS]
-	assert(t, ok, "Initial authz does not include SimpleHTTPS challenge")
+	test.Assert(t, ok, "Initial authz does not include SimpleHTTPS challenge")
 
 	// If we get to here, we'll use this authorization for the next test
 	AuthzInitial = authz
@@ -216,26 +212,26 @@ func TestUpdateAuthorization(t *testing.T) {
 	AuthzDelta.ID = AuthzInitial.ID
 
 	authz, err := ra.UpdateAuthorization(AuthzDelta)
-	AssertNotError(t, err, "UpdateAuthorization failed")
+	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
 	// Verify that returned authz same as DB
 	dbAuthz, err := sa.GetAuthorization(authz.ID)
-	AssertNotError(t, err, "Could not fetch authorization from database")
+	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the VA got the authz, and it's the same as the others
-	assert(t, va.Called, "Authorization was not passed to the VA")
+	test.Assert(t, va.Called, "Authorization was not passed to the VA")
 	assertAuthzEqual(t, authz, va.Argument)
 
 	// Verify that the responses are reflected
 	simpleHttps, ok := va.Argument.Challenges[core.ChallengeTypeSimpleHTTPS]
 	simpleHttpsOrig, _ := AuthzDelta.Challenges[core.ChallengeTypeSimpleHTTPS]
-	assert(t, ok, "Authz passed to VA has no simpleHttps challenge")
-	assert(t, simpleHttps.Path == simpleHttpsOrig.Path, "simpleHttps changed")
+	test.Assert(t, ok, "Authz passed to VA has no simpleHttps challenge")
+	test.Assert(t, simpleHttps.Path == simpleHttpsOrig.Path, "simpleHttps changed")
 	dvsni, ok := va.Argument.Challenges[core.ChallengeTypeDVSNI]
 	dvsniOrig, _ := AuthzDelta.Challenges[core.ChallengeTypeDVSNI]
-	assert(t, ok, "Authz passed to VA has no dvsni challenge")
-	assert(t, dvsni.Token == dvsniOrig.Token, "dvsni changed")
+	test.Assert(t, ok, "Authz passed to VA has no dvsni challenge")
+	test.Assert(t, dvsni.Token == dvsniOrig.Token, "dvsni changed")
 
 	// If we get to here, we'll use this authorization for the next test
 	AuthzUpdated = authz
@@ -260,7 +256,7 @@ func TestOnValidationUpdate(t *testing.T) {
 	// Verify that the Authz in the DB is the same except for Status->StatusValid
 	AuthzFromVA.Status = core.StatusValid
 	dbAuthz, err := sa.GetAuthorization(AuthzFromVA.ID)
-	AssertNotError(t, err, "Could not fetch authorization from database")
+	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, AuthzFromVA, dbAuthz)
 	t.Log(" ~~> from VA: ", AuthzFromVA.Status)
 	t.Log(" ~~> from DB: ", dbAuthz.Status)
@@ -293,12 +289,12 @@ func TestNewCertificate(t *testing.T) {
 	}
 
 	cert, err := ra.NewCertificate(certRequest, AccountKey)
-	AssertNotError(t, err, "Failed to issue certificate")
+	test.AssertNotError(t, err, "Failed to issue certificate")
 
 	// Verify that cert shows up and is as expected
 	dbCert, err := sa.GetCertificate(cert.ID)
-	AssertNotError(t, err, "Could not fetch certificate from database")
-	assert(t, bytes.Compare(cert.DER, dbCert) == 0, "Certificates differ")
+	test.AssertNotError(t, err, "Could not fetch certificate from database")
+	test.Assert(t, bytes.Compare(cert.DER, dbCert) == 0, "Certificates differ")
 
 	// TODO Test failure cases
 	t.Log("DONE TestOnValidationUpdate")
