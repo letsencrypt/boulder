@@ -11,6 +11,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/letsencrypt/boulder/core"
+
 	"github.com/cloudflare/cfssl/auth"
 	"github.com/cloudflare/cfssl/config"
 	"github.com/cloudflare/cfssl/signer"
@@ -20,7 +22,7 @@ import (
 type CertificateAuthorityImpl struct {
 	signer  signer.Signer
 	profile string
-	SA      StorageAuthority
+	SA      core.StorageAuthority
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -50,7 +52,7 @@ func NewCertificateAuthorityImpl(hostport string, authKey string, profile string
 	return
 }
 
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (cert Certificate, err error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (cert core.Certificate, err error) {
 	// XXX Take in authorizations and verify that union covers CSR?
 	// Pull hostnames from CSR
 	hostNames := csr.DNSNames // DNSNames + CN from CSR
@@ -104,10 +106,10 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return
 	}
 
-	cert = Certificate{
+	cert = core.Certificate{
 		ID:     certID,
 		DER:    certDER,
-		Status: StatusValid,
+		Status: core.StatusValid,
 	}
 	return
 }

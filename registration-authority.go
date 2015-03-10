@@ -9,18 +9,21 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"fmt"
-	"github.com/bifurcation/gose"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/bifurcation/gose"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	CA CertificateAuthority
-	VA ValidationAuthority
-	SA StorageAuthority
+	CA core.CertificateAuthority
+	VA core.ValidationAuthority
+	SA core.StorageAuthority
 }
 
 func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
@@ -79,27 +82,27 @@ func forbiddenIdentifier(id string) bool {
 func fingerprint256(data []byte) string {
 	d := sha256.New()
 	d.Write(data)
-	return b64enc(d.Sum(nil))
+	return core.B64enc(d.Sum(nil))
 }
 
 var allButLastPathSegment = regexp.MustCompile("^.*/")
 
-func lastPathSegment(url AcmeURL) string {
+func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
-func (ra *RegistrationAuthorityImpl) NewAuthorization(request Authorization, key jose.JsonWebKey) (authz Authorization, err error) {
+func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, key jose.JsonWebKey) (authz core.Authorization, err error) {
 	identifier := request.Identifier
 
 	// Check that the identifier is present and appropriate
 	if len(identifier.Value) == 0 {
-		err = MalformedRequestError("No identifier in authorization request")
+		err = core.MalformedRequestError("No identifier in authorization request")
 		return
-	} else if identifier.Type != IdentifierDNS {
-		err = NotSupportedError("Only domain validation is supported")
+	} else if identifier.Type != core.IdentifierDNS {
+		err = core.NotSupportedError("Only domain validation is supported")
 		return
 	} else if forbiddenIdentifier(identifier.Value) {
-		err = UnauthorizedError("We will not authorize use of this identifier")
+		err = core.UnauthorizedError("We will not authorize use of this identifier")
 		return
 	}
 
@@ -109,14 +112,14 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request Authorization, key
 	authID, err := ra.SA.NewPendingAuthorization()
 
 	// Create a new authorization object
-	authz = Authorization{
+	authz = core.Authorization{
 		ID:         authID,
 		Identifier: identifier,
 		Key:        key,
-		Status:     StatusPending,
-		Challenges: map[string]Challenge{
-			ChallengeTypeSimpleHTTPS: simpleHttps,
-			ChallengeTypeDVSNI:       dvsni,
+		Status:     core.StatusPending,
+		Challenges: map[string]core.Challenge{
+			core.ChallengeTypeSimpleHTTPS: simpleHttps,
+			core.ChallengeTypeDVSNI:       dvsni,
 		},
 	}
 
@@ -125,13 +128,13 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request Authorization, key
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) NewCertificate(req CertificateRequest, jwk jose.JsonWebKey) (cert Certificate, err error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, jwk jose.JsonWebKey) (cert core.Certificate, err error) {
 	// Verify the CSR
 	// TODO: Verify that other aspects of the CSR are appropriate
 	csr := req.CSR
-	err = VerifyCSR(csr)
+	err = core.VerifyCSR(csr)
 	if err != nil {
-		err = UnauthorizedError("Invalid signature on CSR")
+		err = core.UnauthorizedError("Invalid signature on CSR")
 		return
 	}
 
@@ -143,9 +146,9 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req CertificateRequest, jwk 
 		authz, err := ra.SA.GetAuthorization(id)
 		if err != nil || // Couldn't find authorization
 			!jwk.Equals(authz.Key) || // Not for the right account key
-			authz.Status != StatusValid || // Not finalized or not successful
+			authz.Status != core.StatusValid || // Not finalized or not successful
 			authz.Expires.Before(now) || // Expired
-			authz.Identifier.Type != IdentifierDNS {
+			authz.Identifier.Type != core.IdentifierDNS {
 			// XXX: It may be good to fail here instead of ignoring invalid authorizations.
 			//      However, it seems like this treatment is more in the spirit of Postel's
 			//      law, and it hides information from attackers.
@@ -162,7 +165,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req CertificateRequest, jwk 
 	}
 	for _, name := range names {
 		if !authorizedDomains[name] {
-			err = UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
+			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
 			return
 		}
 	}
@@ -172,7 +175,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req CertificateRequest, jwk 
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta Authorization) (authz Authorization, err error) {
+func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta core.Authorization) (authz core.Authorization, err error) {
 	// Fetch the copy of this authorization we have on file
 	authz, err = ra.SA.GetAuthorization(delta.ID)
 	if err != nil {
@@ -210,20 +213,20 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) er
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz Authorization) {
+func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) {
 	// Check to see whether the updated validations are sufficient
 	// Current policy is to accept if any validation succeeded
 	for _, val := range authz.Challenges {
-		if val.Status == StatusValid {
-			authz.Status = StatusValid
+		if val.Status == core.StatusValid {
+			authz.Status = core.StatusValid
 			break
 		}
 	}
 
 	// If no validation succeeded, then the authorization is invalid
 	// NOTE: This only works because we only ever do one validation
-	if authz.Status != StatusValid {
-		authz.Status = StatusInvalid
+	if authz.Status != core.StatusValid {
+		authz.Status = core.StatusInvalid
 	} else {
 		// TODO: Enable configuration of expiry time
 		authz.Expires = time.Now().Add(365 * 24 * time.Hour)

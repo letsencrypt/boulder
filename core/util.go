@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package boulder
+package core
 
 import (
 	"crypto"
@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"hash"
 	"math/big"
 	"net/url"
@@ -57,31 +58,32 @@ func unpad(x string) string {
 	return strings.Replace(x, "=", "", -1)
 }
 
-func b64enc(x []byte) string {
+func B64enc(x []byte) string {
 	return unpad(base64.URLEncoding.EncodeToString(x))
 }
 
-func b64dec(x string) ([]byte, error) {
+func B64dec(x string) ([]byte, error) {
 	return base64.URLEncoding.DecodeString(pad(x))
 }
 
 // Random stuff
 
-func randomString(length int) string {
-	b := make([]byte, length)
+func RandomString(byteLength int) string {
+	b := make([]byte, byteLength)
 	rand.Read(b) // NOTE: Ignoring errors
-	return b64enc(b)
+	return B64enc(b)
 }
 
-func newToken() string {
-	return randomString(32)
+func NewToken() string {
+	return RandomString(32)
 }
 
 // URLs that automatically marshal/unmarshal to JSON strings
 type AcmeURL url.URL
 
-func (u *AcmeURL) MarshalJSON() ([]byte, error) {
-	uu := url.URL(*u)
+func (u AcmeURL) MarshalJSON() ([]byte, error) {
+	fmt.Println(">>> AcmURL::MarshalJSON")
+	uu := url.URL(u)
 	return json.Marshal(uu.String())
 }
 

@@ -15,10 +15,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"time"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 type ValidationAuthorityImpl struct {
-	RA RegistrationAuthority
+	RA core.RegistrationAuthority
 }
 
 func NewValidationAuthorityImpl() ValidationAuthorityImpl {
@@ -27,36 +29,36 @@ func NewValidationAuthorityImpl() ValidationAuthorityImpl {
 
 // Challenge factories
 
-func SimpleHTTPSChallenge() Challenge {
-	return Challenge{
-		Status: StatusPending,
-		Token:  newToken(),
+func SimpleHTTPSChallenge() core.Challenge {
+	return core.Challenge{
+		Status: core.StatusPending,
+		Token:  core.NewToken(),
 	}
 }
 
-func DvsniChallenge() Challenge {
+func DvsniChallenge() core.Challenge {
 	nonce := make([]byte, 16)
 	rand.Read(nonce)
-	return Challenge{
-		Status: StatusPending,
-		R:      randomString(32),
+	return core.Challenge{
+		Status: core.StatusPending,
+		R:      core.RandomString(32),
 		Nonce:  hex.EncodeToString(nonce),
 	}
 }
 
 // Validation methods
 
-func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz Authorization) (challenge Challenge) {
+func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz core.Authorization) (challenge core.Challenge) {
 	identifier := authz.Identifier.Value
 
-	challenge, ok := authz.Challenges[ChallengeTypeSimpleHTTPS]
+	challenge, ok := authz.Challenges[core.ChallengeTypeSimpleHTTPS]
 	if !ok {
-		challenge.Status = StatusInvalid
+		challenge.Status = core.StatusInvalid
 		return
 	}
 
 	if len(challenge.Path) == 0 {
-		challenge.Status = StatusInvalid
+		challenge.Status = core.StatusInvalid
 		return
 	}
 
@@ -66,7 +68,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz Authorization) (chal
 
 	httpRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		challenge.Status = StatusInvalid
+		challenge.Status = core.StatusInvalid
 		return
 	}
 
@@ -78,40 +80,40 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz Authorization) (chal
 		// Read body & test
 		body, err := ioutil.ReadAll(httpResponse.Body)
 		if err != nil {
-			challenge.Status = StatusInvalid
+			challenge.Status = core.StatusInvalid
 			return
 		}
 
 		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
-			challenge.Status = StatusValid
+			challenge.Status = core.StatusValid
 			return
 		}
 	}
 
-	challenge.Status = StatusInvalid
+	challenge.Status = core.StatusInvalid
 	return
 }
 
-func (va ValidationAuthorityImpl) validateDvsni(authz Authorization) (challenge Challenge) {
+func (va ValidationAuthorityImpl) validateDvsni(authz core.Authorization) (challenge core.Challenge) {
 	// identifier := authz.Identifier.Value // XXX: Local version; uncomment for real version
-	challenge, ok := authz.Challenges[ChallengeTypeDVSNI]
+	challenge, ok := authz.Challenges[core.ChallengeTypeDVSNI]
 
 	if !ok {
-		challenge.Status = StatusInvalid
+		challenge.Status = core.StatusInvalid
 		return
 	}
 
 	const DVSNI_SUFFIX = ".acme.invalid"
 	nonceName := challenge.Nonce + DVSNI_SUFFIX
 
-	R, err := b64dec(challenge.R)
+	R, err := core.B64dec(challenge.R)
 	if err != nil {
-		challenge.Status = StatusInvalid
+		challenge.Status = core.StatusInvalid
 		return
 	}
-	S, err := b64dec(challenge.S)
+	S, err := core.B64dec(challenge.S)
 	if err != nil {
-		challenge.Status = StatusInvalid
+		challenge.Status = core.StatusInvalid
 		return
 	}
 	RS := append(R, S...)
@@ -131,30 +133,30 @@ func (va ValidationAuthorityImpl) validateDvsni(authz Authorization) (challenge 
 	})
 
 	if err != nil {
-		challenge.Status = StatusInvalid
+		challenge.Status = core.StatusInvalid
 		return
 	}
 
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		challenge.Status = StatusInvalid
+		challenge.Status = core.StatusInvalid
 		return
 	}
 	for _, name := range certs[0].DNSNames {
 		if name == zName {
-			challenge.Status = StatusValid
+			challenge.Status = core.StatusValid
 			return
 		}
 	}
 
-	challenge.Status = StatusInvalid
+	challenge.Status = core.StatusInvalid
 	return
 }
 
 // Overall validation process
 
-func (va ValidationAuthorityImpl) validate(authz Authorization) {
+func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
 	// Select the first supported validation method
 	// XXX: Remove the "break" lines to process all supported validations
 	for i := range authz.Challenges {
@@ -171,7 +173,7 @@ func (va ValidationAuthorityImpl) validate(authz Authorization) {
 	va.RA.OnValidationUpdate(authz)
 }
 
-func (va ValidationAuthorityImpl) UpdateValidations(authz Authorization) error {
+func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization) error {
 	go va.validate(authz)
 	return nil
 }

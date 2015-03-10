@@ -7,9 +7,12 @@ package boulder
 
 import (
 	"errors"
-	"github.com/streadway/amqp"
 	"log"
 	"time"
+
+	"github.com/streadway/amqp"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // TODO: AMQP-RPC messages should be wrapped in JWS.  To implement that,
@@ -141,10 +144,10 @@ func (rpc *AmqpRpcServer) Start() (err error) {
 		for msg := range msgs {
 			// XXX-JWS: jws.Verify(body)
 			cb, present := rpc.dispatchTable[msg.Type]
-			log.Printf(" [s<] received %s(%s) [%s]", msg.Type, b64enc(msg.Body), msg.CorrelationId)
+			log.Printf(" [s<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), msg.CorrelationId)
 			if present {
 				response := cb(msg.Body)
-				log.Printf(" [s>] sending %s(%s) [%s]", msg.Type, b64enc(response), msg.CorrelationId)
+				log.Printf(" [s>] sending %s(%s) [%s]", msg.Type, core.B64enc(response), msg.CorrelationId)
 				rpc.channel.Publish(
 					AmqpExchange,
 					msg.ReplyTo,
@@ -208,7 +211,7 @@ func NewAmqpRpcClient(clientQueue, serverQueue string, channel *amqp.Channel) (r
 			corrID := msg.CorrelationId
 			responseChan, present := rpc.pending[corrID]
 
-			log.Printf(" [c<] received %s(%s) [%s]", msg.Type, b64enc(msg.Body), corrID)
+			log.Printf(" [c<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), corrID)
 			if present {
 				responseChan <- msg.Body
 				delete(rpc.pending, corrID)
@@ -228,11 +231,11 @@ func (rpc *AmqpRpcClient) Dispatch(method string, body []byte) chan []byte {
 	// At least in some cases, it's important that this channel
 	// be buffered to avoid deadlock
 	responseChan := make(chan []byte, 1)
-	corrID := newToken()
+	corrID := core.NewToken()
 	rpc.pending[corrID] = responseChan
 
 	// Send the request
-	log.Printf(" [c>] sending %s(%s) [%s]", method, b64enc(body), corrID)
+	log.Printf(" [c>] sending %s(%s) [%s]", method, core.B64enc(body), corrID)
 	rpc.channel.Publish(
 		AmqpExchange,
 		rpc.serverQueue,
