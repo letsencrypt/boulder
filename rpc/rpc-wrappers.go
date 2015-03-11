@@ -3,15 +3,18 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package boulder
+package rpc
 
 import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"log"
+
 	"github.com/bifurcation/gose"
 	"github.com/streadway/amqp"
-	"log"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -52,22 +55,17 @@ const (
 //  -> RevokeCertificate
 //  -> OnValidationUpdate
 type authorizationRequest struct {
-	Authz Authorization
+	Authz core.Authorization
 	Key   jose.JsonWebKey
 }
 
 type certificateRequest struct {
-	Req CertificateRequest
+	Req core.CertificateRequest
 	Key jose.JsonWebKey
 }
 
-func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, va ValidationAuthority, ca CertificateAuthority, sa StorageAuthority) (rpc *AmqpRpcServer, err error) {
+func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.RegistrationAuthority) (rpc *AmqpRpcServer, err error) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
-
-	impl := NewRegistrationAuthorityImpl()
-	impl.VA = va
-	impl.CA = ca
-	impl.SA = sa
 
 	rpc.Handle(MethodNewAuthorization, func(req []byte) (response []byte) {
 		var ar authorizationRequest
@@ -114,7 +112,7 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, v
 	})
 
 	rpc.Handle(MethodUpdateAuthorization, func(req []byte) (response []byte) {
-		var authz Authorization
+		var authz core.Authorization
 		err := json.Unmarshal(req, &authz)
 		if err != nil {
 			return
@@ -149,7 +147,7 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, v
 		// Nobody's listening, so it doesn't matter what we return
 		response = []byte{}
 
-		var authz Authorization
+		var authz core.Authorization
 		err := json.Unmarshal(req, &authz)
 		if err != nil {
 			return
@@ -176,7 +174,7 @@ func NewRegistrationAuthorityClient(clientQueue, serverQueue string, channel *am
 	return
 }
 
-func (rac RegistrationAuthorityClient) NewAuthorization(authz Authorization, key jose.JsonWebKey) (newAuthz Authorization, err error) {
+func (rac RegistrationAuthorityClient) NewAuthorization(authz core.Authorization, key jose.JsonWebKey) (newAuthz core.Authorization, err error) {
 	data, err := json.Marshal(authorizationRequest{authz, key})
 	if err != nil {
 		return
@@ -191,7 +189,7 @@ func (rac RegistrationAuthorityClient) NewAuthorization(authz Authorization, key
 	return
 }
 
-func (rac RegistrationAuthorityClient) NewCertificate(cr CertificateRequest, key jose.JsonWebKey) (cert Certificate, err error) {
+func (rac RegistrationAuthorityClient) NewCertificate(cr core.CertificateRequest, key jose.JsonWebKey) (cert core.Certificate, err error) {
 	data, err := json.Marshal(certificateRequest{cr, key})
 	if err != nil {
 		return
@@ -206,7 +204,7 @@ func (rac RegistrationAuthorityClient) NewCertificate(cr CertificateRequest, key
 	return
 }
 
-func (rac RegistrationAuthorityClient) UpdateAuthorization(authz Authorization) (newAuthz Authorization, err error) {
+func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorization) (newAuthz core.Authorization, err error) {
 	data, err := json.Marshal(authz)
 	if err != nil {
 		return
@@ -226,7 +224,7 @@ func (rac RegistrationAuthorityClient) RevokeCertificate(cert x509.Certificate) 
 	return
 }
 
-func (rac RegistrationAuthorityClient) OnValidationUpdate(authz Authorization) {
+func (rac RegistrationAuthorityClient) OnValidationUpdate(authz core.Authorization) {
 	data, err := json.Marshal(authz)
 	if err != nil {
 		return
@@ -238,16 +236,14 @@ func (rac RegistrationAuthorityClient) OnValidationUpdate(authz Authorization) {
 
 // ValidationAuthorityClient / Server
 //  -> UpdateValidations
-func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, ra RegistrationAuthority) (rpc *AmqpRpcServer, err error) {
+func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.ValidationAuthority) (rpc *AmqpRpcServer, err error) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
 
-	impl := NewValidationAuthorityImpl()
-	impl.RA = ra
 	rpc.Handle(MethodUpdateValidations, func(req []byte) []byte {
 		// Nobody's listening, so it doesn't matter what we return
 		zero := []byte{}
 
-		var authz Authorization
+		var authz core.Authorization
 		err := json.Unmarshal(req, &authz)
 		if err != nil {
 			return zero
@@ -274,7 +270,7 @@ func NewValidationAuthorityClient(clientQueue, serverQueue string, channel *amqp
 	return
 }
 
-func (vac ValidationAuthorityClient) UpdateValidations(authz Authorization) error {
+func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization) error {
 	data, err := json.Marshal(authz)
 	if err != nil {
 		return err
@@ -286,7 +282,7 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz Authorization) erro
 
 // CertificateAuthorityClient / Server
 //  -> IssueCertificate
-func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, impl CertificateAuthority) (rpc *AmqpRpcServer, err error) {
+func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.CertificateAuthority) (rpc *AmqpRpcServer, err error) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
 
 	rpc.Handle(MethodIssueCertificate, func(req []byte) []byte {
@@ -327,7 +323,7 @@ func NewCertificateAuthorityClient(clientQueue, serverQueue string, channel *amq
 	return
 }
 
-func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest) (cert Certificate, err error) {
+func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest) (cert core.Certificate, err error) {
 	jsonResponse, err := cac.rpc.DispatchSync(MethodIssueCertificate, csr.Raw)
 	if len(jsonResponse) == 0 {
 		// TODO: Better error handling
@@ -338,7 +334,7 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	return
 }
 
-func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl StorageAuthority) (rpc *AmqpRpcServer) {
+func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.StorageAuthority) (rpc *AmqpRpcServer) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
 
 	rpc.Handle(MethodGetCertificate, func(req []byte) (response []byte) {
@@ -379,7 +375,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl S
 	})
 
 	rpc.Handle(MethodUpdatePendingAuthorization, func(req []byte) (response []byte) {
-		var authz Authorization
+		var authz core.Authorization
 		err := json.Unmarshal(req, authz)
 		if err != nil {
 			return
@@ -390,7 +386,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl S
 	})
 
 	rpc.Handle(MethodUpdatePendingAuthorization, func(req []byte) (response []byte) {
-		var authz Authorization
+		var authz core.Authorization
 		err := json.Unmarshal(req, authz)
 		if err != nil {
 			return
@@ -401,7 +397,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl S
 	})
 
 	rpc.Handle(MethodFinalizeAuthorization, func(req []byte) (response []byte) {
-		var authz Authorization
+		var authz core.Authorization
 		err := json.Unmarshal(req, authz)
 		if err != nil {
 			return
@@ -433,7 +429,7 @@ func (cac StorageAuthorityClient) GetCertificate(id string) (cert []byte, err er
 	return
 }
 
-func (cac StorageAuthorityClient) GetAuthorization(id string) (authz Authorization, err error) {
+func (cac StorageAuthorityClient) GetAuthorization(id string) (authz core.Authorization, err error) {
 	jsonAuthz, err := cac.rpc.DispatchSync(MethodGetAuthorization, []byte(id))
 	if err != nil {
 		return
@@ -463,7 +459,7 @@ func (cac StorageAuthorityClient) NewPendingAuthorization() (id string, err erro
 	return
 }
 
-func (cac StorageAuthorityClient) UpdatePendingAuthorization(authz Authorization) (err error) {
+func (cac StorageAuthorityClient) UpdatePendingAuthorization(authz core.Authorization) (err error) {
 	jsonAuthz, err := json.Marshal(authz)
 	if err != nil {
 		return
@@ -474,7 +470,7 @@ func (cac StorageAuthorityClient) UpdatePendingAuthorization(authz Authorization
 	return
 }
 
-func (cac StorageAuthorityClient) FinalizeAuthorization(authz Authorization) (err error) {
+func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization) (err error) {
 	jsonAuthz, err := json.Marshal(authz)
 	if err != nil {
 		return

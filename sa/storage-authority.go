@@ -3,13 +3,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package boulder
+package sa
 
 import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 type SQLStorageAuthority struct {
@@ -75,8 +77,8 @@ func (ssa *SQLStorageAuthority) GetCertificate(id string) (cert []byte, err erro
 	return
 }
 
-func statusIsPending(status AcmeStatus) bool {
-	return status == StatusPending || status == StatusProcessing || status == StatusUnknown
+func statusIsPending(status core.AcmeStatus) bool {
+	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
 }
 
 func existingPending(tx *sql.Tx, id string) (count int64) {
@@ -89,7 +91,7 @@ func existingFinal(tx *sql.Tx, id string) (count int64) {
 	return
 }
 
-func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authorization, err error) {
 	tx, err := ssa.db.Begin()
 	if err != nil {
 		return
@@ -134,7 +136,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(cert []byte) (id string, err erro
 		sequence += scanTarget.Int64 + 1
 	}
 
-	id = fingerprint256(cert)
+	id = core.Fingerprint256(cert)
 	_, err = tx.Exec("INSERT INTO certificates (sequence, digest, value) VALUES (?,?,?);", sequence, id, cert)
 	if err != nil {
 		tx.Rollback()
@@ -152,9 +154,9 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization() (id string, err error)
 	}
 
 	// Check that it doesn't exist already
-	candidate := newToken()
+	candidate := core.NewToken()
 	for existingPending(tx, candidate) > 0 || existingFinal(tx, candidate) > 0 {
-		candidate = newToken()
+		candidate = core.NewToken()
 	}
 
 	// Insert a stub row in pending
@@ -172,7 +174,7 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization() (id string, err error)
 	return
 }
 
-func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz Authorization) (err error) {
+func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorization) (err error) {
 	tx, err := ssa.db.Begin()
 	if err != nil {
 		return
@@ -212,7 +214,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz Authorization) 
 	return
 }
 
-func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz Authorization) (err error) {
+func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) (err error) {
 	tx, err := ssa.db.Begin()
 	if err != nil {
 		return
@@ -249,7 +251,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz Authorization) (err 
 		tx.Rollback()
 		return
 	}
-	digest := fingerprint256(jsonAuthz)
+	digest := core.Fingerprint256(jsonAuthz)
 
 	// Add to final table and delete from pending
 	if err != nil {

@@ -3,20 +3,23 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package boulder
+package wfe
 
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/bifurcation/gose"
 	"io/ioutil"
 	"net/http"
 	"regexp"
+
+	"github.com/bifurcation/gose"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 type WebFrontEndImpl struct {
-	RA RegistrationAuthority
-	SA StorageGetter
+	RA core.RegistrationAuthority
+	SA core.StorageGetter
 
 	// URL configuration parameters
 	baseURL   string
@@ -106,7 +109,7 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 		return
 	}
 
-	var init Authorization
+	var init core.Authorization
 	err = json.Unmarshal(body, &init)
 	if err != nil {
 		sendError(response, "Error unmarshaling JSON", http.StatusBadRequest)
@@ -148,7 +151,7 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 		return
 	}
 
-	var init CertificateRequest
+	var init core.CertificateRequest
 	err = json.Unmarshal(body, &init)
 	if err != nil {
 		sendError(response, "Error unmarshaling certificate request", http.StatusBadRequest)
@@ -196,7 +199,7 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 			return
 		}
 
-		var initialAuthz Authorization
+		var initialAuthz core.Authorization
 		err = json.Unmarshal(body, &initialAuthz)
 		if err != nil {
 			sendError(response, "Error unmarshaling authorization", http.StatusBadRequest)

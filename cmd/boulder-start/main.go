@@ -7,13 +7,19 @@ package main
 
 import (
 	"fmt"
-	"github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder"
-	"github.com/streadway/amqp"
 	"net/http"
 	"os"
 
+	"github.com/codegangsta/cli"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/streadway/amqp"
+
+	"github.com/letsencrypt/boulder/ca"
+	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/rpc"
+	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/va"
+	"github.com/letsencrypt/boulder/wfe"
 )
 
 // Exit and print error message if we encountered a problem
@@ -36,7 +42,7 @@ func amqpChannel(url string) (ch *amqp.Channel) {
 }
 
 // Start the server and wait around
-func runForever(server *boulder.AmqpRpcServer) {
+func runForever(server *rpc.AmqpRpcServer) {
 	forever := make(chan bool)
 	server.Start()
 	fmt.Fprintf(os.Stderr, "Server running...\n")
@@ -103,12 +109,12 @@ func main() {
 				profile := c.GlobalString("cfsslProfile")
 
 				// Create the components
-				wfe := boulder.NewWebFrontEndImpl()
-				sa, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
+				wfe := wfe.NewWebFrontEndImpl()
+				sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 				failOnError(err, "Unable to create SA")
-				ra := boulder.NewRegistrationAuthorityImpl()
-				va := boulder.NewValidationAuthorityImpl()
-				ca, err := boulder.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
+				ra := ra.NewRegistrationAuthorityImpl()
+				va := va.NewValidationAuthorityImpl()
+				ca, err := ca.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
 				failOnError(err, "Unable to create CA")
 
 				// Wire them up
@@ -148,29 +154,39 @@ func main() {
 				ch := amqpChannel(c.GlobalString("amqp"))
 
 				// Create AMQP-RPC clients for CA, VA, RA, SA
-				cac, err := boulder.NewCertificateAuthorityClient("CA.client", "CA.server", ch)
+				cac, err := rpc.NewCertificateAuthorityClient("CA.client", "CA.server", ch)
 				failOnError(err, "Failed to create CA client")
-				vac, err := boulder.NewValidationAuthorityClient("VA.client", "VA.server", ch)
+				vac, err := rpc.NewValidationAuthorityClient("VA.client", "VA.server", ch)
 				failOnError(err, "Failed to create VA client")
-				rac, err := boulder.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
+				rac, err := rpc.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
 				failOnError(err, "Failed to create RA client")
-				sac, err := boulder.NewStorageAuthorityClient("SA.client", "SA.server", ch)
+				sac, err := rpc.NewStorageAuthorityClient("SA.client", "SA.server", ch)
 				failOnError(err, "Failed to create SA client")
 
 				// ... and corresponding servers
 				// (We need this order so that we can give the servers
 				//  references to the clients)
-				cai, err := boulder.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
+				cai, err := ca.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
 				failOnError(err, "Failed to create CA impl")
-				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch, cai)
-				failOnError(err, "Failed to create CA server")
-				vas, err := boulder.NewValidationAuthorityServer("VA.server", ch, &rac)
-				failOnError(err, "Failed to create VA server")
-				ras, err := boulder.NewRegistrationAuthorityServer("RA.server", ch, &vac, &cac, &sac)
-				failOnError(err, "Failed to create RA server")
-				sai, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
+				vai := va.NewValidationAuthorityImpl()
+				rai := ra.NewRegistrationAuthorityImpl()
+				sai, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 				failOnError(err, "Failed to create SA impl")
-				sas := boulder.NewStorageAuthorityServer("SA.server", ch, sai)
+
+				// Wire them up...
+				vai.RA = &rac
+				rai.VA = &vac
+				rai.CA = cac
+				rai.SA = sac
+
+				// ... and wrap them in RPC servers
+				cas, err := rpc.NewCertificateAuthorityServer("CA.server", ch, cai)
+				failOnError(err, "Failed to create CA server")
+				vas, err := rpc.NewValidationAuthorityServer("VA.server", ch, &vai)
+				failOnError(err, "Failed to create VA server")
+				ras, err := rpc.NewRegistrationAuthorityServer("RA.server", ch, &rai)
+				failOnError(err, "Failed to create RA server")
+				sas := rpc.NewStorageAuthorityServer("SA.server", ch, sai)
 
 				// Start the servers
 				cas.Start()
@@ -179,7 +195,7 @@ func main() {
 				sas.Start()
 
 				// Wire up the front end (wrappers are already wired)
-				wfe := boulder.NewWebFrontEndImpl()
+				wfe := wfe.NewWebFrontEndImpl()
 				wfe.RA = &rac
 				wfe.SA = &sac
 
@@ -206,14 +222,14 @@ func main() {
 				// Create necessary clients
 				ch := amqpChannel(c.GlobalString("amqp"))
 
-				rac, err := boulder.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
+				rac, err := rpc.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
 				failOnError(err, "Unable to create RA client")
 
-				sac, err := boulder.NewStorageAuthorityClient("SA.client", "SA.server", ch)
+				sac, err := rpc.NewStorageAuthorityClient("SA.client", "SA.server", ch)
 				failOnError(err, "Unable to create SA client")
 
 				// Create the front-end and wire in its resources
-				wfe := boulder.NewWebFrontEndImpl()
+				wfe := wfe.NewWebFrontEndImpl()
 				wfe.RA = &rac
 				wfe.SA = &sac
 
@@ -243,9 +259,9 @@ func main() {
 
 				ch := amqpChannel(c.GlobalString("amqp"))
 
-				cai, err := boulder.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
+				cai, err := ca.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
 				failOnError(err, "Failed to create CA impl")
-				cas, err := boulder.NewCertificateAuthorityServer("CA.server", ch, cai)
+				cas, err := rpc.NewCertificateAuthorityServer("CA.server", ch, cai)
 				failOnError(err, "Unable to create CA server")
 				runForever(cas)
 			},
@@ -256,9 +272,9 @@ func main() {
 			Action: func(c *cli.Context) {
 				ch := amqpChannel(c.GlobalString("amqp"))
 
-				sai, err := boulder.NewSQLStorageAuthority("sqlite3", ":memory:")
+				sai, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 				failOnError(err, "Failed to create SA impl")
-				sas := boulder.NewStorageAuthorityServer("SA.server", ch, sai)
+				sas := rpc.NewStorageAuthorityServer("SA.server", ch, sai)
 				runForever(sas)
 			},
 		},
@@ -268,10 +284,13 @@ func main() {
 			Action: func(c *cli.Context) {
 				ch := amqpChannel(c.GlobalString("amqp"))
 
-				rac, err := boulder.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
+				rac, err := rpc.NewRegistrationAuthorityClient("RA.client", "RA.server", ch)
 				failOnError(err, "Unable to create RA client")
 
-				vas, err := boulder.NewValidationAuthorityServer("VA.server", ch, &rac)
+				vai := va.NewValidationAuthorityImpl()
+				vai.RA = &rac
+
+				vas, err := rpc.NewValidationAuthorityServer("VA.server", ch, &vai)
 				failOnError(err, "Unable to create VA server")
 				runForever(vas)
 			},
@@ -283,16 +302,21 @@ func main() {
 				// TODO
 				ch := amqpChannel(c.GlobalString("amqp"))
 
-				vac, err := boulder.NewValidationAuthorityClient("VA.client", "VA.server", ch)
+				vac, err := rpc.NewValidationAuthorityClient("VA.client", "VA.server", ch)
 				failOnError(err, "Unable to create VA client")
 
-				cac, err := boulder.NewCertificateAuthorityClient("CA.client", "CA.server", ch)
+				cac, err := rpc.NewCertificateAuthorityClient("CA.client", "CA.server", ch)
 				failOnError(err, "Unable to create CA client")
 
-				sac, err := boulder.NewStorageAuthorityClient("SA.client", "SA.server", ch)
+				sac, err := rpc.NewStorageAuthorityClient("SA.client", "SA.server", ch)
 				failOnError(err, "Unable to create SA client")
 
-				ras, err := boulder.NewRegistrationAuthorityServer("RA.server", ch, &vac, &cac, &sac)
+				rai := ra.NewRegistrationAuthorityImpl()
+				rai.VA = &vac
+				rai.CA = &cac
+				rai.SA = &sac
+
+				ras, err := rpc.NewRegistrationAuthorityServer("RA.server", ch, &rai)
 				failOnError(err, "Unable to create RA server")
 				runForever(ras)
 			},
