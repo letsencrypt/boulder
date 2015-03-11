@@ -21,7 +21,7 @@ func TestB64(t *testing.T) {
 
 	testB64 := B64enc(bin)
 	if testB64 != b64 {
-		t.Errorf("Base64 encoding produced incorrect result: %s")
+		t.Errorf("Base64 encoding produced incorrect result: %s", testB64)
 	}
 
 	testBin, err := B64dec(b64)
