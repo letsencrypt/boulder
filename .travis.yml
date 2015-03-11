@@ -16,7 +16,17 @@ before_install:
 script:
   - go vet -x ./...
   - $HOME/gopath/bin/golint ./...
-  - go test -covermode=count -coverprofile=main.coverprofile .
-  - go test -covermode=count -coverprofile=analysisengine.coverprofile ./analysisengine
+  - go test -covermode=count -coverprofile=activity-monitor ./activity-monitor
+  - go test -covermode=count -coverprofile=analysis ./analysis
+  - go test -covermode=count -coverprofile=ca ./ca
+  - go test -covermode=count -coverprofile=cmd ./cmd
+  - go test -covermode=count -coverprofile=core ./core
+  - go test -covermode=count -coverprofile=log ./log
+  - go test -covermode=count -coverprofile=ra ./ra
+  - go test -covermode=count -coverprofile=rpc ./rpc
+  - go test -covermode=count -coverprofile=sa ./sa
+  - go test -covermode=count -coverprofile=test ./test
+  - go test -covermode=count -coverprofile=va ./va
+  - go test -covermode=count -coverprofile=wfe ./wfe
   - $HOME/gopath/bin/gover
   - $HOME/gopath/bin/goveralls -coverprofile=gover.coverprofile -service=travis-ci
