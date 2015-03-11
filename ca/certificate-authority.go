@@ -75,12 +75,11 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	// Send the cert off for signing
 	req := signer.SignRequest{
-		Request:  csrPEM,
-		Profile:  ca.profile,
-		Hostname: commonName,
+		Request: csrPEM,
+		Profile: ca.profile,
+		Hosts:   hostNames,
 		Subject: &signer.Subject{
-			CN:    commonName,
-			Hosts: hostNames,
+			CN: commonName,
 		},
 	}
 	certPEM, err := ca.Signer.Sign(req)
