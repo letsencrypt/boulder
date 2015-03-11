@@ -3,16 +3,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package boulder
+package rpc
 
 import (
 	"errors"
 	"log"
 	"time"
 
-	"github.com/streadway/amqp"
-
 	"github.com/letsencrypt/boulder/core"
+	"github.com/streadway/amqp"
 )
 
 // TODO: AMQP-RPC messages should be wrapped in JWS.  To implement that,

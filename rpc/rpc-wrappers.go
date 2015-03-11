@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package boulder
+package rpc
 
 import (
 	"crypto/x509"
@@ -15,8 +15,6 @@ import (
 	"github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/ra"
-	"github.com/letsencrypt/boulder/va"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -66,13 +64,8 @@ type certificateRequest struct {
 	Key jose.JsonWebKey
 }
 
-func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, va core.ValidationAuthority, ca core.CertificateAuthority, sa core.StorageAuthority) (rpc *AmqpRpcServer, err error) {
+func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.RegistrationAuthority) (rpc *AmqpRpcServer, err error) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
-
-	impl := ra.NewRegistrationAuthorityImpl()
-	impl.VA = va
-	impl.CA = ca
-	impl.SA = sa
 
 	rpc.Handle(MethodNewAuthorization, func(req []byte) (response []byte) {
 		var ar authorizationRequest
@@ -243,11 +236,9 @@ func (rac RegistrationAuthorityClient) OnValidationUpdate(authz core.Authorizati
 
 // ValidationAuthorityClient / Server
 //  -> UpdateValidations
-func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, ra core.RegistrationAuthority) (rpc *AmqpRpcServer, err error) {
+func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.ValidationAuthority) (rpc *AmqpRpcServer, err error) {
 	rpc = NewAmqpRpcServer(serverQueue, channel)
 
-	impl := va.NewValidationAuthorityImpl()
-	impl.RA = ra
 	rpc.Handle(MethodUpdateValidations, func(req []byte) []byte {
 		// Nobody's listening, so it doesn't matter what we return
 		zero := []byte{}
