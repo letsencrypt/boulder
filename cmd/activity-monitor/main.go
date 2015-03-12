@@ -31,7 +31,7 @@ const (
 	AmqpImmediate    = false
 )
 
-func startMonitor(AmqpUrl string, logger *blog.JsonLogger) {
+func startMonitor(AmqpUrl string, logger *blog.JSONLogger) {
 
 	ae := analysisengine.NewLoggingAnalysisEngine(logger)
 
@@ -141,7 +141,7 @@ func main() {
 	}
 
 	app.Action = func(c *cli.Context) {
-		logger := blog.NewJsonLogger("am")
+		logger := blog.NewJSONLogger("am")
 
 		// Parse SysLog URL if one was provided
 		if c.GlobalString("jsonlog") == "" {

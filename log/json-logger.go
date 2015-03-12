@@ -50,7 +50,7 @@ type LogMessage struct {
 }
 
 // Structure to hold logger details.
-type JsonLogger struct {
+type JSONLogger struct {
 	stdout  bool       // True if logging to stdout (independent of network)
 	online  bool       // True if logging to network
 	scheme  string     // Golang net URI scheme (tcp/udp)
@@ -61,28 +61,28 @@ type JsonLogger struct {
 	program string     // Defines the 'program' field in JSON
 }
 
-func NewJsonLogger(programName string) *JsonLogger {
-	return &JsonLogger{
+func NewJSONLogger(programName string) *JSONLogger {
+	return &JSONLogger{
 		program: programName,
 		level:   7, // Default to all
 	}
 }
 
-func (jl *JsonLogger) EnableStdOut(stdout bool) {
+func (jl *JSONLogger) EnableStdOut(stdout bool) {
 	jl.stdout = stdout
 }
 
-func (jl *JsonLogger) SetLevel(level int) {
+func (jl *JSONLogger) SetLevel(level int) {
 	jl.level = level
 }
 
-func (jl *JsonLogger) SetEndpoint(scheme string, host string) {
+func (jl *JSONLogger) SetEndpoint(scheme string, host string) {
 	jl.scheme = scheme
 	jl.host = host
 	jl.online = true
 }
 
-func (jl *JsonLogger) Connect() error {
+func (jl *JSONLogger) Connect() error {
 	conn, err := net.Dial(jl.scheme, jl.host)
 	if err == nil {
 		jl.conn = conn
@@ -91,42 +91,42 @@ func (jl *JsonLogger) Connect() error {
 }
 
 // Log at the Critical severity level.
-func (jl *JsonLogger) Critical(messageStr string, payloadObj interface{}) {
+func (jl *JSONLogger) Critical(messageStr string, payloadObj interface{}) {
 	jl.Write(CRITICAL, messageStr, payloadObj)
 }
 
 // Log at the Alert severity level.
-func (jl *JsonLogger) Alert(messageStr string, payloadObj interface{}) {
+func (jl *JSONLogger) Alert(messageStr string, payloadObj interface{}) {
 	jl.Write(ALERT, messageStr, payloadObj)
 }
 
 // Log at the Emergency severity level.
-func (jl *JsonLogger) Emergency(messageStr string, payloadObj interface{}) {
+func (jl *JSONLogger) Emergency(messageStr string, payloadObj interface{}) {
 	jl.Write(EMERGENCY, messageStr, payloadObj)
 }
 
 // Log at the Error severity level.
-func (jl *JsonLogger) Error(messageStr string, payloadObj interface{}) {
+func (jl *JSONLogger) Error(messageStr string, payloadObj interface{}) {
 	jl.Write(ERROR, messageStr, payloadObj)
 }
 
 // Log at the Warning severity level.
-func (jl *JsonLogger) Warning(messageStr string, payloadObj interface{}) {
+func (jl *JSONLogger) Warning(messageStr string, payloadObj interface{}) {
 	jl.Write(WARNING, messageStr, payloadObj)
 }
 
 // Log at the Notice severity level.
-func (jl *JsonLogger) Notice(messageStr string, payloadObj interface{}) {
+func (jl *JSONLogger) Notice(messageStr string, payloadObj interface{}) {
 	jl.Write(NOTICE, messageStr, payloadObj)
 }
 
 // Log at the Info severity level.
-func (jl *JsonLogger) Info(messageStr string, payloadObj interface{}) {
+func (jl *JSONLogger) Info(messageStr string, payloadObj interface{}) {
 	jl.Write(INFO, messageStr, payloadObj)
 }
 
 // Log at the Debug severity level.
-func (jl *JsonLogger) Debug(messageStr string, payloadObj interface{}) {
+func (jl *JSONLogger) Debug(messageStr string, payloadObj interface{}) {
 	jl.Write(DEBUG, messageStr, payloadObj)
 }
 
@@ -134,7 +134,7 @@ func (jl *JsonLogger) Debug(messageStr string, payloadObj interface{}) {
 // serializes it to the wire. If the send via WriteAndRetry() fails, this method
 // calls log.Fatalf() which will abort the program, leaving the system to restart
 // the process.
-func (jl *JsonLogger) Write(severity int, messageStr string, payloadObj interface{}) {
+func (jl *JSONLogger) Write(severity int, messageStr string, payloadObj interface{}) {
 	if severity > jl.level {
 		return
 	}
@@ -172,7 +172,7 @@ func (jl *JsonLogger) Write(severity int, messageStr string, payloadObj interfac
 // Send the provided data on the connection; if there is an error,
 // it will retry to connect and transmit again, once. If that fails,
 // it returns an error.
-func (jl *JsonLogger) WriteAndRetry(data []byte) (int, error) {
+func (jl *JSONLogger) WriteAndRetry(data []byte) (int, error) {
 	jl.mu.Lock()
 	defer jl.mu.Unlock()
 
