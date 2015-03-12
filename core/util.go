@@ -82,7 +82,7 @@ func NewToken() string {
 
 func Fingerprint256(data []byte) string {
 	d := sha256.New()
-	d.Write(data)
+	_, _ = d.Write(data) // Never returns an error
 	return B64enc(d.Sum(nil))
 }
 
@@ -134,7 +134,7 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 	default:
 		return errors.New("Unsupported CSR signing algorithm")
 	}
-	hash.Write(csr.RawTBSCertificateRequest)
+	_, _ = hash.Write(csr.RawTBSCertificateRequest) // Never returns an error
 	inputHash := hash.Sum(nil)
 
 	// Verify the signature using the public key in the CSR

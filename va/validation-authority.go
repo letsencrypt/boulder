@@ -99,7 +99,7 @@ func (va ValidationAuthorityImpl) validateDvsni(authz core.Authorization) (chall
 	RS := append(R, S...)
 
 	sha := sha256.New()
-	sha.Write(RS)
+	_, _ = sha.Write(RS) // Never returns an error
 	z := make([]byte, sha.Size())
 	sha.Sum(z)
 	zName := hex.EncodeToString(z)
