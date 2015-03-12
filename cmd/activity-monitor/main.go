@@ -6,11 +6,12 @@
 package main
 
 import (
-	"github.com/codegangsta/cli"
-	"github.com/streadway/amqp"
 	"log"
 	"net/url"
 	"os"
+
+	"github.com/codegangsta/cli"
+	"github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/analysis"
 	blog "github.com/letsencrypt/boulder/log"

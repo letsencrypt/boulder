@@ -8,8 +8,9 @@ package core
 import (
 	"crypto/x509"
 	"encoding/json"
-	"github.com/bifurcation/gose"
 	"time"
+
+	"github.com/bifurcation/gose"
 )
 
 type IdentifierType string
