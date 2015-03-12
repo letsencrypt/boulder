@@ -70,7 +70,7 @@ func B64dec(x string) ([]byte, error) {
 
 func RandomString(byteLength int) string {
 	b := make([]byte, byteLength)
-	rand.Read(b) // NOTE: Ignoring errors
+	_, _ = rand.Read(b) // NOTE: Ignoring errors
 	return B64enc(b)
 }
 
