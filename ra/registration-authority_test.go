@@ -224,10 +224,10 @@ func TestUpdateAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, va.Argument)
 
 	// Verify that the responses are reflected
-	simpleHttps, ok := va.Argument.Challenges[core.ChallengeTypeSimpleHTTPS]
-	simpleHttpsOrig, _ := AuthzDelta.Challenges[core.ChallengeTypeSimpleHTTPS]
-	test.Assert(t, ok, "Authz passed to VA has no simpleHttps challenge")
-	test.Assert(t, simpleHttps.Path == simpleHttpsOrig.Path, "simpleHttps changed")
+	simpleHTTPS, ok := va.Argument.Challenges[core.ChallengeTypeSimpleHTTPS]
+	simpleHTTPSOrig, _ := AuthzDelta.Challenges[core.ChallengeTypeSimpleHTTPS]
+	test.Assert(t, ok, "Authz passed to VA has no simpleHTTPS challenge")
+	test.Assert(t, simpleHTTPS.Path == simpleHTTPSOrig.Path, "simpleHTTPS changed")
 	dvsni, ok := va.Argument.Challenges[core.ChallengeTypeDVSNI]
 	dvsniOrig, _ := AuthzDelta.Challenges[core.ChallengeTypeDVSNI]
 	test.Assert(t, ok, "Authz passed to VA has no dvsni challenge")
@@ -245,7 +245,7 @@ func TestOnValidationUpdate(t *testing.T) {
 	AuthzUpdated.ID, _ = sa.NewPendingAuthorization()
 	sa.UpdatePendingAuthorization(AuthzUpdated)
 
-	// Simulate a successful simpleHttps challenge
+	// Simulate a successful simpleHTTPS challenge
 	AuthzFromVA = AuthzUpdated
 	challenge := AuthzFromVA.Challenges[core.ChallengeTypeSimpleHTTPS]
 	challenge.Status = core.StatusValid

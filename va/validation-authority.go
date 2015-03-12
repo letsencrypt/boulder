@@ -141,7 +141,7 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
 	// XXX: Remove the "break" lines to process all supported validations
 	for i := range authz.Challenges {
 		switch i {
-		case "simpleHttps":
+		case "simpleHTTPS":
 			authz.Challenges[i] = va.validateSimpleHTTPS(authz)
 			break
 		case "dvsni":

@@ -100,7 +100,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Create validations
-	simpleHttps := core.SimpleHTTPSChallenge()
+	simpleHTTPS := core.SimpleHTTPSChallenge()
 	dvsni := core.DvsniChallenge()
 	authID, err := ra.SA.NewPendingAuthorization()
 
@@ -111,7 +111,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		Key:        key,
 		Status:     core.StatusPending,
 		Challenges: map[string]core.Challenge{
-			core.ChallengeTypeSimpleHTTPS: simpleHttps,
+			core.ChallengeTypeSimpleHTTPS: simpleHTTPS,
 			core.ChallengeTypeDVSNI:       dvsni,
 		},
 	}
