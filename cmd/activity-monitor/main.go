@@ -45,13 +45,11 @@ func startMonitor(AmqpURL string, logger *blog.JSONLogger) {
 	conn, err := amqp.Dial(AmqpURL)
 	if err != nil {
 		log.Fatalf("Could not connect to AMQP server: %s", err)
-		return
 	}
 
 	rpcCh, err := conn.Channel()
 	if err != nil {
 		log.Fatalf("Could not start channel: %s", err)
-		return
 	}
 
 	err = rpcCh.ExchangeDeclare(
@@ -64,7 +62,6 @@ func startMonitor(AmqpURL string, logger *blog.JSONLogger) {
 		nil)
 	if err != nil {
 		log.Fatalf("Could not declare exchange: %s", err)
-		return
 	}
 
 	_, err = rpcCh.QueueDeclare(
@@ -76,7 +73,6 @@ func startMonitor(AmqpURL string, logger *blog.JSONLogger) {
 		nil)
 	if err != nil {
 		log.Fatalf("Could not declare queue: %s", err)
-		return
 	}
 
 	err = rpcCh.QueueBind(
@@ -87,7 +83,6 @@ func startMonitor(AmqpURL string, logger *blog.JSONLogger) {
 		nil)
 	if err != nil {
 		log.Fatalf("Could not bind queue: %s", err)
-		return
 	}
 
 	deliveries, err := rpcCh.Consume(
@@ -100,7 +95,6 @@ func startMonitor(AmqpURL string, logger *blog.JSONLogger) {
 		nil)
 	if err != nil {
 		log.Fatalf("Could not subscribe to queue: %s", err)
-		return
 	}
 
 	// Run forever.
@@ -152,14 +146,12 @@ func main() {
 			syslogU, err := url.Parse(c.GlobalString("jsonlog"))
 			if err != nil {
 				log.Fatalf("Could not parse Syslog URL: %s", err)
-				return
 			}
 
 			logger.SetEndpoint(syslogU.Scheme, syslogU.Host)
 			err = logger.Connect()
 			if err != nil {
 				log.Fatalf("Could not open remote syslog: %s", err)
-				return
 			}
 
 			logger.EnableStdOut(c.GlobalBool("stdout"))
@@ -174,6 +166,5 @@ func main() {
 	err := app.Run(os.Args)
 	if err != nil {
 		log.Fatalf("Could not start: %s", err)
-		return
 	}
 }

@@ -165,7 +165,6 @@ func (jl *JSONLogger) Write(severity int, messageStr string, payloadObj interfac
 		_, err = jl.WriteAndRetry(buf.Bytes())
 		if err != nil {
 			log.Fatalf("Failed to send log message, even with retry, exiting: %s\n", buf.String())
-			return
 		}
 	}
 }
