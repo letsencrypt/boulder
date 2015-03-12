@@ -64,8 +64,8 @@ type certificateRequest struct {
 	Key jose.JsonWebKey
 }
 
-func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.RegistrationAuthority) (rpc *AmqpRpcServer, err error) {
-	rpc = NewAmqpRpcServer(serverQueue, channel)
+func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.RegistrationAuthority) (rpc *AmqpRPCServer, err error) {
+	rpc = NewAmqpRPCServer(serverQueue, channel)
 
 	rpc.Handle(MethodNewAuthorization, func(req []byte) (response []byte) {
 		var ar authorizationRequest
@@ -161,11 +161,11 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 }
 
 type RegistrationAuthorityClient struct {
-	rpc *AmqpRpcClient
+	rpc *AmqpRPCCLient
 }
 
 func NewRegistrationAuthorityClient(clientQueue, serverQueue string, channel *amqp.Channel) (rac RegistrationAuthorityClient, err error) {
-	rpc, err := NewAmqpRpcClient(clientQueue, serverQueue, channel)
+	rpc, err := NewAmqpRPCCLient(clientQueue, serverQueue, channel)
 	if err != nil {
 		return
 	}
@@ -236,8 +236,8 @@ func (rac RegistrationAuthorityClient) OnValidationUpdate(authz core.Authorizati
 
 // ValidationAuthorityClient / Server
 //  -> UpdateValidations
-func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.ValidationAuthority) (rpc *AmqpRpcServer, err error) {
-	rpc = NewAmqpRpcServer(serverQueue, channel)
+func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.ValidationAuthority) (rpc *AmqpRPCServer, err error) {
+	rpc = NewAmqpRPCServer(serverQueue, channel)
 
 	rpc.Handle(MethodUpdateValidations, func(req []byte) []byte {
 		// Nobody's listening, so it doesn't matter what we return
@@ -257,11 +257,11 @@ func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, imp
 }
 
 type ValidationAuthorityClient struct {
-	rpc *AmqpRpcClient
+	rpc *AmqpRPCCLient
 }
 
 func NewValidationAuthorityClient(clientQueue, serverQueue string, channel *amqp.Channel) (vac ValidationAuthorityClient, err error) {
-	rpc, err := NewAmqpRpcClient(clientQueue, serverQueue, channel)
+	rpc, err := NewAmqpRPCCLient(clientQueue, serverQueue, channel)
 	if err != nil {
 		return
 	}
@@ -282,8 +282,8 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization)
 
 // CertificateAuthorityClient / Server
 //  -> IssueCertificate
-func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.CertificateAuthority) (rpc *AmqpRpcServer, err error) {
-	rpc = NewAmqpRpcServer(serverQueue, channel)
+func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.CertificateAuthority) (rpc *AmqpRPCServer, err error) {
+	rpc = NewAmqpRPCServer(serverQueue, channel)
 
 	rpc.Handle(MethodIssueCertificate, func(req []byte) []byte {
 		zero := []byte{}
@@ -310,11 +310,11 @@ func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, im
 }
 
 type CertificateAuthorityClient struct {
-	rpc *AmqpRpcClient
+	rpc *AmqpRPCCLient
 }
 
 func NewCertificateAuthorityClient(clientQueue, serverQueue string, channel *amqp.Channel) (cac CertificateAuthorityClient, err error) {
-	rpc, err := NewAmqpRpcClient(clientQueue, serverQueue, channel)
+	rpc, err := NewAmqpRPCCLient(clientQueue, serverQueue, channel)
 	if err != nil {
 		return
 	}
@@ -334,8 +334,8 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	return
 }
 
-func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.StorageAuthority) (rpc *AmqpRpcServer) {
-	rpc = NewAmqpRpcServer(serverQueue, channel)
+func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.StorageAuthority) (rpc *AmqpRPCServer) {
+	rpc = NewAmqpRPCServer(serverQueue, channel)
 
 	rpc.Handle(MethodGetCertificate, func(req []byte) (response []byte) {
 		cert, err := impl.GetCertificate(string(req))
@@ -411,11 +411,11 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 }
 
 type StorageAuthorityClient struct {
-	rpc *AmqpRpcClient
+	rpc *AmqpRPCCLient
 }
 
 func NewStorageAuthorityClient(clientQueue, serverQueue string, channel *amqp.Channel) (sac StorageAuthorityClient, err error) {
-	rpc, err := NewAmqpRpcClient(clientQueue, serverQueue, channel)
+	rpc, err := NewAmqpRPCCLient(clientQueue, serverQueue, channel)
 	if err != nil {
 		return
 	}
