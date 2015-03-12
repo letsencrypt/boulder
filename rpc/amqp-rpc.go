@@ -144,20 +144,21 @@ func (rpc *AmqpRPCServer) Start() (err error) {
 			// XXX-JWS: jws.Verify(body)
 			cb, present := rpc.dispatchTable[msg.Type]
 			log.Printf(" [s<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), msg.CorrelationId)
-			if present {
-				response := cb(msg.Body)
-				log.Printf(" [s>] sending %s(%s) [%s]", msg.Type, core.B64enc(response), msg.CorrelationId)
-				rpc.channel.Publish(
-					AmqpExchange,
-					msg.ReplyTo,
-					AmqpMandatory,
-					AmqpImmediate,
-					amqp.Publishing{
-						CorrelationId: msg.CorrelationId,
-						Type:          msg.Type,
-						Body:          response, // XXX-JWS: jws.Sign(privKey, body)
-					})
+			if !present {
+				continue
 			}
+			response := cb(msg.Body)
+			log.Printf(" [s>] sending %s(%s) [%s]", msg.Type, core.B64enc(response), msg.CorrelationId)
+			rpc.channel.Publish(
+				AmqpExchange,
+				msg.ReplyTo,
+				AmqpMandatory,
+				AmqpImmediate,
+				amqp.Publishing{
+					CorrelationId: msg.CorrelationId,
+					Type:          msg.Type,
+					Body:          response, // XXX-JWS: jws.Sign(privKey, body)
+				})
 		}
 	}()
 	return
@@ -211,10 +212,11 @@ func NewAmqpRPCCLient(clientQueue, serverQueue string, channel *amqp.Channel) (r
 			responseChan, present := rpc.pending[corrID]
 
 			log.Printf(" [c<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), corrID)
-			if present {
-				responseChan <- msg.Body
-				delete(rpc.pending, corrID)
+			if !present {
+				continue
 			}
+			responseChan <- msg.Body
+			delete(rpc.pending, corrID)
 		}
 	}()
 
