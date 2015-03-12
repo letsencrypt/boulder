@@ -158,11 +158,10 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 		r, s := big.NewInt(0), big.NewInt(0)
 		r.SetBytes(csr.Signature[:intlen])
 		s.SetBytes(csr.Signature[intlen:])
-		if ecdsa.Verify(ecKey, inputHash, r, s) {
-			return nil
-		} else {
+		if !ecdsa.Verify(ecKey, inputHash, r, s) {
 			return errors.New("Invalid ECDSA signature on CSR")
 		}
+		return nil
 	}
 
 	return errors.New("Unsupported CSR signing algorithm")
