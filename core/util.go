@@ -97,8 +97,7 @@ func (u AcmeURL) MarshalJSON() ([]byte, error) {
 
 func (u *AcmeURL) UnmarshalJSON(data []byte) error {
 	var str string
-	err := json.Unmarshal(data, &str)
-	if err != nil {
+	if err := json.Unmarshal(data, &str); err != nil {
 		return err
 	}
 

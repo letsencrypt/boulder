@@ -163,8 +163,7 @@ func main() {
 		startMonitor(c.GlobalString("amqp"), logger)
 	}
 
-	err := app.Run(os.Args)
-	if err != nil {
+	if err := app.Run(os.Args); err != nil {
 		log.Fatalf("Could not start: %s", err)
 	}
 }

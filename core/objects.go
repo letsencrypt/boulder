@@ -67,8 +67,7 @@ type rawCertificateRequest struct {
 
 func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 	var raw rawCertificateRequest
-	err := json.Unmarshal(data, &raw)
-	if err != nil {
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 

@@ -69,8 +69,7 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 
 	rpc.Handle(MethodNewAuthorization, func(req []byte) []byte {
 		var ar authorizationRequest
-		err := json.Unmarshal(req, &ar)
-		if err != nil {
+		if err := json.Unmarshal(req, &ar); err != nil {
 			return nil
 		}
 
@@ -89,8 +88,7 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 	rpc.Handle(MethodNewCertificate, func(req []byte) []byte {
 		log.Printf(" [.] Entering MethodNewCertificate")
 		var cr certificateRequest
-		err := json.Unmarshal(req, &cr)
-		if err != nil {
+		if err := json.Unmarshal(req, &cr); err != nil {
 			log.Printf(" [!] Error unmarshaling certificate request: %s", err.Error())
 			log.Printf("     JSON data: %s", string(req))
 			return nil
@@ -113,8 +111,7 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 
 	rpc.Handle(MethodUpdateAuthorization, func(req []byte) []byte {
 		var authz core.Authorization
-		err := json.Unmarshal(req, &authz)
-		if err != nil {
+		if err := json.Unmarshal(req, &authz); err != nil {
 			return nil
 		}
 
@@ -142,8 +139,7 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 
 	rpc.Handle(MethodOnValidationUpdate, func(req []byte) []byte {
 		var authz core.Authorization
-		err := json.Unmarshal(req, &authz)
-		if err != nil {
+		if err := json.Unmarshal(req, &authz); err != nil {
 			return nil
 		}
 
@@ -235,8 +231,7 @@ func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, imp
 
 	rpc.Handle(MethodUpdateValidations, func(req []byte) []byte {
 		var authz core.Authorization
-		err := json.Unmarshal(req, &authz)
-		if err != nil {
+		if err := json.Unmarshal(req, &authz); err != nil {
 			return nil
 		}
 

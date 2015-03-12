@@ -44,8 +44,7 @@ func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
 
 	// Parse as JWS
 	var jws jose.JsonWebSignature
-	err = json.Unmarshal(body, &jws)
-	if err != nil {
+	if err = json.Unmarshal(body, &jws); err != nil {
 		return nil, zeroKey, err
 	}
 
@@ -55,8 +54,7 @@ func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
 	// RA.  However the WFE is the RA's only view of the outside world
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
-	err = jws.Verify()
-	if err != nil {
+	if err = jws.Verify(); err != nil {
 		return nil, zeroKey, err
 	}
 
@@ -109,8 +107,7 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 	}
 
 	var init core.Authorization
-	err = json.Unmarshal(body, &init)
-	if err != nil {
+	if err = json.Unmarshal(body, &init); err != nil {
 		sendError(response, "Error unmarshaling JSON", http.StatusBadRequest)
 		return
 	}
@@ -151,8 +148,7 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 	}
 
 	var init core.CertificateRequest
-	err = json.Unmarshal(body, &init)
-	if err != nil {
+	if err = json.Unmarshal(body, &init); err != nil {
 		sendError(response, "Error unmarshaling certificate request", http.StatusBadRequest)
 		return
 	}
@@ -199,8 +195,7 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 		}
 
 		var initialAuthz core.Authorization
-		err = json.Unmarshal(body, &initialAuthz)
-		if err != nil {
+		if err = json.Unmarshal(body, &initialAuthz); err != nil {
 			sendError(response, "Error unmarshaling authorization", http.StatusBadRequest)
 			return
 		}
