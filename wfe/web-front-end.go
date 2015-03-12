@@ -34,20 +34,19 @@ func NewWebFrontEndImpl() WebFrontEndImpl {
 // Method implementations
 
 func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
-	zero := []byte{}
 	zeroKey := jose.JsonWebKey{}
 
 	// Read body
 	body, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		return zero, zeroKey, err
+		return nil, zeroKey, err
 	}
 
 	// Parse as JWS
 	var jws jose.JsonWebSignature
 	err = json.Unmarshal(body, &jws)
 	if err != nil {
-		return zero, zeroKey, err
+		return nil, zeroKey, err
 	}
 
 	// Verify JWS
@@ -58,7 +57,7 @@ func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
 	// the signature itself.
 	err = jws.Verify()
 	if err != nil {
-		return zero, zeroKey, err
+		return nil, zeroKey, err
 	}
 
 	// TODO Return JWS body
