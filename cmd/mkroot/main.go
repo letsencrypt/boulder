@@ -39,29 +39,13 @@ func main() {
 	// All flags are required
 	flag.Parse()
 	missing := false
-	switch {
-	case len(*configFile) == 0:
-		missing = true
-		log.Critical("Missing config parameter")
-		fallthrough
-	case len(*module) == 0:
-		missing = true
-		log.Critical("Missing module parameter")
-		fallthrough
-	case len(*pin) == 0:
-		missing = true
-		log.Critical("Missing pin parameter")
-		fallthrough
-	case len(*token) == 0:
-		missing = true
-		log.Critical("Missing token parameter")
-		fallthrough
-	case len(*label) == 0:
-		missing = true
-		log.Critical("Missing label parameter")
-	}
+	flag.VisitAll(func(f *flag.Flag) {
+		if len(f.Value.String()) == 0 {
+			missing = true
+		}
+	})
 	if missing {
-		log.Critical("All flags must be provided, bitch.")
+		log.Critical("All flags must be provided.")
 		flag.Usage()
 		return
 	}
@@ -109,7 +93,7 @@ func main() {
 	// Generate subject key ID
 	pubDER, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
-		log.Criticalf("Error generating serial number: %v", err)
+		log.Criticalf("Error serializing public key: %v", err)
 		return
 	}
 	h := sha1.New()

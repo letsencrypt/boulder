@@ -16,7 +16,7 @@ import (
 )
 
 var certFile = flag.String("ca", "", "JSON file for subject and validity")
-var listFile = flag.String("revoked", "", "JSON list of revoked cert serials")
+var listFile = flag.String("revoked", "", "JSON file with a list of pkix.RevokedCertificate objects")
 var module = flag.String("pkcs11-module", "", "PKCS#11 module")
 var pin = flag.String("pkcs11-pin", "", "PKCS#11 password")
 var token = flag.String("pkcs11-token", "", "PKCS#11 token name")
@@ -33,33 +33,13 @@ func main() {
 	// All flags are required
 	flag.Parse()
 	missing := false
-	switch {
-	case len(*certFile) == 0:
-		missing = true
-		log.Critical("Missing cert file parameter")
-		fallthrough
-	case len(*listFile) == 0:
-		missing = true
-		log.Critical("Missing revoked list parameter")
-		fallthrough
-	case len(*module) == 0:
-		missing = true
-		log.Critical("Missing module parameter")
-		fallthrough
-	case len(*pin) == 0:
-		missing = true
-		log.Critical("Missing pin parameter")
-		fallthrough
-	case len(*token) == 0:
-		missing = true
-		log.Critical("Missing token parameter")
-		fallthrough
-	case len(*label) == 0:
-		missing = true
-		log.Critical("Missing label parameter")
-	}
+	flag.VisitAll(func(f *flag.Flag) {
+		if len(f.Value.String()) == 0 {
+			missing = true
+		}
+	})
 	if missing {
-		log.Critical("All flags must be provided, bitch.")
+		log.Critical("All flags must be provided.")
 		flag.Usage()
 		return
 	}
