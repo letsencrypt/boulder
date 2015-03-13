@@ -14,12 +14,12 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/bifurcation/gose"
 	"github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/jose"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )

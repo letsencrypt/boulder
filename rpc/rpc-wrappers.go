@@ -11,10 +11,10 @@ import (
 	"errors"
 	"log"
 
-	"github.com/bifurcation/gose"
 	"github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/jose"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
