@@ -7,8 +7,9 @@ package core
 
 import (
 	"crypto/x509"
-	"github.com/bifurcation/gose"
 	"net/http"
+
+	"github.com/bifurcation/gose"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into

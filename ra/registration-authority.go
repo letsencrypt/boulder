@@ -29,8 +29,8 @@ func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
 	return RegistrationAuthorityImpl{}
 }
 
-var dnsLabelRegexp, _ = regexp.Compile("^[a-zA-Z0-9-]*$")
-var ipAddressRegexp, _ = regexp.Compile("^[0-9.]*$")
+var dnsLabelRegexp = regexp.MustCompile("^[a-zA-Z0-9-]*$")
+var ipAddressRegexp = regexp.MustCompile("^[0-9.]*$")
 
 func forbiddenIdentifier(id string) bool {
 	// A DNS label is a part separated by dots, e.g. www.foo.net has labels
@@ -100,7 +100,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Create validations
-	simpleHttps := core.SimpleHTTPSChallenge()
+	simpleHTTPS := core.SimpleHTTPSChallenge()
 	dvsni := core.DvsniChallenge()
 	authID, err := ra.SA.NewPendingAuthorization()
 
@@ -111,7 +111,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		Key:        key,
 		Status:     core.StatusPending,
 		Challenges: map[string]core.Challenge{
-			core.ChallengeTypeSimpleHTTPS: simpleHttps,
+			core.ChallengeTypeSimpleHTTPS: simpleHTTPS,
 			core.ChallengeTypeDVSNI:       dvsni,
 		},
 	}
@@ -125,8 +125,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	// Verify the CSR
 	// TODO: Verify that other aspects of the CSR are appropriate
 	csr := req.CSR
-	err = core.VerifyCSR(csr)
-	if err != nil {
+	if err = core.VerifyCSR(csr); err != nil {
 		err = core.UnauthorizedError("Invalid signature on CSR")
 		return
 	}
@@ -191,11 +190,15 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta core.Authorizatio
 	}
 
 	// Store the updated version
-	ra.SA.UpdatePendingAuthorization(authz)
+	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
+		return
+	}
 
 	// If any challenges were updated, dispatch to the VA for service
 	if newResponse {
-		ra.VA.UpdateValidations(authz)
+		if err = ra.VA.UpdateValidations(authz); err != nil {
+			return
+		}
 	}
 
 	return authz, nil
@@ -225,6 +228,6 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 		authz.Expires = time.Now().Add(365 * 24 * time.Hour)
 	}
 
-	// Finalize the authorization
-	ra.SA.FinalizeAuthorization(authz)
+	// Finalize the authorization (error ignored)
+	_ = ra.SA.FinalizeAuthorization(authz)
 }

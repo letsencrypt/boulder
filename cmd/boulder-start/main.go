@@ -42,7 +42,7 @@ func amqpChannel(url string) (ch *amqp.Channel) {
 }
 
 // Start the server and wait around
-func runForever(server *rpc.AmqpRpcServer) {
+func runForever(server *rpc.AmqpRPCServer) {
 	forever := make(chan bool)
 	server.Start()
 	fmt.Fprintf(os.Stderr, "Server running...\n")
@@ -245,7 +245,8 @@ func main() {
 				http.HandleFunc("/acme/cert/", wfe.Cert)
 
 				fmt.Fprintf(os.Stderr, "Server running...\n")
-				http.ListenAndServe(authority, nil)
+				err = http.ListenAndServe(authority, nil)
+				failOnError(err, "Error starting HTTP server")
 			},
 		},
 		{

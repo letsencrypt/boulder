@@ -19,7 +19,7 @@ func SimpleHTTPSChallenge() Challenge {
 
 func DvsniChallenge() Challenge {
 	nonce := make([]byte, 16)
-	rand.Read(nonce)
+	_, _ = rand.Read(nonce) // NOTE: Ignoring errors
 	return Challenge{
 		Status: StatusPending,
 		R:      RandomString(32),

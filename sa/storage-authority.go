@@ -21,7 +21,7 @@ type SQLStorageAuthority struct {
 
 func digest256(data []byte) []byte {
 	d := sha256.New()
-	d.Write(data)
+	_, _ = d.Write(data) // Never returns an error
 	return d.Sum(nil)
 }
 

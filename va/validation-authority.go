@@ -99,7 +99,7 @@ func (va ValidationAuthorityImpl) validateDvsni(authz core.Authorization) (chall
 	RS := append(R, S...)
 
 	sha := sha256.New()
-	sha.Write(RS)
+	_, _ = sha.Write(RS) // Never returns an error
 	z := make([]byte, sha.Size())
 	sha.Sum(z)
 	zName := hex.EncodeToString(z)
@@ -141,7 +141,7 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
 	// XXX: Remove the "break" lines to process all supported validations
 	for i := range authz.Challenges {
 		switch i {
-		case "simpleHttps":
+		case "simpleHTTPS":
 			authz.Challenges[i] = va.validateSimpleHTTPS(authz)
 			break
 		case "dvsni":
