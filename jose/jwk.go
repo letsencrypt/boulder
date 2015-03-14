@@ -29,9 +29,9 @@ type JsonWebKey struct {
 func (jwk *JsonWebKey) ComputeThumbprint() {
 	jwk.Thumbprint = string(jwk.KeyType)
 	if jwk.Rsa != nil {
-		jwk.Thumbprint += b64enc(jwk.Rsa.N.Bytes())
+		jwk.Thumbprint += B64enc(jwk.Rsa.N.Bytes())
 	} else if jwk.Ec != nil {
-		jwk.Thumbprint += b64enc(jwk.Ec.X.Bytes()) + b64enc(jwk.Ec.Y.Bytes())
+		jwk.Thumbprint += B64enc(jwk.Ec.X.Bytes()) + B64enc(jwk.Ec.Y.Bytes())
 	}
 }
 

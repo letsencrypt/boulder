@@ -25,11 +25,11 @@ func unpad(x string) string {
 	return strings.Replace(x, "=", "", -1)
 }
 
-func b64enc(x []byte) string {
+func B64enc(x []byte) string {
 	return unpad(base64.URLEncoding.EncodeToString(x))
 }
 
-func b64dec(x string) ([]byte, error) {
+func B64dec(x string) ([]byte, error) {
 	return base64.URLEncoding.DecodeString(pad(x))
 }
 
@@ -37,7 +37,7 @@ func b64dec(x string) ([]byte, error) {
 type JsonBuffer json.RawMessage
 
 func (jb JsonBuffer) MarshalJSON() ([]byte, error) {
-	str := b64enc(jb)
+	str := B64enc(jb)
 	return json.Marshal(str)
 }
 
@@ -48,7 +48,7 @@ func (jb *JsonBuffer) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	*jb, err = b64dec(str)
+	*jb, err = B64dec(str)
 	return err
 }
 
@@ -65,7 +65,7 @@ func (jb JsonBuffer) ToInt() int {
 // Utils
 
 func bigint2base64(x *big.Int) string {
-	return b64enc(x.Bytes())
+	return B64enc(x.Bytes())
 }
 
 func int2base64(x int) string {
@@ -74,7 +74,7 @@ func int2base64(x int) string {
 }
 
 func base642bigint(x string) (*big.Int, error) {
-	data, err := b64dec(x)
+	data, err := B64dec(x)
 	if err != nil {
 		return nil, err
 	}
