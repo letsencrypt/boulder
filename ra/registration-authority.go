@@ -12,9 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bifurcation/gose"
-
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/jose"
 )
 
 // All of the fields in RegistrationAuthorityImpl need to be

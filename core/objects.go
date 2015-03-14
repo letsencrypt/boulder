@@ -8,7 +8,7 @@ package core
 import (
 	"crypto/x509"
 	"encoding/json"
-	"github.com/bifurcation/gose"
+	"github.com/letsencrypt/boulder/jose"
 	"time"
 )
 

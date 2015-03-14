@@ -12,9 +12,8 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/bifurcation/gose"
-
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/jose"
 )
 
 type WebFrontEndImpl struct {

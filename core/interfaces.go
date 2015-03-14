@@ -7,7 +7,7 @@ package core
 
 import (
 	"crypto/x509"
-	"github.com/bifurcation/gose"
+	"github.com/letsencrypt/boulder/jose"
 	"net/http"
 )
 
