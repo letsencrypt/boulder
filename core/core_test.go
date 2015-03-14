@@ -154,7 +154,7 @@ func TestErrors(t *testing.T) {
 
 	for i, err := range errors {
 		if msg := err.Error(); msg != testMessage {
-			t.Errorf("Error %i returned unexpected message %v", i, msg)
+			t.Errorf("Error %d returned unexpected message %v", i, msg)
 		}
 	}
 }
