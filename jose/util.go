@@ -11,6 +11,12 @@ import (
 
 // Base64 functions
 
+// NOTE: These are replicated in boulder/core.  However, that module
+// also needs to refer to JWKs, so removing the duplication would
+// cause a dependency loop.  We are hoping to eliminate this code
+// soon, in favor of th Square JOSE library, so we are tolerating
+// the duplication for now.
+
 func pad(x string) string {
 	switch len(x) % 4 {
 	case 2:
