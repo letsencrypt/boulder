@@ -257,10 +257,9 @@ func TestRsaJwsSign(t *testing.T) {
 	p := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc")
 	q := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc")
 	priv := rsa.PrivateKey{
-		rsa.PublicKey{N: n, E: e},
-		d,
-		[]*big.Int{p, q},
-		rsa.PrecomputedValues{},
+		PublicKey: rsa.PublicKey{N: n, E: e},
+		D:         d,
+		Primes:    []*big.Int{p, q},
 	}
 
 	payload, _ := b64dec("It\xe2\x80\x99s a dangerous business, Frodo, going out your door. You step onto the road, and if you don't keep your feet, there\xe2\x80\x99s no knowing where you might be swept off to.")
@@ -286,10 +285,9 @@ func TestRsaPssJwsSign(t *testing.T) {
 	p := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc")
 	q := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc")
 	priv := rsa.PrivateKey{
-		rsa.PublicKey{N: n, E: e},
-		d,
-		[]*big.Int{p, q},
-		rsa.PrecomputedValues{},
+		PublicKey: rsa.PublicKey{N: n, E: e},
+		D:         d,
+		Primes:    []*big.Int{p, q},
 	}
 
 	payload, _ := b64dec("It\xe2\x80\x99s a dangerous business, Frodo, going out your door. You step onto the road, and if you don't keep your feet, there\xe2\x80\x99s no knowing where you might be swept off to.")
@@ -313,7 +311,10 @@ func TestEcJwsSign(t *testing.T) {
 	y := bigIntFromB64("AdymlHvOiLxXkEhayXQnNCvDX4h9htZaCJN34kfmC6pV5OhQHiraVySsUdaQkAgDPrwQrJmbnX9cwlGfP-HqHZR1")
 	d := bigIntFromB64("AAhRON2r9cqXX1hg-RoI6R1tX5p2rUAYdmpHZoC1XNM56KtscrX6zbKipQrCW9CGZH3T4ubpnoTKLDYJ_fF3_rJt")
 
-	priv := ecdsa.PrivateKey{ecdsa.PublicKey{elliptic.P521(), x, y}, d}
+	priv := ecdsa.PrivateKey{
+		PublicKey: ecdsa.PublicKey{Curve: elliptic.P521(), X: x, Y: y},
+		D:         d,
+	}
 
 	payload, _ := b64dec("It\xe2\x80\x99s a dangerous business, Frodo, going out your door. You step onto the road, and if you don't keep your feet, there\xe2\x80\x99s no knowing where you might be swept off to.")
 
