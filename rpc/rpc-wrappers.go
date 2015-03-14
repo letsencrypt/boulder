@@ -112,13 +112,17 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 	})
 
 	rpc.Handle(MethodUpdateAuthorization, func(req []byte) (response []byte) {
-		var authz core.Authorization
+		var authz struct {
+			Authz    core.Authorization
+			Index    int
+			Response core.Challenge
+		}
 		err := json.Unmarshal(req, &authz)
 		if err != nil {
 			return
 		}
 
-		newAuthz, err := impl.UpdateAuthorization(authz)
+		newAuthz, err := impl.UpdateAuthorization(authz.Authz, authz.Index, authz.Response)
 		if err != nil {
 			return
 		}
@@ -204,8 +208,17 @@ func (rac RegistrationAuthorityClient) NewCertificate(cr core.CertificateRequest
 	return
 }
 
-func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorization) (newAuthz core.Authorization, err error) {
-	data, err := json.Marshal(authz)
+func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorization, index int, response core.Challenge) (newAuthz core.Authorization, err error) {
+	var toSend struct {
+		Authz    core.Authorization
+		Index    int
+		Response core.Challenge
+	}
+	toSend.Authz = authz
+	toSend.Index = index
+	toSend.Response = response
+
+	data, err := json.Marshal(toSend)
 	if err != nil {
 		return
 	}

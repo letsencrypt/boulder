@@ -89,6 +89,14 @@ func Fingerprint256(data []byte) string {
 // URLs that automatically marshal/unmarshal to JSON strings
 type AcmeURL url.URL
 
+func (u AcmeURL) PathSegments() (segments []string) {
+	segments = strings.Split(u.Path, "/")
+	if len(segments) > 0 && len(segments[0]) == 0 {
+		segments = segments[1:]
+	}
+	return
+}
+
 func (u AcmeURL) MarshalJSON() ([]byte, error) {
 	uu := url.URL(u)
 	return json.Marshal(uu.String())

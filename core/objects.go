@@ -92,12 +92,18 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
 type Challenge struct {
+	// The type of challenge
+	Type string `json:"type"`
+
 	// The status of this challenge
 	Status AcmeStatus `json:"status,omitempty"`
 
 	// If successful, the time at which this challenge
 	// was completed by the server.
 	Completed time.Time `json:"completed,omitempty"`
+
+	// A URI to which a response can be POSTed
+	URI AcmeURL `json:"uri"`
 
 	// Used by simpleHttps, recoveryToken, and dns challenges
 	Token string `json:"token,omitempty"`
@@ -153,11 +159,11 @@ type Authorization struct {
 	// in process, these are challenges to be fulfilled; for
 	// final authorizations, they describe the evidence that
 	// the server used in support of granting the authorization.
-	Challenges map[string]Challenge `json:"challenges,omitempty"`
+	Challenges []Challenge `json:"challenges,omitempty"`
 
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
-	Combinations [][]string `json:"combinations,omitempty"`
+	Combinations [][]int `json:"combinations,omitempty"`
 
 	// The client may provide contact URIs to allow the server
 	// to push information to it.

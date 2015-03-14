@@ -99,6 +99,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Create validations
+	// TODO: Assign URLs
 	simpleHttps := core.SimpleHTTPSChallenge()
 	dvsni := core.DvsniChallenge()
 	authID, err := ra.SA.NewPendingAuthorization()
@@ -109,9 +110,9 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		Identifier: identifier,
 		Key:        key,
 		Status:     core.StatusPending,
-		Challenges: map[string]core.Challenge{
-			core.ChallengeTypeSimpleHTTPS: simpleHttps,
-			core.ChallengeTypeDVSNI:       dvsni,
+		Challenges: []core.Challenge{
+			simpleHttps,
+			dvsni,
 		},
 	}
 
@@ -167,37 +168,22 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta core.Authorization) (authz core.Authorization, err error) {
-	// Fetch the copy of this authorization we have on file
-	authz, err = ra.SA.GetAuthorization(delta.ID)
-	if err != nil {
+func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization, challengeIndex int, response core.Challenge) (authz core.Authorization, err error) {
+	// Copy information over that the client is allowed to supply
+	authz = base
+	if challengeIndex >= len(authz.Challenges) {
+		err = core.MalformedRequestError("Invalid challenge index")
 		return
 	}
-
-	// Copy information over that the client is allowed to supply
-	if len(delta.Contact) > 0 {
-		authz.Contact = delta.Contact
-	}
-	newResponse := false
-	for t, challenge := range authz.Challenges {
-		response, present := delta.Challenges[t]
-		if !present {
-			continue
-		}
-
-		newResponse = true
-		authz.Challenges[t] = challenge.MergeResponse(response)
-	}
+	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
 
 	// Store the updated version
 	ra.SA.UpdatePendingAuthorization(authz)
 
-	// If any challenges were updated, dispatch to the VA for service
-	if newResponse {
-		ra.VA.UpdateValidations(authz)
-	}
+	// Dispatch to the VA for service
+	ra.VA.UpdateValidations(authz)
 
-	return authz, nil
+	return
 }
 
 func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) error {

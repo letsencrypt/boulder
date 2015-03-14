@@ -50,7 +50,7 @@ type RegistrationAuthority interface {
 	NewCertificate(CertificateRequest, jose.JsonWebKey) (Certificate, error)
 
 	// [WebFrontEnd]
-	UpdateAuthorization(Authorization) (Authorization, error)
+	UpdateAuthorization(Authorization, int, Challenge) (Authorization, error)
 
 	// [WebFrontEnd]
 	RevokeCertificate(x509.Certificate) error

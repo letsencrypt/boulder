@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"regexp"
 
 	"github.com/letsencrypt/boulder/core"
@@ -175,13 +176,22 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 	response.Write(cert.DER)
 }
 
-func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Request) {
-	// Requests to this handler should have a path that leads to a known authz
-	id := parseIDFromPath(request.URL.Path)
-	authz, err := wfe.SA.GetAuthorization(id)
-	if err != nil {
+func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
+	// Check that the requested challenge exists within the authorization
+	found := false
+	var challengeIndex int
+	for i, challenge := range authz.Challenges {
+		tempURL := url.URL(challenge.URI)
+		if tempURL.String() == request.URL.String() {
+			found = true
+			challengeIndex = i
+			break
+		}
+	}
+
+	if !found {
 		sendError(response,
-			fmt.Sprintf("Unable to find authorization: %+v", err),
+			fmt.Sprintf("Unable to find challenge"),
 			http.StatusNotFound)
 		return
 	}
@@ -198,8 +208,8 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 			return
 		}
 
-		var initialAuthz core.Authorization
-		err = json.Unmarshal(body, &initialAuthz)
+		var challengeResponse core.Challenge
+		err = json.Unmarshal(body, &challengeResponse)
 		if err != nil {
 			sendError(response, "Error unmarshaling authorization", http.StatusBadRequest)
 			return
@@ -214,8 +224,7 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 		}
 
 		// Ask the RA to update this authorization
-		initialAuthz.ID = authz.ID
-		updatedAuthz, err := wfe.RA.UpdateAuthorization(initialAuthz)
+		updatedAuthz, err := wfe.RA.UpdateAuthorization(authz, challengeIndex, challengeResponse)
 		if err != nil {
 			sendError(response, "Unable to update authorization", http.StatusInternalServerError)
 			return
@@ -228,6 +237,31 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 		}
 		response.WriteHeader(http.StatusAccepted)
 		response.Write(jsonReply)
+
+	}
+}
+
+func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Request) {
+	// Requests to this handler should have a path that leads to a known authz
+	id := parseIDFromPath(request.URL.Path)
+	authz, err := wfe.SA.GetAuthorization(id)
+	if err != nil {
+		sendError(response,
+			fmt.Sprintf("Unable to find authorization: %+v", err),
+			http.StatusNotFound)
+		return
+	}
+
+	// If there is a fragment, then this is actually a request to a challenge URI
+	if len(request.URL.Fragment) != 0 {
+		wfe.Challenge(authz, response, request)
+		return
+	}
+
+	switch request.Method {
+	default:
+		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
+		return
 
 	case "GET":
 		jsonReply, err := json.Marshal(authz)
