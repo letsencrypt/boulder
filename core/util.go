@@ -14,10 +14,10 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"hash"
 	"math/big"
 	"net/url"
@@ -90,7 +90,6 @@ func Fingerprint256(data []byte) string {
 type AcmeURL url.URL
 
 func (u AcmeURL) MarshalJSON() ([]byte, error) {
-	fmt.Println(">>> AcmURL::MarshalJSON")
 	uu := url.URL(u)
 	return json.Marshal(uu.String())
 }
@@ -114,6 +113,8 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 	var hash hash.Hash
 	switch csr.SignatureAlgorithm {
 	case x509.SHA1WithRSA:
+		fallthrough
+	case x509.ECDSAWithSHA1:
 		hashID = crypto.SHA1
 		hash = sha1.New()
 	case x509.SHA256WithRSA:
@@ -148,17 +149,22 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 	case x509.SHA512WithRSA:
 		rsaKey := csr.PublicKey.(*rsa.PublicKey)
 		return rsa.VerifyPKCS1v15(rsaKey, hashID, inputHash, csr.Signature)
+	case x509.ECDSAWithSHA1:
+		fallthrough
 	case x509.ECDSAWithSHA256:
 		fallthrough
 	case x509.ECDSAWithSHA384:
 		fallthrough
 	case x509.ECDSAWithSHA512:
 		ecKey := csr.PublicKey.(*ecdsa.PublicKey)
-		intlen := len(csr.Signature) / 2
-		r, s := big.NewInt(0), big.NewInt(0)
-		r.SetBytes(csr.Signature[:intlen])
-		s.SetBytes(csr.Signature[intlen:])
-		if ecdsa.Verify(ecKey, inputHash, r, s) {
+
+		var sig struct{ R, S *big.Int }
+		_, err := asn1.Unmarshal(csr.Signature, &sig)
+		if err != nil {
+			return err
+		}
+
+		if ecdsa.Verify(ecKey, inputHash, sig.R, sig.S) {
 			return nil
 		} else {
 			return errors.New("Invalid ECDSA signature on CSR")
