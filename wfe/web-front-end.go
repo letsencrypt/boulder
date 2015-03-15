@@ -23,7 +23,11 @@ type WebFrontEndImpl struct {
 
 	// URL configuration parameters
 	baseURL   string
+	newReg    string
+	regBase   string
+	newAuthz  string
 	authzBase string
+	newCert   string
 	certBase  string
 }
 
@@ -89,12 +93,60 @@ func sendError(response http.ResponseWriter, message string, code int) {
 	http.Error(response, string(problemDoc), code)
 }
 
+func link(url, relation string) string {
+	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
+}
+
+func (wfe *WebFrontEndImpl) SetRegBase(base string) {
+	wfe.regBase = base
+}
+
 func (wfe *WebFrontEndImpl) SetAuthzBase(base string) {
 	wfe.authzBase = base
 }
 
 func (wfe *WebFrontEndImpl) SetCertBase(base string) {
 	wfe.certBase = base
+}
+
+func (wfe *WebFrontEndImpl) NewReg(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "POST" {
+		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, key, err := verifyPOST(request)
+	if err != nil {
+		sendError(response, fmt.Sprintf("Unable to read/verify body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	var init core.Registration
+	err = json.Unmarshal(body, &init)
+	if err != nil {
+		sendError(response, "Error unmarshaling JSON", http.StatusBadRequest)
+		return
+	}
+
+	reg, err := wfe.RA.NewRegistration(init, key)
+	if err != nil {
+		sendError(response,
+			fmt.Sprintf("Error creating new registration: %+v", err),
+			http.StatusInternalServerError)
+	}
+
+	regURL := wfe.regBase + string(reg.ID)
+	reg.ID = ""
+	responseBody, err := json.Marshal(reg)
+	if err != nil {
+		sendError(response, "Error marshaling authz", http.StatusInternalServerError)
+		return
+	}
+
+	response.Header().Add("Location", regURL)
+	response.Header().Add("Link", link(wfe.newAuthz, "next"))
+	response.WriteHeader(http.StatusCreated)
+	response.Write(responseBody)
 }
 
 func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http.Request) {
@@ -105,7 +157,7 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 
 	body, key, err := verifyPOST(request)
 	if err != nil {
-		sendError(response, "Unable to read body", http.StatusBadRequest)
+		sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 		return
 	}
 
@@ -116,7 +168,7 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 		return
 	}
 
-	// TODO: Create new authz and return
+	// Create new authz and return
 	authz, err := wfe.RA.NewAuthorization(init, key)
 	if err != nil {
 		sendError(response,
@@ -147,7 +199,7 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 
 	body, key, err := verifyPOST(request)
 	if err != nil {
-		sendError(response, "Unable to read body", http.StatusBadRequest)
+		sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 		return
 	}
 
@@ -204,7 +256,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 	case "POST":
 		body, key, err := verifyPOST(request)
 		if err != nil {
-			sendError(response, "Unable to read body", http.StatusBadRequest)
+			sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 			return
 		}
 

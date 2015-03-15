@@ -29,11 +29,17 @@ type WebFrontEnd interface {
 	// Set the base URL for certificates
 	SetCertBase(path string)
 
+	// This method represents the ACME new-registration resource
+	NewRegistration(response http.ResponseWriter, request *http.Request)
+
 	// This method represents the ACME new-authorization resource
 	NewAuthz(response http.ResponseWriter, request *http.Request)
 
 	// This method represents the ACME new-certificate resource
 	NewCert(response http.ResponseWriter, request *http.Request)
+
+	// Provide access to requests for registration resources
+	Registration(response http.ResponseWriter, request *http.Request)
 
 	// Provide access to requests for authorization resources
 	Authz(response http.ResponseWriter, request *http.Request)
@@ -44,10 +50,16 @@ type WebFrontEnd interface {
 
 type RegistrationAuthority interface {
 	// [WebFrontEnd]
+	NewRegistration(Registration, jose.JsonWebKey) (Registration, error)
+
+	// [WebFrontEnd]
 	NewAuthorization(Authorization, jose.JsonWebKey) (Authorization, error)
 
 	// [WebFrontEnd]
 	NewCertificate(CertificateRequest, jose.JsonWebKey) (Certificate, error)
+
+	// [WebFrontEnd]
+	UpdateRegistration(Registration, Registration) (Registration, error)
 
 	// [WebFrontEnd]
 	UpdateAuthorization(Authorization, int, Challenge) (Authorization, error)
@@ -70,15 +82,20 @@ type CertificateAuthority interface {
 }
 
 type StorageGetter interface {
-	GetCertificate(string) ([]byte, error)
+	GetRegistration(string) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
+	GetCertificate(string) ([]byte, error)
 }
 
 type StorageAdder interface {
-	AddCertificate([]byte) (string, error)
+	NewRegistration() (string, error)
+	UpdateRegistration(Registration) error
+
 	NewPendingAuthorization() (string, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
+
+	AddCertificate([]byte) (string, error)
 }
 
 // The StorageAuthority interface represnts a simple key/value

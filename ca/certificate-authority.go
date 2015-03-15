@@ -34,8 +34,9 @@ type CertificateAuthorityImpl struct {
 func NewCertificateAuthorityImpl(hostport string, authKey string, profile string) (ca *CertificateAuthorityImpl, err error) {
 	// Create the remote signer
 	localProfile := config.SigningProfile{
-		Expiry:     60 * time.Minute, // BOGUS: Required by CFSSL, but not used
-		RemoteName: hostport,
+		Expiry:       time.Hour, // BOGUS: Required by CFSSL, but not used
+		RemoteName:   hostport,  // BOGUS: Only used as a flag by CFSSL
+		RemoteServer: hostport,
 	}
 
 	localProfile.Provider, err = auth.New(authKey, nil)

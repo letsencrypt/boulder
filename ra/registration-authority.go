@@ -83,6 +83,24 @@ func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
+func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key jose.JsonWebKey) (reg core.Registration, err error) {
+	regID, err := ra.SA.NewRegistration()
+	if err != nil {
+		return
+	}
+
+	reg = core.Registration{
+		ID:            regID,
+		Key:           key,
+		RecoveryToken: core.NewToken(),
+	}
+	reg.MergeUpdate(init)
+
+	// Store the authorization object, then return it
+	err = ra.SA.UpdateRegistration(reg)
+	return
+}
+
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, key jose.JsonWebKey) (authz core.Authorization, err error) {
 	identifier := request.Identifier
 
@@ -103,6 +121,9 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	simpleHttps := core.SimpleHTTPSChallenge()
 	dvsni := core.DvsniChallenge()
 	authID, err := ra.SA.NewPendingAuthorization()
+	if err != nil {
+		return
+	}
 
 	// Create a new authorization object
 	authz = core.Authorization{
@@ -165,6 +186,13 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Create the certificate
 	cert, err = ra.CA.IssueCertificate(*csr)
+	return
+}
+
+func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
+	base.MergeUpdate(update)
+	reg = base
+	err = ra.SA.UpdateRegistration(base)
 	return
 }
 

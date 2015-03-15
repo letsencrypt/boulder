@@ -88,6 +88,36 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// Registration objects represent non-public metadata attached
+// to account keys.
+type Registration struct {
+	// Unique identifier
+	ID string `json:"-"`
+
+	// Account key to which the details are attached
+	Key jose.JsonWebKey `json:"key"`
+
+	// Recovery Token is used to prove connection to an earlier transaction
+	RecoveryToken string `json:"recoveryToken"`
+
+	// Contact URIs
+	Contact []AcmeURL `json:"contact,omitempty"`
+
+	// Agreement with terms of service
+	Agreement string `json:"agreement,omitempty"`
+}
+
+func (r *Registration) MergeUpdate(input Registration) {
+	if len(input.Contact) > 0 {
+		r.Contact = input.Contact
+	}
+
+	// TODO: Test to make sure this has the proper value
+	if len(input.Agreement) > 0 {
+		r.Agreement = input.Agreement
+	}
+}
+
 // Rather than define individual types for different types of
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
@@ -118,6 +148,7 @@ type Challenge struct {
 }
 
 // Merge a client-provide response to a challenge with the issued challenge
+// TODO: Remove return type from this method
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	// Only override fields that are supposed to be client-provided
 	if len(ch.Path) == 0 {

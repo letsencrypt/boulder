@@ -97,12 +97,6 @@ func main() {
 			Usage: "Start the CA in monolithic mode, without using AMQP",
 			Action: func(c *cli.Context) {
 
-				// XXX Print the config
-				fmt.Println(c.GlobalString("amqp"))
-				fmt.Println(c.GlobalString("cfssl"))
-				fmt.Println(c.GlobalString("cfsslAuthKey"))
-				fmt.Println(c.GlobalString("cfsslProfile"))
-
 				// Grab parameters
 				cfsslServer := c.GlobalString("cfssl")
 				authKey := c.GlobalString("cfsslAuthKey")
@@ -112,6 +106,8 @@ func main() {
 				wfe := wfe.NewWebFrontEndImpl()
 				sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 				failOnError(err, "Unable to create SA")
+				err = sa.InitTables()
+				failOnError(err, "Unable to initialize SA")
 				ra := ra.NewRegistrationAuthorityImpl()
 				va := va.NewValidationAuthorityImpl()
 				ca, err := ca.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
@@ -127,10 +123,13 @@ func main() {
 
 				// Go!
 				authority := "0.0.0.0:4000"
+				regPath := "/acme/reg/"
 				authzPath := "/acme/authz/"
 				certPath := "/acme/cert/"
+				wfe.SetRegBase("http://" + authority + regPath)
 				wfe.SetAuthzBase("http://" + authority + authzPath)
 				wfe.SetCertBase("http://" + authority + certPath)
+				http.HandleFunc("/acme/new-reg", wfe.NewReg)
 				http.HandleFunc("/acme/new-authz", wfe.NewAuthz)
 				http.HandleFunc("/acme/new-cert", wfe.NewCert)
 				http.HandleFunc("/acme/authz/", wfe.Authz)

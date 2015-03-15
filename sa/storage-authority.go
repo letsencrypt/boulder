@@ -8,8 +8,10 @@ package sa
 import (
 	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/letsencrypt/boulder/core"
 )
@@ -47,8 +49,8 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 		return
 	}
 
-	// Create certificates table
-	_, err = tx.Exec("CREATE TABLE certificates (sequence INTEGER, digest TEXT, value BLOB);")
+	// Create registrations table
+	_, err = tx.Exec("CREATE TABLE registrations (id TEXT, thumbprint TEXT, value TEXT);")
 	if err != nil {
 		tx.Rollback()
 		return
@@ -68,13 +70,38 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 		return
 	}
 
+	// Create certificates table
+	_, err = tx.Exec("CREATE TABLE certificates (sequence INTEGER, digest TEXT, value BLOB);")
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
 	err = tx.Commit()
 	return
 }
 
-func (ssa *SQLStorageAuthority) GetCertificate(id string) (cert []byte, err error) {
-	err = ssa.db.QueryRow("SELECT value FROM certificates WHERE digest = ?;", id).Scan(&cert)
-	return
+func (ssa *SQLStorageAuthority) dumpTables(tx *sql.Tx) {
+	fmt.Printf("===== TABLE DUMP =====\n")
+	fmt.Printf("\n----- registrations -----\n")
+	rows, err := tx.Query("SELECT id, thumbprint, value FROM registrations")
+	if err != nil {
+		fmt.Printf("ERROR: %v\n", err)
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var id, key, value []byte
+			if err := rows.Scan(&id, &key, &value); err == nil {
+				fmt.Printf("%s | %s | %s\n", string(id), string(key), hex.EncodeToString(value))
+			} else {
+				fmt.Printf("ERROR: %v\n", err)
+			}
+		}
+	}
+
+	fmt.Printf("\n----- pending_authz -----\n") // TODO
+	fmt.Printf("\n----- authz -----\n")         // TODO
+	fmt.Printf("\n----- certificates -----\n")  // TODO
 }
 
 func statusIsPending(status core.AcmeStatus) bool {
@@ -88,6 +115,22 @@ func existingPending(tx *sql.Tx, id string) (count int64) {
 
 func existingFinal(tx *sql.Tx, id string) (count int64) {
 	tx.QueryRow("SELECT count(*) FROM authz WHERE id = ?;", id).Scan(&count)
+	return
+}
+
+func existingRegistration(tx *sql.Tx, id string) (count int64) {
+	tx.QueryRow("SELECT count(*) FROM registrations WHERE id = ?;", id).Scan(&count)
+	return
+}
+
+func (ssa *SQLStorageAuthority) GetRegistration(id string) (reg core.Registration, err error) {
+	var jsonReg []byte
+	err = ssa.db.QueryRow("SELECT value FROM registrations WHERE id = ?;", id).Scan(&jsonReg)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonReg, &reg)
 	return
 }
 
@@ -116,28 +159,57 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	return
 }
 
-func (ssa *SQLStorageAuthority) AddCertificate(cert []byte) (id string, err error) {
+func (ssa *SQLStorageAuthority) GetCertificate(id string) (cert []byte, err error) {
+	err = ssa.db.QueryRow("SELECT value FROM certificates WHERE digest = ?;", id).Scan(&cert)
+	return
+}
+
+func (ssa *SQLStorageAuthority) NewRegistration() (id string, err error) {
 	tx, err := ssa.db.Begin()
 	if err != nil {
 		return
 	}
 
-	// Manually set the index, to avoid AUTOINCREMENT issues
-	var sequence int64
-	var scanTarget sql.NullInt64
-	err = tx.QueryRow("SELECT max(sequence) FROM certificates;").Scan(&scanTarget)
-	switch {
-	case !scanTarget.Valid:
-		sequence = 0
-	case err != nil:
-		tx.Rollback()
-		return
-	default:
-		sequence += scanTarget.Int64 + 1
+	// Check that it doesn't exist already
+	candidate := core.NewToken()
+	for existingRegistration(tx, candidate) > 0 {
+		candidate = core.NewToken()
 	}
 
-	id = core.Fingerprint256(cert)
-	_, err = tx.Exec("INSERT INTO certificates (sequence, digest, value) VALUES (?,?,?);", sequence, id, cert)
+	// Insert a stub row in pending
+	_, err = tx.Exec("INSERT INTO registrations (id) VALUES (?);", candidate)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	if err = tx.Commit(); err != nil {
+		return
+	}
+
+	id = candidate
+	return
+}
+
+func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err error) {
+	tx, err := ssa.db.Begin()
+	if err != nil {
+		return
+	}
+
+	if existingRegistration(tx, reg.ID) != 1 {
+		err = errors.New("Requested registration not found " + reg.ID)
+		tx.Rollback()
+		return
+	}
+
+	jsonReg, err := json.Marshal(reg)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	_, err = tx.Exec("UPDATE registrations SET thumbprint=?, value=? WHERE id = ?;", reg.Key.Thumbprint, string(jsonReg), reg.ID)
 	if err != nil {
 		tx.Rollback()
 		return
@@ -268,6 +340,37 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		tx.Rollback()
 		return
 	}
+	err = tx.Commit()
+	return
+}
+
+func (ssa *SQLStorageAuthority) AddCertificate(cert []byte) (id string, err error) {
+	tx, err := ssa.db.Begin()
+	if err != nil {
+		return
+	}
+
+	// Manually set the index, to avoid AUTOINCREMENT issues
+	var sequence int64
+	var scanTarget sql.NullInt64
+	err = tx.QueryRow("SELECT max(sequence) FROM certificates;").Scan(&scanTarget)
+	switch {
+	case !scanTarget.Valid:
+		sequence = 0
+	case err != nil:
+		tx.Rollback()
+		return
+	default:
+		sequence += scanTarget.Int64 + 1
+	}
+
+	id = core.Fingerprint256(cert)
+	_, err = tx.Exec("INSERT INTO certificates (sequence, digest, value) VALUES (?,?,?);", sequence, id, cert)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
 	err = tx.Commit()
 	return
 }
