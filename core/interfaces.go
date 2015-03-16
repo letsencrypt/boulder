@@ -82,8 +82,7 @@ type CertificateAuthority interface {
 }
 
 type PolicyAuthority interface {
-	WellFormed(AcmeIdentifier) bool
-	WillingToIssue(AcmeIdentifier) bool
+	WillingToIssue(AcmeIdentifier) error
 	ChallengesFor(AcmeIdentifier) ([]Challenge, [][]int)
 }
 

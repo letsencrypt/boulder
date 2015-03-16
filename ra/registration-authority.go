@@ -10,11 +10,12 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
+	"github.com/letsencrypt/boulder/policy"
 )
 
 // All of the fields in RegistrationAuthorityImpl need to be
@@ -23,61 +24,15 @@ type RegistrationAuthorityImpl struct {
 	CA core.CertificateAuthority
 	VA core.ValidationAuthority
 	SA core.StorageAuthority
+	PA core.PolicyAuthority
 
 	AuthzBase string
 }
 
 func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
-	return RegistrationAuthorityImpl{}
-}
-
-var dnsLabelRegexp, _ = regexp.Compile("^[a-zA-Z0-9-]*$")
-var ipAddressRegexp, _ = regexp.Compile("^[0-9.]*$")
-
-func forbiddenIdentifier(id string) bool {
-	// A DNS label is a part separated by dots, e.g. www.foo.net has labels
-	// "www", "foo", and "net".
-	const maxLabels = 10
-	labels := strings.SplitN(id, ".", maxLabels+1)
-	if len(labels) < 2 || len(labels) > maxLabels {
-		return true
-	}
-
-	for _, label := range labels {
-		// DNS defines max label length as 63 characters. Some implementations allow
-		// more, but we will be conservative.
-		if len(label) < 1 || len(label) > 63 {
-			return true
-		}
-		// Only alphanumerics and dash are allowed in identifiers.
-		// TODO: Before identifiers reach this function, do lowercasing.
-		if !dnsLabelRegexp.MatchString(label) {
-			return true
-		}
-
-		// A label cannot begin with a hyphen (-)
-		if label[0] == '-' {
-			return true
-		}
-
-		// Punycode labels are not yet allowed. May allow in future after looking at
-		// homoglyph mitigations.
-		if len(label) >= 4 && label[0:4] == "xn--" {
-			return true
-		}
-	}
-
-	// Forbid identifiers that are entirely numeric like an IP address.
-	if ipAddressRegexp.MatchString(id) {
-		return true
-	}
-
-	// Also forbid an all-numeric final label.
-	if ipAddressRegexp.MatchString(labels[len(labels)-1]) {
-		return true
-	}
-
-	return false
+	ra := RegistrationAuthorityImpl{}
+	ra.PA = policy.NewPolicyAuthorityImpl()
+	return ra
 }
 
 var allButLastPathSegment = regexp.MustCompile("^.*/")
@@ -108,41 +63,31 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	identifier := request.Identifier
 
 	// Check that the identifier is present and appropriate
-	if len(identifier.Value) == 0 {
-		err = core.MalformedRequestError("No identifier in authorization request")
-		return
-	} else if identifier.Type != core.IdentifierDNS {
-		err = core.NotSupportedError("Only domain validation is supported")
-		return
-	} else if forbiddenIdentifier(identifier.Value) {
-		err = core.UnauthorizedError("We will not authorize use of this identifier")
+	if err = ra.PA.WillingToIssue(identifier); err != nil {
 		return
 	}
 
 	// Create validations
 	// TODO: Assign URLs
-	simpleHttps := core.SimpleHTTPSChallenge()
-	dvsni := core.DvsniChallenge()
+	challenges, combinations := ra.PA.ChallengesFor(identifier)
 	authID, err := ra.SA.NewPendingAuthorization()
 	if err != nil {
 		return
 	}
-	// Ignoring these errors because we construct the URLs to be correct
-	simpleHTTPSURI, _ := url.Parse(ra.AuthzBase + authID + "?" + core.RandomString(4))
-	dvsniURI, _ := url.Parse(ra.AuthzBase + authID + "?" + core.RandomString(4))
-	simpleHttps.URI = core.AcmeURL(*simpleHTTPSURI)
-	dvsni.URI = core.AcmeURL(*dvsniURI)
+	for i := range challenges {
+		// Ignoring these errors because we construct the URLs to be correct
+		challengeURI, _ := url.Parse(ra.AuthzBase + authID + "?challenge=" + strconv.Itoa(i))
+		challenges[i].URI = core.AcmeURL(*challengeURI)
+	}
 
 	// Create a new authorization object
 	authz = core.Authorization{
-		ID:         authID,
-		Identifier: identifier,
-		Key:        key,
-		Status:     core.StatusPending,
-		Challenges: []core.Challenge{
-			simpleHttps,
-			dvsni,
-		},
+		ID:           authID,
+		Identifier:   identifier,
+		Key:          key,
+		Status:       core.StatusPending,
+		Challenges:   challenges,
+		Combinations: combinations,
 	}
 
 	// Store the authorization object, then return it
