@@ -6,6 +6,7 @@
 package wfe
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -22,13 +23,12 @@ type WebFrontEndImpl struct {
 	SA core.StorageGetter
 
 	// URL configuration parameters
-	baseURL   string
-	newReg    string
-	regBase   string
-	newAuthz  string
-	authzBase string
-	newCert   string
-	certBase  string
+	NewReg    string
+	RegBase   string
+	NewAuthz  string
+	AuthzBase string
+	NewCert   string
+	CertBase  string
 }
 
 func NewWebFrontEndImpl() WebFrontEndImpl {
@@ -97,19 +97,7 @@ func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
-func (wfe *WebFrontEndImpl) SetRegBase(base string) {
-	wfe.regBase = base
-}
-
-func (wfe *WebFrontEndImpl) SetAuthzBase(base string) {
-	wfe.authzBase = base
-}
-
-func (wfe *WebFrontEndImpl) SetCertBase(base string) {
-	wfe.certBase = base
-}
-
-func (wfe *WebFrontEndImpl) NewReg(response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -135,7 +123,7 @@ func (wfe *WebFrontEndImpl) NewReg(response http.ResponseWriter, request *http.R
 			http.StatusInternalServerError)
 	}
 
-	regURL := wfe.regBase + string(reg.ID)
+	regURL := wfe.RegBase + string(reg.ID)
 	reg.ID = ""
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
@@ -144,12 +132,12 @@ func (wfe *WebFrontEndImpl) NewReg(response http.ResponseWriter, request *http.R
 	}
 
 	response.Header().Add("Location", regURL)
-	response.Header().Add("Link", link(wfe.newAuthz, "next"))
+	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
 	response.WriteHeader(http.StatusCreated)
 	response.Write(responseBody)
 }
 
-func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -178,7 +166,7 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 	}
 
 	// Make a URL for this authz, then blow away the ID before serializing
-	authzURL := wfe.authzBase + string(authz.ID)
+	authzURL := wfe.AuthzBase + string(authz.ID)
 	authz.ID = ""
 	responseBody, err := json.Marshal(authz)
 	if err != nil {
@@ -187,11 +175,12 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 	}
 
 	response.Header().Add("Location", authzURL)
+	response.Header().Add("Link", link(wfe.NewCert, "next"))
 	response.WriteHeader(http.StatusCreated)
 	response.Write(responseBody)
 }
 
-func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -220,7 +209,9 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 	}
 
 	// Make a URL for this authz
-	certURL := wfe.certBase + string(cert.ID)
+	certURL := wfe.CertBase + string(cert.ID)
+
+	fmt.Printf("Returning certificate: %+v", hex.EncodeToString(cert.DER))
 
 	// TODO: Content negotiation for cert format
 	response.Header().Add("Location", certURL)
@@ -234,7 +225,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 	var challengeIndex int
 	for i, challenge := range authz.Challenges {
 		tempURL := url.URL(challenge.URI)
-		if tempURL.String() == request.URL.String() {
+		if tempURL.Path == request.URL.Path && tempURL.RawQuery == request.URL.RawQuery {
 			found = true
 			challengeIndex = i
 			break
@@ -269,8 +260,6 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 
 		// Check that the signing key is the right key
 		if !key.Equals(authz.Key) {
-			fmt.Printf("req:   %+v\n", key)
-			fmt.Printf("authz: %+v\n", authz.Key)
 			sendError(response, "Signing key does not match key in authorization", http.StatusForbidden)
 			return
 		}
@@ -293,7 +282,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 	}
 }
 
-func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request *http.Request) {
 	// Requests to this handler should have a path that leads to a known authz
 	id := parseIDFromPath(request.URL.Path)
 	authz, err := wfe.SA.GetAuthorization(id)
@@ -305,7 +294,7 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 	}
 
 	// If there is a fragment, then this is actually a request to a challenge URI
-	if len(request.URL.Fragment) != 0 {
+	if len(request.URL.RawQuery) != 0 {
 		wfe.Challenge(authz, response, request)
 		return
 	}
@@ -326,7 +315,7 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 	}
 }
 
-func (wfe *WebFrontEndImpl) Cert(response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
 	switch request.Method {
 	default:
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)

@@ -8,6 +8,7 @@ package ra
 import (
 	"crypto/x509"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -22,6 +23,8 @@ type RegistrationAuthorityImpl struct {
 	CA core.CertificateAuthority
 	VA core.ValidationAuthority
 	SA core.StorageAuthority
+
+	AuthzBase string
 }
 
 func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
@@ -124,6 +127,11 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	if err != nil {
 		return
 	}
+	// Ignoring these errors because we construct the URLs to be correct
+	simpleHTTPSURI, _ := url.Parse(ra.AuthzBase + authID + "?" + core.RandomString(4))
+	dvsniURI, _ := url.Parse(ra.AuthzBase + authID + "?" + core.RandomString(4))
+	simpleHttps.URI = core.AcmeURL(*simpleHTTPSURI)
+	dvsni.URI = core.AcmeURL(*dvsniURI)
 
 	// Create a new authorization object
 	authz = core.Authorization{
