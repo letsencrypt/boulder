@@ -10,7 +10,7 @@ The node.js scripts in this directory provide a simple end-to-end test of Boulde
 # (These are the default parameters to use a Yubikey.)
 # (You'll need to make your own key, cert, and policy.)
 > go install -tags pkcs11 github.com/cloudflare/cfssl/cmd/cfssl
-> cfssl serve -port 8888 -ca ca.cert.pem \
+> cfssl serve -port 9000 -ca ca.cert.pem \
               -pkcs11-module "/Library/OpenSC/lib/opensc-pkcs11.so" \
               -pkcs11-token "Yubico Yubik NEO CCID" \
               -pkcs11-pin 123456 \
@@ -20,7 +20,7 @@ The node.js scripts in this directory provide a simple end-to-end test of Boulde
 # Start boulder
 # (Change CFSSL parameters to match your setup.)
 > go install github.com/letsencrypt/boulder
-> boulder-start --cfssl localhost:8888
+> boulder-start --cfssl localhost:9000 \
                 --cfsslProfile ee \
                 --cfsslAuthKey 79999d86250c367a2b517a1ae7d409c1 \
                 monolithic

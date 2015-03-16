@@ -1,3 +1,8 @@
+// Copyright 2014 ISRG.  All rights reserved
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 "use strict";
 
 var inquirer = require("inquirer");
@@ -27,7 +32,7 @@ var questions = {
     type: "confirm",
     name: "terms",
     message: "Do you agree to these terms?",
-    default: false
+    default: false,
   }],
 
   domain: [{
@@ -71,6 +76,8 @@ var state = {
   registrationURL: "",
 
   termsRequired: false,
+  termsAgreed: false,
+  termsURL: null,
 
   domain: null,
 
@@ -121,7 +128,9 @@ register
   |
 getTerms
   | \
-  |  getAgreement (TODO)
+  |  getAgreement
+  |  |
+  |  sendAgreement
   | /
 getDomain
   |
@@ -153,9 +162,10 @@ function register(answers) {
   var email = answers.email;
 
   // Register public key
-  var registerMessage = JSON.stringify({
+  state.registration = {
     contact: [ "mailto:" + email ]
-  });
+  }
+  var registerMessage = JSON.stringify(state.registration);
   var jws = crypto.generateSignature(state.keyPair, new Buffer(registerMessage));
   var payload = JSON.stringify(jws);
 
@@ -184,13 +194,64 @@ function getTerms(resp) {
   state.termsRequired = ("terms-of-service" in links);
 
   if (state.termsRequired) {
-    // TODO getAgreement
-    // inquirer.prompt(questions.terms, getAgreement);
-    console.log("The CA requires your agreement to terms (not supported).");
-    return
+    state.termsURL = links["terms-of-service"];
+    http.get(state.termsURL, getAgreement)
   } else {
     inquirer.prompt(questions.domain, getChallenges);
   }
+}
+
+function getAgreement(resp) {
+  var body = "";
+  resp.on("data", function(chunk) {
+    body += chunk;
+  });
+  resp.on("end", function(chunk) {
+    if (chunk) { body += chunk; }
+
+    // TODO: Check content-type
+    console.log("The CA requires your agreement to terms (not supported).");
+    console.log();
+    console.log(body);
+    console.log();
+
+    inquirer.prompt(questions.terms, sendAgreement);
+  });
+}
+
+function sendAgreement(answers) {
+  state.termsAgreed = answers.terms;
+
+  if (state.termsRequired && !state.termsAgreed) {
+    console.log("Sorry, can't proceed if you don't agree.");
+    process.exit(1);
+  }
+
+  state.registration.agreement = state.termsURL;
+  var registerMessage = JSON.stringify(state.registration);
+  var jws = crypto.generateSignature(state.keyPair, new Buffer(registerMessage));
+  var payload = JSON.stringify(jws);
+
+  console.log("Posting agreement to: " + state.registrationURL)
+  var options = url.parse(state.registrationURL);
+  options.method = "POST";
+  var req = http.request(options, function(resp) {
+    var body = "";
+    resp.on("data", function(chunk) { body += chunk; });
+    resp.on("end", function() {
+      if (Math.floor(resp.statusCode / 100) != 2) {
+        // Non-2XX response
+        console.log("Couldn't POST agreement back to server, aborting.");
+        console.log("Code: "+ resp.statusCode);
+        console.log(body);
+        process.exit(1);
+      }
+    });
+
+    inquirer.prompt(questions.domain, getChallenges);
+  });
+  req.write(payload)
+  req.end();
 }
 
 function getChallenges(answers) {

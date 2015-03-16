@@ -6,7 +6,6 @@
 package wfe
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -29,6 +28,8 @@ type WebFrontEndImpl struct {
 	AuthzBase string
 	NewCert   string
 	CertBase  string
+
+	SubscriberAgreementURL string
 }
 
 func NewWebFrontEndImpl() WebFrontEndImpl {
@@ -133,6 +134,10 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	response.Header().Add("Location", regURL)
 	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
+	if len(wfe.SubscriberAgreementURL) > 0 {
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+	}
+
 	response.WriteHeader(http.StatusCreated)
 	response.Write(responseBody)
 }
@@ -211,8 +216,6 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// Make a URL for this authz
 	certURL := wfe.CertBase + string(cert.ID)
 
-	fmt.Printf("Returning certificate: %+v", hex.EncodeToString(cert.DER))
-
 	// TODO: Content negotiation for cert format
 	response.Header().Add("Location", certURL)
 	response.WriteHeader(http.StatusCreated)
@@ -272,6 +275,71 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		}
 
 		jsonReply, err := json.Marshal(updatedAuthz)
+		if err != nil {
+			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
+			return
+		}
+		response.WriteHeader(http.StatusAccepted)
+		response.Write(jsonReply)
+
+	}
+}
+
+func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *http.Request) {
+	// Requests to this handler should have a path that leads to a known authz
+	id := parseIDFromPath(request.URL.Path)
+	reg, err := wfe.SA.GetRegistration(id)
+	if err != nil {
+		sendError(response,
+			fmt.Sprintf("Unable to find registration: %+v", err),
+			http.StatusNotFound)
+		return
+	}
+	reg.ID = id
+
+	switch request.Method {
+	default:
+		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+
+	case "GET":
+		jsonReply, err := json.Marshal(reg)
+		if err != nil {
+			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
+			return
+		}
+		response.WriteHeader(http.StatusOK)
+		response.Write(jsonReply)
+
+	case "POST":
+		body, key, err := verifyPOST(request)
+		if err != nil {
+			sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+			return
+		}
+
+		var update core.Registration
+		err = json.Unmarshal(body, &update)
+		if err != nil {
+			sendError(response, "Error unmarshaling registration", http.StatusBadRequest)
+			return
+		}
+
+		// Check that the signing key is the right key
+		if !key.Equals(reg.Key) {
+			sendError(response, "Signing key does not match key in registration", http.StatusForbidden)
+			return
+		}
+
+		// Ask the RA to update this authorization
+		updatedReg, err := wfe.RA.UpdateRegistration(reg, update)
+		if err != nil {
+			fmt.Println(err)
+			sendError(response, "Unable to update registration", http.StatusInternalServerError)
+			return
+		}
+
+		jsonReply, err := json.Marshal(updatedReg)
 		if err != nil {
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return

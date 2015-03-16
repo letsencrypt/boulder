@@ -139,9 +139,16 @@ func main() {
 				http.HandleFunc(newRegPath, wfe.NewRegistration)
 				http.HandleFunc(newAuthzPath, wfe.NewAuthorization)
 				http.HandleFunc(newCertPath, wfe.NewCertificate)
-				// TODO wire up regPath handler
+				http.HandleFunc(regPath, wfe.Registration)
 				http.HandleFunc(authzPath, wfe.Authorization)
 				http.HandleFunc(certPath, wfe.Certificate)
+
+				// Add a simple ToS
+				termsPath := "/terms"
+				http.HandleFunc(termsPath, func(w http.ResponseWriter, r *http.Request) {
+					fmt.Fprintf(w, "You agree to do the right thing")
+				})
+				wfe.SubscriberAgreementURL = urlBase + termsPath
 
 				// We need to tell the RA how to make challenge URIs
 				// XXX: Better way to do this?  Part of improved configuration
@@ -228,7 +235,7 @@ func main() {
 				http.HandleFunc(newRegPath, wfe.NewRegistration)
 				http.HandleFunc(newAuthzPath, wfe.NewAuthorization)
 				http.HandleFunc(newCertPath, wfe.NewCertificate)
-				// TODO wire up regPath handler
+				http.HandleFunc(regPath, wfe.Registration)
 				http.HandleFunc(authzPath, wfe.Authorization)
 				http.HandleFunc(certPath, wfe.Certificate)
 
@@ -273,7 +280,7 @@ func main() {
 				http.HandleFunc(newRegPath, wfe.NewRegistration)
 				http.HandleFunc(newAuthzPath, wfe.NewAuthorization)
 				http.HandleFunc(newCertPath, wfe.NewCertificate)
-				// TODO wire up regPath handler
+				http.HandleFunc(regPath, wfe.Registration)
 				http.HandleFunc(authzPath, wfe.Authorization)
 				http.HandleFunc(certPath, wfe.Certificate)
 
