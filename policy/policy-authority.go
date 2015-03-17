@@ -7,6 +7,7 @@ package policy
 
 import (
 	"errors"
+	"net"
 	"regexp"
 	"strings"
 
@@ -30,7 +31,6 @@ func NewPolicyAuthorityImpl() *PolicyAuthorityImpl {
 
 const maxLabels = 10
 
-var ipAddressRegexp = regexp.MustCompile("^([0-9]{1,3}[.]){3}[0-9]{1,3}$")
 var dnsLabelRegexp = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
 
@@ -97,7 +97,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		return SyntaxError
 	}
 
-	if ipAddressRegexp.MatchString(domain) {
+	if ip := net.ParseIP(domain); ip != nil {
 		return SyntaxError
 	}
 

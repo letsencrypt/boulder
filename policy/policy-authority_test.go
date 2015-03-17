@@ -16,7 +16,8 @@ func TestWillingToIssue(t *testing.T) {
 		``,                      // Empty name
 		`zomb!.com`,             // ASCII character out of range
 		`zömbo.com`,             // non-ASCII character
-		`127.0.0.1`,             // IP address
+		`127.0.0.1`,             // IPv4 address
+		`fe80::1:1`,             // IPv6 address
 		`a.b.c.d.e.f.g.h.i.j.k`, // Too many labels (>10)
 
 		`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.com`, // Too long (>255 characters)
