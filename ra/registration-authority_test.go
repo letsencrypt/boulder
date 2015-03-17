@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -83,7 +84,8 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	caCertPEM, _ := pem.Decode([]byte(CA_CERT_PEM))
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, nil)
-	ca := ca.CertificateAuthorityImpl{Signer: signer, SA: sa}
+	pa := policy.NewPolicyAuthorityImpl()
+	ca := ca.CertificateAuthorityImpl{Signer: signer, SA: sa, PA: pa}
 	csrDER, _ := hex.DecodeString(CSR_HEX)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 
@@ -91,6 +93,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = &ca
+	ra.PA = pa
 
 	return &ca, va, sa, &ra
 }
