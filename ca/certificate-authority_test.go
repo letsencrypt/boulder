@@ -314,4 +314,12 @@ func TestIssueCertificate(t *testing.T) {
 		_, err = sa.GetCertificate(certObj.ID)
 		test.AssertNotError(t, err, "Certificate not found in database")
 	}
+
+	// Test that the CA rejects CSRs with no names
+	csrDER, _ := hex.DecodeString(NO_NAME_CSR_HEX)
+	csr, _ := x509.ParseCertificateRequest(csrDER)
+	_, err = ca.IssueCertificate(*csr)
+	if err == nil {
+		t.Errorf("CA improperly agreed to create a certificate with no name")
+	}
 }
