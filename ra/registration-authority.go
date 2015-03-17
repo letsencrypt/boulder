@@ -76,11 +76,6 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 	for i := range challenges {
 		// Ignoring these errors because we construct the URLs to be correct
-		fmt.Println("ra:", ra)
-		fmt.Println("ra.AuthzBase:", ra.AuthzBase)
-		fmt.Println("authID:", authID)
-		fmt.Println("strconv.Itoa(i):", strconv.Itoa(i))
-		fmt.Println("url:", ra.AuthzBase+authID+"?challenge="+strconv.Itoa(i))
 		challengeURI, _ := url.Parse(ra.AuthzBase + authID + "?challenge=" + strconv.Itoa(i))
 		challenges[i].URI = core.AcmeURL(*challengeURI)
 	}
