@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/policy"
 
 	"github.com/cloudflare/cfssl/auth"
 	"github.com/cloudflare/cfssl/config"
@@ -23,6 +24,7 @@ type CertificateAuthorityImpl struct {
 	profile string
 	Signer  signer.Signer
 	SA      core.StorageAuthority
+	PA      core.PolicyAuthority
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -49,7 +51,9 @@ func NewCertificateAuthorityImpl(hostport string, authKey string, profile string
 		return
 	}
 
-	ca = &CertificateAuthorityImpl{Signer: signer, profile: profile}
+	pa := policy.NewPolicyAuthorityImpl()
+
+	ca = &CertificateAuthorityImpl{Signer: signer, profile: profile, PA: pa}
 	return
 }
 
@@ -69,6 +73,19 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	if len(hostNames) == 0 {
 		hostNames = []string{commonName}
+	}
+
+	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
+	if err = ca.PA.WillingToIssue(identifier); err != nil {
+		err = errors.New("Policy forbids issuing for name " + commonName)
+		return
+	}
+	for _, name := range hostNames {
+		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+		if err = ca.PA.WillingToIssue(identifier); err != nil {
+			err = errors.New("Policy forbids issuing for name " + name)
+			return
+		}
 	}
 
 	// Convert the CSR to PEM

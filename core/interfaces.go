@@ -81,6 +81,11 @@ type CertificateAuthority interface {
 	IssueCertificate(x509.CertificateRequest) (Certificate, error)
 }
 
+type PolicyAuthority interface {
+	WillingToIssue(AcmeIdentifier) error
+	ChallengesFor(AcmeIdentifier) ([]Challenge, [][]int)
+}
+
 type StorageGetter interface {
 	GetRegistration(string) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
