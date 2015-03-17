@@ -246,6 +246,9 @@ func TestURL(t *testing.T) {
 		url.URL.Path != path || url.URL.RawQuery != query {
 		t.Errorf("Improper URL contents: %v", url.URL)
 	}
+	if s := url.URL.PathSegments(); len(s) != 2 {
+		t.Errorf("Path segments failed to parse properly: %v", s)
+	}
 
 	err = json.Unmarshal([]byte(badJSON), &url)
 	if err == nil {

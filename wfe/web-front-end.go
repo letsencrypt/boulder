@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"regexp"
 
 	"github.com/letsencrypt/boulder/core"
@@ -21,9 +22,14 @@ type WebFrontEndImpl struct {
 	SA core.StorageGetter
 
 	// URL configuration parameters
-	baseURL   string
-	authzBase string
-	certBase  string
+	NewReg    string
+	RegBase   string
+	NewAuthz  string
+	AuthzBase string
+	NewCert   string
+	CertBase  string
+
+	SubscriberAgreementURL string
 }
 
 func NewWebFrontEndImpl() WebFrontEndImpl {
@@ -88,15 +94,11 @@ func sendError(response http.ResponseWriter, message string, code int) {
 	http.Error(response, string(problemDoc), code)
 }
 
-func (wfe *WebFrontEndImpl) SetAuthzBase(base string) {
-	wfe.authzBase = base
+func link(url, relation string) string {
+	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
-func (wfe *WebFrontEndImpl) SetCertBase(base string) {
-	wfe.certBase = base
-}
-
-func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -104,7 +106,51 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 
 	body, key, err := verifyPOST(request)
 	if err != nil {
-		sendError(response, "Unable to read body", http.StatusBadRequest)
+		sendError(response, fmt.Sprintf("Unable to read/verify body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	var init core.Registration
+	err = json.Unmarshal(body, &init)
+	if err != nil {
+		sendError(response, "Error unmarshaling JSON", http.StatusBadRequest)
+		return
+	}
+
+	reg, err := wfe.RA.NewRegistration(init, key)
+	if err != nil {
+		sendError(response,
+			fmt.Sprintf("Error creating new registration: %+v", err),
+			http.StatusInternalServerError)
+	}
+
+	regURL := wfe.RegBase + string(reg.ID)
+	reg.ID = ""
+	responseBody, err := json.Marshal(reg)
+	if err != nil {
+		sendError(response, "Error marshaling authz", http.StatusInternalServerError)
+		return
+	}
+
+	response.Header().Add("Location", regURL)
+	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
+	if len(wfe.SubscriberAgreementURL) > 0 {
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+	}
+
+	response.WriteHeader(http.StatusCreated)
+	response.Write(responseBody)
+}
+
+func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "POST" {
+		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, key, err := verifyPOST(request)
+	if err != nil {
+		sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 		return
 	}
 
@@ -115,7 +161,7 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 		return
 	}
 
-	// TODO: Create new authz and return
+	// Create new authz and return
 	authz, err := wfe.RA.NewAuthorization(init, key)
 	if err != nil {
 		sendError(response,
@@ -125,7 +171,7 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 	}
 
 	// Make a URL for this authz, then blow away the ID before serializing
-	authzURL := wfe.authzBase + string(authz.ID)
+	authzURL := wfe.AuthzBase + string(authz.ID)
 	authz.ID = ""
 	responseBody, err := json.Marshal(authz)
 	if err != nil {
@@ -134,11 +180,12 @@ func (wfe *WebFrontEndImpl) NewAuthz(response http.ResponseWriter, request *http
 	}
 
 	response.Header().Add("Location", authzURL)
+	response.Header().Add("Link", link(wfe.NewCert, "next"))
 	response.WriteHeader(http.StatusCreated)
 	response.Write(responseBody)
 }
 
-func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -146,7 +193,7 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 
 	body, key, err := verifyPOST(request)
 	if err != nil {
-		sendError(response, "Unable to read body", http.StatusBadRequest)
+		sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 		return
 	}
 
@@ -167,7 +214,7 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 	}
 
 	// Make a URL for this authz
-	certURL := wfe.certBase + string(cert.ID)
+	certURL := wfe.CertBase + string(cert.ID)
 
 	// TODO: Content negotiation for cert format
 	response.Header().Add("Location", certURL)
@@ -175,13 +222,22 @@ func (wfe *WebFrontEndImpl) NewCert(response http.ResponseWriter, request *http.
 	response.Write(cert.DER)
 }
 
-func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Request) {
-	// Requests to this handler should have a path that leads to a known authz
-	id := parseIDFromPath(request.URL.Path)
-	authz, err := wfe.SA.GetAuthorization(id)
-	if err != nil {
+func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
+	// Check that the requested challenge exists within the authorization
+	found := false
+	var challengeIndex int
+	for i, challenge := range authz.Challenges {
+		tempURL := url.URL(challenge.URI)
+		if tempURL.Path == request.URL.Path && tempURL.RawQuery == request.URL.RawQuery {
+			found = true
+			challengeIndex = i
+			break
+		}
+	}
+
+	if !found {
 		sendError(response,
-			fmt.Sprintf("Unable to find authorization: %+v", err),
+			fmt.Sprintf("Unable to find challenge"),
 			http.StatusNotFound)
 		return
 	}
@@ -194,12 +250,12 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 	case "POST":
 		body, key, err := verifyPOST(request)
 		if err != nil {
-			sendError(response, "Unable to read body", http.StatusBadRequest)
+			sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 			return
 		}
 
-		var initialAuthz core.Authorization
-		err = json.Unmarshal(body, &initialAuthz)
+		var challengeResponse core.Challenge
+		err = json.Unmarshal(body, &challengeResponse)
 		if err != nil {
 			sendError(response, "Error unmarshaling authorization", http.StatusBadRequest)
 			return
@@ -207,15 +263,12 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 
 		// Check that the signing key is the right key
 		if !key.Equals(authz.Key) {
-			fmt.Printf("req:   %+v\n", key)
-			fmt.Printf("authz: %+v\n", authz.Key)
 			sendError(response, "Signing key does not match key in authorization", http.StatusForbidden)
 			return
 		}
 
 		// Ask the RA to update this authorization
-		initialAuthz.ID = authz.ID
-		updatedAuthz, err := wfe.RA.UpdateAuthorization(initialAuthz)
+		updatedAuthz, err := wfe.RA.UpdateAuthorization(authz, challengeIndex, challengeResponse)
 		if err != nil {
 			sendError(response, "Unable to update authorization", http.StatusInternalServerError)
 			return
@@ -229,6 +282,96 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 		response.WriteHeader(http.StatusAccepted)
 		response.Write(jsonReply)
 
+	}
+}
+
+func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *http.Request) {
+	// Requests to this handler should have a path that leads to a known authz
+	id := parseIDFromPath(request.URL.Path)
+	reg, err := wfe.SA.GetRegistration(id)
+	if err != nil {
+		sendError(response,
+			fmt.Sprintf("Unable to find registration: %+v", err),
+			http.StatusNotFound)
+		return
+	}
+	reg.ID = id
+
+	switch request.Method {
+	default:
+		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+
+	case "GET":
+		jsonReply, err := json.Marshal(reg)
+		if err != nil {
+			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
+			return
+		}
+		response.WriteHeader(http.StatusOK)
+		response.Write(jsonReply)
+
+	case "POST":
+		body, key, err := verifyPOST(request)
+		if err != nil {
+			sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+			return
+		}
+
+		var update core.Registration
+		err = json.Unmarshal(body, &update)
+		if err != nil {
+			sendError(response, "Error unmarshaling registration", http.StatusBadRequest)
+			return
+		}
+
+		// Check that the signing key is the right key
+		if !key.Equals(reg.Key) {
+			sendError(response, "Signing key does not match key in registration", http.StatusForbidden)
+			return
+		}
+
+		// Ask the RA to update this authorization
+		updatedReg, err := wfe.RA.UpdateRegistration(reg, update)
+		if err != nil {
+			fmt.Println(err)
+			sendError(response, "Unable to update registration", http.StatusInternalServerError)
+			return
+		}
+
+		jsonReply, err := json.Marshal(updatedReg)
+		if err != nil {
+			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
+			return
+		}
+		response.WriteHeader(http.StatusAccepted)
+		response.Write(jsonReply)
+
+	}
+}
+
+func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request *http.Request) {
+	// Requests to this handler should have a path that leads to a known authz
+	id := parseIDFromPath(request.URL.Path)
+	authz, err := wfe.SA.GetAuthorization(id)
+	if err != nil {
+		sendError(response,
+			fmt.Sprintf("Unable to find authorization: %+v", err),
+			http.StatusNotFound)
+		return
+	}
+
+	// If there is a fragment, then this is actually a request to a challenge URI
+	if len(request.URL.RawQuery) != 0 {
+		wfe.Challenge(authz, response, request)
+		return
+	}
+
+	switch request.Method {
+	default:
+		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+
 	case "GET":
 		jsonReply, err := json.Marshal(authz)
 		if err != nil {
@@ -240,7 +383,7 @@ func (wfe *WebFrontEndImpl) Authz(response http.ResponseWriter, request *http.Re
 	}
 }
 
-func (wfe *WebFrontEndImpl) Cert(response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
 	switch request.Method {
 	default:
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)

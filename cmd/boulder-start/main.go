@@ -55,7 +55,6 @@ func main() {
 	app.Usage = "Command-line utility to start Boulder's servers in stand-alone mode"
 	app.Version = "0.0.0"
 
-	// Specify AMQP Server
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:   "amqp",
@@ -97,12 +96,6 @@ func main() {
 			Usage: "Start the CA in monolithic mode, without using AMQP",
 			Action: func(c *cli.Context) {
 
-				// XXX Print the config
-				fmt.Println(c.GlobalString("amqp"))
-				fmt.Println(c.GlobalString("cfssl"))
-				fmt.Println(c.GlobalString("cfsslAuthKey"))
-				fmt.Println(c.GlobalString("cfsslProfile"))
-
 				// Grab parameters
 				cfsslServer := c.GlobalString("cfssl")
 				authKey := c.GlobalString("cfsslAuthKey")
@@ -112,6 +105,8 @@ func main() {
 				wfe := wfe.NewWebFrontEndImpl()
 				sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 				failOnError(err, "Unable to create SA")
+				err = sa.InitTables()
+				failOnError(err, "Unable to initialize SA")
 				ra := ra.NewRegistrationAuthorityImpl()
 				va := va.NewValidationAuthorityImpl()
 				ca, err := ca.NewCertificateAuthorityImpl(cfsslServer, authKey, profile)
@@ -124,17 +119,40 @@ func main() {
 				ra.SA = sa
 				ra.VA = &va
 				va.RA = &ra
+				ca.SA = sa
 
 				// Go!
 				authority := "0.0.0.0:4000"
+				urlBase := "http://" + authority
+				newRegPath := "/acme/new-reg"
+				regPath := "/acme/reg/"
+				newAuthzPath := "/acme/new-authz"
 				authzPath := "/acme/authz/"
+				newCertPath := "/acme/new-cert"
 				certPath := "/acme/cert/"
-				wfe.SetAuthzBase("http://" + authority + authzPath)
-				wfe.SetCertBase("http://" + authority + certPath)
-				http.HandleFunc("/acme/new-authz", wfe.NewAuthz)
-				http.HandleFunc("/acme/new-cert", wfe.NewCert)
-				http.HandleFunc("/acme/authz/", wfe.Authz)
-				http.HandleFunc("/acme/cert/", wfe.Cert)
+				wfe.NewReg = urlBase + newRegPath
+				wfe.RegBase = urlBase + regPath
+				wfe.NewAuthz = urlBase + newAuthzPath
+				wfe.AuthzBase = urlBase + authzPath
+				wfe.NewCert = urlBase + newCertPath
+				wfe.CertBase = urlBase + certPath
+				http.HandleFunc(newRegPath, wfe.NewRegistration)
+				http.HandleFunc(newAuthzPath, wfe.NewAuthorization)
+				http.HandleFunc(newCertPath, wfe.NewCertificate)
+				http.HandleFunc(regPath, wfe.Registration)
+				http.HandleFunc(authzPath, wfe.Authorization)
+				http.HandleFunc(certPath, wfe.Certificate)
+
+				// Add a simple ToS
+				termsPath := "/terms"
+				http.HandleFunc(termsPath, func(w http.ResponseWriter, r *http.Request) {
+					fmt.Fprintf(w, "You agree to do the right thing")
+				})
+				wfe.SubscriberAgreementURL = urlBase + termsPath
+
+				// We need to tell the RA how to make challenge URIs
+				// XXX: Better way to do this?  Part of improved configuration
+				ra.AuthzBase = wfe.AuthzBase
 
 				fmt.Fprintf(os.Stderr, "Server running...\n")
 				err = http.ListenAndServe(authority, nil)
@@ -201,14 +219,25 @@ func main() {
 
 				// Go!
 				authority := "0.0.0.0:4000"
+				urlBase := "http://" + authority
+				newRegPath := "/acme/new-reg"
+				regPath := "/acme/reg/"
+				newAuthzPath := "/acme/new-authz"
 				authzPath := "/acme/authz/"
+				newCertPath := "/acme/new-cert"
 				certPath := "/acme/cert/"
-				wfe.SetAuthzBase("http://" + authority + authzPath)
-				wfe.SetCertBase("http://" + authority + certPath)
-				http.HandleFunc("/acme/new-authz", wfe.NewAuthz)
-				http.HandleFunc("/acme/new-cert", wfe.NewCert)
-				http.HandleFunc("/acme/authz/", wfe.Authz)
-				http.HandleFunc("/acme/cert/", wfe.Cert)
+				wfe.NewReg = urlBase + newRegPath
+				wfe.RegBase = urlBase + regPath
+				wfe.NewAuthz = urlBase + newAuthzPath
+				wfe.AuthzBase = urlBase + authzPath
+				wfe.NewCert = urlBase + newCertPath
+				wfe.CertBase = urlBase + certPath
+				http.HandleFunc(newRegPath, wfe.NewRegistration)
+				http.HandleFunc(newAuthzPath, wfe.NewAuthorization)
+				http.HandleFunc(newCertPath, wfe.NewCertificate)
+				http.HandleFunc(regPath, wfe.Registration)
+				http.HandleFunc(authzPath, wfe.Authorization)
+				http.HandleFunc(certPath, wfe.Certificate)
 
 				fmt.Fprintf(os.Stderr, "Server running...\n")
 				err = http.ListenAndServe(authority, nil)
@@ -235,14 +264,25 @@ func main() {
 
 				// Connect the front end to HTTP
 				authority := "0.0.0.0:4000"
+				urlBase := "http://" + authority
+				newRegPath := "/acme/new-reg"
+				regPath := "/acme/reg/"
+				newAuthzPath := "/acme/new-authz"
 				authzPath := "/acme/authz/"
+				newCertPath := "/acme/new-cert"
 				certPath := "/acme/cert/"
-				wfe.SetAuthzBase("http://" + authority + authzPath)
-				wfe.SetCertBase("http://" + authority + certPath)
-				http.HandleFunc("/acme/new-authz", wfe.NewAuthz)
-				http.HandleFunc("/acme/new-cert", wfe.NewCert)
-				http.HandleFunc("/acme/authz/", wfe.Authz)
-				http.HandleFunc("/acme/cert/", wfe.Cert)
+				wfe.NewReg = urlBase + newRegPath
+				wfe.RegBase = urlBase + regPath
+				wfe.NewAuthz = urlBase + newAuthzPath
+				wfe.AuthzBase = urlBase + authzPath
+				wfe.NewCert = urlBase + newCertPath
+				wfe.CertBase = urlBase + certPath
+				http.HandleFunc(newRegPath, wfe.NewRegistration)
+				http.HandleFunc(newAuthzPath, wfe.NewAuthorization)
+				http.HandleFunc(newCertPath, wfe.NewCertificate)
+				http.HandleFunc(regPath, wfe.Registration)
+				http.HandleFunc(authzPath, wfe.Authorization)
+				http.HandleFunc(certPath, wfe.Certificate)
 
 				fmt.Fprintf(os.Stderr, "Server running...\n")
 				http.ListenAndServe(authority, nil)

@@ -28,14 +28,8 @@ func NewValidationAuthorityImpl() ValidationAuthorityImpl {
 
 // Validation methods
 
-func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz core.Authorization) (challenge core.Challenge) {
-	identifier := authz.Identifier.Value
-
-	challenge, ok := authz.Challenges[core.ChallengeTypeSimpleHTTPS]
-	if !ok {
-		challenge.Status = core.StatusInvalid
-		return
-	}
+func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdentifier, input core.Challenge) (challenge core.Challenge) {
+	challenge = input
 
 	if len(challenge.Path) == 0 {
 		challenge.Status = core.StatusInvalid
@@ -52,7 +46,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz core.Authorization) 
 		return
 	}
 
-	httpRequest.Host = identifier
+	httpRequest.Host = identifier.Value
 	client := http.Client{Timeout: 5 * time.Second}
 	httpResponse, err := client.Do(httpRequest)
 
@@ -74,14 +68,8 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(authz core.Authorization) 
 	return
 }
 
-func (va ValidationAuthorityImpl) validateDvsni(authz core.Authorization) (challenge core.Challenge) {
-	// identifier := authz.Identifier.Value // XXX: Local version; uncomment for real version
-	challenge, ok := authz.Challenges[core.ChallengeTypeDVSNI]
-
-	if !ok {
-		challenge.Status = core.StatusInvalid
-		return
-	}
+func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (challenge core.Challenge) {
+	challenge = input
 
 	const DVSNI_SUFFIX = ".acme.invalid"
 	nonceName := challenge.Nonce + DVSNI_SUFFIX
@@ -139,13 +127,13 @@ func (va ValidationAuthorityImpl) validateDvsni(authz core.Authorization) (chall
 func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
 	// Select the first supported validation method
 	// XXX: Remove the "break" lines to process all supported validations
-	for i := range authz.Challenges {
-		switch i {
-		case "simpleHttps":
-			authz.Challenges[i] = va.validateSimpleHTTPS(authz)
+	for i, challenge := range authz.Challenges {
+		switch challenge.Type {
+		case core.ChallengeTypeSimpleHTTPS:
+			authz.Challenges[i] = va.validateSimpleHTTPS(authz.Identifier, challenge)
 			break
-		case "dvsni":
-			authz.Challenges[i] = va.validateDvsni(authz)
+		case core.ChallengeTypeDVSNI:
+			authz.Challenges[i] = va.validateDvsni(authz.Identifier, challenge)
 			break
 		}
 	}

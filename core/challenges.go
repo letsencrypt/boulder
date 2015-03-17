@@ -12,6 +12,7 @@ import (
 
 func SimpleHTTPSChallenge() Challenge {
 	return Challenge{
+		Type:   ChallengeTypeSimpleHTTPS,
 		Status: StatusPending,
 		Token:  NewToken(),
 	}
@@ -21,6 +22,7 @@ func DvsniChallenge() Challenge {
 	nonce := make([]byte, 16)
 	rand.Read(nonce)
 	return Challenge{
+		Type:   ChallengeTypeDVSNI,
 		Status: StatusPending,
 		R:      RandomString(32),
 		Nonce:  hex.EncodeToString(nonce),

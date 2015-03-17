@@ -8,6 +8,7 @@ package ra
 import (
 	"crypto/x509"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -22,6 +23,8 @@ type RegistrationAuthorityImpl struct {
 	CA core.CertificateAuthority
 	VA core.ValidationAuthority
 	SA core.StorageAuthority
+
+	AuthzBase string
 }
 
 func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
@@ -83,6 +86,24 @@ func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
+func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key jose.JsonWebKey) (reg core.Registration, err error) {
+	regID, err := ra.SA.NewRegistration()
+	if err != nil {
+		return
+	}
+
+	reg = core.Registration{
+		ID:            regID,
+		Key:           key,
+		RecoveryToken: core.NewToken(),
+	}
+	reg.MergeUpdate(init)
+
+	// Store the authorization object, then return it
+	err = ra.SA.UpdateRegistration(reg)
+	return
+}
+
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, key jose.JsonWebKey) (authz core.Authorization, err error) {
 	identifier := request.Identifier
 
@@ -99,9 +120,18 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Create validations
+	// TODO: Assign URLs
 	simpleHttps := core.SimpleHTTPSChallenge()
 	dvsni := core.DvsniChallenge()
 	authID, err := ra.SA.NewPendingAuthorization()
+	if err != nil {
+		return
+	}
+	// Ignoring these errors because we construct the URLs to be correct
+	simpleHTTPSURI, _ := url.Parse(ra.AuthzBase + authID + "?" + core.RandomString(4))
+	dvsniURI, _ := url.Parse(ra.AuthzBase + authID + "?" + core.RandomString(4))
+	simpleHttps.URI = core.AcmeURL(*simpleHTTPSURI)
+	dvsni.URI = core.AcmeURL(*dvsniURI)
 
 	// Create a new authorization object
 	authz = core.Authorization{
@@ -109,9 +139,9 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		Identifier: identifier,
 		Key:        key,
 		Status:     core.StatusPending,
-		Challenges: map[string]core.Challenge{
-			core.ChallengeTypeSimpleHTTPS: simpleHttps,
-			core.ChallengeTypeDVSNI:       dvsni,
+		Challenges: []core.Challenge{
+			simpleHttps,
+			dvsni,
 		},
 	}
 
@@ -167,37 +197,29 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) UpdateAuthorization(delta core.Authorization) (authz core.Authorization, err error) {
-	// Fetch the copy of this authorization we have on file
-	authz, err = ra.SA.GetAuthorization(delta.ID)
-	if err != nil {
+func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
+	base.MergeUpdate(update)
+	reg = base
+	err = ra.SA.UpdateRegistration(base)
+	return
+}
+
+func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization, challengeIndex int, response core.Challenge) (authz core.Authorization, err error) {
+	// Copy information over that the client is allowed to supply
+	authz = base
+	if challengeIndex >= len(authz.Challenges) {
+		err = core.MalformedRequestError("Invalid challenge index")
 		return
 	}
-
-	// Copy information over that the client is allowed to supply
-	if len(delta.Contact) > 0 {
-		authz.Contact = delta.Contact
-	}
-	newResponse := false
-	for t, challenge := range authz.Challenges {
-		response, present := delta.Challenges[t]
-		if !present {
-			continue
-		}
-
-		newResponse = true
-		authz.Challenges[t] = challenge.MergeResponse(response)
-	}
+	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
 
 	// Store the updated version
 	ra.SA.UpdatePendingAuthorization(authz)
 
-	// If any challenges were updated, dispatch to the VA for service
-	if newResponse {
-		ra.VA.UpdateValidations(authz)
-	}
+	// Dispatch to the VA for service
+	ra.VA.UpdateValidations(authz)
 
-	return authz, nil
+	return
 }
 
 func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) error {

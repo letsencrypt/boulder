@@ -34,8 +34,9 @@ type CertificateAuthorityImpl struct {
 func NewCertificateAuthorityImpl(hostport string, authKey string, profile string) (ca *CertificateAuthorityImpl, err error) {
 	// Create the remote signer
 	localProfile := config.SigningProfile{
-		Expiry:     60 * time.Minute, // BOGUS: Required by CFSSL, but not used
-		RemoteName: hostport,
+		Expiry:       time.Hour, // BOGUS: Required by CFSSL, but not used
+		RemoteName:   hostport,  // BOGUS: Only used as a flag by CFSSL
+		RemoteServer: hostport,
 	}
 
 	localProfile.Provider, err = auth.New(authKey, nil)
@@ -56,15 +57,18 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// XXX Take in authorizations and verify that union covers CSR?
 	// Pull hostnames from CSR
 	hostNames := csr.DNSNames // DNSNames + CN from CSR
-	if len(hostNames) < 1 {
-		err = errors.New("Cannot issue a certificate without a hostname.")
-		return
-	}
 	var commonName string
 	if len(csr.Subject.CommonName) > 0 {
 		commonName = csr.Subject.CommonName
-	} else {
+	} else if len(hostNames) > 0 {
 		commonName = hostNames[0]
+	} else {
+		err = errors.New("Cannot issue a certificate without a hostname.")
+		return
+	}
+
+	if len(hostNames) == 0 {
+		hostNames = []string{commonName}
 	}
 
 	// Convert the CSR to PEM

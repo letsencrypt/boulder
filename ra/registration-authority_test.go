@@ -120,15 +120,9 @@ var (
 		},
 	}
 
-	AuthzDelta = core.Authorization{
-		Challenges: map[string]core.Challenge{
-			core.ChallengeTypeSimpleHTTPS: core.Challenge{
-				Path: "Hf5GrX4Q7EBax9hc2jJnfw",
-			},
-			core.ChallengeTypeDVSNI: core.Challenge{
-				S: "23029d88d9e123e",
-			},
-		},
+	ResponseIndex = 0
+	Response      = core.Challenge{
+		Path: "Hf5GrX4Q7EBax9hc2jJnfw",
 	}
 
 	ExampleCSR = &x509.CertificateRequest{}
@@ -193,10 +187,7 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Identifier == AuthzRequest.Identifier, "Initial authz had wrong identifier")
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
-	_, ok := authz.Challenges[core.ChallengeTypeDVSNI]
-	test.Assert(t, ok, "Initial authz does not include DVSNI challenge")
-	_, ok = authz.Challenges[core.ChallengeTypeSimpleHTTPS]
-	test.Assert(t, ok, "Initial authz does not include SimpleHTTPS challenge")
+	// TODO Verify challenges
 
 	// If we get to here, we'll use this authorization for the next test
 	AuthzInitial = authz
@@ -209,9 +200,8 @@ func TestUpdateAuthorization(t *testing.T) {
 	_, va, sa, ra := initAuthorities(t)
 	AuthzInitial.ID, _ = sa.NewPendingAuthorization()
 	sa.UpdatePendingAuthorization(AuthzInitial)
-	AuthzDelta.ID = AuthzInitial.ID
 
-	authz, err := ra.UpdateAuthorization(AuthzDelta)
+	authz, err := ra.UpdateAuthorization(AuthzInitial, ResponseIndex, Response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
 	// Verify that returned authz same as DB
@@ -224,14 +214,9 @@ func TestUpdateAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, va.Argument)
 
 	// Verify that the responses are reflected
-	simpleHttps, ok := va.Argument.Challenges[core.ChallengeTypeSimpleHTTPS]
-	simpleHttpsOrig, _ := AuthzDelta.Challenges[core.ChallengeTypeSimpleHTTPS]
-	test.Assert(t, ok, "Authz passed to VA has no simpleHttps challenge")
-	test.Assert(t, simpleHttps.Path == simpleHttpsOrig.Path, "simpleHttps changed")
-	dvsni, ok := va.Argument.Challenges[core.ChallengeTypeDVSNI]
-	dvsniOrig, _ := AuthzDelta.Challenges[core.ChallengeTypeDVSNI]
-	test.Assert(t, ok, "Authz passed to VA has no dvsni challenge")
-	test.Assert(t, dvsni.Token == dvsniOrig.Token, "dvsni changed")
+	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
+	simpleHttps := va.Argument.Challenges[0]
+	test.Assert(t, simpleHttps.Path == Response.Path, "simpleHttps changed")
 
 	// If we get to here, we'll use this authorization for the next test
 	AuthzUpdated = authz
@@ -247,9 +232,7 @@ func TestOnValidationUpdate(t *testing.T) {
 
 	// Simulate a successful simpleHttps challenge
 	AuthzFromVA = AuthzUpdated
-	challenge := AuthzFromVA.Challenges[core.ChallengeTypeSimpleHTTPS]
-	challenge.Status = core.StatusValid
-	AuthzFromVA.Challenges[core.ChallengeTypeSimpleHTTPS] = challenge
+	AuthzFromVA.Challenges[0].Status = core.StatusValid
 
 	ra.OnValidationUpdate(AuthzFromVA)
 
