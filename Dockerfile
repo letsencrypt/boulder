@@ -13,7 +13,6 @@ RUN go-wrapper download github.com/bifurcation/gose && \
     go-wrapper download github.com/cloudflare/cfssl/auth && \
     go-wrapper download github.com/cloudflare/cfssl/config && \
     go-wrapper download github.com/cloudflare/cfssl/signer
-    #go-wrapper download github.com/cloudflare/cfssl/signer/remote && \
 
 # Copy in the Boulder sources
 RUN mkdir -p /go/src/github.com/letsencrypt/boulder

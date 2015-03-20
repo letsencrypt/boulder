@@ -94,6 +94,20 @@ func main() {
 		{
 			Name:  "monolithic",
 			Usage: "Start the CA in monolithic mode, without using AMQP",
+			Flags: []cli.Flag {
+				cli.StringFlag{
+					Name:   "baseUrl",
+					EnvVar: "BASE_URL",
+					Value:  "http://localhost:4000",
+					Usage:  "Base URL",
+				},
+				cli.StringFlag{
+					Name:   "listenAddress",
+					EnvVar: "LISTEN_ADDRESS",
+					Value:  "0.0.0.0:4000",
+					Usage:  "interface and port to listen on",
+				},
+			},
 			Action: func(c *cli.Context) {
 
 				// Grab parameters
@@ -122,8 +136,7 @@ func main() {
 				ca.SA = sa
 
 				// Go!
-				authority := "0.0.0.0:4000"
-				urlBase := "http://" + authority
+				urlBase := c.String("baseUrl")
 				newRegPath := "/acme/new-reg"
 				regPath := "/acme/reg/"
 				newAuthzPath := "/acme/new-authz"
@@ -154,14 +167,28 @@ func main() {
 				// XXX: Better way to do this?  Part of improved configuration
 				ra.AuthzBase = wfe.AuthzBase
 
-				fmt.Fprintf(os.Stderr, "Server running...\n")
-				err = http.ListenAndServe(authority, nil)
+				fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.String("listenAddress"))
+				err = http.ListenAndServe(c.String("listenAddress"), nil)
 				failOnError(err, "Error starting HTTP server")
 			},
 		},
 		{
 			Name:  "monolithic-amqp",
 			Usage: "Start the CA in monolithic mode, using AMQP",
+			Flags: []cli.Flag {
+				cli.StringFlag{
+					Name:   "baseUrl",
+					EnvVar: "BASE_URL",
+					Value:  "http://localhost:4000",
+					Usage:  "Base URL",
+				},
+				cli.StringFlag{
+					Name:   "listenAddress",
+					EnvVar: "LISTEN_ADDRESS",
+					Value:  "0.0.0.0:4000",
+					Usage:  "interface and port to listen on",
+				},
+			},
 			Action: func(c *cli.Context) {
 				// Grab parameters
 				cfsslServer := c.GlobalString("cfssl")
@@ -218,8 +245,7 @@ func main() {
 				wfe.SA = &sac
 
 				// Go!
-				authority := "0.0.0.0:4000"
-				urlBase := "http://" + authority
+				urlBase := c.String("baseUrl")
 				newRegPath := "/acme/new-reg"
 				regPath := "/acme/reg/"
 				newAuthzPath := "/acme/new-authz"
@@ -239,14 +265,28 @@ func main() {
 				http.HandleFunc(authzPath, wfe.Authorization)
 				http.HandleFunc(certPath, wfe.Certificate)
 
-				fmt.Fprintf(os.Stderr, "Server running...\n")
-				err = http.ListenAndServe(authority, nil)
+				fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.String("listenAddress"))
+				err = http.ListenAndServe(c.String("listenAddress"), nil)
 				failOnError(err, "Error starting HTTP server")
 			},
 		},
 		{
 			Name:  "wfe",
 			Usage: "Start the WebFrontEnd",
+			Flags: []cli.Flag {
+				cli.StringFlag{
+					Name:   "baseUrl",
+					EnvVar: "BASE_URL",
+					Value:  "http://localhost:4000",
+					Usage:  "Base URL",
+				},
+				cli.StringFlag{
+					Name:   "listenAddress",
+					EnvVar: "LISTEN_ADDRESS",
+					Value:  "0.0.0.0:4000",
+					Usage:  "interface and port to listen on",
+				},
+			},
 			Action: func(c *cli.Context) {
 				// Create necessary clients
 				ch := amqpChannel(c.GlobalString("amqp"))
@@ -263,8 +303,7 @@ func main() {
 				wfe.SA = &sac
 
 				// Connect the front end to HTTP
-				authority := "0.0.0.0:4000"
-				urlBase := "http://" + authority
+				urlBase := c.String("baseUrl")
 				newRegPath := "/acme/new-reg"
 				regPath := "/acme/reg/"
 				newAuthzPath := "/acme/new-authz"
@@ -284,8 +323,8 @@ func main() {
 				http.HandleFunc(authzPath, wfe.Authorization)
 				http.HandleFunc(certPath, wfe.Certificate)
 
-				fmt.Fprintf(os.Stderr, "Server running...\n")
-				http.ListenAndServe(authority, nil)
+				fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.String("listenAddress"))
+				http.ListenAndServe(c.String("listenAddress"), nil)
 			},
 		},
 		{

@@ -130,7 +130,7 @@ type Challenge struct {
 
 	// If successful, the time at which this challenge
 	// was completed by the server.
-	Completed time.Time `json:"completed,omitempty"`
+	Validated *time.Time `json:"validated,omitempty"`
 
 	// A URI to which a response can be POSTed
 	URI AcmeURL `json:"uri"`
