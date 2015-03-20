@@ -88,7 +88,7 @@ func TestMergeChallenge(t *testing.T) {
 	t2 := time.Now().Add(-5 * time.Hour)
 	challenge := Challenge{
 		Status:    StatusPending,
-		Completed: t1,
+		Validated: &t1,
 		Token:     "asdf",
 		Path:      "",
 		R:         "asdf",
@@ -97,7 +97,7 @@ func TestMergeChallenge(t *testing.T) {
 	}
 	response := Challenge{
 		Status:    StatusValid,
-		Completed: t2,
+		Validated: &t2,
 		Token:     "qwer",
 		Path:      "qwer",
 		R:         "qwer",
@@ -106,7 +106,7 @@ func TestMergeChallenge(t *testing.T) {
 	}
 	merged := Challenge{
 		Status:    StatusPending,
-		Completed: t1,
+		Validated: &t1,
 		Token:     "asdf",
 		Path:      "qwer",
 		R:         "asdf",
@@ -118,7 +118,7 @@ func TestMergeChallenge(t *testing.T) {
 	if probe.Status != merged.Status {
 		t.Errorf("MergeChallenge allowed response to overwrite status")
 	}
-	if probe.Completed != merged.Completed {
+	if probe.Validated != merged.Validated {
 		t.Errorf("MergeChallenge allowed response to overwrite completed time")
 	}
 	if probe.Token != merged.Token {
