@@ -15,6 +15,8 @@ func TestWillingToIssue(t *testing.T) {
 	shouldBeSyntaxError := []string{
 		``,																							// Empty name
 		`zomb!.com`,																		// ASCII character out of range
+		`emailaddress@myseriously.present.com`,
+		`user:pass@myseriously.present.com`,
 		`zömbo.com`,																		// non-ASCII character
 		`127.0.0.1`,																		// IPv4 address
 		`fe80::1:1`,																		// IPv6 addresses
@@ -29,8 +31,33 @@ func TestWillingToIssue(t *testing.T) {
 
 		`www.-ombo.com`,	 // Label starts with '-'
 		`www.xn--hmr.net`, // Punycode (disallowed for now)
-		`emailaddress@myseriously.present.com`
-	}
+		`xn--.net`,      // No punycode for now.
+		`0`,
+		`1`,
+		`*`,
+		`**`,
+		`*.*`,
+		`zombo*com`,
+		`*.com`,
+		`*.zombo.com`,
+		`.`,
+		`..`,
+		`a..`,
+		`..a`,
+		`.a.`,
+		`.....`,
+		`www.zombo_com.com`,
+		`\uFEFF`, // Byte order mark
+		`\uFEFFwww.zombo.com`,
+		`www.zom\u202Ebo.com`, // Right-to-Left Override
+		`\u202Ewww.zombo.com`,
+		`www.zom\u200Fbo.com`, // Right-to-Left Mark
+		`\u200Fwww.zombo.com`,
+		// Underscores are technically disallowed in DNS. Some DNS
+		// implementations accept them but we will be conservative.
+		`www.zom_bo.com`,
+		`zombocom`,
+		}
 
 	shouldBeNonPublic := []string{
 		`co.uk`,
@@ -38,13 +65,15 @@ func TestWillingToIssue(t *testing.T) {
 		`example.internal`,
 		`localhost`
 		`mail`,
+		// All-numeric final label not okay.
+		`www.zombo.163`,
 	}
 
 	shouldBeBlacklisted := []string{
 		`addons.mozilla.org`,
 		`ebay.co.uk`,
 		`www.google.com`,
-		`lots.of.labels.pornhub.com`
+		`lots.of.labels.pornhub.com`,
 	}
 
 	shouldBeAccepted := []string{
