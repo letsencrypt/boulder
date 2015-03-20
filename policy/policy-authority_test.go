@@ -63,7 +63,7 @@ func TestWillingToIssue(t *testing.T) {
 		`co.uk`,
 		`example.acting`,
 		`example.internal`,
-		`localhost`
+		`localhost`,
 		`mail`,
 		// All-numeric final label not okay.
 		`www.zombo.163`,
