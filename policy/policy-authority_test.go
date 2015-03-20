@@ -26,12 +26,40 @@ func TestWillingToIssue(t *testing.T) {
 
 		`www.-ombo.com`,   // Label starts with '-'
 		`www.xn--hmr.net`, // Punycode (disallowed for now)
-	}
+		`xn--.net`,      // No punycode for now.
+		`0`,
+		`1`,
+		`*`,
+		`**`,
+		`*.*`,
+		`zombo*com`,
+		`*.com`,
+		`*.zombo.com`,
+		`.`,
+		`..`,
+		`a..`,
+		`..a`,
+		`.a.`,
+		`.....`,
+		`www.zombo_com.com`,
+		`\uFEFF`, // Byte order mark
+		`\uFEFFwww.zombo.com`,
+		`www.zom\u202Ebo.com`, // Right-to-Left Override
+		`\u202Ewww.zombo.com`,
+		`www.zom\u200Fbo.com`, // Right-to-Left Mark
+		`\u200Fwww.zombo.com`,
+		// Underscores are technically disallowed in DNS. Some DNS
+		// implementations accept them but we will be conservative.
+		`www.zom_bo.com`,
+		`zombocom`,
+		}
 
 	shouldBeNonPublic := []string{
 		`co.uk`,
 		`example.acting`,
 		`example.internal`,
+		// All-numeric final label not okay.
+		`www.zombo.163`,
 	}
 
 	shouldBeBlacklisted := []string{
