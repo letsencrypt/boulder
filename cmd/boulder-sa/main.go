@@ -24,7 +24,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to create SA impl")
 
 		sas := rpc.NewStorageAuthorityServer(c.AMQP.SA.Server, ch, sai)
-		cmd.FailOnError(sas)
+		cmd.RunForever(sas)
 	}
 
 	app.Run()

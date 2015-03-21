@@ -11,8 +11,8 @@ import (
 	"os"
 
 	// Load both drivers to allow configuring either
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/mattn/go-sqlite3"
-	_ "github.com/ziutek/mymysql"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
