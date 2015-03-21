@@ -142,6 +142,9 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	response.Write(responseBody)
 }
 
+// FIXSPEC The spec is currently wrong in claiming that this resource will 201
+// over to /cert for cert delivery.
+
 func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
@@ -153,6 +156,9 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 		return
 	}
+
+  // XXX The spec says a client should send an Accept: application/pkix-cert
+  // header; either explicitly insist or tolerate
 
 	var init core.Authorization
 	if err = json.Unmarshal(body, &init); err != nil {
@@ -180,6 +186,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 
 	response.Header().Add("Location", authzURL)
 	response.Header().Add("Link", link(wfe.NewCert, "next"))
+	response.Header().Add("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(responseBody); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
