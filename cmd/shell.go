@@ -39,7 +39,13 @@ import (
 // Note: NO DEFAULTS are provided.
 type Config struct {
 	// General
-	AMQPServer string
+	AMQP struct {
+		Server string
+		RA     QueuePair
+		VA     QueuePair
+		SA     QueuePair
+		CA     QueuePair
+	}
 
 	WFE struct {
 		BaseURL       string
@@ -56,6 +62,11 @@ type Config struct {
 		DBDriver string
 		DBName   string
 	}
+}
+
+type QueuePair struct {
+	Client string
+	Server string
 }
 
 type AppShell struct {
