@@ -42,7 +42,7 @@ func amqpChannel(url string) (ch *amqp.Channel) {
 }
 
 // Start the server and wait around
-func runForever(server *rpc.AmqpRpcServer) {
+func runForever(server *rpc.AmqpRPCServer) {
 	forever := make(chan bool)
 	server.Start()
 	fmt.Fprintf(os.Stderr, "Server running...\n")
@@ -310,6 +310,7 @@ func main() {
 				authzPath := "/acme/authz/"
 				newCertPath := "/acme/new-cert"
 				certPath := "/acme/cert/"
+
 				wfe.NewReg = urlBase + newRegPath
 				wfe.RegBase = urlBase + regPath
 				wfe.NewAuthz = urlBase + newAuthzPath
@@ -324,7 +325,8 @@ func main() {
 				http.HandleFunc(certPath, wfe.Certificate)
 
 				fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.String("listenAddress"))
-				http.ListenAndServe(c.String("listenAddress"), nil)
+				err = http.ListenAndServe(c.String("listenAddress"), nil)
+				failOnError(err, "Error starting HTTP server")
 			},
 		},
 		{

@@ -76,7 +76,7 @@ func TestWriteTcp(t *testing.T) {
 	socket, outChan := awaitMessage(t, Scheme, Address)
 	defer socket.Close()
 
-	log := NewJsonLogger("just a test")
+	log := NewJSONLogger("just a test")
 	log.SetEndpoint(Scheme, Address)
 
 	msg := "Test " + Scheme + " " + Address
@@ -88,7 +88,7 @@ func TestWriteTcp(t *testing.T) {
 }
 
 func TestWriteNoNetwork(t *testing.T) {
-	log := NewJsonLogger("just a test")
+	log := NewJSONLogger("just a test")
 	log.Debug("Check", nil)
 	// Nothing to assert
 
@@ -103,7 +103,7 @@ func TestWriteUnMarshallable(t *testing.T) {
 	socket, outChan := awaitMessage(t, Scheme, Address)
 	defer socket.Close()
 
-	log := NewJsonLogger("please don't work")
+	log := NewJSONLogger("please don't work")
 	log.SetEndpoint(Scheme, Address)
 	log.Connect()
 
@@ -120,7 +120,7 @@ func TestWriteTcpAllLevels(t *testing.T) {
 	socket, outChan := awaitMessage(t, Scheme, Address)
 	defer socket.Close()
 
-	log := NewJsonLogger("just a test")
+	log := NewJSONLogger("just a test")
 	log.SetEndpoint(Scheme, Address)
 
 	msg := "Test " + Scheme + " " + Address
@@ -187,7 +187,7 @@ func TestLevelMasking(t *testing.T) {
 	socket, outChan := awaitMessage(t, Scheme, Address)
 	defer socket.Close()
 
-	log := NewJsonLogger("just a test")
+	log := NewJSONLogger("just a test")
 	log.SetEndpoint(Scheme, Address)
 
 	msg := "Test " + Scheme + " " + Address
@@ -224,7 +224,7 @@ func TestEmbeddedNewline(t *testing.T) {
 	socket, outChan := awaitMessage(t, Scheme, Address)
 	defer socket.Close()
 
-	log := NewJsonLogger("embedded newline")
+	log := NewJSONLogger("embedded newline")
 	log.SetEndpoint(Scheme, Address)
 
 	payload := struct {
