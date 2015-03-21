@@ -13,18 +13,23 @@ import (
 
 func TestWillingToIssue(t *testing.T) {
 	shouldBeSyntaxError := []string{
-		``,                      // Empty name
-		`zomb!.com`,             // ASCII character out of range
-		`zömbo.com`,             // non-ASCII character
-		`127.0.0.1`,             // IPv4 address
-		`fe80::1:1`,             // IPv6 address
-		`a.b.c.d.e.f.g.h.i.j.k`, // Too many labels (>10)
+		``,																							// Empty name
+		`zomb!.com`,																		// ASCII character out of range
+		`emailaddress@myseriously.present.com`,
+		`user:pass@myseriously.present.com`,
+		`zömbo.com`,																		// non-ASCII character
+		`127.0.0.1`,																		// IPv4 address
+		`fe80::1:1`,																		// IPv6 addresses
+		`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`,				// unexpected IPv6 variants
+		`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`,
+		`2001:db8::/32`,
+		`a.b.c.d.e.f.g.h.i.j.k`,												// Too many labels (>10)
 
 		`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.com`, // Too long (>255 characters)
 
 		`www.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.com`, // Label too long (>63 characters)
 
-		`www.-ombo.com`,   // Label starts with '-'
+		`www.-ombo.com`,	 // Label starts with '-'
 		`www.xn--hmr.net`, // Punycode (disallowed for now)
 		`xn--.net`,      // No punycode for now.
 		`0`,
@@ -58,11 +63,14 @@ func TestWillingToIssue(t *testing.T) {
 		`co.uk`,
 		`example.acting`,
 		`example.internal`,
+		`localhost`,
+		`mail`,
 		// All-numeric final label not okay.
 		`www.zombo.163`,
 	}
 
 	shouldBeBlacklisted := []string{
+		`addons.mozilla.org`,
 		`ebay.co.uk`,
 		`www.google.com`,
 		`lots.of.labels.pornhub.com`,
