@@ -6,11 +6,12 @@
 package main
 
 import (
-	"github.com/codegangsta/cli"
-	"github.com/streadway/amqp"
 	"log"
 	"net/url"
 	"os"
+
+	"github.com/codegangsta/cli"
+	"github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/analysis"
 	blog "github.com/letsencrypt/boulder/log"
@@ -31,7 +32,7 @@ const (
 	AmqpImmediate    = false
 )
 
-func startMonitor(AmqpUrl string, logger *blog.JsonLogger) {
+func startMonitor(AmqpURL string, logger *blog.JSONLogger) {
 
 	ae := analysisengine.NewLoggingAnalysisEngine(logger)
 
@@ -41,16 +42,14 @@ func startMonitor(AmqpUrl string, logger *blog.JsonLogger) {
 		log.Fatalf("Could not determine hostname")
 	}
 
-	conn, err := amqp.Dial(AmqpUrl)
+	conn, err := amqp.Dial(AmqpURL)
 	if err != nil {
 		log.Fatalf("Could not connect to AMQP server: %s", err)
-		return
 	}
 
 	rpcCh, err := conn.Channel()
 	if err != nil {
 		log.Fatalf("Could not start channel: %s", err)
-		return
 	}
 
 	err = rpcCh.ExchangeDeclare(
@@ -63,7 +62,6 @@ func startMonitor(AmqpUrl string, logger *blog.JsonLogger) {
 		nil)
 	if err != nil {
 		log.Fatalf("Could not declare exchange: %s", err)
-		return
 	}
 
 	_, err = rpcCh.QueueDeclare(
@@ -75,7 +73,6 @@ func startMonitor(AmqpUrl string, logger *blog.JsonLogger) {
 		nil)
 	if err != nil {
 		log.Fatalf("Could not declare queue: %s", err)
-		return
 	}
 
 	err = rpcCh.QueueBind(
@@ -86,7 +83,6 @@ func startMonitor(AmqpUrl string, logger *blog.JsonLogger) {
 		nil)
 	if err != nil {
 		log.Fatalf("Could not bind queue: %s", err)
-		return
 	}
 
 	deliveries, err := rpcCh.Consume(
@@ -99,7 +95,6 @@ func startMonitor(AmqpUrl string, logger *blog.JsonLogger) {
 		nil)
 	if err != nil {
 		log.Fatalf("Could not subscribe to queue: %s", err)
-		return
 	}
 
 	// Run forever.
@@ -141,7 +136,7 @@ func main() {
 	}
 
 	app.Action = func(c *cli.Context) {
-		logger := blog.NewJsonLogger("am")
+		logger := blog.NewJSONLogger("am")
 
 		// Parse SysLog URL if one was provided
 		if c.GlobalString("jsonlog") == "" {
@@ -151,14 +146,12 @@ func main() {
 			syslogU, err := url.Parse(c.GlobalString("jsonlog"))
 			if err != nil {
 				log.Fatalf("Could not parse Syslog URL: %s", err)
-				return
 			}
 
 			logger.SetEndpoint(syslogU.Scheme, syslogU.Host)
 			err = logger.Connect()
 			if err != nil {
 				log.Fatalf("Could not open remote syslog: %s", err)
-				return
 			}
 
 			logger.EnableStdOut(c.GlobalBool("stdout"))
@@ -170,9 +163,7 @@ func main() {
 		startMonitor(c.GlobalString("amqp"), logger)
 	}
 
-	err := app.Run(os.Args)
-	if err != nil {
+	if err := app.Run(os.Args); err != nil {
 		log.Fatalf("Could not start: %s", err)
-		return
 	}
 }

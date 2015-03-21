@@ -70,7 +70,7 @@ func B64dec(x string) ([]byte, error) {
 
 func RandomString(byteLength int) string {
 	b := make([]byte, byteLength)
-	rand.Read(b) // NOTE: Ignoring errors
+	_, _ = rand.Read(b) // NOTE: Ignoring errors
 	return B64enc(b)
 }
 
@@ -82,7 +82,7 @@ func NewToken() string {
 
 func Fingerprint256(data []byte) string {
 	d := sha256.New()
-	d.Write(data)
+	_, _ = d.Write(data) // Never returns an error
 	return B64enc(d.Sum(nil))
 }
 
@@ -104,8 +104,7 @@ func (u AcmeURL) MarshalJSON() ([]byte, error) {
 
 func (u *AcmeURL) UnmarshalJSON(data []byte) error {
 	var str string
-	err := json.Unmarshal(data, &str)
-	if err != nil {
+	if err := json.Unmarshal(data, &str); err != nil {
 		return err
 	}
 
@@ -143,7 +142,7 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 	default:
 		return errors.New("Unsupported CSR signing algorithm")
 	}
-	hash.Write(csr.RawTBSCertificateRequest)
+	_, _ = hash.Write(csr.RawTBSCertificateRequest) // Never returns an error
 	inputHash := hash.Sum(nil)
 
 	// Verify the signature using the public key in the CSR

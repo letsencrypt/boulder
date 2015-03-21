@@ -2,6 +2,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 package analysisengine
 
 import (
@@ -19,7 +20,7 @@ type AnalysisEngine interface {
 
 // An Analysis Engine that just logs to the JSON Logger.
 type LoggingAnalysisEngine struct {
-	jsonLogger *log.JsonLogger
+	jsonLogger *log.JSONLogger
 }
 
 func (eng *LoggingAnalysisEngine) ProcessMessage(delivery amqp.Delivery) {
@@ -28,6 +29,6 @@ func (eng *LoggingAnalysisEngine) ProcessMessage(delivery amqp.Delivery) {
 }
 
 // Construct a new Analysis Engine.
-func NewLoggingAnalysisEngine(logger *log.JsonLogger) AnalysisEngine {
+func NewLoggingAnalysisEngine(logger *log.JSONLogger) AnalysisEngine {
 	return &LoggingAnalysisEngine{jsonLogger: logger}
 }

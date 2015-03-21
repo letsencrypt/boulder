@@ -168,7 +168,7 @@ func TestOnValidationUpdate(t *testing.T) {
 	AuthzUpdated.ID, _ = sa.NewPendingAuthorization()
 	sa.UpdatePendingAuthorization(AuthzUpdated)
 
-	// Simulate a successful simpleHttps challenge
+	// Simulate a successful simpleHTTPS challenge
 	AuthzFromVA = AuthzUpdated
 	AuthzFromVA.Challenges[0].Status = core.StatusValid
 
