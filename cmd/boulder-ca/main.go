@@ -6,10 +6,6 @@
 package main
 
 import (
-	// Load both drivers to allow configuring either
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/mattn/go-sqlite3"
-
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/rpc"
