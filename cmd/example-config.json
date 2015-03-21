@@ -1,6 +1,6 @@
 {
   "amqp": {
-    "server": "localhost",
+    "server": "amqp://guest:guest@localhost:5672",
     "RA": {
       "client": "RA.client",
       "server": "RA.server"
