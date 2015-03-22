@@ -126,10 +126,10 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (challenge core.Challenge) {
 	challenge = input
 
-	const DNS_PREFIX = "_acme-challenge"
+	const DNSPrefix = "_acme-challenge"
 
-	chall_subdomain := fmt.Sprintf("%s.%s", DNS_PREFIX, identifier)
-	txts, err := net.LookupTXT(chall_subdomain)
+	challengeSubdomain := fmt.Sprintf("%s.%s", DNSPrefix, identifier)
+	txts, err := net.LookupTXT(challengeSubdomain)
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
