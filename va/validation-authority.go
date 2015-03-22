@@ -160,7 +160,6 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
 		case core.ChallengeTypeDVSNI:
 			authz.Challenges[i] = va.validateDvsni(authz.Identifier, challenge)
 			break
-		}
 		case core.ChallengeTypeDNS:
 			authz.Challenges[i] = va.validateDNS(authz.Identifier, challenge)
 			break
