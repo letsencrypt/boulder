@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"time"
 
@@ -122,6 +123,30 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	return
 }
 
+func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (challenge core.Challenge) {
+	challenge = input
+
+	const DNS_PREFIX = "_acme-challenge"
+
+	chall_subdomain := fmt.Sprintf("%s.%s", DNS_PREFIX, identifier)
+	txts, err := net.LookupTXT(chall_subdomain)
+
+	if err != nil {
+		challenge.Status = core.StatusInvalid
+		return
+        }
+
+        for _, element := range txts {
+                if element == challenge.token {
+			challenge.Status = core.StatusValid
+			return
+		}
+        }
+
+	challenge.Status = core.StatusInvalid
+	return
+}
+
 // Overall validation process
 
 func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
@@ -134,6 +159,10 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
 			break
 		case core.ChallengeTypeDVSNI:
 			authz.Challenges[i] = va.validateDvsni(authz.Identifier, challenge)
+			break
+		}
+		case core.ChallengeTypeDNS:
+			authz.Challenges[i] = va.validateDNS(authz.Identifier, challenge)
 			break
 		}
 	}
