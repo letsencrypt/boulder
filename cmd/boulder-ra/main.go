@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	app := cmd.NewAppShell("boulder-sa")
+	app := cmd.NewAppShell("boulder-ra")
 	app.Action = func(c cmd.Config) {
 		ch := cmd.AmqpChannel(c.AMQP.Server)
 
