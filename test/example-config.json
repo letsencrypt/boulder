@@ -1,0 +1,37 @@
+{
+  "amqp": {
+    "server": "amqp://guest:guest@localhost:5672",
+    "RA": {
+      "client": "RA.client",
+      "server": "RA.server"
+    },
+    "VA": {
+      "client": "VA.client",
+      "server": "VA.server"
+    },
+    "SA": {
+      "client": "SA.client",
+      "server": "SA.server"
+    },
+    "CA": {
+      "client": "CA.client",
+      "server": "CA.server"
+    }
+  },
+
+  "wfe": {
+    "baseURL": "http://localhost:4000",
+    "listenAddress": "0.0.0.0:4000"
+  },
+
+  "ca": {
+    "server": "localhost:9000",
+    "authKey": "79999d86250c367a2b517a1ae7d409c1",
+    "profile": "ee"
+  },
+
+  "sa": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:"
+  }
+}
