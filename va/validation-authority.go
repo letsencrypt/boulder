@@ -134,14 +134,15 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 	if err != nil {
 		challenge.Status = core.StatusInvalid
 		return
-        }
+	}
 
-        for _, element := range txts {
-                if element == challenge.token {
+	byteToken := []byte(challenge.token)
+	for _, element := range txts {
+		if subtle.ConstantTimeCompare([]byte(element), byteToken) == 1 {
 			challenge.Status = core.StatusValid
 			return
 		}
-        }
+	}
 
 	challenge.Status = core.StatusInvalid
 	return
