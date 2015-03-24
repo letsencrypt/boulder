@@ -26,7 +26,7 @@ const (
 )
 
 const (
-	ChallengeTypeSimpleHTTPS   = "simpleHTTPS"
+	ChallengeTypeSimpleHTTPS   = "simpleHttps"
 	ChallengeTypeDVSNI         = "dvsni"
 	ChallengeTypeDNS           = "dns"
 	ChallengeTypeRecoveryToken = "recoveryToken"
