@@ -227,8 +227,9 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// Make a URL for this authz
 	certURL := wfe.CertBase + string(cert.ID)
 
-  // FIXSPEC The spec is currently wrong in claiming that this resource will 201
-  // over to /cert for cert delivery.
+  // XXX The spec says this should 201 over to /cert, not reply with the
+  // certificate at this point... fix will need to land in boulder and client
+  // simultaneously.
   // XXX The spec says a client should send an Accept: application/pkix-cert
   // header; either explicitly insist or tolerate
 
