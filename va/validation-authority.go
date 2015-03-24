@@ -36,9 +36,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		return
 	}
 
-	// XXX: Local version; uncomment for real version
-	url := fmt.Sprintf("http://localhost:5001/.well-known/acme-challenge/%s", challenge.Path)
-	//url := fmt.Sprintf("https://%s/.well-known/acme-challenge/%s", identifier, challenge.Path)
+	url := fmt.Sprintf("https://%s/.well-known/acme-challenge/%s", identifier, challenge.Path)
 
 	httpRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -93,8 +91,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	zName := hex.EncodeToString(z)
 
 	// Make a connection with SNI = nonceName
-	hostPort := "localhost:5001"
-	//hostPort := identifier + ":443" // XXX: Local version; uncomment for real version
+	hostPort := identifier + ":443"
 	conn, err := tls.Dial("tcp", hostPort, &tls.Config{
 		ServerName:         nonceName,
 		InsecureSkipVerify: true,
