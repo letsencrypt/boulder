@@ -88,6 +88,8 @@ type problem struct {
 func sendError(response http.ResponseWriter, message string, code int) {
 	problem := problem{Detail: message}
 	problemDoc, err := json.Marshal(problem)
+  // XXX Double check that this is not redundant with the behavior of http.Error
+	response.Header().Add("Content-Type", "application/problem+json")
 	if err != nil {
 		return
 	}
@@ -133,6 +135,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	}
 
 	response.Header().Add("Location", regURL)
+	response.Header().Add("Content-Type", "application/json")
 	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
@@ -142,8 +145,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	response.Write(responseBody)
 }
 
-// FIXSPEC The spec is currently wrong in claiming that this resource will 201
-// over to /cert for cert delivery.
 
 func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
 	if request.Method != "POST" {
@@ -157,8 +158,6 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		return
 	}
 
-  // XXX The spec says a client should send an Accept: application/pkix-cert
-  // header; either explicitly insist or tolerate
 
 	var init core.Authorization
 	if err = json.Unmarshal(body, &init); err != nil {
@@ -186,14 +185,17 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 
 	response.Header().Add("Location", authzURL)
 	response.Header().Add("Link", link(wfe.NewCert, "next"))
-	response.Header().Add("Content-Type", "application/pkix-cert")
+	response.Header().Add("Content-Type", "application/json")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(responseBody); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
 
+
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
+
+
 	if request.Method != "POST" {
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -225,8 +227,14 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// Make a URL for this authz
 	certURL := wfe.CertBase + string(cert.ID)
 
-	// TODO: Content negotiation for cert format
+  // XXX The spec says this should 201 over to /cert, not reply with the
+  // certificate at this point... fix will need to land in boulder and client
+  // simultaneously.
+  // XXX The spec says a client should send an Accept: application/pkix-cert
+  // header; either explicitly insist or tolerate
+
 	response.Header().Add("Location", certURL)
+	response.Header().Add("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -289,6 +297,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
+	  response.Header().Add("Content-Type", "application/json")
 		response.WriteHeader(http.StatusAccepted)
 		if _, err = response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -320,6 +329,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
+	  response.Header().Add("Content-Type", "application/json")
 		response.WriteHeader(http.StatusOK)
 		response.Write(jsonReply)
 
@@ -356,6 +366,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
+	  response.Header().Add("Content-Type", "application/json")
 		response.WriteHeader(http.StatusAccepted)
 		response.Write(jsonReply)
 
@@ -390,6 +401,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
+	  response.Header().Add("Content-Type", "application/json")
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -414,8 +426,8 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		}
 
 		// TODO: Content negotiation
-		// TODO: Indicate content type
 		// TODO: Link header
+	  response.Header().Add("Content-Type", "application/pkix-cert")
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(cert); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
