@@ -24,7 +24,7 @@ func main() {
 		rac, err := rpc.NewRegistrationAuthorityClient(c.AMQP.RA.Client, c.AMQP.RA.Server, ch)
 		cmd.FailOnError(err, "Unable to create RA client")
 
-		vai := va.NewValidationAuthorityImpl(auditlogger)
+		vai := va.NewValidationAuthorityImpl(auditlogger, c.CA.TestMode)
 		vai.RA = &rac
 
 		vas, err := rpc.NewValidationAuthorityServer(c.AMQP.VA.Server, ch, &vai)
