@@ -14,8 +14,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/cloudflare/cfssl/signer/local"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer/local"
+	_ "github.com/letsencrypt/boulder/vendor/_nuts/github.com/mattn/go-sqlite3"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"

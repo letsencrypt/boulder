@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/log"
-	"github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/streadway/amqp"
 )
 
 func TestNewLoggingAnalysisEngine(t *testing.T) {

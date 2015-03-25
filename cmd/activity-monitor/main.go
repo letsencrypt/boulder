@@ -13,10 +13,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/streadway/amqp"
-
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/streadway/amqp"
 	blog "github.com/letsencrypt/boulder/log"
 )
 

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/streadway/amqp"
 )
 
 // TODO: AMQP-RPC messages should be wrapped in JWS.  To implement that,

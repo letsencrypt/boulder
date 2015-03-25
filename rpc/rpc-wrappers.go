@@ -11,7 +11,7 @@ import (
 	"errors"
 	"log"
 
-	"github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
