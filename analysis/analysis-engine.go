@@ -6,7 +6,10 @@
 package analysisengine
 
 import (
-	"github.com/letsencrypt/boulder/log"
+	blog "github.com/letsencrypt/boulder/log"
+
+	"encoding/json"
+	"fmt"
 	"github.com/streadway/amqp"
 )
 
@@ -15,20 +18,29 @@ import (
 
 // Interface all Analysis Engines share
 type AnalysisEngine interface {
-	ProcessMessage(amqp.Delivery)
+	ProcessMessage(amqp.Delivery) (err error)
 }
 
 // An Analysis Engine that just logs to the JSON Logger.
 type LoggingAnalysisEngine struct {
-	jsonLogger *log.JSONLogger
+	log *blog.AuditLogger
 }
 
-func (eng *LoggingAnalysisEngine) ProcessMessage(delivery amqp.Delivery) {
+func (eng *LoggingAnalysisEngine) ProcessMessage(delivery amqp.Delivery) (err error) {
 	// Send the entire message contents to the syslog server for debugging.
-	eng.jsonLogger.Debug("Message contents", delivery)
+	encoded, err := json.Marshal(delivery)
+
+	if err != nil {
+		return
+	}
+
+	err = eng.log.Debug(fmt.Sprintf("MONITOR: %s", encoded))
+	return
 }
 
 // Construct a new Analysis Engine.
-func NewLoggingAnalysisEngine(logger *log.JSONLogger) AnalysisEngine {
-	return &LoggingAnalysisEngine{jsonLogger: logger}
+func NewLoggingAnalysisEngine(logger *blog.AuditLogger) AnalysisEngine {
+	logger.Notice("Analysis Engine Starting")
+
+	return &LoggingAnalysisEngine{log: logger}
 }

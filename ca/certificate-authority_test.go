@@ -20,6 +20,7 @@ import (
 	"github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/mattn/go-sqlite3"
 
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -219,6 +220,9 @@ var NO_NAME_CSR_HEX = "308202523082013a020100300d310b300906035504061302555330820
 	"1778a629b584f2bc059489a236131de9b444adca90218c31a499a485"
 
 func TestIssueCertificate(t *testing.T) {
+	// Audit logger
+	audit, _ := blog.Dial("", "", "tag")
+
 	// Decode pre-generated values
 	caKeyPEM, _ := pem.Decode([]byte(CA_KEY_PEM))
 	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
@@ -234,7 +238,7 @@ func TestIssueCertificate(t *testing.T) {
 	profileName := "ee"
 
 	// Create an SA
-	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
+	sa, err := sa.NewSQLStorageAuthority(audit, "sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
 	sa.InitTables()
 
@@ -273,7 +277,7 @@ func TestIssueCertificate(t *testing.T) {
 
 	// Create a CA
 	// Uncomment to test with a remote signer
-	ca, err := NewCertificateAuthorityImpl(hostPort, authKey, profileName)
+	ca, err := NewCertificateAuthorityImpl(audit, hostPort, authKey, profileName)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = sa
 

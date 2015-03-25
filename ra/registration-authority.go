@@ -15,23 +15,27 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 )
 
 // All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	CA core.CertificateAuthority
-	VA core.ValidationAuthority
-	SA core.StorageAuthority
-	PA core.PolicyAuthority
+	CA  core.CertificateAuthority
+	VA  core.ValidationAuthority
+	SA  core.StorageAuthority
+	PA  core.PolicyAuthority
+	log *blog.AuditLogger
 
 	AuthzBase string
 }
 
-func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
-	ra := RegistrationAuthorityImpl{}
-	ra.PA = policy.NewPolicyAuthorityImpl()
+func NewRegistrationAuthorityImpl(logger *blog.AuditLogger) RegistrationAuthorityImpl {
+	logger.Notice("Registration Authority Starting")
+
+	ra := RegistrationAuthorityImpl{log: logger}
+	ra.PA = policy.NewPolicyAuthorityImpl(logger)
 	return ra
 }
 
@@ -137,6 +141,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}
 
 	// Create the certificate
+	ra.log.Audit(fmt.Sprintf("Issuing certificate for %s", names))
 	cert, err = ra.CA.IssueCertificate(*csr)
 	return
 }
