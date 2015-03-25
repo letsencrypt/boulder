@@ -53,10 +53,10 @@ type Config struct {
 	}
 
 	CA struct {
-		Server    string
-		AuthKey   string
-		Profile   string
-    TestMode  bool
+		Server   string
+		AuthKey  string
+		Profile  string
+		TestMode bool
 	}
 
 	SA struct {
