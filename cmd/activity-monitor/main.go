@@ -7,7 +7,6 @@ package main
 
 import (
 	"fmt"
-	"log/syslog"
 	"os"
 
 	"github.com/streadway/amqp"
@@ -105,8 +104,7 @@ func main() {
 	app := cmd.NewAppShell("activity-monitor")
 
 	app.Action = func(c cmd.Config) {
-		syslogger, err := syslog.Dial(c.Syslog.Network, c.Syslog.Server, syslog.LOG_LOCAL0, c.Syslog.Tag)
-		auditlogger := blog.NewAuditLogger(syslogger)
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
 
 		cmd.FailOnError(err, "Could not connect to Syslog")
 

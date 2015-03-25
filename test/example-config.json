@@ -1,4 +1,10 @@
 {
+  "syslog": {
+    "network": "",
+    "server": "",
+    "tag": "boulder"
+  },
+
   "amqp": {
     "server": "amqp://guest:guest@localhost:5672",
     "RA": {

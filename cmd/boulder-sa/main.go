@@ -11,6 +11,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -20,7 +21,11 @@ func main() {
 	app.Action = func(c cmd.Config) {
 		ch := cmd.AmqpChannel(c.AMQP.Server)
 
-		sai, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
+		// Set up logging
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		cmd.FailOnError(err, "Could not connect to Syslog")
+
+		sai, err := sa.NewSQLStorageAuthority(auditlogger, c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Failed to create SA impl")
 
 		sas := rpc.NewStorageAuthorityServer(c.AMQP.SA.Server, ch, sai)

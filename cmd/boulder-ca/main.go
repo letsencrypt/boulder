@@ -8,6 +8,7 @@ package main
 import (
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -16,10 +17,14 @@ func main() {
 	app.Action = func(c cmd.Config) {
 		ch := cmd.AmqpChannel(c.AMQP.Server)
 
+		// Set up logging
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		cmd.FailOnError(err, "Could not connect to Syslog")
+
 		sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Client, ch)
 		cmd.FailOnError(err, "Failed to create SA client")
 
-		cai, err := ca.NewCertificateAuthorityImpl(c.CA.Server, c.CA.AuthKey, c.CA.Profile)
+		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
 		cmd.FailOnError(err, "Failed to create CA impl")
 
 		cai.SA = &sac

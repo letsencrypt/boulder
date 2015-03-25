@@ -23,6 +23,17 @@ type AuditLogger struct {
 	*syslog.Writer
 }
 
+// Dial establishes a connection to the log daemon by passing through
+// the parameters to the syslog.Dial method.
+// See http://golang.org/pkg/log/syslog/#Dial
+func Dial(network, raddr string, tag string) (*AuditLogger, error) {
+	syslogger, err := syslog.Dial(network, raddr, syslog.LOG_INFO|syslog.LOG_LOCAL0, tag)
+	if err != nil {
+		return nil, err
+	}
+	return NewAuditLogger(syslogger)
+}
+
 // NewAuditLogger constructs an Audit Logger that decorates a normal
 // System Logger. All methods in log/syslog continue to work.
 func NewAuditLogger(log *syslog.Writer) (*AuditLogger, error) {
@@ -36,5 +47,17 @@ func NewAuditLogger(log *syslog.Writer) (*AuditLogger, error) {
 // audit tag, for special handling at the upstream system logger.
 func (log *AuditLogger) Audit(msg string) (err error) {
 	err = log.Notice(fmt.Sprintf("%s %s", auditTag, msg))
+	return
+}
+
+// Audit can format an error for auditing; it does so at ERR level.
+func (log *AuditLogger) AuditErr(msg error) (err error) {
+	err = log.Err(fmt.Sprintf("%s %s", auditTag, msg))
+	return
+}
+
+// Warning formats an error for the Warn level.
+func (log *AuditLogger) WarningErr(msg error) (err error) {
+	err = log.Warning(fmt.Sprintf("%s", msg))
 	return
 }

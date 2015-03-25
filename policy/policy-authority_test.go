@@ -9,29 +9,30 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 func TestWillingToIssue(t *testing.T) {
 	shouldBeSyntaxError := []string{
-		``,																							// Empty name
-		`zomb!.com`,																		// ASCII character out of range
+		``,          // Empty name
+		`zomb!.com`, // ASCII character out of range
 		`emailaddress@myseriously.present.com`,
 		`user:pass@myseriously.present.com`,
-		`zömbo.com`,																		// non-ASCII character
-		`127.0.0.1`,																		// IPv4 address
-		`fe80::1:1`,																		// IPv6 addresses
-		`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`,				// unexpected IPv6 variants
+		`zömbo.com`,                              // non-ASCII character
+		`127.0.0.1`,                              // IPv4 address
+		`fe80::1:1`,                              // IPv6 addresses
+		`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`, // unexpected IPv6 variants
 		`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`,
 		`2001:db8::/32`,
-		`a.b.c.d.e.f.g.h.i.j.k`,												// Too many labels (>10)
+		`a.b.c.d.e.f.g.h.i.j.k`, // Too many labels (>10)
 
 		`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.com`, // Too long (>255 characters)
 
 		`www.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.com`, // Label too long (>63 characters)
 
-		`www.-ombo.com`,	 // Label starts with '-'
+		`www.-ombo.com`,   // Label starts with '-'
 		`www.xn--hmr.net`, // Punycode (disallowed for now)
-		`xn--.net`,      // No punycode for now.
+		`xn--.net`,        // No punycode for now.
 		`0`,
 		`1`,
 		`*`,
@@ -57,7 +58,7 @@ func TestWillingToIssue(t *testing.T) {
 		// implementations accept them but we will be conservative.
 		`www.zom_bo.com`,
 		`zombocom`,
-		}
+	}
 
 	shouldBeNonPublic := []string{
 		`co.uk`,
@@ -87,7 +88,10 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zombo-.com",
 	}
 
-	pa := NewPolicyAuthorityImpl()
+	// Audit logger
+	audit, _ := blog.Dial("", "", "tag")
+
+	pa := NewPolicyAuthorityImpl(audit)
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
@@ -130,7 +134,10 @@ func TestWillingToIssue(t *testing.T) {
 }
 
 func TestChallengesFor(t *testing.T) {
-	pa := NewPolicyAuthorityImpl()
+	// Audit logger
+	audit, _ := blog.Dial("", "", "tag")
+
+	pa := NewPolicyAuthorityImpl(audit)
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 

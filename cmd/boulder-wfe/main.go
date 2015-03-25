@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/wfe"
 )
@@ -19,6 +20,10 @@ func main() {
 	app.Action = func(c cmd.Config) {
 		ch := cmd.AmqpChannel(c.AMQP.Server)
 
+		// Set up logging
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		cmd.FailOnError(err, "Could not connect to Syslog")
+
 		rac, err := rpc.NewRegistrationAuthorityClient(c.AMQP.RA.Client, c.AMQP.RA.Server, ch)
 		cmd.FailOnError(err, "Unable to create RA client")
 
@@ -26,7 +31,7 @@ func main() {
 		cmd.FailOnError(err, "Unable to create SA client")
 
 		// Create the front-end and wire in its resources
-		wfe := wfe.NewWebFrontEndImpl()
+		wfe := wfe.NewWebFrontEndImpl(auditlogger)
 		wfe.RA = &rac
 		wfe.SA = &sac
 

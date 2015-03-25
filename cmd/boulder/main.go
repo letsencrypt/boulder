@@ -16,6 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/va"
@@ -25,15 +26,19 @@ import (
 func main() {
 	app := cmd.NewAppShell("boulder")
 	app.Action = func(c cmd.Config) {
+		// Set up logging
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		cmd.FailOnError(err, "Could not connect to Syslog")
+
 		// Create the components
-		wfe := wfe.NewWebFrontEndImpl()
-		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
+		wfe := wfe.NewWebFrontEndImpl(auditlogger)
+		sa, err := sa.NewSQLStorageAuthority(auditlogger, c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Unable to create SA")
 		err = sa.InitTables()
 		cmd.FailOnError(err, "Unable to initialize SA")
-		ra := ra.NewRegistrationAuthorityImpl()
-		va := va.NewValidationAuthorityImpl()
-		ca, err := ca.NewCertificateAuthorityImpl(c.CA.Server, c.CA.AuthKey, c.CA.Profile)
+		ra := ra.NewRegistrationAuthorityImpl(auditlogger)
+		va := va.NewValidationAuthorityImpl(auditlogger)
+		ca, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
 		cmd.FailOnError(err, "Unable to create CA")
 
 		// Wire them up

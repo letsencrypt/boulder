@@ -7,6 +7,7 @@ package main
 
 import (
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/va"
 )
@@ -16,10 +17,14 @@ func main() {
 	app.Action = func(c cmd.Config) {
 		ch := cmd.AmqpChannel(c.AMQP.Server)
 
+		// Set up logging
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		cmd.FailOnError(err, "Could not connect to Syslog")
+
 		rac, err := rpc.NewRegistrationAuthorityClient(c.AMQP.RA.Client, c.AMQP.RA.Server, ch)
 		cmd.FailOnError(err, "Unable to create RA client")
 
-		vai := va.NewValidationAuthorityImpl()
+		vai := va.NewValidationAuthorityImpl(auditlogger)
 		vai.RA = &rac
 
 		vas, err := rpc.NewValidationAuthorityServer(c.AMQP.VA.Server, ch, &vai)
