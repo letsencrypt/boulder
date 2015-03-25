@@ -101,7 +101,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		return SyntaxError
 	}
 
-	labels := strings.Split(domain, ".")
+	labels := strings.SplitN(domain, ".", maxLabels + 1)
 	if len(labels) > maxLabels || len(labels) < 2 {
 		return SyntaxError
 	}
