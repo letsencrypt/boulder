@@ -62,6 +62,12 @@ type Config struct {
 		DBDriver string
 		DBName   string
 	}
+
+	Syslog struct {
+		Network string
+		Server  string
+		Tag     string
+	}
 }
 
 type QueuePair struct {
@@ -99,6 +105,7 @@ func (as *AppShell) Run() {
 
 		var config Config
 		err = json.Unmarshal(configJSON, &config)
+		FailOnError(err, "Failed to read configuration")
 
 		as.Action(config)
 	}

@@ -6,6 +6,7 @@
 package analysisengine
 
 import (
+	"log/syslog"
 	"testing"
 
 	"github.com/letsencrypt/boulder/log"
@@ -13,7 +14,8 @@ import (
 )
 
 func TestNewLoggingAnalysisEngine(t *testing.T) {
-	log := log.NewJSONLogger("newEngine")
+	writer, _ := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
+	log, _ := log.NewAuditLogger(writer)
 	ae := NewLoggingAnalysisEngine(log)
 
 	// Trivially check an empty mock message
