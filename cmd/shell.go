@@ -27,9 +27,9 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/rpc"
-	"github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/codegangsta/cli"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/streadway/amqp"
 )
 
 // Config stores configuration parameters that applications
