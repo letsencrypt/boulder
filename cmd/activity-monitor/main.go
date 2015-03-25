@@ -5,6 +5,10 @@
 
 package main
 
+// The Activity Monitor executable starts one or more Boulder Analysis
+// Engines which monitor all AMQP communications across the message
+// broker to look for anomalies.
+
 import (
 	"fmt"
 	"os"
