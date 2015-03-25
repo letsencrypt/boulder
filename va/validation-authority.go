@@ -91,7 +91,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	zName := hex.EncodeToString(z)
 
 	// Make a connection with SNI = nonceName
-	hostPort := identifier + ":443"
+	hostPort := identifier.Value + ":443"
 	conn, err := tls.Dial("tcp", hostPort, &tls.Config{
 		ServerName:         nonceName,
 		InsecureSkipVerify: true,
