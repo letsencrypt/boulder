@@ -91,7 +91,7 @@ func sendError(response http.ResponseWriter, message string, code int) {
 	if err != nil {
 		return
 	}
-	response.Header().Add("Content-Type", "application/problem+json")
+	response.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(code)
 	fmt
 }
@@ -135,7 +135,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	}
 
 	response.Header().Add("Location", regURL)
-	response.Header().Add("Content-Type", "application/json")
+	response.Header().Set("Content-Type", "application/json")
 	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
@@ -183,7 +183,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 
 	response.Header().Add("Location", authzURL)
 	response.Header().Add("Link", link(wfe.NewCert, "next"))
-	response.Header().Add("Content-Type", "application/json")
+	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(responseBody); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -230,7 +230,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// header; either explicitly insist or tolerate
 
 	response.Header().Add("Location", certURL)
-	response.Header().Add("Content-Type", "application/pkix-cert")
+	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -293,7 +293,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
-		response.Header().Add("Content-Type", "application/json")
+		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusAccepted)
 		if _, err = response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -325,7 +325,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
-		response.Header().Add("Content-Type", "application/json")
+		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusOK)
 		response.Write(jsonReply)
 
@@ -362,7 +362,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
-		response.Header().Add("Content-Type", "application/json")
+		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusAccepted)
 		response.Write(jsonReply)
 
@@ -397,7 +397,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
-		response.Header().Add("Content-Type", "application/json")
+		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -423,7 +423,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 
 		// TODO: Content negotiation
 		// TODO: Link header
-		response.Header().Add("Content-Type", "application/pkix-cert")
+		response.Header().Set("Content-Type", "application/pkix-cert")
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(cert); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
