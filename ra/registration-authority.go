@@ -15,23 +15,27 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 )
 
 // All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	CA core.CertificateAuthority
-	VA core.ValidationAuthority
-	SA core.StorageAuthority
-	PA core.PolicyAuthority
+	CA  core.CertificateAuthority
+	VA  core.ValidationAuthority
+	SA  core.StorageAuthority
+	PA  core.PolicyAuthority
+	log *blog.AuditLogger
 
 	AuthzBase string
 }
 
-func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
-	ra := RegistrationAuthorityImpl{}
-	ra.PA = policy.NewPolicyAuthorityImpl()
+func NewRegistrationAuthorityImpl(logger *blog.AuditLogger) RegistrationAuthorityImpl {
+	logger.Notice("Registration Authority Starting")
+
+	ra := RegistrationAuthorityImpl{log: logger}
+	ra.PA = policy.NewPolicyAuthorityImpl(logger)
 	return ra
 }
 
@@ -99,8 +103,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	// Verify the CSR
 	// TODO: Verify that other aspects of the CSR are appropriate
 	csr := req.CSR
-	err = core.VerifyCSR(csr)
-	if err != nil {
+	if err = core.VerifyCSR(csr); err != nil {
 		err = core.UnauthorizedError("Invalid signature on CSR")
 		return
 	}
@@ -138,6 +141,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}
 
 	// Create the certificate
+	ra.log.Audit(fmt.Sprintf("Issuing certificate for %s", names))
 	cert, err = ra.CA.IssueCertificate(*csr)
 	return
 }
@@ -159,7 +163,9 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
 
 	// Store the updated version
-	ra.SA.UpdatePendingAuthorization(authz)
+	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
+		return
+	}
 
 	// Dispatch to the VA for service
 	ra.VA.UpdateValidations(authz)
@@ -191,6 +197,6 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 		authz.Expires = time.Now().Add(365 * 24 * time.Hour)
 	}
 
-	// Finalize the authorization
-	ra.SA.FinalizeAuthorization(authz)
+	// Finalize the authorization (error ignored)
+	_ = ra.SA.FinalizeAuthorization(authz)
 }

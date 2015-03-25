@@ -16,14 +16,17 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 type ValidationAuthorityImpl struct {
-	RA core.RegistrationAuthority
+	RA  core.RegistrationAuthority
+	log *blog.AuditLogger
 }
 
-func NewValidationAuthorityImpl() ValidationAuthorityImpl {
-	return ValidationAuthorityImpl{}
+func NewValidationAuthorityImpl(logger *blog.AuditLogger) ValidationAuthorityImpl {
+	logger.Notice("Validation Authority Starting")
+	return ValidationAuthorityImpl{log: logger}
 }
 
 // Validation methods
@@ -87,7 +90,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	RS := append(R, S...)
 
 	sha := sha256.New()
-	sha.Write(RS)
+	_, _ = sha.Write(RS) // Never returns an error
 	z := make([]byte, sha.Size())
 	sha.Sum(z)
 	zName := hex.EncodeToString(z)
@@ -137,6 +140,8 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
 			break
 		}
 	}
+
+	va.log.Notice(fmt.Sprintf("Validations: %v", authz))
 
 	va.RA.OnValidationUpdate(authz)
 }

@@ -12,15 +12,20 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 type PolicyAuthorityImpl struct {
+	log *blog.AuditLogger
+
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
 	Blacklist        map[string]bool // A blacklist of denied names
 }
 
-func NewPolicyAuthorityImpl() *PolicyAuthorityImpl {
-	pa := PolicyAuthorityImpl{}
+func NewPolicyAuthorityImpl(logger *blog.AuditLogger) *PolicyAuthorityImpl {
+	logger.Notice("Registration Authority Starting")
+
+	pa := PolicyAuthorityImpl{log: logger}
 
 	// TODO: Add configurability
 	pa.PublicSuffixList = publicSuffixList
@@ -102,7 +107,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	}
 
 	labels := strings.Split(domain, ".")
-	if len(labels) > maxLabels {
+	if len(labels) > maxLabels || len(labels) < 2 {
 		return SyntaxError
 	}
 	for _, label := range labels {

@@ -62,7 +62,6 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		nil)
 	if err != nil {
 		log.Fatalf("Could not declare exchange: %s", err)
-		return
 	}
 
 	q, err := ch.QueueDeclare(
@@ -74,7 +73,6 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		nil)
 	if err != nil {
 		log.Fatalf("Could not declare queue: %s", err)
-		return
 	}
 
 	err = ch.QueueBind(
@@ -85,7 +83,6 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		nil)
 	if err != nil {
 		log.Fatalf("Could not bind queue: %s", err)
-		return
 	}
 
 	msgs, err = ch.Consume(
@@ -98,7 +95,6 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		nil)
 	if err != nil {
 		log.Fatalf("Could not subscribe to queue: %s", err)
-		return
 	}
 
 	return
@@ -110,7 +106,7 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 //
 // To implement specific functionality, using code should use the Handle
 // method to add specific actions.
-type AmqpRpcServer struct {
+type AmqpRPCServer struct {
 	serverQueue   string
 	channel       *amqp.Channel
 	dispatchTable map[string]func([]byte) []byte
@@ -119,21 +115,21 @@ type AmqpRpcServer struct {
 // Create a new AMQP-RPC server on the given queue and channel.
 // Note that you must call Start() to actually start the server
 // listening for requests.
-func NewAmqpRpcServer(serverQueue string, channel *amqp.Channel) *AmqpRpcServer {
-	return &AmqpRpcServer{
+func NewAmqpRPCServer(serverQueue string, channel *amqp.Channel) *AmqpRPCServer {
+	return &AmqpRPCServer{
 		serverQueue:   serverQueue,
 		channel:       channel,
 		dispatchTable: make(map[string]func([]byte) []byte),
 	}
 }
 
-func (rpc *AmqpRpcServer) Handle(method string, handler func([]byte) []byte) {
+func (rpc *AmqpRPCServer) Handle(method string, handler func([]byte) []byte) {
 	rpc.dispatchTable[method] = handler
 }
 
 // Starts the AMQP-RPC server running in a separate thread.
 // There is currently no Stop() method.
-func (rpc *AmqpRpcServer) Start() (err error) {
+func (rpc *AmqpRPCServer) Start() (err error) {
 	msgs, err := amqpSubscribe(rpc.channel, rpc.serverQueue)
 	if err != nil {
 		return
@@ -144,20 +140,21 @@ func (rpc *AmqpRpcServer) Start() (err error) {
 			// XXX-JWS: jws.Verify(body)
 			cb, present := rpc.dispatchTable[msg.Type]
 			log.Printf(" [s<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), msg.CorrelationId)
-			if present {
-				response := cb(msg.Body)
-				log.Printf(" [s>] sending %s(%s) [%s]", msg.Type, core.B64enc(response), msg.CorrelationId)
-				rpc.channel.Publish(
-					AmqpExchange,
-					msg.ReplyTo,
-					AmqpMandatory,
-					AmqpImmediate,
-					amqp.Publishing{
-						CorrelationId: msg.CorrelationId,
-						Type:          msg.Type,
-						Body:          response, // XXX-JWS: jws.Sign(privKey, body)
-					})
+			if !present {
+				continue
 			}
+			response := cb(msg.Body)
+			log.Printf(" [s>] sending %s(%s) [%s]", msg.Type, core.B64enc(response), msg.CorrelationId)
+			rpc.channel.Publish(
+				AmqpExchange,
+				msg.ReplyTo,
+				AmqpMandatory,
+				AmqpImmediate,
+				amqp.Publishing{
+					CorrelationId: msg.CorrelationId,
+					Type:          msg.Type,
+					Body:          response, // XXX-JWS: jws.Sign(privKey, body)
+				})
 		}
 	}()
 	return
@@ -172,7 +169,7 @@ func (rpc *AmqpRpcServer) Start() (err error) {
 //
 // ```
 //   request = /* serialize request to []byte */
-//   response = <-AmqpRpcClient.Dispatch(method, request)
+//   response = <-AmqpRPCCLient.Dispatch(method, request)
 //   return /* deserialized response */
 // ```
 //
@@ -181,7 +178,7 @@ func (rpc *AmqpRpcServer) Start() (err error) {
 //
 // DispatchSync will manage the channel for you, and also enforce a
 // timeout on the transaction (default 60 seconds)
-type AmqpRpcClient struct {
+type AmqpRPCCLient struct {
 	serverQueue string
 	clientQueue string
 	channel     *amqp.Channel
@@ -189,8 +186,8 @@ type AmqpRpcClient struct {
 	timeout     time.Duration
 }
 
-func NewAmqpRpcClient(clientQueue, serverQueue string, channel *amqp.Channel) (rpc *AmqpRpcClient, err error) {
-	rpc = &AmqpRpcClient{
+func NewAmqpRPCCLient(clientQueue, serverQueue string, channel *amqp.Channel) (rpc *AmqpRPCCLient, err error) {
+	rpc = &AmqpRPCCLient{
 		serverQueue: serverQueue,
 		clientQueue: clientQueue,
 		channel:     channel,
@@ -211,21 +208,22 @@ func NewAmqpRpcClient(clientQueue, serverQueue string, channel *amqp.Channel) (r
 			responseChan, present := rpc.pending[corrID]
 
 			log.Printf(" [c<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), corrID)
-			if present {
-				responseChan <- msg.Body
-				delete(rpc.pending, corrID)
+			if !present {
+				continue
 			}
+			responseChan <- msg.Body
+			delete(rpc.pending, corrID)
 		}
 	}()
 
 	return
 }
 
-func (rpc *AmqpRpcClient) SetTimeout(ttl time.Duration) {
+func (rpc *AmqpRPCCLient) SetTimeout(ttl time.Duration) {
 	rpc.timeout = ttl
 }
 
-func (rpc *AmqpRpcClient) Dispatch(method string, body []byte) chan []byte {
+func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 	// Create a channel on which to direct the response
 	// At least in some cases, it's important that this channel
 	// be buffered to avoid deadlock
@@ -250,7 +248,7 @@ func (rpc *AmqpRpcClient) Dispatch(method string, body []byte) chan []byte {
 	return responseChan
 }
 
-func (rpc *AmqpRpcClient) DispatchSync(method string, body []byte) (response []byte, err error) {
+func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []byte, err error) {
 	select {
 	case response = <-rpc.Dispatch(method, body):
 		return
@@ -261,7 +259,7 @@ func (rpc *AmqpRpcClient) DispatchSync(method string, body []byte) (response []b
 	}
 }
 
-func (rpc *AmqpRpcClient) SyncDispatchWithTimeout(method string, body []byte, ttl time.Duration) (response []byte, err error) {
+func (rpc *AmqpRPCCLient) SyncDispatchWithTimeout(method string, body []byte, ttl time.Duration) (response []byte, err error) {
 	switch {
 
 	}

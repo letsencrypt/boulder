@@ -66,8 +66,7 @@ type rawCertificateRequest struct {
 
 func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 	var raw rawCertificateRequest
-	err := json.Unmarshal(data, &raw)
-	if err != nil {
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
@@ -130,15 +129,15 @@ type Challenge struct {
 
 	// If successful, the time at which this challenge
 	// was completed by the server.
-	Completed time.Time `json:"completed,omitempty"`
+	Validated *time.Time `json:"validated,omitempty"`
 
 	// A URI to which a response can be POSTed
 	URI AcmeURL `json:"uri"`
 
-	// Used by simpleHttps, recoveryToken, and dns challenges
+	// Used by simpleHTTPS, recoveryToken, and dns challenges
 	Token string `json:"token,omitempty"`
 
-	// Used by simpleHttps challenges
+	// Used by simpleHTTPS challenges
 	Path string `json:"path,omitempty"`
 
 	// Used by dvsni challenges

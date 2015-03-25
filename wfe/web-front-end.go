@@ -15,11 +15,13 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 type WebFrontEndImpl struct {
-	RA core.RegistrationAuthority
-	SA core.StorageGetter
+	RA  core.RegistrationAuthority
+	SA  core.StorageGetter
+	log *blog.AuditLogger
 
 	// URL configuration parameters
 	NewReg    string
@@ -32,27 +34,26 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 }
 
-func NewWebFrontEndImpl() WebFrontEndImpl {
-	return WebFrontEndImpl{}
+func NewWebFrontEndImpl(logger *blog.AuditLogger) WebFrontEndImpl {
+	logger.Notice("Web Front End Starting")
+	return WebFrontEndImpl{log: logger}
 }
 
 // Method implementations
 
 func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
-	zero := []byte{}
 	zeroKey := jose.JsonWebKey{}
 
 	// Read body
 	body, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		return zero, zeroKey, err
+		return nil, zeroKey, err
 	}
 
 	// Parse as JWS
 	var jws jose.JsonWebSignature
-	err = json.Unmarshal(body, &jws)
-	if err != nil {
-		return zero, zeroKey, err
+	if err = json.Unmarshal(body, &jws); err != nil {
+		return nil, zeroKey, err
 	}
 
 	// Verify JWS
@@ -61,9 +62,8 @@ func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
 	// RA.  However the WFE is the RA's only view of the outside world
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
-	err = jws.Verify()
-	if err != nil {
-		return zero, zeroKey, err
+	if err = jws.Verify(); err != nil {
+		return nil, zeroKey, err
 	}
 
 	// TODO Return JWS body
@@ -155,8 +155,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	}
 
 	var init core.Authorization
-	err = json.Unmarshal(body, &init)
-	if err != nil {
+	if err = json.Unmarshal(body, &init); err != nil {
 		sendError(response, "Error unmarshaling JSON", http.StatusBadRequest)
 		return
 	}
@@ -182,7 +181,9 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	response.Header().Add("Location", authzURL)
 	response.Header().Add("Link", link(wfe.NewCert, "next"))
 	response.WriteHeader(http.StatusCreated)
-	response.Write(responseBody)
+	if _, err = response.Write(responseBody); err != nil {
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	}
 }
 
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
@@ -198,11 +199,12 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	}
 
 	var init core.CertificateRequest
-	err = json.Unmarshal(body, &init)
-	if err != nil {
+	if err = json.Unmarshal(body, &init); err != nil {
 		sendError(response, "Error unmarshaling certificate request", http.StatusBadRequest)
 		return
 	}
+
+	wfe.log.Notice(fmt.Sprintf("Asked to create new certificate: %v %v", init, key))
 
 	// Create new certificate and return
 	cert, err := wfe.RA.NewCertificate(init, key)
@@ -219,7 +221,9 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// TODO: Content negotiation for cert format
 	response.Header().Add("Location", certURL)
 	response.WriteHeader(http.StatusCreated)
-	response.Write(cert.DER)
+	if _, err = response.Write(cert.DER); err != nil {
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	}
 }
 
 func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
@@ -255,8 +259,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		}
 
 		var challengeResponse core.Challenge
-		err = json.Unmarshal(body, &challengeResponse)
-		if err != nil {
+		if err = json.Unmarshal(body, &challengeResponse); err != nil {
 			sendError(response, "Error unmarshaling authorization", http.StatusBadRequest)
 			return
 		}
@@ -280,7 +283,9 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			return
 		}
 		response.WriteHeader(http.StatusAccepted)
-		response.Write(jsonReply)
+		if _, err = response.Write(jsonReply); err != nil {
+			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		}
 
 	}
 }
@@ -379,7 +384,9 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 			return
 		}
 		response.WriteHeader(http.StatusOK)
-		response.Write(jsonReply)
+		if _, err = response.Write(jsonReply); err != nil {
+			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		}
 	}
 }
 
@@ -391,6 +398,8 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 
 	case "GET":
 		id := parseIDFromPath(request.URL.Path)
+		wfe.log.Notice(fmt.Sprintf("Requested certificate ID %s", id))
+
 		cert, err := wfe.SA.GetCertificate(id)
 		if err != nil {
 			sendError(response, "Not found", http.StatusNotFound)
@@ -401,7 +410,9 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		// TODO: Indicate content type
 		// TODO: Link header
 		response.WriteHeader(http.StatusOK)
-		response.Write(cert)
+		if _, err = response.Write(cert); err != nil {
+			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		}
 
 	case "POST":
 		// TODO: Handle revocation in POST

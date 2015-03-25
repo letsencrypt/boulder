@@ -11,25 +11,35 @@ This is an initial implementation of an ACME-based CA. The [ACME protocol](https
 Docker
 ------
 
-Boulder is available as a [Docker image from Quay.io](https://quay.io/repository/letsencrypt/boulder). The entrypoint is the Boulder main method; you can load and run it using in monolithic mode (without AMQP) like:
+Boulder is available as a [Docker image from Quay.io](https://quay.io/repository/letsencrypt/boulder). The Docker image expects the `config.json` file to be located at `/boulder/config.json` within the container.
+
+(Note: You can override the `config.json` location by specifying a different BOULDER_CONFIG environment variable, such as with `-e BOULDER_CONFIG=mypath/myfile.config`.)
+
+The default command is the monolithic "boulder" executable, which does not require an AMQP service.
+
+A quick-start method for running a Boulder instance is to use one of the example configurations:
 
 ```
-docker run -p 4000:4000 quay.io/letsencrypt/boulder monolithic
+> mkdir .boulder-config
+> cp test/example-config.json .boulder-config/config.json
+> docker run --name=boulder --rm=true -v $(pwd)/.boulder-config:/boulder:ro -p 4000:4000 quay.io/letsencrypt/boulder:latest boulder
 ```
 
 To run a single module, specifying the AMQP server, you might use something more like:
 
 ```
-docker run -p 4000:4000 quay.io/letsencrypt/boulder --amqp 'amqp://guest:guest@amqp-server:15672' wfe
+> docker run --name=boulder --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:latest boulder-ra
 ```
+
+The submodules are under the `cmd/` directory.
+
 
 Quickstart
 ----------
 
 ```
-> go build github.com/letsencrypt/boulder/boulder-start
-> ./boulder-start monolithic # without AMQP
-> ./boulder-start monolithic-amqp # with AMQP
+> go build github.com/letsencrypt/boulder/cmd/boulder
+> ./boulder --config test/example-config.json
 ```
 
 

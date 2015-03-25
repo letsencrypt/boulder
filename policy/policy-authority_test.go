@@ -9,15 +9,21 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 func TestWillingToIssue(t *testing.T) {
 	shouldBeSyntaxError := []string{
-		``,                      // Empty name
-		`zomb!.com`,             // ASCII character out of range
-		`zömbo.com`,             // non-ASCII character
-		`127.0.0.1`,             // IPv4 address
-		`fe80::1:1`,             // IPv6 address
+		``,          // Empty name
+		`zomb!.com`, // ASCII character out of range
+		`emailaddress@myseriously.present.com`,
+		`user:pass@myseriously.present.com`,
+		`zömbo.com`,                              // non-ASCII character
+		`127.0.0.1`,                              // IPv4 address
+		`fe80::1:1`,                              // IPv6 addresses
+		`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`, // unexpected IPv6 variants
+		`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`,
+		`2001:db8::/32`,
 		`a.b.c.d.e.f.g.h.i.j.k`, // Too many labels (>10)
 
 		`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.com`, // Too long (>255 characters)
@@ -26,15 +32,46 @@ func TestWillingToIssue(t *testing.T) {
 
 		`www.-ombo.com`,   // Label starts with '-'
 		`www.xn--hmr.net`, // Punycode (disallowed for now)
+		`xn--.net`,        // No punycode for now.
+		`0`,
+		`1`,
+		`*`,
+		`**`,
+		`*.*`,
+		`zombo*com`,
+		`*.com`,
+		`*.zombo.com`,
+		`.`,
+		`..`,
+		`a..`,
+		`..a`,
+		`.a.`,
+		`.....`,
+		`www.zombo_com.com`,
+		`\uFEFF`, // Byte order mark
+		`\uFEFFwww.zombo.com`,
+		`www.zom\u202Ebo.com`, // Right-to-Left Override
+		`\u202Ewww.zombo.com`,
+		`www.zom\u200Fbo.com`, // Right-to-Left Mark
+		`\u200Fwww.zombo.com`,
+		// Underscores are technically disallowed in DNS. Some DNS
+		// implementations accept them but we will be conservative.
+		`www.zom_bo.com`,
+		`zombocom`,
 	}
 
 	shouldBeNonPublic := []string{
 		`co.uk`,
 		`example.acting`,
 		`example.internal`,
+		`localhost`,
+		`mail`,
+		// All-numeric final label not okay.
+		`www.zombo.163`,
 	}
 
 	shouldBeBlacklisted := []string{
+		`addons.mozilla.org`,
 		`ebay.co.uk`,
 		`www.google.com`,
 		`lots.of.labels.pornhub.com`,
@@ -51,7 +88,10 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zombo-.com",
 	}
 
-	pa := NewPolicyAuthorityImpl()
+	// Audit logger
+	audit, _ := blog.Dial("", "", "tag")
+
+	pa := NewPolicyAuthorityImpl(audit)
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
@@ -94,7 +134,10 @@ func TestWillingToIssue(t *testing.T) {
 }
 
 func TestChallengesFor(t *testing.T) {
-	pa := NewPolicyAuthorityImpl()
+	// Audit logger
+	audit, _ := blog.Dial("", "", "tag")
+
+	pa := NewPolicyAuthorityImpl(audit)
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 
