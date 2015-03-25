@@ -6,8 +6,8 @@
 package main
 
 import (
-	"github.com/codegangsta/cli"
-	"github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/codegangsta/cli"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/streadway/amqp"
 	"log"
 	"net/url"
 	"os"

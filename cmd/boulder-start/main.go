@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/codegangsta/cli"
-	_ "github.com/mattn/go-sqlite3"
-	"github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/codegangsta/cli"
+	_ "github.com/letsencrypt/boulder/vendor/_nuts/github.com/mattn/go-sqlite3"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/ra"

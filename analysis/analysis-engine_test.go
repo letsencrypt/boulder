@@ -6,7 +6,7 @@ package analysisengine
 
 import (
 	"github.com/letsencrypt/boulder/log"
-	"github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/streadway/amqp"
 	"testing"
 )
 

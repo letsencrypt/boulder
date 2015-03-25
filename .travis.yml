@@ -17,17 +17,4 @@ install:
   - go get -t -v -tags "pkcs11" ./...
 
 script:
-  - go vet -x ./...
-  - $HOME/gopath/bin/golint ./...
-  - go test -covermode=count -coverprofile=analysis.coverprofile ./analysis/
-  - go test -covermode=count -coverprofile=ca.coverprofile ./ca/
-  - go test -covermode=count -coverprofile=core.coverprofile ./core/
-  - go test -covermode=count -coverprofile=log.coverprofile ./log/
-  - go test -covermode=count -coverprofile=ra.coverprofile ./ra/
-  - go test -covermode=count -coverprofile=rpc.coverprofile ./rpc/
-  - go test -covermode=count -coverprofile=sa.coverprofile ./sa/
-  - go test -covermode=count -coverprofile=test.coverprofile ./test/
-  - go test -covermode=count -coverprofile=va.coverprofile ./va/
-  - go test -covermode=count -coverprofile=wfe.coverprofile ./wfe/
-  - $HOME/gopath/bin/gover
-  - $HOME/gopath/bin/goveralls -coverprofile=gover.coverprofile -service=travis-ci
+  - bash test.sh
