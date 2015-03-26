@@ -154,7 +154,7 @@ func TestRsaPssJwsSign(t *testing.T) {
 		Primes:    []*big.Int{p, q},
 	}
 
-	payload, _ := B64dec("It\xe2\x80\x99s a dangerous business, Frodo, going out your door. You step onto the road, and if you don't keep your feet, there\xe2\x80\x99s no knowing where you might be swept off to.")
+	payload := []byte("It\xe2\x80\x99s a dangerous business, Frodo, going out your door. You step onto the road, and if you don't keep your feet, there\xe2\x80\x99s no knowing where you might be swept off to.")
 
 	jws, err := Sign(RSAPSSWithSHA256, priv, payload)
 	if err != nil {
@@ -177,7 +177,7 @@ func TestEcJwsSign(t *testing.T) {
 
 	priv := ecdsa.PrivateKey{PublicKey: ecdsa.PublicKey{Curve: elliptic.P521(), X: x, Y: y}, D: d}
 
-	payload, _ := B64dec("It\xe2\x80\x99s a dangerous business, Frodo, going out your door. You step onto the road, and if you don't keep your feet, there\xe2\x80\x99s no knowing where you might be swept off to.")
+	payload := []byte("It\xe2\x80\x99s a dangerous business, Frodo, going out your door. You step onto the road, and if you don't keep your feet, there\xe2\x80\x99s no knowing where you might be swept off to.")
 
 	jws, err := Sign(ECDSAWithSHA512, priv, payload)
 	if err != nil {
