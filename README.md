@@ -104,11 +104,19 @@ Files
 
 Dependencies:
 
-All dependencies are vendorized under the vendor/_nuts directory,
+All dependencies are vendorized under the Godeps directory,
 both to [make dependency management
 easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8)
 and to [avoid insecure fallback in go
-get](https://github.com/golang/go/issues/9637)
+get](https://github.com/golang/go/issues/9637). To update dependencies:
+
+```
+# Disable insecure fallback by blocking port 80.
+sudo /sbin/iptables -A OUTPUT -p tcp --dport 80 -j DROP
+godep save -r ./...
+# Assuming you had no other iptables rules, re-enable port 80.
+sudo iptables -D OUTPUT 1
+```
 
 ACME Processing
 ---------------
