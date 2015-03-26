@@ -1,3 +1,9 @@
+# Nut config file, see https://github.com/jingweno/nut/blob/master/README.md
+# NOTE: Before you run `nut install`, make sure to run:
+# sudo /sbin/iptables -A OUTPUT -p tcp --dport 80 -j DROP
+# To block insecure HTTP fallback in go get. When you're done:
+# sudo iptables -D OUTPUT NN
+# If you have no other iptables rules, NN will be 1. Check with iptables -L.
 [application]
 
 name = "boulder"
@@ -15,3 +21,5 @@ authors = ["ISRG <info@letsencrypt.org>"]
 "github.com/streadway/amqp" = "150b7f24d6ad507e6026c13d85ce1f1391ac7400"
 "github.com/mattn/go-sqlite3" = "308067797b0fcce4ca06362580dc6db77c1bfeda"
 "github.com/codegangsta/cli" = "e1712f381785e32046927f64a7c86fe569203196"
+"github.com/go-sql-driver/mysql" = "a197e5d40516f2e9f74dcee085a5f2d4604e94df"
+
