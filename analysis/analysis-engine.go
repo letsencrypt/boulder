@@ -10,7 +10,7 @@ import (
 
 	"encoding/json"
 	"fmt"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/streadway/amqp"
 )
 
 // This file analyzes messages obtained from the Message Broker to determine

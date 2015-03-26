@@ -104,10 +104,11 @@ Files
 
 Dependencies:
 
-* [Go platform libraries](https://golang.org/pkg/)
-* [GOSE](https://github.com/bifurcation/gose)
-* [CLI](https://github.com/codegangsta/cli)
-
+All dependencies are vendorized under the vendor/_nuts directory,
+both to [make dependency management
+easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8)
+and to [avoid insecure fallback in go
+get](https://github.com/golang/go/issues/9637)
 
 ACME Processing
 ---------------

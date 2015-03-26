@@ -13,8 +13,8 @@ import (
 	"math/big"
 	"time"
 
-	//	"github.com/cloudflare/cfssl/crypto/pkcs11key"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
+	"github.com/cloudflare/cfssl/crypto/pkcs11key"
+	"github.com/cloudflare/cfssl/log"
 )
 
 var configFile = flag.String("config", "", "JSON file for subject and validity")

@@ -10,8 +10,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/streadway/amqp"
 )
 
 // TODO: AMQP-RPC messages should be wrapped in JWS.  To implement that,

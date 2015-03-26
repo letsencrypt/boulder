@@ -58,14 +58,14 @@ func TestWillingToIssue(t *testing.T) {
 		// implementations accept them but we will be conservative.
 		`www.zom_bo.com`,
 		`zombocom`,
+		`localhost`,
+		`mail`,
 	}
 
 	shouldBeNonPublic := []string{
 		`co.uk`,
 		`example.acting`,
 		`example.internal`,
-		`localhost`,
-		`mail`,
 		// All-numeric final label not okay.
 		`www.zombo.163`,
 	}
