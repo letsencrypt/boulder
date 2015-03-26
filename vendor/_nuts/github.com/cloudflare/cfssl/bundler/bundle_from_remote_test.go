@@ -5,7 +5,7 @@ import (
 	"flag"
 	"testing"
 
-	"github.com/cloudflare/cfssl/ubiquity"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/ubiquity"
 )
 
 var shouldTestSNI bool

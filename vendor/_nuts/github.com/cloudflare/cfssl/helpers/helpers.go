@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	cferr "github.com/cloudflare/cfssl/errors"
-	"github.com/cloudflare/cfssl/log"
+	cferr "github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/log"
 )
 
 // OneYear is a time.Duration representing a year's worth of seconds.

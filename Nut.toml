@@ -18,6 +18,14 @@ authors = ["ISRG <info@letsencrypt.org>"]
 # We have to specify a path within cfssl, otherwise we get an error about no
 # buildable files. But this fetches the whole repo.
 "github.com/cloudflare/cfssl/auth" = "1415724f395ffd7aa29176066765cabc68193453"
+"github.com/cloudflare/cfssl/config" = "1415724f395ffd7aa29176066765cabc68193453"
+"github.com/cloudflare/cfssl/crypto/pkcs11key" = "1415724f395ffd7aa29176066765cabc68193453"
+"github.com/cloudflare/cfssl/api/sign" = "1415724f395ffd7aa29176066765cabc68193453"
+"github.com/cloudflare/cfssl/log" = "1415724f395ffd7aa29176066765cabc68193453"
+"github.com/cloudflare/cfssl/signer" = "1415724f395ffd7aa29176066765cabc68193453"
+"github.com/cloudflare/cfssl/signer/local" = "1415724f395ffd7aa29176066765cabc68193453"
+"github.com/cloudflare/cfssl/signer/remote" = "1415724f395ffd7aa29176066765cabc68193453"
+
 "github.com/streadway/amqp" = "150b7f24d6ad507e6026c13d85ce1f1391ac7400"
 "github.com/mattn/go-sqlite3" = "308067797b0fcce4ca06362580dc6db77c1bfeda"
 "github.com/codegangsta/cli" = "e1712f381785e32046927f64a7c86fe569203196"

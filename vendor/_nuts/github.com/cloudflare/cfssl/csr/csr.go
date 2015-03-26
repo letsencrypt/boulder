@@ -11,8 +11,8 @@ import (
 	"encoding/pem"
 	"errors"
 
-	cferr "github.com/cloudflare/cfssl/errors"
-	"github.com/cloudflare/cfssl/log"
+	cferr "github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/log"
 )
 
 const (

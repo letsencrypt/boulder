@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudflare/cfssl/auth"
-	cferr "github.com/cloudflare/cfssl/errors"
-	"github.com/cloudflare/cfssl/helpers"
-	"github.com/cloudflare/cfssl/log"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/auth"
+	cferr "github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/helpers"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/log"
 )
 
 // A SigningProfile stores information that the CA needs to store

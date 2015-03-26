@@ -9,11 +9,11 @@ import (
 	"errors"
 	"io/ioutil"
 
-	"github.com/cloudflare/cfssl/config"
-	cferr "github.com/cloudflare/cfssl/errors"
-	"github.com/cloudflare/cfssl/helpers"
-	"github.com/cloudflare/cfssl/log"
-	"github.com/cloudflare/cfssl/signer"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/config"
+	cferr "github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/helpers"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/log"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer"
 )
 
 // Signer contains a signer that uses the standard library to

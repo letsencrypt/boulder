@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cloudflare/cfssl/helpers"
-	"github.com/cloudflare/cfssl/log"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/helpers"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/log"
 )
 
 // SHA1RawPublicKey returns a SHA1 hash of the raw certificate public key

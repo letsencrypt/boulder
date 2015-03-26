@@ -8,7 +8,7 @@ import (
 	"encoding/pem"
 	"testing"
 
-	"github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/errors"
 )
 
 // TestKeyRequest ensures that key generation returns the same type of

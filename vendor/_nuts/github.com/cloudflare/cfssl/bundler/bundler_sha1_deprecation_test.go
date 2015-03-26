@@ -4,8 +4,8 @@ package bundler
 import (
 	"testing"
 
-	"github.com/cloudflare/cfssl/errors"
-	"github.com/cloudflare/cfssl/ubiquity"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/ubiquity"
 )
 
 const (

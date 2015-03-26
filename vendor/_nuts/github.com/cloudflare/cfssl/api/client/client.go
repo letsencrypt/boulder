@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cloudflare/cfssl/api"
-	"github.com/cloudflare/cfssl/auth"
-	"github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/api"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/auth"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/errors"
 )
 
 // A Server points to a remote CFSSL instance.

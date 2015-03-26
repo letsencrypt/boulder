@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cloudflare/cfssl/api"
-	"github.com/cloudflare/cfssl/signer/local"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/api"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer/local"
 )
 
 const (

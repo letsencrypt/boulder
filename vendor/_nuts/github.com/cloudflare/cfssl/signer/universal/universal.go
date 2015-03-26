@@ -2,12 +2,12 @@
 package universal
 
 import (
-	"github.com/cloudflare/cfssl/config"
-	cferr "github.com/cloudflare/cfssl/errors"
-	"github.com/cloudflare/cfssl/signer"
-	"github.com/cloudflare/cfssl/signer/local"
-	"github.com/cloudflare/cfssl/signer/pkcs11"
-	"github.com/cloudflare/cfssl/signer/remote"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/config"
+	cferr "github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer/local"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer/pkcs11"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer/remote"
 )
 
 // Root is used to define where the universal signer gets its public

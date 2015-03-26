@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudflare/cfssl/config"
-	"github.com/cloudflare/cfssl/errors"
-	"github.com/cloudflare/cfssl/helpers"
-	"github.com/cloudflare/cfssl/signer"
-	"github.com/cloudflare/cfssl/signer/local"
-	"github.com/cloudflare/cfssl/ubiquity"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/helpers"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer/local"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/ubiquity"
 )
 
 const (

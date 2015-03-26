@@ -5,13 +5,13 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/cloudflare/cfssl/api"
-	"github.com/cloudflare/cfssl/auth"
-	"github.com/cloudflare/cfssl/config"
-	"github.com/cloudflare/cfssl/errors"
-	"github.com/cloudflare/cfssl/log"
-	"github.com/cloudflare/cfssl/signer"
-	"github.com/cloudflare/cfssl/signer/universal"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/api"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/auth"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/log"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/signer/universal"
 )
 
 // A Handler accepts requests with a hostname and certficate

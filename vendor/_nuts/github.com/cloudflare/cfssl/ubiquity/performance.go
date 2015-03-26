@@ -8,7 +8,7 @@ import (
 	"crypto/x509"
 	"time"
 
-	"github.com/cloudflare/cfssl/helpers"
+	"github.com/letsencrypt/boulder/vendor/_nuts/github.com/cloudflare/cfssl/helpers"
 )
 
 // Compute the priority of different hash algorithm based on security
