@@ -9,14 +9,8 @@ EXPOSE 4000
 ENV BOULDER_CONFIG=/boulder/config.json
 
 # Load the dependencies
-RUN go-wrapper download github.com/bifurcation/gose && \
-    go-wrapper download github.com/codegangsta/cli && \
-    go-wrapper download github.com/streadway/amqp && \
-    go-wrapper download github.com/mattn/go-sqlite3 && \
-    go-wrapper download github.com/go-sql-driver/mysql && \
-    go-wrapper download github.com/cloudflare/cfssl/auth && \
-    go-wrapper download github.com/cloudflare/cfssl/config && \
-    go-wrapper download github.com/cloudflare/cfssl/signer
+RUN go-wrapper download github.com/mattn/go-sqlite3 && \
+    go-wrapper download github.com/go-sql-driver/mysql
 
 # Copy in the Boulder sources
 RUN mkdir -p /go/src/github.com/letsencrypt/boulder
