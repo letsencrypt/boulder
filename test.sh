@@ -1,23 +1,49 @@
-#!/bin/bash -ex
+#!/bin/bash 
 # Run all tests and coverage checks. Called from Travis automatically, also
 # suitable to run manually. See list of prerequisite packages in .travis.yml
 # NOTE: Currently this must be run from the fully-expanded letsencrypt path
 # under your GOPATH, not a symlink.
 
+FAILURE=0
+
+run() {
+  $* || FAILURE=1
+}
+
+doTest() {
+  local dir=$1
+  run go test -covermode=count -coverprofile=${dir}.coverprofile ./${dir}/
+}
+
 # Path for installed go package binaries. If yours is different, override with
 # GOBIN=/my/path/to/bin ./test.sh
 GOBIN=${GOBIN:-$HOME/gopath/bin}
-go vet -x ./...
-$GOBIN/golint ./...
-go test -covermode=count -coverprofile=analysis.coverprofile ./analysis/
-go test -covermode=count -coverprofile=ca.coverprofile ./ca/
-go test -covermode=count -coverprofile=core.coverprofile ./core/
-go test -covermode=count -coverprofile=log.coverprofile ./log/
-go test -covermode=count -coverprofile=ra.coverprofile ./ra/
-go test -covermode=count -coverprofile=rpc.coverprofile ./rpc/
-go test -covermode=count -coverprofile=sa.coverprofile ./sa/
-go test -covermode=count -coverprofile=test.coverprofile ./test/
-go test -covermode=count -coverprofile=va.coverprofile ./va/
-go test -covermode=count -coverprofile=wfe.coverprofile ./wfe/
-$GOBIN/gover
-$GOBIN/goveralls -coverprofile=gover.coverprofile -service=travis-ci
+
+# Ask vet to check in on things
+run go vet -x ./...
+
+[ -e $GOBIN/golint ] && run $GOBIN/golint ./...
+
+# All the subdirectories
+doTest analysis
+doTest ca
+#doTest cmd
+doTest core
+doTest jose
+doTest log
+doTest policy
+doTest ra
+doTest rpc
+doTest sa
+doTest test
+doTest va
+#doTest vendor
+doTest wfe
+
+[ -e $GOBIN/gover ] && run $GOBIN/gover
+
+if [ "${TRAVIS}" == "true" ] ; then
+  run $GOBIN/goveralls -coverprofile=gover.coverprofile -service=travis-ci
+fi
+
+exit ${FAILURE}
