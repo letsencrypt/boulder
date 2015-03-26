@@ -13,8 +13,5 @@ before_install:
   - go get github.com/mattn/goveralls
   - go get github.com/modocache/gover
 
-install:
-  - go get -t -v -tags "pkcs11" ./...
-
 script:
   - bash test.sh
