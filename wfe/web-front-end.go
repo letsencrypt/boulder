@@ -91,8 +91,8 @@ func sendError(response http.ResponseWriter, message string, code int) {
 	if err != nil {
 		return
 	}
-    // Paraphrased from
-    // https://golang.org/src/net/http/server.go#L1272
+	// Paraphrased from
+	// https://golang.org/src/net/http/server.go#L1272
 	response.Header().Set("Content-Type", "application/problem+json")
 	response.WriteHeader(code)
 	fmt.Fprintln(response, problemDoc)
