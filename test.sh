@@ -1,8 +1,7 @@
 #!/bin/bash 
 # Run all tests and coverage checks. Called from Travis automatically, also
 # suitable to run manually. See list of prerequisite packages in .travis.yml
-# NOTE: Currently this must be run from the fully-expanded letsencrypt path
-# under your GOPATH, not a symlink.
+cd $(realpath $(dirname $0))
 
 FAILURE=0
 
