@@ -88,9 +88,7 @@ func newCAASet(CAAs []*CAA) *CAASet {
 
 // DNSKEY records for "." so we don't have to request it every
 // time.
-const rootDNSKey = `.			75417	IN	DNSKEY	256 3 8 AwEAAZyIkCwEYeG29NV+4cOdKE4DPng/4BqJeoOhKqzJbl+LR33TPWsr wBRfmAi9wvR/Qc6IV4MFMXjmkclXns+atIQZ9uQV3YAvKv/cVuO7Mneu MssIQixaMw+jp73R7zIUNMbLBgJRQXI57Rl+pvXBAkgHndVwv+aJkf7y GEuE9Dtj
-.			75417	IN	DNSKEY	257 3 8 AwEAAagAIKlVZrpC6Ia7gEzahOR+9W29euxhJhVVLOyQbSEW0O8gcCjF FVQUTf6v58fLjwBd0YI0EzrAcQqBGCzh/RStIoO8g0NfnfL2MTJRkxoX bfDaUeVPQuYEhg37NZWAJQ9VnMVDxP/VHL496M/QZxkjf5/Efucp2gaD X6RS6CXpoY68LsvPVjR0ZSwzz1apAzvN9dlzEheX7ICJBBtuA6G3LQpz W5hOA2hzCTMjJPJ8LbqF6dsV6DoBQzgul0sGIcGOYl7OyQdXfZ57relS Qageu+ipAdTTJ25AsRTAoub8ONGcLmqrAmRLKBP1dfwhYB4N7knNnulq QxA+Uk1ihz0=
-.			75417	IN	DNSKEY	256 3 8 AwEAAe3fSrbLBy3LOS7pnxEUhvPZTE2H5dIGsI/UfruI/nOEvWWa/PSX 2BFedBkEqOlYdjdNF2f+6lmfk2Od/xu0v5bVqxFE+/24v3hZSlWBxvXz PTAGHrbW/IJYEPqlzVOAS4XdUgHg0N7IbLywNHMvB+Yf+Nm6ctyXXFLV 4WTNnzs7`
+const rootDNSKey = `			75417	IN	DNSKEY	257 3 8 AwEAAagAIKlVZrpC6Ia7gEzahOR+9W29euxhJhVVLOyQbSEW0O8gcCjF FVQUTf6v58fLjwBd0YI0EzrAcQqBGCzh/RStIoO8g0NfnfL2MTJRkxoX bfDaUeVPQuYEhg37NZWAJQ9VnMVDxP/VHL496M/QZxkjf5/Efucp2gaD X6RS6CXpoY68LsvPVjR0ZSwzz1apAzvN9dlzEheX7ICJBBtuA6G3LQpz W5hOA2hzCTMjJPJ8LbqF6dsV6DoBQzgul0sGIcGOYl7OyQdXfZ57relS Qageu+ipAdTTJ25AsRTAoub8ONGcLmqrAmRLKBP1dfwhYB4N7knNnulq QxA+Uk1ihz0=`
 
 func getNs(domain string) (string, error) {
 	// RFC 6844 states we should query the authoritative dns server
@@ -307,7 +305,7 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 
 // examples
 func main() {
-	testDomains := []string{"example.dev", "google.com", "mail.google.com", "bracewel.net", "theguardian.co.uk", "pir.org", "mail1.pir.org", "comodo.com", "dnsseczombo.com", "antonyms.eu", "dmarcian.de", "instantssl.info", "www.zx.com", "www.dotsport.info", "tropicalnorthair.com", "sylkeschulze.de", "sylkeschulze.de", "somaf.de", "signing-milter.org", "nails.eu.org", "riverwillow.com.au", "mail2.bevenhall.se", "madtech.nl"}
+	testDomains := []string{"derrr.asd22", "example.dev", "google.com", "mail.google.com", "bracewel.net", "theguardian.co.uk", "pir.org", "mail1.pir.org", "comodo.com", "dnsseczombo.com", "antonyms.eu", "dmarcian.de", "instantssl.info", "www.zx.com", "www.dotsport.info", "tropicalnorthair.com", "sylkeschulze.de", "sylkeschulze.de", "somaf.de", "signing-milter.org", "nails.eu.org", "riverwillow.com.au", "mail2.bevenhall.se", "madtech.nl", "roe.ch"}
 
 	for _, td := range testDomains {
 		fmt.Printf("[%s]\n", td)
