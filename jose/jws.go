@@ -190,7 +190,9 @@ func Sign(alg JoseAlgorithm, privateKey interface{}, payload []byte) (JsonWebSig
 		if rsaPriv == nil {
 			return zero, errors.New(fmt.Sprintf("Algorithm %s requres RSA private key", jws.Header.Algorithm))
 		}
-		sig, err = rsa.SignPSS(rand.Reader, rsaPriv, hashID, inputHash, nil)
+		// Contrary to docs, you can't pass a nil instead of the PSSOptions; You'll
+		// get a nil dereference.
+		sig, err = rsa.SignPSS(rand.Reader, rsaPriv, hashID, inputHash, &rsa.PSSOptions{})
 	case "E":
 		if ecPriv == nil {
 			return zero, errors.New(fmt.Sprintf("Algorithm %s requres EC private key", jws.Header.Algorithm))
