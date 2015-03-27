@@ -15,8 +15,8 @@ import (
 type CAA struct {
 	flag uint8
 	tag string
-	valueBuf []byte
 	value string
+	valueBuf []byte
 }
 
 func newCAA(encodedRDATA []byte) *CAA {
@@ -29,14 +29,14 @@ func newCAA(encodedRDATA []byte) *CAA {
 	// property tag
 	tag := string(encodedRDATA[2:2+tagLen])
 
-	// property value
-	valueBuf := encodedRDATA[2+tagLen:]
-
 	// only decode tags we understand
 	value := ""
+	valueBuf := make([]byte, 0)
 	if tag == "issue" || tag == "issuewild" || tag == "iodef" {
-		value = string(valueBuf)
-	} 
+		value = string(encodedRDATA[2+tagLen:])
+	} else {
+		valueBuf = encodedRDATA[2+tagLen:]
+	}
 	
 	return &CAA{flag: flag, tag: tag, valueBuf: valueBuf, value: value}
 }
@@ -102,22 +102,42 @@ func getNs(pubU *unbound.Unbound, domain string) (string, error) {
 
 	nsName := ""
 	if r.HaveData {
-		// just grab the first NS domain
-		nsName = r.Rr[0].(*dns.NS).Ns
+		for _, record := range r.Rr {
+			if record.Header().Rrtype == dns.TypeNS {
+				// just grab the first NS domain
+				nsName = record.(*dns.NS).Ns
+				break
+			}
+		}
 	} else {
 		// if no NS records are returned its probably because domain is a CNAME
 		// grab the authoritative NS server from the SOA record in the 
 		// authority section of the answer.
 		if len(r.AnswerPacket.Ns) > 0 {
-			nsName = r.AnswerPacket.Ns[0].(*dns.SOA).Ns
+			for _, record := range r.AnswerPacket.Ns {
+				if record.Header().Rrtype == dns.TypeSOA {
+					nsName = record.(*dns.SOA).Ns
+					break
+				}
+			}
 			// silly ns domain in SOA...
 			if nsName == "." {
-				r, err := pubU.Resolve(r.AnswerPacket.Ns[0].(*dns.SOA).Hdr.Name, dns.TypeNS, dns.ClassINET)
-				if err != nil {
-					return "", fmt.Errorf("Resolving '%s' failed: %s", r.AnswerPacket.Ns[0].(*dns.SOA).Hdr.Name, err)
-				}
-				if r.HaveData {
-					nsName = r.Rr[0].(*dns.NS).Ns
+				for _, record := range r.AnswerPacket.Ns {
+					if record.Header().Rrtype == dns.TypeSOA {
+						r, err := pubU.Resolve(record.(*dns.SOA).Hdr.Name, dns.TypeNS, dns.ClassINET)
+						if err != nil {
+							return "", fmt.Errorf("Resolving '%s' failed: %s", record.(*dns.SOA).Hdr.Name, err)
+						}
+						if r.HaveData {
+							for _, nsRecord := range r.Rr {
+								if nsRecord.Header().Rrtype == dns.TypeNS {
+									// just grab the first NS domain
+									nsName = nsRecord.(*dns.NS).Ns
+									break
+								}
+							}
+						}
+					}
 				}
 			}
 		}
@@ -145,13 +165,25 @@ func getDNSKeys(authU *unbound.Unbound, pubU *unbound.Unbound, domain string) (b
 	rootDomain := ""
 	if r.HaveData {
 		// Get root domain from SOA answer
-		rootDomain = r.Rr[0].(*dns.SOA).Hdr.Name
+		for _, record := range r.Rr {
+			if record.Header().Rrtype == dns.TypeSOA {
+				rootDomain = record.(*dns.SOA).Hdr.Name
+				break
+			}
+		}
 	} else {
 		if len(r.AnswerPacket.Ns) == 0 {
 			return false, fmt.Errorf("Couldn't find the SOA record for '%s'", domain)
 		}
 		// Get root domain from SOA in authority response... (so silly)
-		rootDomain = r.AnswerPacket.Ns[0].(*dns.SOA).Hdr.Name
+		// iterate through authority because sometimes NSEC or RRSIG records
+		// might be in there
+		for _, record := range r.AnswerPacket.Ns {
+			if record.Header().Rrtype == dns.TypeSOA {
+				rootDomain = record.(*dns.SOA).Hdr.Name
+				break
+			}
+		}
 	}
 
 	rootDomain = strings.TrimRight(rootDomain, ".")	
@@ -239,6 +271,7 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 func getCaaSet(domain string) (*CAASet, bool, error) {
 	pubU := unbound.New()
 	defer pubU.Destroy()
+	// should probably be set from /etc/resolv.conf
 	if err := pubU.SetFwd("8.8.8.8"); err != nil {
 		return nil, false, fmt.Errorf("Setting forward resolver '%s' failed: %s", "8.8.8.8", err)
 	}
@@ -270,23 +303,17 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 	for i := range splitDomain[0:len(splitDomain)-1] {
 			queryDomain := strings.Join(splitDomain[i:], ".")
 
-			// Look for CAA records in zone domain
-			CAAs, err := getCaa(authU, queryDomain, false); 
-			if err != nil {
-				return nil, dnssec, err
-			}
-			if len(CAAs) > 0 {
-				return newCAASet(CAAs), dnssec, nil
-			}
-		
-			// no CAA records for domain, check if domain has a CNAME alias, and check
-			// that for CAA records.
-			CAAs, err = getCaa(authU, queryDomain, true); 
-			if err != nil {
-				return nil, dnssec, err
-			}
-			if len(CAAs) > 0 {
-				return newCAASet(CAAs), dnssec, nil
+			for _, alias := range []bool{false, true} {
+				// Look for CAA records in zone domain
+				CAAs, err := getCaa(authU, queryDomain, alias); 
+				if err != nil {
+					return nil, dnssec, err
+				}
+				if len(CAAs) > 0 {
+					return newCAASet(CAAs), dnssec, nil
+				}
+
+				// NSEC/3 check should be here
 			}
 	}
 	
