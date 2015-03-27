@@ -22,13 +22,13 @@ A quick-start method for running a Boulder instance is to use one of the example
 ```
 > mkdir .boulder-config
 > cp test/example-config.json .boulder-config/config.json
-> docker run --name=boulder --rm=true -v $(pwd)/.boulder-config:/boulder:ro -p 4000:4000 quay.io/letsencrypt/boulder:latest boulder
+> docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro -p 4000:4000 quay.io/letsencrypt/boulder:latest boulder
 ```
 
 To run a single module, specifying the AMQP server, you might use something more like:
 
 ```
-> docker run --name=boulder --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:latest boulder-ra
+> docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:latest boulder-ra
 ```
 
 The submodules are under the `cmd/` directory.
