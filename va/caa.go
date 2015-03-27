@@ -247,7 +247,7 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 		// r.WhyBogus should tell us why.
 		// this should probably be logged since it indicates an attack
 		// of some sort (probably)
-		return []*CAA{}, fmt.Errorf("CAA record response for '%s' from '%s' appears bogus: %s", domain, r.AnswerPacket.Ns[0].(*dns.SOA).Ns, r.WhyBogus)
+		return []*CAA{}, fmt.Errorf("CAA record response for '%s' appears bogus: %s", domain, r.WhyBogus)
 	}
 
 	return CAAs, nil
@@ -305,7 +305,7 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 
 // examples
 func main() {
-	testDomains := []string{"derrr.asd22", "example.dev", "google.com", "mail.google.com", "bracewel.net", "theguardian.co.uk", "pir.org", "mail1.pir.org", "comodo.com", "dnsseczombo.com", "antonyms.eu", "dmarcian.de", "instantssl.info", "www.zx.com", "www.dotsport.info", "tropicalnorthair.com", "sylkeschulze.de", "sylkeschulze.de", "somaf.de", "signing-milter.org", "nails.eu.org", "riverwillow.com.au", "mail2.bevenhall.se", "madtech.nl", "roe.ch"}
+	testDomains := []string{"derrr.asd22", "google.com", "mail.google.com", "bracewel.net", "theguardian.co.uk", "pir.org", "mail1.pir.org", "comodo.com", "dnsseczombo.com", "antonyms.eu", "dmarcian.de", "instantssl.info", "www.zx.com", "www.dotsport.info", "tropicalnorthair.com", "sylkeschulze.de", "sylkeschulze.de", "somaf.de", "signing-milter.org", "nails.eu.org", "riverwillow.com.au", "mail2.bevenhall.se", "madtech.nl", "roe.ch"}
 
 	for _, td := range testDomains {
 		fmt.Printf("[%s]\n", td)
