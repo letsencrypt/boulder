@@ -90,20 +90,12 @@ func newCAASet(CAAs []*CAA) *CAASet {
 // time.
 const rootDNSKey = `			75417	IN	DNSKEY	257 3 8 AwEAAagAIKlVZrpC6Ia7gEzahOR+9W29euxhJhVVLOyQbSEW0O8gcCjF FVQUTf6v58fLjwBd0YI0EzrAcQqBGCzh/RStIoO8g0NfnfL2MTJRkxoX bfDaUeVPQuYEhg37NZWAJQ9VnMVDxP/VHL496M/QZxkjf5/Efucp2gaD X6RS6CXpoY68LsvPVjR0ZSwzz1apAzvN9dlzEheX7ICJBBtuA6G3LQpz W5hOA2hzCTMjJPJ8LbqF6dsV6DoBQzgul0sGIcGOYl7OyQdXfZ57relS Qageu+ipAdTTJ25AsRTAoub8ONGcLmqrAmRLKBP1dfwhYB4N7knNnulq QxA+Uk1ihz0=`
 
-func getNs(domain string) (string, error) {
+func getNs(pubU *unbound.Unbound, domain string) (string, error) {
 	// RFC 6844 states we should query the authoritative dns server
 	// for a domain directly to avoid caching etc, so lets find its
 	// IP address.
-	u := unbound.New()
-	defer u.Destroy()
-
-	// should be from /etc/resolv.conf probably...
-	if err := u.SetFwd("8.8.8.8"); err != nil {
-		return "", fmt.Errorf("Setting forward resolver failed: %s", err)
-	}
-
 	// get NS records for domain
-	r, err := u.Resolve(dns.Fqdn(domain), dns.TypeNS, dns.ClassINET)
+	r, err := pubU.Resolve(dns.Fqdn(domain), dns.TypeNS, dns.ClassINET)
 	if err != nil {
 		return "", fmt.Errorf("Resolving '%s' failed: %s", domain, err)
 	}
@@ -120,7 +112,7 @@ func getNs(domain string) (string, error) {
 			nsName = r.AnswerPacket.Ns[0].(*dns.SOA).Ns
 			// silly ns domain in SOA...
 			if nsName == "." {
-				r, err := u.Resolve(r.AnswerPacket.Ns[0].(*dns.SOA).Hdr.Name, dns.TypeNS, dns.ClassINET)
+				r, err := pubU.Resolve(r.AnswerPacket.Ns[0].(*dns.SOA).Hdr.Name, dns.TypeNS, dns.ClassINET)
 				if err != nil {
 					return "", fmt.Errorf("Resolving '%s' failed: %s", r.AnswerPacket.Ns[0].(*dns.SOA).Hdr.Name, err)
 				}
@@ -131,7 +123,7 @@ func getNs(domain string) (string, error) {
 		}
 	}
 
-	nsIPs, err := u.LookupIP(nsName)
+	nsIPs, err := pubU.LookupIP(nsName)
 	if err != nil {
 		return "", fmt.Errorf("Resolving '%s' failed: %s", nsName, err)
 	}
@@ -143,18 +135,9 @@ func getNs(domain string) (string, error) {
 	return "", fmt.Errorf("Address lookup did not return any IPs for %s", nsName)
 }
 
-func getDNSKeys(u *unbound.Unbound, domain string) (bool, error) {
-	// seperate Unbound instance for doing trust anchor DNSKEY queries
-	uTa := unbound.New()
-	defer uTa.Destroy()
-
-	// should be from /etc/resolv.conf probably... (or authNs..?)
-	if err := uTa.SetFwd("8.8.8.8"); err != nil {
-		return false, fmt.Errorf("Setting forward resolver failed: %s", err)
-	}
-
+func getDNSKeys(authU *unbound.Unbound, pubU *unbound.Unbound, domain string) (bool, error) {
 	// get root via SOA based trickery
-	r, err := uTa.Resolve(dns.Fqdn(domain), dns.TypeSOA, dns.ClassINET)
+	r, err := pubU.Resolve(dns.Fqdn(domain), dns.TypeSOA, dns.ClassINET)
 	if err != nil {
 		return false, fmt.Errorf("Resolving '%s' failed: %s", domain, err)
 	}
@@ -177,7 +160,7 @@ func getDNSKeys(u *unbound.Unbound, domain string) (bool, error) {
 	var taKeys []string
 	for i := range splitDomain {
 		taDomain := strings.Join(splitDomain[i:], ".")
-		r, err := uTa.Resolve(dns.Fqdn(taDomain), dns.TypeDNSKEY, dns.ClassINET)
+		r, err := pubU.Resolve(dns.Fqdn(taDomain), dns.TypeDNSKEY, dns.ClassINET)
 		if err != nil {
 			return false, fmt.Errorf("Resolving '%s' failed: %s", taDomain, err)
 		}
@@ -196,7 +179,7 @@ func getDNSKeys(u *unbound.Unbound, domain string) (bool, error) {
 	// preload root key since every trust chain requires it
 	taKeys = append(taKeys, rootDNSKey)
 	for _, key := range taKeys {
-		if err := u.AddTa(key); err != nil {
+		if err := authU.AddTa(key); err != nil {
 			// only build *Chain of trust* if we have keys to make a full chain
 			// from the root domain to . (ie [google.com. -> com. -> .])
 			return false, fmt.Errorf("Couldn't add Trust Anchor: %s", err)
@@ -254,20 +237,27 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 }
 
 func getCaaSet(domain string) (*CAASet, bool, error) {
-	authNs, err := getNs(domain)
+	pubU := unbound.New()
+	defer pubU.Destroy()
+	if err := pubU.SetFwd("8.8.8.8"); err != nil {
+		return nil, false, fmt.Errorf("Setting forward resolver '%s' failed: %s", "8.8.8.8", err)
+	}
+	
+	authNs, err := getNs(pubU, domain)
 	if err != nil {
 		return nil, false, err
 	}
-	u := unbound.New()
-	defer u.Destroy()
-	if err := u.SetFwd(authNs); err != nil {
+
+	authU := unbound.New()
+	defer authU.Destroy()
+	if err := authU.SetFwd(authNs); err != nil {
 		return nil, false, fmt.Errorf("Setting forward resolver '%s' failed: %s", authNs, err)
 	}
 
 	// dnssec indicates if queries were made with an
 	// initiated chain of trust, any bogus replies
 	// will raise errors if this is true.
-	dnssec, err := getDNSKeys(u, domain)
+	dnssec, err := getDNSKeys(authU, pubU, domain)
 	if err != nil {
 		return nil, false, err
 	}
@@ -281,7 +271,7 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 			queryDomain := strings.Join(splitDomain[i:], ".")
 
 			// Look for CAA records in zone domain
-			CAAs, err := getCaa(u, queryDomain, false); 
+			CAAs, err := getCaa(authU, queryDomain, false); 
 			if err != nil {
 				return nil, dnssec, err
 			}
@@ -291,7 +281,7 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 		
 			// no CAA records for domain, check if domain has a CNAME alias, and check
 			// that for CAA records.
-			CAAs, err = getCaa(u, queryDomain, true); 
+			CAAs, err = getCaa(authU, queryDomain, true); 
 			if err != nil {
 				return nil, dnssec, err
 			}
