@@ -20,13 +20,14 @@ import (
 )
 
 type ValidationAuthorityImpl struct {
-	RA  core.RegistrationAuthority
-	log *blog.AuditLogger
+	RA       core.RegistrationAuthority
+	log      *blog.AuditLogger
+	TestMode bool
 }
 
-func NewValidationAuthorityImpl(logger *blog.AuditLogger) ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(logger *blog.AuditLogger, tm bool) ValidationAuthorityImpl {
 	logger.Notice("Validation Authority Starting")
-	return ValidationAuthorityImpl{log: logger}
+	return ValidationAuthorityImpl{log: logger, TestMode: tm}
 }
 
 // Validation methods
@@ -39,7 +40,12 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		return
 	}
 
-	url := fmt.Sprintf("https://%s/.well-known/acme-challenge/%s", identifier, challenge.Path)
+	url := ""
+	if va.TestMode {
+		url = fmt.Sprintf("http://localhost:5001/.well-known/acme-challenge/%s", challenge.Path)
+	} else {
+		url = fmt.Sprintf("https://%s/.well-known/acme-challenge/%s", identifier, challenge.Path)
+	}
 
 	httpRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -94,7 +100,17 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	zName := hex.EncodeToString(z)
 
 	// Make a connection with SNI = nonceName
-	hostPort := identifier.Value + ":443"
+
+	hostPort := ""
+	if va.TestMode {
+		hostPort = "localhost:5001"
+	} else {
+		if identifier.Type != "dns" {
+			challenge.Status = core.StatusInvalid
+			return
+		}
+		hostPort = identifier.Value + ":443"
+	}
 	conn, err := tls.Dial("tcp", hostPort, &tls.Config{
 		ServerName:         nonceName,
 		InsecureSkipVerify: true,
