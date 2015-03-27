@@ -5,7 +5,6 @@ import (
 //	"errors"
 	"fmt"
 	"strings"
-	"encoding/binary"
 	"github.com/miekg/dns"
 	"github.com/miekg/unbound"
 )
@@ -16,29 +15,30 @@ import (
 type CAA struct {
 	flag uint8
 	tag string
+	valueBuf []byte
 	value string
 }
 
 func newCAA(encodedRDATA []byte) *CAA {
 	// RFC 6844 based record decoder
 	// first octet is uint8 flags
-	decFlags, err := binary.Uvarint(encodedRDATA[0:1])
-	if err <= 0 {
-			return nil
-	}
+	flag := encodedRDATA[0]
 	// second octet is uint8 length of tag
-	TagLen, err := binary.Uvarint(encodedRDATA[1:2])
-	if err <= 0 {
-			return nil
-	}
+	tagLen := encodedRDATA[1]
 
 	// property tag
-	tag := string(encodedRDATA[2:2+TagLen])
+	tag := string(encodedRDATA[2:2+tagLen])
 
 	// property value
-	value := string(encodedRDATA[2+TagLen:])
+	valueBuf := encodedRDATA[2+tagLen:]
+
+	// only decode tags we understand
+	value := ""
+	if tag == "issue" || tag == "issuewild" || tag == "iodef" {
+		value = string(valueBuf)
+	} 
 	
-	return &CAA{flag: uint8(decFlags), tag: tag, value: value}
+	return &CAA{flag: flag, tag: tag, valueBuf: valueBuf, value: value}
 }
 
 // CAASet Contains returned CAA records filtered by tag.
@@ -307,7 +307,7 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 
 // examples
 func main() {
-	testDomains := []string{"example.dev", "google.com", "mail.google.com", "bracewel.net", "theguardian.co.uk", "pir.org", "mail1.pir.org"}
+	testDomains := []string{"example.dev", "google.com", "mail.google.com", "bracewel.net", "theguardian.co.uk", "pir.org", "mail1.pir.org", "comodo.com", "dnsseczombo.com", "antonyms.eu", "dmarcian.de", "instantssl.info", "www.zx.com", "www.dotsport.info", "tropicalnorthair.com", "sylkeschulze.de", "sylkeschulze.de", "somaf.de", "signing-milter.org", "nails.eu.org", "riverwillow.com.au", "mail2.bevenhall.se", "madtech.nl"}
 
 	for _, td := range testDomains {
 		fmt.Printf("[%s]\n", td)
