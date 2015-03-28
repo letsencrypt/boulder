@@ -21,17 +21,26 @@ type CAA struct {
 
 func newCAA(encodedRDATA []byte) *CAA {
 	// RFC 6844 based record decoder
+	if len(encodedRDATA) < 2 {
+		// *very* badly formatted record, discard
+		return nil
+	}
 	// first octet is uint8 flags
-	flag := encodedRDATA[0]
+	flag := uint8(encodedRDATA[0])
 	// second octet is uint8 length of tag
-	tagLen := encodedRDATA[1]
+	tagLen := uint8(encodedRDATA[1])
+	if uint8(len(encodedRDATA)) < 2+tagLen {
+		// stupidly formatted record, discard
+		return nil
+	}
 
 	// property tag
 	tag := string(encodedRDATA[2:2+tagLen])
 
-	// only decode tags we understand
+	// only decode tags we understand, value/valuebuf can be empty
+	// (that would be stupid though...)
 	value := ""
-	valueBuf := make([]byte, 0)
+	var valueBuf []byte
 	if tag == "issue" || tag == "issuewild" || tag == "iodef" {
 		value = string(encodedRDATA[2+tagLen:])
 	} else {
