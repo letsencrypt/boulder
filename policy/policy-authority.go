@@ -18,14 +18,18 @@ import (
 type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
 
+	issuerDomain string
+
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
 	Blacklist        map[string]bool // A blacklist of denied names
 }
 
-func NewPolicyAuthorityImpl(logger *blog.AuditLogger) *PolicyAuthorityImpl {
+func NewPolicyAuthorityImpl(logger *blog.AuditLogger, issuerDomain string) *PolicyAuthorityImpl {
 	logger.Notice("Registration Authority Starting")
 
 	pa := PolicyAuthorityImpl{log: logger}
+
+	pa.issuerDomain = issuerDomain
 
 	// TODO: Add configurability
 	pa.PublicSuffixList = publicSuffixList
@@ -60,26 +64,24 @@ func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) 
 	return false
 }
 
-func checkCAA(domain string) bool {
+func checkCAA(domain string, issuer string) bool {
 	caaSet, dnssec, err := getCaaSet(domain)
 	if err != nil {
-		// check what error for logging purposes and log it...
 		return false
 	}
 	if caaSet.CriticalUknown() {
-		// probably don't log anything..?
 		return false
 	}
 	if len(caaSet.issue) > 0 || len(caaSet.issuewild) > 0 {
 		var correctSet []*CAA
-		if strings.Split(domain, ".")[0] == "*" {
+		if strings.SplitN(domain, ".", 2)[0] == "*" {
 			correctSet = caaSet.issuewild
 		} else {
 			correctSet = caaSet.issue
 		}
 		for _, caa := range correctSet {
 			// constant time compare?
-			if caa.issue == issuer {
+			if caa.issue == issuer { // FIX: config issuer variable...
 				return true
 			}
 		}
@@ -166,7 +168,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		return BlacklistedError
 	}
 
-	if !checkCAA(domain) {
+	if !checkCAA(domain, pa.issuerDomain) {
 		return CAAError
 	}
 

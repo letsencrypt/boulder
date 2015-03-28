@@ -37,7 +37,7 @@ func main() {
 		cmd.FailOnError(err, "Unable to initialize SA")
 		ra := ra.NewRegistrationAuthorityImpl(auditlogger)
 		va := va.NewValidationAuthorityImpl(auditlogger, c.CA.TestMode)
-		ca, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
+		ca, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile, c.CA.IssuerDomain)
 		cmd.FailOnError(err, "Unable to create CA")
 
 		// Wire them up

@@ -24,7 +24,7 @@ func main() {
 		sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Client, ch)
 		cmd.FailOnError(err, "Failed to create SA client")
 
-		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
+		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile, c.CA.IssuerDomain)
 		cmd.FailOnError(err, "Failed to create CA impl")
 
 		cai.SA = &sac

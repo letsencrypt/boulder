@@ -56,6 +56,7 @@ type Config struct {
 		Server   string
 		AuthKey  string
 		Profile  string
+		IssuerDomain string
 		TestMode bool
 	}
 
