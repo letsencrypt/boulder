@@ -60,10 +60,41 @@ func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) 
 	return false
 }
 
+func checkCAA(domain string) bool {
+	caaSet, dnssec, err := getCaaSet(domain)
+	if err != nil {
+		// check what error for logging purposes and log it...
+		return false
+	}
+	if caaSet.CriticalUknown() {
+		// probably don't log anything?
+		return false
+	}
+	if len(caaSet.issue) > 0 || len(caaSet.issuewild) > 0 {
+		var correctSet []*CAA
+		if strings.Split(domain, ".")[0] == "*" {
+			correctSet = caaSet.issuewild
+		} else {
+			correctSet = caaSet.issue
+		}
+		for _, caa := range correctSet {
+			// constant time compare?
+			if caa.issue == issuer {
+				return true
+			}
+			return false
+		}
+		return false
+	}
+	// no CAA records so all is good
+	return true
+}
+
 var InvalidIdentifierError = errors.New("Invalid identifier type")
 var SyntaxError = errors.New("Syntax error")
 var NonPublicError = errors.New("Name does not end in a public suffix")
 var BlacklistedError = errors.New("Name is blacklisted")
+var CAAError = errors.New("Name has CAA record(s) for another issuer")
 
 // We place several criteria on identifiers we are willing to issue for:
 //
@@ -134,6 +165,10 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	// Require no match against blacklist
 	if suffixMatch(labels, pa.Blacklist, false) {
 		return BlacklistedError
+	}
+
+	if !checkCAA(domain) {
+		return CAAError
 	}
 
 	return nil
