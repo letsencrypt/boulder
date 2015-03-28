@@ -27,9 +27,9 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/codegangsta/cli"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/rpc"
-	"github.com/streadway/amqp"
 )
 
 // Config stores configuration parameters that applications
@@ -53,9 +53,10 @@ type Config struct {
 	}
 
 	CA struct {
-		Server  string
-		AuthKey string
-		Profile string
+		Server   string
+		AuthKey  string
+		Profile  string
+		TestMode bool
 	}
 
 	SA struct {

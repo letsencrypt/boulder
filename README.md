@@ -22,13 +22,13 @@ A quick-start method for running a Boulder instance is to use one of the example
 ```
 > mkdir .boulder-config
 > cp test/example-config.json .boulder-config/config.json
-> docker run --name=boulder --rm=true -v $(pwd)/.boulder-config:/boulder:ro -p 4000:4000 quay.io/letsencrypt/boulder:latest boulder
+> docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro -p 4000:4000 quay.io/letsencrypt/boulder:latest boulder
 ```
 
 To run a single module, specifying the AMQP server, you might use something more like:
 
 ```
-> docker run --name=boulder --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:latest boulder-ra
+> docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:latest boulder-ra
 ```
 
 The submodules are under the `cmd/` directory.
@@ -104,10 +104,19 @@ Files
 
 Dependencies:
 
-* [Go platform libraries](https://golang.org/pkg/)
-* [GOSE](https://github.com/bifurcation/gose)
-* [CLI](https://github.com/codegangsta/cli)
+All dependencies are vendorized under the Godeps directory,
+both to [make dependency management
+easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8)
+and to [avoid insecure fallback in go
+get](https://github.com/golang/go/issues/9637). To update dependencies:
 
+```
+# Disable insecure fallback by blocking port 80.
+sudo /sbin/iptables -A OUTPUT -p tcp --dport 80 -j DROP
+godep save -r ./...
+# Assuming you had no other iptables rules, re-enable port 80.
+sudo iptables -D OUTPUT 1
+```
 
 ACME Processing
 ---------------

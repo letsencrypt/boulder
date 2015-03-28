@@ -91,7 +91,11 @@ func sendError(response http.ResponseWriter, message string, code int) {
 	if err != nil {
 		return
 	}
-	http.Error(response, string(problemDoc), code)
+	// Paraphrased from
+	// https://golang.org/src/net/http/server.go#L1272
+	response.Header().Set("Content-Type", "application/problem+json")
+	response.WriteHeader(code)
+	fmt.Fprintln(response, problemDoc)
 }
 
 func link(url, relation string) string {
@@ -133,6 +137,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	}
 
 	response.Header().Add("Location", regURL)
+	response.Header().Set("Content-Type", "application/json")
 	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
@@ -180,6 +185,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 
 	response.Header().Add("Location", authzURL)
 	response.Header().Add("Link", link(wfe.NewCert, "next"))
+	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(responseBody); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -187,6 +193,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 }
 
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
+
 	if request.Method != "POST" {
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -218,8 +225,14 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// Make a URL for this authz
 	certURL := wfe.CertBase + string(cert.ID)
 
-	// TODO: Content negotiation for cert format
+	// TODO The spec says this should 201 over to /cert, not reply with the
+	// certificate at this point... fix will need to land in boulder and client
+	// simultaneously.
+	// TODO The spec says a client should send an Accept: application/pkix-cert
+	// header; either explicitly insist or tolerate
+
 	response.Header().Add("Location", certURL)
+	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -282,6 +295,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
+		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusAccepted)
 		if _, err = response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -313,6 +327,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
+		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusOK)
 		response.Write(jsonReply)
 
@@ -349,6 +364,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
+		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusAccepted)
 		response.Write(jsonReply)
 
@@ -383,6 +399,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 			sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
 			return
 		}
+		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -407,8 +424,8 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		}
 
 		// TODO: Content negotiation
-		// TODO: Indicate content type
 		// TODO: Link header
+		response.Header().Set("Content-Type", "application/pkix-cert")
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(cert); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))

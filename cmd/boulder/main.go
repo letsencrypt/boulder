@@ -11,9 +11,8 @@ import (
 	"os"
 
 	// Load both drivers to allow configuring either
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/mattn/go-sqlite3"
-
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -37,7 +36,7 @@ func main() {
 		err = sa.InitTables()
 		cmd.FailOnError(err, "Unable to initialize SA")
 		ra := ra.NewRegistrationAuthorityImpl(auditlogger)
-		va := va.NewValidationAuthorityImpl(auditlogger)
+		va := va.NewValidationAuthorityImpl(auditlogger, c.CA.TestMode)
 		ca, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
 		cmd.FailOnError(err, "Unable to create CA")
 

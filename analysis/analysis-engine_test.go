@@ -9,8 +9,8 @@ import (
 	"log/syslog"
 	"testing"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/log"
-	"github.com/streadway/amqp"
 )
 
 func TestNewLoggingAnalysisEngine(t *testing.T) {
