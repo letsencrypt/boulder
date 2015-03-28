@@ -86,10 +86,23 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.AuditErr(err)
 		return
 	}
+
+	if err = ca.PA.ValidateCAARecords(identifier) ; err != nil {
+		err = errors.New("Policy forbids issuing for name" + commonName)
+		ca.log.AuditErr(err)
+		return
+	}
+
 	for _, name := range hostNames {
 		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier); err != nil {
 			err = errors.New("Policy forbids issuing for name " + name)
+			ca.log.AuditErr(err)
+			return
+		}
+
+		if err = ca.PA.ValidateCAARecords(identifier) ; err != nil {
+			err = errors.New("Policy forbids issuing for name" + name)
 			ca.log.AuditErr(err)
 			return
 		}

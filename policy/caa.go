@@ -278,6 +278,7 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 }
 
 func getCaaSet(domain string) (*CAASet, bool, error) {
+	// public resolver to get auth NS and DNSKEYs
 	pubU := unbound.New()
 	defer pubU.Destroy()
 	// should probably be set from /etc/resolv.conf

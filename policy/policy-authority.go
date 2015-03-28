@@ -18,7 +18,7 @@ import (
 type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
 
-	issuerDomain string
+	IssuerDomain string
 
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
 	Blacklist        map[string]bool // A blacklist of denied names
@@ -29,7 +29,7 @@ func NewPolicyAuthorityImpl(logger *blog.AuditLogger, issuerDomain string) *Poli
 
 	pa := PolicyAuthorityImpl{log: logger}
 
-	pa.issuerDomain = issuerDomain
+	pa.IssuerDomain = issuerDomain
 
 	// TODO: Add configurability
 	pa.PublicSuffixList = publicSuffixList
@@ -62,33 +62,6 @@ func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) 
 		}
 	}
 	return false
-}
-
-func checkCAA(domain string, issuer string) bool {
-	caaSet, dnssec, err := getCaaSet(domain)
-	if err != nil {
-		return false
-	}
-	if caaSet.CriticalUknown() {
-		return false
-	}
-	if len(caaSet.issue) > 0 || len(caaSet.issuewild) > 0 {
-		var correctSet []*CAA
-		if strings.SplitN(domain, ".", 2)[0] == "*" {
-			correctSet = caaSet.issuewild
-		} else {
-			correctSet = caaSet.issue
-		}
-		for _, caa := range correctSet {
-			// constant time compare?
-			if caa.issue == issuer { // FIX: config issuer variable...
-				return true
-			}
-		}
-		return false
-	}
-	// no CAA records so all is good
-	return true
 }
 
 var InvalidIdentifierError = errors.New("Invalid identifier type")
@@ -168,10 +141,48 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		return BlacklistedError
 	}
 
-	if !checkCAA(domain, pa.issuerDomain) {
-		return CAAError
-	}
+	return nil
+}
 
+func (pa PolicyAuthorityImpl) ValidateCAARecords(id core.AcmeIdentifier) error {
+	domain := id.Value
+	domain = strings.ToLower(domain)
+
+	caaSet, dnssec, err := getCaaSet(domain)
+	if err != nil {
+		err = fmt.Errorf("[DNSSEC: %s] %s", dnssec, err)
+		pa.log.AuditErr(err)
+		return err
+	}
+	if caaSet.CriticalUknown() {
+		// log that there were critical properties we didn't understand so cant issue
+		err = fmt.Errorf("[DNSSEC: %s] Unknown CAA properties flagged as critical for '%s', cannot issue", dnssec, domain)
+		pa.log.AuditErr(err)
+		return err
+	}
+	if len(caaSet.issue) > 0 || len(caaSet.issuewild) > 0 {
+		var correctSet []*CAA
+		if strings.SplitN(domain, ".", 2)[0] == "*" {
+			correctSet = caaSet.issuewild
+		} else {
+			correctSet = caaSet.issue
+		}
+		for _, caa := range correctSet {
+			// constant time compare?
+			if caa.issue == pa.IssuerDomain {
+				// log that there *WAS* caa records that validate us issuing
+				// (plus if there was dnssec or not)
+				pa.log.Audit(fmt.Sprintf("[DNSSEC: %s] Found issue/issuewild CAA record for '%s' matching local issuer '%s', can issue", dnssec, domain, pa.IssuerDomain))
+				return nil
+			}
+		}
+		// no valid CAA record in set returned, FAILL + log (+dnssec)
+		err = fmt.Errorf("[DNSSEC: %s] Local issuer '%s' did not match any CAA records for '%s', cannot issue", dnssec, pa.IssuerDomain, domain)
+		pa.log.AuditErr(err)
+		return err
+	}
+	// no CAA records so all is good (+log dnssec...)
+	pa.log.Audit("[DNSSEC: %s] Didn't find any CAA records for '%s', can issue", dnssec, domain)
 	return nil
 }
 
