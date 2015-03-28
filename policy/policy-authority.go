@@ -67,7 +67,7 @@ func checkCAA(domain string) bool {
 		return false
 	}
 	if caaSet.CriticalUknown() {
-		// probably don't log anything?
+		// probably don't log anything..?
 		return false
 	}
 	if len(caaSet.issue) > 0 || len(caaSet.issuewild) > 0 {
@@ -82,7 +82,6 @@ func checkCAA(domain string) bool {
 			if caa.issue == issuer {
 				return true
 			}
-			return false
 		}
 		return false
 	}
