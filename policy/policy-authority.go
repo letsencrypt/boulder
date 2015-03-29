@@ -168,7 +168,6 @@ func (pa PolicyAuthorityImpl) ValidateCAARecords(id core.AcmeIdentifier) error {
 			correctSet = caaSet.issue
 		}
 		for _, caa := range correctSet {
-			// constant time compare?
 			if caa.issue == pa.IssuerDomain {
 				// log that there *WAS* caa records that validate us issuing
 				// (plus if there was dnssec or not)

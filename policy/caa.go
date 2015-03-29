@@ -1,12 +1,12 @@
 // package va
-package main
+package policy
 
 import (
-//	"errors"
 	"fmt"
 	"strings"
-	"github.com/miekg/dns"
-	"github.com/miekg/unbound"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/unbound"
 )
 
 // CAA type
@@ -227,8 +227,8 @@ func getDNSKeys(authU *unbound.Unbound, pubU *unbound.Unbound, domain string) (b
 		}
 	}
 
-	// queries should now be authenticated against the chain of trust
-	// by unbound.
+	// we actually built a full chain of trust, queries can now be
+	// authenticated...
 	return true, nil
 }
 
@@ -331,17 +331,17 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 }
 
 // examples
-func main() {
-	testDomains := []string{"derrr.asd22", "google.com", "mail.google.com", "bracewel.net", "theguardian.co.uk", "pir.org", "mail1.pir.org", "comodo.com", "dnsseczombo.com", "antonyms.eu", "dmarcian.de", "instantssl.info", "www.zx.com", "www.dotsport.info", "tropicalnorthair.com", "sylkeschulze.de", "sylkeschulze.de", "somaf.de", "signing-milter.org", "nails.eu.org", "riverwillow.com.au", "mail2.bevenhall.se", "madtech.nl", "roe.ch"}
+// func main() {
+// 	testDomains := []string{"derrr.asd22", "google.com", "mail.google.com", "bracewel.net", "theguardian.co.uk", "pir.org", "mail1.pir.org", "comodo.com", "dnsseczombo.com", "antonyms.eu", "dmarcian.de", "instantssl.info", "www.zx.com", "www.dotsport.info", "tropicalnorthair.com", "sylkeschulze.de", "sylkeschulze.de", "somaf.de", "signing-milter.org", "nails.eu.org", "riverwillow.com.au", "mail2.bevenhall.se", "madtech.nl", "roe.ch"}
 
-	for _, td := range testDomains {
-		fmt.Printf("[%s]\n", td)
-		caas, dnssec, err := getCaaSet(td)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fmt.Printf("\tDNSSEC? %v\n\tCAA record set: %s\n", dnssec, caas)
-	}
-}
+// 	for _, td := range testDomains {
+// 		fmt.Printf("[%s]\n", td)
+// 		caas, dnssec, err := getCaaSet(td)
+// 		if err != nil {
+// 			fmt.Println(err)
+// 			return
+// 		}
+// 		fmt.Printf("\tDNSSEC? %v\n\tCAA record set: %s\n", dnssec, caas)
+// 	}
+// }
 
