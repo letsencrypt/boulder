@@ -69,7 +69,10 @@ var InvalidIdentifierError = errors.New("Invalid identifier type")
 var SyntaxError = errors.New("Syntax error")
 var NonPublicError = errors.New("Name does not end in a public suffix")
 var BlacklistedError = errors.New("Name is blacklisted")
-var CAAError = errors.New("Name has CAA record(s) for another issuer")
+
+var CAAError = errors.New("Error retrieving CAA records")
+var UnknownCriticalCAAError = errors.New("Existing critical CAA records that cannot be parsed")
+var ReservedCAAError = errors.New("Existing CAA records that dont match local issuer")
 
 // We place several criteria on identifiers we are willing to issue for:
 //
@@ -153,13 +156,18 @@ func (pa PolicyAuthorityImpl) ValidateCAARecords(id core.AcmeIdentifier) error {
 	if err != nil {
 		err = fmt.Errorf("[DNSSEC: %s] %s", dnssec, err)
 		pa.log.AuditErr(err)
-		return err
+		return CAAError
+	}
+	if caaSet == nil {
+		// no CAA records so all is good (+log dnssec...)
+		pa.log.Audit(fmt.Sprintf("[DNSSEC: %s] Didn't find any CAA records for '%s', can issue", dnssec, domain))
+		return nil
 	}
 	if caaSet.CriticalUnknown() {
 		// log that there were critical properties we didn't understand so cant issue
 		err = fmt.Errorf("[DNSSEC: %s] Unknown CAA properties flagged as critical for '%s', cannot issue", dnssec, domain)
 		pa.log.AuditErr(err)
-		return err
+		return UnknownCriticalCAAError
 	}
 	if len(caaSet.issue) > 0 || len(caaSet.issuewild) > 0 {
 		var correctSet []*CAA
@@ -168,18 +176,20 @@ func (pa PolicyAuthorityImpl) ValidateCAARecords(id core.AcmeIdentifier) error {
 		} else {
 			correctSet = caaSet.issue
 		}
-		for _, caa := range correctSet {
-			if caa.value == pa.IssuerDomain {
-				// log that there *WAS* caa records that validate us issuing
-				// (plus if there was dnssec or not)
-				pa.log.Audit(fmt.Sprintf("[DNSSEC: %s] Found issue/issuewild CAA record for '%s' matching local issuer '%s', can issue", dnssec, domain, pa.IssuerDomain))
-				return nil
+		if len(correctSet) > 0 {
+			for _, caa := range correctSet {
+				if caa.value == pa.IssuerDomain {
+					// log that there *WAS* caa records that validate us issuing
+					// (plus if there was dnssec or not)
+					pa.log.Audit(fmt.Sprintf("[DNSSEC: %s] Found issue/issuewild CAA record for '%s' matching local issuer '%s', can issue", dnssec, domain, pa.IssuerDomain))
+					return nil
+				}
 			}
 		}
 		// no valid CAA record in set returned, FAILL + log (+dnssec)
 		err = fmt.Errorf("[DNSSEC: %s] Local issuer '%s' did not match any CAA records for '%s', cannot issue", dnssec, pa.IssuerDomain, domain)
 		pa.log.AuditErr(err)
-		return err
+		return ReservedCAAError
 	}
 	// no CAA records so all is good (+log dnssec...)
 	pa.log.Audit(fmt.Sprintf("[DNSSEC: %s] Didn't find any CAA records for '%s', can issue", dnssec, domain))

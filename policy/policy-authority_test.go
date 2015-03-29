@@ -133,8 +133,58 @@ func TestWillingToIssue(t *testing.T) {
 	}
 }
 
-func TestChallengesFor(t *testing.T) {
+func TestValidateCAARecords(t *testing.T) {
+	shouldBeReserved := []string{
+		"google.com",
+		"mail.google.com",
+		"comodo.com",
+		"0day.net",
+		"darktangent.org",
+	}
+
+	shouldBeCritical := []string{
+		"www.zx.com",
+		"arrakis.tv",
+		"codewiz.org",
+		"goop.org",
+		"madtech.nl",
+	}
+
+	shouldBeAccepted := []string{
+		"bracewel.net",
+		"letsencrypt.org",
+		"linux.org",
+	}
+
 	// Audit logger
+	audit, _ := blog.Dial("", "", "tag")
+
+	pa := NewPolicyAuthorityImpl(audit, "letsencrypt.org")
+
+	for _, domain := range shouldBeReserved {
+		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
+		if err := pa.ValidateCAARecords(identifier); err != ReservedCAAError {
+			t.Error("Identifier was incorrectly allowed", identifier, err)
+		}
+	}
+
+	for _, domain := range shouldBeCritical {
+		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
+		if err := pa.ValidateCAARecords(identifier); err != UnknownCriticalCAAError {
+			t.Error("Identifier was incorrectly allowed", identifier, err)
+		}
+	}
+
+	for _, domain := range shouldBeAccepted {
+		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
+		if err := pa.ValidateCAARecords(identifier); err != nil {
+			t.Error("Identifier was incorrectly disallowed", identifier, err)
+		}
+	}
+
+}
+
+func TestChallengesFor(t *testing.T) {	// Audit logger
 	audit, _ := blog.Dial("", "", "tag")
 
 	pa := NewPolicyAuthorityImpl(audit, "letsencrypt.org")

@@ -1,5 +1,5 @@
-// package va
 package policy
+// package main
 
 import (
 	"fmt"
@@ -60,12 +60,14 @@ type CAASet struct {
 
 // CriticalUnknown Returns true if any CAA records have unknown tag properties and are flagged critical.
 func (caaSet CAASet) CriticalUnknown() bool {
-	for _, caaRecord := range caaSet.unknown {
-		// Critical flag is 1, but acording to RFC 6844
-		// any flag other than 0 should currently be interpreted
-		// as critical. 
-		if caaRecord.flag > 0 {
-			return true
+	if len(caaSet.unknown) > 0 {
+		for _, caaRecord := range caaSet.unknown {
+			// Critical flag is 1, but acording to RFC 6844
+			// any flag other than 0 should currently be interpreted
+			// as critical. 
+			if caaRecord.flag > 0 {
+				return true
+			}
 		}
 	}
 	return false
@@ -332,7 +334,7 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 
 // examples
 // func main() {
-// 	testDomains := []string{"derrr.asd22", "google.com", "mail.google.com", "bracewel.net", "theguardian.co.uk", "pir.org", "mail1.pir.org", "comodo.com", "dnsseczombo.com", "antonyms.eu", "dmarcian.de", "instantssl.info", "www.zx.com", "www.dotsport.info", "tropicalnorthair.com", "sylkeschulze.de", "sylkeschulze.de", "somaf.de", "signing-milter.org", "nails.eu.org", "riverwillow.com.au", "mail2.bevenhall.se", "madtech.nl", "roe.ch"}
+// 	testDomains := []string{"gmail.com"}
 
 // 	for _, td := range testDomains {
 // 		fmt.Printf("[%s]\n", td)
@@ -344,4 +346,3 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 // 		fmt.Printf("\tDNSSEC? %v\n\tCAA record set: %s\n", dnssec, caas)
 // 	}
 // }
-
