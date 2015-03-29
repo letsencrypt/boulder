@@ -84,6 +84,7 @@ type CertificateAuthority interface {
 type PolicyAuthority interface {
 	WillingToIssue(AcmeIdentifier) error
 	ChallengesFor(AcmeIdentifier) ([]Challenge, [][]int)
+	ValidateCAARecords(AcmeIdentifier) error
 }
 
 type StorageGetter interface {

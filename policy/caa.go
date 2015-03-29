@@ -59,7 +59,7 @@ type CAASet struct {
 }
 
 // CriticalUnknown Returns true if any CAA records have unknown tag properties and are flagged critical.
-func (caaSet CAASet) criticalUnknown() bool {
+func (caaSet CAASet) CriticalUnknown() bool {
 	for _, caaRecord := range caaSet.unknown {
 		// Critical flag is 1, but acording to RFC 6844
 		// any flag other than 0 should currently be interpreted

@@ -7,6 +7,7 @@ package policy
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"regexp"
 	"strings"
@@ -154,7 +155,7 @@ func (pa PolicyAuthorityImpl) ValidateCAARecords(id core.AcmeIdentifier) error {
 		pa.log.AuditErr(err)
 		return err
 	}
-	if caaSet.CriticalUknown() {
+	if caaSet.CriticalUnknown() {
 		// log that there were critical properties we didn't understand so cant issue
 		err = fmt.Errorf("[DNSSEC: %s] Unknown CAA properties flagged as critical for '%s', cannot issue", dnssec, domain)
 		pa.log.AuditErr(err)
@@ -168,7 +169,7 @@ func (pa PolicyAuthorityImpl) ValidateCAARecords(id core.AcmeIdentifier) error {
 			correctSet = caaSet.issue
 		}
 		for _, caa := range correctSet {
-			if caa.issue == pa.IssuerDomain {
+			if caa.value == pa.IssuerDomain {
 				// log that there *WAS* caa records that validate us issuing
 				// (plus if there was dnssec or not)
 				pa.log.Audit(fmt.Sprintf("[DNSSEC: %s] Found issue/issuewild CAA record for '%s' matching local issuer '%s', can issue", dnssec, domain, pa.IssuerDomain))
@@ -181,7 +182,7 @@ func (pa PolicyAuthorityImpl) ValidateCAARecords(id core.AcmeIdentifier) error {
 		return err
 	}
 	// no CAA records so all is good (+log dnssec...)
-	pa.log.Audit("[DNSSEC: %s] Didn't find any CAA records for '%s', can issue", dnssec, domain)
+	pa.log.Audit(fmt.Sprintf("[DNSSEC: %s] Didn't find any CAA records for '%s', can issue", dnssec, domain))
 	return nil
 }
 

@@ -92,7 +92,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	csrDER, _ := hex.DecodeString(CSR_HEX)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 
-	ra := NewRegistrationAuthorityImpl(audit)
+	ra := NewRegistrationAuthorityImpl(audit, "letsencrypt.org")
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = &ca

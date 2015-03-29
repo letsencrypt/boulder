@@ -91,7 +91,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Audit logger
 	audit, _ := blog.Dial("", "", "tag")
 
-	pa := NewPolicyAuthorityImpl(audit)
+	pa := NewPolicyAuthorityImpl(audit, "letsencrypt.org")
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
@@ -137,7 +137,7 @@ func TestChallengesFor(t *testing.T) {
 	// Audit logger
 	audit, _ := blog.Dial("", "", "tag")
 
-	pa := NewPolicyAuthorityImpl(audit)
+	pa := NewPolicyAuthorityImpl(audit, "letsencrypt.org")
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 

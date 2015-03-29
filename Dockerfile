@@ -8,6 +8,10 @@ EXPOSE 4000
 # Assume the configuration is in /etc/boulder
 ENV BOULDER_CONFIG /boulder/config.json
 
+# Install libunbound dependency
+RUN apt-get update
+RUN apt-get -y install libunbound-dev
+
 # Copy in the Boulder sources
 RUN mkdir -p /go/src/github.com/letsencrypt/boulder
 COPY . /go/src/github.com/letsencrypt/boulder
