@@ -169,6 +169,7 @@ func (pa PolicyAuthorityImpl) ValidateCAARecords(id core.AcmeIdentifier) error {
 		pa.log.AuditErr(err)
 		return UnknownCriticalCAAError
 	}
+
 	if len(caaSet.issue) > 0 || len(caaSet.issuewild) > 0 {
 		var correctSet []*CAA
 		if strings.SplitN(domain, ".", 2)[0] == "*" {

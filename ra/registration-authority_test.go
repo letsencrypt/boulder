@@ -87,7 +87,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	caCertPEM, _ := pem.Decode([]byte(CA_CERT_PEM))
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, nil)
-	pa := policy.NewPolicyAuthorityImpl(audit)
+	pa := policy.NewPolicyAuthorityImpl(audit, "letsencrypt.org")
 	ca := ca.CertificateAuthorityImpl{Signer: signer, SA: sa, PA: pa}
 	csrDER, _ := hex.DecodeString(CSR_HEX)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)

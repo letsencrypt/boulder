@@ -87,7 +87,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return
 	}
 
-	if err = ca.PA.ValidateCAARecords(identifier) ; err != nil {
+	if err = ca.PA.ValidateCAARecords(identifier); err != nil {
 		err = errors.New("Policy forbids issuing for name" + commonName)
 		ca.log.AuditErr(err)
 		return
