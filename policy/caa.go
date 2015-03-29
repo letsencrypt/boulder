@@ -101,22 +101,33 @@ func newCAASet(CAAs []*CAA) *CAASet {
 // time.
 const rootDNSKey = `			75417	IN	DNSKEY	257 3 8 AwEAAagAIKlVZrpC6Ia7gEzahOR+9W29euxhJhVVLOyQbSEW0O8gcCjF FVQUTf6v58fLjwBd0YI0EzrAcQqBGCzh/RStIoO8g0NfnfL2MTJRkxoX bfDaUeVPQuYEhg37NZWAJQ9VnMVDxP/VHL496M/QZxkjf5/Efucp2gaD X6RS6CXpoY68LsvPVjR0ZSwzz1apAzvN9dlzEheX7ICJBBtuA6G3LQpz W5hOA2hzCTMjJPJ8LbqF6dsV6DoBQzgul0sGIcGOYl7OyQdXfZ57relS Qageu+ipAdTTJ25AsRTAoub8ONGcLmqrAmRLKBP1dfwhYB4N7knNnulq QxA+Uk1ihz0=`
 
-func getNs(pubU *unbound.Unbound, domain string) (string, error) {
+func getNs(domain string) (string, string, error) {
+	// public resolver to get auth NS
+	pubU := unbound.New()
+	defer pubU.Destroy()
+	// should probably be set from /etc/resolv.conf
+	if err := pubU.SetFwd("8.8.8.8"); err != nil {
+		return "", "", err
+	}
+
 	// RFC 6844 states we should query the authoritative dns server
 	// for a domain directly to avoid caching etc, so lets find its
 	// IP address.
 	// get NS records for domain
 	r, err := pubU.Resolve(dns.Fqdn(domain), dns.TypeNS, dns.ClassINET)
 	if err != nil {
-		return "", fmt.Errorf("Resolving '%s' failed: %s", domain, err)
+		return "", "", fmt.Errorf("Resolving '%s' failed: %s", domain, err)
 	}
 
 	nsName := ""
+	rootDomain := ""
 	if r.HaveData {
 		for _, record := range r.Rr {
 			if record.Header().Rrtype == dns.TypeNS {
-				// just grab the first NS domain
+				// just grab the first NS domain (this breaks things when the first
+				// ns server returned is broken...)
 				nsName = record.(*dns.NS).Ns
+				rootDomain = record.(*dns.NS).Hdr.Name
 				break
 			}
 		}
@@ -128,6 +139,7 @@ func getNs(pubU *unbound.Unbound, domain string) (string, error) {
 			for _, record := range r.AnswerPacket.Ns {
 				if record.Header().Rrtype == dns.TypeSOA {
 					nsName = record.(*dns.SOA).Ns
+					rootDomain = record.(*dns.SOA).Hdr.Name
 					break
 				}
 			}
@@ -137,13 +149,14 @@ func getNs(pubU *unbound.Unbound, domain string) (string, error) {
 					if record.Header().Rrtype == dns.TypeSOA {
 						r, err := pubU.Resolve(record.(*dns.SOA).Hdr.Name, dns.TypeNS, dns.ClassINET)
 						if err != nil {
-							return "", fmt.Errorf("Resolving '%s' failed: %s", record.(*dns.SOA).Hdr.Name, err)
+							return "", "", fmt.Errorf("Resolving '%s' failed: %s", record.(*dns.SOA).Hdr.Name, err)
 						}
 						if r.HaveData {
 							for _, nsRecord := range r.Rr {
 								if nsRecord.Header().Rrtype == dns.TypeNS {
 									// just grab the first NS domain
 									nsName = nsRecord.(*dns.NS).Ns
+									rootDomain = nsRecord.(*dns.NS).Hdr.Name
 									break
 								}
 							}
@@ -153,57 +166,27 @@ func getNs(pubU *unbound.Unbound, domain string) (string, error) {
 			}
 		}
 	}
+	rootDomain = strings.TrimRight(rootDomain, ".")
 
 	nsIPs, err := pubU.LookupIP(nsName)
 	if err != nil {
-		return "", fmt.Errorf("Resolving '%s' failed: %s", nsName, err)
+		return "", "", fmt.Errorf("Resolving '%s' failed: %s", nsName, err)
 	}
 	if len(nsIPs) > 0 {
 		// return first IP for NS
-		return nsIPs[0].String(), nil
+		return nsIPs[0].String(), rootDomain, nil
 	}
 
-	return "", fmt.Errorf("Address lookup did not return any IPs for %s", nsName)
+	return "", "", fmt.Errorf("Address lookup did not return any IPs for %s", nsName)
 }
 
-func getDNSKeys(authU *unbound.Unbound, pubU *unbound.Unbound, domain string) (bool, error) {
-	// get root via SOA based trickery
-	r, err := pubU.Resolve(dns.Fqdn(domain), dns.TypeSOA, dns.ClassINET)
-	if err != nil {
-		return false, fmt.Errorf("Resolving '%s' failed: %s", domain, err)
-	}
-
-	rootDomain := ""
-	if r.HaveData {
-		// Get root domain from SOA answer
-		for _, record := range r.Rr {
-			if record.Header().Rrtype == dns.TypeSOA {
-				rootDomain = record.(*dns.SOA).Hdr.Name
-				break
-			}
-		}
-	} else {
-		if len(r.AnswerPacket.Ns) == 0 {
-			return false, fmt.Errorf("Couldn't find the SOA record for '%s'", domain)
-		}
-		// Get root domain from SOA in authority response... (so silly)
-		// iterate through authority because sometimes NSEC or RRSIG records
-		// might be in there
-		for _, record := range r.AnswerPacket.Ns {
-			if record.Header().Rrtype == dns.TypeSOA {
-				rootDomain = record.(*dns.SOA).Hdr.Name
-				break
-			}
-		}
-	}
-
-	rootDomain = strings.TrimRight(rootDomain, ".")	
+func getDNSKeys(authU *unbound.Unbound, domain string, rootDomain string) (bool, error) {
 	splitDomain := strings.Split(rootDomain, ".")
 	// build Trust Anchor list
 	var taKeys []string
 	for i := range splitDomain {
 		taDomain := strings.Join(splitDomain[i:], ".")
-		r, err := pubU.Resolve(dns.Fqdn(taDomain), dns.TypeDNSKEY, dns.ClassINET)
+		r, err := authU.Resolve(dns.Fqdn(taDomain), dns.TypeDNSKEY, dns.ClassINET)
 		if err != nil {
 			return false, fmt.Errorf("Resolving '%s' failed: %s", taDomain, err)
 		}
@@ -235,9 +218,6 @@ func getDNSKeys(authU *unbound.Unbound, pubU *unbound.Unbound, domain string) (b
 }
 
 func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
-	// if looking for alias, get the canonical name and set
-	// domain for it, can't really do this before authNs lookup
-	// since Fwd isn't set yet...
 	var CAAs []*CAA
 	if alias {
 		canonName, err := u.LookupCNAME(dns.Fqdn(domain))
@@ -280,15 +260,7 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 }
 
 func getCaaSet(domain string) (*CAASet, bool, error) {
-	// public resolver to get auth NS and DNSKEYs
-	pubU := unbound.New()
-	defer pubU.Destroy()
-	// should probably be set from /etc/resolv.conf
-	if err := pubU.SetFwd("8.8.8.8"); err != nil {
-		return nil, false, fmt.Errorf("Setting forward resolver '%s' failed: %s", "8.8.8.8", err)
-	}
-	
-	authNs, err := getNs(pubU, domain)
+	authNs, rootDomain, err := getNs(domain)
 	if err != nil {
 		return nil, false, err
 	}
@@ -302,7 +274,7 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 	// dnssec indicates if queries were made with an
 	// initiated chain of trust, any bogus replies
 	// will raise errors if this is true.
-	dnssec, err := getDNSKeys(authU, pubU, domain)
+	dnssec, err := getDNSKeys(authU, domain, rootDomain)
 	if err != nil {
 		return nil, false, err
 	}
@@ -324,8 +296,6 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 				if len(CAAs) > 0 {
 					return newCAASet(CAAs), dnssec, nil
 				}
-
-				// NSEC/3 check should be here
 			}
 	}
 	

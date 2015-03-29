@@ -140,21 +140,41 @@ func TestValidateCAARecords(t *testing.T) {
 		"comodo.com",
 		"0day.net",
 		"darktangent.org",
+		"nails.eu.org",
+		"somaf.de",
+		"hackerjeopardy.com",
+		"instantssl.com",
+		"roe.ch",
+		"soulboxios.com",
 	}
 
 	shouldBeCritical := []string{
 		"www.zx.com",
 		"arrakis.tv",
-		"codewiz.org",
 		"goop.org",
-		"madtech.nl",
+		"mail2.bevenhall.se",
+		"matroxsolutions.com",
+		"nethemba.com",
+		"www.dotsport.info",
+		"dnsseczombo.com",
+		// these all seem to have NS records pointing to broken
+		// servers so may also throw CAAErrors....!
+		// "madtech.nl",
+		// "sugarlabs.org",
+		// "sunjammer.codewiz.org",
+		// "www.isoc.lu",
 	}
 
 	shouldBeAccepted := []string{
 		"bracewel.net",
 		"letsencrypt.org",
 		"linux.org",
+		"pir.org",
 	}
+
+	// shouldBeCAAError := []string {
+	//	"derrderrreeeerwerererwwww.moopa",
+	// }
 
 	// Audit logger
 	audit, _ := blog.Dial("", "", "tag")
@@ -181,8 +201,8 @@ func TestValidateCAARecords(t *testing.T) {
 			t.Error("Identifier was incorrectly disallowed", identifier, err)
 		}
 	}
-
 }
+
 
 func TestChallengesFor(t *testing.T) {	// Audit logger
 	audit, _ := blog.Dial("", "", "tag")

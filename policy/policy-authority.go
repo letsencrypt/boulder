@@ -156,6 +156,7 @@ func (pa PolicyAuthorityImpl) ValidateCAARecords(id core.AcmeIdentifier) error {
 	if err != nil {
 		err = fmt.Errorf("[DNSSEC: %s] %s", dnssec, err)
 		pa.log.AuditErr(err)
+		fmt.Println(err)
 		return CAAError
 	}
 	if caaSet == nil {
