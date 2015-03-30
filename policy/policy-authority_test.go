@@ -160,8 +160,10 @@ func TestValidateCAARecords(t *testing.T) {
 		// these all seem to have NS records pointing to broken
 		// servers so may also throw CAAErrors....!
 		// "madtech.nl",
+		// "codewiz.org",
 		// "sugarlabs.org",
 		// "sunjammer.codewiz.org",
+		// "sunjammer.sugarlabs.org",
 		// "www.isoc.lu",
 	}
 
