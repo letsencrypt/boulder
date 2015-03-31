@@ -6,7 +6,7 @@ MAINTAINER J.C. Jones "jjones@letsencrypt.org"
 EXPOSE 4000
 
 # Assume the configuration is in /etc/boulder
-ENV BOULDER_CONFIG /boulder/config.json
+ENV BOULDER_CONFIG=/boulder/config.json
 
 # Install libunbound dependency
 RUN apt-get update

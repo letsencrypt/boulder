@@ -1,5 +1,5 @@
-package policy
-// package main
+// package policy
+package main
 
 import (
 	"fmt"
@@ -39,8 +39,8 @@ func newCAA(encodedRDATA []byte) *CAA {
 
 	// only decode tags we understand, value/valuebuf can be empty
 	// (that would be stupid though...)
-	value := ""
 	var valueBuf []byte
+	var value string
 	if tag == "issue" || tag == "issuewild" || tag == "iodef" {
 		value = string(encodedRDATA[2+tagLen:])
 	} else {
@@ -101,15 +101,7 @@ func newCAASet(CAAs []*CAA) *CAASet {
 // time.
 const rootDNSKey = `			75417	IN	DNSKEY	257 3 8 AwEAAagAIKlVZrpC6Ia7gEzahOR+9W29euxhJhVVLOyQbSEW0O8gcCjF FVQUTf6v58fLjwBd0YI0EzrAcQqBGCzh/RStIoO8g0NfnfL2MTJRkxoX bfDaUeVPQuYEhg37NZWAJQ9VnMVDxP/VHL496M/QZxkjf5/Efucp2gaD X6RS6CXpoY68LsvPVjR0ZSwzz1apAzvN9dlzEheX7ICJBBtuA6G3LQpz W5hOA2hzCTMjJPJ8LbqF6dsV6DoBQzgul0sGIcGOYl7OyQdXfZ57relS Qageu+ipAdTTJ25AsRTAoub8ONGcLmqrAmRLKBP1dfwhYB4N7knNnulq QxA+Uk1ihz0=`
 
-func getNs(domain string) (string, string, error) {
-	// public resolver to get auth NS
-	pubU := unbound.New()
-	defer pubU.Destroy()
-	// should probably be set from /etc/resolv.conf
-	if err := pubU.SetFwd("8.8.8.8"); err != nil {
-		return "", "", err
-	}
-
+func getNs(pubU *unbound.Unbound, domain string) (string, string, error) {
 	// RFC 6844 states we should query the authoritative dns server
 	// for a domain directly to avoid caching etc, so lets find its
 	// IP address.
@@ -143,7 +135,7 @@ func getNs(domain string) (string, string, error) {
 					break
 				}
 			}
-			// silly ns domain in SOA...
+			// silly ns in SOA...
 			if nsName == "." {
 				for _, record := range r.AnswerPacket.Ns {
 					if record.Header().Rrtype == dns.TypeSOA {
@@ -177,16 +169,16 @@ func getNs(domain string) (string, string, error) {
 		return nsIPs[0].String(), rootDomain, nil
 	}
 
-	return "", "", fmt.Errorf("Address lookup did not return any IPs for %s", nsName)
+	return "", "", fmt.Errorf("Address lookup did not return any IPs for '%s'", nsName)
 }
 
-func getDNSKeys(authU *unbound.Unbound, domain string, rootDomain string) (bool, error) {
+func getDNSKeys(pubU *unbound.Unbound, authU *unbound.Unbound, domain string, rootDomain string) (bool, error) {
 	splitDomain := strings.Split(rootDomain, ".")
 	// build Trust Anchor list
 	var taKeys []string
 	for i := range splitDomain {
 		taDomain := strings.Join(splitDomain[i:], ".")
-		r, err := authU.Resolve(dns.Fqdn(taDomain), dns.TypeDNSKEY, dns.ClassINET)
+		r, err := pubU.Resolve(dns.Fqdn(taDomain), dns.TypeDNSKEY, dns.ClassINET)
 		if err != nil {
 			return false, fmt.Errorf("Resolving '%s' failed: %s", taDomain, err)
 		}
@@ -260,7 +252,17 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 }
 
 func getCaaSet(domain string) (*CAASet, bool, error) {
-	authNs, rootDomain, err := getNs(domain)
+	// public resolver to get authNs and DNSKEYS for chain of trust
+	pubU := unbound.New()
+	defer pubU.Destroy()
+	// should this be specifiably via a config var (so that the list
+	// of resolvers can be manually set... although that should just
+	// be done in /etc/resolv.conf)
+	if err := pubU.ResolvConf("/etc/resolv.conf"); err != nil {
+		return nil, false, err
+	}
+
+	authNs, rootDomain, err := getNs(pubU, domain)
 	if err != nil {
 		return nil, false, err
 	}
@@ -274,7 +276,7 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 	// dnssec indicates if queries were made with an
 	// initiated chain of trust, any bogus replies
 	// will raise errors if this is true.
-	dnssec, err := getDNSKeys(authU, domain, rootDomain)
+	dnssec, err := getDNSKeys(pubU, authU, domain, rootDomain)
 	if err != nil {
 		return nil, false, err
 	}
@@ -303,16 +305,16 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 }
 
 // examples
-// func main() {
-// 	testDomains := []string{"gmail.com"}
+func main() {
+	testDomains := []string{"gmail.com", "pir.org"}
 
-// 	for _, td := range testDomains {
-// 		fmt.Printf("[%s]\n", td)
-// 		caas, dnssec, err := getCaaSet(td)
-// 		if err != nil {
-// 			fmt.Println(err)
-// 			return
-// 		}
-// 		fmt.Printf("\tDNSSEC? %v\n\tCAA record set: %s\n", dnssec, caas)
-// 	}
-// }
+	for _, td := range testDomains {
+		fmt.Printf("[%s]\n", td)
+		caas, dnssec, err := getCaaSet(td)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Printf("\tDNSSEC? %v\n\tCAA record set: %s\n", dnssec, caas)
+	}
+}
