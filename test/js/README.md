@@ -4,7 +4,7 @@ The node.js scripts in this directory provide a simple end-to-end test of Boulde
 
 ```
 # Install dependencies
-> npm install inquirer cli node-forge
+> npm install
 
 # Start cfssl with signing parameters
 # (These are the default parameters to use a Yubikey.)

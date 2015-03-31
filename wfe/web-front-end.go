@@ -7,6 +7,7 @@ package wfe
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -45,6 +46,10 @@ func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
 	zeroKey := jose.JsonWebKey{}
 
 	// Read body
+	if request.Body == nil {
+		return nil, zeroKey, errors.New("No body on POST")
+	}
+
 	body, err := ioutil.ReadAll(request.Body)
 	if err != nil {
 		return nil, zeroKey, err
@@ -95,7 +100,7 @@ func sendError(response http.ResponseWriter, message string, code int) {
 	// https://golang.org/src/net/http/server.go#L1272
 	response.Header().Set("Content-Type", "application/problem+json")
 	response.WriteHeader(code)
-	fmt.Fprintln(response, problemDoc)
+	response.Write(problemDoc)
 }
 
 func link(url, relation string) string {
@@ -193,7 +198,6 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 }
 
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
-
 	if request.Method != "POST" {
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -207,13 +211,20 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 
 	var init core.CertificateRequest
 	if err = json.Unmarshal(body, &init); err != nil {
+		fmt.Println(err)
 		sendError(response, "Error unmarshaling certificate request", http.StatusBadRequest)
 		return
 	}
 
-	wfe.log.Notice(fmt.Sprintf("Asked to create new certificate: %v %v", init, key))
+	wfe.log.Notice(fmt.Sprintf("Client requested new certificate: %v %v %v",
+		request.RemoteAddr, init, key))
 
 	// Create new certificate and return
+	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
+	// WFE is compromised, *and* the attacker knows the public key of an account
+	// authorized for target site, they could cause issuance for that site by
+	// lying to the RA. We should probably pass a copy of the whole rquest to the
+	// RA for secondary validation.
 	cert, err := wfe.RA.NewCertificate(init, key)
 	if err != nil {
 		sendError(response,
