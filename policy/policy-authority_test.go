@@ -133,7 +133,7 @@ func TestWillingToIssue(t *testing.T) {
 	}
 }
 
-func TestValidateCAARecords(t *testing.T) {
+func TestCheckCAARecords(t *testing.T) {
 	shouldBeReserved := []string{
 		"google.com",
 		"mail.google.com",
@@ -185,21 +185,21 @@ func TestValidateCAARecords(t *testing.T) {
 
 	for _, domain := range shouldBeReserved {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		if err := pa.ValidateCAARecords(identifier); err != ReservedCAAError {
+		if err := pa.CheckCAARecords(identifier); err != ReservedCAAError {
 			t.Error("Identifier was incorrectly allowed", identifier, err)
 		}
 	}
 
 	for _, domain := range shouldBeCritical {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		if err := pa.ValidateCAARecords(identifier); err != UnknownCriticalCAAError {
+		if err := pa.CheckCAARecords(identifier); err != UnknownCriticalCAAError {
 			t.Error("Identifier was incorrectly allowed", identifier, err)
 		}
 	}
 
 	for _, domain := range shouldBeAccepted {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		if err := pa.ValidateCAARecords(identifier); err != nil {
+		if err := pa.CheckCAARecords(identifier); err != nil {
 			t.Error("Identifier was incorrectly disallowed", identifier, err)
 		}
 	}

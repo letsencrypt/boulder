@@ -8,7 +8,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/unbound"
 )
 
-// CAA type
+// CAA types
 
 // CAA Holds decoded CAA record.
 type CAA struct {
@@ -96,14 +96,14 @@ func newCAASet(CAAs []*CAA) *CAASet {
 
 // DNS utility methods
 
-// DNSKEY records for "." so we don't have to request it every
-// time.
+// DNSKEY record for "." so we don't have to query it every time.
 const rootDNSKey = `			75417	IN	DNSKEY	257 3 8 AwEAAagAIKlVZrpC6Ia7gEzahOR+9W29euxhJhVVLOyQbSEW0O8gcCjF FVQUTf6v58fLjwBd0YI0EzrAcQqBGCzh/RStIoO8g0NfnfL2MTJRkxoX bfDaUeVPQuYEhg37NZWAJQ9VnMVDxP/VHL496M/QZxkjf5/Efucp2gaD X6RS6CXpoY68LsvPVjR0ZSwzz1apAzvN9dlzEheX7ICJBBtuA6G3LQpz W5hOA2hzCTMjJPJ8LbqF6dsV6DoBQzgul0sGIcGOYl7OyQdXfZ57relS Qageu+ipAdTTJ25AsRTAoub8ONGcLmqrAmRLKBP1dfwhYB4N7knNnulq QxA+Uk1ihz0=`
 
 func getNs(pubU *unbound.Unbound, domain string) (string, string, error) {
 	// RFC 6844 states we should query the authoritative dns server
 	// for a domain directly to avoid caching etc, so lets find its
 	// IP address.
+
 	// get NS records for domain
 	r, err := pubU.Resolve(dns.Fqdn(domain), dns.TypeNS, dns.ClassINET)
 	if err != nil {
@@ -116,7 +116,7 @@ func getNs(pubU *unbound.Unbound, domain string) (string, string, error) {
 		for _, record := range r.Rr {
 			if record.Header().Rrtype == dns.TypeNS {
 				// just grab the first NS domain (this breaks things when the first
-				// ns server returned is broken...)
+				// ns server returned is broken... ie offline/non-responsive on :53)
 				nsName = record.(*dns.NS).Ns
 				rootDomain = record.(*dns.NS).Hdr.Name
 				break
@@ -167,7 +167,6 @@ func getNs(pubU *unbound.Unbound, domain string) (string, string, error) {
 		// return first IP for NS
 		return nsIPs[0].String(), rootDomain, nil
 	}
-
 	return "", "", fmt.Errorf("Address lookup did not return any IPs for '%s'", nsName)
 }
 
@@ -216,7 +215,7 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 			return CAAs, fmt.Errorf("CNAME lookup for '%s' failed: %s", domain, err)
 		}
 		// we already checked domain if alias is true, so don't
-		// bother doing it again... (also this is weird)
+		// bother doing it again... (also this would be weird)
 		if canonName == "" || canonName == domain {
 			return CAAs, nil
 		}
@@ -281,15 +280,15 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 	}
 
 	// remove trailing "." before splitting so we dont get a "" element
+	// if it was provided
 	domain = strings.TrimRight(domain, ".")	
 	splitDomain := strings.Split(domain, ".")
 	// RFC 6844 CAA set query sequence, 'x.y.z.com' => ['x.y.z.com', 'y.z.com', 'z.com']
 	// dont query the tld...?
 	for i := range splitDomain[0:len(splitDomain)-1] {
 			queryDomain := strings.Join(splitDomain[i:], ".")
-
 			for _, alias := range []bool{false, true} {
-				// Look for CAA records in zone domain
+				// Look for CAA records for domain
 				CAAs, err := getCaa(authU, queryDomain, alias); 
 				if err != nil {
 					return nil, dnssec, err
@@ -300,20 +299,6 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 			}
 	}
 	
+	// no CAA records found, good times
 	return nil, dnssec, nil
-}
-
-// examples
-func main() {
-	testDomains := []string{"gmail.com", "pir.org"}
-
-	for _, td := range testDomains {
-		fmt.Printf("[%s]\n", td)
-		caas, dnssec, err := getCaaSet(td)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fmt.Printf("\tDNSSEC? %v\n\tCAA record set: %s\n", dnssec, caas)
-	}
 }

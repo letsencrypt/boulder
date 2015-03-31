@@ -148,7 +148,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	return nil
 }
 
-func (pa PolicyAuthorityImpl) ValidateCAARecords(id core.AcmeIdentifier) error {
+func (pa PolicyAuthorityImpl) CheckCAARecords(id core.AcmeIdentifier) error {
 	domain := id.Value
 	domain = strings.ToLower(domain)
 
