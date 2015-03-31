@@ -18,12 +18,13 @@ type CAA struct {
 	valueBuf []byte
 }
 
+// RFC 6844 based CAA record decoder
 func newCAA(encodedRDATA []byte) *CAA {
-	// RFC 6844 based record decoder
 	if len(encodedRDATA) < 2 {
 		// *very* badly formatted record, discard
 		return nil
 	}
+
 	// first octet is uint8 flags
 	flag := uint8(encodedRDATA[0])
 	// second octet is uint8 length of tag
@@ -32,10 +33,7 @@ func newCAA(encodedRDATA []byte) *CAA {
 		// stupidly formatted record, discard
 		return nil
 	}
-
-	// property tag
 	tag := string(encodedRDATA[2:2+tagLen])
-
 	// only decode tags we understand, value/valuebuf can be empty
 	// (that would be stupid though...)
 	var valueBuf []byte
@@ -61,9 +59,8 @@ type CAASet struct {
 func (caaSet CAASet) CriticalUnknown() bool {
 	if len(caaSet.unknown) > 0 {
 		for _, caaRecord := range caaSet.unknown {
-			// Critical flag is 1, but acording to RFC 6844
-			// any flag other than 0 should currently be interpreted
-			// as critical. 
+			// Critical flag is 1, but acording to RFC 6844any flag other than
+			// 0 should currently be interpreted as critical. 
 			if caaRecord.flag > 0 {
 				return true
 			}
@@ -77,8 +74,6 @@ func newCAASet(CAAs []*CAA) *CAASet {
 	var issuewildSet []*CAA
 	var iodefSet []*CAA
 	var unknownSet []*CAA
-
-	// idk if there is a better method for doing this...
 	for _, caaRecord := range CAAs {
 		switch caaRecord.tag {
 		case "issue":
@@ -96,14 +91,11 @@ func newCAASet(CAAs []*CAA) *CAASet {
 
 // DNS utility methods
 
-// DNSKEY record for "." so we don't have to query it every time.
+// DNSKEY record for "." so we don't have to query it every time we want to
+// build a chain of trust.
 const rootDNSKey = `			75417	IN	DNSKEY	257 3 8 AwEAAagAIKlVZrpC6Ia7gEzahOR+9W29euxhJhVVLOyQbSEW0O8gcCjF FVQUTf6v58fLjwBd0YI0EzrAcQqBGCzh/RStIoO8g0NfnfL2MTJRkxoX bfDaUeVPQuYEhg37NZWAJQ9VnMVDxP/VHL496M/QZxkjf5/Efucp2gaD X6RS6CXpoY68LsvPVjR0ZSwzz1apAzvN9dlzEheX7ICJBBtuA6G3LQpz W5hOA2hzCTMjJPJ8LbqF6dsV6DoBQzgul0sGIcGOYl7OyQdXfZ57relS Qageu+ipAdTTJ25AsRTAoub8ONGcLmqrAmRLKBP1dfwhYB4N7knNnulq QxA+Uk1ihz0=`
 
-func getNs(pubU *unbound.Unbound, domain string) (string, string, error) {
-	// RFC 6844 states we should query the authoritative dns server
-	// for a domain directly to avoid caching etc, so lets find its
-	// IP address.
-
+func getNsAndRoot(pubU *unbound.Unbound, domain string) (string, string, error) {
 	// get NS records for domain
 	r, err := pubU.Resolve(dns.Fqdn(domain), dns.TypeNS, dns.ClassINET)
 	if err != nil {
@@ -123,8 +115,8 @@ func getNs(pubU *unbound.Unbound, domain string) (string, string, error) {
 			}
 		}
 	} else {
-		// if no NS records are returned its probably because domain is a CNAME
-		// grab the authoritative NS server from the SOA record in the 
+		// if no NS records are returned its probably because domain is a CNAME,
+		// grab the authoritative NS server from the SOA record in the
 		// authority section of the answer.
 		if len(r.AnswerPacket.Ns) > 0 {
 			for _, record := range r.AnswerPacket.Ns {
@@ -157,6 +149,9 @@ func getNs(pubU *unbound.Unbound, domain string) (string, string, error) {
 			}
 		}
 	}
+	if nsName == "" || rootDomain == "" {
+		return "", "", fmt.Errorf("Couldn't retrieve authoritative nameserver or zone root for '%s'", domain)
+	}
 	rootDomain = strings.TrimRight(rootDomain, ".")
 
 	nsIPs, err := pubU.LookupIP(nsName)
@@ -180,7 +175,6 @@ func getDNSKeys(pubU *unbound.Unbound, authU *unbound.Unbound, domain string, ro
 		if err != nil {
 			return false, fmt.Errorf("Resolving '%s' failed: %s", taDomain, err)
 		}
-
 		if r.HaveData {
 			for _, ta := range r.AnswerPacket.Answer {
 				if ta.Header().Rrtype == dns.TypeDNSKEY {
@@ -192,6 +186,7 @@ func getDNSKeys(pubU *unbound.Unbound, authU *unbound.Unbound, domain string, ro
 			return false, nil
 		}
 	}
+
 	// preload root key since every trust chain requires it
 	taKeys = append(taKeys, rootDNSKey)
 	for _, key := range taKeys {
@@ -202,8 +197,6 @@ func getDNSKeys(pubU *unbound.Unbound, authU *unbound.Unbound, domain string, ro
 		}
 	}
 
-	// we actually built a full chain of trust, queries can now be
-	// authenticated...
 	return true, nil
 }
 
@@ -214,8 +207,6 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 		if err != nil {
 			return CAAs, fmt.Errorf("CNAME lookup for '%s' failed: %s", domain, err)
 		}
-		// we already checked domain if alias is true, so don't
-		// bother doing it again... (also this would be weird)
 		if canonName == "" || canonName == domain {
 			return CAAs, nil
 		}
@@ -232,17 +223,10 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 	if !r.Bogus {
 		if r.HaveData {
 			for _, caaRecord := range r.Data {
-				// Parse RDATA into CAA struct, r.Secure indicates
-				// whether the CAA record was retrieved was using
-				// DNSSEC for logging purposes. 
 				CAAs = append(CAAs, newCAA(caaRecord))
 			}
 		}
 	} else {
-		// the DNSSEC validation has failed for some reason,
-		// r.WhyBogus should tell us why.
-		// this should probably be logged since it indicates an attack
-		// of some sort (probably)
 		return []*CAA{}, fmt.Errorf("CAA record response for '%s' appears bogus: %s", domain, r.WhyBogus)
 	}
 
@@ -250,17 +234,16 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 }
 
 func getCaaSet(domain string) (*CAASet, bool, error) {
-	// public resolver to get authNs and DNSKEYS for chain of trust
 	pubU := unbound.New()
 	defer pubU.Destroy()
-	// should this be specifiably via a config var (so that the list
+	// should this be specifiable via a config var? (so that the list
 	// of resolvers can be manually set... although that should just
-	// be done in /etc/resolv.conf)
+	// be done in /etc/resolv.conf really)
 	if err := pubU.ResolvConf("/etc/resolv.conf"); err != nil {
 		return nil, false, err
 	}
 
-	authNs, rootDomain, err := getNs(pubU, domain)
+	authNs, rootDomain, err := getNsAndRoot(pubU, domain)
 	if err != nil {
 		return nil, false, err
 	}
@@ -271,24 +254,17 @@ func getCaaSet(domain string) (*CAASet, bool, error) {
 		return nil, false, fmt.Errorf("Setting forward resolver '%s' failed: %s", authNs, err)
 	}
 
-	// dnssec indicates if queries were made with an
-	// initiated chain of trust, any bogus replies
-	// will raise errors if this is true.
 	dnssec, err := getDNSKeys(pubU, authU, domain, rootDomain)
 	if err != nil {
 		return nil, false, err
 	}
 
-	// remove trailing "." before splitting so we dont get a "" element
-	// if it was provided
 	domain = strings.TrimRight(domain, ".")	
 	splitDomain := strings.Split(domain, ".")
 	// RFC 6844 CAA set query sequence, 'x.y.z.com' => ['x.y.z.com', 'y.z.com', 'z.com']
-	// dont query the tld...?
 	for i := range splitDomain[0:len(splitDomain)-1] {
 			queryDomain := strings.Join(splitDomain[i:], ".")
 			for _, alias := range []bool{false, true} {
-				// Look for CAA records for domain
 				CAAs, err := getCaa(authU, queryDomain, alias); 
 				if err != nil {
 					return nil, dnssec, err

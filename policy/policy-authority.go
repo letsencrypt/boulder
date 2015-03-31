@@ -160,12 +160,10 @@ func (pa PolicyAuthorityImpl) CheckCAARecords(id core.AcmeIdentifier) error {
 		return CAAError
 	}
 	if caaSet == nil {
-		// no CAA records so all is good (+log dnssec...)
 		pa.log.Audit(fmt.Sprintf("[DNSSEC: %s] Didn't find any CAA records for '%s', can issue", dnssec, domain))
 		return nil
 	}
 	if caaSet.CriticalUnknown() {
-		// log that there were critical properties we didn't understand so cant issue
 		err = fmt.Errorf("[DNSSEC: %s] Unknown CAA properties flagged as critical for '%s', cannot issue", dnssec, domain)
 		pa.log.AuditErr(err)
 		return UnknownCriticalCAAError
@@ -181,19 +179,17 @@ func (pa PolicyAuthorityImpl) CheckCAARecords(id core.AcmeIdentifier) error {
 		if len(correctSet) > 0 {
 			for _, caa := range correctSet {
 				if caa.value == pa.IssuerDomain {
-					// log that there *WAS* caa records that validate us issuing
-					// (plus if there was dnssec or not)
 					pa.log.Audit(fmt.Sprintf("[DNSSEC: %s] Found issue/issuewild CAA record for '%s' matching local issuer '%s', can issue", dnssec, domain, pa.IssuerDomain))
 					return nil
 				}
 			}
 		}
-		// no valid CAA record in set returned, FAILL + log (+dnssec)
+
 		err = fmt.Errorf("[DNSSEC: %s] Local issuer '%s' did not match any CAA records for '%s', cannot issue", dnssec, pa.IssuerDomain, domain)
 		pa.log.AuditErr(err)
 		return ReservedCAAError
 	}
-	// no CAA records so all is good (+log dnssec...)
+
 	pa.log.Audit(fmt.Sprintf("[DNSSEC: %s] Didn't find any CAA records for '%s', can issue", dnssec, domain))
 	return nil
 }
