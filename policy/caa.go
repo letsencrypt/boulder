@@ -1,5 +1,4 @@
-// package policy
-package main
+package policy
 
 import (
 	"fmt"
