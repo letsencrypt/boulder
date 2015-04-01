@@ -148,6 +148,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	return nil
 }
 
+// CheckCAARecords Does what it says on the tin
 func (pa PolicyAuthorityImpl) CheckCAARecords(id core.AcmeIdentifier) error {
 	domain := id.Value
 	domain = strings.ToLower(domain)

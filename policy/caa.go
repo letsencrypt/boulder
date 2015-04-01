@@ -1,3 +1,8 @@
+// Copyright 2015 ISRG.  All rights reserved
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 package policy
 
 import (
@@ -236,9 +241,6 @@ func getCaa(u *unbound.Unbound, domain string, alias bool) ([]*CAA, error) {
 func getCaaSet(domain string) (*CAASet, bool, error) {
 	pubU := unbound.New()
 	defer pubU.Destroy()
-	// should this be specifiable via a config var? (so that the list
-	// of resolvers can be manually set... although that should just
-	// be done in /etc/resolv.conf really)
 	if err := pubU.ResolvConf("/etc/resolv.conf"); err != nil {
 		return nil, false, err
 	}
