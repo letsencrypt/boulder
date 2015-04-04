@@ -12,7 +12,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"log"
 	"time"
-	// "runtime"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"

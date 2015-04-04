@@ -9,7 +9,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"log"
 	"time"
-	"runtime"
 
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
@@ -31,7 +30,6 @@ func main() {
 		cmd.FailOnError(err, "Failed to create SA impl")
 
 		for true {
-			log.Printf("num routines: %d", runtime.NumGoroutine())
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
