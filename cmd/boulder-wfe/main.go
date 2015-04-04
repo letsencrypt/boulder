@@ -50,12 +50,12 @@ func main() {
 			// with new RA and SA rpc clients.
 			for true {
 				for err := range closeChan {
-					log.Printf(" [c!] AMQP Channel closed: [%s]", err)
+					log.Printf(" [!] AMQP Channel closed: [%s]", err)
 					time.Sleep(time.Second*10)
 					rac, sac, closeChan = setupWFE(c, auditlogger)
 					wfe.RA = &rac
 					wfe.SA = &sac
-					log.Printf(" [c!] Reconnected to AMQP")
+					log.Printf(" [!] Reconnected to AMQP")
 				}
 			}
 		}()
