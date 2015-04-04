@@ -9,31 +9,57 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"log"
+	"time"
+	// "runtime"
+
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/wfe"
 )
 
+func setupWFE(c cmd.Config, auditlogger *blog.AuditLogger) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
+	ch := cmd.AmqpChannel(c.AMQP.Server)
+	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
+
+	rac, err := rpc.NewRegistrationAuthorityClient(c.AMQP.RA.Client, c.AMQP.RA.Server, ch)
+	cmd.FailOnError(err, "Unable to create RA client")
+
+	sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Server, ch)
+	cmd.FailOnError(err, "Unable to create SA client")
+
+	return rac, sac, closeChan
+}
+
 func main() {
 	app := cmd.NewAppShell("boulder-wfe")
 	app.Action = func(c cmd.Config) {
-		ch := cmd.AmqpChannel(c.AMQP.Server)
-
 		// Set up logging
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
-		rac, err := rpc.NewRegistrationAuthorityClient(c.AMQP.RA.Client, c.AMQP.RA.Server, ch)
-		cmd.FailOnError(err, "Unable to create RA client")
-
-		sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Server, ch)
-		cmd.FailOnError(err, "Unable to create SA client")
-
-		// Create the front-end and wire in its resources
 		wfe := wfe.NewWebFrontEndImpl(auditlogger)
+		rac, sac, closeChan := setupWFE(c, auditlogger)
 		wfe.RA = &rac
 		wfe.SA = &sac
+
+		go func() {
+			// sit around and reconnect to AMQP if the channel
+			// drops for some reason and repopulate the wfe object
+			// with new RA and SA rpc clients.
+			for true {
+				for err := range closeChan {
+					log.Printf(" [c!] AMQP Channel closed: [%s]", err)
+					time.Sleep(time.Second*10)
+					rac, sac, closeChan = setupWFE(c, auditlogger)
+					wfe.RA = &rac
+					wfe.SA = &sac
+					log.Printf(" [c!] Reconnected to AMQP")
+				}
+			}
+		}()
 
 		// Go!
 		newRegPath := "/acme/new-reg"

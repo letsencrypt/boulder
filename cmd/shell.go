@@ -141,3 +141,10 @@ func RunForever(server *rpc.AmqpRPCServer) {
 	fmt.Fprintf(os.Stderr, "Server running...\n")
 	<-forever
 }
+
+// Start the server and maybe wait around forever...
+func MaybeRunForever(server *rpc.AmqpRPCServer, forever chan bool) {
+	server.Start()
+	fmt.Fprintf(os.Stderr, "Server running...\n")
+	<-forever
+}
