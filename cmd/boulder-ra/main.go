@@ -47,14 +47,12 @@ func main() {
 			
 			forever := make(chan bool)
 			go func() {
-				for true {
-					for err := range closeChan {
-						log.Printf(" [c!] AMQP Channel closed: [%s]", err)
-						time.Sleep(time.Second*10)
-						log.Printf(" [c!] Reconnecting to AMQP...")
-						close(forever)
-						return
-					}
+				for err := range closeChan {
+					log.Printf(" [c!] AMQP Channel closed: [%s]", err)
+					time.Sleep(time.Second*10)
+					log.Printf(" [c!] Reconnecting to AMQP...")
+					close(forever)
+					return
 				}
 			}()
 			cmd.MaybeRunForever(ras, forever)
