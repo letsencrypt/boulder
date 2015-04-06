@@ -3,6 +3,7 @@ package jose
 import (
 	"crypto/ecdsa"
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/json"
 	"math/big"
 )
@@ -19,6 +20,19 @@ type rawJsonWebKey struct {
 	Y   JsonBuffer `json:"y,omitempty"`
 }
 
+type rsaThumbprint struct {
+	E   string `json:"e,omitempty"`
+	Kty string `json:"kty,omitempty"`
+	N   string `json:"n,omitempty"`
+}
+
+type ecThumbprint struct {
+	Crv string `json:"crv,omitempty"`
+	Kty string `json:"kty,omitempty"`
+	X   string `json:"x,omitempty"`
+	Y   string `json:"y,omitempty"`
+}
+
 type JsonWebKey struct {
 	KeyType    JoseKeyType
 	Rsa        *rsa.PublicKey
@@ -27,12 +41,28 @@ type JsonWebKey struct {
 }
 
 func (jwk *JsonWebKey) ComputeThumbprint() {
-	jwk.Thumbprint = string(jwk.KeyType)
+	var jsonThumbprint []byte
+	var err error
 	if jwk.Rsa != nil {
-		jwk.Thumbprint += B64enc(jwk.Rsa.N.Bytes())
+		thumbprintStruct := rsaThumbprint{E: B64enc(big.NewInt(int64(jwk.Rsa.E)).Bytes()), Kty: string(jwk.KeyType), N: B64enc(jwk.Rsa.N.Bytes())}
+		jsonThumbprint, err = json.Marshal(thumbprintStruct)
+		if err != nil {
+			return
+		}
 	} else if jwk.Ec != nil {
-		jwk.Thumbprint += B64enc(jwk.Ec.X.Bytes()) + B64enc(jwk.Ec.Y.Bytes())
+		crv, err := curve2name(jwk.Ec.Curve)
+		if err != nil {
+			return
+		}
+		thumbprintStruct := ecThumbprint{Crv: crv, Kty: string(jwk.KeyType), X: B64enc(jwk.Ec.X.Bytes()), Y: B64enc(jwk.Ec.Y.Bytes())}
+		jsonThumbprint, err = json.Marshal(thumbprintStruct)
+		if err != nil {
+			return
+		}
 	}
+	tpHash := sha256.Sum256(jsonThumbprint)
+
+	jwk.Thumbprint = B64enc(tpHash[:])
 }
 
 // Normal Go == operator compares pointers directly, so it doesn't
