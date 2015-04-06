@@ -30,9 +30,7 @@ type JsonWebKey struct {
 }
 
 func (jwk *JsonWebKey) ComputeThumbprint() {
-	var jsonThumbprint []byte
-	var err error
-	jsonThumbprint, err = jwk.MarshalJSON()
+	jsonThumbprint, err := jwk.MarshalJSON()
 	if err != nil {
 		return
 	}
