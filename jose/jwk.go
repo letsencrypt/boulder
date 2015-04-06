@@ -12,25 +12,12 @@ import (
 
 type rawJsonWebKey struct {
 	// Only public key fields, since we only require verification
+	Crv string     `json:"crv,omitempty"` // XXX Use an enum
+	E   JsonBuffer `json:"e,omitempty"`
 	Kty string     `json:"kty,omitempty"` // XXX Use an enum
 	N   JsonBuffer `json:"n,omitempty"`
-	E   JsonBuffer `json:"e,omitempty"`
-	Crv string     `json:"crv,omitempty"` // XXX Use an enum
 	X   JsonBuffer `json:"x,omitempty"`
 	Y   JsonBuffer `json:"y,omitempty"`
-}
-
-type rsaThumbprint struct {
-	E   string `json:"e,omitempty"`
-	Kty string `json:"kty,omitempty"`
-	N   string `json:"n,omitempty"`
-}
-
-type ecThumbprint struct {
-	Crv string `json:"crv,omitempty"`
-	Kty string `json:"kty,omitempty"`
-	X   string `json:"x,omitempty"`
-	Y   string `json:"y,omitempty"`
 }
 
 type JsonWebKey struct {
@@ -43,22 +30,9 @@ type JsonWebKey struct {
 func (jwk *JsonWebKey) ComputeThumbprint() {
 	var jsonThumbprint []byte
 	var err error
-	if jwk.Rsa != nil {
-		thumbprintStruct := rsaThumbprint{E: B64enc(big.NewInt(int64(jwk.Rsa.E)).Bytes()), Kty: string(jwk.KeyType), N: B64enc(jwk.Rsa.N.Bytes())}
-		jsonThumbprint, err = json.Marshal(thumbprintStruct)
-		if err != nil {
-			return
-		}
-	} else if jwk.Ec != nil {
-		crv, err := curve2name(jwk.Ec.Curve)
-		if err != nil {
-			return
-		}
-		thumbprintStruct := ecThumbprint{Crv: crv, Kty: string(jwk.KeyType), X: B64enc(jwk.Ec.X.Bytes()), Y: B64enc(jwk.Ec.Y.Bytes())}
-		jsonThumbprint, err = json.Marshal(thumbprintStruct)
-		if err != nil {
-			return
-		}
+	jsonThumbprint, err = jwk.MarshalJSON()
+	if err != nil {
+		return
 	}
 	tpHash := sha256.Sum256(jsonThumbprint)
 
