@@ -12,6 +12,8 @@ import (
 
 type rawJsonWebKey struct {
 	// Only public key fields, since we only require verification
+	// Keep lexicographic order here so MarshalJSON outputs in the
+	// same lexicographic order!
 	Crv string     `json:"crv,omitempty"` // XXX Use an enum
 	E   JsonBuffer `json:"e,omitempty"`
 	Kty string     `json:"kty,omitempty"` // XXX Use an enum
