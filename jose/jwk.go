@@ -3,6 +3,7 @@ package jose
 import (
 	"crypto/ecdsa"
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/json"
 	"math/big"
 )
@@ -11,10 +12,12 @@ import (
 
 type rawJsonWebKey struct {
 	// Only public key fields, since we only require verification
+	// Keep lexicographic order here so MarshalJSON outputs in the
+	// same lexicographic order!
+	Crv string     `json:"crv,omitempty"` // XXX Use an enum
+	E   JsonBuffer `json:"e,omitempty"`
 	Kty string     `json:"kty,omitempty"` // XXX Use an enum
 	N   JsonBuffer `json:"n,omitempty"`
-	E   JsonBuffer `json:"e,omitempty"`
-	Crv string     `json:"crv,omitempty"` // XXX Use an enum
 	X   JsonBuffer `json:"x,omitempty"`
 	Y   JsonBuffer `json:"y,omitempty"`
 }
@@ -27,12 +30,13 @@ type JsonWebKey struct {
 }
 
 func (jwk *JsonWebKey) ComputeThumbprint() {
-	jwk.Thumbprint = string(jwk.KeyType)
-	if jwk.Rsa != nil {
-		jwk.Thumbprint += B64enc(jwk.Rsa.N.Bytes())
-	} else if jwk.Ec != nil {
-		jwk.Thumbprint += B64enc(jwk.Ec.X.Bytes()) + B64enc(jwk.Ec.Y.Bytes())
+	jsonThumbprint, err := jwk.MarshalJSON()
+	if err != nil {
+		return
 	}
+	tpHash := sha256.Sum256(jsonThumbprint)
+
+	jwk.Thumbprint = B64enc(tpHash[:])
 }
 
 // Normal Go == operator compares pointers directly, so it doesn't
