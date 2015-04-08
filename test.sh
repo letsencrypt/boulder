@@ -1,7 +1,7 @@
-#!/bin/bash 
+#!/bin/bash
 # Run all tests and coverage checks. Called from Travis automatically, also
 # suitable to run manually. See list of prerequisite packages in .travis.yml
-if type realpath ; then
+if type realpath 2>&1 >/dev/null; then
   cd $(realpath $(dirname $0))
 fi
 
