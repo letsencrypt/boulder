@@ -23,7 +23,7 @@ func main() {
 
 		vai := va.NewValidationAuthorityImpl(auditlogger, c.CA.TestMode)
 
-		for true {
+		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 

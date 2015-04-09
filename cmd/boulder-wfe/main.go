@@ -47,7 +47,7 @@ func main() {
 			// sit around and reconnect to AMQP if the channel
 			// drops for some reason and repopulate the wfe object
 			// with new RA and SA rpc clients.
-			for true {
+			for {
 				for err := range closeChan {
 					auditlogger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
 					time.Sleep(time.Second*5)

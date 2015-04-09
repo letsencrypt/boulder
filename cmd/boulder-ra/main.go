@@ -23,7 +23,7 @@ func main() {
 
 		rai := ra.NewRegistrationAuthorityImpl(auditlogger)
 
-		for true {
+		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
