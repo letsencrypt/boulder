@@ -110,3 +110,12 @@ type StorageAuthority interface {
 	StorageGetter
 	StorageAdder
 }
+
+// The CA Database represents an atomic sequence source
+type CertificateAuthorityDatabase interface {
+	Begin() error
+	Commit() error
+
+	GetNextNumber() (int, error)
+	IncrementNumber() error
+}

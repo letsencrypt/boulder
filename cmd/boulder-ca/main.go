@@ -7,6 +7,9 @@ package main
 
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	// Load both drivers to allow configuring either
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
@@ -21,7 +24,10 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
-		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
+		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(auditlogger, c.CA.DBDriver, c.CA.DBName)
+		cmd.FailOnError(err, "Failed to create CA database")
+
+		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile, cadb)
 		cmd.FailOnError(err, "Failed to create CA impl")
 
 		for {
