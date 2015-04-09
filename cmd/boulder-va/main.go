@@ -7,8 +7,6 @@ package main
 
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	"log"
-	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -37,17 +35,7 @@ func main() {
 			vas, err := rpc.NewValidationAuthorityServer(c.AMQP.VA.Server, ch, &vai)
 			cmd.FailOnError(err, "Unable to create VA server")
 
-			forever := make(chan bool)
-			go func() {
-				for err := range closeChan {
-					log.Printf(" [!] AMQP Channel closed: [%s]", err)
-					time.Sleep(time.Second*10)
-					log.Printf(" [!] Reconnecting to AMQP...")
-					close(forever)
-					return
-				}
-			}()
-			cmd.MaybeRunForever(vas, forever)
+			cmd.RunUntilSignaled(auditlogger, vas, closeChan)
 		}
 	}
 

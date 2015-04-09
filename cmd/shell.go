@@ -26,9 +26,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -142,9 +144,15 @@ func RunForever(server *rpc.AmqpRPCServer) {
 	<-forever
 }
 
-// Start the server and maybe wait around forever...
-func MaybeRunForever(server *rpc.AmqpRPCServer, forever chan bool) {
+// Start the server and run until we get something on closeChan
+func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, closeChan chan *amqp.Error) {
 	server.Start()
 	fmt.Fprintf(os.Stderr, "Server running...\n")
-	<-forever
+
+	// Block until channel closes
+	err := <- closeChan
+
+	logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
+	time.Sleep(time.Second*5)
+	logger.Warning("Reconnecting to AMQP...")
 }

@@ -7,8 +7,6 @@ package main
 
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	"log"
-	"time"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
@@ -26,7 +24,7 @@ func main() {
 		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
 		cmd.FailOnError(err, "Failed to create CA impl")
 
-		for true {
+		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
@@ -38,17 +36,7 @@ func main() {
 			cas, err := rpc.NewCertificateAuthorityServer(c.AMQP.CA.Server, ch, cai)
 			cmd.FailOnError(err, "Unable to create CA server")
 
-			forever := make(chan bool)
-			go func() {
-				for err := range closeChan {
-					log.Printf(" [!] AMQP Channel closed: [%s]", err)
-					time.Sleep(time.Second*10)
-					log.Printf(" [!] Reconnecting to AMQP...")
-					close(forever)
-					return
-				}
-			}()
-			cmd.MaybeRunForever(cas, forever)
+			cmd.RunUntilSignaled(auditlogger, cas, closeChan)
 		}
 	}
 

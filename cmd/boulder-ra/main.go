@@ -7,8 +7,6 @@ package main
 
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	"log"
-	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -45,17 +43,7 @@ func main() {
 			ras, err := rpc.NewRegistrationAuthorityServer(c.AMQP.RA.Server, ch, &rai)
 			cmd.FailOnError(err, "Unable to create RA server")
 			
-			forever := make(chan bool)
-			go func() {
-				for err := range closeChan {
-					log.Printf(" [!] AMQP Channel closed: [%s]", err)
-					time.Sleep(time.Second*10)
-					log.Printf(" [!] Reconnecting to AMQP...")
-					close(forever)
-					return
-				}
-			}()
-			cmd.MaybeRunForever(ras, forever)
+			cmd.RunUntilSignaled(auditlogger, ras, closeChan)
 		}
 
 	}

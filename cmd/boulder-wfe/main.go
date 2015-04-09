@@ -10,7 +10,6 @@ import (
 	"net/http"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	"log"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -50,12 +49,12 @@ func main() {
 			// with new RA and SA rpc clients.
 			for true {
 				for err := range closeChan {
-					log.Printf(" [!] AMQP Channel closed: [%s]", err)
-					time.Sleep(time.Second*10)
+					auditlogger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
+					time.Sleep(time.Second*5)
 					rac, sac, closeChan = setupWFE(c, auditlogger)
 					wfe.RA = &rac
 					wfe.SA = &sac
-					log.Printf(" [!] Reconnected to AMQP")
+					auditlogger.Warning("Reconnected to AMQP")
 				}
 			}
 		}()
