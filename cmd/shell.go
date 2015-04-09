@@ -150,9 +150,9 @@ func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, close
 	fmt.Fprintf(os.Stderr, "Server running...\n")
 
 	// Block until channel closes
-	err := <- closeChan
+	err := <-closeChan
 
 	logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
-	time.Sleep(time.Second*5)
+	time.Sleep(time.Second * 5)
 	logger.Warning("Reconnecting to AMQP...")
 }
