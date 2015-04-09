@@ -6,6 +6,8 @@
 package main
 
 import (
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
@@ -15,29 +17,35 @@ import (
 func main() {
 	app := cmd.NewAppShell("boulder-ra")
 	app.Action = func(c cmd.Config) {
-		ch := cmd.AmqpChannel(c.AMQP.Server)
-
 		// Set up logging
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
-		vac, err := rpc.NewValidationAuthorityClient(c.AMQP.VA.Client, c.AMQP.VA.Server, ch)
-		cmd.FailOnError(err, "Unable to create VA client")
-
-		cac, err := rpc.NewCertificateAuthorityClient(c.AMQP.CA.Client, c.AMQP.CA.Server, ch)
-		cmd.FailOnError(err, "Unable to create CA client")
-
-		sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Server, ch)
-		cmd.FailOnError(err, "Unable to create SA client")
-
 		rai := ra.NewRegistrationAuthorityImpl(auditlogger)
-		rai.VA = &vac
-		rai.CA = &cac
-		rai.SA = &sac
 
-		ras, err := rpc.NewRegistrationAuthorityServer(c.AMQP.RA.Server, ch, &rai)
-		cmd.FailOnError(err, "Unable to create RA server")
-		cmd.RunForever(ras)
+		for {
+			ch := cmd.AmqpChannel(c.AMQP.Server)
+			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
+
+			vac, err := rpc.NewValidationAuthorityClient(c.AMQP.VA.Client, c.AMQP.VA.Server, ch)
+			cmd.FailOnError(err, "Unable to create VA client")
+
+			cac, err := rpc.NewCertificateAuthorityClient(c.AMQP.CA.Client, c.AMQP.CA.Server, ch)
+			cmd.FailOnError(err, "Unable to create CA client")
+
+			sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Server, ch)
+			cmd.FailOnError(err, "Unable to create SA client")
+
+			rai.VA = &vac
+			rai.CA = &cac
+			rai.SA = &sac
+
+			ras, err := rpc.NewRegistrationAuthorityServer(c.AMQP.RA.Server, ch, &rai)
+			cmd.FailOnError(err, "Unable to create RA server")
+			
+			cmd.RunUntilSignaled(auditlogger, ras, closeChan)
+		}
+
 	}
 
 	app.Run()

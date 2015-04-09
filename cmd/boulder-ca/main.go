@@ -6,6 +6,8 @@
 package main
 
 import (
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -15,24 +17,27 @@ import (
 func main() {
 	app := cmd.NewAppShell("boulder-ca")
 	app.Action = func(c cmd.Config) {
-		ch := cmd.AmqpChannel(c.AMQP.Server)
-
 		// Set up logging
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
-		sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Client, ch)
-		cmd.FailOnError(err, "Failed to create SA client")
-
 		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
 		cmd.FailOnError(err, "Failed to create CA impl")
 
-		cai.SA = &sac
+		for {
+			ch := cmd.AmqpChannel(c.AMQP.Server)
+			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-		cas, err := rpc.NewCertificateAuthorityServer(c.AMQP.CA.Server, ch, cai)
-		cmd.FailOnError(err, "Unable to create CA server")
+			sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Client, ch)
+			cmd.FailOnError(err, "Failed to create SA client")
 
-		cmd.RunForever(cas)
+			cai.SA = &sac
+
+			cas, err := rpc.NewCertificateAuthorityServer(c.AMQP.CA.Server, ch, cai)
+			cmd.FailOnError(err, "Unable to create CA server")
+
+			cmd.RunUntilSignaled(auditlogger, cas, closeChan)
+		}
 	}
 
 	app.Run()

@@ -6,6 +6,8 @@
 package main
 
 import (
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
@@ -18,8 +20,6 @@ import (
 func main() {
 	app := cmd.NewAppShell("boulder-sa")
 	app.Action = func(c cmd.Config) {
-		ch := cmd.AmqpChannel(c.AMQP.Server)
-
 		// Set up logging
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
 		cmd.FailOnError(err, "Could not connect to Syslog")
@@ -27,8 +27,14 @@ func main() {
 		sai, err := sa.NewSQLStorageAuthority(auditlogger, c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Failed to create SA impl")
 
-		sas := rpc.NewStorageAuthorityServer(c.AMQP.SA.Server, ch, sai)
-		cmd.RunForever(sas)
+		for {
+			ch := cmd.AmqpChannel(c.AMQP.Server)
+			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
+
+			sas := rpc.NewStorageAuthorityServer(c.AMQP.SA.Server, ch, sai)
+
+			cmd.RunUntilSignaled(auditlogger, sas, closeChan)
+		}
 	}
 
 	app.Run()
