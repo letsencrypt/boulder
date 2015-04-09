@@ -1,8 +1,8 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
-	"GoVersion": "go1.4.1",
+	"GoVersion": "go1.2.1",
 	"Packages": [
-		"./..."
+		"github.com/letsencrypt/boulder/cmd/boulder"
 	],
 	"Deps": [
 		{
@@ -50,6 +50,14 @@
 		{
 			"ImportPath": "github.com/mattn/go-sqlite3",
 			"Rev": "308067797b0fcce4ca06362580dc6db77c1bfeda"
+		},
+		{
+			"ImportPath": "github.com/miekg/dns",
+			"Rev": "015384b10e412f5cc44ae408d1a2bd773027474c"
+		},
+		{
+			"ImportPath": "github.com/miekg/unbound",
+			"Rev": "0ca8333975d99f4265f06f7f1dbc6dfcbc43c543"
 		},
 		{
 			"ImportPath": "github.com/streadway/amqp",

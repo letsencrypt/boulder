@@ -37,6 +37,10 @@
     "testMode": true
   },
 
+  "pa": {
+    "issuerDomain": "letsencrypt.org",
+  },
+
   "sa": {
     "dbDriver": "sqlite3",
     "dbName": ":memory:"

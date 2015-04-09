@@ -59,6 +59,10 @@ type Config struct {
 		TestMode bool
 	}
 
+	PA struct {
+		IssuerDomain string
+	}
+
 	SA struct {
 		DBDriver string
 		DBName   string

@@ -12,6 +12,8 @@ before_install:
   - go get github.com/golang/lint/golint
   - go get github.com/mattn/goveralls
   - go get github.com/modocache/gover
+  - sudo apt-get update
+  - sudo apt-get -y install libunbound-dev
 
 script:
   - bash test.sh

@@ -35,7 +35,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, authKey string, profile string) (ca *CertificateAuthorityImpl, err error) {
+func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, authKey string, profile string, issuerDomain string) (ca *CertificateAuthorityImpl, err error) {
 	logger.Notice("Certificate Authority Starting")
 
 	// Create the remote signer
@@ -55,7 +55,7 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, auth
 		return
 	}
 
-	pa := policy.NewPolicyAuthorityImpl(logger)
+	pa := policy.NewPolicyAuthorityImpl(logger, issuerDomain)
 
 	ca = &CertificateAuthorityImpl{Signer: signer, profile: profile, PA: pa, log: logger}
 	return
@@ -86,10 +86,23 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.AuditErr(err)
 		return
 	}
+
+	if err = ca.PA.CheckCAARecords(identifier); err != nil {
+		err = errors.New("Policy forbids issuing for name" + commonName)
+		ca.log.AuditErr(err)
+		return
+	}
+
 	for _, name := range hostNames {
 		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier); err != nil {
 			err = errors.New("Policy forbids issuing for name " + name)
+			ca.log.AuditErr(err)
+			return
+		}
+
+		if err = ca.PA.CheckCAARecords(identifier) ; err != nil {
+			err = errors.New("Policy forbids issuing for name" + name)
 			ca.log.AuditErr(err)
 			return
 		}

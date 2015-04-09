@@ -29,7 +29,7 @@ func TestIssueCertificate(t *testing.T) {
 	syslogger, _ := syslog.New(syslog.LOG_DEBUG, "test")
 	log := blog.AuditLogger{syslogger}
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl(&log)
+	ra := ra.NewRegistrationAuthorityImpl(&log, "letsencrypt.org")
 	wfe := NewWebFrontEndImpl(&log)
 	wfe.RA = &ra
 	responseWriter := httptest.NewRecorder()

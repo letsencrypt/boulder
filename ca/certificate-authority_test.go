@@ -235,6 +235,7 @@ func TestIssueCertificate(t *testing.T) {
 	hostPort := "localhost:9000"
 	authKey := "79999d86250c367a2b517a1ae7d409c1"
 	profileName := "ee"
+	issuerDomain := "letsencrypt.org"
 
 	// Create an SA
 	sa, err := sa.NewSQLStorageAuthority(audit, "sqlite3", ":memory:")
@@ -276,7 +277,7 @@ func TestIssueCertificate(t *testing.T) {
 
 	// Create a CA
 	// Uncomment to test with a remote signer
-	ca, err := NewCertificateAuthorityImpl(audit, hostPort, authKey, profileName)
+	ca, err := NewCertificateAuthorityImpl(audit, hostPort, authKey, profileName, issuerDomain)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = sa
 

@@ -35,9 +35,9 @@ func main() {
 		cmd.FailOnError(err, "Unable to create SA")
 		err = sa.InitTables()
 		cmd.FailOnError(err, "Unable to initialize SA")
-		ra := ra.NewRegistrationAuthorityImpl(auditlogger)
+		ra := ra.NewRegistrationAuthorityImpl(auditlogger, c.PA.IssuerDomain)
 		va := va.NewValidationAuthorityImpl(auditlogger, c.CA.TestMode)
-		ca, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
+		ca, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile, c.PA.IssuerDomain)
 		cmd.FailOnError(err, "Unable to create CA")
 
 		// Wire them up

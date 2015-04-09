@@ -1,0 +1,19 @@
+
+; <<>> DiG 9.8.1-P1 <<>> nlnetlabs.nl DNSKEY
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 31336
+;; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;nlnetlabs.nl.			IN	DNSKEY
+
+;; ANSWER SECTION:
+nlnetlabs.nl.		3208	IN	DNSKEY	257 3 8 AwEAAbwL6LuXTLXtb23CsXhpkxxyGbEFUROh/L8BWA1EEF8LdQ4Rmsj4 D5D8uAnRFDkNhM6XiII9xcsavwBGNwHxzUaij4MZQu1vrzcfGIJLcC1Q paZmSH9WqIYFQci+T4s4UfDrrS96wO/H0nJvFmavWVX/7p1Q6dv0Arwz XMXaHGrRVdEgK2MDS3dFRngx5JC5fwD7YnwH08EAoFRjdAoXe+etOAeG aOT9IGjVM5LKkN2k6fIRvZ2l9eu5/o+h5L+kpDRcapW2QiL21hCcmwpW 50Llfx9Ovk+M7TBjp4iT7Tc8gLzRZr24LmXEyABb54WW3aoF5k8DZPot 9ogUjxVN/dM=
+nlnetlabs.nl.		3208	IN	DNSKEY	256 3 8 AwEAAdR7XR95OaAN9Rz7TbtPalQ9guQk7zfxTHYNKhsiwTZA9z+F16nD 0VeBlk7dNik3ETpT2GLAwr9sntG898JwurCDe353wHPvjZtMCdiTVp3c RCrjuCEvoFpmZNN82H0gaH/4v8mkv/QBDAkDSncYjz/FqHKAeYy3cMcj Y6RyVweh
+
+;; Query time: 3 msec
+;; SERVER: 127.0.0.1#53(127.0.0.1)
+;; WHEN: Sat Jun 30 15:06:40 2012
+;; MSG SIZE  rcvd: 454
+

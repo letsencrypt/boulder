@@ -30,7 +30,7 @@ func main() {
 		sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Server, ch)
 		cmd.FailOnError(err, "Unable to create SA client")
 
-		rai := ra.NewRegistrationAuthorityImpl(auditlogger)
+		rai := ra.NewRegistrationAuthorityImpl(auditlogger, c.PA.IssuerDomain)
 		rai.VA = &vac
 		rai.CA = &cac
 		rai.SA = &sac
