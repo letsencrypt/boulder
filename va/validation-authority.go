@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
