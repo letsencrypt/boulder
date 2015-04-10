@@ -369,7 +369,7 @@ function ensureValidation(resp) {
       console.log();
       getCertificate();
     } else if (authz.status == "invalid") {
-      console.log("The CA was unable to validate the file you provisioned.");
+      console.log("The CA was unable to validate the file you provisioned:"  + authz);
       return;
     } else {
       console.log("The CA returned an authorization in an unexpected state");

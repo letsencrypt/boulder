@@ -46,18 +46,56 @@ func NewAuditLogger(log *syslog.Writer) (*AuditLogger, error) {
 // Audit sends a NOTICE-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
 func (log *AuditLogger) Audit(msg string) (err error) {
+	fmt.Println(msg)
 	err = log.Notice(fmt.Sprintf("%s %s", auditTag, msg))
 	return
 }
 
 // Audit can format an error for auditing; it does so at ERR level.
 func (log *AuditLogger) AuditErr(msg error) (err error) {
+	fmt.Println(msg)
 	err = log.Err(fmt.Sprintf("%s %s", auditTag, msg))
 	return
 }
 
 // Warning formats an error for the Warn level.
 func (log *AuditLogger) WarningErr(msg error) (err error) {
+	fmt.Println(msg)
 	err = log.Warning(fmt.Sprintf("%s", msg))
 	return
+}
+
+func (log *AuditLogger) Alert(msg string) (err error) {
+	fmt.Println(msg)
+	return log.Writer.Alert(msg)
+}
+
+func (log *AuditLogger) Crit(msg string) (err error) {
+	fmt.Println(msg)
+	return log.Writer.Crit(msg)
+}
+
+func (log *AuditLogger) Debug(msg string) (err error) {
+	fmt.Println(msg)
+	return log.Writer.Debug(msg)
+}
+
+func (log *AuditLogger) Emerg(msg string) (err error) {
+	fmt.Println(msg)
+	return log.Writer.Emerg(msg)
+}
+
+func (log *AuditLogger) Err(msg string) (err error) {
+	fmt.Println(msg)
+	return log.Writer.Err(msg)
+}
+
+func (log *AuditLogger) Info(msg string) (err error) {
+	fmt.Println(msg)
+	return log.Writer.Info(msg)
+}
+
+func (log *AuditLogger) Warning(msg string) (err error) {
+	fmt.Println(msg)
+	return log.Writer.Warning(msg)
 }
