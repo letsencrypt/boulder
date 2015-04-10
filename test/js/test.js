@@ -307,7 +307,7 @@ function getReadyToValidate(resp) {
 
     var challenge = simpleHttps[0];
     var path = crypto.randomString(8) + ".txt";
-    fs.writeFileSync(path, challenge.token);
+    fs.writeFileSync(".well-known/acme-challenge/" + path, challenge.token);
     state.responseURL = challenge["uri"];
     state.path = path;
 
