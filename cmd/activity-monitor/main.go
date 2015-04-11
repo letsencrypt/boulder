@@ -17,6 +17,11 @@ import (
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+
+	"time"
+	"net/http"
+	"encoding/json"
+	"html/template"
 )
 
 const (
@@ -33,6 +38,18 @@ const (
 	AmqpMandatory    = false
 	AmqpImmediate    = false
 )
+
+type resultAt struct {
+	Result int64
+	At     time.Time
+}
+
+type rpcStats struct {
+	RpcTimings  map[string][]resultAt
+	TotalCalls  int64
+	AvgCallTook []resultAt
+	CPS         []resultAt
+}
 
 func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 	ae := analysisengine.NewLoggingAnalysisEngine(logger)
@@ -88,13 +105,67 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 		cmd.FailOnError(err, "Could not subscribe to queue")
 	}
 
+	deliveryTimings := make(map[string]time.Time)
+	rpcMetrics := rpcStats{RpcTimings: make(map[string][]resultAt), TotalCalls: 0}
+	cps := int64(0)
+	avgCallTook := int64(0)
+
+	monitorTmpl, err := template.New("monitor").Parse(monitorHTML)
+	if err != nil {
+		cmd.FailOnError(err, "Couldn't load HTML template")
+	}
+
+	go func() {
+		for {
+			rpcMetrics.CPS = append(rpcMetrics.CPS, resultAt{Result: (cps / 5), At: time.Now()})
+			rpcMetrics.AvgCallTook = append(rpcMetrics.AvgCallTook, resultAt{Result: avgCallTook, At: time.Now()})
+			cps = 0
+			time.Sleep(time.Second * 5)
+		}
+	}()
+
+	go func() {
+		http.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+			jsonRpcStats, err := json.Marshal(rpcMetrics)
+			if err != nil {
+
+			}
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			fmt.Fprintf(w, "%+v", string(jsonRpcStats))
+		})
+
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			monitorTmpl.Execute(w, nil)
+		})
+
+
+		http.ListenAndServe(":8080", nil)
+	}()
+
 	// Run forever.
 	for d := range deliveries {
+		if d.ReplyTo != "" {
+			deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] 	= time.Now()
+		} else {
+			rpcSent := deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey)]
+			if rpcSent != *new(time.Time) {
+				respTime := time.Since(rpcSent)
+				delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
+				fmt.Printf("RPC call [%s] from [%s] took %s\n", d.Type, d.RoutingKey, respTime)
+				// should probably shift into these after some limit so we don't end up with MASSIVE
+				// lists in memory we don't really need...
+				rpcMetrics.RpcTimings[d.Type] = append(rpcMetrics.RpcTimings[d.Type], resultAt{Result: respTime.Nanoseconds(), At: time.Now()})
+				rpcMetrics.TotalCalls += 1
+				avgCallTook = ((avgCallTook * (rpcMetrics.TotalCalls - 1)) + respTime.Nanoseconds()) / rpcMetrics.TotalCalls
+			}
+		}
+		cps += 1
+
 		// Pass each message to the Analysis Engine
 		err = ae.ProcessMessage(d)
 		if err != nil {
 			logger.Alert(fmt.Sprintf("Could not process message: %s", err))
-
+	 
 		} else {
 			// Only ack the delivery we actually handled (ackMultiple=false)
 			const ackMultiple = false
