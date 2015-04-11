@@ -114,8 +114,8 @@ const monitorHTML = `<!DOCTYPE html>
 				},
 				yAxis: [{
 					labels: {
-		                format: '{value}ms'
-		            },
+						format: '{value}ms'
+					},
 					title: {
 						text: "RPC call time (ms)"
 					},
@@ -123,15 +123,14 @@ const monitorHTML = `<!DOCTYPE html>
 					gridLineWidth: 0
 				},{
 					labels: {
-		                format: '{value}'
-		            },
+						format: '{value}'
+					},
 					title: {
 						text: "CPS"
 					},
 					min: 0,
 					gridLineWidth: 0,
-					opposite: true,
-					allowDecimals: false
+					opposite: true
 				}],
 				series: []
 			})

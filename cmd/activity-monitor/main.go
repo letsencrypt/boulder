@@ -144,8 +144,9 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 
 	// Run forever.
 	for d := range deliveries {
+		fmt.Printf("%+v\n", d)
 		if d.ReplyTo != "" {
-			deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] 	= time.Now()
+			deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
 		} else {
 			rpcSent := deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey)]
 			if rpcSent != *new(time.Time) {
