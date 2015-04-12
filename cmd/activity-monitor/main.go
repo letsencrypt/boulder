@@ -113,7 +113,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 	// Run forever.
 	for d := range deliveries {
 		// If d is a call add to deliveryTimings and increment Boulder.RpcOpenCalls, if it is a 
-		// response then get time.Since call from deliveryTiming, send timing metric, and
+		// response then get time.Since original call from deliveryTiming, send timing metric, and
 		// decrement Boulder.RpcOpenCalls
 		go func() {
 			if d.ReplyTo != "" {
@@ -126,7 +126,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 				if rpcSent != *new(time.Time) {
 					respTime := time.Since(rpcSent)
 					delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
-					
+
 					if err := stats.Timing(fmt.Sprintf("Rpc.%s", d.Type), respTime.Nanoseconds(), 1.0); err != nil {
 						logger.Alert(fmt.Sprintf("Could send timing for boulder.Rpc.%s: %s", d.Type, err))
 					}
