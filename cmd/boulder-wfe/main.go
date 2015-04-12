@@ -47,7 +47,7 @@ func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 		stats.Dec("HttpConnectionsOpen", 1, 1.0)
 		// not sure if we can pull data from r like this...
 		stats.TimingDuration(fmt.Sprintf("Http.%s", r.URL), time.Since(cStart), 1.0)
-		// incr success / failure counters
+		// incr success / failure counters (perhaps better way of doing this?)
 		success := true
 		for _, h := range w.Header()["Content-Type"] {
 			if h == "application/problem+json" {
@@ -123,6 +123,7 @@ func main() {
 			cmd.FailOnError(err, "Couldn't connect to statsd")
 		}
 
+		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
