@@ -23,6 +23,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/remote"
 )
 
+// CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
+// OCSP responses.
 type CertificateAuthorityImpl struct {
 	profile string
 	Signer  signer.Signer
@@ -73,6 +75,8 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, auth
 	return
 }
 
+// IssueCertificate attempts to convert a CSR into a signed Certificate, while
+// enforcing all policies.
 func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (cert core.Certificate, err error) {
 	// XXX Take in authorizations and verify that union covers CSR?
 	// Pull hostnames from CSR

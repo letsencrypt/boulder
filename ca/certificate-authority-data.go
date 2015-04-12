@@ -14,12 +14,16 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// CertificateAuthorityDatabaseImpl represents a database used by the CA; it
+// enforces transaction semantics, and is effectively single-threaded.
 type CertificateAuthorityDatabaseImpl struct {
 	log      *blog.AuditLogger
 	db       *sql.DB
 	activeTx *sql.Tx
 }
 
+// NewCertificateAuthorityDatabaseImpl constructs a Database for the
+// Certificate Authority.
 func NewCertificateAuthorityDatabaseImpl(logger *blog.AuditLogger, driver string, name string) (cadb core.CertificateAuthorityDatabase, err error) {
 	if logger == nil {
 		err = errors.New("Nil logger not permitted")
@@ -43,6 +47,9 @@ func NewCertificateAuthorityDatabaseImpl(logger *blog.AuditLogger, driver string
 	return
 }
 
+// createTablesIfNotExist builds the database tables and inserts the initial
+// state, if the tables do not already exist. It is not an error for the tables
+// to already exist.
 func createTablesIfNotExist(db *sql.DB) (err error) {
 	tx, err := db.Begin()
 	if err != nil {
@@ -68,6 +75,8 @@ func createTablesIfNotExist(db *sql.DB) (err error) {
 	return
 }
 
+// Begin starts a Database transaction. There can only be one in this object
+// at a time.
 func (cadb *CertificateAuthorityDatabaseImpl) Begin() (err error) {
 	if cadb.activeTx != nil {
 		err = errors.New("Transaction already open")
@@ -77,6 +86,8 @@ func (cadb *CertificateAuthorityDatabaseImpl) Begin() (err error) {
 	return
 }
 
+// Commit makes permanent a database transaction; there must be an active
+// transaction when called.
 func (cadb *CertificateAuthorityDatabaseImpl) Commit() (err error) {
 	if cadb.activeTx == nil {
 		err = errors.New("Transaction already closed")
@@ -87,6 +98,8 @@ func (cadb *CertificateAuthorityDatabaseImpl) Commit() (err error) {
 	return
 }
 
+// Rollback cancels the ongoing database transaction; there must be an active
+// transaction when called.
 func (cadb *CertificateAuthorityDatabaseImpl) Rollback() (err error) {
 	if cadb.activeTx == nil {
 		err = errors.New("Transaction already closed")
@@ -97,6 +110,10 @@ func (cadb *CertificateAuthorityDatabaseImpl) Rollback() (err error) {
 	return
 }
 
+// IncrementAndGetSerial returns the next-available serial number, incrementing
+// it in the database before returning. There must be an active transaction to
+// call this method. Callers should Begin the transaction, call this method,
+// perform any other work, and Commit at the end once the certificate is issued.
 func (cadb *CertificateAuthorityDatabaseImpl) IncrementAndGetSerial() (val int, err error) {
 	if cadb.activeTx == nil {
 		err = errors.New("No transaction open")
