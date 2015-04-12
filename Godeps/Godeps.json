@@ -14,6 +14,18 @@
 			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
 		},
 		{
+			"ImportPath": "github.com/cloudflare/cfssl/bundler",
+			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
+		},
+		{
+			"ImportPath": "github.com/cloudflare/cfssl/cli",
+			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
+		},
+		{
+			"ImportPath": "github.com/cloudflare/cfssl/cmd/cfssl",
+			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
+		},
+		{
 			"ImportPath": "github.com/cloudflare/cfssl/config",
 			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
 		},
@@ -30,11 +42,27 @@
 			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
 		},
 		{
+			"ImportPath": "github.com/cloudflare/cfssl/initca",
+			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
+		},
+		{
 			"ImportPath": "github.com/cloudflare/cfssl/log",
 			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
 		},
 		{
+			"ImportPath": "github.com/cloudflare/cfssl/ocsp",
+			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
+		},
+		{
+			"ImportPath": "github.com/cloudflare/cfssl/selfsign",
+			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
+		},
+		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
+			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
+		},
+		{
+			"ImportPath": "github.com/cloudflare/cfssl/ubiquity",
 			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
 		},
 		{
@@ -54,6 +82,10 @@
 		{
 			"ImportPath": "github.com/streadway/amqp",
 			"Rev": "150b7f24d6ad507e6026c13d85ce1f1391ac7400"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/ocsp",
+			"Rev": "c57d4a71915a248dbad846d60825145062b4c18e"
 		}
 	]
 }

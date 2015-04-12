@@ -38,10 +38,11 @@ Quickstart
 ----------
 
 ```
-> go build github.com/letsencrypt/boulder/cmd/boulder
-> ./boulder --config test/example-config.json
+> go get github.com/letsencrypt/boulder # Ignore errors about no buildable files
+> cd $GOPATH/src/github.com/letsencrypt/boulder
+# This starts both Boulder and cfssl with test configs. Ctrl-C kills both.
+> ./start.sh
 ```
-
 
 The ["restify" branch of node-acme](https://github.com/letsencrypt/node-acme/tree/restify) has a client that works with this server (`npm install node-acme && node node-acme/demo.js`).
 
