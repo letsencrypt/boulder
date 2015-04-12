@@ -6,6 +6,11 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
+			"Comment": "v2.0.0-21-gea76b31",
+			"Rev": "ea76b313ca75d0a41a3fd02af88326a9ce225b60"
+		},
+		{
 			"ImportPath": "github.com/cloudflare/cfssl/api",
 			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
 		},
@@ -50,10 +55,6 @@
 		{
 			"ImportPath": "github.com/mattn/go-sqlite3",
 			"Rev": "308067797b0fcce4ca06362580dc6db77c1bfeda"
-		},
-		{
-			"ImportPath": "github.com/peterbourgon/g2s",
-			"Rev": "ec76db4c1ac16400ac0e17ca9c4840e1d23da5dc"
 		},
 		{
 			"ImportPath": "github.com/streadway/amqp",

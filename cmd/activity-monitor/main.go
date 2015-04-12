@@ -13,15 +13,13 @@ import (
 	"fmt"
 	"os"
 
-	"encoding/json"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/peterbourgon/g2s"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
-	"html/template"
-	"net/http"
 	"time"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 )
 
 const (
@@ -107,91 +105,42 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 	}
 
 	deliveryTimings := make(map[string]time.Time)
-	stats, err := g2s.Dial("udp", "localhost:8125")
+	stats, err := statsd.NewClient("localhost:8125", "Boulder")
 	if err != nil {
 		cmd.FailOnError(err, "Couldn't connect to statsd")
 	}
 
-	// rpcMetrics := rpcStats{RpcTimings: make(map[string][]resultAt), RpcAvgTimings: make(map[string][]resultAt), TotalCalls: 0}
-	// cps := int64(0)
-	// avgCallTook := int64(0)
-
-	// monitorTmpl, err := template.New("monitor").Parse(monitorHTML)
-	// if err != nil {
-	// 	cmd.FailOnError(err, "Couldn't load HTML template")
-	// }
-
-	// // gather CPS and Average call length metrics
-	// go func() {
-	// 	for {
-	// 		// get cps and reset to 0
-	// 		rpcMetrics.CPS = append(rpcMetrics.CPS, resultAt{Result: (cps / 5), At: time.Now()})
-	// 		cps = 0
-	// 		// grab current total avg
-	// 		rpcMetrics.AvgCallTook = append(rpcMetrics.AvgCallTook, resultAt{Result: avgCallTook, At: time.Now()})
-	// 		// for each rpcMetrics.RpcTimings[key] get avg .Result and append new resultAt to rpcMetrics.AvgRpcTimings[key]
-	// 		for key, resultSlice := range rpcMetrics.RpcTimings {
-	// 			sum := int64(0)
-	// 			for _, value := range resultSlice {
-	// 				sum += value.Result
-	// 			}
-	// 			avg := sum / int64(len(resultSlice))
-	// 			rpcMetrics.RpcAvgTimings[key] = append(rpcMetrics.RpcAvgTimings[key], resultAt{Result: avg, At: time.Now()})
-	// 		}
-
-	// 		// some method to limit size of data / rotate to disk/sql/something?
-	// 		// rpcMetrics.cleanUp()
-
-	// 		// til next time sleep...
-	// 		time.Sleep(time.Second * 5)
-	// 	}
-	// }()
-
-	// serve monitor javascript and the JSON stats
-	// go func() {
-	// 	http.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
-	// 		jsonRpcStats, err := json.Marshal(rpcMetrics)
-	// 		if err != nil {
-
-	// 		}
-	// 		w.Header().Set("Access-Control-Allow-Origin", "*")
-	// 		fmt.Fprintf(w, "%+v", string(jsonRpcStats))
-	// 	})
-
-	// 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-	// 		monitorTmpl.Execute(w, nil)
-	// 	})
-
-	// 	http.ListenAndServe(":8080", nil)
-	// }()
-
 	// Run forever.
 	for d := range deliveries {
-		fmt.Printf("%+v\n", d)
-		if d.ReplyTo != "" {
-			deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
-		} else {
-			rpcSent := deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey)]
-			if rpcSent != *new(time.Time) {
-				respTime := time.Since(rpcSent)
-				delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
-				stats.Timing(1.0, fmt.Sprintf("boulder.RPC.%s", d.Type), respTime)
-
-				// fmt.Printf("RPC call [%s] from [%s] took %s\n", d.Type, d.RoutingKey, respTime)
-				// // should probably shift into these after some limit so we don't end up with MASSIVE
-				// // lists in memory we don't really need...
-				// rpcMetrics.RpcTimings[d.Type] = append(rpcMetrics.RpcTimings[d.Type], resultAt{Result: respTime.Nanoseconds(), At: time.Now()})
-				// rpcMetrics.TotalCalls += 1
-				// avgCallTook = ((avgCallTook * (rpcMetrics.TotalCalls - 1)) + respTime.Nanoseconds()) / rpcMetrics.TotalCalls
+		// If d is a call add to deliveryTimings and increment Boulder.RpcOpenCalls, if it is a 
+		// response then get time.Since call from deliveryTiming, send timing metric, and
+		// decrement Boulder.RpcOpenCalls
+		go func() {
+			if d.ReplyTo != "" {
+				deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
+				if err := stats.Inc("RpcOpenCalls", 1, 1.0); err != nil {
+					logger.Alert(fmt.Sprintf("Could not increment boulder.RpcOpenCalls: %s", err))
+				}
+			} else {
+				rpcSent := deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey)]
+				if rpcSent != *new(time.Time) {
+					respTime := time.Since(rpcSent)
+					delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
+					
+					if err := stats.Timing(fmt.Sprintf("Rpc.%s", d.Type), respTime.Nanoseconds(), 1.0); err != nil {
+						logger.Alert(fmt.Sprintf("Could send timing for boulder.Rpc.%s: %s", d.Type, err))
+					}
+					if err := stats.Dec("RpcOpenCalls", 1, 1.0); err != nil {
+						logger.Alert(fmt.Sprintf("Could not decrement boulder.RpcOpenCalls: %s", err))
+					}
+				}
 			}
-		}
-		cps += 1
+		}()
 
 		// Pass each message to the Analysis Engine
 		err = ae.ProcessMessage(d)
 		if err != nil {
 			logger.Alert(fmt.Sprintf("Could not process message: %s", err))
-
 		} else {
 			// Only ack the delivery we actually handled (ackMultiple=false)
 			const ackMultiple = false
