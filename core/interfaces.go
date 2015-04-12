@@ -115,7 +115,7 @@ type StorageAuthority interface {
 type CertificateAuthorityDatabase interface {
 	Begin() error
 	Commit() error
+	Rollback() error
 
-	GetNextNumber() (int, error)
-	IncrementNumber() error
+	IncrementAndGetSerial() (int, error)
 }

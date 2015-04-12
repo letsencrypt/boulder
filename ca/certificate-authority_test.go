@@ -236,12 +236,12 @@ func (cadb *MockCADatabase) Commit() error {
   return nil
 }
 
-func 	(cadb *MockCADatabase) GetNextNumber() (int, error) {
-	return 1, nil
+func (cadb *MockCADatabase) Rollback() error {
+  return nil
 }
 
-func	(cadb *MockCADatabase) IncrementNumber() error {
-	return nil
+func 	(cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
+	return 1, nil
 }
 
 

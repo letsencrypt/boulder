@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -44,6 +45,7 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, auth
 		Expiry:       time.Hour, // BOGUS: Required by CFSSL, but not used
 		RemoteName:   hostport,  // BOGUS: Only used as a flag by CFSSL
 		RemoteServer: hostport,
+		// UseSerialSeq: true, // Depending on https://github.com/cloudflare/cfssl/pull/154
 	}
 
 	localProfile.Provider, err = auth.New(authKey, nil)
@@ -108,6 +110,15 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Bytes: csr.Raw,
 	}))
 
+	// Get the next serial number
+	ca.DB.Begin()
+	serialDec, err := ca.DB.IncrementAndGetSerial()
+	if err != nil {
+		return
+	}
+	serialHex := fmt.Sprintf("%x", serialDec)
+	_ = serialHex // TODO: stub to allow checkin
+
 	// Send the cert off for signing
 	req := signer.SignRequest{
 		Request: csrPEM,
@@ -116,15 +127,18 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Subject: &signer.Subject{
 			CN: commonName,
 		},
+		// SerialSeq: serialHex, // Depending on https://github.com/cloudflare/cfssl/pull/154
 	}
 	certPEM, err := ca.Signer.Sign(req)
 	if err != nil {
+		ca.DB.Rollback()
 		return
 	}
 
 	if len(certPEM) == 0 {
 		err = errors.New("No certificate returned by server")
 		ca.log.WarningErr(err)
+		ca.DB.Rollback()
 		return
 	}
 
@@ -132,6 +146,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = errors.New("Invalid certificate value returned")
 		ca.log.WarningErr(err)
+		ca.DB.Rollback()
 		return
 	}
 	certDER := block.Bytes
@@ -139,6 +154,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// Store the cert with the certificate authority, if provided
 	certID, err := ca.SA.AddCertificate(certDER)
 	if err != nil {
+		ca.DB.Rollback()
 		return
 	}
 
@@ -147,5 +163,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		DER:    certDER,
 		Status: core.StatusValid,
 	}
+
+	ca.DB.Commit()
 	return
 }

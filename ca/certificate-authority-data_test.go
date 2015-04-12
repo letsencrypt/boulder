@@ -67,10 +67,7 @@ func TestGetSetSequenceOutsideTx(t *testing.T) {
   cadb, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
   test.AssertNotError(t, err, "Could not construct CA DB")
 
-  _, err = cadb.GetNextNumber()
-  test.AssertError(t, err, "Not permitted")
-
-  err = cadb.IncrementNumber()
+  _, err = cadb.IncrementAndGetSerial()
   test.AssertError(t, err, "Not permitted")
 }
 
@@ -84,23 +81,12 @@ func TestGetSetSequenceNumber(t *testing.T) {
   err = cadb.Begin()
   test.AssertNotError(t, err, "Could not begin")
 
-  num, err := cadb.GetNextNumber()
+  num, err := cadb.IncrementAndGetSerial()
   test.AssertNotError(t, err, "Could not get number")
 
-  num2, err := cadb.GetNextNumber()
+  num2, err := cadb.IncrementAndGetSerial()
   test.AssertNotError(t, err, "Could not get number")
-  test.Assert(t, num == num2, "Numbers should be the same")
-
-  err = cadb.IncrementNumber()
-  test.AssertNotError(t, err, "Could not get number")
-
-  num3, err := cadb.GetNextNumber()
-  test.AssertNotError(t, err, "Could not get number")
-  test.Assert(t, num3 != num2, "Numbers should not be the same")
-
-  num4, err := cadb.GetNextNumber()
-  test.AssertNotError(t, err, "Could not get number")
-  test.Assert(t, num4 == num3, "Numbers should be the same")
+  test.Assert(t, num + 1 == num2, "Numbers should be incrementing")
 
   err = cadb.Commit()
   test.AssertNotError(t, err, "Could not commit")
