@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"time"
 
@@ -29,6 +30,37 @@ func setupWFE(c cmd.Config, auditlogger *blog.AuditLogger) (rpc.RegistrationAuth
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	return rac, sac, closeChan
+}
+
+type timedHandler struct {
+	f     func(w http.ResponseWriter, r *http.Request)
+	stats statsd.Statter
+}
+
+func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cStart := time.Now()
+		stats.Inc("HttpConnectionsOpen", 1, 1.0)
+
+		handler.ServeHTTP(w, r)
+
+		stats.Dec("HttpConnectionsOpen", 1, 1.0)
+		// not sure if we can pull data from r like this...
+		stats.TimingDuration(fmt.Sprintf("Http.%s", r.URL), time.Since(cStart), 1.0)
+		// incr success / failure counters
+		success := true
+		for _, h := range w.Header()["Content-Type"] {
+			if h == "application/problem+json" {
+				success = false
+				break
+			}
+		}
+		if success {
+			stats.Inc(fmt.Sprintf("Http.%s.Success", r.URL), 1, 1.0)
+		} else {
+			stats.Inc(fmt.Sprintf("Http.%s.Error", r.URL), 1, 1.0)
+		}
+	})
 }
 
 func main() {
@@ -86,7 +118,12 @@ func main() {
 		})
 		wfe.SubscriberAgreementURL = c.WFE.BaseURL + termsPath
 
-		err = http.ListenAndServe(c.WFE.ListenAddress, nil)
+		stats, err := statsd.NewClient("localhost:8125", "Boulder")
+		if err != nil {
+			cmd.FailOnError(err, "Couldn't connect to statsd")
+		}
+
+		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 
