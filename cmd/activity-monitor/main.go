@@ -119,7 +119,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 			if d.ReplyTo != "" {
 				deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
 				if err := stats.Inc("RpcOpenCalls", 1, 1.0); err != nil {
-					logger.Alert(fmt.Sprintf("Could not increment boulder.RpcOpenCalls: %s", err))
+					logger.Alert(fmt.Sprintf("Could not increment Boulder.RpcOpenCalls: %s", err))
 				}
 			} else {
 				rpcSent := deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey)]
@@ -128,10 +128,10 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 					delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
 
 					if err := stats.Timing(fmt.Sprintf("Rpc.%s", d.Type), respTime.Nanoseconds(), 1.0); err != nil {
-						logger.Alert(fmt.Sprintf("Could send timing for boulder.Rpc.%s: %s", d.Type, err))
+						logger.Alert(fmt.Sprintf("Could send timing for Boulder.Rpc.%s: %s", d.Type, err))
 					}
 					if err := stats.Dec("RpcOpenCalls", 1, 1.0); err != nil {
-						logger.Alert(fmt.Sprintf("Could not decrement boulder.RpcOpenCalls: %s", err))
+						logger.Alert(fmt.Sprintf("Could not decrement Boulder.RpcOpenCalls: %s", err))
 					}
 				}
 			}
