@@ -58,12 +58,13 @@ type Config struct {
 	}
 
 	CA struct {
-		Server   string
-		AuthKey  string
-		Profile  string
-		TestMode bool
-		DBDriver string
-		DBName   string
+		Server       string
+		AuthKey      string
+		Profile      string
+		TestMode     bool
+		DBDriver     string
+		DBName       string
+		SerialPrefix int
 	}
 
 	SA struct {

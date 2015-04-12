@@ -33,6 +33,7 @@
   "ca": {
     "server": "localhost:9000",
     "authKey": "79999d86250c367a2b517a1ae7d409c1",
+    "serialPrefix": 255,
     "profile": "ee",
     "dbDriver": "sqlite3",
     "dbName": ":memory:",

@@ -27,7 +27,7 @@ func main() {
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(auditlogger, c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")
 
-		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile, cadb)
+		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile, c.CA.SerialPrefix, cadb)
 		cmd.FailOnError(err, "Failed to create CA impl")
 
 		for {

@@ -18,6 +18,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	cfcsr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/csr"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/remote"
 )
@@ -29,6 +30,7 @@ type CertificateAuthorityImpl struct {
 	PA      core.PolicyAuthority
 	DB      core.CertificateAuthorityDatabase
 	log     *blog.AuditLogger
+	Prefix  int // Prepended to the serial number
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -37,7 +39,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, authKey string, profile string, cadb core.CertificateAuthorityDatabase) (ca *CertificateAuthorityImpl, err error) {
+func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, authKey string, profile string, serialPrefix int, cadb core.CertificateAuthorityDatabase) (ca *CertificateAuthorityImpl, err error) {
 	logger.Notice("Certificate Authority Starting")
 
 	// Create the remote signer
@@ -45,7 +47,7 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, auth
 		Expiry:       time.Hour, // BOGUS: Required by CFSSL, but not used
 		RemoteName:   hostport,  // BOGUS: Only used as a flag by CFSSL
 		RemoteServer: hostport,
-		// UseSerialSeq: true, // Depending on https://github.com/cloudflare/cfssl/pull/154
+		UseSerialSeq: true,
 	}
 
 	localProfile.Provider, err = auth.New(authKey, nil)
@@ -65,6 +67,7 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, auth
 		profile: profile,
 		PA:      pa,
 		DB:      cadb,
+		Prefix:  serialPrefix,
 		log:     logger,
 	}
 	return
@@ -116,8 +119,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if err != nil {
 		return
 	}
-	serialHex := fmt.Sprintf("%x", serialDec)
-	_ = serialHex // TODO: stub to allow checkin
+	serialHex := fmt.Sprintf("%01X%014X", ca.Prefix, serialDec)
 
 	// Send the cert off for signing
 	req := signer.SignRequest{
@@ -126,9 +128,19 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Hosts:   hostNames,
 		Subject: &signer.Subject{
 			CN: commonName,
+			Names: []cfcsr.Name{
+				{
+					C:  "",
+					ST: "",
+					L:  "",
+					O:  "",
+					OU: "",
+				},
+			},
 		},
-		// SerialSeq: serialHex, // Depending on https://github.com/cloudflare/cfssl/pull/154
+		SerialSeq: serialHex,
 	}
+
 	certPEM, err := ca.Signer.Sign(req)
 	if err != nil {
 		ca.DB.Rollback()
