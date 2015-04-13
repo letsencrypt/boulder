@@ -13,6 +13,8 @@ import (
 	"strings"
 	"net/http"
 	"net/http/httptest"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/ra"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
@@ -26,8 +28,9 @@ func makeBody(s string) (io.ReadCloser) {
 //  - RA returns with a cert success
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
+	stats, _ := statsd.NewNoopClient(nil)
 	syslogger, _ := syslog.New(syslog.LOG_DEBUG, "test")
-	log := blog.AuditLogger{syslogger}
+	log := blog.AuditLogger{syslogger, stats}
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl(&log)
 	wfe := NewWebFrontEndImpl(&log)

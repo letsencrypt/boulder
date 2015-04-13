@@ -10,29 +10,35 @@ import (
 	"log/syslog"
 	"testing"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/test"
 )
+
 
 func TestConstruction(t *testing.T) {
 	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
-	_, err = NewAuditLogger(writer)
+	stats, _ := statsd.NewNoopClient(nil)
+	_, err = NewAuditLogger(writer, stats)
 	test.AssertNotError(t, err, "Could not construct audit logger")
 }
 
 func TestDial(t *testing.T) {
-	_, err := Dial("", "", "tag")
+	stats, _ := statsd.NewNoopClient(nil)
+	_, err := Dial("", "", "tag", stats)
 	test.AssertNotError(t, err, "Could not construct audit logger")
 }
 
 func TestDialError(t *testing.T) {
-	_, err := Dial("_fail", "_fail", "tag")
+	stats, _ := statsd.NewNoopClient(nil)
+	_, err := Dial("_fail", "_fail", "tag", stats)
 	test.AssertError(t, err, "Audit Logger should have failed")
 }
 
 func TestConstructionNil(t *testing.T) {
-	_, err := NewAuditLogger(nil)
+	stats, _ := statsd.NewNoopClient(nil)
+	_, err := NewAuditLogger(nil, stats)
 	test.AssertError(t, err, "Nil shouldn't be permitted.")
 }
 
@@ -40,7 +46,8 @@ func TestEmit(t *testing.T) {
 	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
-	audit, err := NewAuditLogger(writer)
+	stats, _ := statsd.NewNoopClient(nil)
+	audit, err := NewAuditLogger(writer, stats)
 	test.AssertNotError(t, err, "Could not construct audit logger")
 
 	audit.Audit("test message")
@@ -50,14 +57,16 @@ func TestEmitEmpty(t *testing.T) {
 	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
-	audit, err := NewAuditLogger(writer)
+	stats, _ := statsd.NewNoopClient(nil)
+	audit, err := NewAuditLogger(writer, stats)
 	test.AssertNotError(t, err, "Could not construct audit logger")
 
 	audit.Audit("")
 }
 
 func TestEmitErrors(t *testing.T) {
-	audit, _ := Dial("", "", "tag")
+	stats, _ := statsd.NewNoopClient(nil)
+	audit, _ := Dial("", "", "tag", stats)
 
 	audit.AuditErr(errors.New("Error Audit"))
 	audit.WarningErr(errors.New("Warning Audit"))
@@ -67,7 +76,8 @@ func TestSyslogMethods(t *testing.T) {
 	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
-	audit, err := NewAuditLogger(writer)
+	stats, _ := statsd.NewNoopClient(nil)
+	audit, err := NewAuditLogger(writer, stats)
 	test.AssertNotError(t, err, "Could not construct audit logger")
 
 	audit.Audit("audit-logger_test.go: audit-notice")

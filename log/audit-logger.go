@@ -23,7 +23,7 @@ const auditTag = "[AUDIT]"
 // to send a message as an audit event.
 type AuditLogger struct {
 	*syslog.Writer
-	stats statsd.Statter
+	Stats statsd.Statter
 }
 
 // Dial establishes a connection to the log daemon by passing through
@@ -52,7 +52,7 @@ func (log *AuditLogger) Audit(msg string) (err error) {
 	fmt.Println(msg)
 	err = log.Notice(fmt.Sprintf("%s %s", auditTag, msg))
 
-	log.stats.Inc("Logging.Audit", 1, 1.0)
+	log.Stats.Inc("Logging.Audit", 1, 1.0)
 
 	return
 }
@@ -62,7 +62,7 @@ func (log *AuditLogger) AuditErr(msg error) (err error) {
 	fmt.Println(msg)
 	err = log.Err(fmt.Sprintf("%s %s", auditTag, msg))
 
-	log.stats.Inc("Logging.Audit", 1, 1.0)
+	log.Stats.Inc("Logging.Audit", 1, 1.0)
 
 	return
 }
@@ -77,42 +77,42 @@ func (log *AuditLogger) WarningErr(msg error) (err error) {
 
 func (log *AuditLogger) Alert(msg string) (err error) {
 	fmt.Println(msg)
-	log.stats.Inc("Logging.Alert", 1, 1.0)
+	log.Stats.Inc("Logging.Alert", 1, 1.0)
 	return log.Writer.Alert(msg)
 }
 
 func (log *AuditLogger) Crit(msg string) (err error) {
 	fmt.Println(msg)
-	log.stats.Inc("Logging.Crit", 1, 1.0)
+	log.Stats.Inc("Logging.Crit", 1, 1.0)
 	return log.Writer.Crit(msg)
 }
 
 func (log *AuditLogger) Debug(msg string) (err error) {
 	fmt.Println(msg)
-	log.stats.Inc("Logging.Debug", 1, 1.0)
+	log.Stats.Inc("Logging.Debug", 1, 1.0)
 	return log.Writer.Debug(msg)
 }
 
 func (log *AuditLogger) Emerg(msg string) (err error) {
 	fmt.Println(msg)
-	log.stats.Inc("Logging.Emerg", 1, 1.0)
+	log.Stats.Inc("Logging.Emerg", 1, 1.0)
 	return log.Writer.Emerg(msg)
 }
 
 func (log *AuditLogger) Err(msg string) (err error) {
 	fmt.Println(msg)
-	log.stats.Inc("Logging.Err", 1, 1.0)
+	log.Stats.Inc("Logging.Err", 1, 1.0)
 	return log.Writer.Err(msg)
 }
 
 func (log *AuditLogger) Info(msg string) (err error) {
 	fmt.Println(msg)
-	log.stats.Inc("Logging.Info", 1, 1.0)
+	log.Stats.Inc("Logging.Info", 1, 1.0)
 	return log.Writer.Info(msg)
 }
 
 func (log *AuditLogger) Warning(msg string) (err error) {
 	fmt.Println(msg)
-	log.stats.Inc("Logging.Warning", 1, 1.0)
+	log.Stats.Inc("Logging.Warning", 1, 1.0)
 	return log.Writer.Warning(msg)
 }
