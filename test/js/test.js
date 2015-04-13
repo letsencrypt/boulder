@@ -307,7 +307,7 @@ function getReadyToValidate(resp) {
 
     var challenge = simpleHttps[0];
     var path = crypto.randomString(8) + ".txt";
-    fs.writeFileSync(path, challenge.token);
+    fs.writeFileSync(".well-known/acme-challenge/" + path, challenge.token);
     state.responseURL = challenge["uri"];
     state.path = path;
 
@@ -369,7 +369,7 @@ function ensureValidation(resp) {
       console.log();
       getCertificate();
     } else if (authz.status == "invalid") {
-      console.log("The CA was unable to validate the file you provisioned.");
+      console.log("The CA was unable to validate the file you provisioned:"  + authz);
       return;
     } else {
       console.log("The CA returned an authorization in an unexpected state");
