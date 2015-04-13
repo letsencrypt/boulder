@@ -40,14 +40,15 @@ type timedHandler struct {
 func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cStart := time.Now()
+		// FIX: this somehow goes negative sometimes?
 		stats.Inc("HttpConnectionsOpen", 1, 1.0)
 
 		handler.ServeHTTP(w, r)
 
 		stats.Dec("HttpConnectionsOpen", 1, 1.0)
-		// not sure if we can pull data from r like this...
 		stats.TimingDuration(fmt.Sprintf("Http.%s", r.URL), time.Since(cStart), 1.0)
-		// incr success / failure counters (perhaps better way of doing this?)
+		// incr success / failure counters
+		// (FIX: this doesn't seem to really work at catching errors...)
 		success := true
 		for _, h := range w.Header()["Content-Type"] {
 			if h == "application/problem+json" {
@@ -70,10 +71,14 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
+		cmd.FailOnError(err, "Couldn't connect to statsd")
+
 		wfe := wfe.NewWebFrontEndImpl(auditlogger)
 		rac, sac, closeChan := setupWFE(c, auditlogger)
 		wfe.RA = &rac
 		wfe.SA = &sac
+		wfe.Stats = stats
 
 		go func() {
 			// sit around and reconnect to AMQP if the channel
@@ -117,11 +122,6 @@ func main() {
 			fmt.Fprintf(w, "You agree to do the right thing")
 		})
 		wfe.SubscriberAgreementURL = c.WFE.BaseURL + termsPath
-
-		stats, err := statsd.NewClient("localhost:8125", "Boulder")
-		if err != nil {
-			cmd.FailOnError(err, "Couldn't connect to statsd")
-		}
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))

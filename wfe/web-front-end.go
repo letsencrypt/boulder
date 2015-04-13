@@ -14,15 +14,18 @@ import (
 	"net/url"
 	"regexp"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
 type WebFrontEndImpl struct {
-	RA  core.RegistrationAuthority
-	SA  core.StorageGetter
-	log *blog.AuditLogger
+	RA    core.RegistrationAuthority
+	SA    core.StorageGetter
+	Stats statsd.Statter
+	log   *blog.AuditLogger
 
 	// URL configuration parameters
 	NewReg    string
@@ -150,6 +153,9 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	response.WriteHeader(http.StatusCreated)
 	response.Write(responseBody)
+
+	// incr reg stat
+	wfe.Stats.Inc("Registrations", 1, 1.0)
 }
 
 func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
@@ -195,6 +201,8 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	if _, err = response.Write(responseBody); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
+	// incr pending auth stat
+	wfe.Stats.Inc("PendingAuthorizations", 1, 1.0)
 }
 
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
@@ -248,6 +256,8 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	if _, err = response.Write(cert.DER); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
+	// incr cert stat
+	wfe.Stats.Inc("Certificates", 1, 1.0)
 }
 
 func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
@@ -444,5 +454,8 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 
 	case "POST":
 		// TODO: Handle revocation in POST
+
+		// incr revoked cert stat
+		wfe.Stats.Inc("RevokedCertificates", 1, 1.0)
 	}
 }

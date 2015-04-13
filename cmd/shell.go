@@ -66,6 +66,11 @@ type Config struct {
 		DBName   string
 	}
 
+	Statsd struct {
+		Server string
+		Prefix string
+	}
+
 	Syslog struct {
 		Network string
 		Server  string

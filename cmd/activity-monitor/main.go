@@ -49,7 +49,7 @@ const (
 // 	CPS           []resultAt            // total calls made since monitor started
 // }
 
-func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
+func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.Statter) {
 	ae := analysisengine.NewLoggingAnalysisEngine(logger)
 
 	// For convenience at the broker, identifiy ourselves by hostname
@@ -104,10 +104,6 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 	}
 
 	deliveryTimings := make(map[string]time.Time)
-	stats, err := statsd.NewClient("localhost:8125", "Boulder")
-	if err != nil {
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-	}
 
 	// Run forever.
 	for d := range deliveries {
@@ -117,7 +113,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 		go func() {
 			if d.ReplyTo != "" {
 				deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
-				if err := stats.Inc("RpcCallsWaiting", 1, 1.0); err != nil {
+				if err := stats.Inc("RpcCallsOpen", 1, 1.0); err != nil {
 					logger.Alert(fmt.Sprintf("Could not increment Boulder.RpcCallsWaiting: %s", err))
 				}
 			} else {
@@ -129,7 +125,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger) {
 					if err := stats.TimingDuration(fmt.Sprintf("RpcCall.%s", d.Type), respTime, 1.0); err != nil {
 						logger.Alert(fmt.Sprintf("Could not send timing for Boulder.Rpc.%s: %s", d.Type, err))
 					}
-					if err := stats.Dec("RpcCallsWaiting", 1, 1.0); err != nil {
+					if err := stats.Dec("RpcCallsOpen", 1, 1.0); err != nil {
 						logger.Alert(fmt.Sprintf("Could not decrement Boulder.RpcCallsWaiting: %s", err))
 					}
 				}
@@ -156,10 +152,15 @@ func main() {
 
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
+
+		cmd.FailOnError(err, "Couldn't connect to statsd")
+
 		ch := cmd.AmqpChannel(c.AMQP.Server)
 
-		startMonitor(ch, auditlogger)
+		startMonitor(ch, auditlogger, stats)
 	}
 
 	app.Run()
 }
+ 
