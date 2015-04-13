@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	// Load both drivers to allow configuring either
@@ -22,6 +23,38 @@ import (
 	"github.com/letsencrypt/boulder/va"
 	"github.com/letsencrypt/boulder/wfe"
 )
+
+type timedHandler struct {
+	f     func(w http.ResponseWriter, r *http.Request)
+	stats statsd.Statter
+}
+
+func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cStart := time.Now()
+		// FIX: this somehow goes negative sometimes?
+		stats.Inc("HttpConnectionsOpen", 1, 1.0)
+
+		handler.ServeHTTP(w, r)
+
+		stats.Dec("HttpConnectionsOpen", 1, 1.0)
+		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s", r.URL), time.Since(cStart), 1.0)
+		// incr success / failure counters
+		// (FIX: this doesn't seem to really work at catching errors...)
+		success := true
+		for _, h := range w.Header()["Content-Type"] {
+			if h == "application/problem+json" {
+				success = false
+				break
+			}
+		}
+		if success {
+			stats.Inc(fmt.Sprintf("Http.%s.Success", r.URL), 1, 1.0)
+		} else {
+			stats.Inc(fmt.Sprintf("Http.%s.Error", r.URL), 1, 1.0)
+		}
+	})
+}
 
 func main() {
 	app := cmd.NewAppShell("boulder")
@@ -47,6 +80,7 @@ func main() {
 		// Wire them up
 		wfe.RA = &ra
 		wfe.SA = sa
+		wfe.Stats = stats
 		ra.CA = ca
 		ra.SA = sa
 		ra.VA = &va
@@ -85,7 +119,7 @@ func main() {
 		ra.AuthzBase = wfe.AuthzBase
 
 		fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.WFE.ListenAddress)
-		err = http.ListenAndServe(c.WFE.ListenAddress, nil)
+		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 
