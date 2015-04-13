@@ -18,15 +18,15 @@ import (
 func main() {
 	app := cmd.NewAppShell("boulder-ca")
 	app.Action = func(c cmd.Config) {
+		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
+		cmd.FailOnError(err, "Couldn't connect to statsd")
+
 		// Set up logging
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
 		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
 		cmd.FailOnError(err, "Failed to create CA impl")
-
-		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
 
 		go cmd.ProfileCmd("CA", stats, auditlogger)
 

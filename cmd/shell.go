@@ -166,24 +166,33 @@ func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, close
 
 func ProfileCmd(profileName string, stats statsd.Statter, logger *blog.AuditLogger) {
 	for {
-		memoryStats := runtime.MemStats{}
+		var memoryStats runtime.MemStats
 		runtime.ReadMemStats(&memoryStats)
 
 		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
 		}
 
-		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.MemAllocd", profileName), int64(memoryStats.Alloc), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
 		} 
-		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.MemLookups", profileName), int64(memoryStats.Lookups), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
 		}
-		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.MemMallocs", profileName), int64(memoryStats.Mallocs), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
 		}
-		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.MemFrees", profileName), int64(memoryStats.Frees), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
+		}
+
+		gcPauseAvg := int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))
+
+		if err := stats.Timing(fmt.Sprintf("Gostats.%s.Gc.PauseAvg", profileName), gcPauseAvg, 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
+		}
+		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
 		}
 
 		time.Sleep(time.Second)

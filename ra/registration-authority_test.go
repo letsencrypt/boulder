@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/ca"
@@ -69,8 +70,9 @@ var (
 )
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
+	stats, _ := statsd.NewNoopClient(nil)
 	// Audit logger
-	audit, _ := blog.Dial("", "", "tag")
+	audit, _ := blog.Dial("", "", "tag", stats)
 
 	err := json.Unmarshal(AccountKeyJSON, &AccountKey)
 	test.AssertNotError(t, err, "Failed to unmarshall JWK")

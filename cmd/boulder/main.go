@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
@@ -25,8 +26,11 @@ import (
 func main() {
 	app := cmd.NewAppShell("boulder")
 	app.Action = func(c cmd.Config) {
+		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
+		cmd.FailOnError(err, "Couldn't connect to statsd")
+
 		// Set up logging
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
 		// Create the components

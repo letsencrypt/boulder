@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	apisign "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api/sign"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
@@ -219,8 +220,9 @@ var NO_NAME_CSR_HEX = "308202523082013a020100300d310b300906035504061302555330820
 	"1778a629b584f2bc059489a236131de9b444adca90218c31a499a485"
 
 func TestIssueCertificate(t *testing.T) {
+	stats, _ := statsd.NewNoopClient(nil)
 	// Audit logger
-	audit, _ := blog.Dial("", "", "tag")
+	audit, _ := blog.Dial("", "", "tag", stats)
 
 	// Decode pre-generated values
 	caKeyPEM, _ := pem.Decode([]byte(CA_KEY_PEM))

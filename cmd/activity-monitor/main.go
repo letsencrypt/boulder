@@ -135,13 +135,13 @@ func main() {
 	app := cmd.NewAppShell("activity-monitor")
 
 	app.Action = func(c cmd.Config) {
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
-
-		cmd.FailOnError(err, "Could not connect to Syslog")
-
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 
 		cmd.FailOnError(err, "Couldn't connect to statsd")
+
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
+
+		cmd.FailOnError(err, "Could not connect to Syslog")
 
 		ch := cmd.AmqpChannel(c.AMQP.Server)
 

@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"log/syslog"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 )
 
 // The constant used to identify audit-specific messages
@@ -21,43 +23,53 @@ const auditTag = "[AUDIT]"
 // to send a message as an audit event.
 type AuditLogger struct {
 	*syslog.Writer
+	stats statsd.Statter
 }
 
 // Dial establishes a connection to the log daemon by passing through
 // the parameters to the syslog.Dial method.
 // See http://golang.org/pkg/log/syslog/#Dial
-func Dial(network, raddr string, tag string) (*AuditLogger, error) {
+func Dial(network, raddr string, tag string, stats statsd.Statter) (*AuditLogger, error) {
 	syslogger, err := syslog.Dial(network, raddr, syslog.LOG_INFO|syslog.LOG_LOCAL0, tag)
 	if err != nil {
 		return nil, err
 	}
-	return NewAuditLogger(syslogger)
+	return NewAuditLogger(syslogger, stats)
 }
 
 // NewAuditLogger constructs an Audit Logger that decorates a normal
 // System Logger. All methods in log/syslog continue to work.
-func NewAuditLogger(log *syslog.Writer) (*AuditLogger, error) {
+func NewAuditLogger(log *syslog.Writer, stats statsd.Statter) (*AuditLogger, error) {
 	if log == nil {
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
-	return &AuditLogger{log}, nil
+	return &AuditLogger{log, stats}, nil
 }
 
 // Audit sends a NOTICE-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
 func (log *AuditLogger) Audit(msg string) (err error) {
 	err = log.Notice(fmt.Sprintf("%s %s", auditTag, msg))
+
+	log.stats.Inc("Logging.Audit", 1, 1.0)
+
 	return
 }
 
 // Audit can format an error for auditing; it does so at ERR level.
 func (log *AuditLogger) AuditErr(msg error) (err error) {
 	err = log.Err(fmt.Sprintf("%s %s", auditTag, msg))
+
+	log.stats.Inc("Logging.Error", 1, 1.0)
+
 	return
 }
 
 // Warning formats an error for the Warn level.
 func (log *AuditLogger) WarningErr(msg error) (err error) {
 	err = log.Warning(fmt.Sprintf("%s", msg))
+
+	log.stats.Inc("Logging.Warning", 1, 1.0)
+
 	return
 }

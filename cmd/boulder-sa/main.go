@@ -21,16 +21,16 @@ import (
 func main() {
 	app := cmd.NewAppShell("boulder-sa")
 	app.Action = func(c cmd.Config) {
+		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
+		cmd.FailOnError(err, "Couldn't connect to statsd")
+
 		// Set up logging
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
 		sai, err := sa.NewSQLStorageAuthority(auditlogger, c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Failed to create SA impl")
 		
-		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-
 		go cmd.ProfileCmd("SA", stats, auditlogger)
 
 

@@ -68,11 +68,11 @@ func main() {
 	app := cmd.NewAppShell("boulder-wfe")
 	app.Action = func(c cmd.Config) {
 		// Set up logging
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
-		cmd.FailOnError(err, "Could not connect to Syslog")
-
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 		cmd.FailOnError(err, "Couldn't connect to statsd")
+
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
+		cmd.FailOnError(err, "Could not connect to Syslog")
 
 		wfe := wfe.NewWebFrontEndImpl(auditlogger)
 		rac, sac, closeChan := setupWFE(c, auditlogger)
