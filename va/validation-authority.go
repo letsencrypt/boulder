@@ -124,7 +124,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		return
 	}
 	for _, name := range certs[0].DNSNames {
-		if name == zName {
+		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
 			challenge.Status = core.StatusValid
 			return
 		}
