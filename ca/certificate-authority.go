@@ -49,7 +49,7 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, auth
 		Expiry:       time.Hour, // BOGUS: Required by CFSSL, but not used
 		RemoteName:   hostport,  // BOGUS: Only used as a flag by CFSSL
 		RemoteServer: hostport,
-		UseSerialSeq: true,
+		// UseSerialSeq: true,   // TODO: Awaiting CFSSL upgrade (Issue #83)
 	}
 
 	localProfile.Provider, err = auth.New(authKey, nil)
@@ -124,6 +124,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return
 	}
 	serialHex := fmt.Sprintf("%01X%014X", ca.Prefix, serialDec)
+	_ = serialHex // TODO: Remove when used below
 
 	// Send the cert off for signing
 	req := signer.SignRequest{
@@ -142,7 +143,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 				},
 			},
 		},
-		SerialSeq: serialHex,
+		// SerialSeq: serialHex, // TODO: Awaiting CFSSL upgrade (Issue #83)
 	}
 
 	certPEM, err := ca.Signer.Sign(req)
