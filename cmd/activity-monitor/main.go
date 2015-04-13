@@ -101,7 +101,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 			if d.ReplyTo != "" {
 				deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
 				if err := stats.Inc("RpcCallsOpen", 1, 1.0); err != nil {
-					logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+					logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
 				}
 			} else {
 				rpcSent := deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey)]
@@ -109,20 +109,24 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 					respTime := time.Since(rpcSent)
 					delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
 
-					if err := stats.TimingDuration(fmt.Sprintf("RpcCall.%s", d.Type), respTime, 1.0); err != nil {
-						logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+					if err := stats.TimingDuration(fmt.Sprintf("RpcCallTime.%s", d.Type), respTime, 1.0); err != nil {
+						logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
 					}
 					if err := stats.Dec("RpcCallsOpen", 1, 1.0); err != nil {
-						logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+						logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
 					}
 				}
+			}
+
+			if err := stats.Gauge("RpcBodySize", int64(len(d.Body)), 1.0); err != nil {
+				logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
 			}
 		}()
 
 		// Pass each message to the Analysis Engine
 		err = ae.ProcessMessage(d)
 		if err != nil {
-			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
 		} else {
 			// Only ack the delivery we actually handled (ackMultiple=false)
 			const ackMultiple = false
@@ -137,7 +141,7 @@ func main() {
 	app.Action = func(c cmd.Config) {
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 
-		cmd.FailOnError(err, "Couldn't connect to statsd")
+		cmd.FailOnError(err, "Could not connect to statsd")
 
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 

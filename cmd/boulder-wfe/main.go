@@ -46,21 +46,16 @@ func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 		handler.ServeHTTP(w, r)
 
 		stats.Dec("HttpConnectionsOpen", 1, 1.0)
-		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s", r.URL), time.Since(cStart), 1.0)
 		// incr success / failure counters
 		// (FIX: this doesn't seem to really work at catching errors...)
-		success := true
+		state := "Success"
 		for _, h := range w.Header()["Content-Type"] {
 			if h == "application/problem+json" {
-				success = false
+				state = "Error"
 				break
 			}
 		}
-		if success {
-			stats.Inc(fmt.Sprintf("Http.%s.Success", r.URL), 1, 1.0)
-		} else {
-			stats.Inc(fmt.Sprintf("Http.%s.Error", r.URL), 1, 1.0)
-		}
+		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.%s", r.URL, state), time.Since(cStart), 1.0)
 	})
 }
 
