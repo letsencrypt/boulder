@@ -12,9 +12,9 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
+	"fmt"
 	"math"
 	"math/big"
-	"net"
 	"strings"
 	"time"
 
@@ -36,11 +36,12 @@ type Subject struct {
 // SignRequest stores a signature request, which contains the hostname,
 // the CSR, optional subject information, and the signature profile.
 type SignRequest struct {
-	Hosts   []string `json:"hosts"`
-	Request string   `json:"certificate_request"`
-	Subject *Subject `json:"subject,omitempty"`
-	Profile string   `json:"profile"`
-	Label   string   `json:"label"`
+	Hosts     []string `json:"hosts"`
+	Request   string   `json:"certificate_request"`
+	Subject   *Subject `json:"subject,omitempty"`
+	Profile   string   `json:"profile"`
+	Label     string   `json:"label"`
+	SerialSeq string   `json:"serial_sequence,omitempty"`
 }
 
 // appendIf appends to a if s is not an empty string.
@@ -68,6 +69,10 @@ func (s *Subject) Name() pkix.Name {
 // SplitHosts takes a comma-spearated list of hosts and returns a slice
 // with the hosts split
 func SplitHosts(hostList string) []string {
+	if hostList == "" {
+		return nil
+	}
+
 	return strings.Split(hostList, ",")
 }
 
@@ -115,10 +120,8 @@ func DefaultSigAlgo(priv crypto.Signer) x509.SignatureAlgorithm {
 }
 
 // ParseCertificateRequest takes an incoming certificate request and
-// builds a certificate template from it. If not nil, the subject
-// information from subject will be used in place of the information in
-// the CSR. The same is true for the list of hosts.
-func ParseCertificateRequest(s Signer, csrBytes []byte, sub *Subject, hosts []string) (template *x509.Certificate, err error) {
+// builds a certificate template from it.
+func ParseCertificateRequest(s Signer, csrBytes []byte) (template *x509.Certificate, err error) {
 	csr, err := x509.ParseCertificateRequest(csrBytes)
 	if err != nil {
 		err = cferr.Wrap(cferr.CertificateError, cferr.ParseFailed, err)
@@ -136,18 +139,8 @@ func ParseCertificateRequest(s Signer, csrBytes []byte, sub *Subject, hosts []st
 		PublicKeyAlgorithm: csr.PublicKeyAlgorithm,
 		PublicKey:          csr.PublicKey,
 		SignatureAlgorithm: s.SigAlgo(),
-	}
-
-	if sub != nil {
-		template.Subject = sub.Name()
-	}
-
-	for i := range hosts {
-		if ip := net.ParseIP(hosts[i]); ip != nil {
-			template.IPAddresses = append(template.IPAddresses, ip)
-		} else {
-			template.DNSNames = append(template.DNSNames, hosts[i])
-		}
+		DNSNames:           csr.DNSNames,
+		IPAddresses:        csr.IPAddresses,
 	}
 
 	return
@@ -227,7 +220,7 @@ func ComputeSKI(template *x509.Certificate) ([]byte, error) {
 // the certificate template as possible from the profiles and current
 // template. It fills in the key uses, expiration, revocation URLs,
 // serial number, and SKI.
-func FillTemplate(template *x509.Certificate, defaultProfile, profile *config.SigningProfile) error {
+func FillTemplate(template *x509.Certificate, defaultProfile, profile *config.SigningProfile, serialSeq string) error {
 	ski, err := ComputeSKI(template)
 
 	var (
@@ -281,8 +274,17 @@ func FillTemplate(template *x509.Certificate, defaultProfile, profile *config.Si
 	}
 
 	serialNumber, err := rand.Int(rand.Reader, new(big.Int).SetInt64(math.MaxInt64))
+
 	if err != nil {
 		return cferr.Wrap(cferr.CertificateError, cferr.Unknown, err)
+	}
+
+	if serialSeq != "" {
+		randomPart := fmt.Sprintf("%016X", serialNumber) // 016 ensures we're left-0-padded
+		_, ok := serialNumber.SetString(serialSeq+randomPart, 16)
+		if !ok {
+			return cferr.Wrap(cferr.CertificateError, cferr.SerialSeqParseError, err)
+		}
 	}
 
 	template.SerialNumber = serialNumber

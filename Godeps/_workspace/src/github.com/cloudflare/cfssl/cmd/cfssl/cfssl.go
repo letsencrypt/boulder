@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/gencert"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/genkey"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/ocspsign"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/scan"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/selfsign"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/serve"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/sign"
@@ -50,6 +51,7 @@ func main() {
 		"gencert":  gencert.Command,
 		"ocspsign": ocspsign.Command,
 		"selfsign": selfsign.Command,
+		"scan":     scan.Command,
 	}
 	// Register all command flags.
 	cli.Start(cmds)

@@ -78,12 +78,13 @@ func NewHandlerFromSigner(signer signer.Signer) (h *api.HTTPHandler, err error) 
 // hostname field in the API
 // TODO: Change the API such that the normal struct can be used.
 type jsonSignRequest struct {
-	Hostname string          `json:"hostname"`
-	Hosts    []string        `json:"hosts"`
-	Request  string          `json:"certificate_request"`
-	Subject  *signer.Subject `json:"subject,omitempty"`
-	Profile  string          `json:"profile"`
-	Label    string          `json:"label"`
+	Hostname  string          `json:"hostname"`
+	Hosts     []string        `json:"hosts"`
+	Request   string          `json:"certificate_request"`
+	Subject   *signer.Subject `json:"subject,omitempty"`
+	Profile   string          `json:"profile"`
+	Label     string          `json:"label"`
+	SerialSeq string          `json:"serial_sequence,omitempty"`
 }
 
 func jsonReqToTrue(js jsonSignRequest) signer.SignRequest {
@@ -97,20 +98,22 @@ func jsonReqToTrue(js jsonSignRequest) signer.SignRequest {
 
 	if js.Hostname != "" {
 		return signer.SignRequest{
-			Hosts:   signer.SplitHosts(js.Hostname),
-			Subject: sub,
-			Request: js.Request,
-			Profile: js.Profile,
-			Label:   js.Label,
+			Hosts:     signer.SplitHosts(js.Hostname),
+			Subject:   sub,
+			Request:   js.Request,
+			Profile:   js.Profile,
+			Label:     js.Label,
+			SerialSeq: js.SerialSeq,
 		}
 	}
 
 	return signer.SignRequest{
-		Hosts:   js.Hosts,
-		Subject: sub,
-		Request: js.Request,
-		Profile: js.Profile,
-		Label:   js.Label,
+		Hosts:     js.Hosts,
+		Subject:   sub,
+		Request:   js.Request,
+		Profile:   js.Profile,
+		Label:     js.Label,
+		SerialSeq: js.SerialSeq,
 	}
 }
 
@@ -136,7 +139,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	signReq := jsonReqToTrue(req)
-	if len(signReq.Hosts) == 0 {
+	if signReq.Hosts == nil {
 		return errors.NewBadRequestString("missing parameter 'hostname' or 'hosts'")
 	}
 
@@ -257,15 +260,6 @@ func (h *AuthHandler) Handle(w http.ResponseWriter, r *http.Request) error {
 		return errors.NewBadRequestString("Unable to parse authenticated sign request")
 	}
 
-	signReq := jsonReqToTrue(req)
-	if len(signReq.Hosts) == 0 {
-		return errors.NewBadRequestString("missing parameter 'hostname' or 'hosts'")
-	}
-
-	if req.Request == "" {
-		return errors.NewBadRequestString("missing parameter 'certificate_request'")
-	}
-
 	// Sanity checks to ensure that we have a valid policy. This
 	// should have been checked in NewAuthHandler.
 	policy := h.signer.Policy()
@@ -275,7 +269,7 @@ func (h *AuthHandler) Handle(w http.ResponseWriter, r *http.Request) error {
 	}
 	profile := policy.Default
 
-	if policy.Profiles != nil {
+	if policy.Profiles != nil && req.Profile != "" {
 		profile = policy.Profiles[req.Profile]
 	}
 
@@ -294,15 +288,16 @@ func (h *AuthHandler) Handle(w http.ResponseWriter, r *http.Request) error {
 		return errors.NewBadRequestString("invalid token")
 	}
 
-	if req.Hostname == "" && len(req.Hosts) == 0 {
-		return errors.NewBadRequestString("missing hostnames")
+	signReq := jsonReqToTrue(req)
+	if signReq.Hosts == nil {
+		return errors.NewBadRequestString("missing parameter 'hostname' or 'hosts'")
 	}
 
-	if req.Request == "" {
-		return errors.NewBadRequestString("missing certificate_request parameter")
+	if signReq.Request == "" {
+		return errors.NewBadRequestString("missing parameter 'certificate_request'")
 	}
 
-	cert, err := h.signer.Sign(jsonReqToTrue(req))
+	cert, err := h.signer.Sign(signReq)
 	if err != nil {
 		log.Errorf("signature failed: %v", err)
 		return err

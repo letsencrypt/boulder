@@ -2,6 +2,8 @@ package local
 
 import (
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"io/ioutil"
 	"reflect"
 	"sort"
@@ -17,6 +19,9 @@ import (
 )
 
 const (
+	fullSubjectCSR     = "testdata/test.csr"
+	testCSR            = "testdata/ecdsa256.csr"
+	testSANCSR         = "testdata/san_domain.csr"
 	testCaFile         = "testdata/ca.pem"
 	testCaKeyFile      = "testdata/ca_key.pem"
 	testECDSACaFile    = "testdata/ecdsa256_ca.pem"
@@ -145,20 +150,20 @@ func testSign(t *testing.T) {
 	badcert := *cert
 	badcert.PublicKey = nil
 	profl := config.SigningProfile{Usage: []string{"Certificates", "Rule"}}
-	_, err = signer.sign(&badcert, &profl)
+	_, err = signer.sign(&badcert, &profl, "")
 
 	if err == nil {
 		t.Fatal("Improper input failed to raise an error")
 	}
 
 	// nil profile
-	_, err = signer.sign(cert, &profl)
+	_, err = signer.sign(cert, &profl, "")
 	if err == nil {
 		t.Fatal("Nil profile failed to raise an error")
 	}
 
 	// empty profile
-	_, err = signer.sign(cert, &config.SigningProfile{})
+	_, err = signer.sign(cert, &config.SigningProfile{}, "")
 	if err == nil {
 		t.Fatal("Empty profile failed to raise an error")
 	}
@@ -166,7 +171,7 @@ func testSign(t *testing.T) {
 	// empty expiry
 	prof := signer.policy.Default
 	prof.Expiry = 0
-	_, err = signer.sign(cert, prof)
+	_, err = signer.sign(cert, prof, "")
 	if err != nil {
 		t.Fatal("nil expiry raised an error")
 	}
@@ -176,7 +181,7 @@ func testSign(t *testing.T) {
 	prof.CRL = "stuff"
 	prof.OCSP = "stuff"
 	prof.IssuerURL = []string{"stuff"}
-	_, err = signer.sign(cert, prof)
+	_, err = signer.sign(cert, prof, "")
 	if err != nil {
 		t.Fatal("non nil urls raised an error")
 	}
@@ -186,12 +191,12 @@ func testSign(t *testing.T) {
 	prof = signer.policy.Default
 	prof.CA = false
 	nilca.ca = nil
-	_, err = nilca.sign(cert, prof)
+	_, err = nilca.sign(cert, prof, "")
 	if err == nil {
 		t.Fatal("nil ca with isca false raised an error")
 	}
 	prof.CA = true
-	_, err = nilca.sign(cert, prof)
+	_, err = nilca.sign(cert, prof, "")
 	if err != nil {
 		t.Fatal("nil ca with CA true raised an error")
 	}
@@ -474,10 +479,67 @@ func TestCAIssuing(t *testing.T) {
 
 }
 
-const testCSR = "testdata/ecdsa256.csr"
+func TestPopulateSubjectFromCSR(t *testing.T) {
+	// a subject with all its fields full.
+	fullSubject := &signer.Subject{
+		CN: "CN",
+		Names: []csr.Name{
+			{
+				C:  "C",
+				ST: "ST",
+				L:  "L",
+				O:  "O",
+				OU: "OU",
+			},
+		},
+	}
 
+	fullName := pkix.Name{
+		CommonName:         "CommonName",
+		Country:            []string{"Country"},
+		Province:           []string{"Province"},
+		Organization:       []string{"Organization"},
+		OrganizationalUnit: []string{"OrganizationalUnit"},
+	}
+
+	noCN := *fullSubject
+	noCN.CN = ""
+	name := PopulateSubjectFromCSR(&noCN, fullName)
+	if name.CommonName != "CommonName" {
+		t.Fatal("Failed to replace empty common name")
+	}
+
+	noC := *fullSubject
+	noC.Names[0].C = ""
+	name = PopulateSubjectFromCSR(&noC, fullName)
+	if !reflect.DeepEqual(name.Country, fullName.Country) {
+		t.Fatal("Failed to replace empty country")
+	}
+
+	noL := *fullSubject
+	noL.Names[0].L = ""
+	name = PopulateSubjectFromCSR(&noL, fullName)
+	if !reflect.DeepEqual(name.Locality, fullName.Locality) {
+		t.Fatal("Failed to replace empty locality")
+	}
+
+	noO := *fullSubject
+	noO.Names[0].O = ""
+	name = PopulateSubjectFromCSR(&noO, fullName)
+	if !reflect.DeepEqual(name.Organization, fullName.Organization) {
+		t.Fatal("Failed to replace empty organization")
+	}
+
+	noOU := *fullSubject
+	noOU.Names[0].OU = ""
+	name = PopulateSubjectFromCSR(&noOU, fullName)
+	if !reflect.DeepEqual(name.OrganizationalUnit, fullName.OrganizationalUnit) {
+		t.Fatal("Failed to replace empty organizational unit")
+	}
+
+}
 func TestOverrideSubject(t *testing.T) {
-	csrPEM, err := ioutil.ReadFile(testCSR)
+	csrPEM, err := ioutil.ReadFile(fullSubjectCSR)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -495,6 +557,7 @@ func TestOverrideSubject(t *testing.T) {
 		Request: string(csrPEM),
 		Subject: req,
 	}
+
 	certPEM, err := s.Sign(request)
 
 	if err != nil {
@@ -506,50 +569,101 @@ func TestOverrideSubject(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 
+	block, _ := pem.Decode(csrPEM)
+	template, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
 	if cert.Subject.Organization[0] != "example.net" {
 		t.Fatalf("Failed to override subject: want example.net but have %s", cert.Subject.Organization[0])
+	}
+
+	if cert.Subject.Country[0] != template.Subject.Country[0] {
+		t.Fatal("Failed to override Country")
+	}
+
+	if cert.Subject.Locality[0] != template.Subject.Locality[0] {
+		t.Fatal("Failed to override Locality")
+	}
+
+	if cert.Subject.Organization[0] == template.Subject.Organization[0] {
+		t.Fatal("Shouldn't have overrode Organization")
+	}
+
+	if cert.Subject.OrganizationalUnit[0] != template.Subject.OrganizationalUnit[0] {
+		t.Fatal("Failed to override OrganizationalUnit")
 	}
 
 	log.Info("Overrode subject info")
 }
 
 func TestOverwriteHosts(t *testing.T) {
-	csrPEM, err := ioutil.ReadFile(testCSR)
-	if err != nil {
-		t.Fatalf("%v", err)
+	for _, csrFile := range []string{testCSR, testSANCSR} {
+		csrPEM, err := ioutil.ReadFile(csrFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		csrDER, _ := pem.Decode([]byte(csrPEM))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		csr, err := x509.ParseCertificateRequest(csrDER.Bytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		csrHosts := csr.DNSNames
+		for _, ip := range csr.IPAddresses {
+			csrHosts = append(csrHosts, ip.String())
+		}
+		sort.Strings(csrHosts)
+
+		s := newCustomSigner(t, testECDSACaFile, testECDSACaKeyFile)
+
+		for _, hosts := range [][]string{
+			nil,
+			[]string{},
+			[]string{"127.0.0.1", "localhost"},
+		} {
+			request := signer.SignRequest{
+				Hosts:   hosts,
+				Request: string(csrPEM),
+				Subject: nil,
+			}
+			certPEM, err := s.Sign(request)
+
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+
+			cert, err := helpers.ParseCertificatePEM(certPEM)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+
+			// get the hosts, and add the ips
+			certHosts := cert.DNSNames
+			for _, ip := range cert.IPAddresses {
+				certHosts = append(certHosts, ip.String())
+			}
+
+			// compare the sorted host lists
+			sort.Strings(certHosts)
+			sort.Strings(request.Hosts)
+			if len(request.Hosts) > 0 && !reflect.DeepEqual(certHosts, request.Hosts) {
+				t.Fatalf("Hosts not the same. cert hosts: %v, expected: %v", certHosts, request.Hosts)
+			}
+
+			if request.Hosts == nil && !reflect.DeepEqual(certHosts, csrHosts) {
+				t.Fatalf("Hosts not the same. cert hosts: %v, expected csr hosts: %v", certHosts, csrHosts)
+			}
+
+			if request.Hosts != nil && len(request.Hosts) == 0 && len(certHosts) != 0 {
+				t.Fatalf("Hosts not the same. cert hosts: %v, expected: %v", certHosts, request.Hosts)
+			}
+		}
 	}
-
-	s := newCustomSigner(t, testECDSACaFile, testECDSACaKeyFile)
-
-	request := signer.SignRequest{
-		Hosts:   []string{"127.0.0.1", "localhost"},
-		Request: string(csrPEM),
-		Subject: nil,
-	}
-	certPEM, err := s.Sign(request)
-
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-
-	cert, err := helpers.ParseCertificatePEM(certPEM)
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
-
-	// get the hosts, and add the ips
-	hosts, ips := cert.DNSNames, cert.IPAddresses
-	for _, ip := range ips {
-		hosts = append(hosts, ip.String())
-	}
-
-	// compare the sorted host lists
-	sort.Strings(hosts)
-	sort.Strings(request.Hosts)
-	if !reflect.DeepEqual(hosts, request.Hosts) {
-		t.Fatalf("Hosts not the same. cert hosts: %v, expected: %v", hosts, request.Hosts)
-	}
-
-	log.Info("Overwrote hosts")
 
 }
