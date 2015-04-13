@@ -201,7 +201,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	if _, err = response.Write(responseBody); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
-	// incr pending auth stat
+	// incr pending auth stat (?)
 	wfe.Stats.Inc("PendingAuthorizations", 1, 1.0)
 }
 

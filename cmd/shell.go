@@ -26,8 +26,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	blog "github.com/letsencrypt/boulder/log"
@@ -160,4 +162,30 @@ func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, close
 	logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
 	time.Sleep(time.Second * 5)
 	logger.Warning("Reconnecting to AMQP...")
+}
+
+func ProfileCmd(profileName string, stats statsd.Statter, logger *blog.AuditLogger) {
+	for {
+		memoryStats := runtime.MemStats{}
+		runtime.ReadMemStats(&memoryStats)
+
+		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+		}
+
+		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.MemAllocd", profileName), int64(memoryStats.Alloc), 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+		} 
+		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.MemLookups", profileName), int64(memoryStats.Lookups), 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+		}
+		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.MemMallocs", profileName), int64(memoryStats.Mallocs), 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+		}
+		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.MemFrees", profileName), int64(memoryStats.Frees), 1.0); err != nil {
+			logger.Warning(fmt.Sprintf("Couldn't send stats to Statsd server: %s", err))
+		}
+
+		time.Sleep(time.Second)
+	}
 }

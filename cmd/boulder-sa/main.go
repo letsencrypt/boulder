@@ -6,6 +6,7 @@
 package main
 
 import (
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	// Load both drivers to allow configuring either
@@ -26,6 +27,12 @@ func main() {
 
 		sai, err := sa.NewSQLStorageAuthority(auditlogger, c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Failed to create SA impl")
+		
+		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
+		cmd.FailOnError(err, "Couldn't connect to statsd")
+
+		go cmd.ProfileCmd("SA", stats, auditlogger)
+
 
 		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
