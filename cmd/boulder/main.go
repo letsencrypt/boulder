@@ -29,29 +29,29 @@ type timedHandler struct {
 	stats statsd.Statter
 }
 
+var openConnections int64 = 0
+
 func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cStart := time.Now()
-		// FIX: this somehow goes negative sometimes?
-		stats.Inc("HttpConnectionsOpen", 1, 1.0)
+		openConnections += 1
+		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
 
 		handler.ServeHTTP(w, r)
 
-		stats.Dec("HttpConnectionsOpen", 1, 1.0)
-		// incr success / failure counters
+		openConnections -= 1
+		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
+
 		// (FIX: this doesn't seem to really work at catching errors...)
-		success := true
+		state := "Success"
 		for _, h := range w.Header()["Content-Type"] {
 			if h == "application/problem+json" {
-				success = false
+				state = "Error"
 				break
 			}
 		}
-		if success {
-			stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.Success", r.URL), time.Since(cStart), 1.0)
-		} else {
-			stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.Error", r.URL), time.Since(cStart), 1.0)
-		}
+		// set resp timing key based on success / failure
+		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.%s", r.URL, state), time.Since(cStart), 1.0)
 	})
 }
 

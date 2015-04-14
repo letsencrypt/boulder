@@ -173,29 +173,36 @@ func ProfileCmd(profileName string, stats statsd.Statter, logger *blog.AuditLogg
 		runtime.ReadMemStats(&memoryStats)
 
 		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server, stopping ProfileCmd: %s", err))
+			break
 		}
 
 		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server, stopping ProfileCmd: %s", err))
+			break
 		} 
 		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server, stopping ProfileCmd: %s", err))
+			break
 		}
 		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server, stopping ProfileCmd: %s", err))
+			break
 		}
 		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server, stopping ProfileCmd: %s", err))
+			break
 		}
 
 		gcPauseAvg := int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))
 
 		if err := stats.Timing(fmt.Sprintf("Gostats.%s.Gc.PauseAvg", profileName), gcPauseAvg, 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server, stopping ProfileCmd: %s", err))
+			break
 		}
 		if err := stats.Gauge(fmt.Sprintf("Gostats.%s.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0); err != nil {
-			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
+			logger.Warning(fmt.Sprintf("Could not send stats to Statsd server, stopping ProfileCmd: %s", err))
+			break
 		}
 
 		time.Sleep(time.Second)
