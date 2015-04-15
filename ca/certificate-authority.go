@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -17,16 +18,21 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	cfcsr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/csr"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/remote"
 )
 
+// CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
+// OCSP responses.
 type CertificateAuthorityImpl struct {
 	profile string
 	Signer  signer.Signer
 	SA      core.StorageAuthority
 	PA      core.PolicyAuthority
+	DB      core.CertificateAuthorityDatabase
 	log     *blog.AuditLogger
+	Prefix  int // Prepended to the serial number
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -35,7 +41,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, authKey string, profile string) (ca *CertificateAuthorityImpl, err error) {
+func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, authKey string, profile string, serialPrefix int, cadb core.CertificateAuthorityDatabase) (ca *CertificateAuthorityImpl, err error) {
 	logger.Notice("Certificate Authority Starting")
 
 	// Create the remote signer
@@ -43,6 +49,7 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, auth
 		Expiry:       time.Hour, // BOGUS: Required by CFSSL, but not used
 		RemoteName:   hostport,  // BOGUS: Only used as a flag by CFSSL
 		RemoteServer: hostport,
+		// UseSerialSeq: true,   // TODO: Awaiting CFSSL upgrade (Issue #83)
 	}
 
 	localProfile.Provider, err = auth.New(authKey, nil)
@@ -57,10 +64,19 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, auth
 
 	pa := policy.NewPolicyAuthorityImpl(logger)
 
-	ca = &CertificateAuthorityImpl{Signer: signer, profile: profile, PA: pa, log: logger}
+	ca = &CertificateAuthorityImpl{
+		Signer:  signer,
+		profile: profile,
+		PA:      pa,
+		DB:      cadb,
+		Prefix:  serialPrefix,
+		log:     logger,
+	}
 	return
 }
 
+// IssueCertificate attempts to convert a CSR into a signed Certificate, while
+// enforcing all policies.
 func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (cert core.Certificate, err error) {
 	// XXX Take in authorizations and verify that union covers CSR?
 	// Pull hostnames from CSR
@@ -101,6 +117,15 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Bytes: csr.Raw,
 	}))
 
+	// Get the next serial number
+	ca.DB.Begin()
+	serialDec, err := ca.DB.IncrementAndGetSerial()
+	if err != nil {
+		return
+	}
+	serialHex := fmt.Sprintf("%01X%014X", ca.Prefix, serialDec)
+	_ = serialHex // TODO: Remove when used below
+
 	// Send the cert off for signing
 	req := signer.SignRequest{
 		Request: csrPEM,
@@ -108,16 +133,29 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Hosts:   hostNames,
 		Subject: &signer.Subject{
 			CN: commonName,
+			Names: []cfcsr.Name{
+				{
+					C:  "",
+					ST: "",
+					L:  "",
+					O:  "",
+					OU: "",
+				},
+			},
 		},
+		// SerialSeq: serialHex, // TODO: Awaiting CFSSL upgrade (Issue #83)
 	}
+
 	certPEM, err := ca.Signer.Sign(req)
 	if err != nil {
+		ca.DB.Rollback()
 		return
 	}
 
 	if len(certPEM) == 0 {
 		err = errors.New("No certificate returned by server")
 		ca.log.WarningErr(err)
+		ca.DB.Rollback()
 		return
 	}
 
@@ -125,6 +163,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = errors.New("Invalid certificate value returned")
 		ca.log.WarningErr(err)
+		ca.DB.Rollback()
 		return
 	}
 	certDER := block.Bytes
@@ -132,6 +171,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// Store the cert with the certificate authority, if provided
 	certID, err := ca.SA.AddCertificate(certDER)
 	if err != nil {
+		ca.DB.Rollback()
 		return
 	}
 
@@ -140,5 +180,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		DER:    certDER,
 		Status: core.StatusValid,
 	}
+
+	ca.DB.Commit()
 	return
 }

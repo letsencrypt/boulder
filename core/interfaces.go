@@ -103,10 +103,19 @@ type StorageAdder interface {
 	AddCertificate([]byte) (string, error)
 }
 
-// The StorageAuthority interface represnts a simple key/value
+// StorageAuthority interface represents a simple key/value
 // store.  It is divided into StorageGetter and StorageUpdater
 // interfaces for privilege separation.
 type StorageAuthority interface {
 	StorageGetter
 	StorageAdder
+}
+
+// CertificateAuthorityDatabase represents an atomic sequence source
+type CertificateAuthorityDatabase interface {
+	Begin() error
+	Commit() error
+	Rollback() error
+
+	IncrementAndGetSerial() (int, error)
 }

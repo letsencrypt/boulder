@@ -60,10 +60,13 @@ type Config struct {
 	}
 
 	CA struct {
-		Server   string
-		AuthKey  string
-		Profile  string
-		TestMode bool
+		Server       string
+		AuthKey      string
+		Profile      string
+		TestMode     bool
+		DBDriver     string
+		DBName       string
+		SerialPrefix int
 	}
 
 	SA struct {
@@ -83,16 +86,19 @@ type Config struct {
 	}
 }
 
+// QueuePair describes a client-server pair of queue names
 type QueuePair struct {
 	Client string
 	Server string
 }
 
+// AppShell contains CLI Metadata
 type AppShell struct {
 	Action func(Config)
 	app    *cli.App
 }
 
+// NewAppShell creates a basic AppShell object containing CLI metadata
 func NewAppShell(name string) (shell *AppShell) {
 	app := cli.NewApp()
 
@@ -110,6 +116,8 @@ func NewAppShell(name string) (shell *AppShell) {
 	return &AppShell{app: app}
 }
 
+// Run begins the application context, reading config and passing
+// control to the default commandline action.
 func (as *AppShell) Run() {
 	as.app.Action = func(c *cli.Context) {
 		configFileName := c.GlobalString("config")
@@ -127,7 +135,7 @@ func (as *AppShell) Run() {
 	FailOnError(err, "Failed to run application")
 }
 
-// Exit and print error message if we encountered a problem
+// FailOnError exits and prints an error message if we encountered a problem
 func FailOnError(err error, msg string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
@@ -135,7 +143,7 @@ func FailOnError(err error, msg string) {
 	}
 }
 
-// This is the same as amqpConnect in boulder, but with even
+// AmqpChannel is the same as amqpConnect in boulder, but with even
 // more aggressive error dropping
 func AmqpChannel(url string) (ch *amqp.Channel) {
 	conn, err := amqp.Dial(url)
@@ -146,7 +154,7 @@ func AmqpChannel(url string) (ch *amqp.Channel) {
 	return
 }
 
-// Start the server and wait around
+// RunForever starts the server and wait around
 func RunForever(server *rpc.AmqpRPCServer) {
 	forever := make(chan bool)
 	server.Start()
@@ -154,7 +162,7 @@ func RunForever(server *rpc.AmqpRPCServer) {
 	<-forever
 }
 
-// Start the server and run until we get something on closeChan
+// RunUntilSignaled starts the server and run until we get something on closeChan
 func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, closeChan chan *amqp.Error) {
 	server.Start()
 	fmt.Fprintf(os.Stderr, "Server running...\n")
