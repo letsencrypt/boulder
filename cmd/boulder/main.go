@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
@@ -22,12 +24,49 @@ import (
 	"github.com/letsencrypt/boulder/wfe"
 )
 
+type timedHandler struct {
+	f     func(w http.ResponseWriter, r *http.Request)
+	stats statsd.Statter
+}
+
+var openConnections int64 = 0
+
+func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cStart := time.Now()
+		openConnections += 1
+		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
+
+		handler.ServeHTTP(w, r)
+
+		openConnections -= 1
+		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
+
+		// (FIX: this doesn't seem to really work at catching errors...)
+		state := "Success"
+		for _, h := range w.Header()["Content-Type"] {
+			if h == "application/problem+json" {
+				state = "Error"
+				break
+			}
+		}
+		// set resp timing key based on success / failure
+		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.%s", r.URL, state), time.Since(cStart), 1.0)
+	})
+}
+
 func main() {
 	app := cmd.NewAppShell("boulder")
 	app.Action = func(c cmd.Config) {
+		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
+		cmd.FailOnError(err, "Couldn't connect to statsd")
+
 		// Set up logging
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+
+		// Run StatsD profiling
+		go cmd.ProfileCmd("Monolith", stats)
 
 		// Create the components
 		wfe := wfe.NewWebFrontEndImpl(auditlogger)
@@ -43,6 +82,7 @@ func main() {
 		// Wire them up
 		wfe.RA = &ra
 		wfe.SA = sa
+		wfe.Stats = stats
 		ra.CA = ca
 		ra.SA = sa
 		ra.VA = &va
@@ -81,7 +121,7 @@ func main() {
 		ra.AuthzBase = wfe.AuthzBase
 
 		fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.WFE.ListenAddress)
-		err = http.ListenAndServe(c.WFE.ListenAddress, nil)
+		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

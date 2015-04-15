@@ -8,6 +8,7 @@ package policy
 import (
 	"testing"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -88,8 +89,9 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zombo-.com",
 	}
 
+	stats, _ := statsd.NewNoopClient(nil)
 	// Audit logger
-	audit, _ := blog.Dial("", "", "tag")
+	audit, _ := blog.Dial("", "", "tag", stats)
 
 	pa := NewPolicyAuthorityImpl(audit)
 
@@ -134,8 +136,9 @@ func TestWillingToIssue(t *testing.T) {
 }
 
 func TestChallengesFor(t *testing.T) {
+	stats, _ := statsd.NewNoopClient(nil)
 	// Audit logger
-	audit, _ := blog.Dial("", "", "tag")
+	audit, _ := blog.Dial("", "", "tag", stats)
 
 	pa := NewPolicyAuthorityImpl(audit)
 

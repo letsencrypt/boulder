@@ -26,8 +26,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	// A dummy reference to the cfssl command line so it gets picked up by
 	// `godep save -r ./...`
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl"
@@ -67,6 +69,11 @@ type Config struct {
 	SA struct {
 		DBDriver string
 		DBName   string
+	}
+
+	Statsd struct {
+		Server string
+		Prefix string
 	}
 
 	Syslog struct {
@@ -158,4 +165,25 @@ func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, close
 	logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
 	time.Sleep(time.Second * 5)
 	logger.Warning("Reconnecting to AMQP...")
+}
+
+func ProfileCmd(profileName string, stats statsd.Statter) {
+	for {
+		var memoryStats runtime.MemStats
+		runtime.ReadMemStats(&memoryStats)
+
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
+
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0)
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0)
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0)
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0)
+
+		gcPauseAvg := int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))
+
+		stats.Timing(fmt.Sprintf("Gostats.%s.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
+
+		time.Sleep(time.Second)
+	}
 }

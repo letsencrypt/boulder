@@ -6,6 +6,11 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
+			"Comment": "v2.0.0-21-gea76b31",
+			"Rev": "ea76b313ca75d0a41a3fd02af88326a9ce225b60"
+		},
+		{
 			"ImportPath": "github.com/cloudflare/cfssl/api",
 			"Rev": "1415724f395ffd7aa29176066765cabc68193453"
 		},

@@ -6,6 +6,7 @@
 package main
 
 import (
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/ca"
@@ -17,12 +18,18 @@ import (
 func main() {
 	app := cmd.NewAppShell("boulder-ca")
 	app.Action = func(c cmd.Config) {
+		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
+		cmd.FailOnError(err, "Couldn't connect to statsd")
+
 		// Set up logging
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
 		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
 		cmd.FailOnError(err, "Failed to create CA impl")
+
+		go cmd.ProfileCmd("CA", stats)
+
 
 		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
