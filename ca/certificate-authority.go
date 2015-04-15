@@ -131,10 +131,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Hosts:   hostNames,
 		Subject: &signer.Subject{
 			CN: commonName,
-			// XXX add whitelist:
-			//Whitelist: {
-			//	Whitelist.C,
-			//},
+			// Empty whitelist means don't copy any subject fields from CSR.
+			Whitelist: &signer.Whitelist{},
 		},
 		SerialSeq: serialHex,
 	}
