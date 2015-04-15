@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/ca"
@@ -34,6 +35,30 @@ func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization)
 	dva.Called = true
 	dva.Argument = authz
 	return
+}
+
+type MockCADatabase struct {
+	// empty
+}
+
+func NewMockCertificateAuthorityDatabase() (core.CertificateAuthorityDatabase, error) {
+	return &MockCADatabase{}, nil
+}
+
+func (cadb *MockCADatabase) Begin() error {
+	return nil
+}
+
+func (cadb *MockCADatabase) Commit() error {
+	return nil
+}
+
+func (cadb *MockCADatabase) Rollback() error {
+	return nil
+}
+
+func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
+	return 1, nil
 }
 
 var (
@@ -69,8 +94,9 @@ var (
 )
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
+	stats, _ := statsd.NewNoopClient(nil)
 	// Audit logger
-	audit, _ := blog.Dial("", "", "tag")
+	audit, _ := blog.Dial("", "", "tag", stats)
 
 	err := json.Unmarshal(AccountKeyJSON, &AccountKey)
 	test.AssertNotError(t, err, "Failed to unmarshall JWK")
@@ -88,7 +114,8 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, nil)
 	pa := policy.NewPolicyAuthorityImpl(audit)
-	ca := ca.CertificateAuthorityImpl{Signer: signer, SA: sa, PA: pa}
+	cadb := &MockCADatabase{}
+	ca := ca.CertificateAuthorityImpl{Signer: signer, SA: sa, PA: pa, DB: cadb}
 	csrDER, _ := hex.DecodeString(CSR_HEX)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 

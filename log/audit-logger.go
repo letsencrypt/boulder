@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"log/syslog"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 )
 
 // The constant used to identify audit-specific messages
@@ -21,26 +23,27 @@ const auditTag = "[AUDIT]"
 // to send a message as an audit event.
 type AuditLogger struct {
 	*syslog.Writer
+	Stats statsd.Statter
 }
 
 // Dial establishes a connection to the log daemon by passing through
 // the parameters to the syslog.Dial method.
 // See http://golang.org/pkg/log/syslog/#Dial
-func Dial(network, raddr string, tag string) (*AuditLogger, error) {
+func Dial(network, raddr string, tag string, stats statsd.Statter) (*AuditLogger, error) {
 	syslogger, err := syslog.Dial(network, raddr, syslog.LOG_INFO|syslog.LOG_LOCAL0, tag)
 	if err != nil {
 		return nil, err
 	}
-	return NewAuditLogger(syslogger)
+	return NewAuditLogger(syslogger, stats)
 }
 
 // NewAuditLogger constructs an Audit Logger that decorates a normal
 // System Logger. All methods in log/syslog continue to work.
-func NewAuditLogger(log *syslog.Writer) (*AuditLogger, error) {
+func NewAuditLogger(log *syslog.Writer, stats statsd.Statter) (*AuditLogger, error) {
 	if log == nil {
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
-	return &AuditLogger{log}, nil
+	return &AuditLogger{log, stats}, nil
 }
 
 // Audit sends a NOTICE-severity message that is prefixed with the
@@ -48,6 +51,9 @@ func NewAuditLogger(log *syslog.Writer) (*AuditLogger, error) {
 func (log *AuditLogger) Audit(msg string) (err error) {
 	fmt.Println(msg)
 	err = log.Notice(fmt.Sprintf("%s %s", auditTag, msg))
+
+	log.Stats.Inc("Logging.Audit", 1, 1.0)
+
 	return
 }
 
@@ -55,6 +61,9 @@ func (log *AuditLogger) Audit(msg string) (err error) {
 func (log *AuditLogger) AuditErr(msg error) (err error) {
 	fmt.Println(msg)
 	err = log.Err(fmt.Sprintf("%s %s", auditTag, msg))
+
+	log.Stats.Inc("Logging.Audit", 1, 1.0)
+
 	return
 }
 
@@ -62,40 +71,48 @@ func (log *AuditLogger) AuditErr(msg error) (err error) {
 func (log *AuditLogger) WarningErr(msg error) (err error) {
 	fmt.Println(msg)
 	err = log.Warning(fmt.Sprintf("%s", msg))
+
 	return
 }
 
 func (log *AuditLogger) Alert(msg string) (err error) {
 	fmt.Println(msg)
+	log.Stats.Inc("Logging.Alert", 1, 1.0)
 	return log.Writer.Alert(msg)
 }
 
 func (log *AuditLogger) Crit(msg string) (err error) {
 	fmt.Println(msg)
+	log.Stats.Inc("Logging.Crit", 1, 1.0)
 	return log.Writer.Crit(msg)
 }
 
 func (log *AuditLogger) Debug(msg string) (err error) {
 	fmt.Println(msg)
+	log.Stats.Inc("Logging.Debug", 1, 1.0)
 	return log.Writer.Debug(msg)
 }
 
 func (log *AuditLogger) Emerg(msg string) (err error) {
 	fmt.Println(msg)
+	log.Stats.Inc("Logging.Emerg", 1, 1.0)
 	return log.Writer.Emerg(msg)
 }
 
 func (log *AuditLogger) Err(msg string) (err error) {
 	fmt.Println(msg)
+	log.Stats.Inc("Logging.Err", 1, 1.0)
 	return log.Writer.Err(msg)
 }
 
 func (log *AuditLogger) Info(msg string) (err error) {
 	fmt.Println(msg)
+	log.Stats.Inc("Logging.Info", 1, 1.0)
 	return log.Writer.Info(msg)
 }
 
 func (log *AuditLogger) Warning(msg string) (err error) {
 	fmt.Println(msg)
+	log.Stats.Inc("Logging.Warning", 1, 1.0)
 	return log.Writer.Warning(msg)
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"time"
 
@@ -31,17 +32,54 @@ func setupWFE(c cmd.Config, auditlogger *blog.AuditLogger) (rpc.RegistrationAuth
 	return rac, sac, closeChan
 }
 
+type timedHandler struct {
+	f     func(w http.ResponseWriter, r *http.Request)
+	stats statsd.Statter
+}
+
+var openConnections int64 = 0
+
+func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cStart := time.Now()
+		openConnections += 1
+		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
+
+		handler.ServeHTTP(w, r)
+
+		openConnections -= 1
+		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
+
+		// (FIX: this doesn't seem to really work at catching errors...)
+		state := "Success"
+		for _, h := range w.Header()["Content-Type"] {
+			if h == "application/problem+json" {
+				state = "Error"
+				break
+			}
+		}
+		// set resp timing key based on success / failure
+		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.%s", r.URL, state), time.Since(cStart), 1.0)
+	})
+}
+
 func main() {
 	app := cmd.NewAppShell("boulder-wfe")
 	app.Action = func(c cmd.Config) {
 		// Set up logging
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag)
+		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
+		cmd.FailOnError(err, "Couldn't connect to statsd")
+
+		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
 		wfe := wfe.NewWebFrontEndImpl(auditlogger)
 		rac, sac, closeChan := setupWFE(c, auditlogger)
 		wfe.RA = &rac
 		wfe.SA = &sac
+		wfe.Stats = stats
+
+		go cmd.ProfileCmd("WFE", stats)
 
 		go func() {
 			// sit around and reconnect to AMQP if the channel
@@ -86,7 +124,8 @@ func main() {
 		})
 		wfe.SubscriberAgreementURL = c.WFE.BaseURL + termsPath
 
-		err = http.ListenAndServe(c.WFE.ListenAddress, nil)
+		// Add HandlerTimer to output resp time + success/failure stats to statsd
+		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

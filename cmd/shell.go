@@ -26,8 +26,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	// A dummy reference to the cfssl command line so it gets picked up by
 	// `godep save -r ./...`
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl"
@@ -58,15 +60,23 @@ type Config struct {
 	}
 
 	CA struct {
-		Server   string
-		AuthKey  string
-		Profile  string
-		TestMode bool
+		Server       string
+		AuthKey      string
+		Profile      string
+		TestMode     bool
+		DBDriver     string
+		DBName       string
+		SerialPrefix int
 	}
 
 	SA struct {
 		DBDriver string
 		DBName   string
+	}
+
+	Statsd struct {
+		Server string
+		Prefix string
 	}
 
 	Syslog struct {
@@ -76,16 +86,19 @@ type Config struct {
 	}
 }
 
+// QueuePair describes a client-server pair of queue names
 type QueuePair struct {
 	Client string
 	Server string
 }
 
+// AppShell contains CLI Metadata
 type AppShell struct {
 	Action func(Config)
 	app    *cli.App
 }
 
+// NewAppShell creates a basic AppShell object containing CLI metadata
 func NewAppShell(name string) (shell *AppShell) {
 	app := cli.NewApp()
 
@@ -103,6 +116,8 @@ func NewAppShell(name string) (shell *AppShell) {
 	return &AppShell{app: app}
 }
 
+// Run begins the application context, reading config and passing
+// control to the default commandline action.
 func (as *AppShell) Run() {
 	as.app.Action = func(c *cli.Context) {
 		configFileName := c.GlobalString("config")
@@ -120,7 +135,7 @@ func (as *AppShell) Run() {
 	FailOnError(err, "Failed to run application")
 }
 
-// Exit and print error message if we encountered a problem
+// FailOnError exits and prints an error message if we encountered a problem
 func FailOnError(err error, msg string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
@@ -128,7 +143,7 @@ func FailOnError(err error, msg string) {
 	}
 }
 
-// This is the same as amqpConnect in boulder, but with even
+// AmqpChannel is the same as amqpConnect in boulder, but with even
 // more aggressive error dropping
 func AmqpChannel(url string) (ch *amqp.Channel) {
 	conn, err := amqp.Dial(url)
@@ -139,7 +154,7 @@ func AmqpChannel(url string) (ch *amqp.Channel) {
 	return
 }
 
-// Start the server and wait around
+// RunForever starts the server and wait around
 func RunForever(server *rpc.AmqpRPCServer) {
 	forever := make(chan bool)
 	server.Start()
@@ -147,7 +162,7 @@ func RunForever(server *rpc.AmqpRPCServer) {
 	<-forever
 }
 
-// Start the server and run until we get something on closeChan
+// RunUntilSignaled starts the server and run until we get something on closeChan
 func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, closeChan chan *amqp.Error) {
 	server.Start()
 	fmt.Fprintf(os.Stderr, "Server running...\n")
@@ -158,4 +173,25 @@ func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, close
 	logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
 	time.Sleep(time.Second * 5)
 	logger.Warning("Reconnecting to AMQP...")
+}
+
+func ProfileCmd(profileName string, stats statsd.Statter) {
+	for {
+		var memoryStats runtime.MemStats
+		runtime.ReadMemStats(&memoryStats)
+
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
+
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0)
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0)
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0)
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0)
+
+		gcPauseAvg := int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))
+
+		stats.Timing(fmt.Sprintf("Gostats.%s.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
+		stats.Gauge(fmt.Sprintf("Gostats.%s.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
+
+		time.Sleep(time.Second)
+	}
 }

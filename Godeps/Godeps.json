@@ -6,8 +6,9 @@
 	],
 	"Deps": [
 		{
-			"ImportPath": "github.com/cloudflare/cf-tls/tls",
-			"Rev": "9b22c194563b88ed8040c1e82d41aa2801826007"
+			"ImportPath": "github.com/cactus/go-statsd-client/statsd",
+			"Comment": "v2.0.0-21-gea76b31",
+			"Rev": "ea76b313ca75d0a41a3fd02af88326a9ce225b60"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/api",
@@ -72,6 +73,10 @@
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
 			"Rev": "153c61a808bfff0429ac04469ced1f2c8718dd38"
+		},
+		{
+			"ImportPath": "github.com/cloudflare/cf-tls/tls",
+			"Rev": "9b22c194563b88ed8040c1e82d41aa2801826007"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ubiquity",
