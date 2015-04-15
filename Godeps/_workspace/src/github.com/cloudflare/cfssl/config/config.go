@@ -18,6 +18,11 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
 )
 
+type Whitelist struct {
+	Subject, PublicKeyAlgorithm, PublicKey, SignatureAlgorithm bool
+	DNSNames, IPAddresses bool
+}
+
 // A SigningProfile stores information that the CA needs to store
 // signature policy.
 type SigningProfile struct {
@@ -41,6 +46,7 @@ type SigningProfile struct {
 	Provider     auth.Provider
 	RemoteServer string
 	UseSerialSeq bool
+	Whitelist    *Whitelist
 }
 
 func parseObjectIdentifier(oidString string) (oid asn1.ObjectIdentifier, err error) {

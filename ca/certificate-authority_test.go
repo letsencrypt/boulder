@@ -287,6 +287,11 @@ func TestIssueCertificate(t *testing.T) {
 				Expiry:   8760 * time.Hour,
 				Backdate: time.Hour,
 				Provider: authHandler,
+				Whitelist: &config.Whitelist{
+					PublicKeyAlgorithm: true,
+					PublicKey: true,
+					SignatureAlgorithm: true,
+				},
 			},
 		},
 		Default: &config.SigningProfile{
