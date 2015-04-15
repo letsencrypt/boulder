@@ -79,7 +79,7 @@ func main() {
 		wfe.SA = &sac
 		wfe.Stats = stats
 
-		go cmd.ProfileCmd("WFE", stats, auditlogger)
+		go cmd.ProfileCmd("WFE", stats)
 
 		go func() {
 			// sit around and reconnect to AMQP if the channel

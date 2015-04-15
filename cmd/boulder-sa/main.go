@@ -31,7 +31,7 @@ func main() {
 		sai, err := sa.NewSQLStorageAuthority(auditlogger, c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Failed to create SA impl")
 		
-		go cmd.ProfileCmd("SA", stats, auditlogger)
+		go cmd.ProfileCmd("SA", stats)
 
 
 		for {

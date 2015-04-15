@@ -65,6 +65,9 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		// Run StatsD profiling
+		go cmd.ProfileCmd("Monolith", stats)
+
 		// Create the components
 		wfe := wfe.NewWebFrontEndImpl(auditlogger)
 		sa, err := sa.NewSQLStorageAuthority(auditlogger, c.SA.DBDriver, c.SA.DBName)

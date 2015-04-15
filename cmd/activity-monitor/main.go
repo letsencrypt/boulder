@@ -38,7 +38,7 @@ const (
 
 var openCalls int64 = 0
 
-func timeDelivery(d amqp.Delivery, stats statsd.Statter, logger *blog.AuditLogger, deliveryTimings map[string]time.Time) {
+func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[string]time.Time) {
 	// If d is a call add to deliveryTimings and increment openCalls, if it is a 
 	// response then get time.Since original call from deliveryTiming, send timing metric, and
 	// decrement openCalls, in both cases send the gauges RpcCallsOpen and RpcBodySize
@@ -52,18 +52,12 @@ func timeDelivery(d amqp.Delivery, stats statsd.Statter, logger *blog.AuditLogge
 			respTime := time.Since(rpcSent)
 			delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
 
-			if err := stats.TimingDuration(fmt.Sprintf("RpcCallTime.%s", d.Type), respTime, 1.0); err != nil {
-				logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
-			}
+			stats.TimingDuration(fmt.Sprintf("RpcCallTime.%s", d.Type), respTime, 1.0)
 		}
 	}
 
-	if err := stats.Gauge("RpcCallsOpen", openCalls, 1.0); err != nil {
-		logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
-	}
-	if err := stats.Gauge("RpcBodySize", int64(len(d.Body)), 1.0); err != nil {
-		logger.Warning(fmt.Sprintf("Could not send stats to Statsd server: %s", err))
-	}
+	stats.Gauge("RpcCallsOpen", openCalls, 1.0)
+	stats.Gauge("RpcBodySize", int64(len(d.Body)), 1.0)
 }
 
 func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.Statter) {
@@ -124,7 +118,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 
 	// Run forever.
 	for d := range deliveries {
-		go timeDelivery(d, stats, logger, deliveryTimings)
+		go timeDelivery(d, stats, deliveryTimings)
 
 		// Pass each message to the Analysis Engine
 		err = ae.ProcessMessage(d)
@@ -152,7 +146,7 @@ func main() {
 
 		ch := cmd.AmqpChannel(c.AMQP.Server)
 
-		go cmd.ProfileCmd("AM", stats, auditlogger)
+		go cmd.ProfileCmd("AM", stats)
 
 		startMonitor(ch, auditlogger, stats)
 	}

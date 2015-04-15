@@ -27,7 +27,7 @@ func main() {
 
 		rai := ra.NewRegistrationAuthorityImpl(auditlogger)
 
-		go cmd.ProfileCmd("RA", stats, auditlogger)
+		go cmd.ProfileCmd("RA", stats)
 
 
 		for {

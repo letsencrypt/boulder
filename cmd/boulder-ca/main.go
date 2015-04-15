@@ -28,7 +28,7 @@ func main() {
 		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, c.CA.Server, c.CA.AuthKey, c.CA.Profile)
 		cmd.FailOnError(err, "Failed to create CA impl")
 
-		go cmd.ProfileCmd("CA", stats, auditlogger)
+		go cmd.ProfileCmd("CA", stats)
 
 
 		for {
