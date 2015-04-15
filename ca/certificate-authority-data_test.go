@@ -8,6 +8,7 @@ package ca
 import (
 	"testing"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
@@ -19,7 +20,8 @@ const sqliteDriver = "sqlite3"
 const sqliteName = ":memory:"
 
 func TestConstruction(t *testing.T) {
-	log, err := blog.Dial("", "", "tag")
+	stats, _ := statsd.NewNoopClient(nil)
+	log, err := blog.Dial("", "", "tag", stats)
 	test.AssertNotError(t, err, "Could not construct audit logger")
 
 	// Successful case
@@ -40,7 +42,8 @@ func TestConstruction(t *testing.T) {
 }
 
 func TestBeginCommit(t *testing.T) {
-	log, err := blog.Dial("", "", "tag")
+	stats, _ := statsd.NewNoopClient(nil)
+	log, err := blog.Dial("", "", "tag", stats)
 	test.AssertNotError(t, err, "Could not construct audit logger")
 
 	cadb, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
@@ -61,7 +64,8 @@ func TestBeginCommit(t *testing.T) {
 }
 
 func TestGetSetSequenceOutsideTx(t *testing.T) {
-	log, err := blog.Dial("", "", "tag")
+	stats, _ := statsd.NewNoopClient(nil)
+	log, err := blog.Dial("", "", "tag", stats)
 	test.AssertNotError(t, err, "Could not construct audit logger")
 
 	cadb, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
@@ -72,7 +76,8 @@ func TestGetSetSequenceOutsideTx(t *testing.T) {
 }
 
 func TestGetSetSequenceNumber(t *testing.T) {
-	log, err := blog.Dial("", "", "tag")
+	stats, _ := statsd.NewNoopClient(nil)
+	log, err := blog.Dial("", "", "tag", stats)
 	test.AssertNotError(t, err, "Could not construct audit logger")
 
 	cadb, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
