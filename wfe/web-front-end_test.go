@@ -6,7 +6,6 @@
 package wfe
 
 import (
-	"log/syslog"
 	"testing"
 	"io/ioutil"
 	"io"
@@ -29,11 +28,11 @@ func makeBody(s string) (io.ReadCloser) {
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
 	stats, _ := statsd.NewNoopClient(nil)
-	syslogger, _ := syslog.New(syslog.LOG_DEBUG, "test")
-	log := blog.AuditLogger{syslogger, stats}
+	log, err := blog.Dial("", "", "tag", stats)
+	test.AssertNotError(t, err, "Could not construct audit logger")
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl(&log)
-	wfe := NewWebFrontEndImpl(&log)
+	ra := ra.NewRegistrationAuthorityImpl(log)
+	wfe := NewWebFrontEndImpl(log)
 	wfe.RA = &ra
 	responseWriter := httptest.NewRecorder()
 
