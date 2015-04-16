@@ -399,7 +399,8 @@ func LoadConfig(config []byte) (*Config, error) {
 	var cfg = &Config{}
 	err := json.Unmarshal(config, &cfg)
 	if err != nil {
-		return nil, cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy, errors.New("failed to unmarshal configuration"))
+		return nil, cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy,
+			errors.New("failed to unmarshal configuration: " + err.Error()))
 	}
 
 	if cfg.Signing.Default == nil {
