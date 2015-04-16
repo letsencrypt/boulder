@@ -30,11 +30,11 @@
         ],
         "expiry": "8760h",
         "auth_key": "ee",
-        "Whitelist": {
+        "whitelist": {
           "PublicKeyAlgorithm": true,
           "PublicKey": true,
           "SignatureAlgorithm": true
-        },
+        }
       },
       "ocsp": {
         "usages": [
