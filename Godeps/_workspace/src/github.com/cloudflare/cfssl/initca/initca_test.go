@@ -93,7 +93,7 @@ func TestInitCA(t *testing.T) {
 				Size: param.keyLen,
 			},
 		}
-		certBytes, keyBytes, err := New(req)
+		certBytes, _, keyBytes, err := New(req)
 		if err != nil {
 			t.Fatal("InitCA failed:", err)
 		}
@@ -169,35 +169,6 @@ func TestInitCA(t *testing.T) {
 	}
 }
 
-func TestNoHostname(t *testing.T) {
-	req := &csr.CertificateRequest{
-		Names: []csr.Name{
-			{
-				C:  "US",
-				ST: "California",
-				L:  "San Francisco",
-				O:  "CloudFlare",
-				OU: "Systems Engineering",
-			},
-		},
-		CN: "cloudflare.com",
-		// Empty hosts
-		Hosts: []string{},
-		KeyRequest: &csr.KeyRequest{
-			Algo: "rsa",
-			Size: 2048,
-		},
-	}
-	_, _, err := New(req)
-	if err == nil {
-		t.Fatal("InitCA should failed.")
-	}
-
-	if !strings.Contains(err.Error(), `"code":5300`) {
-		t.Fatal(err)
-	}
-}
-
 func TestInvalidCryptoParams(t *testing.T) {
 	var req *csr.CertificateRequest
 	hostname := "cloudflare.com"
@@ -219,13 +190,46 @@ func TestInvalidCryptoParams(t *testing.T) {
 				Size: test.keyLen,
 			},
 		}
-		_, _, err := New(req)
+		_, _, _, err := New(req)
 		if err == nil {
 			t.Fatal("InitCA with bad params should fail:", err)
 		}
 
 		if !strings.Contains(err.Error(), `"code":2400`) {
 			t.Fatal(err)
+		}
+	}
+}
+
+type validation struct {
+	r *csr.CertificateRequest
+	v bool
+}
+
+var testValidations = []validation{
+	{&csr.CertificateRequest{}, false},
+	{&csr.CertificateRequest{
+		CN: "test CA",
+	}, true},
+	{&csr.CertificateRequest{
+		Names: []csr.Name{csr.Name{}},
+	}, false},
+	{&csr.CertificateRequest{
+		Names: []csr.Name{
+			csr.Name{O: "Example CA"},
+		},
+	}, true},
+}
+
+func TestValidations(t *testing.T) {
+	for i, tv := range testValidations {
+		err := validator(tv.r)
+		if tv.v && err != nil {
+			t.Fatalf("%v", err)
+		}
+
+		if !tv.v && err == nil {
+			t.Fatalf("%d: expected error, but no error was reported", i)
 		}
 	}
 }

@@ -97,7 +97,7 @@ func TestParseRequest(t *testing.T) {
 				OU: "Systems Engineering",
 			},
 		},
-		Hosts:      []string{"cloudflare.com", "www.cloudflare.com"},
+		Hosts:      []string{"cloudflare.com", "www.cloudflare.com", "192.168.0.1"},
 		KeyRequest: &kr,
 	}
 
@@ -304,16 +304,38 @@ func TestGenerator(t *testing.T) {
 			},
 		},
 		CN:    "cloudflare.com",
-		Hosts: []string{"cloudflare.com", "www.cloudflare.com"},
+		Hosts: []string{"cloudflare.com", "www.cloudflare.com", "192.168.0.1"},
 		KeyRequest: &KeyRequest{
 			Algo: "rsa",
 			Size: 2048,
 		},
 	}
 
-	_, _, err := g.ProcessRequest(req)
+	csrBytes, _, err := g.ProcessRequest(req)
 	if err != nil {
-		t.Fatalf("%v", err)
+		t.Fatal(err)
+	}
+
+	block, _ := pem.Decode([]byte(csrBytes))
+	if block == nil {
+		t.Fatalf("bad CSR in PEM")
+	}
+
+	if block.Type != "CERTIFICATE REQUEST" {
+		t.Fatalf("bad CSR in PEM")
+	}
+
+	csr, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(csr.DNSNames) != 2 {
+		t.Fatal("SAN parsing error")
+	}
+
+	if len(csr.IPAddresses) != 1 {
+		t.Fatal("SAN parsing error")
 	}
 
 }
@@ -369,5 +391,43 @@ func TestWeakCSR(t *testing.T) {
 	_, _, err := g.ProcessRequest(weakKey)
 	if err == nil {
 		t.Fatalf("Request should have failed.")
+	}
+}
+
+var testEmpty = []struct {
+	name Name
+	ok   bool
+}{
+	{
+		Name{},
+		true,
+	},
+	{
+		Name{C: "OK"},
+		false,
+	},
+	{
+		Name{ST: "OK"},
+		false,
+	},
+	{
+		Name{L: "OK"},
+		false,
+	},
+	{
+		Name{O: "OK"},
+		false,
+	},
+	{
+		Name{OU: "OK"},
+		false,
+	},
+}
+
+func TestIsNameEmpty(t *testing.T) {
+	for i, c := range testEmpty {
+		if IsNameEmpty(c.name) != c.ok {
+			t.Fatalf("%d: expected IsNameEmpty to return %v, but have %v", i, c.ok, !c.ok)
+		}
 	}
 }

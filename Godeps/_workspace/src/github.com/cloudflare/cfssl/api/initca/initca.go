@@ -1,3 +1,4 @@
+// Package initca implements the HTTP handler for the CA initialization command
 package initca
 
 import (
@@ -38,7 +39,7 @@ func initialCAHandler(w http.ResponseWriter, r *http.Request) error {
 		return errors.NewBadRequest(err)
 	}
 
-	key, cert, err := initca.New(req)
+	key, _, cert, err := initca.New(req)
 	if err != nil {
 		log.Warningf("failed to initialise new CA: %v", err)
 		return err
@@ -54,5 +55,5 @@ func initialCAHandler(w http.ResponseWriter, r *http.Request) error {
 // NewHandler returns a new http.Handler that handles request to
 // initialize a CA.
 func NewHandler() http.Handler {
-	return api.HTTPHandler{Handler: api.HandlerFunc(initialCAHandler), Method: "POST"}
+	return api.HTTPHandler{Handler: api.HandlerFunc(initialCAHandler), Methods: []string{"POST"}}
 }

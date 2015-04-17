@@ -1,4 +1,4 @@
-// Package csr implements certificate requests for CF-SSL.
+// Package csr implements certificate requests for CFSSL.
 package csr
 
 import (
@@ -10,6 +10,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"net"
+	"strings"
 
 	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
@@ -189,17 +191,20 @@ func ParseRequest(req *CertificateRequest) (csr, key []byte, err error) {
 	var tpl = x509.CertificateRequest{
 		Subject:            req.Name(),
 		SignatureAlgorithm: req.KeyRequest.SigAlgo(),
-		DNSNames:           req.Hosts,
 	}
+
+	for i := range req.Hosts {
+		if ip := net.ParseIP(req.Hosts[i]); ip != nil {
+			tpl.IPAddresses = append(tpl.IPAddresses, ip)
+		} else {
+			tpl.DNSNames = append(tpl.DNSNames, req.Hosts[i])
+		}
+	}
+
 	csr, err = x509.CreateCertificateRequest(rand.Reader, &tpl, priv)
 	if err != nil {
 		log.Errorf("failed to generate a CSR: %v", err)
-		// The use of CertificateError was a matter of some
-		// debate; it is the one edge case in which a new
-		// error category specifically for CSRs might be
-		// useful, but it was deemed that one edge case did
-		// not a new category justify.
-		err = cferr.Wrap(cferr.CertificateError, cferr.BadRequest, err)
+		err = cferr.Wrap(cferr.CSRError, cferr.BadRequest, err)
 		return
 	}
 	block := pem.Block{
@@ -233,4 +238,14 @@ func (g *Generator) ProcessRequest(req *CertificateRequest) (csr, key []byte, er
 		return nil, nil, err
 	}
 	return
+}
+
+// IsNameEmpty returns true if the name has no identifying information in it.
+func IsNameEmpty(n Name) bool {
+	empty := func(s string) bool { return strings.TrimSpace(s) == "" }
+
+	if empty(n.C) && empty(n.ST) && empty(n.L) && empty(n.O) && empty(n.OU) {
+		return true
+	}
+	return false
 }

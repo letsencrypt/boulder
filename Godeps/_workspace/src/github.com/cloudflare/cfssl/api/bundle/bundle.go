@@ -1,3 +1,4 @@
+// Package bundle implements the HTTP handler for the bundle command.
 package bundle
 
 import (
@@ -27,7 +28,7 @@ func NewHandler(caBundleFile, intBundleFile string) (http.Handler, error) {
 	}
 
 	log.Info("bundler API ready")
-	return api.HTTPHandler{Handler: b, Method: "POST"}, nil
+	return api.HTTPHandler{Handler: b, Methods: []string{"POST"}}, nil
 }
 
 // Handle implements an http.Handler interface for the bundle handler.
@@ -59,7 +60,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) error {
 		}
 		result = bundle
 	case "certificate":
-		bundle, err := h.bundler.BundleFromPEM([]byte(blob["certificate"]), []byte(blob["private_key"]), bf)
+		bundle, err := h.bundler.BundleFromPEMorDER([]byte(blob["certificate"]), []byte(blob["private_key"]), bf, "")
 		if err != nil {
 			log.Warning("bad PEM certifcate or private key")
 			return err

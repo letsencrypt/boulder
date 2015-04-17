@@ -1,3 +1,4 @@
+// Package sign implements the sign command.
 package sign
 
 import (
@@ -11,8 +12,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/universal"
 )
 
-var signerUsageText = // Usage text of 'cfssl sign'
-`cfssl sign -- signs a client cert with a host name by a given CA and CA key
+// Usage text of 'cfssl sign'
+var signerUsageText = `cfssl sign -- signs a client cert with a host name by a given CA and CA key
 
 Usage of sign:
         cfssl sign -ca cert -ca-key key [-config config] [-profile profile] [-hostname hostname] CSR [SUBJECT]
