@@ -287,7 +287,7 @@ func TestIssueCertificate(t *testing.T) {
 				Expiry:   8760 * time.Hour,
 				Backdate: time.Hour,
 				Provider: authHandler,
-				Whitelist: &config.Whitelist{
+				CSRWhitelist: &config.CSRWhitelist{
 					PublicKeyAlgorithm: true,
 					PublicKey: true,
 					SignatureAlgorithm: true,

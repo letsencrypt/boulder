@@ -197,25 +197,25 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 	safeTemplate := x509.Certificate{}
 	// If the profile contains no explicit whitelist, assume that all fields
 	// should be copied from the CSR.
-	if profile.Whitelist == nil {
+	if profile.CSRWhitelist == nil {
 		safeTemplate = *csrTemplate
 	} else {
-		if profile.Whitelist.Subject {
+		if profile.CSRWhitelist.Subject {
 			safeTemplate.Subject = csrTemplate.Subject
 		}
-		if profile.Whitelist.PublicKeyAlgorithm {
+		if profile.CSRWhitelist.PublicKeyAlgorithm {
 			safeTemplate.PublicKeyAlgorithm = csrTemplate.PublicKeyAlgorithm
 		}
-		if profile.Whitelist.PublicKey {
+		if profile.CSRWhitelist.PublicKey {
 			safeTemplate.PublicKey = csrTemplate.PublicKey
 		}
-		if profile.Whitelist.SignatureAlgorithm {
+		if profile.CSRWhitelist.SignatureAlgorithm {
 			safeTemplate.SignatureAlgorithm = csrTemplate.SignatureAlgorithm
 		}
-		if profile.Whitelist.DNSNames {
+		if profile.CSRWhitelist.DNSNames {
 			safeTemplate.DNSNames = csrTemplate.DNSNames
 		}
-		if profile.Whitelist.IPAddresses {
+		if profile.CSRWhitelist.IPAddresses {
 			safeTemplate.IPAddresses = csrTemplate.IPAddresses
 		}
 	}

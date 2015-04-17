@@ -30,7 +30,7 @@
         ],
         "expiry": "8760h",
         "auth_key": "ee",
-        "Whitelist": {
+        "CSRWhitelist": {
           "PublicKeyAlgorithm": true,
           "PublicKey": true,
           "SignatureAlgorithm": true
