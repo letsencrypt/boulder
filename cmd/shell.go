@@ -84,6 +84,13 @@ type Config struct {
 		Server  string
 		Tag     string
 	}
+
+	Mail struct {
+		Server   string
+		Port     string
+		Username string
+		Password string
+	}
 }
 
 // QueuePair describes a client-server pair of queue names
