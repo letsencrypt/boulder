@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
@@ -28,19 +29,42 @@ type WebFrontEndImpl struct {
 	log   *blog.AuditLogger
 
 	// URL configuration parameters
+	BaseURL   string
 	NewReg    string
+	NewRegPath    string
 	RegBase   string
+	RegPath   string
 	NewAuthz  string
+	NewAuthzPath  string
 	AuthzBase string
+	AuthzPath string
 	NewCert   string
+	NewCertPath   string
 	CertBase  string
-
-	SubscriberAgreementURL string
+	CertPath  string
+	TermsPath  string
 }
 
 func NewWebFrontEndImpl(logger *blog.AuditLogger) WebFrontEndImpl {
 	logger.Notice("Web Front End Starting")
 	return WebFrontEndImpl{log: logger}
+}
+
+func (wfe *WebFrontEndImpl) HandlePaths() {
+	wfe.NewReg = wfe.BaseURL + wfe.NewRegPath
+	wfe.RegBase = wfe.BaseURL + wfe.RegPath
+	wfe.NewAuthz = wfe.BaseURL + wfe.NewAuthzPath
+	wfe.AuthzBase = wfe.BaseURL + wfe.AuthzPath
+	wfe.NewCert = wfe.BaseURL + wfe.NewCertPath
+	wfe.CertBase = wfe.BaseURL + wfe.CertPath
+	http.HandleFunc(wfe.NewRegPath, wfe.NewRegistration)
+	http.HandleFunc(wfe.NewAuthzPath, wfe.NewAuthorization)
+	http.HandleFunc(wfe.NewCertPath, wfe.NewCertificate)
+	http.HandleFunc(wfe.RegPath, wfe.Registration)
+	http.HandleFunc(wfe.AuthzPath, wfe.Authorization)
+	http.HandleFunc(wfe.CertPath, wfe.Certificate)
+	http.HandleFunc(wfe.TermsPath, wfe.Terms)
+	fmt.Println("Handled ", wfe.TermsPath)
 }
 
 // Method implementations
@@ -147,8 +171,8 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	response.Header().Add("Location", regURL)
 	response.Header().Set("Content-Type", "application/json")
 	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
-	if len(wfe.SubscriberAgreementURL) > 0 {
-		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+	if len(wfe.TermsPath) > 0 {
+		response.Header().Add("Link", link(wfe.BaseURL + wfe.TermsPath, "terms-of-service"))
 	}
 
 	response.WriteHeader(http.StatusCreated)
@@ -241,15 +265,15 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 
-	// Make a URL for this authz
-	certURL := wfe.CertBase + string(cert.ID)
+	// Make a URL for this certificate.
+	// We use only the sequential part of the serial number, because it should
+	// uniquely identify the certificate, and this makes it easy for anybody to
+	// enumerate and mirror our certificates.
+	serial := cert.ParsedCertificate.SerialNumber
+	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, serial.Rsh(serial, 64))
 
-	// TODO The spec says this should 201 over to /cert, not reply with the
-	// certificate at this point... fix will need to land in boulder and client
-	// simultaneously.
 	// TODO The spec says a client should send an Accept: application/pkix-cert
 	// header; either explicitly insist or tolerate
-
 	response.Header().Add("Location", certURL)
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
@@ -428,19 +452,36 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 	}
 }
 
+var allHex = regexp.MustCompile("^[0-9a-f]+$")
+
+func notFound(response http.ResponseWriter) {
+	sendError(response, "Not found", http.StatusNotFound)
+}
+
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
+	path := request.URL.Path
 	switch request.Method {
 	default:
 		sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 
 	case "GET":
-		id := parseIDFromPath(request.URL.Path)
-		wfe.log.Notice(fmt.Sprintf("Requested certificate ID %s", id))
+		// Certificate paths consist of the CertBase path, plus exactly sixteen hex
+		// digits.
+		if !strings.HasPrefix(path, wfe.CertPath) {
+			notFound(response)
+			return
+		}
+		serial := path[len(wfe.CertPath):]
+		if len(serial) != 16 || !allHex.Match([]byte(serial)) {
+			notFound(response)
+			return
+		}
+		wfe.log.Notice(fmt.Sprintf("Requested certificate ID %s", serial))
 
-		cert, err := wfe.SA.GetCertificate(id)
+		cert, err := wfe.SA.GetCertificate(serial)
 		if err != nil {
-			sendError(response, "Not found", http.StatusNotFound)
+			notFound(response)
 			return
 		}
 
@@ -458,4 +499,8 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		// incr revoked cert stat
 		wfe.Stats.Inc("RevokedCertificates", 1, 1.0)
 	}
+}
+
+func (wfe *WebFrontEndImpl) Terms(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "You agree to do the right thing")
 }

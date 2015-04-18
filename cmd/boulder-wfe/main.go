@@ -97,32 +97,16 @@ func main() {
 			}
 		}()
 
-		// Go!
-		newRegPath := "/acme/new-reg"
-		regPath := "/acme/reg/"
-		newAuthzPath := "/acme/new-authz"
-		authzPath := "/acme/authz/"
-		newCertPath := "/acme/new-cert"
-		certPath := "/acme/cert/"
-		wfe.NewReg = c.WFE.BaseURL + newRegPath
-		wfe.RegBase = c.WFE.BaseURL + regPath
-		wfe.NewAuthz = c.WFE.BaseURL + newAuthzPath
-		wfe.AuthzBase = c.WFE.BaseURL + authzPath
-		wfe.NewCert = c.WFE.BaseURL + newCertPath
-		wfe.CertBase = c.WFE.BaseURL + certPath
-		http.HandleFunc(newRegPath, wfe.NewRegistration)
-		http.HandleFunc(newAuthzPath, wfe.NewAuthorization)
-		http.HandleFunc(newCertPath, wfe.NewCertificate)
-		http.HandleFunc(regPath, wfe.Registration)
-		http.HandleFunc(authzPath, wfe.Authorization)
-		http.HandleFunc(certPath, wfe.Certificate)
-
-		// Add a simple ToS
-		termsPath := "/terms"
-		http.HandleFunc(termsPath, func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprintf(w, "You agree to do the right thing")
-		})
-		wfe.SubscriberAgreementURL = c.WFE.BaseURL + termsPath
+		// Set up paths
+		wfe.BaseURL = c.WFE.BaseURL
+		wfe.NewRegPath = "/acme/new-reg"
+		wfe.RegPath = "/acme/reg/"
+		wfe.NewAuthzPath = "/acme/new-authz"
+		wfe.AuthzPath = "/acme/authz/"
+		wfe.NewCertPath = "/acme/new-cert"
+		wfe.CertPath = "/acme/cert/"
+		wfe.TermsPath = "/terms"
+		wfe.HandlePaths()
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))

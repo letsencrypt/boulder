@@ -142,7 +142,10 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Create the certificate
 	ra.log.Audit(fmt.Sprintf("Issuing certificate for %s", names))
-	cert, err = ra.CA.IssueCertificate(*csr)
+	if cert, err = ra.CA.IssueCertificate(*csr); err != nil {
+		return
+	}
+	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))
 	return
 }
 

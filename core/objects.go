@@ -207,8 +207,11 @@ type Certificate struct {
 	// authorizations and certificates within this instance.
 	ID string
 
-	// The certificate itself
+	// The encoded, signed certificate
 	DER jose.JsonBuffer
+
+	// The parsed version of DER. Useful for extracting things like serial number.
+	ParsedCertificate *x509.Certificate
 
 	// The revocation status of the certificate.
 	// * "valid" - not revoked

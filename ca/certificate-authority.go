@@ -122,7 +122,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if err != nil {
 		return
 	}
-	serialHex := fmt.Sprintf("%01X%014X", ca.Prefix, serialDec)
+	serialHex := fmt.Sprintf("%02X%014X", ca.Prefix, serialDec)
 
 	// Send the cert off for signing
 	req := signer.SignRequest{
@@ -157,18 +157,21 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 	certDER := block.Bytes
 
+	cert = core.Certificate{
+		DER:    certDER,
+		Status: core.StatusValid,
+	}
+	if err != nil {
+		return core.Certificate{}, err
+	}
+
 	// Store the cert with the certificate authority, if provided
-	certID, err := ca.SA.AddCertificate(certDER)
+	digest, err := ca.SA.AddCertificate(certDER)
 	if err != nil {
 		ca.DB.Rollback()
 		return
 	}
-
-	cert = core.Certificate{
-		ID:     certID,
-		DER:    certDER,
-		Status: core.StatusValid,
-	}
+	cert.ID = digest // TODO: Remove
 
 	ca.DB.Commit()
 	return

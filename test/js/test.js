@@ -195,6 +195,7 @@ function getTerms(resp) {
 
   if (state.termsRequired) {
     state.termsURL = links["terms-of-service"];
+    console.log(state.termsURL);
     http.get(state.termsURL, getAgreement)
   } else {
     inquirer.prompt(questions.domain, getChallenges);
@@ -416,6 +417,7 @@ function downloadCertificate(resp) {
 
     cli.spinner("Requesting certificate ... done", true);
     console.log();
+    console.log(resp.headers['location']);
     var certB64 = util.b64enc(body);
 
     state.certificate = certB64;
