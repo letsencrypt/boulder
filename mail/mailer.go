@@ -10,23 +10,23 @@ import (
 )
 
 type Mailer struct {
-	server string
-	port   string
-	auth   smtp.Auth
-	from   string
+	Server string
+	Port   string
+	Auth   smtp.Auth
+	From   string
 }
 
 func NewMailer(server, port, username, password string) Mailer {
 	auth := smtp.PlainAuth("", username, password, server)
 	return Mailer{
-		server: server,
-		port: port,
-		auth: auth,
-		from: username,
+		Server: server,
+		Port: port,
+		Auth: auth,
+		From: username,
 	}
 }
 
 func (m *Mailer) SendMail(to []string, msg string) (err error) {
-	err = smtp.SendMail(m.server+":"+m.port, m.auth, m.from, to, []byte(msg))
+	err = smtp.SendMail(m.Server+":"+m.Port, m.Auth, m.From, to, []byte(msg))
 	return
 }
