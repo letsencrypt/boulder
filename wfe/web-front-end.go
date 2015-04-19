@@ -166,6 +166,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		sendError(response,
 			fmt.Sprintf("Error creating new registration: %+v", err),
 			http.StatusInternalServerError)
+		return
 	}
 
 	regURL := wfe.RegBase + string(reg.ID)
