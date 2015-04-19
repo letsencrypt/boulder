@@ -95,13 +95,6 @@ func main() {
 
 		// Set up paths
 		wfe.BaseURL = c.WFE.BaseURL
-		wfe.NewRegPath = "/acme/new-reg"
-		wfe.RegPath = "/acme/reg/"
-		wfe.NewAuthzPath = "/acme/new-authz"
-		wfe.AuthzPath = "/acme/authz/"
-		wfe.NewCertPath = "/acme/new-cert"
-		wfe.CertPath = "/acme/cert/"
-		wfe.TermsPath = "/terms"
 		wfe.HandlePaths()
 
 		// We need to tell the RA how to make challenge URIs

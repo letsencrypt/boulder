@@ -177,8 +177,8 @@ func (ssa *SQLStorageAuthority) GetCertificate(id string) (cert []byte, err erro
 		err = errors.New("Invalid certificate serial " + id)
 	}
 	err = ssa.db.QueryRow(
-		"SELECT value FROM certificates WHERE serial > ? LIMIT 1;",
-		id).Scan(&cert)
+		"SELECT value FROM certificates WHERE serial LIKE ? LIMIT 1;",
+		id + "%").Scan(&cert)
 	return
 }
 

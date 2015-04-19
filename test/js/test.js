@@ -417,7 +417,6 @@ function downloadCertificate(resp) {
 
     cli.spinner("Requesting certificate ... done", true);
     console.log();
-    console.log(resp.headers['location']);
     var certB64 = util.b64enc(body);
 
     state.certificate = certB64;

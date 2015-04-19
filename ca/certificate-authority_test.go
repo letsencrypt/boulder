@@ -10,6 +10,7 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -352,8 +353,10 @@ func TestIssueCertificate(t *testing.T) {
 		}
 
 		// Verify that the cert got stored in the DB
-		_, err = sa.GetCertificate(certObj.ID)
-		test.AssertNotError(t, err, "Certificate not found in database")
+		shortSerial := fmt.Sprintf("%x", cert.SerialNumber)[0:16]
+		_, err = sa.GetCertificate(shortSerial)
+		test.AssertNotError(t, err,
+			fmt.Sprintf("Certificate %x not found in database", shortSerial))
 	}
 
 	// Test that the CA rejects CSRs with no names

@@ -166,12 +166,11 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Store the cert with the certificate authority, if provided
-	digest, err := ca.SA.AddCertificate(certDER)
+	_, err = ca.SA.AddCertificate(certDER)
 	if err != nil {
 		ca.DB.Rollback()
 		return
 	}
-	cert.ID = digest // TODO: Remove
 
 	ca.DB.Commit()
 	return

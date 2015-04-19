@@ -99,13 +99,6 @@ func main() {
 
 		// Set up paths
 		wfe.BaseURL = c.WFE.BaseURL
-		wfe.NewRegPath = "/acme/new-reg"
-		wfe.RegPath = "/acme/reg/"
-		wfe.NewAuthzPath = "/acme/new-authz"
-		wfe.AuthzPath = "/acme/authz/"
-		wfe.NewCertPath = "/acme/new-cert"
-		wfe.CertPath = "/acme/cert/"
-		wfe.TermsPath = "/terms"
 		wfe.HandlePaths()
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd

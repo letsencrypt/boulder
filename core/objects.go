@@ -203,10 +203,6 @@ type Authorization struct {
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
-	// An identifier for this authorization, unique across
-	// authorizations and certificates within this instance.
-	ID string
-
 	// The encoded, signed certificate
 	DER jose.JsonBuffer
 

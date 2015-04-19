@@ -47,7 +47,16 @@ type WebFrontEndImpl struct {
 
 func NewWebFrontEndImpl(logger *blog.AuditLogger) WebFrontEndImpl {
 	logger.Notice("Web Front End Starting")
-	return WebFrontEndImpl{log: logger}
+	return WebFrontEndImpl{
+		log: logger,
+		NewRegPath:   "/acme/new-reg",
+		RegPath:      "/acme/reg/",
+		NewAuthzPath: "/acme/new-authz",
+		AuthzPath:    "/acme/authz/",
+		NewCertPath:  "/acme/new-cert",
+		CertPath:     "/acme/cert/",
+		TermsPath:    "/terms",
+	}
 }
 
 func (wfe *WebFrontEndImpl) HandlePaths() {
@@ -64,7 +73,6 @@ func (wfe *WebFrontEndImpl) HandlePaths() {
 	http.HandleFunc(wfe.AuthzPath, wfe.Authorization)
 	http.HandleFunc(wfe.CertPath, wfe.Certificate)
 	http.HandleFunc(wfe.TermsPath, wfe.Terms)
-	fmt.Println("Handled ", wfe.TermsPath)
 }
 
 // Method implementations
