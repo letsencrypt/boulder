@@ -44,7 +44,6 @@ type Command struct {
 	Main func(args []string, c Config) error
 }
 
-// Parsed command name
 var cmdName string
 
 // usage is the cfssl usage heading. It will be appended with names of defined commands in cmds
@@ -128,7 +127,7 @@ func Start(cmds map[string]*Command) {
 	var err error
 	c.CFG, err = config.LoadFile(c.ConfigFile)
 	if c.ConfigFile != "" && err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load config file\n")
+		fmt.Fprintf(os.Stderr, "Failed to load config file: %v", err)
 		os.Exit(1)
 	}
 

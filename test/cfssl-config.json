@@ -29,7 +29,13 @@
           "2.23.140.1.2.1"
         ],
         "expiry": "8760h",
-        "auth_key": "ee"
+        "auth_key": "ee",
+        "CSRWhitelist": {
+          "PublicKeyAlgorithm": true,
+          "PublicKey": true,
+          "SignatureAlgorithm": true
+        },
+        "UseSerialSeq": true
       },
       "ocsp": {
         "usages": [

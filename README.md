@@ -114,7 +114,16 @@ get](https://github.com/golang/go/issues/9637). To update dependencies:
 ```
 # Disable insecure fallback by blocking port 80.
 sudo /sbin/iptables -A OUTPUT -p tcp --dport 80 -j DROP
+# Update to the latest version of a dependency. Alternately you can cd to the
+# directory under GOPATH and check out a specific revision.
+go get -u github.com/cloudflare/cfssl/...
+# Update the Godep config to the appropriate version.
+godep update github.com/cloudflare/cfssl/...
+# Save the dependencies, rewriting any internal or external dependencies that
+# may have been added.
 godep save -r ./...
+git add Godeps
+git commit
 # Assuming you had no other iptables rules, re-enable port 80.
 sudo iptables -D OUTPUT 1
 ```
