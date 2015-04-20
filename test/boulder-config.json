@@ -48,5 +48,12 @@
   "sa": {
     "dbDriver": "sqlite3",
     "dbName": ":memory:"
+  },
+
+  "mail": {
+    "server": "mail.example.com",
+    "port": "25",
+    "username": "cert-master@example.com",
+    "password": "password"
   }
 }
