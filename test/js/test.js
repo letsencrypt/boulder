@@ -195,6 +195,7 @@ function getTerms(resp) {
 
   if (state.termsRequired) {
     state.termsURL = links["terms-of-service"];
+    console.log(state.termsURL);
     http.get(state.termsURL, getAgreement)
   } else {
     inquirer.prompt(questions.domain, getChallenges);

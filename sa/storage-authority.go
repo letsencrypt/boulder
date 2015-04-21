@@ -7,6 +7,7 @@ package sa
 
 import (
 	"crypto/sha256"
+	"crypto/x509"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -76,7 +77,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	}
 
 	// Create certificates table
-	_, err = tx.Exec("CREATE TABLE certificates (sequence INTEGER, digest TEXT, value BLOB);")
+	_, err = tx.Exec("CREATE TABLE certificates (serial string, digest TEXT, value BLOB);")
 	if err != nil {
 		tx.Rollback()
 		return
@@ -164,8 +165,20 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	return
 }
 
+// GetCertificate takes an id consisting of the first, sequential half of a
+// serial number and returns the first certificate whose full serial number is
+// lexically greater than that id. This allows clients to query on the known
+// sequential half of our serial numbers to enumerate all certificates.
+// TODO: Add index on certificates table
+// TODO: Implement error when there are multiple certificates with the same
+// sequential half.
 func (ssa *SQLStorageAuthority) GetCertificate(id string) (cert []byte, err error) {
-	err = ssa.db.QueryRow("SELECT value FROM certificates WHERE digest = ?;", id).Scan(&cert)
+	if len(id) != 16 {
+		err = errors.New("Invalid certificate serial " + id)
+	}
+	err = ssa.db.QueryRow(
+		"SELECT value FROM certificates WHERE serial LIKE ? LIMIT 1;",
+		id + "%").Scan(&cert)
 	return
 }
 
@@ -349,28 +362,22 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
-func (ssa *SQLStorageAuthority) AddCertificate(cert []byte) (id string, err error) {
+func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, err error) {
+	var parsedCertificate *x509.Certificate
+	parsedCertificate, err = x509.ParseCertificate(certDER)
+	if err != nil {
+		return
+	}
+	serial := fmt.Sprintf("%x", parsedCertificate.SerialNumber)
+
 	tx, err := ssa.db.Begin()
 	if err != nil {
 		return
 	}
 
-	// Manually set the index, to avoid AUTOINCREMENT issues
-	var sequence int64
-	var scanTarget sql.NullInt64
-	err = tx.QueryRow("SELECT max(sequence) FROM certificates;").Scan(&scanTarget)
-	switch {
-	case !scanTarget.Valid:
-		sequence = 0
-	case err != nil:
-		tx.Rollback()
-		return
-	default:
-		sequence += scanTarget.Int64 + 1
-	}
-
-	id = core.Fingerprint256(cert)
-	_, err = tx.Exec("INSERT INTO certificates (sequence, digest, value) VALUES (?,?,?);", sequence, id, cert)
+	digest = core.Fingerprint256(certDER)
+	_, err = tx.Exec("INSERT INTO certificates (serial, digest, value) VALUES (?,?,?);",
+		serial, digest, certDER)
 	if err != nil {
 		tx.Rollback()
 		return

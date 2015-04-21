@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"net/url"
 	"testing"
 
@@ -241,9 +242,12 @@ func TestNewCertificate(t *testing.T) {
 
 	cert, err := ra.NewCertificate(certRequest, AccountKey)
 	test.AssertNotError(t, err, "Failed to issue certificate")
+	parsedCert, err := x509.ParseCertificate(cert.DER)
+	test.AssertNotError(t, err, "Failed to parse certificate")
+	shortSerial := fmt.Sprintf("%x", parsedCert.SerialNumber)[0:16]
 
 	// Verify that cert shows up and is as expected
-	dbCert, err := sa.GetCertificate(cert.ID)
+	dbCert, err := sa.GetCertificate(shortSerial)
 	test.AssertNotError(t, err, "Could not fetch certificate from database")
 	test.Assert(t, bytes.Compare(cert.DER, dbCert) == 0, "Certificates differ")
 
