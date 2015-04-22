@@ -19,9 +19,10 @@ import (
 )
 
 type SQLStorageAuthority struct {
-	db     *sql.DB
-	bucket map[string]interface{} // XXX included only for backward compat
-	log    *blog.AuditLogger
+	db        *sql.DB
+	initCheck bool
+	bucket    map[string]interface{} // XXX included only for backward compat
+	log       *blog.AuditLogger
 }
 
 func digest256(data []byte) []byte {
@@ -42,45 +43,88 @@ func NewSQLStorageAuthority(logger *blog.AuditLogger, driver string, name string
 	}
 
 	ssa = &SQLStorageAuthority{
-		db:     db,
-		log:    logger,
-		bucket: make(map[string]interface{}),
+		db:        db,
+		initCheck: name != ":memory:",
+		log:       logger,
+		bucket:    make(map[string]interface{}),
 	}
+
+	err = ssa.InitTables()
+	if err != nil {
+		return
+	}
+
 	return
 }
 
 func (ssa *SQLStorageAuthority) InitTables() (err error) {
+	var regsExists          bool
+	var pending_authzExists bool
+	var authzExists         bool
+	var certsExists         bool
+	if ssa.initCheck {
+		err = ssa.db.QueryRow("SELECT EXISTS(SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'registrations');").Scan(&regsExists)
+		if err != nil {
+			return
+		}
+		err = ssa.db.QueryRow("SELECT EXISTS(SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'pending_authz');").Scan(&pending_authzExists)
+		if err != nil {
+			return
+		}
+		err = ssa.db.QueryRow("SELECT EXISTS(SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'authz');").Scan(&authzExists)
+		if err != nil {
+			return
+		}
+		err = ssa.db.QueryRow("SELECT EXISTS(SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'certificates');").Scan(&certsExists)
+		if err != nil {
+			return
+		}
+
+		if regsExists && pending_authzExists && authzExists && certsExists {
+			return
+		}
+	}
+
+
 	tx, err := ssa.db.Begin()
 	if err != nil {
 		return
 	}
 
 	// Create registrations table
-	_, err = tx.Exec("CREATE TABLE registrations (id TEXT, thumbprint TEXT, value TEXT);")
-	if err != nil {
-		tx.Rollback()
-		return
+	if !regsExists {
+		_, err = tx.Exec("CREATE TABLE registrations (id TEXT, thumbprint TEXT, value TEXT);")
+		if err != nil {
+			tx.Rollback()
+			return
+		}
 	}
 
 	// Create pending authorizations table
-	_, err = tx.Exec("CREATE TABLE pending_authz (id TEXT, value BLOB);")
-	if err != nil {
-		tx.Rollback()
-		return
+	if !pending_authzExists {
+		_, err = tx.Exec("CREATE TABLE pending_authz (id TEXT, value BLOB);")
+		if err != nil {
+			tx.Rollback()
+			return
+		}
 	}
 
 	// Create finalized authorizations table
-	_, err = tx.Exec("CREATE TABLE authz (sequence INTEGER, id TEXT, digest TEXT, value BLOB);")
-	if err != nil {
-		tx.Rollback()
-		return
+	if !authzExists {
+		_, err = tx.Exec("CREATE TABLE authz (sequence INTEGER, id TEXT, digest TEXT, value BLOB);")
+		if err != nil {
+			tx.Rollback()
+			return
+		}
 	}
 
 	// Create certificates table
-	_, err = tx.Exec("CREATE TABLE certificates (serial string, digest TEXT, value BLOB);")
-	if err != nil {
-		tx.Rollback()
-		return
+	if !certsExists {
+		_, err = tx.Exec("CREATE TABLE certificates (sequence INTEGER, digest TEXT, value BLOB);")
+		if err != nil {
+			tx.Rollback()
+			return
+		}
 	}
 
 	err = tx.Commit()
