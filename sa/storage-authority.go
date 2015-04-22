@@ -44,7 +44,7 @@ func NewSQLStorageAuthority(logger *blog.AuditLogger, driver string, name string
 
 	ssa = &SQLStorageAuthority{
 		db:        db,
-		initCheck: name != ":memory:",
+		initCheck: driver != "sqlite3",
 		log:       logger,
 		bucket:    make(map[string]interface{}),
 	}
