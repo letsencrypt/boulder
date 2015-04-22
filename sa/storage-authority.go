@@ -120,7 +120,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 
 	// Create certificates table
 	if !certsExists {
-		_, err = tx.Exec("CREATE TABLE certificates (sequence INTEGER, digest TEXT, value BLOB);")
+		_, err = tx.Exec("CREATE TABLE certificates (serial INTEGER, digest TEXT, value BLOB);")
 		if err != nil {
 			tx.Rollback()
 			return
