@@ -353,10 +353,10 @@ func TestIssueCertificate(t *testing.T) {
 		}
 
 		// Verify that the cert got stored in the DB
-		shortSerial := fmt.Sprintf("%x", cert.SerialNumber)[0:16]
+		shortSerial := fmt.Sprintf("%016x", cert.SerialNumber)[0:16]
 		_, err = sa.GetCertificate(shortSerial)
 		test.AssertNotError(t, err,
-			fmt.Sprintf("Certificate %x not found in database", shortSerial))
+			fmt.Sprintf("Certificate %016x not found in database", shortSerial))
 	}
 
 	// Test that the CA rejects CSRs with no names
