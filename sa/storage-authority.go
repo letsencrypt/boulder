@@ -46,6 +46,12 @@ func NewSQLStorageAuthority(logger *blog.AuditLogger, driver string, name string
 		log:    logger,
 		bucket: make(map[string]interface{}),
 	}
+
+	err = ssa.InitTables()
+	if err != nil {
+		return
+	}
+
 	return
 }
 
@@ -56,28 +62,28 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	}
 
 	// Create registrations table
-	_, err = tx.Exec("CREATE TABLE registrations (id TEXT, thumbprint TEXT, value TEXT);")
+	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS registrations (id TEXT, thumbprint TEXT, value TEXT);")
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
 	// Create pending authorizations table
-	_, err = tx.Exec("CREATE TABLE pending_authz (id TEXT, value BLOB);")
+	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS pending_authz (id TEXT, value BLOB);")
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
 	// Create finalized authorizations table
-	_, err = tx.Exec("CREATE TABLE authz (sequence INTEGER, id TEXT, digest TEXT, value BLOB);")
+	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS authz (sequence INTEGER, id TEXT, digest TEXT, value BLOB);")
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
 	// Create certificates table
-	_, err = tx.Exec("CREATE TABLE certificates (serial string, digest TEXT, value BLOB);")
+	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS certificates (serial STRING, digest TEXT, value BLOB);")
 	if err != nil {
 		tx.Rollback()
 		return

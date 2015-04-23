@@ -72,8 +72,7 @@ func main() {
 		wfe := wfe.NewWebFrontEndImpl(auditlogger)
 		sa, err := sa.NewSQLStorageAuthority(auditlogger, c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Unable to create SA")
-		err = sa.InitTables()
-		cmd.FailOnError(err, "Unable to initialize SA")
+
 		ra := ra.NewRegistrationAuthorityImpl(auditlogger)
 		va := va.NewValidationAuthorityImpl(auditlogger, c.CA.TestMode)
 
