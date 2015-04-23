@@ -42,9 +42,9 @@ func NewSQLStorageAuthority(logger *blog.AuditLogger, driver string, name string
 	}
 
 	ssa = &SQLStorageAuthority{
-		db:        db,
-		log:       logger,
-		bucket:    make(map[string]interface{}),
+		db:     db,
+		log:    logger,
+		bucket: make(map[string]interface{}),
 	}
 
 	err = ssa.InitTables()
