@@ -27,12 +27,12 @@ func main() {
 		// Set up logging
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		defer auditlogger.AuditPanic()
 
 		sai, err := sa.NewSQLStorageAuthority(auditlogger, c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Failed to create SA impl")
-		
-		go cmd.ProfileCmd("SA", stats)
 
+		go cmd.ProfileCmd("SA", stats)
 
 		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)

@@ -67,6 +67,14 @@ func (log *AuditLogger) AuditErr(msg error) (err error) {
 	return
 }
 
+// To catch panics in executables, this method should be added
+// in a defer statement as early as possible
+func (log *AuditLogger) AuditPanic() {
+	if err := recover(); err != nil {
+		log.Audit(fmt.Sprintf("Panic: %v", err))
+	}
+}
+
 // Warning formats an error for the Warn level.
 func (log *AuditLogger) WarningErr(msg error) (err error) {
 	fmt.Println(msg)
