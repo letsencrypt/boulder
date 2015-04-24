@@ -61,32 +61,62 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 		return
 	}
 
+	statements := []string{
+
 	// Create registrations table
-	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS registrations (id TEXT, thumbprint TEXT, value TEXT);")
-	if err != nil {
-		tx.Rollback()
-		return
-	}
+	`CREATE TABLE IF NOT EXISTS registrations (
+		id TEXT,
+		thumbprint TEXT,
+		value TEXT
+	);`,
 
 	// Create pending authorizations table
-	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS pending_authz (id TEXT, value BLOB);")
-	if err != nil {
-		tx.Rollback()
-		return
-	}
+	`CREATE TABLE IF NOT EXISTS pending_authz (
+		id TEXT,
+		value BLOB
+	);`,
 
 	// Create finalized authorizations table
-	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS authz (sequence INTEGER, id TEXT, digest TEXT, value BLOB);")
-	if err != nil {
-		tx.Rollback()
-		return
+	`CREATE TABLE IF NOT EXISTS authz (
+		sequence INTEGER,
+		id TEXT,
+		digest TEXT,
+		value BLOB
+	);`,
+
+	// Create certificates table. This should be effectively append-only, enforced
+	// by DB permissions.
+	`CREATE TABLE IF NOT EXISTS certificates (
+		serial STRING,
+		digest TEXT,
+		value BLOB,
+		issued DATETIME,
+		notAfter DATETIME
+		);`,
+
+	// Create certificate status table. This provides metadata about a certificate
+	// that can change over its lifetime, and rows are updateable unlike the
+	// certificates table. The serial number primary key matches up with the one
+	// on certificates.
+	// subscriberAccepted: true iff the subscriber has posted back to the server
+	//   that they accept the certificate.
+	// status: 'good', 'revoked', or 'expired'.
+	// ocspLastUpdated: The date and time of the last time we generated an OCSP
+	//   update.
+	`CREATE TABLE IF NOT EXISTS certificateStatus (
+		serial STRING,
+		subscriberApproved DATETIME,
+		status STRING,
+		ocspLastUpdated DATETIME
+		);`,
 	}
 
-	// Create certificates table
-	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS certificates (serial STRING, digest TEXT, value BLOB);")
-	if err != nil {
-		tx.Rollback()
-		return
+	for _, statement := range statements {
+		_, err = tx.Exec(statement)
+		if err != nil {
+			tx.Rollback()
+			return
+		}
 	}
 
 	err = tx.Commit()
