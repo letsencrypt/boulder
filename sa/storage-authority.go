@@ -62,7 +62,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 		return
 	}
 
-	// All fields are created with "NOT NULL" because go's SQL support does not
+	// All fields should be created with "NOT NULL" because go's SQL support does not
 	// handle null values well (see, e.g. https://github.com/go-sql-driver/mysql/issues/59)
 	statements := []string{
 
@@ -74,9 +74,11 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	);`,
 
 	// Create pending authorizations table
+	// TODO: Add NOT NULL to value. Right now it causes test failures because some
+	// inserts to not fill all fields.
 	`CREATE TABLE IF NOT EXISTS pending_authz (
 		id TEXT NOT NULL,
-		value BLOB NOT NULL
+		value BLOB
 	);`,
 
 	// Create finalized authorizations table

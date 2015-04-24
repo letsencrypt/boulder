@@ -12,9 +12,6 @@ import (
 	"runtime"
 	"testing"
 	"encoding/base64"
-
-	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 )
 
 // Return short format caller info for printing errors, so errors don't all
@@ -26,14 +23,6 @@ func caller() string {
 	return fmt.Sprintf("%s:%d:", filename, line)
 }
 
-// FakeLogger returns an AuditLogger, required to initialize many components
-func FakeLogger() (logger *blog.AuditLogger) {
-	stats, _ := statsd.NewNoopClient(nil)
-	// Audit logger
-	logger, _ = blog.Dial("", "", "tag", stats)
-	return
-}
-
 func Assert(t *testing.T, result bool, message string) {
 	if !result {
 		t.Error(caller(), message)
@@ -42,13 +31,13 @@ func Assert(t *testing.T, result bool, message string) {
 
 func AssertNotError(t *testing.T, err error, message string) {
 	if err != nil {
-		t.Error(caller(), message, err)
+		t.Error(caller(), message, ":", err)
 	}
 }
 
 func AssertError(t *testing.T, err error, message string) {
 	if err == nil {
-		t.Error(caller(), message, err)
+		t.Error(caller(), message, ":", err)
 	}
 }
 

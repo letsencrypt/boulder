@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
@@ -259,7 +260,7 @@ func TestIssueCertificate(t *testing.T) {
 	profileName := "ee"
 
 	// Create an SA
-	sa, err := sa.NewSQLStorageAuthority(test.FakeLogger(), "sqlite3", ":memory:")
+	sa, err := sa.NewSQLStorageAuthority(blog.TestLogger(), "sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
 	sa.InitTables()
 
@@ -305,7 +306,7 @@ func TestIssueCertificate(t *testing.T) {
 
 	// Create a CA
 	// Uncomment to test with a remote signer
-	ca, err := NewCertificateAuthorityImpl(test.FakeLogger(), hostPort, authKey, profileName, 17, cadb)
+	ca, err := NewCertificateAuthorityImpl(blog.TestLogger(), hostPort, authKey, profileName, 17, cadb)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = sa
 
