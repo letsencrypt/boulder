@@ -15,6 +15,7 @@ import (
 )
 
 func TestConstruction(t *testing.T) {
+	t.Parallel()
 	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
@@ -24,6 +25,7 @@ func TestConstruction(t *testing.T) {
 }
 
 func TestSingleton(t *testing.T) {
+	t.Parallel()
 	log1 := GetAuditLogger()
 	test.AssertNotNil(t, log1, "Logger shouldn't be nil")
 
@@ -53,24 +55,28 @@ func TestSingleton(t *testing.T) {
 }
 
 func TestDial(t *testing.T) {
+	t.Parallel()
 	stats, _ := statsd.NewNoopClient(nil)
 	_, err := Dial("", "", "tag", stats)
 	test.AssertNotError(t, err, "Could not construct audit logger")
 }
 
 func TestDialError(t *testing.T) {
+	t.Parallel()
 	stats, _ := statsd.NewNoopClient(nil)
 	_, err := Dial("_fail", "_fail", "tag", stats)
 	test.AssertError(t, err, "Audit Logger should have failed")
 }
 
 func TestConstructionNil(t *testing.T) {
+	t.Parallel()
 	stats, _ := statsd.NewNoopClient(nil)
 	_, err := NewAuditLogger(nil, stats)
 	test.AssertError(t, err, "Nil shouldn't be permitted.")
 }
 
 func TestEmit(t *testing.T) {
+	t.Parallel()
 	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
@@ -82,6 +88,7 @@ func TestEmit(t *testing.T) {
 }
 
 func TestEmitEmpty(t *testing.T) {
+	t.Parallel()
 	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
@@ -93,6 +100,7 @@ func TestEmitEmpty(t *testing.T) {
 }
 
 func TestEmitErrors(t *testing.T) {
+	t.Parallel()
 	stats, _ := statsd.NewNoopClient(nil)
 	audit, _ := Dial("", "", "tag", stats)
 
@@ -101,6 +109,7 @@ func TestEmitErrors(t *testing.T) {
 }
 
 func TestSyslogMethods(t *testing.T) {
+	t.Parallel()
 	// Write all logs to UDP on a high port so as to not bother the system
 	// which is running the test, particularly for Emerg()
 	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
@@ -119,4 +128,31 @@ func TestSyslogMethods(t *testing.T) {
 	audit.Notice("audit-logger_test.go: notice")
 	audit.Warning("audit-logger_test.go: warning")
 	audit.Alert("audit-logger_test.go: alert")
+}
+
+func TestPanic(t *testing.T) {
+	t.Parallel()
+	stats, _ := statsd.NewNoopClient(nil)
+	audit, _ := Dial("", "", "tag", stats)
+	defer audit.AuditPanic()
+	panic("Test panic")
+	// Can't assert anything here or golint gets angry
+}
+
+func TestEmergencyExit(t *testing.T) {
+	t.Parallel()
+	// Write all logs to UDP on a high port so as to not bother the system
+	// which is running the test, particularly for Emerg()
+	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+	test.AssertNotError(t, err, "Could not construct syslog object")
+
+	stats, _ := statsd.NewNoopClient(nil)
+	audit, err := NewAuditLogger(writer, stats)
+	test.AssertNotError(t, err, "Could not construct audit logger")
+
+	called := false
+
+	audit.SetEmergencyExitFunc(func(){ called = true })
+	audit.EmergencyExit("Emergency!")
+	test.AssertEquals(t, called, true)
 }

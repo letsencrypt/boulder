@@ -1,0 +1,2 @@
+#!/bin/bash
+cat audit_events.csv | tail +2 | awk -F "," '{print "// AUDIT[", $2, "]", $1;}'

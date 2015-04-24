@@ -321,7 +321,7 @@ func (jb *JsonBuffer) UnmarshalJSON(data []byte) (err error) {
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
 	RegistrationID int64 `db:"registrationID"`
-	
+
 	// The parsed version of DER. Useful for extracting things like serial number.
 	ParsedCertificate *x509.Certificate `db:"-"`
 

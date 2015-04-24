@@ -140,8 +140,8 @@ func (as *AppShell) Run() {
 // FailOnError exits and prints an error message if we encountered a problem
 func FailOnError(err error, msg string) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
-		os.Exit(1)
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		panic(fmt.Sprintf("%s: %s", msg, err))
 	}
 }
 
