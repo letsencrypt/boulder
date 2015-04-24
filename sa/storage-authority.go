@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -61,53 +62,55 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 		return
 	}
 
+	// All fields are created with "NOT NULL" because go's SQL support does not
+	// handle null values well (see, e.g. https://github.com/go-sql-driver/mysql/issues/59)
 	statements := []string{
 
 	// Create registrations table
 	`CREATE TABLE IF NOT EXISTS registrations (
-		id TEXT,
-		thumbprint TEXT,
-		value TEXT
+		id TEXT NOT NULL,
+		thumbprint TEXT NOT NULL,
+		value TEXT NOT NULL
 	);`,
 
 	// Create pending authorizations table
 	`CREATE TABLE IF NOT EXISTS pending_authz (
-		id TEXT,
-		value BLOB
+		id TEXT NOT NULL,
+		value BLOB NOT NULL
 	);`,
 
 	// Create finalized authorizations table
 	`CREATE TABLE IF NOT EXISTS authz (
-		sequence INTEGER,
-		id TEXT,
-		digest TEXT,
-		value BLOB
+		sequence INTEGER NOT NULL,
+		id TEXT NOT NULL,
+		digest TEXT NOT NULL,
+		value BLOB NOT NULL
 	);`,
 
 	// Create certificates table. This should be effectively append-only, enforced
 	// by DB permissions.
 	`CREATE TABLE IF NOT EXISTS certificates (
-		serial STRING,
-		digest TEXT,
-		value BLOB,
-		issued DATETIME,
-		notAfter DATETIME
+		serial STRING NOT NULL,
+		digest TEXT NOT NULL,
+		value BLOB NOT NULL,
+		issued DATETIME NOT NULL
 		);`,
 
 	// Create certificate status table. This provides metadata about a certificate
 	// that can change over its lifetime, and rows are updateable unlike the
 	// certificates table. The serial number primary key matches up with the one
 	// on certificates.
-	// subscriberAccepted: true iff the subscriber has posted back to the server
-	//   that they accept the certificate.
-	// status: 'good', 'revoked', or 'expired'.
+	// subscriberApproved: 1 iff the subscriber has posted back to the server
+	//   that they accept the certificate, otherwise 0.
+	// status: 'good' or 'revoked'
 	// ocspLastUpdated: The date and time of the last time we generated an OCSP
-	//   update.
+	//   response. If we have never generated one, this has the zero value of
+	//   time.Time, i.e. Jan 1 1970.
 	`CREATE TABLE IF NOT EXISTS certificateStatus (
-		serial STRING,
-		subscriberApproved DATETIME,
-		status STRING,
-		ocspLastUpdated DATETIME
+		serial STRING NOT NULL,
+		subscriberApproved INTEGER NOT NULL,
+		status STRING NOT NULL,
+		ocspLastUpdated DATETIME NOT NULL
 		);`,
 	}
 
@@ -211,10 +214,32 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 func (ssa *SQLStorageAuthority) GetCertificate(id string) (cert []byte, err error) {
 	if len(id) != 16 {
 		err = errors.New("Invalid certificate serial " + id)
+		return
 	}
 	err = ssa.db.QueryRow(
 		"SELECT value FROM certificates WHERE serial LIKE ? LIMIT 1;",
 		id + "%").Scan(&cert)
+	return
+}
+
+// GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
+// number of a certificate and returns data about that certificate's current
+// validity.
+func (ssa *SQLStorageAuthority) GetCertificateStatus(id string) (status core.CertificateStatus, err error) {
+	if len(id) != 32 {
+		err = errors.New("Invalid certificate serial " + id)
+		return
+	}
+	var statusString string;
+	err = ssa.db.QueryRow(
+		`SELECT subscriberApproved, status, ocspLastUpdated
+		 FROM certificateStatus
+		 WHERE serial = ?
+		 LIMIT 1;`, id).Scan(&status.SubscriberApproved, &statusString, &status.OCSPLastUpdated)
+	if err != nil {
+		return
+	}
+	status.Status = core.OCSPStatus(statusString)
 	return
 }
 
@@ -404,7 +429,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	if err != nil {
 		return
 	}
-	serial := fmt.Sprintf("%016x", parsedCertificate.SerialNumber)
+	serial := fmt.Sprintf("%032x", parsedCertificate.SerialNumber)
 
 	tx, err := ssa.db.Begin()
 	if err != nil {
@@ -412,8 +437,17 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	}
 
 	digest = core.Fingerprint256(certDER)
-	_, err = tx.Exec("INSERT INTO certificates (serial, digest, value) VALUES (?,?,?);",
-		serial, digest, certDER)
+	_, err = tx.Exec("INSERT INTO certificates (serial, digest, value, issued) VALUES (?,?,?,?);",
+		serial, digest, certDER, time.Now())
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	_, err = tx.Exec(`INSERT INTO certificateStatus
+										(serial, subscriberApproved, status, ocspLastUpdated)
+										VALUES (?, 0, 'good', ?);`,
+										serial, time.Time{})
 	if err != nil {
 		tx.Rollback()
 		return
