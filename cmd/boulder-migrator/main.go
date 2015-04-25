@@ -22,7 +22,7 @@ import (
 
 type Migration struct {
 	Id      int
-	Name    string   // Basic explanation?
+	Desc    string   // Basic explanation of what the migration does
 	UpSQL   []string
 	DownSQL []string
 }
@@ -32,7 +32,7 @@ func createMigrationTable(Sql *sql.DB) (err error) {
 	if err != nil {
 		return
 	}
-	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS migrations (id INTEGER, name TEXT, applied DATETIME, down TEXT)")
+	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS migrations (id INTEGER, desc TEXT, applied DATETIME, down TEXT)")
 	if err != nil {
 		tx.Rollback()
 		return
@@ -43,19 +43,20 @@ func createMigrationTable(Sql *sql.DB) (err error) {
 
 // list applied migrations
 func listMigrations(Sql *sql.DB) (err error) {
-	rows, err := Sql.Query("SELECT id, name, applied FROM migrations")
+	rows, err := Sql.Query("SELECT id, desc, applied FROM migrations")
 	if err != nil {
 		return
 	}
 	defer rows.Close()
+	fmt.Println("# Currently applied migrations\n")
 	for rows.Next() {
 		var id int
-		var name string
+		var desc string
 		var applied time.Time
-		if err = rows.Scan(&id, &name, applied); err != nil {
+		if err = rows.Scan(&id, &desc, applied); err != nil {
 			return
 		}
-		fmt.Printf("%d: %s [%s]\n", id, name, applied)
+		fmt.Printf("%d: [%s]\n\t%s\n", id, applied, desc)
 	}
 	return
 }
@@ -63,7 +64,7 @@ func listMigrations(Sql *sql.DB) (err error) {
 // apply new migration
 func applyMigration(Sql *sql.DB, migration Migration) (err error) {
 	fmt.Printf("[migration %d]\n", migration.Id)
-	fmt.Printf("\tName: %s\n", migration.Name)
+	fmt.Printf("\tName: %s\n", migration.Desc)
 	fmt.Printf("\tApply SQL:\n")
 	for _, sqlLine := range migration.UpSQL {
 		fmt.Printf("\t%s", sqlLine)
@@ -88,7 +89,7 @@ func applyMigration(Sql *sql.DB, migration Migration) (err error) {
 	for _, sqlStmt := range migration.DownSQL {
 		sqlStmt = strings.TrimRight(sqlStmt, ";")
 	}
-	_, err = tx.Exec("INSERT INTO migrations (id, name, applied, down) VALUES (?, ?, ?, ?)", migration.Id, migration.Name, time.Now(), strings.Join(migration.DownSQL, ";"))
+	_, err = tx.Exec("INSERT INTO migrations (id, desc, applied, down) VALUES (?, ?, ?, ?)", migration.Id, migration.Desc, time.Now(), strings.Join(migration.DownSQL, ";"))
 	if err != nil {
 		tx.Rollback()
 		return
