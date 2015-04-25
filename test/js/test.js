@@ -72,7 +72,6 @@ var questions = {
 };
 
 var state = {
-  keyPairBits: 512,
   keyPair: null,
 
   //newRegistrationURL: "https://www.letsencrypt-demo.org/acme/new-reg",
@@ -165,10 +164,8 @@ function makeKeyPair(answers) {
   state.certFile = answers.certFile;
   state.keyFile = answers.keyFile;
   console.log("Generating key pair...");
-  state.keyPair = crypto.generateKeyPair(state.keyPairBits);
-  var keyPEM = crypto.privateKeyToPem(state.keyPair.privateKey);
-  fs.writeFileSync(answers.keyFile, keyPEM);
-  child_process.exec("openssl req -key key.pem -x509 -days 3650 -subj /CN=blah -nodes -out temp-cert.pem -new");
+  child_process.exec("openssl req -newkey", state.keyFile, "-days 3650 -subj /CN=blah -nodes -out temp-cert.pem");
+  state.keyPair = crypto.importPemPrivateKey(fs.readFileSync(state.keyFile));
 
   console.log();
   inquirer.prompt(questions.email, register)
@@ -193,7 +190,7 @@ function register(answers) {
 function getTerms(err, resp) {
   if (err || Math.floor(resp.statusCode / 100) != 2) {
     // Non-2XX response
-    console.log("Registration request failed with code " + resp.statusCode);
+    console.log("Registration request failed:" + err);
     return;
   }
 
@@ -247,7 +244,7 @@ function sendAgreement(answers) {
   var req = request(state.registrationURL, {}, function(err, resp, body) {
     if (err) {
       console.log("Couldn't POST agreement back to server, aborting.");
-      console.log("Code: "+ resp.statusCode);
+      console.log("error: " + err);
       console.log(body);
       process.exit(1);
     }
@@ -370,7 +367,7 @@ function ensureValidation(err, resp, body) {
     console.log();
     getCertificate();
   } else if (authz.status == "invalid") {
-    console.log("The CA was unable to validate the file you provisioned:"  + authz);
+    console.log("The CA was unable to validate the file you provisioned:"  + body);
     return;
   } else {
     console.log("The CA returned an authorization in an unexpected state");
