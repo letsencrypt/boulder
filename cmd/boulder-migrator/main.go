@@ -4,7 +4,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // For the applied DATETIME field to work properly with MySQL the DSN parameter
-// "parseTime=true" is required (e.g. "user:pass@tcp(localhost:3306)/boulder?parseTime=true").
+// "parseTime=true" is required (e.g. "user:pass@tcp(localhost:3306)/boulder?parseTime=true")
+// otherwise sql.Row.Scan will throw an error ("[]uint8 -> time.Time is bad" or something).
 
 package main
 
