@@ -39,16 +39,21 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		return
 	}
 
-	url := ""
+	if identifier.Type != IdentifierDNS {
+		challenge.Status = core.StatusInvalid
+		return
+	}
+	hostName := identifier.Value
 	if va.TestMode {
-		url = fmt.Sprintf("http://localhost:5001/.well-known/acme-challenge/%s", challenge.Path)
-	} else {
-		url = fmt.Sprintf("https://%s/.well-known/acme-challenge/%s", identifier, challenge.Path)
+		hostName = "localhost:5001"
 	}
 
-	va.log.Notice(fmt.Sprintf("Attempting to validate SimpleHTTPS for %s %s", identifier, url))
+	url = fmt.Sprintf("https://%s/.well-known/acme-challenge/%s", hostName, challenge.Path)
+
+	va.log.Notice(fmt.Sprintf("Attempting to validate SimpleHTTPS for %s %s", hostName, url))
 	httpRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
+		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
 		challenge.Status = core.StatusInvalid
 		return
 	}
@@ -61,6 +66,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		// Read body & test
 		body, err := ioutil.ReadAll(httpResponse.Body)
 		if err != nil {
+			va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
 			challenge.Status = core.StatusInvalid
 			return
 		}
@@ -68,10 +74,16 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
 			challenge.Status = core.StatusValid
 			return
+		} else {
+			va.log.Notice(fmt.Sprintf("Incorrect token validating SimpleHTTPS for %s %s: %s", hostName, url))
 		}
+	} else if err != nil {
+		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
+		challenge.Status = core.StatusInvalid
+	} else {
+		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, httpResponse.StatusCode))
+		challenge.Status = core.StatusInvalid
 	}
-
-	challenge.Status = core.StatusInvalid
 	return
 }
 
