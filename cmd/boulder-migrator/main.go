@@ -118,7 +118,7 @@ func listMigrations(Sql *sql.DB) (err error) {
 // apply new migration
 func applyMigration(Sql *sql.DB, migration Migration, yes bool) (err error) {
 	fmt.Printf("[migration %d]\n", migration.Id)
-	fmt.Printf("\tName: %s\n", migration.Desc)
+	fmt.Printf("\tDescription: %s\n", migration.Desc)
 	fmt.Printf("\n\tMigrate SQL:\n")
 	for _, sqlLine := range migration.UpSQL {
 		fmt.Printf("\t%s\n", sqlLine)
