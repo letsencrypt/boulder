@@ -116,3 +116,9 @@ func (log *AuditLogger) Warning(msg string) (err error) {
 	log.Stats.Inc("Logging.Warning", 1, 1.0)
 	return log.Writer.Warning(msg)
 }
+
+func (log *AuditLogger) Notice(msg string) (err error) {
+	fmt.Println(msg)
+	log.Stats.Inc("Logging.Warning", 1, 1.0)
+	return log.Writer.Notice(msg)
+}
