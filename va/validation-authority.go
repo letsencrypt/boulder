@@ -46,6 +46,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		url = fmt.Sprintf("https://%s/.well-known/acme-challenge/%s", identifier, challenge.Path)
 	}
 
+	va.log.Notice(fmt.Sprintf("Attempting to validate SimpleHTTPS for %s %s", identifier, url))
 	httpRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		challenge.Status = core.StatusInvalid
@@ -107,6 +108,8 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		}
 		hostPort = identifier.Value + ":443"
 	}
+	va.log.Notice(fmt.Sprintf("Attempting to validate DVSNI for %s %s %s",
+		identifier, hostPort, zName))
 	conn, err := tls.Dial("tcp", hostPort, &tls.Config{
 		ServerName:         nonceName,
 		InsecureSkipVerify: true,
