@@ -3,6 +3,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+// For the applied DATETIME field to work properly with MySQL the DSN parameter
+// "parseTime=true" is required (e.g. "user:pass@tcp(localhost:3306)/boulder?parseTime=true").
+
 package main
 
 import (
@@ -27,12 +30,56 @@ type Migration struct {
 	DownSQL []string
 }
 
+func getYN(question string) (answer bool) {
+	fmt.Printf("\n%s? [y/n]", question)
+	var free bool
+	for {
+		var resp string
+		fmt.Printf("\n# ")
+		_, err := fmt.Scanf("%s", &resp)
+		if err != nil {
+			fmt.Printf("%s: Please enter y or n\n", err)
+			continue
+		}
+		switch resp {
+		case "yes":
+			fallthrough
+		case "YES":
+			fallthrough
+		case "Yes":
+			fallthrough
+		case "Y":
+			fallthrough
+		case "y":
+			answer = true
+			free = true
+		case "no":
+			fallthrough
+		case "NO":
+			fallthrough
+		case "No":
+			fallthrough
+		case "N":
+			fallthrough
+		case "n":
+			answer = false
+			free = true
+		default:
+			fmt.Println("Please enter y or n")
+		}
+		if free {
+			break
+		}
+	}
+	return
+}
+
 func createMigrationTable(Sql *sql.DB) (err error) {
 	tx, err := Sql.Begin()
 	if err != nil {
 		return
 	}
-	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS migrations (id INTEGER, desc TEXT, applied DATETIME, down TEXT)")
+	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS migrations (id INTEGER, description TEXT, applied DATETIME, down TEXT)")
 	if err != nil {
 		tx.Rollback()
 		return
@@ -43,7 +90,7 @@ func createMigrationTable(Sql *sql.DB) (err error) {
 
 // list applied migrations
 func listMigrations(Sql *sql.DB) (err error) {
-	rows, err := Sql.Query("SELECT id, desc, applied FROM migrations")
+	rows, err := Sql.Query("SELECT id, description, applied FROM migrations")
 	if err != nil {
 		return
 	}
@@ -52,8 +99,14 @@ func listMigrations(Sql *sql.DB) (err error) {
 	for rows.Next() {
 		var id int
 		var desc string
+		var appliedInt interface{}
 		var applied time.Time
-		if err = rows.Scan(&id, &desc, applied); err != nil {
+		if err = rows.Scan(&id, &desc, &appliedInt); err != nil {
+			return
+		}
+		applied, ok := appliedInt.(time.Time)
+		if !ok {
+			fmt.Println(ok, applied)
 			return
 		}
 		fmt.Printf("%d: [%s]\n\t%s\n", id, applied, desc)
@@ -62,19 +115,23 @@ func listMigrations(Sql *sql.DB) (err error) {
 }
 
 // apply new migration
-func applyMigration(Sql *sql.DB, migration Migration) (err error) {
+func applyMigration(Sql *sql.DB, migration Migration, yes bool) (err error) {
 	fmt.Printf("[migration %d]\n", migration.Id)
 	fmt.Printf("\tName: %s\n", migration.Desc)
-	fmt.Printf("\tApply SQL:\n")
+	fmt.Printf("\n\tMigrate SQL:\n")
 	for _, sqlLine := range migration.UpSQL {
-		fmt.Printf("\t%s", sqlLine)
+		fmt.Printf("\t%s\n", sqlLine)
 	}
-	fmt.Printf("\tRevert SQL:\n")
+	fmt.Printf("\n\tRevert SQL:\n")
 	for _, sqlLine := range migration.DownSQL {
-		fmt.Printf("\t%s", sqlLine)
+		fmt.Printf("\t%s\n", sqlLine)
 	}
-	fmt.Printf("\nWould you like to apply this migration?\n")
-
+	if !yes {
+		if answer := getYN("\nWould you like to apply this migration"); !answer {
+			fmt.Println("Ok, bye!")
+			return
+		}
+	}
 	tx, err := Sql.Begin()
 	if err != nil {
 		return
@@ -89,12 +146,15 @@ func applyMigration(Sql *sql.DB, migration Migration) (err error) {
 	for _, sqlStmt := range migration.DownSQL {
 		sqlStmt = strings.TrimRight(sqlStmt, ";")
 	}
-	_, err = tx.Exec("INSERT INTO migrations (id, desc, applied, down) VALUES (?, ?, ?, ?)", migration.Id, migration.Desc, time.Now(), strings.Join(migration.DownSQL, ";"))
+	_, err = tx.Exec("INSERT INTO migrations (id, description, applied, down) VALUES (?, ?, ?, ?)", migration.Id, migration.Desc, time.Now(), strings.Join(migration.DownSQL, ";"))
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 	err = tx.Commit()
+	if err != nil {
+		return
+	}
 	fmt.Printf("Migration %d applied\n", migration.Id)
 	return
 }
@@ -115,7 +175,7 @@ func revertMigration(Sql *sql.DB) (err error) {
 	if err != nil {
 		return
 	}
-	for _, sqlStmt := range strings.Split(";", downSql) {
+	for _, sqlStmt := range strings.Split(downSql, ";") {
 		_, err = tx.Exec(sqlStmt)
 		if err != nil {
 			tx.Rollback()
@@ -133,7 +193,7 @@ func revertMigration(Sql *sql.DB) (err error) {
 }
 
 // revert to specific migration
-func revertMigrationTo(Sql *sql.DB, id int) (err error) {
+func revertMigrationTo(Sql *sql.DB, id int, yes bool) (err error) {
 	var revertCount int
 	err = Sql.QueryRow("SELECT count(*) FROM migrations WHERE id > ?", id).Scan(&revertCount)
 	if err != nil {
@@ -141,6 +201,12 @@ func revertMigrationTo(Sql *sql.DB, id int) (err error) {
 	}
 	if revertCount == 0 {
 		fmt.Printf("Migration [ID: %d] does not exist\n", id)
+	}
+	if !yes {
+		if answer := getYN(fmt.Sprintf("Reverting %d migrations, would you like to continue", revertCount)); !answer {
+			fmt.Println("Ok, bye!")
+			return
+		}
 	}
 	for i := 0; i < revertCount; i++ {
 		err = revertMigration(Sql)
@@ -183,6 +249,10 @@ func main() {
 			Value:  "config.json",
 			EnvVar: "BOULDER_CONFIG",
 		},
+		cli.BoolFlag{
+			Name:  "yes",
+			Usage: "automatically say yes to all prompts",
+		},
 	}
 
 	app.Commands = []cli.Command{
@@ -204,17 +274,19 @@ func main() {
 			Name: "apply",
 			Usage: "Apply a migration from a JSON migration file",
 			Action: func(c *cli.Context) {
-				db, err := setupDB(c)
-				if err != nil {
-					cmd.FailOnError(err, "Failed connecting to DB")
-				}
 				migrationJSON, err := ioutil.ReadFile(c.Args().First())
 				cmd.FailOnError(err, "Unable to read migration file")
 				var migration Migration
 				err = json.Unmarshal(migrationJSON, &migration)
 				cmd.FailOnError(err, "Failed to read migration")
 
-				err = applyMigration(db, migration)
+				db, err := setupDB(c)
+				if err != nil {
+					cmd.FailOnError(err, "Failed connecting to DB")
+				}
+
+				yes := c.GlobalBool("yes")
+				err = applyMigration(db, migration, yes)
 				cmd.FailOnError(err, "Failed to apply migration")
 			},
 		},
@@ -245,7 +317,8 @@ func main() {
 				if err != nil {
 					cmd.FailOnError(err, "ID is not an integer")
 				}
-				revertMigrationTo(db, id)
+				yes := c.GlobalBool("yes")
+				revertMigrationTo(db, id, yes)
 			},
 		},
 	}
