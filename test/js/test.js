@@ -5,14 +5,16 @@
 
 "use strict";
 
-var inquirer = require("inquirer");
 var cli = require("cli");
-var http = require('http');
+var crypto = require("./crypto-util");
+var child_process = require('child_process');
 var fs = require('fs');
+var http = require('http');
+var https = require('https');
+var inquirer = require("inquirer");
 var request = require('request');
 var url = require('url');
 var util = require("./acme-util");
-var crypto = require("./crypto-util");
 
 var questions = {
   email: [{
@@ -73,7 +75,8 @@ var state = {
   keyPairBits: 512,
   keyPair: null,
 
-  newRegistrationURL: "https://www.letsencrypt-demo.org/acme/new-reg",
+  //newRegistrationURL: "https://www.letsencrypt-demo.org/acme/new-reg",
+  newRegistrationURL: "http://localhost:4000/acme/new-reg",
   registrationURL: "",
 
   termsRequired: false,
@@ -90,6 +93,8 @@ var state = {
 
   newCertificateURL: "",
   certificateURL: "",
+  certFile: "",
+  keyFile: ""
 };
 
 function parseLink(link) {
@@ -153,8 +158,18 @@ saveFiles
 */
 
 function main() {
+  inquirer.prompt(questions.files, makeKeyPair);
+}
+
+function makeKeyPair(answers) {
+  state.certFile = answers.certFile;
+  state.keyFile = answers.keyFile;
   console.log("Generating key pair...");
   state.keyPair = crypto.generateKeyPair(state.keyPairBits);
+  var keyPEM = crypto.privateKeyToPem(state.keyPair.privateKey);
+  fs.writeFileSync(answers.keyFile, keyPEM);
+  child_process.exec("openssl req -key key.pem -x509 -days 3650 -subj /CN=blah -nodes -out temp-cert.pem -new");
+
   console.log();
   inquirer.prompt(questions.email, register)
 }
@@ -176,7 +191,7 @@ function register(answers) {
 }
 
 function getTerms(err, resp) {
-  if (Math.floor(resp.statusCode / 100) != 2) {
+  if (err || Math.floor(resp.statusCode / 100) != 2) {
     // Non-2XX response
     console.log("Registration request failed with code " + resp.statusCode);
     return;
@@ -202,8 +217,12 @@ function getTerms(err, resp) {
 }
 
 function getAgreement(err, resp, body) {
+  if (err) {
+    console.log("getAgreement error:", err);
+    process.exit(1);
+  }
   // TODO: Check content-type
-  console.log("The CA requires your agreement to terms (not supported).");
+  console.log("The CA requires your agreement to terms.");
   console.log();
   console.log(body);
   console.log();
@@ -226,8 +245,7 @@ function sendAgreement(answers) {
 
   console.log("Posting agreement to: " + state.registrationURL)
   var req = request(state.registrationURL, {}, function(err, resp, body) {
-    if (Math.floor(resp.statusCode / 100) != 2) {
-      // Non-2XX response
+    if (err) {
       console.log("Couldn't POST agreement back to server, aborting.");
       console.log("Code: "+ resp.statusCode);
       console.log(body);
@@ -259,7 +277,7 @@ function getChallenges(answers) {
 }
 
 function getReadyToValidate(err, resp, body) {
-  if (Math.floor(resp.statusCode / 100) != 2) {
+  if (err || Math.floor(resp.statusCode / 100) != 2) {
     // Non-2XX response
     console.log("Authorization request failed with code " + resp.statusCode)
     return;
@@ -284,22 +302,36 @@ function getReadyToValidate(err, resp, body) {
 
   var challenge = simpleHttps[0];
   var path = crypto.randomString(8) + ".txt";
-  fs.writeFileSync(".well-known/acme-challenge/" + path, challenge.token);
+  var challengePath = ".well-known/acme-challenge/" + path;
+  fs.writeFileSync(challengePath, challenge.token);
   state.responseURL = challenge["uri"];
   state.path = path;
 
-  console.log();
-  console.log("To validate that you own "+ state.domain +", the CA has\n" +
-              "asked you to provision a file on your server.  I've saved\n" +
-              "the file here for you.\n");
-  console.log("  File: " + path);
-  console.log("  URL:  http://"+ state.domain +"/.well-known/acme-challenge/"+ path);
-  console.log();
-
-  // To do this locally (boulder connects to port 5001)
-  // > mkdir -p .well-known/acme-challenge/
-  // > mv $CHALLENGE_FILE ./well-known/acme-challenge/
-  // > python -m SimpleHTTPServer 5001
+  // For local, test-mode validation
+  function httpResponder(request, response) {
+    console.log("Got request for", request.url);
+    var host = request.headers["host"];
+    if (host === state.domain &&
+        request.method === "GET" &&
+        request.url == "/" + challengePath) {
+      response.writeHead(200, {"Content-Type": "text/plain"});
+      response.end(challenge.token);
+    } else {
+      console.log("Got invalid request for", request.method, host, request.url);
+      response.writeHead(404, {"Content-Type": "text/plain"});
+      response.end("");
+    }
+  };
+  if (/localhost/.test(state.newRegistrationURL)) {
+    var httpServer = http.createServer(httpResponder)
+    httpServer.listen(5001)
+  } else {
+    var httpServer = https.createServer({
+      cert: fs.readFileSync("temp-cert.pem"),
+      key: fs.readFileSync(state.keyFile) 
+    })
+    httpServer.listen(443)
+  }
 
   inquirer.prompt(questions.readyToValidate, sendResponse);
 }
@@ -359,13 +391,16 @@ function getCertificate() {
 
   cli.spinner("Requesting certificate");
 
-  var req = request.post(state.newCertificateURL, {}, downloadCertificate);
+  var req = request.post({
+    url: state.newCertificateURL,
+    encoding: null // Return body as buffer.
+  }, downloadCertificate);
   req.write(payload)
   req.end();
 }
 
 function downloadCertificate(err, resp, body) {
-  if (Math.floor(resp.statusCode / 100) != 2) {
+  if (err || Math.floor(resp.statusCode / 100) != 2) {
     // Non-2XX response
     console.log("Certificate request failed with code " + resp.statusCode);
     console.log(body.toString());
@@ -378,24 +413,26 @@ function downloadCertificate(err, resp, body) {
   state.certificate = body;
   console.log()
   var certURL = resp.headers['location'];
-  request.get(certURL, function(err, res, body) {
-    if (body !== state.certificate) {
+  request.get({
+    url: certURL,
+    encoding: null // Return body as buffer.
+  }, function(err, res, body) {
+    if (body.toString() !== state.certificate.toString()) {
       console.log("ERROR! Cert at", certURL, "did not match returned cert.");
+    } else {
+      console.log("Successfully verified cert at", certURL);
+      saveFiles()
     }
   });
-  inquirer.prompt(questions.files, saveFiles);
 }
 
 function saveFiles(answers) {
-  var keyPEM = crypto.privateKeyToPem(state.keyPair.privateKey);
-  fs.writeFileSync(answers.keyFile, keyPEM);
-
-  fs.writeFileSync(answers.certFile, state.certificate);
+  fs.writeFileSync(state.certFile, state.certificate);
 
   console.log("Done!")
   console.log("To try it out:");
-  console.log("openssl s_server -accept 8080 -www -key "+
-              answers.keyFile +" -cert "+ answers.certFile);
+  console.log("openssl s_server -accept 8080 -www -certform der -key "+
+              state.keyFile +" -cert "+ state.certFile);
 
   // XXX: Explicitly exit, since something's tenacious here
   process.exit(0);
