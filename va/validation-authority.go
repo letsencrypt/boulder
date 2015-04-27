@@ -144,6 +144,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		challenge.Status = core.StatusInvalid
 		return
 	}
+	defer conn.Close()
 
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
