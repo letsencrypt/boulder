@@ -246,7 +246,7 @@ function sendAgreement(answers) {
   var payload = JSON.stringify(jws);
 
   console.log("Posting agreement to: " + state.registrationURL)
-  var req = request(state.registrationURL, {}, function(err, resp, body) {
+  var req = request.post(state.registrationURL, function(err, resp, body) {
     if (err) {
       console.log("Couldn't POST agreement back to server, aborting.");
       console.log("error: " + err);
@@ -310,16 +310,16 @@ function getReadyToValidate(err, resp, body) {
   state.path = path;
 
   // For local, test-mode validation
-  function httpResponder(request, response) {
-    console.log("Got request for", request.url);
-    var host = request.headers["host"];
+  function httpResponder(req, response) {
+    console.log("Got request for", req.url);
+    var host = req.headers["host"];
     if ((host === state.domain || /localhost/.test(state.newRegistrationURL)) &&
-        request.method === "GET" &&
-        request.url == "/" + challengePath) {
+        req.method === "GET" &&
+        req.url == "/" + challengePath) {
       response.writeHead(200, {"Content-Type": "text/plain"});
       response.end(challenge.token);
     } else {
-      console.log("Got invalid request for", request.method, host, request.url);
+      console.log("Got invalid request for", req.method, host, req.url);
       response.writeHead(404, {"Content-Type": "text/plain"});
       response.end("");
     }
@@ -331,7 +331,7 @@ function getReadyToValidate(err, resp, body) {
     var httpServer = https.createServer({
       cert: fs.readFileSync("temp-cert.pem"),
       key: fs.readFileSync(state.keyFile) 
-    })
+    }, httpResponder)
     httpServer.listen(443)
   }
 
@@ -419,8 +419,17 @@ function downloadCertificate(err, resp, body) {
     url: certURL,
     encoding: null // Return body as buffer.
   }, function(err, res, body) {
+    if (err) {
+      console.log("Error: Failed to fetch certificate from", certURL, ":", err);
+      process.exit(1);
+    }
+    if (res.statusCode !== 200) {
+      console.log("Error: Failed to fetch certificate from", certURL, ":", res.statusCode, res.body.toString());
+  fs.writeFileSync(state.certFile, state.certificate);
+      process.exit(1);
+    }
     if (body.toString() !== state.certificate.toString()) {
-      console.log("ERROR! Cert at", certURL, "did not match returned cert.");
+      console.log("Error: cert at", certURL, "did not match returned cert.");
     } else {
       console.log("Successfully verified cert at", certURL);
       saveFiles()
