@@ -44,7 +44,10 @@ doTest wfe
 [ -e $GOBIN/gover ] && run $GOBIN/gover
 
 if [ "${TRAVIS}" == "true" ] ; then
-  run $GOBIN/goveralls -coverprofile=gover.coverprofile -service=travis-ci
+  # We don't use the run function here because sometimes goveralls fails to
+  # contact the server and exits with non-zero status, but we don't want to
+  # treat that as a failure.
+  $GOBIN/goveralls -coverprofile=gover.coverprofile -service=travis-ci
 fi
 
 exit ${FAILURE}
