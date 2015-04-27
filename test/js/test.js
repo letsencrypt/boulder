@@ -164,11 +164,16 @@ function makeKeyPair(answers) {
   state.certFile = answers.certFile;
   state.keyFile = answers.keyFile;
   console.log("Generating key pair...");
-  child_process.exec("openssl req -newkey", state.keyFile, "-days 3650 -subj /CN=blah -nodes -out temp-cert.pem");
-  state.keyPair = crypto.importPemPrivateKey(fs.readFileSync(state.keyFile));
+  child_process.exec("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=example.com -nodes -x509 -out temp-cert.pem", function (error, stdout, stderr) {
+    if (error) {
+      console.log(error);
+      process.exit(1);
+    }
+    state.keyPair = crypto.importPemPrivateKey(fs.readFileSync(state.keyFile));
 
-  console.log();
-  inquirer.prompt(questions.email, register)
+    console.log();
+    inquirer.prompt(questions.email, register)
+  });
 }
 
 function register(answers) {
@@ -308,7 +313,7 @@ function getReadyToValidate(err, resp, body) {
   function httpResponder(request, response) {
     console.log("Got request for", request.url);
     var host = request.headers["host"];
-    if (host === state.domain &&
+    if ((host === state.domain || /localhost/.test(state.newRegistrationURL)) &&
         request.method === "GET" &&
         request.url == "/" + challengePath) {
       response.writeHead(200, {"Content-Type": "text/plain"});
