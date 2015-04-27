@@ -2,6 +2,15 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// To test against a Boulder running on localhost in test mode:
+// cd boulder/test/js
+// npm install
+// js test.js
+//
+// To test against a live or demo Boulder, edit this file to change
+// newRegistrationURL, then run:
+// sudo js test.js.
 
 "use strict";
 
@@ -164,7 +173,7 @@ function makeKeyPair(answers) {
   state.certFile = answers.certFile;
   state.keyFile = answers.keyFile;
   console.log("Generating key pair...");
-  child_process.exec("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=example.com -nodes -x509 -out temp-cert.pem", function (error, stdout, stderr) {
+  child_process.exec("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=foo -nodes -x509 -out temp-cert.pem", function (error, stdout, stderr) {
     if (error) {
       console.log(error);
       process.exit(1);
