@@ -125,7 +125,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	RS := append(R, S...)
 
 	z := sha256.Sum256(RS)
-	zName := fmt.Sprintf("%x.acme.invalid", z)
+	zName := fmt.Sprintf("%064x.acme.invalid", z)
 
 	// Make a connection with SNI = nonceName
 
