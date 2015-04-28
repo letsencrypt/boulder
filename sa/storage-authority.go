@@ -374,7 +374,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	if err != nil {
 		return
 	}
-	serial := fmt.Sprintf("%016x", parsedCertificate.SerialNumber)
+	serial := fmt.Sprintf("%032x", parsedCertificate.SerialNumber)
 
 	tx, err := ssa.db.Begin()
 	if err != nil {
