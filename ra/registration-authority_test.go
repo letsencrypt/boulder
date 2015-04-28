@@ -248,7 +248,8 @@ func TestNewCertificate(t *testing.T) {
 
 	// Verify that cert shows up and is as expected
 	dbCert, err := sa.GetCertificate(shortSerial)
-	test.AssertNotError(t, err, "Could not fetch certificate from database")
+	test.AssertNotError(t, err, fmt.Sprintf("Could not fetch certificate %032x from database",
+		parsedCert.SerialNumber))
 	test.Assert(t, bytes.Compare(cert.DER, dbCert) == 0, "Certificates differ")
 
 	// TODO Test failure cases
