@@ -39,27 +39,48 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		return
 	}
 
-	url := ""
+	if identifier.Type != core.IdentifierDNS {
+		challenge.Status = core.StatusInvalid
+		return
+	}
+	hostName := identifier.Value
+	protocol := "https"
 	if va.TestMode {
-		url = fmt.Sprintf("http://localhost:5001/.well-known/acme-challenge/%s", challenge.Path)
-	} else {
-		url = fmt.Sprintf("https://%s/.well-known/acme-challenge/%s", identifier, challenge.Path)
+		hostName = "localhost:5001"
+		protocol = "http"
 	}
 
+	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", protocol, hostName, challenge.Path)
+
+	va.log.Notice(fmt.Sprintf("Attempting to validate SimpleHTTPS for %s %s", hostName, url))
 	httpRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
+		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
 		challenge.Status = core.StatusInvalid
 		return
 	}
 
-	httpRequest.Host = identifier.Value
-	client := http.Client{Timeout: 5 * time.Second}
+	httpRequest.Host = hostName
+	tr := &http.Transport{
+		// We are talking to a client that does not yet have a certificate,
+		// so we accept a temporary, invalid one. TODO: We may want to change this
+		// to just be over HTTP.
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		// We don't expect to make multiple requests to a client, so close
+		// connection immediately.
+		DisableKeepAlives: true,
+	}
+	client := http.Client{
+		Transport: tr,
+		Timeout: 5 * time.Second,
+	}
 	httpResponse, err := client.Do(httpRequest)
 
 	if err == nil && httpResponse.StatusCode == 200 {
 		// Read body & test
 		body, err := ioutil.ReadAll(httpResponse.Body)
 		if err != nil {
+			va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
 			challenge.Status = core.StatusInvalid
 			return
 		}
@@ -67,14 +88,25 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
 			challenge.Status = core.StatusValid
 			return
+		} else {
+			va.log.Notice(fmt.Sprintf("Incorrect token validating SimpleHTTPS for %s %s", hostName, url))
 		}
+	} else if err != nil {
+		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
+		challenge.Status = core.StatusInvalid
+	} else {
+		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %d", hostName, url, httpResponse.StatusCode))
+		challenge.Status = core.StatusInvalid
 	}
-
-	challenge.Status = core.StatusInvalid
 	return
 }
 
 func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (challenge core.Challenge) {
+	if identifier.Type != "dns" {
+		challenge.Status = core.StatusInvalid
+		return
+	}
+
 	challenge = input
 
 	const DVSNI_SUFFIX = ".acme.invalid"
@@ -93,20 +125,16 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	RS := append(R, S...)
 
 	z := sha256.Sum256(RS)
-	zName := fmt.Sprintf("%x.acme.invalid", z)
+	zName := fmt.Sprintf("%064x.acme.invalid", z)
 
 	// Make a connection with SNI = nonceName
 
-	hostPort := ""
+	hostPort := identifier.Value + ":443"
 	if va.TestMode {
 		hostPort = "localhost:5001"
-	} else {
-		if identifier.Type != "dns" {
-			challenge.Status = core.StatusInvalid
-			return
-		}
-		hostPort = identifier.Value + ":443"
 	}
+	va.log.Notice(fmt.Sprintf("Attempting to validate DVSNI for %s %s %s",
+		identifier, hostPort, zName))
 	conn, err := tls.Dial("tcp", hostPort, &tls.Config{
 		ServerName:         nonceName,
 		InsecureSkipVerify: true,
@@ -116,6 +144,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		challenge.Status = core.StatusInvalid
 		return
 	}
+	defer conn.Close()
 
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates

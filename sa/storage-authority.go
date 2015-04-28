@@ -83,7 +83,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	}
 
 	// Create certificates table
-	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS certificates (serial STRING, digest TEXT, value BLOB);")
+	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS certificates (serial TEXT, digest TEXT, value BLOB);")
 	if err != nil {
 		tx.Rollback()
 		return
@@ -374,7 +374,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	if err != nil {
 		return
 	}
-	serial := fmt.Sprintf("%016x", parsedCertificate.SerialNumber)
+	serial := fmt.Sprintf("%032x", parsedCertificate.SerialNumber)
 
 	tx, err := ssa.db.Begin()
 	if err != nil {
