@@ -15,14 +15,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	apisign "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api/sign"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
-	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -246,10 +245,6 @@ func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
 }
 
 func TestIssueCertificate(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
-	// Audit logger
-	audit, _ := blog.Dial("", "", "tag", stats)
-
 	// Decode pre-generated values
 	caKeyPEM, _ := pem.Decode([]byte(CA_KEY_PEM))
 	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
@@ -265,7 +260,7 @@ func TestIssueCertificate(t *testing.T) {
 	profileName := "ee"
 
 	// Create an SA
-	sa, err := sa.NewSQLStorageAuthority(audit, "sqlite3", ":memory:")
+	sa, err := sa.NewSQLStorageAuthority(blog.TestLogger(), "sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
 	sa.InitTables()
 
@@ -311,7 +306,7 @@ func TestIssueCertificate(t *testing.T) {
 
 	// Create a CA
 	// Uncomment to test with a remote signer
-	ca, err := NewCertificateAuthorityImpl(audit, hostPort, authKey, profileName, 17, cadb)
+	ca, err := NewCertificateAuthorityImpl(blog.TestLogger(), hostPort, authKey, profileName, 17, cadb)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = sa
 

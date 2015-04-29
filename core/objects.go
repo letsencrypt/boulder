@@ -14,6 +14,7 @@ import (
 
 type IdentifierType string
 type AcmeStatus string
+type OCSPStatus string
 type Buffer []byte
 
 const (
@@ -23,6 +24,11 @@ const (
 	StatusValid      = AcmeStatus("valid")      // Validation succeeded
 	StatusInvalid    = AcmeStatus("invalid")    // Validation failed
 	StatusRevoked    = AcmeStatus("revoked")    // Object no longer valid
+)
+
+const (
+	OCSPStatusGood    = OCSPStatus("good")
+	OCSPStatusRevoked = OCSPStatus("revoked")
 )
 
 const (
@@ -213,4 +219,13 @@ type Certificate struct {
 	// * "valid" - not revoked
 	// * "revoked" - revoked
 	Status AcmeStatus
+}
+
+// CertificateStatus structs are internal to the server. They represent the
+// latest data about the status of the certificate, required for OCSP updating
+// and for validating that the subscriber has accepted the certificate.
+type CertificateStatus struct {
+	SubscriberApproved bool
+	Status OCSPStatus
+	OCSPLastUpdated time.Time
 }

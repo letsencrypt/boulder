@@ -41,13 +41,13 @@
     "serialPrefix": 255,
     "profile": "ee",
     "dbDriver": "sqlite3",
-    "dbName": ":memory:",
+    "dbName": "boulder-ca.sqlite3",
     "testMode": true
   },
 
   "sa": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:"
+    "dbName": "boulder.sqlite3"
   },
 
   "mail": {

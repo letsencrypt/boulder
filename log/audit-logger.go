@@ -26,6 +26,14 @@ type AuditLogger struct {
 	Stats statsd.Statter
 }
 
+// TestLogger returns an AuditLogger, required to initialize many components
+func TestLogger() (logger *AuditLogger) {
+	stats, _ := statsd.NewNoopClient(nil)
+	// Audit logger
+	logger, _ = Dial("", "", "tag", stats)
+	return
+}
+
 // Dial establishes a connection to the log daemon by passing through
 // the parameters to the syslog.Dial method.
 // See http://golang.org/pkg/log/syslog/#Dial
