@@ -17,6 +17,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,8 +28,7 @@ import (
 )
 
 type Migration struct {
-	Id      int
-	Desc    string   // Basic explanation of what the migration does
+	Desc    string
 	UpSQL   []string
 	DownSQL []string
 }
@@ -82,7 +82,7 @@ func createMigrationTable(Sql *sql.DB) (err error) {
 	if err != nil {
 		return
 	}
-	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS migrations (id TEXT UNIQUE PRIMARY, description TEXT, applied DATETIME)")
+	_, err = tx.Exec("CREATE TABLE IF NOT EXISTS migrations (id CHAR(17) UNIQUE, description TEXT, applied DATETIME)")
 	if err != nil {
 		tx.Rollback()
 		return
@@ -91,50 +91,105 @@ func createMigrationTable(Sql *sql.DB) (err error) {
 	return
 }
 
-// list applied migrations
-func listMigrations(Sql *sql.DB) (err error) {
-	rows, err := Sql.Query("SELECT id, description, applied FROM migrations")
+type timeSlice []time.Time
+
+// Order most least recent to most
+func (t timeSlice) Len() int {return len(t)}
+func (t timeSlice) Less(i, j int) bool {return t[i].Before(t[j])}
+func (t timeSlice) Swap(i, j int) {t[i], t[j] = t[j], t[i]}
+
+var timestampFormat string = "02-01-06T15:04"
+
+func orderedMigrationList(migrationDir string) (sortedList []string, err error) {
+	migrationList, err := ioutil.ReadDir(migrationDir)
 	if err != nil {
 		return
 	}
-	defer rows.Close()
-	fmt.Println("# Currently applied migrations\n")
-	for rows.Next() {
-		var id         string
-		var desc       string
-		var appliedInt interface{}
-		var applied    time.Time
-		if err = rows.Scan(&id, &desc, &appliedInt); err != nil {
+	var timeList timeSlice
+	for  _, file := range migrationList {
+		if strings.ToLower(filepath.Ext(file.Name())) != ".json" {
+			continue
+		}
+		if file.Name() == "/" {
+			continue
+		}
+		var nameTime time.Time
+		nameTime, err = time.Parse(timestampFormat, nameFromFile(file.Name()))
+		if err != nil {
 			return
 		}
-		applied, ok := appliedInt.(time.Time)
-		if !ok {
-			fmt.Println(ok, applied)
+		timeList = append(timeList, nameTime)
+	}
+	sort.Sort(timeList)
+	for _, ts := range timeList {
+		sortedList = append(sortedList, ts.Format(timestampFormat))
+	}
+	return
+}
+
+// list migrations
+func listMigrations(Sql *sql.DB, migrationDir string) (err error) {
+	migrationList, err := ioutil.ReadDir(migrationDir)
+	if err != nil {
+		return
+	}
+	fmt.Println("id             state\n--             -----")
+	for _, file := range migrationList {
+		if strings.ToLower(filepath.Ext(file.Name())) != ".json" {
+			continue
+		}
+		name := nameFromFile(file.Name())
+		var state   string
+		var desc    string
+		var applied bool
+		applied, err = isApplied(Sql, name)
+		if err != nil {
 			return
 		}
-		fmt.Printf("%s: applied [%s]\n\t%s\n", id, applied, desc)
+		if applied {
+			var appliedInt interface{}
+			err = Sql.QueryRow("SELECT description, applied FROM migrations WHERE id = ?", name).Scan(&desc, &appliedInt)
+			if err != nil {
+				return
+			}
+			var applied time.Time
+			applied, ok := appliedInt.(time.Time)
+			if !ok {
+				return
+			}
+			state = fmt.Sprintf("Applied at %s", applied)
+		} else {
+			state = "Unapplied"
+			var migration Migration
+			migration, err = loadMigrationFile(path.Join(migrationDir, file.Name()))
+			if err != nil {
+				return
+			}
+			desc = migration.Desc
+		}
+		fmt.Printf("%s [%s]\n\t%s\n\n", name, state, desc)
 	}
 	return
 }
 
 // apply new migration
-func applyMigration(Sql *sql.DB, path string, yes bool) (err error) {
-	id, migration, err := loadMigrationFile(path)
+func applyMigration(Sql *sql.DB, id string, migrationDir string, yes bool) (err error) {
+	mPath := path.Join(migrationDir, id+".json")
+	migration, err := loadMigrationFile(mPath)
 	if err != nil {
 		return
 	}
-
-	fmt.Printf("[migration %d]\n", id)
-	fmt.Printf("\tDescription: %s\n", migration.Desc)
-	fmt.Printf("\n\tMigrate SQL:\n")
-	for _, sqlLine := range migration.UpSQL {
-		fmt.Printf("\t%s\n", sqlLine)
-	}
-	fmt.Printf("\n\tRevert SQL:\n")
-	for _, sqlLine := range migration.DownSQL {
-		fmt.Printf("\t%s\n", sqlLine)
-	}
 	if !yes {
+		fmt.Printf("[migration %s]\n", id)
+		fmt.Printf("\tDescription: %s\n", migration.Desc)
+		fmt.Printf("\n\tMigrate SQL:\n")
+		for _, sqlLine := range migration.UpSQL {
+			fmt.Printf("\t\t%s\n", sqlLine)
+		}
+		fmt.Printf("\n\tRevert SQL:\n")
+		for _, sqlLine := range migration.DownSQL {
+			fmt.Printf("\t\t%s\n", sqlLine)
+		}
 		if answer := getYN("\nWould you like to apply this migration"); !answer {
 			fmt.Println("Ok, bye!")
 			return
@@ -165,15 +220,31 @@ func applyMigration(Sql *sql.DB, path string, yes bool) (err error) {
 }
 
 // apply all unapplied migrations
-func applyAllMigrations(Sql *sql.DB, yes bool) (err error) {
+func applyAllMigrations(Sql *sql.DB, migrationDir string, yes bool) (err error) {
+	orderedMigrations, err := orderedMigrationList(migrationDir)
+	if err != nil {
+		return
+	}
+	for _, name := range orderedMigrations {
+		var applied bool
+		applied, err = isApplied(Sql, name)
+		if err != nil {
+			return
+		}
+		if !applied {
+			err = applyMigration(Sql, name, migrationDir, yes)
+			if err != nil {
+				return
+			}
+		}
+	}
 	return
 }
 
 // revert last migration
-func revertMigration(Sql *sql.DB) (err error) {
-	var id      int
-	var downSql string
-	err = Sql.QueryRow("SELECT id, down FROM migrations ORDER BY id DESC LIMIT 1").Scan(&id, &downSql)
+func revertMigration(Sql *sql.DB, migrationDir string, yes bool) (err error) {
+	var id string
+	err = Sql.QueryRow("SELECT id FROM migrations ORDER BY id DESC LIMIT 1").Scan(&id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			fmt.Println("No migrations to revert.")
@@ -181,11 +252,27 @@ func revertMigration(Sql *sql.DB) (err error) {
 		}
 		return
 	}
+	migration, err := loadMigrationFile(path.Join(migrationDir, id+".json"))
+	if err != nil {
+		return
+	}
+	if !yes {
+		fmt.Printf("[migration %s]\n", id)
+		fmt.Printf("\tDescription: %s\n", migration.Desc)
+		fmt.Printf("\n\tRevert SQL:\n")
+		for _, sqlLine := range migration.DownSQL {
+			fmt.Printf("\t\t%s\n", sqlLine)
+		}
+		if answer := getYN("\nAre you sure you would like to revert this migration"); !answer {
+			fmt.Println("Ok, bye!")
+			return
+		}
+	}
 	tx, err := Sql.Begin()
 	if err != nil {
 		return
 	}
-	for _, sqlStmt := range strings.Split(downSql, ";") {
+	for _, sqlStmt := range migration.DownSQL {
 		_, err = tx.Exec(sqlStmt)
 		if err != nil {
 			tx.Rollback()
@@ -203,23 +290,23 @@ func revertMigration(Sql *sql.DB) (err error) {
 }
 
 // revert to specific migration
-func revertMigrationTo(Sql *sql.DB, id int, yes bool) (err error) {
+func revertMigrationTo(Sql *sql.DB, id string, migrationDir string, yes bool) (err error) {
 	var revertCount int
-	err = Sql.QueryRow("SELECT count(*) FROM migrations WHERE id > ?", id).Scan(&revertCount)
+	err = Sql.QueryRow("SELECT count(*) FROM migrations WHERE id > ? ORDER BY applied ASC", id).Scan(&revertCount)
 	if err != nil {
 		return
 	}
 	if revertCount == 0 {
-		fmt.Printf("There are no migrations after ID %d to revert\n", id)
+		fmt.Printf("There are no migrations after ID %s to revert\n", id)
 	}
-	if !yes {
-		if answer := getYN(fmt.Sprintf("This will revert %d migrations, would you like to continue", revertCount)); !answer {
+	if yes {
+		if answer := getYN(fmt.Sprintf("This will revert %s migrations, would you like to continue", revertCount)); !answer {
 			fmt.Println("Ok, bye!")
 			return
 		}
 	}
 	for i := 0; i < revertCount; i++ {
-		err = revertMigration(Sql)
+		err = revertMigration(Sql, migrationDir, yes)
 		if err != nil {
 			return
 		}
@@ -232,26 +319,21 @@ func isApplied(Sql *sql.DB, id string) (applied bool, err error) {
 	return
 }
 
-func nameFromFile(mPath string) (name string) {
+func nameFromFile(mPath string) string {
 	filename := path.Base(mPath)
-	name = filename[0:len(filename)-len(filepath.Ext(filename))]
-	return
+	return filename[0:len(filename)-len(filepath.Ext(filename))]
 }
 
-func loadMigrationFile(mPath string) (name string, migration Migration, err error) {
+func loadMigrationFile(mPath string) (migration Migration, err error) {
 	migrationJSON, err := ioutil.ReadFile(mPath)
 	if err != nil {
 		return
 	}
 	err = json.Unmarshal(migrationJSON, &migration)
-	if err != nil {
-		return
-	}
-	name = nameFromFile(mPath)
 	return
 }
 
-func setupContext(c *cli.Context) (db *sql.DB, err error) {
+func setupContext(c *cli.Context) (db *sql.DB, dir string, err error) {
 	configFileName := c.GlobalString("config")
 	configJSON, err := ioutil.ReadFile(configFileName)
 	cmd.FailOnError(err, "Unable to read config file")
@@ -265,6 +347,11 @@ func setupContext(c *cli.Context) (db *sql.DB, err error) {
 
 	err = createMigrationTable(db)
 	cmd.FailOnError(err, "Failed to create migration table")
+
+	dir = c.GlobalString("migration-dir")
+	if dir == "" {
+		err = fmt.Errorf("No migration directory specified [using --migration-dir or Env Var BOULDER_MIGRATION_DIR]")
+	}
 
 	return
 }
@@ -285,7 +372,6 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:   "migration-dir",
-			Value:  "something",
 			EnvVar: "BOULDER_MIGRATION_DIR",
 		},
 		cli.BoolFlag{
@@ -296,14 +382,14 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
-			Name: "list-applied",
+			Name: "list",
 			Usage: "List all currently applied migrations",
 			Action: func(c *cli.Context) {
-				db, err := setupContext(c)
+				db, migrationDir, err := setupContext(c)
 				if err != nil {
 					cmd.FailOnError(err, "Failed connecting to DB")
 				}
-				err = listMigrations(db)
+				err = listMigrations(db, migrationDir)
 				if err != nil {
 					cmd.FailOnError(err, "Listing migrations failed")
 				}
@@ -311,27 +397,40 @@ func main() {
 		},
 		{
 			Name: "apply",
-			Usage: "Apply a migration from a JSON migration file",
+			Usage: "Apply a single migration by ID",
 			Action: func(c *cli.Context) {
-				db, err := setupContext(c)
+				db, migrationDir, err := setupContext(c)
 				if err != nil {
 					cmd.FailOnError(err, "Failed connecting to DB")
 				}
-
 				yes := c.GlobalBool("yes")
-				err = applyMigration(db, c.Args().First(), yes)
+				err = applyMigration(db, c.Args().First(), migrationDir, yes)
 				cmd.FailOnError(err, "Failed to apply migration")
+			},
+		},
+		{
+			Name: "apply-all",
+			Usage: "Apply all migrations currently unapplied",
+			Action: func(c *cli.Context) {
+				db, migrationDir, err := setupContext(c)
+				if err != nil {
+					cmd.FailOnError(err, "Failed connecting to DB")
+				}
+				yes := c.GlobalBool("yes")
+				err = applyAllMigrations(db, migrationDir, yes)
+				cmd.FailOnError(err, "Failed to apply all migrations")
 			},
 		},
 		{
 			Name: "revert-last",
 			Usage: "Revert the last migration that was applied",
 			Action: func(c *cli.Context) {
-				db, err := setupContext(c)
+				db, migrationDir, err := setupContext(c)
 				if err != nil {
 					cmd.FailOnError(err, "Failed connecting to DB")
 				}
-				err = revertMigration(db)
+				yes := c.GlobalBool("yes")
+				err = revertMigration(db, migrationDir, yes)
 				if err != nil {
 					cmd.FailOnError(err, "Reverting last migration failed")
 				}
@@ -341,17 +440,13 @@ func main() {
 			Name: "revert-to",
 			Usage: "Revert to a specific migration specified by its ID",
 			Action: func(c *cli.Context) {
-				db, err := setupContext(c)
+				db, migrationDir, err := setupContext(c)
 				if err != nil {
 					cmd.FailOnError(err, "Failed connecting to DB")
 				}
-				var id int
-				_, err = fmt.Sscanf(c.Args().First(), "%d", &id)
-				if err != nil {
-					cmd.FailOnError(err, "ID is not an integer")
-				}
+				id := c.Args().First()
 				yes := c.GlobalBool("yes")
-				err = revertMigrationTo(db, id, yes)
+				err = revertMigrationTo(db, id, migrationDir, yes)
 				if err != nil {
 					cmd.FailOnError(err, fmt.Sprintf("Failed to revert to migration %s", id))
 				}
