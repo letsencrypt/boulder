@@ -104,7 +104,10 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	// on certificates.
 	// subscriberApproved: 1 iff the subscriber has posted back to the server
 	//   that they accept the certificate, otherwise 0.
-	// status: 'good' or 'revoked'
+	// status: 'good' or 'revoked'. Note that good, expired certificates remain
+	//   with status 'good' but don't necessarily get fresh OCSP responses.
+	// revokedDate: If status is 'revoked', this is the date and time it was
+	//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
 	// ocspLastUpdated: The date and time of the last time we generated an OCSP
 	//   response. If we have never generated one, this has the zero value of
 	//   time.Time, i.e. Jan 1 1970.
@@ -112,6 +115,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 		serial STRING NOT NULL,
 		subscriberApproved INTEGER NOT NULL,
 		status STRING NOT NULL,
+		revokedDate DATETIME NOT NULL,
 		ocspLastUpdated DATETIME NOT NULL
 		);`,
 	}
@@ -446,10 +450,11 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 		return
 	}
 
-	_, err = tx.Exec(`INSERT INTO certificateStatus
-										(serial, subscriberApproved, status, ocspLastUpdated)
-										VALUES (?, 0, 'good', ?);`,
-										serial, time.Time{})
+	_, err = tx.Exec(`
+		INSERT INTO certificateStatus
+		(serial, subscriberApproved, status, revokedDate, ocspLastUpdated)
+		VALUES (?, 0, 'good', ?, ?);
+		`, serial, time.Time{}, time.Time{})
 	if err != nil {
 		tx.Rollback()
 		return
