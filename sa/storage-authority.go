@@ -92,7 +92,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	// Create certificates table. This should be effectively append-only, enforced
 	// by DB permissions.
 	`CREATE TABLE IF NOT EXISTS certificates (
-		serial VARCHAR(255) NOT NULL,
+		serial VARCHAR(255) PRIMARY KEY NOT NULL,
 		digest VARCHAR(255) NOT NULL,
 		value BLOB NOT NULL,
 		issued DATETIME NOT NULL
@@ -112,12 +112,40 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	//   response. If we have never generated one, this has the zero value of
 	//   time.Time, i.e. Jan 1 1970.
 	`CREATE TABLE IF NOT EXISTS certificateStatus (
-		serial VARCHAR(255) NOT NULL,
+		serial VARCHAR(255) PRIMARY KEY NOT NULL,
 		subscriberApproved INTEGER NOT NULL,
 		status VARCHAR(255) NOT NULL,
 		revokedDate DATETIME NOT NULL,
 		ocspLastUpdated DATETIME NOT NULL
 		);`,
+
+	// A large table of OCSP responses. This contains all historical OCSP
+	// responses we've signed, is append-only, and is likely to get quite
+	// large. We'll probably want administratively truncate it at some point.
+	// serial: Same as certificate serial.
+	// createdAt: The date the response was signed.
+	// response: The encoded and signed CRL.
+	`CREATE TABLE IF NOT EXISTS ocspResponses (
+		serial VARCHAR(255) PRIMARY KEY NOT NULL,
+		createdAt DATETIME NOT NULL,
+		response BLOB
+		);`,
+
+	// This index allows us to quickly serve the most recent OCSP response.
+	`CREATE INDEX IF NOT EXISTS serial_createdAt on ocspResponses (serial, createdAt)`,
+
+	// A large table of signed CRLs. This contains all historical CRLs
+	// we've signed, is append-only, and is likely to get quite large.
+	// serial: Same as certificate serial.
+	// createdAt: The date the CRL was signed.
+	// crl: The encoded and signed CRL.
+	`CREATE TABLE IF NOT EXISTS crls (
+		serial VARCHAR(255) PRIMARY KEY NOT NULL,
+		createdAt DATETIME NOT NULL,
+		crl BLOB
+		);`,
+
+	`CREATE INDEX IF NOT EXISTS serial_createdAt on crls (serial, createdAt)`,
 	}
 
 	for _, statement := range statements {
@@ -210,21 +238,33 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	return
 }
 
-// GetCertificate takes an id consisting of the first, sequential half of a
+// GetCertificateByShortSerial takes an id consisting of the first, sequential half of a
 // serial number and returns the first certificate whose full serial number is
 // lexically greater than that id. This allows clients to query on the known
 // sequential half of our serial numbers to enumerate all certificates.
-// TODO: Add index on certificates table
 // TODO: Implement error when there are multiple certificates with the same
 // sequential half.
-func (ssa *SQLStorageAuthority) GetCertificate(id string) (cert []byte, err error) {
-	if len(id) != 16 {
-		err = errors.New("Invalid certificate serial " + id)
+func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert []byte, err error) {
+	if len(shortSerial) != 16 {
+		err = errors.New("Invalid certificate short serial " + shortSerial)
 		return
 	}
 	err = ssa.db.QueryRow(
 		"SELECT value FROM certificates WHERE serial LIKE ? LIMIT 1;",
-		id + "%").Scan(&cert)
+		shortSerial + "%").Scan(&cert)
+	return
+}
+
+// GetCertificate takes a serial number and returns the corresponding
+// certificate, or error if it does not exist.
+func (ssa *SQLStorageAuthority) GetCertificate(serial string) (cert []byte, err error) {
+	if len(serial) != 32 {
+		err = errors.New("Invalid certificate serial " + serial)
+		return
+	}
+	err = ssa.db.QueryRow(
+		"SELECT value FROM certificates WHERE serial = ? LIMIT 1;",
+		serial).Scan(&cert)
 	return
 }
 
@@ -274,6 +314,17 @@ func (ssa *SQLStorageAuthority) NewRegistration() (id string, err error) {
 
 	id = candidate
 	return
+}
+
+func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string,
+ocspResponse []byte) (err error) {
+	tx, err := ssa.db.Begin()
+	if err != nil {
+		return
+	}
+	//TODO ...
+	err = tx.Commit()
+	return nil
 }
 
 func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err error) {

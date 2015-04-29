@@ -74,6 +74,10 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, auth
 	return
 }
 
+func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (cert core.Certificate, err error) {
+	return
+}
+
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
 // enforcing all policies.
 func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (cert core.Certificate, err error) {

@@ -90,6 +90,7 @@ type StorageGetter interface {
 	GetRegistration(string) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
 	GetCertificate(string) ([]byte, error)
+	GetCertificateByShortSerial(string) ([]byte, error)
 }
 
 type StorageAdder interface {

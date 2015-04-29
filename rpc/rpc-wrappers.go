@@ -44,6 +44,7 @@ const (
 	MethodGetRegistration            = "GetRegistration"            // SA
 	MethodGetAuthorization           = "GetAuthorization"           // SA
 	MethodGetCertificate             = "GetCertificate"             // SA
+	MethodGetCertificateByShortSerial = "GetCertificateByShortSerial" // SA
 	MethodNewPendingAuthorization    = "NewPendingAuthorization"    // SA
 	MethodUpdatePendingAuthorization = "UpdatePendingAuthorization" // SA
 	MethodFinalizeAuthorization      = "FinalizeAuthorization"      // SA
@@ -419,7 +420,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 	rpc = NewAmqpRPCServer(serverQueue, channel)
 
 	rpc.Handle(MethodGetRegistration, func(req []byte) (response []byte) {
-		reg, err := impl.GetCertificate(string(req))
+		reg, err := impl.GetRegistration(string(req))
 		if err != nil {
 			return
 		}
@@ -433,7 +434,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 	})
 
 	rpc.Handle(MethodGetAuthorization, func(req []byte) []byte {
-		authz, err := impl.AddCertificate(req)
+		authz, err := impl.GetAuthorization(string(req))
 		if err != nil {
 			return nil
 		}
@@ -501,6 +502,14 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		return
 	})
 
+	rpc.Handle(MethodGetCertificateByShortSerial, func(req []byte) (response []byte) {
+		cert, err := impl.GetCertificateByShortSerial(string(req))
+		if err == nil {
+			response = []byte(cert)
+		}
+		return
+	})
+
 	return
 }
 
@@ -550,7 +559,7 @@ func (cac StorageAuthorityClient) UpdateRegistration(reg core.Registration) (err
 	}
 
 	// XXX: Is this catching all the errors?
-	_, err = cac.rpc.DispatchSync(MethodUpdatePendingAuthorization, jsonReg)
+	_, err = cac.rpc.DispatchSync(MethodUpdateRegistration, jsonReg)
 	return
 }
 

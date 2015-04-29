@@ -348,8 +348,7 @@ func TestIssueCertificate(t *testing.T) {
 		}
 
 		// Verify that the cert got stored in the DB
-		shortSerial := fmt.Sprintf("%032x", cert.SerialNumber)[0:16]
-		_, err = sa.GetCertificate(shortSerial)
+		_, err = sa.GetCertificate(fmt.Sprintf("%032x", cert.SerialNumber))
 		test.AssertNotError(t, err,
 			fmt.Sprintf("Certificate %032x not found in database", cert.SerialNumber))
 	}

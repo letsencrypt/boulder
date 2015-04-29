@@ -489,7 +489,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		}
 		wfe.log.Notice(fmt.Sprintf("Requested certificate ID %s", serial))
 
-		cert, err := wfe.SA.GetCertificate(serial)
+		cert, err := wfe.SA.GetCertificateByShortSerial(serial)
 		if err != nil {
 			wfe.notFound(response)
 			return

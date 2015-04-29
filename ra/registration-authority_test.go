@@ -244,10 +244,9 @@ func TestNewCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")
-	shortSerial := fmt.Sprintf("%032x", parsedCert.SerialNumber)[0:16]
 
 	// Verify that cert shows up and is as expected
-	dbCert, err := sa.GetCertificate(shortSerial)
+	dbCert, err := sa.GetCertificate(fmt.Sprintf("%032x", parsedCert.SerialNumber))
 	test.AssertNotError(t, err, fmt.Sprintf("Could not fetch certificate %032x from database",
 		parsedCert.SerialNumber))
 	test.Assert(t, bytes.Compare(cert.DER, dbCert) == 0, "Certificates differ")
