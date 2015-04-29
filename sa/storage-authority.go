@@ -68,23 +68,23 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 
 	// Create registrations table
 	`CREATE TABLE IF NOT EXISTS registrations (
-		id TEXT NOT NULL,
-		thumbprint TEXT NOT NULL,
-		value TEXT NOT NULL
+		id VARCHAR(255) NOT NULL,
+		thumbprint VARCHAR(255) NOT NULL,
+		value BLOB NOT NULL
 	);`,
 
 	// Create pending authorizations table
 	// TODO: Add NOT NULL to value. Right now it causes test failures because some
 	// inserts to not fill all fields.
 	`CREATE TABLE IF NOT EXISTS pending_authz (
-		id TEXT NOT NULL,
+		id VARCHAR(255) NOT NULL,
 		value BLOB
 	);`,
 
 	// Create finalized authorizations table
 	`CREATE TABLE IF NOT EXISTS authz (
 		sequence INTEGER NOT NULL,
-		id TEXT NOT NULL,
+		id VARCHAR(255) NOT NULL,
 		digest TEXT NOT NULL,
 		value BLOB NOT NULL
 	);`,
@@ -92,8 +92,8 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	// Create certificates table. This should be effectively append-only, enforced
 	// by DB permissions.
 	`CREATE TABLE IF NOT EXISTS certificates (
-		serial STRING NOT NULL,
-		digest TEXT NOT NULL,
+		serial VARCHAR(255) NOT NULL,
+		digest VARCHAR(255) NOT NULL,
 		value BLOB NOT NULL,
 		issued DATETIME NOT NULL
 		);`,
@@ -112,9 +112,9 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	//   response. If we have never generated one, this has the zero value of
 	//   time.Time, i.e. Jan 1 1970.
 	`CREATE TABLE IF NOT EXISTS certificateStatus (
-		serial STRING NOT NULL,
+		serial VARCHAR(255) NOT NULL,
 		subscriberApproved INTEGER NOT NULL,
-		status STRING NOT NULL,
+		status VARCHAR(255) NOT NULL,
 		revokedDate DATETIME NOT NULL,
 		ocspLastUpdated DATETIME NOT NULL
 		);`,
