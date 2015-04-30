@@ -346,17 +346,16 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			return
 		}
 
+		challenge := updatedAuthz.Challenges[challengeIndex]
 		// assumption: UpdateAuthorization does not modify order of challenges
-		jsonReply, err := json.Marshal(updatedAuthz.Challenges[challengeIndex])
+		jsonReply, err := json.Marshal(challenge)
 		if err != nil {
 			wfe.sendError(response, "Failed to marshal challenge", http.StatusInternalServerError)
 			return
 		}
 
 		authzURL := wfe.AuthzBase + string(authz.ID)
-		challengeURL := authzURL + "?challenge=" + strconv.Itoa(challengeIndex)
-
-		response.Header().Add("Location", challengeURL)
+		response.Header().Add("Location", string(challenge.URI))
 		response.Header().Set("Content-Type", "application/json")
 		response.Header().Add("Link", link(authzURL, "up"))
 		response.WriteHeader(http.StatusAccepted)

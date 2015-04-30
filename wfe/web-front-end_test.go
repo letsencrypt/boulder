@@ -162,3 +162,36 @@ func TestIssueCertificate(t *testing.T) {
 		// TODO: I think this is wrong. The CSR in the payload above was created by openssl and should be valid.
 		"{\"detail\":\"Error creating new cert: Invalid signature on CSR\"}")
 }
+
+func TestChallenge(t *testing.T) {
+	stats, _ := statsd.NewNoopClient(nil)
+	log, err := blog.Dial("", "", "tag", stats)
+	test.AssertNotError(t, err, "Could not construct audit logger")
+	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
+	ra := ra.NewRegistrationAuthorityImpl(log)
+	wfe := NewWebFrontEndImpl(log)
+	wfe.RA = &ra
+	responseWriter := httptest.NewRecorder()
+
+	challengeURI, _ := url.Parse("/acme/authz/asdf?challenge=foo")
+	authz := Authorization{
+		ID: "asdf",
+		challenges: [...]Challenge{
+			Challenge{
+				Type: "bar",
+				URI:  AcmeURL(challengeURI),
+			},
+		},
+	}
+	wfe.Challenge(authz, responseWriter, &http.Request{
+		Method: "POST",
+		URL:    challengeURI,
+	})
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Location"),
+		"/acme/authz/asdf?challenge=foo")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		"/acme/authz/asdf;rel=\"up\"")
+	test.AssertEquals(t, responseWriter.Body.String(), "{type:\"bar\"}")
+}
