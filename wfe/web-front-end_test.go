@@ -6,15 +6,19 @@
 package wfe
 
 import (
+	"encoding/json"
 	"testing"
 	"io/ioutil"
 	"io"
 	"strings"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/jose"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -174,19 +178,43 @@ func TestChallenge(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	challengeURI, _ := url.Parse("/acme/authz/asdf?challenge=foo")
-	authz := Authorization{
+
+	var key jose.JsonWebKey
+	json.Unmarshal([]byte(`{
+									"e": "AQAB",
+									"kty": "RSA",
+									"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+							}`), &key)
+
+	authz := core.Authorization{
 		ID: "asdf",
-		challenges: [...]Challenge{
-			Challenge{
+		Challenges: []core.Challenge{
+			core.Challenge{
 				Type: "bar",
-				URI:  AcmeURL(challengeURI),
+				URI:  core.AcmeURL(*challengeURI),
 			},
 		},
+		Key: key,
 	}
 	wfe.Challenge(authz, responseWriter, &http.Request{
 		Method: "POST",
 		URL:    challengeURI,
+		Body: makeBody(`
+			{
+					"header": {
+							"alg": "RS256",
+							"jwk": {
+									"e": "AQAB",
+									"kty": "RSA",
+									"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+							}
+					},
+					"payload": "e30K",
+					"signature": "JXYA_pin91Bc5oz5I6dqCNNWDrBaYTB31EnWorrj4JEFRaidafC9mpLDLLA9jR9kX_Vy2bA5b6pPpXVKm0w146a0L551OdL8JrrLka9q6LypQdDLLQa76XD03hSBOFcC-Oo5FLPa3WRWS1fQ37hYAoLxtS3isWXMIq_4Onx5bq8bwKyu-3E3fRb_lzIZ8hTIWwcblCTOfufUe6AoK4m6MfBjz0NGhyyk4lEZZw6Sttm2VuZo3xmWoRTJEyJG5AOJ6fkNJ9iQQ1kVhMr0ZZ7NVCaOZAnxrwv2sCjY6R3f4HuEVe1yzT75Mq2IuXq-tadGyFujvUxF6BWHCulbEnss7g"
+			}
+		`),
 	})
+
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"/acme/authz/asdf?challenge=foo")
