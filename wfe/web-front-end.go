@@ -345,9 +345,10 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			return
 		}
 
-		jsonReply, err := json.Marshal(updatedAuthz)
+		// assumption: UpdateAuthorization does not modify order of challenges
+		jsonReply, err := json.Marshal(updatedAuthz.Challenges[challengeIndex])
 		if err != nil {
-			wfe.sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
+			wfe.sendError(response, "Failed to marshal challenge", http.StatusInternalServerError)
 			return
 		}
 		response.Header().Set("Content-Type", "application/json")
