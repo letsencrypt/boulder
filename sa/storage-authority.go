@@ -53,6 +53,13 @@ func NewSQLStorageAuthority(logger *blog.AuditLogger, driver string, name string
 		return
 	}
 
+	if driver == "mysql" {
+		err = ssa.initIndexes()
+		if err != nil {
+			return
+		}
+	}
+
 	return
 }
 
@@ -122,6 +129,79 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 
 	for _, statement := range statements {
 		_, err = tx.Exec(statement)
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+	}
+
+	err = tx.Commit()
+	return
+}
+
+type indexTemplate struct {
+	IndexName string
+	TableName string
+	Column    string
+}
+
+const sqlIndexTemplate = `SELECT IF (
+    EXISTS(
+        SELECT DISTINCT index_name FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+        AND table_name = '%s' AND index_name LIKE '%s'
+    ),
+    'SELECT 1;',
+    'CREATE INDEX %s ON %s(%s)'
+) INTO @a`
+
+func (ssa *SQLStorageAuthority) initIndexes() (err error) {
+	indexes := []indexTemplate{
+		indexTemplate{
+			IndexName: "registration_id",
+			TableName: "registrations",
+			Column:    "id",
+		},
+		indexTemplate{
+			IndexName: "pending_authz_id",
+			TableName: "pending_authz",
+			Column:    "id",
+		},
+		indexTemplate{
+			IndexName: "authz_id",
+			TableName: "authz",
+			Column:    "id",
+		},
+		indexTemplate{
+			IndexName: "certificates_serial",
+			TableName: "certificates",
+			Column:    "serial",
+		},
+	}
+
+	tx, err := ssa.db.Begin()
+	if err != nil {
+		return
+	}
+
+	for _, template := range indexes {
+		statement := fmt.Sprintf(sqlIndexTemplate, template.TableName, template.IndexName, template.IndexName, template.TableName, template.Column)
+		_, err = tx.Exec(statement)
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+		_, err = tx.Exec("PREPARE ind_stmt FROM @a")
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+		_, err = tx.Exec("EXECUTE ind_stmt")
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+		_, err = tx.Exec("DEALLOCATE PREPARE ind_stmt")
 		if err != nil {
 			tx.Rollback()
 			return
