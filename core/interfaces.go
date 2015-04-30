@@ -79,6 +79,7 @@ type ValidationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest) (Certificate, error)
+	RevokeCertificate(serial string) error
 }
 
 type PolicyAuthority interface {
