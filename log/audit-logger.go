@@ -67,6 +67,29 @@ func (log *AuditLogger) AuditErr(msg error) (err error) {
 	return
 }
 
+func (log *AuditLogger) auditAtLevel(level, msg string) (err error) {
+	fmt.Println(msg)
+	log.Stats.Inc(level, 1, 1, 0)
+	text := fmt.Sprintf("%s %s", auditTag, msg)
+	switch level {
+	case "Logging.Alert":
+		err = log.Writer.Alert(text)
+	case "Logging.Crit":
+		err = log.Writer.Crit(text)
+	case "Logging.Debug":
+		err = log.Writer.Debug(text)
+	case "Logging.Emerg":
+		err = log.Writer.Emerg(text)
+	case "Logging.Err":
+		err = log.Writer.Err(text)
+	case "Logging.Info":
+		err = log.Writer.Info(text)
+	case "Logging.Warning":
+		err = log.Writer.Warning(text)
+	}
+	return
+}
+
 // To catch panics in executables, this method should be added
 // in a defer statement as early as possible
 func (log *AuditLogger) AuditPanic() {
@@ -89,10 +112,9 @@ func (log *AuditLogger) Alert(msg string) (err error) {
 	return log.Writer.Alert(msg)
 }
 
+// Crit-level messages are automatically marked for audit
 func (log *AuditLogger) Crit(msg string) (err error) {
-	fmt.Println(msg)
-	log.Stats.Inc("Logging.Crit", 1, 1.0)
-	return log.Writer.Crit(msg)
+	return log.auditAtLevel("Logging.Crit", msg)
 }
 
 func (log *AuditLogger) Debug(msg string) (err error) {
@@ -101,16 +123,14 @@ func (log *AuditLogger) Debug(msg string) (err error) {
 	return log.Writer.Debug(msg)
 }
 
+// Emerg-level messages are automatically marked for audit
 func (log *AuditLogger) Emerg(msg string) (err error) {
-	fmt.Println(msg)
-	log.Stats.Inc("Logging.Emerg", 1, 1.0)
-	return log.Writer.Emerg(msg)
+	return log.auditAtLevel("Logging.Emerg", msg)
 }
 
+// Err-level messages are automatically marked for audit
 func (log *AuditLogger) Err(msg string) (err error) {
-	fmt.Println(msg)
-	log.Stats.Inc("Logging.Err", 1, 1.0)
-	return log.Writer.Err(msg)
+	return log.auditAtLevel("Logging.Err", msg)
 }
 
 func (log *AuditLogger) Info(msg string) (err error) {
