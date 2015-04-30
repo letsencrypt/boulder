@@ -108,6 +108,9 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	//   with status 'good' but don't necessarily get fresh OCSP responses.
 	// revokedDate: If status is 'revoked', this is the date and time it was
 	//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
+	// revokedReason: If status is 'revoked', this is the reason code for the
+	//   revocation. Otherwise it is zero (which happens to be the reason
+	//   code for 'unspecified').
 	// ocspLastUpdated: The date and time of the last time we generated an OCSP
 	//   response. If we have never generated one, this has the zero value of
 	//   time.Time, i.e. Jan 1 1970.
@@ -116,6 +119,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 		subscriberApproved INTEGER NOT NULL,
 		status VARCHAR(255) NOT NULL,
 		revokedDate DATETIME NOT NULL,
+		revokedReason INT NOT NULL,
 		ocspLastUpdated DATETIME NOT NULL
 		);`,
 
@@ -126,7 +130,8 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	// createdAt: The date the response was signed.
 	// response: The encoded and signed CRL.
 	`CREATE TABLE IF NOT EXISTS ocspResponses (
-		serial VARCHAR(255) PRIMARY KEY NOT NULL,
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		serial VARCHAR(255) NOT NULL,
 		createdAt DATETIME NOT NULL,
 		response BLOB
 		);`,
@@ -316,7 +321,9 @@ func (ssa *SQLStorageAuthority) NewRegistration() (id string, err error) {
 	return
 }
 
-func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte) (err error) {
+// MarkCertificateRevoked stores the fact that a certificate is revoked, along
+// with a timestamp and a reason.
+func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
 	if _, err = ssa.GetCertificate(serial); err != nil {
 		return errors.New(fmt.Sprintf(
 		  "Unable to mark certificate %s revoked: cert not found.", serial))
@@ -332,8 +339,18 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 		return
 	}
 
-	_, err = tx.Exec("UPDATE certificateStatus SET status=?, revokedDate=?",
-		string(core.OCSPStatusRevoked), time.Now())
+	// TODO: Also update crls.
+	_, err = tx.Exec(`INSERT INTO ocspResponses (serial, createdAt, response)
+			values (?, ?, ?)`,
+		serial, time.Now(), ocspResponse)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	_, err = tx.Exec(`UPDATE certificateStatus SET
+		status=?, revokedDate=?, revokedReason=? WHERE serial=?`,
+		string(core.OCSPStatusRevoked), time.Now(), reasonCode)
 	if err != nil {
 		tx.Rollback()
 		return
@@ -518,9 +535,9 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 
 	_, err = tx.Exec(`
 		INSERT INTO certificateStatus
-		(serial, subscriberApproved, status, revokedDate, ocspLastUpdated)
-		VALUES (?, 0, 'good', ?, ?);
-		`, serial, time.Time{}, time.Time{})
+		(serial, subscriberApproved, status, revokedDate, revokedReason, ocspLastUpdated)
+		VALUES (?, 0, 'good', ?, ?, ?);
+		`, serial, time.Time{}, 0, time.Time{})
 	if err != nil {
 		tx.Rollback()
 		return

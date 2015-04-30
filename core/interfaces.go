@@ -100,7 +100,7 @@ type StorageAdder interface {
 	NewPendingAuthorization() (string, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
-	MarkCertificateRevoked(serial string, ocspResponse []byte) error
+	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error
 
 	AddCertificate([]byte) (string, error)
 }

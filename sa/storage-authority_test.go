@@ -16,8 +16,12 @@ import (
 
 func TestAddCertificate(t *testing.T) {
 	sa, err := NewSQLStorageAuthority(blog.TestLogger(), "sqlite3", ":memory:")
-	test.AssertNotError(t, err, "Failed to create SA")
-	sa.InitTables()
+	if err != nil {
+		t.Fatalf("Failed to create SA")
+	}
+	if err = sa.InitTables(); err != nil {
+		t.Fatalf("Failed to create SA")
+	}
 
 	// An example cert taken from EFF's website
 	certDER, err := ioutil.ReadFile("www.eff.org.der")

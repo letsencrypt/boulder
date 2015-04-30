@@ -159,19 +159,21 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (err error)
 		return err
 	}
 
+	// Per https://tools.ietf.org/html/rfc5280, CRLReason 0 is "unspecified."
+	// TODO: Add support for specifying reason.
+	reason := 0
+
 	signRequest := ocsp.SignRequest{
 		Certificate: cert,
 		Status: string(core.OCSPStatusRevoked),
-		// Per https://tools.ietf.org/html/rfc5280, CRLReason 0 is "unspecified."
-		// TODO: Add support for specifying reason.
-		Reason: 0,
+		Reason: reason,
 		RevokedAt: time.Now(),
 	}
 	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
 	if err != nil {
 		return err
 	}
-	err = ca.SA.MarkCertificateRevoked(serial, ocspResponse)
+	err = ca.SA.MarkCertificateRevoked(serial, ocspResponse, reason)
 	return err
 }
 
