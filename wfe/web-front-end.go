@@ -351,7 +351,13 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			wfe.sendError(response, "Failed to marshal challenge", http.StatusInternalServerError)
 			return
 		}
+
+		authzURL := wfe.AuthzBase + string(authz.ID)
+		challengeURL := authzURL + "?challenge=" + strconv.Itoa(challengeIndex)
+
+		response.Header().Add("Location", challengeURL)
 		response.Header().Set("Content-Type", "application/json")
+		response.Header().Add("Link", link(wfe.authzURL, "up"))
 		response.WriteHeader(http.StatusAccepted)
 		if _, err = response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
