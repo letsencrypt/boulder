@@ -153,7 +153,7 @@ const sqlIndexTemplate = `SELECT IF (
     ),
     'SELECT 1;',
     'CREATE UNIQUE INDEX %s ON %s(%s)'
-) INTO @a`
+) INTO @a;`
 
 func (ssa *SQLStorageAuthority) initIndexes() (err error) {
 	indexes := []indexTemplate{
@@ -191,17 +191,17 @@ func (ssa *SQLStorageAuthority) initIndexes() (err error) {
 			tx.Rollback()
 			return
 		}
-		_, err = tx.Exec("PREPARE ind_stmt FROM @a")
+		_, err = tx.Exec("PREPARE ind_stmt FROM @a;")
 		if err != nil {
 			tx.Rollback()
 			return
 		}
-		_, err = tx.Exec("EXECUTE ind_stmt")
+		_, err = tx.Exec("EXECUTE ind_stmt;")
 		if err != nil {
 			tx.Rollback()
 			return
 		}
-		_, err = tx.Exec("DEALLOCATE PREPARE ind_stmt")
+		_, err = tx.Exec("DEALLOCATE PREPARE ind_stmt;")
 		if err != nil {
 			tx.Rollback()
 			return
