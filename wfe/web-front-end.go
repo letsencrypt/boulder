@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -357,7 +358,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 
 		response.Header().Add("Location", challengeURL)
 		response.Header().Set("Content-Type", "application/json")
-		response.Header().Add("Link", link(wfe.authzURL, "up"))
+		response.Header().Add("Link", link(authzURL, "up"))
 		response.WriteHeader(http.StatusAccepted)
 		if _, err = response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
