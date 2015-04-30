@@ -152,7 +152,7 @@ const sqlIndexTemplate = `SELECT IF (
         AND table_name = '%s' AND index_name LIKE '%s'
     ),
     'SELECT 1;',
-    'CREATE INDEX %s ON %s(%s)'
+    'CREATE UNIQUE INDEX %s ON %s(%s)'
 ) INTO @a`
 
 func (ssa *SQLStorageAuthority) initIndexes() (err error) {
