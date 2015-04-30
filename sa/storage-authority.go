@@ -271,9 +271,9 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (cert []byte, err 
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
 // number of a certificate and returns data about that certificate's current
 // validity.
-func (ssa *SQLStorageAuthority) GetCertificateStatus(id string) (status core.CertificateStatus, err error) {
-	if len(id) != 32 {
-		err = errors.New("Invalid certificate serial " + id)
+func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core.CertificateStatus, err error) {
+	if len(serial) != 32 {
+		err = errors.New("Invalid certificate serial " + serial)
 		return
 	}
 	var statusString string;
@@ -281,7 +281,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(id string) (status core.Cer
 		`SELECT subscriberApproved, status, ocspLastUpdated
 		 FROM certificateStatus
 		 WHERE serial = ?
-		 LIMIT 1;`, id).Scan(&status.SubscriberApproved, &statusString, &status.OCSPLastUpdated)
+		 LIMIT 1;`, serial).Scan(&status.SubscriberApproved, &statusString, &status.OCSPLastUpdated)
 	if err != nil {
 		return
 	}
@@ -316,15 +316,30 @@ func (ssa *SQLStorageAuthority) NewRegistration() (id string, err error) {
 	return
 }
 
-func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string,
-ocspResponse []byte) (err error) {
+func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte) (err error) {
+	if _, err = ssa.GetCertificate(serial); err != nil {
+		return errors.New(fmt.Sprintf(
+		  "Unable to mark certificate %s revoked: cert not found.", serial))
+	}
+
+	if _, err = ssa.GetCertificateStatus(serial); err != nil {
+		return errors.New(fmt.Sprintf(
+		  "Unable to mark certificate %s revoked: cert status not found.", serial))
+	}
+
 	tx, err := ssa.db.Begin()
 	if err != nil {
 		return
 	}
-	//TODO ...
+
+	_, err = tx.Exec("UPDATE certificateStatus SET status=?, revokedDate=?",
+		string(core.OCSPStatusRevoked), time.Now())
+	if err != nil {
+		tx.Rollback()
+		return
+	}
 	err = tx.Commit()
-	return nil
+	return
 }
 
 func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err error) {

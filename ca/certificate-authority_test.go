@@ -306,7 +306,16 @@ func TestIssueCertificate(t *testing.T) {
 
 	// Create a CA
 	// Uncomment to test with a remote signer
-	ca, err := NewCertificateAuthorityImpl(blog.TestLogger(), hostPort, authKey, profileName, 17, cadb)
+	caConfig := Config{
+		Server: hostPort,
+		AuthKey: authKey,
+		Profile: profileName,
+		SerialPrefix: 17,
+		IssuerCert: "../test/test-ca.pem",
+		IssuerKey: "../test/test-ca.key",
+		TestMode: true,
+	}
+	ca, err := NewCertificateAuthorityImpl(blog.TestLogger(), cadb, caConfig)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = sa
 
