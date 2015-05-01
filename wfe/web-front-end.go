@@ -29,26 +29,26 @@ type WebFrontEndImpl struct {
 	log   *blog.AuditLogger
 
 	// URL configuration parameters
-	BaseURL   string
-	NewReg    string
-	NewRegPath    string
-	RegBase   string
-	RegPath   string
-	NewAuthz  string
-	NewAuthzPath  string
-	AuthzBase string
-	AuthzPath string
-	NewCert   string
-	NewCertPath   string
-	CertBase  string
-	CertPath  string
-	TermsPath  string
+	BaseURL      string
+	NewReg       string
+	NewRegPath   string
+	RegBase      string
+	RegPath      string
+	NewAuthz     string
+	NewAuthzPath string
+	AuthzBase    string
+	AuthzPath    string
+	NewCert      string
+	NewCertPath  string
+	CertBase     string
+	CertPath     string
+	TermsPath    string
 }
 
 func NewWebFrontEndImpl(logger *blog.AuditLogger) WebFrontEndImpl {
 	logger.Notice("Web Front End Starting")
 	return WebFrontEndImpl{
-		log: logger,
+		log:          logger,
 		NewRegPath:   "/acme/new-reg",
 		RegPath:      "/acme/reg/",
 		NewAuthzPath: "/acme/new-authz",
@@ -182,7 +182,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	response.Header().Set("Content-Type", "application/json")
 	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
 	if len(wfe.TermsPath) > 0 {
-		response.Header().Add("Link", link(wfe.BaseURL + wfe.TermsPath, "terms-of-service"))
+		response.Header().Add("Link", link(wfe.BaseURL+wfe.TermsPath, "terms-of-service"))
 	}
 
 	response.WriteHeader(http.StatusCreated)

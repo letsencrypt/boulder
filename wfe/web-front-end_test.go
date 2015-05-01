@@ -7,23 +7,23 @@ package wfe
 
 import (
 	"encoding/json"
-	"testing"
-	"io/ioutil"
 	"io"
-	"strings"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
+	"testing"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/test"
 )
 
-func makeBody(s string) (io.ReadCloser) {
+func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
 
@@ -61,7 +61,7 @@ func TestIssueCertificate(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody("hi"),
+		Body:   makeBody("hi"),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -168,37 +168,39 @@ func TestIssueCertificate(t *testing.T) {
 }
 
 func TestChallenge(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
-	log, err := blog.Dial("", "", "tag", stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
-	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl(log)
+	log, _, _, _, ra := test.InitAuthorities(t)
 	wfe := NewWebFrontEndImpl(log)
-	wfe.RA = &ra
+	wfe.RA = ra
 	responseWriter := httptest.NewRecorder()
 
-	challengeURI, _ := url.Parse("/acme/authz/asdf?challenge=foo")
-
 	var key jose.JsonWebKey
-	json.Unmarshal([]byte(`{
-									"e": "AQAB",
-									"kty": "RSA",
-									"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+	err := json.Unmarshal([]byte(`{
+						"e": "AQAB",
+						"kty": "RSA",
+						"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
 							}`), &key)
+	test.AssertNotError(t, err, "Could not unmarshal testing key")
 
 	authz := core.Authorization{
 		ID: "asdf",
+		Identifier: core.AcmeIdentifier{
+			Type:  "dns",
+			Value: "letsencrypt.org",
+		},
 		Challenges: []core.Challenge{
 			core.Challenge{
-				Type: "bar",
-				URI:  core.AcmeURL(*challengeURI),
+				Type: "dns",
 			},
 		},
 		Key: key,
 	}
+	_, err = ra.NewAuthorization(authz, key)
+	test.AssertNotError(t, err, "Could not create new testing authz")
+	challengeURL := url.URL(authz.Challenges[0].URI)
+
 	wfe.Challenge(authz, responseWriter, &http.Request{
 		Method: "POST",
-		URL:    challengeURI,
+		URL:    &challengeURL,
 		Body: makeBody(`
 			{
 					"header": {
