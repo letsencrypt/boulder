@@ -85,10 +85,6 @@ func NewToken() string {
 	return RandomString(32)
 }
 
-func EmergencyExit() {
-	// For now just exit, but perhaps other cleanup and continuity
-}
-
 // Fingerprints
 
 func Fingerprint256(data []byte) string {
