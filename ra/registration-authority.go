@@ -7,7 +7,9 @@ package ra
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -43,6 +45,21 @@ var allButLastPathSegment = regexp.MustCompile("^.*/")
 
 func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
+}
+
+type certificateRequestEvent struct {
+	ID                  string    `json:"omitempty"`
+	Requester           string    `json:"omitempty"`
+	SerialNumber        *big.Int  `json:"omitempty"`
+	RequestMethod       string    `json:"omitempty"`
+	VerificationMethods []string  `json:"omitempty"`
+	VerifiedFields      []string  `json:"omitempty"`
+	CommonName          string    `json:"omitempty"`
+	NotBefore           time.Time `json:"omitempty"`
+	NotAfter            time.Time `json:"omitempty"`
+	RequestTime         time.Time `json:"omitempty"`
+	ResponseTime        time.Time `json:"omitempty"`
+	Error               string    `json:"omitempty"`
 }
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key jose.JsonWebKey) (reg core.Registration, err error) {
@@ -110,6 +127,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Gather authorized domains from the referenced authorizations
 	authorizedDomains := map[string]bool{}
+	verificationMethodSet := map[string]bool{}
 	now := time.Now()
 	for _, url := range req.Authorizations {
 		id := lastPathSegment(url)
@@ -125,7 +143,17 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 			continue
 		}
 
+		for _, challenge := range authz.Challenges {
+			if challenge.Status == core.StatusValid {
+				verificationMethodSet[challenge.Type] = true
+			}
+		}
+
 		authorizedDomains[authz.Identifier.Value] = true
+	}
+	verificationMethods := []string{}
+	for method, _ := range verificationMethodSet {
+		verificationMethods = append(verificationMethods, method)
 	}
 
 	// Validate that authorization key is authorized for all domains
@@ -140,12 +168,45 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		}
 	}
 
-	// Create the certificate
-	ra.log.Audit(fmt.Sprintf("Issuing certificate for %s", names))
-	if cert, err = ra.CA.IssueCertificate(*csr); err != nil {
+	// Log the request
+	logEvent := certificateRequestEvent{
+		ID:                  core.NewToken(),
+		Requester:           jwk.Thumbprint,
+		RequestMethod:       "online",
+		VerificationMethods: verificationMethods,
+		VerifiedFields:      []string{"subject.commonName", "subjectAltName"},
+		CommonName:          names[0],
+		RequestTime:         time.Now(),
+	}
+	jsonLogEvent, err := json.Marshal(logEvent)
+	if err != nil {
 		return
 	}
+	ra.log.Audit(fmt.Sprintf("Certificate request - %s", string(jsonLogEvent)))
+
+	// Create the certificate and log the result
+	if cert, err = ra.CA.IssueCertificate(*csr); err != nil {
+		logEvent.Error = err.Error()
+		logEvent.ResponseTime = time.Now()
+		jsonLogEvent, err = json.Marshal(logEvent)
+		if err != nil {
+			return
+		}
+		ra.log.Audit(fmt.Sprintf("Certificate request - result - %s", string(jsonLogEvent)))
+		return
+	}
+
 	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))
+	logEvent.SerialNumber = cert.ParsedCertificate.SerialNumber
+	logEvent.CommonName = cert.ParsedCertificate.Subject.CommonName
+	logEvent.NotBefore = cert.ParsedCertificate.NotBefore
+	logEvent.NotAfter = cert.ParsedCertificate.NotAfter
+	logEvent.ResponseTime = time.Now()
+	jsonLogEvent, err = json.Marshal(logEvent)
+	if err != nil {
+		return
+	}
+	err = ra.log.Audit(fmt.Sprintf("Certificate request - result - %s", string(jsonLogEvent)))
 	return
 }
 

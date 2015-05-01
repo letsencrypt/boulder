@@ -344,7 +344,7 @@ type ValidationAuthorityClient struct {
 	rpc *AmqpRPCCLient
 }
 
-func NewValidationAuthorityClient(clientQueue, serverQueue string, log *blog.AuditLogger, channel *amqp.Channel) (vac ValidationAuthorityClient, err error) {
+func NewValidationAuthorityClient(clientQueue, serverQueue string, channel *amqp.Channel) (vac ValidationAuthorityClient, err error) {
 	rpc, err := NewAmqpRPCCLient(clientQueue, serverQueue, channel)
 	if err != nil {
 		return
