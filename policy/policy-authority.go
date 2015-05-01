@@ -22,7 +22,8 @@ type PolicyAuthorityImpl struct {
 	Blacklist        map[string]bool // A blacklist of denied names
 }
 
-func NewPolicyAuthorityImpl(logger *blog.AuditLogger) *PolicyAuthorityImpl {
+func NewPolicyAuthorityImpl() *PolicyAuthorityImpl {
+	logger := blog.GetAuditLogger()
 	logger.Notice("Registration Authority Starting")
 
 	pa := PolicyAuthorityImpl{log: logger}

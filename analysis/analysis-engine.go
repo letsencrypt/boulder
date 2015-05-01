@@ -39,7 +39,8 @@ func (eng *LoggingAnalysisEngine) ProcessMessage(delivery amqp.Delivery) (err er
 }
 
 // Construct a new Analysis Engine.
-func NewLoggingAnalysisEngine(logger *blog.AuditLogger) AnalysisEngine {
+func NewLoggingAnalysisEngine() AnalysisEngine {
+	logger := blog.GetAuditLogger()
 	logger.Notice("Analysis Engine Starting")
 
 	return &LoggingAnalysisEngine{log: logger}

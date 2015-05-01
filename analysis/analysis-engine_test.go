@@ -9,12 +9,10 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 func TestNewLoggingAnalysisEngine(t *testing.T) {
-	log := blog.GetAuditLogger()
-	ae := NewLoggingAnalysisEngine(log)
+	ae := NewLoggingAnalysisEngine()
 
 	// Trivially check an empty mock message
 	d := &amqp.Delivery{}
@@ -41,8 +39,7 @@ func (m *MockAck) Reject(tag uint64, requeue bool) error {
 }
 
 func TestAnalysisEngineBadMessage(t *testing.T) {
-	log := blog.GetAuditLogger()
-	ae := NewLoggingAnalysisEngine(log)
+	ae := NewLoggingAnalysisEngine()
 
 	// Trivially check an empty mock message
 	d := &amqp.Delivery{Acknowledger: &MockAck{}}

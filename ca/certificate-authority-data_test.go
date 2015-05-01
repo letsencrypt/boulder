@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -19,29 +18,21 @@ const sqliteDriver = "sqlite3"
 const sqliteName = ":memory:"
 
 func TestConstruction(t *testing.T) {
-	log := blog.GetAuditLogger()
-
 	// Successful case
-	_, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
+	_, err := NewCertificateAuthorityDatabaseImpl(sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
 
 	// Covers "sql.Open" error
-	_, err = NewCertificateAuthorityDatabaseImpl(log, badDriver, sqliteName)
+	_, err = NewCertificateAuthorityDatabaseImpl(badDriver, sqliteName)
 	test.AssertError(t, err, "Should have failed construction")
 
 	// Covers "db.Ping" error
-	_, err = NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, badFilename)
-	test.AssertError(t, err, "Should have failed construction")
-
-	// Ensures no nil pointer exception in logging
-	_, err = NewCertificateAuthorityDatabaseImpl(nil, sqliteDriver, sqliteName)
+	_, err = NewCertificateAuthorityDatabaseImpl(sqliteDriver, badFilename)
 	test.AssertError(t, err, "Should have failed construction")
 }
 
 func TestBeginCommit(t *testing.T) {
-	log := blog.GetAuditLogger()
-
-	cadb, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
+	cadb, err := NewCertificateAuthorityDatabaseImpl(sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
 
 	err = cadb.Begin()
@@ -59,9 +50,7 @@ func TestBeginCommit(t *testing.T) {
 }
 
 func TestGetSetSequenceOutsideTx(t *testing.T) {
-	log := blog.GetAuditLogger()
-
-	cadb, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
+	cadb, err := NewCertificateAuthorityDatabaseImpl(sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
 
 	_, err = cadb.IncrementAndGetSerial()
@@ -69,9 +58,7 @@ func TestGetSetSequenceOutsideTx(t *testing.T) {
 }
 
 func TestGetSetSequenceNumber(t *testing.T) {
-	log := blog.GetAuditLogger()
-
-	cadb, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
+	cadb, err := NewCertificateAuthorityDatabaseImpl(sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
 
 	err = cadb.Begin()

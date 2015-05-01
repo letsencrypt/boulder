@@ -16,11 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
 
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -29,21 +27,13 @@ func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
 
-func mockLog(t *testing.T) (log *blog.AuditLogger) {
-	stats, _ := statsd.NewNoopClient(nil)
-	log, err := blog.Dial("", "", "tag", stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
-	return
-}
-
 // TODO: Write additional test cases for:
 //  - RA returns with a cert success
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
-	log := blog.GetAuditLogger()
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl(log)
-	wfe := NewWebFrontEndImpl(log)
+	ra := ra.NewRegistrationAuthorityImpl()
+	wfe := NewWebFrontEndImpl()
 	wfe.RA = &ra
 	responseWriter := httptest.NewRecorder()
 
@@ -204,8 +194,7 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization
 }
 
 func TestChallenge(t *testing.T) {
-	log := blog.GetAuditLogger()
-	wfe := NewWebFrontEndImpl(log)
+	wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.HandlePaths()
 	responseWriter := httptest.NewRecorder()

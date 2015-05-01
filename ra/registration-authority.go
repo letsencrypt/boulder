@@ -31,11 +31,12 @@ type RegistrationAuthorityImpl struct {
 	AuthzBase string
 }
 
-func NewRegistrationAuthorityImpl(logger *blog.AuditLogger) RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
+	logger := blog.GetAuditLogger()
 	logger.Notice("Registration Authority Starting")
 
 	ra := RegistrationAuthorityImpl{log: logger}
-	ra.PA = policy.NewPolicyAuthorityImpl(logger)
+	ra.PA = policy.NewPolicyAuthorityImpl()
 	return ra
 }
 

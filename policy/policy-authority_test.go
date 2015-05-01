@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 func TestWillingToIssue(t *testing.T) {
@@ -88,10 +87,7 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zombo-.com",
 	}
 
-	// Audit logger
-	audit := blog.GetAuditLogger()
-
-	pa := NewPolicyAuthorityImpl(audit)
+	pa := NewPolicyAuthorityImpl()
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
@@ -134,9 +130,7 @@ func TestWillingToIssue(t *testing.T) {
 }
 
 func TestChallengesFor(t *testing.T) {
-	audit := blog.GetAuditLogger()
-
-	pa := NewPolicyAuthorityImpl(audit)
+	pa := NewPolicyAuthorityImpl()
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 

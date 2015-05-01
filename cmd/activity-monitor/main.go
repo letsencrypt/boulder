@@ -61,7 +61,7 @@ func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[str
 }
 
 func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.Statter) {
-	ae := analysisengine.NewLoggingAnalysisEngine(logger)
+	ae := analysisengine.NewLoggingAnalysisEngine()
 
 	// For convenience at the broker, identifiy ourselves by hostname
 	consumerTag, err := os.Hostname()

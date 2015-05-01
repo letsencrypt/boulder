@@ -29,7 +29,7 @@ func main() {
 
 		go cmd.ProfileCmd("VA", stats)
 
-		vai := va.NewValidationAuthorityImpl(auditlogger, c.CA.TestMode)
+		vai := va.NewValidationAuthorityImpl(c.CA.TestMode)
 
 		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)

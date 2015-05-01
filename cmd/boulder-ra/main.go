@@ -27,7 +27,7 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
-		rai := ra.NewRegistrationAuthorityImpl(auditlogger)
+		rai := ra.NewRegistrationAuthorityImpl()
 
 		go cmd.ProfileCmd("RA", stats)
 

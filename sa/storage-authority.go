@@ -31,7 +31,8 @@ func digest256(data []byte) []byte {
 	return d.Sum(nil)
 }
 
-func NewSQLStorageAuthority(logger *blog.AuditLogger, driver string, name string) (ssa *SQLStorageAuthority, err error) {
+func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthority, err error) {
+	logger := blog.GetAuditLogger()
 	logger.Notice("Storage Authority Starting")
 
 	db, err := sql.Open(driver, name)
@@ -66,52 +67,52 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	// handle null values well (see, e.g. https://github.com/go-sql-driver/mysql/issues/59)
 	statements := []string{
 
-	// Create registrations table
-	`CREATE TABLE IF NOT EXISTS registrations (
+		// Create registrations table
+		`CREATE TABLE IF NOT EXISTS registrations (
 		id VARCHAR(255) NOT NULL,
 		thumbprint VARCHAR(255) NOT NULL,
 		value BLOB NOT NULL
 	);`,
 
-	// Create pending authorizations table
-	// TODO: Add NOT NULL to value. Right now it causes test failures because some
-	// inserts to not fill all fields.
-	`CREATE TABLE IF NOT EXISTS pending_authz (
+		// Create pending authorizations table
+		// TODO: Add NOT NULL to value. Right now it causes test failures because some
+		// inserts to not fill all fields.
+		`CREATE TABLE IF NOT EXISTS pending_authz (
 		id VARCHAR(255) NOT NULL,
 		value BLOB
 	);`,
 
-	// Create finalized authorizations table
-	`CREATE TABLE IF NOT EXISTS authz (
+		// Create finalized authorizations table
+		`CREATE TABLE IF NOT EXISTS authz (
 		sequence INTEGER NOT NULL,
 		id VARCHAR(255) NOT NULL,
 		digest TEXT NOT NULL,
 		value BLOB NOT NULL
 	);`,
 
-	// Create certificates table. This should be effectively append-only, enforced
-	// by DB permissions.
-	`CREATE TABLE IF NOT EXISTS certificates (
+		// Create certificates table. This should be effectively append-only, enforced
+		// by DB permissions.
+		`CREATE TABLE IF NOT EXISTS certificates (
 		serial VARCHAR(255) NOT NULL,
 		digest VARCHAR(255) NOT NULL,
 		value BLOB NOT NULL,
 		issued DATETIME NOT NULL
 		);`,
 
-	// Create certificate status table. This provides metadata about a certificate
-	// that can change over its lifetime, and rows are updateable unlike the
-	// certificates table. The serial number primary key matches up with the one
-	// on certificates.
-	// subscriberApproved: 1 iff the subscriber has posted back to the server
-	//   that they accept the certificate, otherwise 0.
-	// status: 'good' or 'revoked'. Note that good, expired certificates remain
-	//   with status 'good' but don't necessarily get fresh OCSP responses.
-	// revokedDate: If status is 'revoked', this is the date and time it was
-	//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
-	// ocspLastUpdated: The date and time of the last time we generated an OCSP
-	//   response. If we have never generated one, this has the zero value of
-	//   time.Time, i.e. Jan 1 1970.
-	`CREATE TABLE IF NOT EXISTS certificateStatus (
+		// Create certificate status table. This provides metadata about a certificate
+		// that can change over its lifetime, and rows are updateable unlike the
+		// certificates table. The serial number primary key matches up with the one
+		// on certificates.
+		// subscriberApproved: 1 iff the subscriber has posted back to the server
+		//   that they accept the certificate, otherwise 0.
+		// status: 'good' or 'revoked'. Note that good, expired certificates remain
+		//   with status 'good' but don't necessarily get fresh OCSP responses.
+		// revokedDate: If status is 'revoked', this is the date and time it was
+		//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
+		// ocspLastUpdated: The date and time of the last time we generated an OCSP
+		//   response. If we have never generated one, this has the zero value of
+		//   time.Time, i.e. Jan 1 1970.
+		`CREATE TABLE IF NOT EXISTS certificateStatus (
 		serial VARCHAR(255) NOT NULL,
 		subscriberApproved INTEGER NOT NULL,
 		status VARCHAR(255) NOT NULL,
@@ -224,7 +225,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(id string) (cert []byte, err erro
 	}
 	err = ssa.db.QueryRow(
 		"SELECT value FROM certificates WHERE serial LIKE ? LIMIT 1;",
-		id + "%").Scan(&cert)
+		id+"%").Scan(&cert)
 	return
 }
 
@@ -236,7 +237,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(id string) (status core.Cer
 		err = errors.New("Invalid certificate serial " + id)
 		return
 	}
-	var statusString string;
+	var statusString string
 	err = ssa.db.QueryRow(
 		`SELECT subscriberApproved, status, ocspLastUpdated
 		 FROM certificateStatus
