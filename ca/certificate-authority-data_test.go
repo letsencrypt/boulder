@@ -8,7 +8,6 @@ package ca
 import (
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
@@ -20,12 +19,10 @@ const sqliteDriver = "sqlite3"
 const sqliteName = ":memory:"
 
 func TestConstruction(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
-	log, err := blog.Dial("", "", "tag", stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	log := blog.GetAuditLogger()
 
 	// Successful case
-	_, err = NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
+	_, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
 
 	// Covers "sql.Open" error
@@ -42,9 +39,7 @@ func TestConstruction(t *testing.T) {
 }
 
 func TestBeginCommit(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
-	log, err := blog.Dial("", "", "tag", stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	log := blog.GetAuditLogger()
 
 	cadb, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
@@ -64,9 +59,7 @@ func TestBeginCommit(t *testing.T) {
 }
 
 func TestGetSetSequenceOutsideTx(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
-	log, err := blog.Dial("", "", "tag", stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	log := blog.GetAuditLogger()
 
 	cadb, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
@@ -76,9 +69,7 @@ func TestGetSetSequenceOutsideTx(t *testing.T) {
 }
 
 func TestGetSetSequenceNumber(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
-	log, err := blog.Dial("", "", "tag", stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	log := blog.GetAuditLogger()
 
 	cadb, err := NewCertificateAuthorityDatabaseImpl(log, sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")

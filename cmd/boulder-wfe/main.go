@@ -73,6 +73,8 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		blog.SetAuditLogger(auditlogger)
+
 		wfe := wfe.NewWebFrontEndImpl(auditlogger)
 		rac, sac, closeChan := setupWFE(c, auditlogger)
 		wfe.RA = &rac

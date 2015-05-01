@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
+
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/test"
@@ -39,7 +40,7 @@ func mockLog(t *testing.T) (log *blog.AuditLogger) {
 //  - RA returns with a cert success
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
-	log := mockLog(t)
+	log := blog.GetAuditLogger()
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl(log)
 	wfe := NewWebFrontEndImpl(log)
@@ -203,7 +204,7 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization
 }
 
 func TestChallenge(t *testing.T) {
-	log := mockLog(t)
+	log := blog.GetAuditLogger()
 	wfe := NewWebFrontEndImpl(log)
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.HandlePaths()

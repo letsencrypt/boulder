@@ -25,10 +25,11 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		blog.SetAuditLogger(auditlogger)
+
 		rai := ra.NewRegistrationAuthorityImpl(auditlogger)
 
 		go cmd.ProfileCmd("RA", stats)
-
 
 		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)

@@ -25,6 +25,8 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		blog.SetAuditLogger(auditlogger)
+
 		go cmd.ProfileCmd("VA", stats)
 
 		vai := va.NewValidationAuthorityImpl(auditlogger, c.CA.TestMode)

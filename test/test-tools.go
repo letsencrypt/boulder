@@ -7,11 +7,11 @@ package test
 
 import (
 	"bytes"
-	"fmt"
-	"strings"
-	"runtime"
-	"testing"
 	"encoding/base64"
+	"fmt"
+	"runtime"
+	"strings"
+	"testing"
 )
 
 // Return short format caller info for printing errors, so errors don't all
@@ -19,12 +19,18 @@ import (
 func caller() string {
 	_, file, line, _ := runtime.Caller(2)
 	splits := strings.Split(file, "/")
-	filename := splits[len(splits) - 1]
+	filename := splits[len(splits)-1]
 	return fmt.Sprintf("%s:%d:", filename, line)
 }
 
 func Assert(t *testing.T, result bool, message string) {
 	if !result {
+		t.Error(caller(), message)
+	}
+}
+
+func AssertNotNil(t *testing.T, obj interface{}, message string) {
+	if obj == nil {
 		t.Error(caller(), message)
 	}
 }
@@ -41,9 +47,15 @@ func AssertError(t *testing.T, err error, message string) {
 	}
 }
 
-func AssertEquals(t *testing.T, one string, two string) {
+func AssertEquals(t *testing.T, one interface{}, two interface{}) {
 	if one != two {
-		t.Errorf("%s String [%s] != [%s]", caller(), one, two)
+		t.Errorf("%s [%v] != [%v]", caller(), one, two)
+	}
+}
+
+func AssertNotEquals(t *testing.T, one interface{}, two interface{}) {
+	if one == two {
+		t.Errorf("%s [%v] == [%v]", caller(), one, two)
 	}
 }
 
