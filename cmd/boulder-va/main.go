@@ -39,7 +39,7 @@ func main() {
 
 			vai.RA = &rac
 
-			vas, err := rpc.NewValidationAuthorityServer(c.AMQP.VA.Server, ch, log, &vai)
+			vas, err := rpc.NewValidationAuthorityServer(c.AMQP.VA.Server, ch, auditlogger, &vai)
 			cmd.FailOnError(err, "Unable to create VA server")
 
 			cmd.RunUntilSignaled(auditlogger, vas, closeChan)

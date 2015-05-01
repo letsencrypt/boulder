@@ -46,7 +46,7 @@ func main() {
 
 			cai.SA = &sac
 
-			cas, err := rpc.NewCertificateAuthorityServer(c.AMQP.CA.Server, ch, log, cai)
+			cas, err := rpc.NewCertificateAuthorityServer(c.AMQP.CA.Server, ch, auditlogger, cai)
 			cmd.FailOnError(err, "Unable to create CA server")
 
 			cmd.RunUntilSignaled(auditlogger, cas, closeChan)
