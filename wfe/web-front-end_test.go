@@ -6,6 +6,7 @@
 package wfe
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"io"
 	"io/ioutil"
@@ -27,13 +28,18 @@ func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
 
+func mockLog(t *testing.T) (log *blog.AuditLogger) {
+	stats, _ := statsd.NewNoopClient(nil)
+	log, err := blog.Dial("", "", "tag", stats)
+	test.AssertNotError(t, err, "Could not construct audit logger")
+	return
+}
+
 // TODO: Write additional test cases for:
 //  - RA returns with a cert success
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
-	log, err := blog.Dial("", "", "tag", stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	log := mockLog(t)
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl(log)
 	wfe := NewWebFrontEndImpl(log)
@@ -167,10 +173,40 @@ func TestIssueCertificate(t *testing.T) {
 		"{\"detail\":\"Error creating new cert: Invalid signature on CSR\"}")
 }
 
+type MockRegistrationAuthority struct{}
+
+func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration, jwk jose.JsonWebKey) (core.Registration, error) {
+	return reg, nil
+}
+
+func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, jwk jose.JsonWebKey) (core.Authorization, error) {
+	return authz, nil
+}
+
+func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, jwk jose.JsonWebKey) (core.Certificate, error) {
+	return core.Certificate{}, nil
+}
+
+func (ra *MockRegistrationAuthority) UpdateRegistration(reg core.Registration, updated core.Registration) (core.Registration, error) {
+	return reg, nil
+}
+
+func (ra *MockRegistrationAuthority) UpdateAuthorization(authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
+	return authz, nil
+}
+
+func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate) error {
+	return nil
+}
+
+func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization) {
+}
+
 func TestChallenge(t *testing.T) {
-	log, _, _, _, ra := test.InitAuthorities(t)
+	log := mockLog(t)
 	wfe := NewWebFrontEndImpl(log)
-	wfe.RA = ra
+	wfe.RA = &MockRegistrationAuthority{}
+	wfe.HandlePaths()
 	responseWriter := httptest.NewRecorder()
 
 	var key jose.JsonWebKey
@@ -181,6 +217,7 @@ func TestChallenge(t *testing.T) {
 							}`), &key)
 	test.AssertNotError(t, err, "Could not unmarshal testing key")
 
+	challengeURL, _ := url.Parse("/acme/authz/asdf?challenge=foo")
 	authz := core.Authorization{
 		ID: "asdf",
 		Identifier: core.AcmeIdentifier{
@@ -190,17 +227,15 @@ func TestChallenge(t *testing.T) {
 		Challenges: []core.Challenge{
 			core.Challenge{
 				Type: "dns",
+				URI:  core.AcmeURL(*challengeURL),
 			},
 		},
 		Key: key,
 	}
-	_, err = ra.NewAuthorization(authz, key)
-	test.AssertNotError(t, err, "Could not create new testing authz")
-	challengeURL := url.URL(authz.Challenges[0].URI)
 
 	wfe.Challenge(authz, responseWriter, &http.Request{
 		Method: "POST",
-		URL:    &challengeURL,
+		URL:    challengeURL,
 		Body: makeBody(`
 			{
 					"header": {
@@ -222,6 +257,8 @@ func TestChallenge(t *testing.T) {
 		"/acme/authz/asdf?challenge=foo")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		"/acme/authz/asdf;rel=\"up\"")
-	test.AssertEquals(t, responseWriter.Body.String(), "{type:\"bar\"}")
+		"</acme/authz/asdf>;rel=\"up\"")
+	test.AssertEquals(
+		t, responseWriter.Body.String(),
+		"{\"type\":\"dns\",\"uri\":\"/acme/authz/asdf?challenge=foo\"}")
 }
