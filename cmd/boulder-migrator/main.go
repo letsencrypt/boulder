@@ -300,7 +300,7 @@ func revertMigrationTo(Sql *sql.DB, id string, migrationDir string, yes bool) (e
 		fmt.Printf("There are no migrations after ID %s to revert\n", id)
 	}
 	if yes {
-		if answer := getYN(fmt.Sprintf("This will revert %s migrations, would you like to continue", revertCount)); !answer {
+		if answer := getYN(fmt.Sprintf("This will revert %d migrations, would you like to continue", revertCount)); !answer {
 			fmt.Println("Ok, bye!")
 			return
 		}
