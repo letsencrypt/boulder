@@ -7,11 +7,13 @@ package rpc
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // TODO: AMQP-RPC messages should be wrapped in JWS.  To implement that,
@@ -51,7 +53,7 @@ func amqpConnect(url string) (ch *amqp.Channel, err error) {
 }
 
 // A simplified way to declare and subscribe to an AMQP queue
-func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, err error) {
+func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (msgs <-chan amqp.Delivery, err error) {
 	err = ch.ExchangeDeclare(
 		AmqpExchange,
 		AmqpExchangeType,
@@ -61,7 +63,10 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		log.Fatalf("Could not declare exchange: %s", err)
+		if log != nil {
+			log.Crit(fmt.Sprintf("Could not declare exchange: %s", err))
+		}
+		return
 	}
 
 	q, err := ch.QueueDeclare(
@@ -72,7 +77,10 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		log.Fatalf("Could not declare queue: %s", err)
+		if log != nil {
+			log.Crit(fmt.Sprintf("Could not declare queue: %s", err))
+		}
+		return
 	}
 
 	err = ch.QueueBind(
@@ -82,7 +90,10 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		false,
 		nil)
 	if err != nil {
-		log.Fatalf("Could not bind queue: %s", err)
+		if log != nil {
+			log.Crit(fmt.Sprintf("Could not bind queue: %s", err))
+		}
+		return
 	}
 
 	msgs, err = ch.Consume(
@@ -94,7 +105,10 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		log.Fatalf("Could not subscribe to queue: %s", err)
+		if log != nil {
+			log.Crit(fmt.Sprintf("Could not subscribe to queue: %s", err))
+		}
+		return
 	}
 
 	return
@@ -109,16 +123,18 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 type AmqpRPCServer struct {
 	serverQueue   string
 	channel       *amqp.Channel
+	log           *blog.AuditLogger
 	dispatchTable map[string]func([]byte) []byte
 }
 
 // Create a new AMQP-RPC server on the given queue and channel.
 // Note that you must call Start() to actually start the server
 // listening for requests.
-func NewAmqpRPCServer(serverQueue string, channel *amqp.Channel) *AmqpRPCServer {
+func NewAmqpRPCServer(serverQueue string, channel *amqp.Channel, log *blog.AuditLogger) *AmqpRPCServer {
 	return &AmqpRPCServer{
 		serverQueue:   serverQueue,
 		channel:       channel,
+		log:           log,
 		dispatchTable: make(map[string]func([]byte) []byte),
 	}
 }
@@ -130,7 +146,7 @@ func (rpc *AmqpRPCServer) Handle(method string, handler func([]byte) []byte) {
 // Starts the AMQP-RPC server running in a separate thread.
 // There is currently no Stop() method.
 func (rpc *AmqpRPCServer) Start() (err error) {
-	msgs, err := amqpSubscribe(rpc.channel, rpc.serverQueue)
+	msgs, err := amqpSubscribe(rpc.channel, rpc.serverQueue, rpc.log)
 	if err != nil {
 		return
 	}
@@ -139,12 +155,13 @@ func (rpc *AmqpRPCServer) Start() (err error) {
 		for msg := range msgs {
 			// XXX-JWS: jws.Verify(body)
 			cb, present := rpc.dispatchTable[msg.Type]
-			log.Printf(" [s<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), msg.CorrelationId)
+			rpc.log.Info(fmt.Sprintf(" [s<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
 			if !present {
+				rpc.log.Audit(fmt.Sprintf("Misrouted message: %s - %s - %s", msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
 				continue
 			}
 			response := cb(msg.Body)
-			log.Printf(" [s>] sending %s(%s) [%s]", msg.Type, core.B64enc(response), msg.CorrelationId)
+			rpc.log.Info(fmt.Sprintf(" [s>] sending %s(%s) [%s]", msg.Type, core.B64enc(response), msg.CorrelationId))
 			rpc.channel.Publish(
 				AmqpExchange,
 				msg.ReplyTo,
@@ -196,7 +213,7 @@ func NewAmqpRPCCLient(clientQueue, serverQueue string, channel *amqp.Channel) (r
 	}
 
 	// Subscribe to the response queue and dispatch
-	msgs, err := amqpSubscribe(rpc.channel, clientQueue)
+	msgs, err := amqpSubscribe(rpc.channel, clientQueue, nil)
 	if err != nil {
 		return
 	}

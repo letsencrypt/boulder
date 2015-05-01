@@ -69,7 +69,7 @@ func (log *AuditLogger) AuditErr(msg error) (err error) {
 
 func (log *AuditLogger) auditAtLevel(level, msg string) (err error) {
 	fmt.Println(msg)
-	log.Stats.Inc(level, 1, 1, 0)
+	log.Stats.Inc(level, 1, 1.0)
 	text := fmt.Sprintf("%s %s", auditTag, msg)
 	switch level {
 	case "Logging.Alert":
