@@ -20,11 +20,12 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/remote"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 )
+
 type Config struct {
 	Server       string
 	AuthKey      string
@@ -34,12 +35,12 @@ type Config struct {
 	DBName       string
 	SerialPrefix int
 	// A PEM-encoded copy of the issuer certificate.
-	IssuerCert   string
+	IssuerCert string
 	// This field is only allowed if TestMode is true, indicating that we are
 	// signing with a local key. In production we will use an HSM and this
 	// IssuerKey must be empty (and TestMode must be false). PEM-encoded private
 	// key used for signing certificates and OCSP responses.
-	IssuerKey    string
+	IssuerKey string
 }
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -72,8 +73,8 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger,
 
 	// Create the remote signer
 	localProfile := cfsslConfig.SigningProfile{
-		Expiry:       time.Hour, // BOGUS: Required by CFSSL, but not used
-		RemoteName:   config.Server,  // BOGUS: Only used as a flag by CFSSL
+		Expiry:       time.Hour,     // BOGUS: Required by CFSSL, but not used
+		RemoteName:   config.Server, // BOGUS: Only used as a flag by CFSSL
 		RemoteServer: config.Server,
 		UseSerialSeq: true,
 	}
@@ -106,18 +107,18 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger,
 	// Set up our OCSP signer. Note this calls for both the issuer cert and the
 	// OCSP signing cert, which are the same in our case.
 	ocspSigner, err := ocsp.NewSigner(issuer, issuer, issuerKey,
-		time.Hour * 24 * 4)
+		time.Hour*24*4)
 
 	pa := policy.NewPolicyAuthorityImpl(logger)
 
 	ca = &CertificateAuthorityImpl{
-		Signer:  signer,
+		Signer:     signer,
 		OCSPSigner: ocspSigner,
-		profile: config.Profile,
-		PA:      pa,
-		DB:      cadb,
-		Prefix:  config.SerialPrefix,
-		log:     logger,
+		profile:    config.Profile,
+		PA:         pa,
+		DB:         cadb,
+		Prefix:     config.SerialPrefix,
+		log:        logger,
 	}
 	return ca, err
 }
@@ -149,7 +150,6 @@ func loadIssuerKey(filename string) (issuerKey crypto.Signer, err error) {
 	return
 }
 
-
 func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (err error) {
 	certDER, err := ca.SA.GetCertificate(serial)
 	if err != nil {
@@ -166,9 +166,9 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (err error)
 
 	signRequest := ocsp.SignRequest{
 		Certificate: cert,
-		Status: string(core.OCSPStatusRevoked),
-		Reason: reason,
-		RevokedAt: time.Now(),
+		Status:      string(core.OCSPStatusRevoked),
+		Reason:      reason,
+		RevokedAt:   time.Now(),
 	}
 	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
 	if err != nil {
