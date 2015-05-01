@@ -38,7 +38,10 @@ func TestSingleton(t *testing.T) {
 	test.AssertNotError(t, err, "Could not construct audit logger")
 
 	// Should not work
-	SetAuditLogger(log3)
+	err = SetAuditLogger(log3)
+	test.AssertError(t, err, "Can't re-set")
+
+	// Verify no change
 	log4 := GetAuditLogger()
 
 	// Verify that log4 != log3
@@ -116,8 +119,4 @@ func TestSyslogMethods(t *testing.T) {
 	audit.Notice("audit-logger_test.go: notice")
 	audit.Warning("audit-logger_test.go: warning")
 	audit.Alert("audit-logger_test.go: alert")
-}
-
-func TestEmergSyslog(t *testing.T) {
-
 }

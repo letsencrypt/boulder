@@ -58,7 +58,7 @@ func NewAuditLogger(log *syslog.Writer, stats statsd.Statter) (*AuditLogger, err
 
 // initializeAuditLogger should only be used in unit tests. Failures in this
 // method are unlikely as the defaults are safe, and they are also
-// of minimal consequence during unit testing -- logs get pritned to stdout
+// of minimal consequence during unit testing -- logs get printed to stdout
 // even if syslog is missing.
 func initializeAuditLogger() {
 	stats, _ := statsd.NewNoopClient(nil)
@@ -71,10 +71,14 @@ func initializeAuditLogger() {
 // SetAuditLogger configures the singleton audit logger. This method
 // must only be called once, and before calling GetAuditLogger the
 // first time.
-func SetAuditLogger(logger *AuditLogger) {
-	_Singleton.once.Do(func() {
+func SetAuditLogger(logger *AuditLogger) (err error) {
+	if _Singleton.log != nil {
+		err = errors.New("You may not call SetAuditLogger after it has already been implicitly or explicitly set.")
+		_Singleton.log.WarningErr(err)
+	} else {
 		_Singleton.log = logger
-	})
+	}
+	return
 }
 
 // GetAuditLogger obtains the singleton audit logger. If SetAuditLogger
@@ -82,7 +86,11 @@ func SetAuditLogger(logger *AuditLogger) {
 // The basic defaults cannot error, and subequent access to an already-set
 // AuditLogger also cannot error, so this method is error-safe.
 func GetAuditLogger() *AuditLogger {
-	initializeAuditLogger()
+	_Singleton.once.Do(func() {
+		if _Singleton.log == nil {
+			initializeAuditLogger()
+		}
+	})
 
 	return _Singleton.log
 }
