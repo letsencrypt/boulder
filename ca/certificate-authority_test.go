@@ -365,8 +365,8 @@ func TestRevoke(t *testing.T) {
 	status, err := storageAuthority.GetCertificateStatus(serialString)
 	test.AssertNotError(t, err, "Failed to get cert status")
 
-	//test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
-	test.Assert(t, time.Sub(time.Now(), status.OCSPLastUpdated) > time.Second,
+	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
+	test.Assert(t, time.Now().Sub(status.OCSPLastUpdated) > time.Second,
 		fmt.Sprintf("OCSP LastUpdated was wrong: %v", status.OCSPLastUpdated))
 }
 
