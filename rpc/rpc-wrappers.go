@@ -9,11 +9,12 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
-	"log"
+	"fmt"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -71,8 +72,8 @@ type certificateRequest struct {
 	Key jose.JsonWebKey
 }
 
-func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.RegistrationAuthority) (rpc *AmqpRPCServer, err error) {
-	rpc = NewAmqpRPCServer(serverQueue, channel)
+func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, log *blog.AuditLogger, impl core.RegistrationAuthority) (rpc *AmqpRPCServer, err error) {
+	rpc = NewAmqpRPCServer(serverQueue, channel, log)
 
 	rpc.Handle(MethodNewRegistration, func(req []byte) (response []byte) {
 		var rr registrationRequest
@@ -112,21 +113,21 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 	})
 
 	rpc.Handle(MethodNewCertificate, func(req []byte) []byte {
-		log.Printf(" [.] Entering MethodNewCertificate")
+		log.Info(fmt.Sprintf(" [.] Entering MethodNewCertificate"))
 		var cr certificateRequest
 		if err := json.Unmarshal(req, &cr); err != nil {
-			log.Printf(" [!] Error unmarshaling certificate request: %s", err.Error())
-			log.Printf("     JSON data: %s", string(req))
+			log.Info(fmt.Sprintf(" [!] Error unmarshaling certificate request: %s", err.Error()))
+			log.Info(fmt.Sprintf("     JSON data: %s", string(req)))
 			return nil
 		}
-		log.Printf(" [.] No problem unmarshaling request")
+		log.Info(fmt.Sprintf(" [.] No problem unmarshaling request"))
 
 		cert, err := impl.NewCertificate(cr.Req, cr.Key)
 		if err != nil {
-			log.Printf(" [!] Error issuing new certificate: %s", err.Error())
+			log.Info(fmt.Sprintf(" [!] Error issuing new certificate: %s", err.Error()))
 			return nil
 		}
-		log.Printf(" [.] No problem issuing new cert")
+		log.Info(fmt.Sprintf(" [.] No problem issuing new cert"))
 
 		response, err := json.Marshal(cert)
 		if err != nil {
@@ -322,8 +323,8 @@ func (rac RegistrationAuthorityClient) OnValidationUpdate(authz core.Authorizati
 
 // ValidationAuthorityClient / Server
 //  -> UpdateValidations
-func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.ValidationAuthority) (rpc *AmqpRPCServer, err error) {
-	rpc = NewAmqpRPCServer(serverQueue, channel)
+func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, log *blog.AuditLogger, impl core.ValidationAuthority) (rpc *AmqpRPCServer, err error) {
+	rpc = NewAmqpRPCServer(serverQueue, channel, log)
 
 	rpc.Handle(MethodUpdateValidations, func(req []byte) []byte {
 		var authz core.Authorization
@@ -365,8 +366,8 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization)
 
 // CertificateAuthorityClient / Server
 //  -> IssueCertificate
-func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.CertificateAuthority) (rpc *AmqpRPCServer, err error) {
-	rpc = NewAmqpRPCServer(serverQueue, channel)
+func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, log *blog.AuditLogger, impl core.CertificateAuthority) (rpc *AmqpRPCServer, err error) {
+	rpc = NewAmqpRPCServer(serverQueue, channel, log)
 
 	rpc.Handle(MethodIssueCertificate, func(req []byte) []byte {
 		csr, err := x509.ParseCertificateRequest(req)
@@ -415,8 +416,8 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	return
 }
 
-func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.StorageAuthority) (rpc *AmqpRPCServer) {
-	rpc = NewAmqpRPCServer(serverQueue, channel)
+func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, log *blog.AuditLogger, impl core.StorageAuthority) (rpc *AmqpRPCServer) {
+	rpc = NewAmqpRPCServer(serverQueue, channel, log)
 
 	rpc.Handle(MethodGetRegistration, func(req []byte) (response []byte) {
 		reg, err := impl.GetCertificate(string(req))

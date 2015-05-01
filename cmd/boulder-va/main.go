@@ -24,6 +24,7 @@ func main() {
 		// Set up logging
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		defer auditlogger.AuditPanic()
 
 		go cmd.ProfileCmd("VA", stats)
 
@@ -38,7 +39,7 @@ func main() {
 
 			vai.RA = &rac
 
-			vas, err := rpc.NewValidationAuthorityServer(c.AMQP.VA.Server, ch, &vai)
+			vas, err := rpc.NewValidationAuthorityServer(c.AMQP.VA.Server, ch, auditlogger, &vai)
 			cmd.FailOnError(err, "Unable to create VA server")
 
 			cmd.RunUntilSignaled(auditlogger, vas, closeChan)

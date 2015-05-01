@@ -24,11 +24,11 @@ func main() {
 		// Set up logging
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		defer auditlogger.AuditPanic()
 
 		rai := ra.NewRegistrationAuthorityImpl(auditlogger)
 
 		go cmd.ProfileCmd("RA", stats)
-
 
 		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
@@ -47,7 +47,7 @@ func main() {
 			rai.CA = &cac
 			rai.SA = &sac
 
-			ras, err := rpc.NewRegistrationAuthorityServer(c.AMQP.RA.Server, ch, &rai)
+			ras, err := rpc.NewRegistrationAuthorityServer(c.AMQP.RA.Server, ch, auditlogger, &rai)
 			cmd.FailOnError(err, "Unable to create RA server")
 
 			cmd.RunUntilSignaled(auditlogger, ras, closeChan)

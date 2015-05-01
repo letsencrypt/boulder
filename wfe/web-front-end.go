@@ -129,9 +129,12 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, message stri
 	problem := problem{Detail: message}
 	problemDoc, err := json.Marshal(problem)
 	if err != nil {
-		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
+		return
 	}
-	wfe.log.Debug("Sending error to client: " + string(problemDoc))
+
+	// Audit log "Receipt of improper messages"
+	wfe.log.Audit(fmt.Sprintf("Improper HTTP request - %d - %s", code, message))
+
 	// Paraphrased from
 	// https://golang.org/src/net/http/server.go#L1272
 	response.Header().Set("Content-Type", "application/problem+json")
@@ -471,10 +474,6 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 
 var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
-func (wfe *WebFrontEndImpl) notFound(response http.ResponseWriter) {
-	wfe.sendError(response, "Not found", http.StatusNotFound)
-}
-
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
 	path := request.URL.Path
 	switch request.Method {
@@ -486,19 +485,19 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		// Certificate paths consist of the CertBase path, plus exactly sixteen hex
 		// digits.
 		if !strings.HasPrefix(path, wfe.CertPath) {
-			wfe.notFound(response)
+			wfe.sendError(response, "Not found", http.StatusNotFound)
 			return
 		}
 		serial := path[len(wfe.CertPath):]
 		if len(serial) != 16 || !allHex.Match([]byte(serial)) {
-			wfe.notFound(response)
+			wfe.sendError(response, "Not found", http.StatusNotFound)
 			return
 		}
 		wfe.log.Notice(fmt.Sprintf("Requested certificate ID %s", serial))
 
 		cert, err := wfe.SA.GetCertificate(serial)
 		if err != nil {
-			wfe.notFound(response)
+			wfe.sendError(response, "Not found", http.StatusNotFound)
 			return
 		}
 
