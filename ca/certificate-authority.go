@@ -67,6 +67,7 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger,
 
 	if config.SerialPrefix == 0 {
 		err = errors.New("Must have non-zero serial prefix for CA.")
+		return
 	}
 
 	// Create the remote signer

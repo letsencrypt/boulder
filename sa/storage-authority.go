@@ -350,7 +350,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 
 	_, err = tx.Exec(`UPDATE certificateStatus SET
 		status=?, revokedDate=?, revokedReason=? WHERE serial=?`,
-		string(core.OCSPStatusRevoked), time.Now(), reasonCode)
+		string(core.OCSPStatusRevoked), time.Now(), reasonCode, serial)
 	if err != nil {
 		tx.Rollback()
 		return

@@ -6,18 +6,22 @@
 package ca
 
 import (
+	"bytes"
 	"crypto/x509"
+	"crypto"
 	"encoding/asn1"
 	"encoding/hex"
-	"encoding/pem"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"testing"
 	"time"
+	"os"
 
 	apisign "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api/sign"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	blog "github.com/letsencrypt/boulder/log"
@@ -220,6 +224,62 @@ var NO_NAME_CSR_HEX = "308202523082013a020100300d310b300906035504061302555330820
 	"58c004d9e1e55af59ea517dfbd2bccca58216d8130b9f77c90328b2aa54b" +
 	"1778a629b584f2bc059489a236131de9b444adca90218c31a499a485"
 
+// CFSSL config
+const hostPort = "localhost:9000"
+const authKey = "79999d86250c367a2b517a1ae7d409c1"
+const profileName = "ee"
+const caKeyFile = "../test/test-ca.key"
+const caCertFile = "../test/test-ca.pem"
+
+var cfsslSigner *local.Signer
+var caKey crypto.PrivateKey
+var caCert x509.Certificate
+
+func TestMain(m *testing.M) {
+	caKeyPEM, _ := ioutil.ReadFile(caKeyFile)
+	caKey, _ := helpers.ParsePrivateKeyPEM(caKeyPEM)
+
+	caCertPEM, _ := ioutil.ReadFile(caCertFile)
+	caCert, _ := helpers.ParseCertificatePEM(caCertPEM)
+
+	// Create an online CFSSL instance
+	// This is designed to mimic what LE plans to do
+	authHandler, _ := auth.New(authKey, nil)
+	policy := &cfsslConfig.Signing{
+		Profiles: map[string]*cfsslConfig.SigningProfile{
+			profileName: &cfsslConfig.SigningProfile{
+				Usage:     []string{"server auth"},
+				CA:        false,
+				IssuerURL: []string{"http://not-example.com/issuer-url"},
+				OCSP:      "http://not-example.com/ocsp",
+				CRL:       "http://not-example.com/crl",
+
+				Policies: []asn1.ObjectIdentifier{
+					asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1},
+				},
+				Expiry:   8760 * time.Hour,
+				Backdate: time.Hour,
+				Provider: authHandler,
+				CSRWhitelist: &cfsslConfig.CSRWhitelist{
+					PublicKeyAlgorithm: true,
+					PublicKey: true,
+					SignatureAlgorithm: true,
+				},
+			},
+		},
+		Default: &cfsslConfig.SigningProfile{
+			Expiry: time.Hour,
+		},
+	}
+	cfsslSigner, _ = local.NewSigner(caKey, caCert, x509.SHA256WithRSA, policy)
+	signHandler, _ := apisign.NewAuthHandlerFromSigner(cfsslSigner)
+	http.Handle("/api/v1/cfssl/authsign", signHandler)
+	// This goroutine should get killed when main() return
+	go (func() { http.ListenAndServe(hostPort, nil) })()
+
+	os.Exit(m.Run())
+}
+
 type MockCADatabase struct {
 	// empty
 }
@@ -244,69 +304,21 @@ func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
 	return 1, nil
 }
 
-func TestIssueCertificate(t *testing.T) {
-	// Decode pre-generated values
-	caKeyPEM, _ := pem.Decode([]byte(CA_KEY_PEM))
-	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
-
-	caCertPEM, _ := pem.Decode([]byte(CA_CERT_PEM))
-	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
-
-	// Uncomment to create a CFSSL local signer
-
-	// CFSSL config
-	hostPort := "localhost:9000"
-	authKey := "79999d86250c367a2b517a1ae7d409c1"
-	profileName := "ee"
-
+func setup(t *testing.T) (logger *blog.AuditLogger, cadb core.CertificateAuthorityDatabase, storageAuthority core.StorageAuthority, caConfig Config) {
+	logger = blog.TestLogger()
+	
 	// Create an SA
-	sa, err := sa.NewSQLStorageAuthority(blog.TestLogger(), "sqlite3", ":memory:")
+	ssa, err := sa.NewSQLStorageAuthority(logger, "sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
-	sa.InitTables()
+	ssa.InitTables()
+	storageAuthority = ssa
 
-	// Create an online CFSSL instance
-	// This is designed to mimic what LE plans to do
-	authHandler, err := auth.New(authKey, nil)
-	test.AssertNotError(t, err, "Failed to create authentication handler")
-	policy := &config.Signing{
-		Profiles: map[string]*config.SigningProfile{
-			profileName: &config.SigningProfile{
-				Usage:     []string{"server auth"},
-				CA:        false,
-				IssuerURL: []string{"http://not-example.com/issuer-url"},
-				OCSP:      "http://not-example.com/ocsp",
-				CRL:       "http://not-example.com/crl",
 
-				Policies: []asn1.ObjectIdentifier{
-					asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1},
-				},
-				Expiry:   8760 * time.Hour,
-				Backdate: time.Hour,
-				Provider: authHandler,
-				CSRWhitelist: &config.CSRWhitelist{
-					PublicKeyAlgorithm: true,
-					PublicKey: true,
-					SignatureAlgorithm: true,
-				},
-			},
-		},
-		Default: &config.SigningProfile{
-			Expiry: time.Hour,
-		},
-	}
-	signer, err := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, policy)
-	test.AssertNotError(t, err, "Failed to create signer")
-	signHandler, err := apisign.NewAuthHandlerFromSigner(signer)
-	test.AssertNotError(t, err, "Failed to create signing API endpoint")
-	http.Handle("/api/v1/cfssl/authsign", signHandler)
-	// This goroutine should get killed when main() return
-	go (func() { http.ListenAndServe(hostPort, nil) })()
-
-	cadb, err := NewMockCertificateAuthorityDatabase()
+	cadb, _ = NewMockCertificateAuthorityDatabase()
 
 	// Create a CA
 	// Uncomment to test with a remote signer
-	caConfig := Config{
+	caConfig = Config{
 		Server: hostPort,
 		AuthKey: authKey,
 		Profile: profileName,
@@ -315,9 +327,54 @@ func TestIssueCertificate(t *testing.T) {
 		IssuerKey: "../test/test-ca.key",
 		TestMode: true,
 	}
-	ca, err := NewCertificateAuthorityImpl(blog.TestLogger(), cadb, caConfig)
+	return logger, cadb, storageAuthority, caConfig
+}
+
+func TestFailNoSerial(t *testing.T) {
+	logger, cadb, _, caConfig := setup(t)
+	caConfig.SerialPrefix = 0
+	_, err := NewCertificateAuthorityImpl(logger, cadb, caConfig)
+	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
+}
+
+func TestFailNoTestMode(t *testing.T) {
+	logger, cadb, _, caConfig := setup(t)
+	caConfig.TestMode = false
+	_, err := NewCertificateAuthorityImpl(logger, cadb, caConfig)
+	test.AssertError(t, err, "CA should have failed with TestMode = false, but key provided")
+}
+
+func TestRevoke(t *testing.T) {
+	logger, cadb, storageAuthority, caConfig := setup(t)
+	ca, err := NewCertificateAuthorityImpl(logger, cadb, caConfig)
+	ca.SA = storageAuthority
+
+	csrDER, _ := hex.DecodeString(CN_AND_SAN_CSR_HEX)
+	csr, _ := x509.ParseCertificateRequest(csrDER)
+	certObj, err := ca.IssueCertificate(*csr)
+	test.AssertNotError(t, err, "Failed to sign certificate")
+	if err != nil {
+		return
+	}
+	cert, err := x509.ParseCertificate(certObj.DER)
+	test.AssertNotError(t, err, "Certificate failed to parse")
+	serialString := fmt.Sprintf("%032x", cert.SerialNumber)
+	err = ca.RevokeCertificate(serialString)
+	test.AssertNotError(t, err, "Revocation failed")
+
+	status, err := storageAuthority.GetCertificateStatus(serialString)
+	test.AssertNotError(t, err, "Failed to get cert status")
+
+	//test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
+	test.Assert(t, time.Sub(time.Now(), status.OCSPLastUpdated) > time.Second,
+		fmt.Sprintf("OCSP LastUpdated was wrong: %v", status.OCSPLastUpdated))
+}
+
+func TestIssueCertificate(t *testing.T) {
+	logger, cadb, storageAuthority, caConfig := setup(t)
+	ca, err := NewCertificateAuthorityImpl(logger, cadb, caConfig)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.SA = sa
+	ca.SA = storageAuthority
 
 	/*
 		  // Uncomment to test with a local signer
@@ -336,6 +393,9 @@ func TestIssueCertificate(t *testing.T) {
 		// Sign CSR
 		certObj, err := ca.IssueCertificate(*csr)
 		test.AssertNotError(t, err, "Failed to sign certificate")
+		if err != nil {
+			continue
+		}
 
 		// Verify cert contents
 		cert, err := x509.ParseCertificate(certObj.DER)
@@ -357,9 +417,17 @@ func TestIssueCertificate(t *testing.T) {
 		}
 
 		// Verify that the cert got stored in the DB
-		_, err = sa.GetCertificate(fmt.Sprintf("%032x", cert.SerialNumber))
+		serialString := fmt.Sprintf("%032x", cert.SerialNumber)
+		certBytes, err := storageAuthority.GetCertificate(serialString)
 		test.AssertNotError(t, err,
-			fmt.Sprintf("Certificate %032x not found in database", cert.SerialNumber))
+			fmt.Sprintf("Certificate %s not found in database", serialString))
+		test.Assert(t, bytes.Equal(certBytes, certObj.DER), "Retrieved cert not equal to issued cert.")
+
+		certStatus, err := storageAuthority.GetCertificateStatus(serialString)
+		test.AssertNotError(t, err,
+			fmt.Sprintf("Error fetching status for certificate %s", serialString))
+		test.Assert(t, certStatus.Status == core.OCSPStatusGood, "Certificate status was not good")
+		test.Assert(t, certStatus.SubscriberApproved == false, "Subscriber shouldn't have approved cert yet.")
 	}
 
 	// Test that the CA rejects CSRs with no names
