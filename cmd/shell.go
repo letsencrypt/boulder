@@ -145,7 +145,7 @@ func (as *AppShell) Run() {
 // FailOnError exits and prints an error message if we encountered a problem
 func FailOnError(err error, msg string) {
 	if err != nil {
-		panic(fmt.Fprintf("%s: %s", msg, err))
+		panic(fmt.Sprintf("%s: %s", msg, err))
 	}
 }
 

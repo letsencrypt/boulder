@@ -47,7 +47,7 @@ func main() {
 			rai.CA = &cac
 			rai.SA = &sac
 
-			ras, err := rpc.NewRegistrationAuthorityServer(c.AMQP.RA.Server, ch, &rai)
+			ras, err := rpc.NewRegistrationAuthorityServer(c.AMQP.RA.Server, ch, log, &rai)
 			cmd.FailOnError(err, "Unable to create RA server")
 
 			cmd.RunUntilSignaled(auditlogger, ras, closeChan)

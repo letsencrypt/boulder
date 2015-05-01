@@ -38,7 +38,7 @@ func main() {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-			sas := rpc.NewStorageAuthorityServer(c.AMQP.SA.Server, ch, sai)
+			sas := rpc.NewStorageAuthorityServer(c.AMQP.SA.Server, ch, log, sai)
 
 			cmd.RunUntilSignaled(auditlogger, sas, closeChan)
 		}
