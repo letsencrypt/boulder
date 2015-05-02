@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -61,6 +62,8 @@ func NewWebFrontEndImpl() WebFrontEndImpl {
 }
 
 func (wfe *WebFrontEndImpl) HandlePaths() {
+	http.HandleFunc(wfe.BaseURL+"/", wfe.Index)
+
 	wfe.NewReg = wfe.BaseURL + wfe.NewRegPath
 	wfe.RegBase = wfe.BaseURL + wfe.RegPath
 	wfe.NewAuthz = wfe.BaseURL + wfe.NewAuthzPath
@@ -77,6 +80,28 @@ func (wfe *WebFrontEndImpl) HandlePaths() {
 }
 
 // Method implementations
+
+func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Request) {
+	// http://golang.org/pkg/net/http/#example_ServeMux_Handle
+	// The "/" pattern matches everything, so we need to check
+	// that we're at the root here.
+	if request.URL.Path != wfe.BaseURL+"/" {
+		http.NotFound(response, request)
+		return
+	}
+
+	tmpl := template.Must(template.New("body").Parse(`<html>
+  <body>
+    <a href="https://letsencrypt.org/">Let's Encrypt</a> Certificate Authority
+    running <a href="https://github.com/letsencrypt/boulder">Boulder</a>,
+    a reference <a href="https://letsencrypt.github.io/acme-spec/">ACME</a>
+    server implementation. New registration is available at
+    <a href="{{.NewReg}}">{{.NewReg}}</a>.
+  </body>
+</html>`))
+	tmpl.Execute(response, wfe)
+	response.Header().Set("Content-Type", "text/html")
+}
 
 func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
 	zeroKey := jose.JsonWebKey{}
