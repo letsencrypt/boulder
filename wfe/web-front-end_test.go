@@ -27,6 +27,32 @@ func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
 
+func TestIndex(t *testing.T) {
+	wfe := NewWebFrontEndImpl()
+	// panic: http: multiple registrations for / [recovered]
+	//wfe.HandlePaths()
+	wfe.NewReg = "/acme/new-reg"
+	responseWriter := httptest.NewRecorder()
+
+	url, _ := url.Parse("/")
+	wfe.Index(responseWriter, &http.Request{
+		URL: url,
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertNotEquals(t, responseWriter.Body.String(), "404 page not found\n")
+	test.Assert(t, strings.Contains(responseWriter.Body.String(), wfe.NewReg),
+		"new-reg not found")
+
+	responseWriter.Body.Reset()
+	url, _ = url.Parse("/foo")
+	wfe.Index(responseWriter, &http.Request{
+		URL: url,
+	})
+	//test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
+	test.AssertEquals(t, responseWriter.Body.String(), "404 page not found\n")
+
+}
+
 // TODO: Write additional test cases for:
 //  - RA returns with a cert success
 //  - RA returns with a failure
