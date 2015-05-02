@@ -24,11 +24,8 @@ type CertificateAuthorityDatabaseImpl struct {
 
 // NewCertificateAuthorityDatabaseImpl constructs a Database for the
 // Certificate Authority.
-func NewCertificateAuthorityDatabaseImpl(logger *blog.AuditLogger, driver string, name string) (cadb core.CertificateAuthorityDatabase, err error) {
-	if logger == nil {
-		err = errors.New("Nil logger not permitted")
-		return
-	}
+func NewCertificateAuthorityDatabaseImpl(driver string, name string) (cadb core.CertificateAuthorityDatabase, err error) {
+	logger := blog.GetAuditLogger()
 
 	db, err := sql.Open(driver, name)
 	if err != nil {

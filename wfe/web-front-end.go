@@ -45,7 +45,8 @@ type WebFrontEndImpl struct {
 	TermsPath    string
 }
 
-func NewWebFrontEndImpl(logger *blog.AuditLogger) WebFrontEndImpl {
+func NewWebFrontEndImpl() WebFrontEndImpl {
+	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 	return WebFrontEndImpl{
 		log:          logger,

@@ -6,19 +6,13 @@
 package analysisengine
 
 import (
-	"log/syslog"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	"github.com/letsencrypt/boulder/log"
 )
 
 func TestNewLoggingAnalysisEngine(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
-	writer, _ := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
-	log, _ := log.NewAuditLogger(writer, stats)
-	ae := NewLoggingAnalysisEngine(log)
+	ae := NewLoggingAnalysisEngine()
 
 	// Trivially check an empty mock message
 	d := &amqp.Delivery{}
@@ -45,10 +39,7 @@ func (m *MockAck) Reject(tag uint64, requeue bool) error {
 }
 
 func TestAnalysisEngineBadMessage(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
-	writer, _ := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
-	log, _ := log.NewAuditLogger(writer, stats)
-	ae := NewLoggingAnalysisEngine(log)
+	ae := NewLoggingAnalysisEngine()
 
 	// Trivially check an empty mock message
 	d := &amqp.Delivery{Acknowledger: &MockAck{}}

@@ -24,7 +24,8 @@ type ValidationAuthorityImpl struct {
 	TestMode bool
 }
 
-func NewValidationAuthorityImpl(logger *blog.AuditLogger, tm bool) ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(tm bool) ValidationAuthorityImpl {
+	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
 	return ValidationAuthorityImpl{log: logger, TestMode: tm}
 }
@@ -72,7 +73,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 	}
 	client := http.Client{
 		Transport: tr,
-		Timeout: 5 * time.Second,
+		Timeout:   5 * time.Second,
 	}
 	httpResponse, err := client.Do(httpRequest)
 

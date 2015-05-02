@@ -40,7 +40,8 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, authKey string, profile string, serialPrefix int, cadb core.CertificateAuthorityDatabase) (ca *CertificateAuthorityImpl, err error) {
+func NewCertificateAuthorityImpl(hostport string, authKey string, profile string, serialPrefix int, cadb core.CertificateAuthorityDatabase) (ca *CertificateAuthorityImpl, err error) {
+	logger := blog.GetAuditLogger()
 	logger.Notice("Certificate Authority Starting")
 
 	// Create the remote signer
@@ -61,7 +62,7 @@ func NewCertificateAuthorityImpl(logger *blog.AuditLogger, hostport string, auth
 		return
 	}
 
-	pa := policy.NewPolicyAuthorityImpl(logger)
+	pa := policy.NewPolicyAuthorityImpl()
 
 	ca = &CertificateAuthorityImpl{
 		Signer:  signer,

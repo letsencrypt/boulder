@@ -39,7 +39,7 @@ const (
 var openCalls int64 = 0
 
 func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[string]time.Time) {
-	// If d is a call add to deliveryTimings and increment openCalls, if it is a 
+	// If d is a call add to deliveryTimings and increment openCalls, if it is a
 	// response then get time.Since original call from deliveryTiming, send timing metric, and
 	// decrement openCalls, in both cases send the gauges RpcCallsOpen and RpcBodySize
 	if d.ReplyTo != "" {
@@ -61,7 +61,7 @@ func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[str
 }
 
 func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.Statter) {
-	ae := analysisengine.NewLoggingAnalysisEngine(logger)
+	ae := analysisengine.NewLoggingAnalysisEngine()
 
 	// For convenience at the broker, identifiy ourselves by hostname
 	consumerTag, err := os.Hostname()
@@ -144,6 +144,8 @@ func main() {
 
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		blog.SetAuditLogger(auditlogger)
+
 		ch := cmd.AmqpChannel(c.AMQP.Server)
 
 		go cmd.ProfileCmd("AM", stats)
@@ -153,4 +155,3 @@ func main() {
 
 	app.Run()
 }
- 

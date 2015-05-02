@@ -19,7 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/wfe"
 )
 
-func setupWFE(c cmd.Config, auditlogger *blog.AuditLogger) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
+func setupWFE(c cmd.Config) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
 	ch := cmd.AmqpChannel(c.AMQP.Server)
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
@@ -73,8 +73,10 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
-		wfe := wfe.NewWebFrontEndImpl(auditlogger)
-		rac, sac, closeChan := setupWFE(c, auditlogger)
+		blog.SetAuditLogger(auditlogger)
+
+		wfe := wfe.NewWebFrontEndImpl()
+		rac, sac, closeChan := setupWFE(c)
 		wfe.RA = &rac
 		wfe.SA = &sac
 		wfe.Stats = stats
@@ -89,7 +91,7 @@ func main() {
 				for err := range closeChan {
 					auditlogger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
 					time.Sleep(time.Second * 5)
-					rac, sac, closeChan = setupWFE(c, auditlogger)
+					rac, sac, closeChan = setupWFE(c)
 					wfe.RA = &rac
 					wfe.SA = &sac
 					auditlogger.Warning("Reconnected to AMQP")
