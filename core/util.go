@@ -70,9 +70,10 @@ func B64dec(x string) ([]byte, error) {
 
 // Random stuff
 
+// RandomString returns a randomly generated string of the requested length.
 func RandomString(byteLength int) string {
 	b := make([]byte, byteLength)
-	_, err := io.ReadFull(rand.Reader, b) // NOTE: Ignoring errors
+	_, err := io.ReadFull(rand.Reader, b)
 	if err != nil {
 		ohdear := "RandomString entropy failure? " + err.Error()
 		logger := blog.GetAuditLogger()
