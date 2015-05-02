@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/syslog"
+	"os"
 	"sync"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -170,4 +171,15 @@ func (log *AuditLogger) Notice(msg string) (err error) {
 	fmt.Println(msg)
 	log.Stats.Inc("Logging.Notice", 1, 1.0)
 	return log.Writer.Notice(msg)
+}
+
+const EMERGENCY_RETVAL = 13
+
+func (log *AuditLogger) EmergencyExit(msg string) {
+	// Some errors may be serious enough to trigger an immediate Boulder
+	// shutdown.  This function will provide the necessary housekeeping.
+	// Currently, make an emergency log entry and exit; the Activity Monitor
+	// should notice the Emerg level event and shut down all components.
+	log.Emerg(msg)
+	os.Exit(EMERGENCY_RETVAL)
 }

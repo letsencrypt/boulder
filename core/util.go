@@ -18,7 +18,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	blog "github.com/letsencrypt/boulder/log"
 	"hash"
+	"io"
 	"math/big"
 	"net/url"
 	"strings"
@@ -68,9 +70,15 @@ func B64dec(x string) ([]byte, error) {
 
 // Random stuff
 
+// RandomString returns a randomly generated string of the requested length.
 func RandomString(byteLength int) string {
 	b := make([]byte, byteLength)
-	_, _ = rand.Read(b) // NOTE: Ignoring errors
+	_, err := io.ReadFull(rand.Reader, b)
+	if err != nil {
+		ohdear := "RandomString entropy failure? " + err.Error()
+		logger := blog.GetAuditLogger()
+		logger.EmergencyExit(ohdear)
+	}
 	return B64enc(b)
 }
 

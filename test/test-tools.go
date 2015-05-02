@@ -67,6 +67,13 @@ func AssertByteEquals(t *testing.T, one []byte, two []byte) {
 			base64.StdEncoding.EncodeToString(two))
 	}
 }
+
+func AssertIntEquals(t *testing.T, one int, two int) {
+	if one != two {
+		t.Errorf("%s Int [%d] != [%d]", caller(), one, two)
+	}
+}
+
 func AssertContains(t *testing.T, haystack string, needle string) {
 	if !strings.Contains(haystack, needle) {
 		t.Errorf("%s String [%s] does not contain [%s]", caller(), haystack, needle)
