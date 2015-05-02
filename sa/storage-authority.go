@@ -68,10 +68,11 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	statements := []string{
 
 		// Create registrations table
+		// TODO: Add NOT NULL to thumbprint and value.
 		`CREATE TABLE IF NOT EXISTS registrations (
 		id VARCHAR(255) NOT NULL,
-		thumbprint VARCHAR(255) NOT NULL,
-		value BLOB NOT NULL
+		thumbprint VARCHAR(255),
+		value BLOB
 	);`,
 
 		// Create pending authorizations table
@@ -93,7 +94,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 		// Create certificates table. This should be effectively append-only, enforced
 		// by DB permissions.
 		`CREATE TABLE IF NOT EXISTS certificates (
-		serial VARCHAR(255) NOT NULL,
+		serial VARCHAR(255) PRIMARY KEY NOT NULL,
 		digest VARCHAR(255) NOT NULL,
 		value BLOB NOT NULL,
 		issued DATETIME NOT NULL
@@ -109,16 +110,49 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 		//   with status 'good' but don't necessarily get fresh OCSP responses.
 		// revokedDate: If status is 'revoked', this is the date and time it was
 		//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
+		// revokedReason: If status is 'revoked', this is the reason code for the
+		//   revocation. Otherwise it is zero (which happens to be the reason
+		//   code for 'unspecified').
 		// ocspLastUpdated: The date and time of the last time we generated an OCSP
 		//   response. If we have never generated one, this has the zero value of
 		//   time.Time, i.e. Jan 1 1970.
 		`CREATE TABLE IF NOT EXISTS certificateStatus (
-		serial VARCHAR(255) NOT NULL,
+		serial VARCHAR(255) PRIMARY KEY NOT NULL,
 		subscriberApproved INTEGER NOT NULL,
 		status VARCHAR(255) NOT NULL,
 		revokedDate DATETIME NOT NULL,
+		revokedReason INT NOT NULL,
 		ocspLastUpdated DATETIME NOT NULL
 		);`,
+
+		// A large table of OCSP responses. This contains all historical OCSP
+		// responses we've signed, is append-only, and is likely to get quite
+		// large. We'll probably want administratively truncate it at some point.
+		// serial: Same as certificate serial.
+		// createdAt: The date the response was signed.
+		// response: The encoded and signed CRL.
+		`CREATE TABLE IF NOT EXISTS ocspResponses (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		serial VARCHAR(255) NOT NULL,
+		createdAt DATETIME NOT NULL,
+		response BLOB
+		);`,
+
+		// This index allows us to quickly serve the most recent OCSP response.
+		`CREATE INDEX IF NOT EXISTS serial_createdAt on ocspResponses (serial, createdAt)`,
+
+		// A large table of signed CRLs. This contains all historical CRLs
+		// we've signed, is append-only, and is likely to get quite large.
+		// serial: Same as certificate serial.
+		// createdAt: The date the CRL was signed.
+		// crl: The encoded and signed CRL.
+		`CREATE TABLE IF NOT EXISTS crls (
+		serial VARCHAR(255) PRIMARY KEY NOT NULL,
+		createdAt DATETIME NOT NULL,
+		crl BLOB
+		);`,
+
+		`CREATE INDEX IF NOT EXISTS serial_createdAt on crls (serial, createdAt)`,
 	}
 
 	for _, statement := range statements {
@@ -211,30 +245,42 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	return
 }
 
-// GetCertificate takes an id consisting of the first, sequential half of a
+// GetCertificateByShortSerial takes an id consisting of the first, sequential half of a
 // serial number and returns the first certificate whose full serial number is
 // lexically greater than that id. This allows clients to query on the known
 // sequential half of our serial numbers to enumerate all certificates.
-// TODO: Add index on certificates table
 // TODO: Implement error when there are multiple certificates with the same
 // sequential half.
-func (ssa *SQLStorageAuthority) GetCertificate(id string) (cert []byte, err error) {
-	if len(id) != 16 {
-		err = errors.New("Invalid certificate serial " + id)
+func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert []byte, err error) {
+	if len(shortSerial) != 16 {
+		err = errors.New("Invalid certificate short serial " + shortSerial)
 		return
 	}
 	err = ssa.db.QueryRow(
 		"SELECT value FROM certificates WHERE serial LIKE ? LIMIT 1;",
-		id+"%").Scan(&cert)
+		shortSerial+"%").Scan(&cert)
+	return
+}
+
+// GetCertificate takes a serial number and returns the corresponding
+// certificate, or error if it does not exist.
+func (ssa *SQLStorageAuthority) GetCertificate(serial string) (cert []byte, err error) {
+	if len(serial) != 32 {
+		err = errors.New("Invalid certificate serial " + serial)
+		return
+	}
+	err = ssa.db.QueryRow(
+		"SELECT value FROM certificates WHERE serial = ? LIMIT 1;",
+		serial).Scan(&cert)
 	return
 }
 
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
 // number of a certificate and returns data about that certificate's current
 // validity.
-func (ssa *SQLStorageAuthority) GetCertificateStatus(id string) (status core.CertificateStatus, err error) {
-	if len(id) != 32 {
-		err = errors.New("Invalid certificate serial " + id)
+func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core.CertificateStatus, err error) {
+	if len(serial) != 32 {
+		err = errors.New("Invalid certificate serial " + serial)
 		return
 	}
 	var statusString string
@@ -242,7 +288,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(id string) (status core.Cer
 		`SELECT subscriberApproved, status, ocspLastUpdated
 		 FROM certificateStatus
 		 WHERE serial = ?
-		 LIMIT 1;`, id).Scan(&status.SubscriberApproved, &statusString, &status.OCSPLastUpdated)
+		 LIMIT 1;`, serial).Scan(&status.SubscriberApproved, &statusString, &status.OCSPLastUpdated)
 	if err != nil {
 		return
 	}
@@ -274,6 +320,44 @@ func (ssa *SQLStorageAuthority) NewRegistration() (id string, err error) {
 	}
 
 	id = candidate
+	return
+}
+
+// MarkCertificateRevoked stores the fact that a certificate is revoked, along
+// with a timestamp and a reason.
+func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
+	if _, err = ssa.GetCertificate(serial); err != nil {
+		return errors.New(fmt.Sprintf(
+			"Unable to mark certificate %s revoked: cert not found.", serial))
+	}
+
+	if _, err = ssa.GetCertificateStatus(serial); err != nil {
+		return errors.New(fmt.Sprintf(
+			"Unable to mark certificate %s revoked: cert status not found.", serial))
+	}
+
+	tx, err := ssa.db.Begin()
+	if err != nil {
+		return
+	}
+
+	// TODO: Also update crls.
+	_, err = tx.Exec(`INSERT INTO ocspResponses (serial, createdAt, response)
+			values (?, ?, ?)`,
+		serial, time.Now(), ocspResponse)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	_, err = tx.Exec(`UPDATE certificateStatus SET
+		status=?, revokedDate=?, revokedReason=? WHERE serial=?`,
+		string(core.OCSPStatusRevoked), time.Now(), reasonCode, serial)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+	err = tx.Commit()
 	return
 }
 
@@ -453,9 +537,9 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 
 	_, err = tx.Exec(`
 		INSERT INTO certificateStatus
-		(serial, subscriberApproved, status, revokedDate, ocspLastUpdated)
-		VALUES (?, 0, 'good', ?, ?);
-		`, serial, time.Time{}, time.Time{})
+		(serial, subscriberApproved, status, revokedDate, revokedReason, ocspLastUpdated)
+		VALUES (?, 0, 'good', ?, ?, ?);
+		`, serial, time.Time{}, 0, time.Time{})
 	if err != nil {
 		tx.Rollback()
 		return

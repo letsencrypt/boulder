@@ -37,6 +37,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
+	"github.com/letsencrypt/boulder/ca"
 )
 
 // Config stores configuration parameters that applications
@@ -59,15 +60,7 @@ type Config struct {
 		ListenAddress string
 	}
 
-	CA struct {
-		Server       string
-		AuthKey      string
-		Profile      string
-		TestMode     bool
-		DBDriver     string
-		DBName       string
-		SerialPrefix int
-	}
+	CA ca.Config
 
 	SA struct {
 		DBDriver string

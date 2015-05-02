@@ -79,6 +79,7 @@ type ValidationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest) (Certificate, error)
+	RevokeCertificate(serial string) error
 }
 
 type PolicyAuthority interface {
@@ -90,6 +91,8 @@ type StorageGetter interface {
 	GetRegistration(string) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
 	GetCertificate(string) ([]byte, error)
+	GetCertificateByShortSerial(string) ([]byte, error)
+	GetCertificateStatus(string) (CertificateStatus, error)
 }
 
 type StorageAdder interface {
@@ -99,6 +102,7 @@ type StorageAdder interface {
 	NewPendingAuthorization() (string, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
+	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error
 
 	AddCertificate([]byte) (string, error)
 }

@@ -33,7 +33,7 @@ func main() {
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")
 
-		cai, err := ca.NewCertificateAuthorityImpl(c.CA.Server, c.CA.AuthKey, c.CA.Profile, c.CA.SerialPrefix, cadb)
+		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA)
 		cmd.FailOnError(err, "Failed to create CA impl")
 
 		go cmd.ProfileCmd("CA", stats)

@@ -6,10 +6,12 @@
 package ca
 
 import (
+	"crypto"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -17,21 +19,41 @@ import (
 	"github.com/letsencrypt/boulder/policy"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/remote"
 )
 
+type Config struct {
+	Server       string
+	AuthKey      string
+	Profile      string
+	TestMode     bool
+	DBDriver     string
+	DBName       string
+	SerialPrefix int
+	// A PEM-encoded copy of the issuer certificate.
+	IssuerCert string
+	// This field is only allowed if TestMode is true, indicating that we are
+	// signing with a local key. In production we will use an HSM and this
+	// IssuerKey must be empty (and TestMode must be false). PEM-encoded private
+	// key used for signing certificates and OCSP responses.
+	IssuerKey string
+}
+
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
-	profile string
-	Signer  signer.Signer
-	SA      core.StorageAuthority
-	PA      core.PolicyAuthority
-	DB      core.CertificateAuthorityDatabase
-	log     *blog.AuditLogger
-	Prefix  int // Prepended to the serial number
+	profile    string
+	Signer     signer.Signer
+	OCSPSigner ocsp.Signer
+	SA         core.StorageAuthority
+	PA         core.PolicyAuthority
+	DB         core.CertificateAuthorityDatabase
+	log        *blog.AuditLogger
+	Prefix     int // Prepended to the serial number
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -40,39 +62,120 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(hostport string, authKey string, profile string, serialPrefix int, cadb core.CertificateAuthorityDatabase) (ca *CertificateAuthorityImpl, err error) {
+func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config Config) (ca *CertificateAuthorityImpl, err error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Certificate Authority Starting")
 
+	if config.SerialPrefix == 0 {
+		err = errors.New("Must have non-zero serial prefix for CA.")
+		return
+	}
+
 	// Create the remote signer
-	localProfile := config.SigningProfile{
-		Expiry:       time.Hour, // BOGUS: Required by CFSSL, but not used
-		RemoteName:   hostport,  // BOGUS: Only used as a flag by CFSSL
-		RemoteServer: hostport,
+	localProfile := cfsslConfig.SigningProfile{
+		Expiry:       time.Hour,     // BOGUS: Required by CFSSL, but not used
+		RemoteName:   config.Server, // BOGUS: Only used as a flag by CFSSL
+		RemoteServer: config.Server,
 		UseSerialSeq: true,
 	}
 
-	localProfile.Provider, err = auth.New(authKey, nil)
+	localProfile.Provider, err = auth.New(config.AuthKey, nil)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	signer, err := remote.NewSigner(&config.Signing{Default: &localProfile})
+	signer, err := remote.NewSigner(&cfsslConfig.Signing{Default: &localProfile})
 	if err != nil {
-		return
+		return nil, err
 	}
+
+	issuer, err := loadIssuer(config.IssuerCert)
+	if err != nil {
+		return nil, err
+	}
+
+	// In test mode, load a private key from a file. In production, use an HSM.
+	if !config.TestMode {
+		err = errors.New("OCSP signing with a PKCS#11 key not yet implemented.")
+		return nil, err
+	}
+	issuerKey, err := loadIssuerKey(config.IssuerKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set up our OCSP signer. Note this calls for both the issuer cert and the
+	// OCSP signing cert, which are the same in our case.
+	ocspSigner, err := ocsp.NewSigner(issuer, issuer, issuerKey,
+		time.Hour*24*4)
 
 	pa := policy.NewPolicyAuthorityImpl()
 
 	ca = &CertificateAuthorityImpl{
-		Signer:  signer,
-		profile: profile,
-		PA:      pa,
-		DB:      cadb,
-		Prefix:  serialPrefix,
-		log:     logger,
+		Signer:     signer,
+		OCSPSigner: ocspSigner,
+		profile:    config.Profile,
+		PA:         pa,
+		DB:         cadb,
+		Prefix:     config.SerialPrefix,
+		log:        logger,
 	}
+	return ca, err
+}
+
+func loadIssuer(filename string) (issuerCert *x509.Certificate, err error) {
+	if filename == "" {
+		err = errors.New("Issuer certificate was not provided in config.")
+		return
+	}
+	issuerCertPEM, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return
+	}
+	issuerCert, err = helpers.ParseCertificatePEM(issuerCertPEM)
 	return
+}
+
+func loadIssuerKey(filename string) (issuerKey crypto.Signer, err error) {
+	if filename == "" {
+		err = errors.New("IssuerKey must be provided in test mode.")
+		return
+	}
+
+	pem, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return
+	}
+	issuerKey, err = helpers.ParsePrivateKeyPEM(pem)
+	return
+}
+
+func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (err error) {
+	certDER, err := ca.SA.GetCertificate(serial)
+	if err != nil {
+		return err
+	}
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return err
+	}
+
+	// Per https://tools.ietf.org/html/rfc5280, CRLReason 0 is "unspecified."
+	// TODO: Add support for specifying reason.
+	reason := 0
+
+	signRequest := ocsp.SignRequest{
+		Certificate: cert,
+		Status:      string(core.OCSPStatusRevoked),
+		Reason:      reason,
+		RevokedAt:   time.Now(),
+	}
+	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
+	if err != nil {
+		return err
+	}
+	err = ca.SA.MarkCertificateRevoked(serial, ocspResponse, reason)
+	return err
 }
 
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
