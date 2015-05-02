@@ -41,7 +41,7 @@
     "serialPrefix": 255,
     "profile": "ee",
     "dbDriver": "sqlite3",
-    "dbName": "boulder-ca.sqlite3",
+    "dbName": ":memory:",
     "testMode": true,
     "issuerCert": "test/test-ca.pem",
     "_comment": "This should only be present in testMode. In prod use an HSM.",
@@ -50,7 +50,7 @@
 
   "sa": {
     "dbDriver": "sqlite3",
-    "dbName": "boulder.sqlite3"
+    "dbName": ":memory:"
   },
 
   "mail": {

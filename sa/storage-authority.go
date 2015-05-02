@@ -67,10 +67,11 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	statements := []string{
 
 	// Create registrations table
+	// TODO: Add NOT NULL to thumbprint and value.
 	`CREATE TABLE IF NOT EXISTS registrations (
 		id VARCHAR(255) NOT NULL,
-		thumbprint VARCHAR(255) NOT NULL,
-		value BLOB NOT NULL
+		thumbprint VARCHAR(255),
+		value BLOB
 	);`,
 
 	// Create pending authorizations table
