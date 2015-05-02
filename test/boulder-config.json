@@ -44,7 +44,7 @@
     "dbName": "boulder-ca.sqlite3",
     "testMode": true,
     "issuerCert": "test/test-ca.pem",
-    "_comment": "This should only be present in testMode. In prod use an HSM."
+    "_comment": "This should only be present in testMode. In prod use an HSM.",
     "issuerKey": "test/test-ca.key"
   },
 
