@@ -28,14 +28,15 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
-		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(auditlogger, c.CA.DBDriver, c.CA.DBName)
+		blog.SetAuditLogger(auditlogger)
+
+		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")
 
-		cai, err := ca.NewCertificateAuthorityImpl(auditlogger, cadb, c.CA)
+		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA)
 		cmd.FailOnError(err, "Failed to create CA impl")
 
 		go cmd.ProfileCmd("CA", stats)
-
 
 		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)

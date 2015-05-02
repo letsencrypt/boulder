@@ -24,7 +24,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
@@ -242,6 +241,7 @@ func TestMain(m *testing.M) {
 	caCertPEM, _ := ioutil.ReadFile(caCertFile)
 	caCert, _ := helpers.ParseCertificatePEM(caCertPEM)
 
+
 	// Create an online CFSSL instance
 	// This is designed to mimic what LE plans to do
 	authHandler, _ := auth.New(authKey, nil)
@@ -262,7 +262,7 @@ func TestMain(m *testing.M) {
 				Provider: authHandler,
 				CSRWhitelist: &cfsslConfig.CSRWhitelist{
 					PublicKeyAlgorithm: true,
-					PublicKey: true,
+					PublicKey:          true,
 					SignatureAlgorithm: true,
 				},
 			},
@@ -304,11 +304,9 @@ func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
 	return 1, nil
 }
 
-func setup(t *testing.T) (logger *blog.AuditLogger, cadb core.CertificateAuthorityDatabase, storageAuthority core.StorageAuthority, caConfig Config) {
-	logger = blog.TestLogger()
-	
+func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthority core.StorageAuthority, caConfig Config) {
 	// Create an SA
-	ssa, err := sa.NewSQLStorageAuthority(logger, "sqlite3", ":memory:")
+	ssa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
 	ssa.InitTables()
 	storageAuthority = ssa
@@ -327,26 +325,26 @@ func setup(t *testing.T) (logger *blog.AuditLogger, cadb core.CertificateAuthori
 		IssuerKey: "../test/test-ca.key",
 		TestMode: true,
 	}
-	return logger, cadb, storageAuthority, caConfig
+	return cadb, storageAuthority, caConfig
 }
 
 func TestFailNoSerial(t *testing.T) {
-	logger, cadb, _, caConfig := setup(t)
+	cadb, _, caConfig := setup(t)
 	caConfig.SerialPrefix = 0
-	_, err := NewCertificateAuthorityImpl(logger, cadb, caConfig)
+	_, err := NewCertificateAuthorityImpl(cadb, caConfig)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
 func TestFailNoTestMode(t *testing.T) {
-	logger, cadb, _, caConfig := setup(t)
+	cadb, _, caConfig := setup(t)
 	caConfig.TestMode = false
-	_, err := NewCertificateAuthorityImpl(logger, cadb, caConfig)
+	_, err := NewCertificateAuthorityImpl(cadb, caConfig)
 	test.AssertError(t, err, "CA should have failed with TestMode = false, but key provided")
 }
 
 func TestRevoke(t *testing.T) {
-	logger, cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(logger, cadb, caConfig)
+	cadb, storageAuthority, caConfig := setup(t)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
 	ca.SA = storageAuthority
 
 	csrDER, _ := hex.DecodeString(CN_AND_SAN_CSR_HEX)
@@ -371,8 +369,8 @@ func TestRevoke(t *testing.T) {
 }
 
 func TestIssueCertificate(t *testing.T) {
-	logger, cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(logger, cadb, caConfig)
+	cadb, storageAuthority, caConfig := setup(t)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 

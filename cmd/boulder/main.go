@@ -65,21 +65,23 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		blog.SetAuditLogger(auditlogger)
+
 		// Run StatsD profiling
 		go cmd.ProfileCmd("Monolith", stats)
 
 		// Create the components
-		wfe := wfe.NewWebFrontEndImpl(auditlogger)
-		sa, err := sa.NewSQLStorageAuthority(auditlogger, c.SA.DBDriver, c.SA.DBName)
+		wfe := wfe.NewWebFrontEndImpl()
+		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Unable to create SA")
 
-		ra := ra.NewRegistrationAuthorityImpl(auditlogger)
-		va := va.NewValidationAuthorityImpl(auditlogger, c.CA.TestMode)
+		ra := ra.NewRegistrationAuthorityImpl()
+		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
 
-		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(auditlogger, c.CA.DBDriver, c.CA.DBName)
+		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")
 
-		ca, err := ca.NewCertificateAuthorityImpl(auditlogger, cadb, c.CA)
+		ca, err := ca.NewCertificateAuthorityImpl(cadb, c.CA)
 		cmd.FailOnError(err, "Unable to create CA")
 
 		// Wire them up

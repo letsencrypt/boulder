@@ -6,16 +6,15 @@
 package sa
 
 import (
-	"io/ioutil"
-	"testing"
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
-	blog "github.com/letsencrypt/boulder/log"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+	"io/ioutil"
+	"testing"
 )
 
 func TestAddCertificate(t *testing.T) {
-	sa, err := NewSQLStorageAuthority(blog.TestLogger(), "sqlite3", ":memory:")
+	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create SA")
 	}
@@ -73,7 +72,7 @@ func TestAddCertificate(t *testing.T) {
 // TestGetCertificateByShortSerial tests some failure conditions for GetCertificate.
 // Success conditions are tested above in TestAddCertificate.
 func TestGetCertificateByShortSerial(t *testing.T) {
-	sa, err := NewSQLStorageAuthority(blog.TestLogger(), "sqlite3", ":memory:")
+	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
 	sa.InitTables()
 

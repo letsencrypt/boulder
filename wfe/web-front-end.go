@@ -29,26 +29,27 @@ type WebFrontEndImpl struct {
 	log   *blog.AuditLogger
 
 	// URL configuration parameters
-	BaseURL   string
-	NewReg    string
-	NewRegPath    string
-	RegBase   string
-	RegPath   string
-	NewAuthz  string
-	NewAuthzPath  string
-	AuthzBase string
-	AuthzPath string
-	NewCert   string
-	NewCertPath   string
-	CertBase  string
-	CertPath  string
-	TermsPath  string
+	BaseURL      string
+	NewReg       string
+	NewRegPath   string
+	RegBase      string
+	RegPath      string
+	NewAuthz     string
+	NewAuthzPath string
+	AuthzBase    string
+	AuthzPath    string
+	NewCert      string
+	NewCertPath  string
+	CertBase     string
+	CertPath     string
+	TermsPath    string
 }
 
-func NewWebFrontEndImpl(logger *blog.AuditLogger) WebFrontEndImpl {
+func NewWebFrontEndImpl() WebFrontEndImpl {
+	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 	return WebFrontEndImpl{
-		log: logger,
+		log:          logger,
 		NewRegPath:   "/acme/new-reg",
 		RegPath:      "/acme/reg/",
 		NewAuthzPath: "/acme/new-authz",
@@ -182,7 +183,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	response.Header().Set("Content-Type", "application/json")
 	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
 	if len(wfe.TermsPath) > 0 {
-		response.Header().Add("Link", link(wfe.BaseURL + wfe.TermsPath, "terms-of-service"))
+		response.Header().Add("Link", link(wfe.BaseURL+wfe.TermsPath, "terms-of-service"))
 	}
 
 	response.WriteHeader(http.StatusCreated)
@@ -345,12 +346,19 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			return
 		}
 
-		jsonReply, err := json.Marshal(updatedAuthz)
+		challenge := updatedAuthz.Challenges[challengeIndex]
+		// assumption: UpdateAuthorization does not modify order of challenges
+		jsonReply, err := json.Marshal(challenge)
 		if err != nil {
-			wfe.sendError(response, "Failed to marshal authz", http.StatusInternalServerError)
+			wfe.sendError(response, "Failed to marshal challenge", http.StatusInternalServerError)
 			return
 		}
+
+		authzURL := wfe.AuthzBase + string(authz.ID)
+		challengeURL := url.URL(challenge.URI)
+		response.Header().Add("Location", challengeURL.String())
 		response.Header().Set("Content-Type", "application/json")
+		response.Header().Add("Link", link(authzURL, "up"))
 		response.WriteHeader(http.StatusAccepted)
 		if _, err = response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))

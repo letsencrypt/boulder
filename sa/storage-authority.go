@@ -31,7 +31,8 @@ func digest256(data []byte) []byte {
 	return d.Sum(nil)
 }
 
-func NewSQLStorageAuthority(logger *blog.AuditLogger, driver string, name string) (ssa *SQLStorageAuthority, err error) {
+func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthority, err error) {
+	logger := blog.GetAuditLogger()
 	logger.Notice("Storage Authority Starting")
 
 	db, err := sql.Open(driver, name)
@@ -66,56 +67,56 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	// handle null values well (see, e.g. https://github.com/go-sql-driver/mysql/issues/59)
 	statements := []string{
 
-	// Create registrations table
-	// TODO: Add NOT NULL to thumbprint and value.
-	`CREATE TABLE IF NOT EXISTS registrations (
+		// Create registrations table
+		// TODO: Add NOT NULL to thumbprint and value.
+		`CREATE TABLE IF NOT EXISTS registrations (
 		id VARCHAR(255) NOT NULL,
 		thumbprint VARCHAR(255),
 		value BLOB
 	);`,
 
-	// Create pending authorizations table
-	// TODO: Add NOT NULL to value. Right now it causes test failures because some
-	// inserts to not fill all fields.
-	`CREATE TABLE IF NOT EXISTS pending_authz (
+		// Create pending authorizations table
+		// TODO: Add NOT NULL to value. Right now it causes test failures because some
+		// inserts to not fill all fields.
+		`CREATE TABLE IF NOT EXISTS pending_authz (
 		id VARCHAR(255) NOT NULL,
 		value BLOB
 	);`,
 
-	// Create finalized authorizations table
-	`CREATE TABLE IF NOT EXISTS authz (
+		// Create finalized authorizations table
+		`CREATE TABLE IF NOT EXISTS authz (
 		sequence INTEGER NOT NULL,
 		id VARCHAR(255) NOT NULL,
 		digest TEXT NOT NULL,
 		value BLOB NOT NULL
 	);`,
 
-	// Create certificates table. This should be effectively append-only, enforced
-	// by DB permissions.
-	`CREATE TABLE IF NOT EXISTS certificates (
+		// Create certificates table. This should be effectively append-only, enforced
+		// by DB permissions.
+		`CREATE TABLE IF NOT EXISTS certificates (
 		serial VARCHAR(255) PRIMARY KEY NOT NULL,
 		digest VARCHAR(255) NOT NULL,
 		value BLOB NOT NULL,
 		issued DATETIME NOT NULL
 		);`,
 
-	// Create certificate status table. This provides metadata about a certificate
-	// that can change over its lifetime, and rows are updateable unlike the
-	// certificates table. The serial number primary key matches up with the one
-	// on certificates.
-	// subscriberApproved: 1 iff the subscriber has posted back to the server
-	//   that they accept the certificate, otherwise 0.
-	// status: 'good' or 'revoked'. Note that good, expired certificates remain
-	//   with status 'good' but don't necessarily get fresh OCSP responses.
-	// revokedDate: If status is 'revoked', this is the date and time it was
-	//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
-	// revokedReason: If status is 'revoked', this is the reason code for the
-	//   revocation. Otherwise it is zero (which happens to be the reason
-	//   code for 'unspecified').
-	// ocspLastUpdated: The date and time of the last time we generated an OCSP
-	//   response. If we have never generated one, this has the zero value of
-	//   time.Time, i.e. Jan 1 1970.
-	`CREATE TABLE IF NOT EXISTS certificateStatus (
+		// Create certificate status table. This provides metadata about a certificate
+		// that can change over its lifetime, and rows are updateable unlike the
+		// certificates table. The serial number primary key matches up with the one
+		// on certificates.
+		// subscriberApproved: 1 iff the subscriber has posted back to the server
+		//   that they accept the certificate, otherwise 0.
+		// status: 'good' or 'revoked'. Note that good, expired certificates remain
+		//   with status 'good' but don't necessarily get fresh OCSP responses.
+		// revokedDate: If status is 'revoked', this is the date and time it was
+		//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
+		// revokedReason: If status is 'revoked', this is the reason code for the
+		//   revocation. Otherwise it is zero (which happens to be the reason
+		//   code for 'unspecified').
+		// ocspLastUpdated: The date and time of the last time we generated an OCSP
+		//   response. If we have never generated one, this has the zero value of
+		//   time.Time, i.e. Jan 1 1970.
+		`CREATE TABLE IF NOT EXISTS certificateStatus (
 		serial VARCHAR(255) PRIMARY KEY NOT NULL,
 		subscriberApproved INTEGER NOT NULL,
 		status VARCHAR(255) NOT NULL,
@@ -124,34 +125,34 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 		ocspLastUpdated DATETIME NOT NULL
 		);`,
 
-	// A large table of OCSP responses. This contains all historical OCSP
-	// responses we've signed, is append-only, and is likely to get quite
-	// large. We'll probably want administratively truncate it at some point.
-	// serial: Same as certificate serial.
-	// createdAt: The date the response was signed.
-	// response: The encoded and signed CRL.
-	`CREATE TABLE IF NOT EXISTS ocspResponses (
+		// A large table of OCSP responses. This contains all historical OCSP
+		// responses we've signed, is append-only, and is likely to get quite
+		// large. We'll probably want administratively truncate it at some point.
+		// serial: Same as certificate serial.
+		// createdAt: The date the response was signed.
+		// response: The encoded and signed CRL.
+		`CREATE TABLE IF NOT EXISTS ocspResponses (
 		id INT AUTO_INCREMENT PRIMARY KEY,
 		serial VARCHAR(255) NOT NULL,
 		createdAt DATETIME NOT NULL,
 		response BLOB
 		);`,
 
-	// This index allows us to quickly serve the most recent OCSP response.
-	`CREATE INDEX IF NOT EXISTS serial_createdAt on ocspResponses (serial, createdAt)`,
+		// This index allows us to quickly serve the most recent OCSP response.
+		`CREATE INDEX IF NOT EXISTS serial_createdAt on ocspResponses (serial, createdAt)`,
 
-	// A large table of signed CRLs. This contains all historical CRLs
-	// we've signed, is append-only, and is likely to get quite large.
-	// serial: Same as certificate serial.
-	// createdAt: The date the CRL was signed.
-	// crl: The encoded and signed CRL.
-	`CREATE TABLE IF NOT EXISTS crls (
+		// A large table of signed CRLs. This contains all historical CRLs
+		// we've signed, is append-only, and is likely to get quite large.
+		// serial: Same as certificate serial.
+		// createdAt: The date the CRL was signed.
+		// crl: The encoded and signed CRL.
+		`CREATE TABLE IF NOT EXISTS crls (
 		serial VARCHAR(255) PRIMARY KEY NOT NULL,
 		createdAt DATETIME NOT NULL,
 		crl BLOB
 		);`,
 
-	`CREATE INDEX IF NOT EXISTS serial_createdAt on crls (serial, createdAt)`,
+		`CREATE INDEX IF NOT EXISTS serial_createdAt on crls (serial, createdAt)`,
 	}
 
 	for _, statement := range statements {
@@ -257,7 +258,7 @@ func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) 
 	}
 	err = ssa.db.QueryRow(
 		"SELECT value FROM certificates WHERE serial LIKE ? LIMIT 1;",
-		shortSerial + "%").Scan(&cert)
+		shortSerial+"%").Scan(&cert)
 	return
 }
 
@@ -282,7 +283,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 		err = errors.New("Invalid certificate serial " + serial)
 		return
 	}
-	var statusString string;
+	var statusString string
 	err = ssa.db.QueryRow(
 		`SELECT subscriberApproved, status, ocspLastUpdated
 		 FROM certificateStatus
@@ -327,12 +328,12 @@ func (ssa *SQLStorageAuthority) NewRegistration() (id string, err error) {
 func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
 	if _, err = ssa.GetCertificate(serial); err != nil {
 		return errors.New(fmt.Sprintf(
-		  "Unable to mark certificate %s revoked: cert not found.", serial))
+			"Unable to mark certificate %s revoked: cert not found.", serial))
 	}
 
 	if _, err = ssa.GetCertificateStatus(serial); err != nil {
 		return errors.New(fmt.Sprintf(
-		  "Unable to mark certificate %s revoked: cert status not found.", serial))
+			"Unable to mark certificate %s revoked: cert status not found.", serial))
 	}
 
 	tx, err := ssa.db.Begin()

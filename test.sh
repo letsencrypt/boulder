@@ -25,6 +25,9 @@ run go vet -x ./...
 
 [ -e $GOBIN/golint ] && run $GOBIN/golint ./...
 
+# Ensure SQLite is installed so we don't recompile it each time
+go install ./Godeps/_workspace/src/github.com/mattn/go-sqlite3
+
 # All the subdirectories
 doTest analysis
 doTest ca

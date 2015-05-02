@@ -15,13 +15,11 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
@@ -95,14 +93,10 @@ var (
 )
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
-	stats, _ := statsd.NewNoopClient(nil)
-	// Audit logger
-	audit, _ := blog.Dial("", "", "tag", stats)
-
 	err := json.Unmarshal(AccountKeyJSON, &AccountKey)
 	test.AssertNotError(t, err, "Failed to unmarshall JWK")
 
-	sa, err := sa.NewSQLStorageAuthority(audit, "sqlite3", ":memory:")
+	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
 	sa.InitTables()
 
@@ -114,13 +108,13 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	caCertPEM, _ := pem.Decode([]byte(CA_CERT_PEM))
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, nil)
-	pa := policy.NewPolicyAuthorityImpl(audit)
+	pa := policy.NewPolicyAuthorityImpl()
 	cadb := &MockCADatabase{}
 	ca := ca.CertificateAuthorityImpl{Signer: signer, SA: sa, PA: pa, DB: cadb}
 	csrDER, _ := hex.DecodeString(CSR_HEX)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 
-	ra := NewRegistrationAuthorityImpl(audit)
+	ra := NewRegistrationAuthorityImpl()
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = &ca

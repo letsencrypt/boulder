@@ -6,20 +6,24 @@
 package wfe
 
 import (
-	"testing"
-	"io/ioutil"
+	"crypto/x509"
+	"encoding/json"
 	"io"
-	"strings"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/jose"
+
 	"github.com/letsencrypt/boulder/ra"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
-func makeBody(s string) (io.ReadCloser) {
+func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
 
@@ -27,12 +31,9 @@ func makeBody(s string) (io.ReadCloser) {
 //  - RA returns with a cert success
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
-	stats, _ := statsd.NewNoopClient(nil)
-	log, err := blog.Dial("", "", "tag", stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl(log)
-	wfe := NewWebFrontEndImpl(log)
+	ra := ra.NewRegistrationAuthorityImpl()
+	wfe := NewWebFrontEndImpl()
 	wfe.RA = &ra
 	responseWriter := httptest.NewRecorder()
 
@@ -57,7 +58,7 @@ func TestIssueCertificate(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody("hi"),
+		Body:   makeBody("hi"),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -161,4 +162,93 @@ func TestIssueCertificate(t *testing.T) {
 		responseWriter.Body.String(),
 		// TODO: I think this is wrong. The CSR in the payload above was created by openssl and should be valid.
 		"{\"detail\":\"Error creating new cert: Invalid signature on CSR\"}")
+}
+
+type MockRegistrationAuthority struct{}
+
+func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration, jwk jose.JsonWebKey) (core.Registration, error) {
+	return reg, nil
+}
+
+func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, jwk jose.JsonWebKey) (core.Authorization, error) {
+	return authz, nil
+}
+
+func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, jwk jose.JsonWebKey) (core.Certificate, error) {
+	return core.Certificate{}, nil
+}
+
+func (ra *MockRegistrationAuthority) UpdateRegistration(reg core.Registration, updated core.Registration) (core.Registration, error) {
+	return reg, nil
+}
+
+func (ra *MockRegistrationAuthority) UpdateAuthorization(authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
+	return authz, nil
+}
+
+func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate) error {
+	return nil
+}
+
+func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization) {
+}
+
+func TestChallenge(t *testing.T) {
+	wfe := NewWebFrontEndImpl()
+	wfe.RA = &MockRegistrationAuthority{}
+	wfe.HandlePaths()
+	responseWriter := httptest.NewRecorder()
+
+	var key jose.JsonWebKey
+	err := json.Unmarshal([]byte(`{
+						"e": "AQAB",
+						"kty": "RSA",
+						"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+							}`), &key)
+	test.AssertNotError(t, err, "Could not unmarshal testing key")
+
+	challengeURL, _ := url.Parse("/acme/authz/asdf?challenge=foo")
+	authz := core.Authorization{
+		ID: "asdf",
+		Identifier: core.AcmeIdentifier{
+			Type:  "dns",
+			Value: "letsencrypt.org",
+		},
+		Challenges: []core.Challenge{
+			core.Challenge{
+				Type: "dns",
+				URI:  core.AcmeURL(*challengeURL),
+			},
+		},
+		Key: key,
+	}
+
+	wfe.Challenge(authz, responseWriter, &http.Request{
+		Method: "POST",
+		URL:    challengeURL,
+		Body: makeBody(`
+			{
+					"header": {
+							"alg": "RS256",
+							"jwk": {
+									"e": "AQAB",
+									"kty": "RSA",
+									"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+							}
+					},
+					"payload": "e30K",
+					"signature": "JXYA_pin91Bc5oz5I6dqCNNWDrBaYTB31EnWorrj4JEFRaidafC9mpLDLLA9jR9kX_Vy2bA5b6pPpXVKm0w146a0L551OdL8JrrLka9q6LypQdDLLQa76XD03hSBOFcC-Oo5FLPa3WRWS1fQ37hYAoLxtS3isWXMIq_4Onx5bq8bwKyu-3E3fRb_lzIZ8hTIWwcblCTOfufUe6AoK4m6MfBjz0NGhyyk4lEZZw6Sttm2VuZo3xmWoRTJEyJG5AOJ6fkNJ9iQQ1kVhMr0ZZ7NVCaOZAnxrwv2sCjY6R3f4HuEVe1yzT75Mq2IuXq-tadGyFujvUxF6BWHCulbEnss7g"
+			}
+		`),
+	})
+
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Location"),
+		"/acme/authz/asdf?challenge=foo")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		"</acme/authz/asdf>;rel=\"up\"")
+	test.AssertEquals(
+		t, responseWriter.Body.String(),
+		"{\"type\":\"dns\",\"uri\":\"/acme/authz/asdf?challenge=foo\"}")
 }

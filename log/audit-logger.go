@@ -9,9 +9,20 @@ import (
 	"errors"
 	"fmt"
 	"log/syslog"
+	"os"
+	"sync"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 )
+
+// singleton defines the object of a Singleton pattern
+type singleton struct {
+	once sync.Once
+	log  *AuditLogger
+}
+
+// _Singleton is the single AuditLogger entity in memory
+var _Singleton singleton
 
 // The constant used to identify audit-specific messages
 const auditTag = "[AUDIT]"
@@ -24,14 +35,6 @@ const auditTag = "[AUDIT]"
 type AuditLogger struct {
 	*syslog.Writer
 	Stats statsd.Statter
-}
-
-// TestLogger returns an AuditLogger, required to initialize many components
-func TestLogger() (logger *AuditLogger) {
-	stats, _ := statsd.NewNoopClient(nil)
-	// Audit logger
-	logger, _ = Dial("", "", "tag", stats)
-	return
 }
 
 // Dial establishes a connection to the log daemon by passing through
@@ -52,6 +55,45 @@ func NewAuditLogger(log *syslog.Writer, stats statsd.Statter) (*AuditLogger, err
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
 	return &AuditLogger{log, stats}, nil
+}
+
+// initializeAuditLogger should only be used in unit tests. Failures in this
+// method are unlikely as the defaults are safe, and they are also
+// of minimal consequence during unit testing -- logs get printed to stdout
+// even if syslog is missing.
+func initializeAuditLogger() {
+	stats, _ := statsd.NewNoopClient(nil)
+	audit, _ := Dial("", "", "default", stats)
+	audit.Notice("Using default logging configuration.")
+
+	SetAuditLogger(audit)
+}
+
+// SetAuditLogger configures the singleton audit logger. This method
+// must only be called once, and before calling GetAuditLogger the
+// first time.
+func SetAuditLogger(logger *AuditLogger) (err error) {
+	if _Singleton.log != nil {
+		err = errors.New("You may not call SetAuditLogger after it has already been implicitly or explicitly set.")
+		_Singleton.log.WarningErr(err)
+	} else {
+		_Singleton.log = logger
+	}
+	return
+}
+
+// GetAuditLogger obtains the singleton audit logger. If SetAuditLogger
+// has not been called first, this method initializes with basic defaults.
+// The basic defaults cannot error, and subequent access to an already-set
+// AuditLogger also cannot error, so this method is error-safe.
+func GetAuditLogger() *AuditLogger {
+	_Singleton.once.Do(func() {
+		if _Singleton.log == nil {
+			initializeAuditLogger()
+		}
+	})
+
+	return _Singleton.log
 }
 
 // Audit sends a NOTICE-severity message that is prefixed with the
@@ -129,4 +171,15 @@ func (log *AuditLogger) Notice(msg string) (err error) {
 	fmt.Println(msg)
 	log.Stats.Inc("Logging.Notice", 1, 1.0)
 	return log.Writer.Notice(msg)
+}
+
+const EMERGENCY_RETVAL = 13
+
+func (log *AuditLogger) EmergencyExit(msg string) {
+	// Some errors may be serious enough to trigger an immediate Boulder
+	// shutdown.  This function will provide the necessary housekeeping.
+	// Currently, make an emergency log entry and exit; the Activity Monitor
+	// should notice the Emerg level event and shut down all components.
+	log.Emerg(msg)
+	os.Exit(EMERGENCY_RETVAL)
 }
