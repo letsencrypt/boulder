@@ -116,29 +116,17 @@ func (tc boulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 		return gorp.CustomScanner{new(string), target, binder}, true
 	case *core.AcmeStatus:
 		binder := func(holder, target interface{}) error {
-			s, ok := holder.(*string)
-			if !ok {
-				return errors.New("FromDb: Unable to convert core.OCSPStatus to string")
-			}
-			st, ok := target.(*core.AcmeStatus)
-			if !ok {
-				return errors.New("FromDb: Unable to convert core.OCSPStatus to string")
-			}
-			*st = core.AcmeStatus(string(*s))
+			s := holder.(*string)
+			st := target.(*core.AcmeStatus)
+			*st = core.AcmeStatus(*s)
 			return nil
 		}
 		return gorp.CustomScanner{new(string), target, binder}, true
 	case *core.OCSPStatus:
 		binder := func(holder, target interface{}) error {
-			s, ok := holder.(*string)
-			if !ok {
-				return errors.New("FromDb: Unable to convert core.OCSPStatus to string")
-			}
-			st, ok := target.(*core.OCSPStatus)
-			if !ok {
-				return errors.New("FromDb: Unable to convert core.OCSPStatus to string")
-			}
-			*st = core.OCSPStatus(string(*s))
+			s := holder.(*string)
+			st := target.(*core.OCSPStatus)
+			*st = core.OCSPStatus(*s)
 			return nil
 		}
 		return gorp.CustomScanner{new(string), target, binder}, true
