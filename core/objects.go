@@ -97,19 +97,19 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 // to account keys.
 type Registration struct {
 	// Unique identifier
-	ID string `json:"-"`
+	ID string `json:"-" db:"id"`
 
 	// Account key to which the details are attached
-	Key jose.JsonWebKey `json:"key"`
+	Key jose.JsonWebKey `json:"key" db:"key"`
 
 	// Recovery Token is used to prove connection to an earlier transaction
-	RecoveryToken string `json:"recoveryToken"`
+	RecoveryToken string `json:"recoveryToken" db:"recoveryToken"`
 
 	// Contact URIs
-	Contact []AcmeURL `json:"contact,omitempty"`
+	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 
 	// Agreement with terms of service
-	Agreement string `json:"agreement,omitempty"`
+	Agreement string `json:"agreement,omitempty" db:"agreement"`
 }
 
 func (r *Registration) MergeUpdate(input Registration) {
@@ -175,35 +175,35 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 type Authorization struct {
 	// An identifier for this authorization, unique across
 	// authorizations and certificates within this instance.
-	ID string `json:"id,omitempty"`
+	ID string `json:"id,omitempty" db:"id"`
 
 	// The identifier for which authorization is being given
-	Identifier AcmeIdentifier `json:"identifier,omitempty"`
+	Identifier AcmeIdentifier `json:"identifier,omitempty" db:"identifier"`
 
 	// The account key that is authorized for the identifier
-	Key jose.JsonWebKey `json:"key,omitempty"`
+	Key jose.JsonWebKey `json:"key,omitempty" db:"key"`
 
 	// The status of the validation of this authorization
-	Status AcmeStatus `json:"status,omitempty"`
+	Status AcmeStatus `json:"status,omitempty" db:"status"`
 
 	// The date after which this authorization will be no
 	// longer be considered valid
-	Expires time.Time `json:"expires,omitempty"`
+	Expires time.Time `json:"expires,omitempty" db:"expires"`
 
 	// An array of challenges objects used to validate the
 	// applicant's control of the identifier.  For authorizations
 	// in process, these are challenges to be fulfilled; for
 	// final authorizations, they describe the evidence that
 	// the server used in support of granting the authorization.
-	Challenges []Challenge `json:"challenges,omitempty"`
+	Challenges []Challenge `json:"challenges,omitempty" db:"challenges"`
 
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
-	Combinations [][]int `json:"combinations,omitempty"`
+	Combinations [][]int `json:"combinations,omitempty" db:"Combinations"`
 
 	// The client may provide contact URIs to allow the server
 	// to push information to it.
-	Contact []AcmeURL `json:"contact,omitempty"`
+	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 }
 
 // Certificate objects are entirely internal to the server.  The only
@@ -225,7 +225,7 @@ type Certificate struct {
 // latest data about the status of the certificate, required for OCSP updating
 // and for validating that the subscriber has accepted the certificate.
 type CertificateStatus struct {
-	SubscriberApproved bool
-	Status OCSPStatus
-	OCSPLastUpdated time.Time
+	SubscriberApproved bool `db:"subscriberApproved"`
+	Status OCSPStatus `db:"status"`
+	OCSPLastUpdated time.Time `db:"ocspLastUpdated"`
 }
