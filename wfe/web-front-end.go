@@ -62,14 +62,14 @@ func NewWebFrontEndImpl() WebFrontEndImpl {
 }
 
 func (wfe *WebFrontEndImpl) HandlePaths() {
-	http.HandleFunc(wfe.BaseURL+"/", wfe.Index)
-
 	wfe.NewReg = wfe.BaseURL + wfe.NewRegPath
 	wfe.RegBase = wfe.BaseURL + wfe.RegPath
 	wfe.NewAuthz = wfe.BaseURL + wfe.NewAuthzPath
 	wfe.AuthzBase = wfe.BaseURL + wfe.AuthzPath
 	wfe.NewCert = wfe.BaseURL + wfe.NewCertPath
 	wfe.CertBase = wfe.BaseURL + wfe.CertPath
+
+	http.HandleFunc("/", wfe.Index)
 	http.HandleFunc(wfe.NewRegPath, wfe.NewRegistration)
 	http.HandleFunc(wfe.NewAuthzPath, wfe.NewAuthorization)
 	http.HandleFunc(wfe.NewCertPath, wfe.NewCertificate)
@@ -85,7 +85,7 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 	// http://golang.org/pkg/net/http/#example_ServeMux_Handle
 	// The "/" pattern matches everything, so we need to check
 	// that we're at the root here.
-	if request.URL.Path != wfe.BaseURL+"/" {
+	if request.URL.Path != "/" {
 		http.NotFound(response, request)
 		return
 	}
@@ -98,7 +98,8 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
     server implementation. New registration is available at
     <a href="{{.NewReg}}">{{.NewReg}}</a>.
   </body>
-</html>`))
+</html>
+`))
 	tmpl.Execute(response, wfe)
 	response.Header().Set("Content-Type", "text/html")
 }
