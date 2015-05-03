@@ -9,20 +9,20 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-	
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
 type SQLStorageAuthority struct {
 	db     *sql.DB
+	dbMap  *gorp.DbMap
 	bucket map[string]interface{} // XXX included only for backward compat
 	log    *blog.AuditLogger
 }
@@ -31,6 +31,12 @@ func digest256(data []byte) []byte {
 	d := sha256.New()
 	_, _ = d.Write(data) // Never returns an error
 	return d.Sum(nil)
+}
+
+var dialectMap map[string]interface{} = map[string]interface{}{
+	"sqlite3":  gorp.SqliteDialect{},
+	"mysql":    gorp.MySQLDialect{"InnoDB", "UTF8"},
+	"postgres": gorp.PostgresDialect{},
 }
 
 func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthority, err error) {
@@ -45,8 +51,17 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 		return
 	}
 
+	dialect, ok := dialectMap[driver].(gorp.Dialect)
+	if !ok {
+		err = fmt.Errorf("Couldn't find dialect for %s", driver)
+		return
+	}
+
+	dbmap := &gorp.DbMap{Db: db, Dialect: dialect}
+
 	ssa = &SQLStorageAuthority{
 		db:     db,
+		dbMap:  dbmap,
 		log:    logger,
 		bucket: make(map[string]interface{}),
 	}
@@ -59,137 +74,146 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 	return
 }
 
+// Models
+type Registration struct {
+	Id         string
+	Thumbprint string
+	Value      string
+}
+
+type Pending_auth struct {
+	Id         string
+	Value      string
+}
+
+type Auth struct {
+	Sequence string
+	Id       string
+	Digest   string
+	Value    string
+}
+
+type Certificate struct {
+	Serial string
+	Digest string
+	Value  string
+	Issued time.Time
+}
+
+type CertificateStatus struct {
+	Serial             string
+	SubscriberApproved bool
+	Status             string
+	RevokedDate        time.Time
+	RevokedReason      int
+	OCSPLastUpdated    time.Time
+}
+
+type OcspResponse struct {
+	Id        int
+	Serial    string
+	CreatedAt time.Time
+	Response  string
+}
+
+type Crl struct {
+	Serial    string
+	CreatedAt time.Time
+	Crl       string
+}
+
 func (ssa *SQLStorageAuthority) InitTables() (err error) {
-	tx, err := ssa.db.Begin()
-	if err != nil {
-		return
-	}
+	ssa.dbMap.AddTableWithName(Registration{}, "registrations").SetKeys(false, "Id")
+	ssa.dbMap.AddTableWithName(Pending_auth{}, "pending_authz").SetKeys(false, "Id")
+	ssa.dbMap.AddTableWithName(Auth{}, "authz").SetKeys(false, "Id")
+	ssa.dbMap.AddTableWithName(Certificate{}, "certificates").SetKeys(false, "Serial")
+	ssa.dbMap.AddTableWithName(CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial")
+	ssa.dbMap.AddTableWithName(OcspResponse{}, "ocspResponses").SetKeys(true, "Id")
+	ssa.dbMap.AddTableWithName(Crl{}, "crls").SetKeys(false, "CreatedAt")
 
-	// All fields should be created with "NOT NULL" because go's SQL support does not
-	// handle null values well (see, e.g. https://github.com/go-sql-driver/mysql/issues/59)
-	statements := []string{
-
-		// Create registrations table
-		// TODO: Add NOT NULL to thumbprint and value.
-		`CREATE TABLE IF NOT EXISTS registrations (
-		id VARCHAR(255) NOT NULL,
-		thumbprint VARCHAR(255),
-		value BLOB
-	);`,
-
-		// Create pending authorizations table
-		// TODO: Add NOT NULL to value. Right now it causes test failures because some
-		// inserts to not fill all fields.
-		`CREATE TABLE IF NOT EXISTS pending_authz (
-		id VARCHAR(255) NOT NULL,
-		value BLOB
-	);`,
-
-		// Create finalized authorizations table
-		`CREATE TABLE IF NOT EXISTS authz (
-		sequence INTEGER NOT NULL,
-		id VARCHAR(255) NOT NULL,
-		digest TEXT NOT NULL,
-		value BLOB NOT NULL
-	);`,
-
-		// Create certificates table. This should be effectively append-only, enforced
-		// by DB permissions.
-		`CREATE TABLE IF NOT EXISTS certificates (
-		serial VARCHAR(255) PRIMARY KEY NOT NULL,
-		digest VARCHAR(255) NOT NULL,
-		value BLOB NOT NULL,
-		issued DATETIME NOT NULL
-		);`,
-
-		// Create certificate status table. This provides metadata about a certificate
-		// that can change over its lifetime, and rows are updateable unlike the
-		// certificates table. The serial number primary key matches up with the one
-		// on certificates.
-		// subscriberApproved: 1 iff the subscriber has posted back to the server
-		//   that they accept the certificate, otherwise 0.
-		// status: 'good' or 'revoked'. Note that good, expired certificates remain
-		//   with status 'good' but don't necessarily get fresh OCSP responses.
-		// revokedDate: If status is 'revoked', this is the date and time it was
-		//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
-		// revokedReason: If status is 'revoked', this is the reason code for the
-		//   revocation. Otherwise it is zero (which happens to be the reason
-		//   code for 'unspecified').
-		// ocspLastUpdated: The date and time of the last time we generated an OCSP
-		//   response. If we have never generated one, this has the zero value of
-		//   time.Time, i.e. Jan 1 1970.
-		`CREATE TABLE IF NOT EXISTS certificateStatus (
-		serial VARCHAR(255) PRIMARY KEY NOT NULL,
-		subscriberApproved INTEGER NOT NULL,
-		status VARCHAR(255) NOT NULL,
-		revokedDate DATETIME NOT NULL,
-		revokedReason INT NOT NULL,
-		ocspLastUpdated DATETIME NOT NULL
-		);`,
-
-		// A large table of OCSP responses. This contains all historical OCSP
-		// responses we've signed, is append-only, and is likely to get quite
-		// large. We'll probably want administratively truncate it at some point.
-		// serial: Same as certificate serial.
-		// createdAt: The date the response was signed.
-		// response: The encoded and signed CRL.
-		`CREATE TABLE IF NOT EXISTS ocspResponses (
-		id INT AUTO_INCREMENT PRIMARY KEY,
-		serial VARCHAR(255) NOT NULL,
-		createdAt DATETIME NOT NULL,
-		response BLOB
-		);`,
-
-		// This index allows us to quickly serve the most recent OCSP response.
-		`CREATE INDEX IF NOT EXISTS serial_createdAt on ocspResponses (serial, createdAt)`,
-
-		// A large table of signed CRLs. This contains all historical CRLs
-		// we've signed, is append-only, and is likely to get quite large.
-		// serial: Same as certificate serial.
-		// createdAt: The date the CRL was signed.
-		// crl: The encoded and signed CRL.
-		`CREATE TABLE IF NOT EXISTS crls (
-		serial VARCHAR(255) PRIMARY KEY NOT NULL,
-		createdAt DATETIME NOT NULL,
-		crl BLOB
-		);`,
-
-		`CREATE INDEX IF NOT EXISTS serial_createdAt on crls (serial, createdAt)`,
-	}
-
-	for _, statement := range statements {
-		_, err = tx.Exec(statement)
-		if err != nil {
-			tx.Rollback()
-			return
-		}
-	}
-
-	err = tx.Commit()
+	err = ssa.dbMap.CreateTablesIfNotExists()
 	return
 }
 
 func (ssa *SQLStorageAuthority) dumpTables(tx *sql.Tx) {
 	fmt.Printf("===== TABLE DUMP =====\n")
+
 	fmt.Printf("\n----- registrations -----\n")
-	rows, err := tx.Query("SELECT id, thumbprint, value FROM registrations")
+	var registrations []Registration
+	_, err := ssa.dbMap.Select(&registrations, "SELECT * FROM registrations ")
 	if err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-	} else {
-		defer rows.Close()
-		for rows.Next() {
-			var id, key, value []byte
-			if err := rows.Scan(&id, &key, &value); err == nil {
-				fmt.Printf("%s | %s | %s\n", string(id), string(key), hex.EncodeToString(value))
-			} else {
-				fmt.Printf("ERROR: %v\n", err)
-			}
-		}
+		fmt.Println(err)
+		return
+	}
+	for _, r := range registrations {
+		fmt.Printf("\t%s | %s | %s\n", r.Id, r.Thumbprint, r.Value)
 	}
 
-	fmt.Printf("\n----- pending_authz -----\n") // TODO
-	fmt.Printf("\n----- authz -----\n")         // TODO
-	fmt.Printf("\n----- certificates -----\n")  // TODO
+	fmt.Printf("\n----- pending_authz -----\n")
+	var pending_authz []Pending_auth
+	_, err = ssa.dbMap.Select(&registrations, "SELECT * FROM pending_authz")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, pa := range pending_authz {
+		fmt.Printf("\t%s | %s\n", pa.Id, pa.Value)
+	}
+
+	fmt.Printf("\n----- authz -----\n")
+	var authz []Auth
+	_, err = ssa.dbMap.Select(&registrations, "SELECT * FROM authz")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, a := range authz {
+		fmt.Printf("\t%d | %s | %s | %s\n", a.Sequence, a.Id, a.Digest, a.Value)
+	}
+
+	fmt.Printf("\n----- certificates -----\n")
+	var certificates []Certificate
+	_, err = ssa.dbMap.Select(&registrations, "SELECT * FROM certificates")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, c := range certificates {
+		fmt.Printf("\t%s | %s | %s | %s\n", c.Serial, c.Digest, c.Value, c.Issued)
+	}
+
+	fmt.Printf("\n----- certificateStatus -----\n")
+	var certificateStatuses []CertificateStatus
+	_, err = ssa.dbMap.Select(&registrations, "SELECT * FROM certificates")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, cS := range certificateStatuses {
+		fmt.Printf("\t%s | %v | %s | %s | %d | %s\n", cS.Serial, cS.SubscriberApproved, cS.Status, cS.RevokedDate, cS.RevokedReason, cS.OCSPLastUpdated)
+	}
+
+	fmt.Printf("\n----- ocspResponses -----\n")
+	var ocspResponses []OcspResponse
+	_, err = ssa.dbMap.Select(&registrations, "SELECT * FROM ocspResponses")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, oR := range ocspResponses {
+		fmt.Printf("\t%d | %s | %s | %s\n", oR.Id, oR.Serial, oR.CreatedAt, oR.Response)
+	}
+
+	fmt.Printf("\n----- crls -----\n")
+	var crls []Crl
+	_, err = ssa.dbMap.Select(&registrations, "SELECT * FROM crls")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, c := range crls {
+		fmt.Printf("\t%s | %s | %s\n", c.Serial, c.CreatedAt, c.Crl)
+	}
 }
 
 func statusIsPending(status core.AcmeStatus) bool {
