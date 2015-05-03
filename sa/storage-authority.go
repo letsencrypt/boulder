@@ -294,11 +294,11 @@ func (ssa *SQLStorageAuthority) existingRegistration(id string) (bool) {
 func (ssa *SQLStorageAuthority) GetRegistration(id string) (reg core.Registration, err error) {
 	regObj, err := ssa.dbMap.Get(Registration{}, id)
 	if err != nil {
-		err = fmt.Errorf("No registrations with ID %s", id)
 		return
 	}
 	if regObj == nil {
-
+		err = fmt.Errorf("No registrations with ID %s", id)
+		return
 	}
 	regD := regObj.(*Registration)
 	reg = regD.Registration
