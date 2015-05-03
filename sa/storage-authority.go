@@ -17,11 +17,11 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/jose"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
 type SQLStorageAuthority struct {
-	db     *sql.DB
 	dbMap  *gorp.DbMap
 	bucket map[string]interface{} // XXX included only for backward compat
 	log    *blog.AuditLogger
@@ -50,7 +50,7 @@ type Pending_auth struct {
 }
 
 type Auth struct {
-	Sequence           string `db:"sequence"`
+	Sequence           int64 `db:"sequence"`
 	Digest             string `db:"digest"`
 	core.Authorization
 }
@@ -87,6 +87,14 @@ type boulderTypeConverter struct{}
 
 func (tc boulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 	switch t := val.(type) {
+	case core.AcmeIdentifier, jose.JsonWebKey, []core.Challenge, []core.AcmeURL, [][]int:
+		jsonBytes, err := json.Marshal(t)
+		if err != nil {
+			return nil, err
+		}
+		return string(jsonBytes), nil
+	case core.AcmeStatus:
+		return string(t), nil
 	case core.OCSPStatus:
 		return string(t), nil
 	default:
@@ -96,6 +104,30 @@ func (tc boulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 
 func (tc boulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, bool) {
 	switch target.(type) {
+	case *core.AcmeIdentifier, *jose.JsonWebKey, *[]core.Challenge, *[]core.AcmeURL, *[][]int:
+		binder := func(holder, target interface{}) error {
+			s, ok := holder.(*string)
+			if !ok {
+				return errors.New("FromDb: Unable to convert *string")
+			}
+			b := []byte(*s)
+			return json.Unmarshal(b, target)
+		}
+		return gorp.CustomScanner{new(string), target, binder}, true
+	case *core.AcmeStatus:
+		binder := func(holder, target interface{}) error {
+			s, ok := holder.(*string)
+			if !ok {
+				return errors.New("FromDb: Unable to convert core.OCSPStatus to string")
+			}
+			st, ok := target.(*core.AcmeStatus)
+			if !ok {
+				return errors.New("FromDb: Unable to convert core.OCSPStatus to string")
+			}
+			*st = core.AcmeStatus(string(*s))
+			return nil
+		}
+		return gorp.CustomScanner{new(string), target, binder}, true
 	case *core.OCSPStatus:
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
@@ -136,7 +168,6 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: boulderTypeConverter{}}
 
 	ssa = &SQLStorageAuthority{
-		db:     db,
 		dbMap:  dbmap,
 		log:    logger,
 		bucket: make(map[string]interface{}),
@@ -248,31 +279,31 @@ func statusIsPending(status core.AcmeStatus) bool {
 	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
 }
 
-func existingPending(tx *sql.Tx, id string) (count int64) {
-	tx.QueryRow("SELECT count(*) FROM pending_authz WHERE id = ?;", id).Scan(&count)
-	return
+func (ssa *SQLStorageAuthority) existingPending(id string) (bool) {
+	count, _ := ssa.dbMap.SelectInt("SELECT count(*) FROM pending_authz WHERE id = ?", id)
+	return count > 0
 }
 
-func existingFinal(tx *sql.Tx, id string) (count int64) {
-	tx.QueryRow("SELECT count(*) FROM authz WHERE id = ?;", id).Scan(&count)
-	return
+func (ssa *SQLStorageAuthority) existingFinal(id string) (bool) {
+	count, _ := ssa.dbMap.SelectInt("SELECT count(*) FROM authz WHERE id = ?", id)
+	return count > 0
 }
 
-func existingRegistration(tx *sql.Tx, id string) (count int64) {
-	tx.QueryRow("SELECT count(*) FROM registrations WHERE id = ?;", id).Scan(&count)
-	return
+func (ssa *SQLStorageAuthority) existingRegistration(id string) (bool) {
+	count, _ := ssa.dbMap.SelectInt("SELECT count(*) FROM registrations WHERE id = ?", id)
+	return count > 0
 }
 
 func (ssa *SQLStorageAuthority) GetRegistration(id string) (reg core.Registration, err error) {
 	regObj, err := ssa.dbMap.Get(Registration{}, id)
 	if err != nil {
+		err = fmt.Errorf("No registrations with ID %s", id)
 		return
 	}
-	regD, ok := regObj.(Registration)
-	if !ok {
-		err = fmt.Errorf("Couldn't convert interface{} to Registration")
-		return
+	if regObj == nil {
+
 	}
+	regD := regObj.(*Registration)
 	reg = regD.Registration
 	return
 }
@@ -288,15 +319,14 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 			return
 		}
 		if authObj == nil {
-			err = fmt.Errorf("No pending_authorization or authorization matches ID %s", id)
+			err = fmt.Errorf("No pending_authz or authz with ID %s", id)
 			return
 		}
-	}
-	authD, ok := authObj.(Auth)
-	if !ok {
-		err = fmt.Errorf("Couldn't convert interface{} to Authorization")
+		authD := authObj.(*Auth)
+		authz = authD.Authorization
 		return
 	}
+	authD := authObj.(*Pending_auth)
 	authz = authD.Authorization
 	return
 }
@@ -353,39 +383,26 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 		return
 	}
 
-	cs, ok := certificateStats.(*CertificateStats)
-	if !ok {
-		err = fmt.Errorf("Couldn't convert interface{} to CertificateStats")
-		return
-	}
+	cs := certificateStats.(*CertificateStats)
 	status = cs.CertificateStatus
 	return
 }
 
 func (ssa *SQLStorageAuthority) NewRegistration() (id string, err error) {
-	tx, err := ssa.db.Begin()
-	if err != nil {
-		return
-	}
-
 	// Check that it doesn't exist already
-	candidate := core.NewToken()
-	for existingRegistration(tx, candidate) > 0 {
-		candidate = core.NewToken()
+	id = core.NewToken()
+	for ssa.existingRegistration(id) {
+		id = core.NewToken()
 	}
 
-	// Insert a stub row in pending
-	_, err = tx.Exec("INSERT INTO registrations (id) VALUES (?);", candidate)
+	reg := &Registration{}
+	reg.ID = id
+
+	err = ssa.dbMap.Insert(reg)
 	if err != nil {
-		tx.Rollback()
 		return
 	}
 
-	if err = tx.Commit(); err != nil {
-		return
-	}
-
-	id = candidate
 	return
 }
 
@@ -402,181 +419,138 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 			"Unable to mark certificate %s revoked: cert status not found.", serial))
 	}
 
-	tx, err := ssa.db.Begin()
+	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
 	}
 
 	// TODO: Also update crls.
-	_, err = tx.Exec(`INSERT INTO ocspResponses (serial, createdAt, response)
-			values (?, ?, ?)`,
-		serial, time.Now(), ocspResponse)
+	ocspResp := &OcspResponse{Serial: serial, CreatedAt: time.Now(), Response: ocspResponse}
+	err = tx.Insert(ocspResp)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
-	_, err = tx.Exec(`UPDATE certificateStatus SET
-		status=?, revokedDate=?, revokedReason=? WHERE serial=?`,
-		string(core.OCSPStatusRevoked), time.Now(), reasonCode, serial)
+	statusObj, err := tx.Get(CertificateStats{}, serial)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
-	err = tx.Commit()
+	if statusObj == nil {
+		err = fmt.Errorf("No certificate with serial %s", serial)
+		tx.Rollback()
+		return
+	}
+	status := statusObj.(*CertificateStats)
+	status.Status = core.OCSPStatusRevoked
+	status.RevokedDate = time.Now()
+	status.RevokedReason = reasonCode
+
+	_, err = tx.Update(status)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	tx.Commit()
 	return
 }
 
 func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err error) {
-	tx, err := ssa.db.Begin()
-	if err != nil {
-		return
-	}
 
-	if existingRegistration(tx, reg.ID) != 1 {
+	if !ssa.existingRegistration(reg.ID) {
 		err = errors.New("Requested registration not found " + reg.ID)
-		tx.Rollback()
 		return
 	}
 
-	jsonReg, err := json.Marshal(reg)
+	regObj, err := ssa.dbMap.Get(Registration{}, reg.ID)
 	if err != nil {
-		tx.Rollback()
 		return
 	}
-
-	_, err = tx.Exec("UPDATE registrations SET thumbprint=?, value=? WHERE id = ?;", reg.Key.Thumbprint, string(jsonReg), reg.ID)
-	if err != nil {
-		tx.Rollback()
-		return
-	}
-
-	err = tx.Commit()
+	newReg := regObj.(*Registration)
+	newReg.Registration = reg
+	_, err = ssa.dbMap.Update(newReg)
 	return
 }
 
 func (ssa *SQLStorageAuthority) NewPendingAuthorization() (id string, err error) {
-	tx, err := ssa.db.Begin()
-	if err != nil {
-		return
-	}
-
 	// Check that it doesn't exist already
-	candidate := core.NewToken()
-	for existingPending(tx, candidate) > 0 || existingFinal(tx, candidate) > 0 {
-		candidate = core.NewToken()
+	id = core.NewToken()
+	for ssa.existingPending(id) || ssa.existingFinal(id) {
+		id = core.NewToken()
 	}
 
 	// Insert a stub row in pending
-	_, err = tx.Exec("INSERT INTO pending_authz (id) VALUES (?);", candidate)
-	if err != nil {
-		tx.Rollback()
-		return
-	}
-
-	if err = tx.Commit(); err != nil {
-		return
-	}
-
-	id = candidate
+	pending_authz := &Pending_auth{Authorization: core.Authorization{ID: id}}
+	err = ssa.dbMap.Insert(pending_authz)
 	return
 }
 
 func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorization) (err error) {
-	tx, err := ssa.db.Begin()
-	if err != nil {
-		return
-	}
-
 	if !statusIsPending(authz.Status) {
 		err = errors.New("Use Finalize() to update to a final status")
-		tx.Rollback()
 		return
 	}
 
-	if existingFinal(tx, authz.ID) > 0 {
+	if ssa.existingFinal(authz.ID) {
 		err = errors.New("Cannot update a final authorization")
-		tx.Rollback()
 		return
 	}
 
-	if existingPending(tx, authz.ID) != 1 {
+	if !ssa.existingPending(authz.ID) {
 		err = errors.New("Requested authorization not found " + authz.ID)
-		tx.Rollback()
 		return
 	}
 
-	jsonAuthz, err := json.Marshal(authz)
+	authObj, err := ssa.dbMap.Get(Pending_auth{}, authz.ID)
 	if err != nil {
-		tx.Rollback()
 		return
 	}
-
-	_, err = tx.Exec("UPDATE pending_authz SET value = ? WHERE id = ?;", jsonAuthz, authz.ID)
-	if err != nil {
-		tx.Rollback()
-		return
-	}
-
-	err = tx.Commit()
+	auth := authObj.(*Pending_auth)
+	auth.Authorization = authz
+	_, err = ssa.dbMap.Update(auth)
 	return
 }
 
 func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) (err error) {
-	tx, err := ssa.db.Begin()
-	if err != nil {
-		return
-	}
-
 	// Check that a pending authz exists
-	if existingPending(tx, authz.ID) != 1 {
+	if !ssa.existingPending(authz.ID) {
 		err = errors.New("Cannot finalize a authorization that is not pending")
-		tx.Rollback()
 		return
 	}
 	if statusIsPending(authz.Status) {
 		err = errors.New("Cannot finalize to a non-final status")
-		tx.Rollback()
 		return
 	}
 
 	// Manually set the index, to avoid AUTOINCREMENT issues
 	var sequence int64
-	var scanTarget sql.NullInt64
-	err = tx.QueryRow("SELECT max(sequence) FROM authz").Scan(&scanTarget)
+	sequenceObj, err := ssa.dbMap.SelectNullInt("SELECT max(sequence) FROM authz")
 	switch {
-	case !scanTarget.Valid:
+	case !sequenceObj.Valid:
 		sequence = 0
 	case err != nil:
-		tx.Rollback()
 		return
 	default:
-		sequence += scanTarget.Int64 + 1
+		sequence += sequenceObj.Int64 + 1
 	}
 
 	jsonAuthz, err := json.Marshal(authz)
 	if err != nil {
-		tx.Rollback()
 		return
 	}
+	// ???: is this still needed? ^+v
 	digest := core.Fingerprint256(jsonAuthz)
 
-	// Add to final table and delete from pending
+	auth := &Auth{sequence, digest, authz}
+
+	err = ssa.dbMap.Insert(auth)
 	if err != nil {
-		tx.Rollback()
 		return
 	}
-	_, err = tx.Exec("INSERT INTO authz (sequence, id, digest, value) VALUES (?, ?, ?, ?);", sequence, authz.ID, digest, jsonAuthz)
-	if err != nil {
-		tx.Rollback()
-		return
-	}
-	_, err = tx.Exec("DELETE FROM pending_authz WHERE id = ?;", authz.ID)
-	if err != nil {
-		tx.Rollback()
-		return
-	}
-	err = tx.Commit()
+
+	_, err = ssa.dbMap.Delete(&Pending_auth{authz})
 	return
 }
 
