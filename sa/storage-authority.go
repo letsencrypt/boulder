@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
@@ -35,7 +35,7 @@ func digest256(data []byte) []byte {
 
 var dialectMap map[string]interface{} = map[string]interface{}{
 	"sqlite3":  gorp.SqliteDialect{},
-	"mysql":    gorp.MySQLDialect{"InnoDB", "UTF8"},
+	"mysql":    gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"},
 	"postgres": gorp.PostgresDialect{},
 }
 
@@ -119,7 +119,7 @@ func (tc boulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			b := []byte(*s)
 			return json.Unmarshal(b, target)
 		}
-		return gorp.CustomScanner{new(string), target, binder}, true
+		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.AcmeStatus:
 		binder := func(holder, target interface{}) error {
 			s := holder.(*string)
@@ -127,7 +127,7 @@ func (tc boulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			*st = core.AcmeStatus(*s)
 			return nil
 		}
-		return gorp.CustomScanner{new(string), target, binder}, true
+		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.OCSPStatus:
 		binder := func(holder, target interface{}) error {
 			s := holder.(*string)
@@ -135,7 +135,7 @@ func (tc boulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			*st = core.OCSPStatus(*s)
 			return nil
 		}
-		return gorp.CustomScanner{new(string), target, binder}, true
+		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	default:
 		return gorp.CustomScanner{}, false
 	}
@@ -274,17 +274,20 @@ func statusIsPending(status core.AcmeStatus) bool {
 }
 
 func (ssa *SQLStorageAuthority) existingPending(id string) (bool) {
-	count, _ := ssa.dbMap.SelectInt("SELECT count(*) FROM pending_authz WHERE id = ?", id)
+	var count int64
+	_ = ssa.dbMap.SelectOne(&count, "SELECT count(*) FROM pending_authz WHERE id = :id", map[string]interface{} {"id": id})
 	return count > 0
 }
 
 func (ssa *SQLStorageAuthority) existingFinal(id string) (bool) {
-	count, _ := ssa.dbMap.SelectInt("SELECT count(*) FROM authz WHERE id = ?", id)
+	var count int64
+	_ = ssa.dbMap.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{} {"id": id})
 	return count > 0
 }
 
 func (ssa *SQLStorageAuthority) existingRegistration(id string) (bool) {
-	count, _ := ssa.dbMap.SelectInt("SELECT count(*) FROM registrations WHERE id = ?", id)
+	var count int64
+	_ = ssa.dbMap.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{} {"id": id})
 	return count > 0
 }
 
@@ -338,7 +341,8 @@ func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) 
 	}
 
 	var certificate Certificate
-	err = ssa.dbMap.SelectOne(&certificate, "SELECT content FROM certificates WHERE serial LIKE ?", shortSerial+"%")
+	err = ssa.dbMap.SelectOne(&certificate, "SELECT content FROM certificates WHERE serial LIKE :shortSerial",
+		map[string]interface{} {"shortSerial": shortSerial+"%"})
 	if err != nil {
 		return
 	}
@@ -355,7 +359,8 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (cert []byte, err 
 	}
 
 	var certificate Certificate
-	err = ssa.dbMap.SelectOne(&certificate, "SELECT content FROM certificates WHERE serial = ?", serial)
+	err = ssa.dbMap.SelectOne(&certificate, "SELECT content FROM certificates WHERE serial = :serial",
+		map[string]interface{} {"serial": serial})
 	if err != nil {
 		return
 	}
@@ -537,7 +542,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	// ???: is this still needed? ^+v
 	digest := core.Fingerprint256(jsonAuthz)
 
-	auth := &Auth{sequence, digest, authz, 0}
+	auth := &Auth{sequence, digest, authz}
 	authObj, err := ssa.dbMap.Get(Pending_auth{}, authz.ID)
 	if err != nil {
 		return
@@ -562,8 +567,9 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	serial := fmt.Sprintf("%032x", parsedCertificate.SerialNumber)
 	digest = core.Fingerprint256(certDER)
 
-	cert := &Certificate{serial, digest, certDER, time.Now(), 0}
-	certStatus := &CertificateStatus{serial, time.Time{}, 0, core.CertificateStatus{false, "good", time.Time{}}, 0}
+	cert := &Certificate{serial, digest, certDER, time.Now()}
+	certStatus := &CertificateStatus{serial, time.Time{}, 0,
+		core.CertificateStatus{SubscriberApproved: false, Status: core.OCSPStatus("good"), OCSPLastUpdated: time.Time{}}, 0}
 	
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
