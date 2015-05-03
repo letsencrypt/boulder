@@ -57,8 +57,6 @@ type Auth struct {
 	Sequence           int64 `db:"sequence"`
 	Digest             string `db:"digest"`
 	core.Authorization
-
-	Version int64 // Lock column
 }
 
 type Certificate struct {
@@ -66,8 +64,6 @@ type Certificate struct {
 	Digest   string `db:"digest"`
 	Content  []byte `db:"content"`
 	Issued   time.Time `db:"issued"`
-
-	Version int64 // Lock column
 }
 
 type CertificateStatus struct {
@@ -84,16 +80,12 @@ type OcspResponse struct {
 	Serial    string `db:"serial"`
 	CreatedAt time.Time `db:"createdAt"`
 	Response  []byte `db:"response"`
-
-	Version int64 // Lock column
 }
 
 type Crl struct {
 	Serial    string `db:"serial"`
 	CreatedAt time.Time `db:"createdAt"`
 	Crl       string `db:"crl"`
-
-	Version int64 // Lock column
 }
 
 // Type converter
