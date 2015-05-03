@@ -43,16 +43,22 @@ var dialectMap map[string]interface{} = map[string]interface{}{
 type Registration struct {
 	Thumbprint        string `db:"thumbprint"`
 	core.Registration
+
+	Version int64 // Lock column
 }
 
 type Pending_auth struct {
 	core.Authorization
+
+	Version int64 // Lock column
 }
 
 type Auth struct {
 	Sequence           int64 `db:"sequence"`
 	Digest             string `db:"digest"`
 	core.Authorization
+
+	Version int64 // Lock column
 }
 
 type Certificate struct {
@@ -60,13 +66,17 @@ type Certificate struct {
 	Digest   string `db:"digest"`
 	Content  []byte `db:"content"`
 	Issued   time.Time `db:"issued"`
+
+	Version int64 // Lock column
 }
 
-type CertificateStats struct {
+type CertificateStatus struct {
 	Serial                 string `db:"serial"`
 	RevokedDate            time.Time `db:"revokedDate"`
 	RevokedReason          int `db:"revokedReason"`
 	core.CertificateStatus
+
+	Version int64 // Lock column
 }
 
 type OcspResponse struct {
@@ -74,12 +84,16 @@ type OcspResponse struct {
 	Serial    string `db:"serial"`
 	CreatedAt time.Time `db:"createdAt"`
 	Response  []byte `db:"response"`
+
+	Version int64 // Lock column
 }
 
 type Crl struct {
 	Serial    string `db:"serial"`
 	CreatedAt time.Time `db:"createdAt"`
 	Crl       string `db:"crl"`
+
+	Version int64 // Lock column
 }
 
 // Type converter
@@ -174,7 +188,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	ssa.dbMap.AddTableWithName(Pending_auth{}, "pending_authz").SetKeys(false, "ID")
 	ssa.dbMap.AddTableWithName(Auth{}, "authz").SetKeys(false, "ID")
 	ssa.dbMap.AddTableWithName(Certificate{}, "certificates").SetKeys(false, "Serial")
-	ssa.dbMap.AddTableWithName(CertificateStats{}, "certificateStatus").SetKeys(false, "Serial")
+	ssa.dbMap.AddTableWithName(CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial")
 	ssa.dbMap.AddTableWithName(OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
 	ssa.dbMap.AddTableWithName(Crl{}, "crls").SetKeys(false, "CreatedAt")
 
@@ -230,7 +244,7 @@ func (ssa *SQLStorageAuthority) DumpTables() {
 	}
 
 	fmt.Printf("\n----- certificateStatus -----\n")
-	var certificateStatuses []CertificateStats
+	var certificateStatuses []CertificateStatus
 	_, err = ssa.dbMap.Select(&certificateStatuses, "SELECT * FROM certificateStatus")
 	if err != nil {
 		fmt.Println(err)
@@ -366,12 +380,12 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 		return
 	}
 
-	certificateStats, err := ssa.dbMap.Get(CertificateStats{}, serial)
+	certificateStats, err := ssa.dbMap.Get(CertificateStatus{}, serial)
 	if err != nil {
 		return
 	}
 
-	cs := certificateStats.(*CertificateStats)
+	cs := certificateStats.(*CertificateStatus)
 	status = cs.CertificateStatus
 	return
 }
@@ -420,7 +434,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 		return
 	}
 
-	statusObj, err := tx.Get(CertificateStats{}, serial)
+	statusObj, err := tx.Get(CertificateStatus{}, serial)
 	if err != nil {
 		tx.Rollback()
 		return
@@ -430,7 +444,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 		tx.Rollback()
 		return
 	}
-	status := statusObj.(*CertificateStats)
+	status := statusObj.(*CertificateStatus)
 	status.Status = core.OCSPStatusRevoked
 	status.RevokedDate = time.Now()
 	status.RevokedReason = reasonCode
@@ -531,14 +545,19 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	// ???: is this still needed? ^+v
 	digest := core.Fingerprint256(jsonAuthz)
 
-	auth := &Auth{sequence, digest, authz}
+	auth := &Auth{sequence, digest, authz, 0}
+	authObj, err := ssa.dbMap.Get(Pending_auth{}, authz.ID)
+	if err != nil {
+		return
+	}
+	oldAuth := authObj.(*Pending_auth)
 
 	err = ssa.dbMap.Insert(auth)
 	if err != nil {
 		return
 	}
 
-	_, err = ssa.dbMap.Delete(&Pending_auth{authz})
+	_, err = ssa.dbMap.Delete(oldAuth)
 	return
 }
 
@@ -551,8 +570,8 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	serial := fmt.Sprintf("%032x", parsedCertificate.SerialNumber)
 	digest = core.Fingerprint256(certDER)
 
-	cert := &Certificate{serial, digest, certDER, time.Now()}
-	certStatus := &CertificateStats{serial, time.Time{}, 0, core.CertificateStatus{false, "good", time.Time{}}}
+	cert := &Certificate{serial, digest, certDER, time.Now(), 0}
+	certStatus := &CertificateStatus{serial, time.Time{}, 0, core.CertificateStatus{false, "good", time.Time{}}, 0}
 	
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
