@@ -44,13 +44,13 @@ type Registration struct {
 	Thumbprint        string `db:"thumbprint"`
 	core.Registration
 
-	Version int64 // Lock column
+	LockCol int64
 }
 
 type Pending_auth struct {
 	core.Authorization
 
-	Version int64 // Lock column
+	LockCol int64
 }
 
 type Auth struct {
@@ -72,7 +72,7 @@ type CertificateStatus struct {
 	RevokedReason          int `db:"revokedReason"`
 	core.CertificateStatus
 
-	Version int64 // Lock column
+	LockCol int64
 }
 
 type OcspResponse struct {
@@ -176,11 +176,11 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 }
 
 func (ssa *SQLStorageAuthority) InitTables() (err error) {
-	ssa.dbMap.AddTableWithName(Registration{}, "registrations").SetKeys(false, "ID")
-	ssa.dbMap.AddTableWithName(Pending_auth{}, "pending_authz").SetKeys(false, "ID")
+	ssa.dbMap.AddTableWithName(Registration{}, "registrations").SetKeys(false, "ID").SetVersionCol("LockCol")
+	ssa.dbMap.AddTableWithName(Pending_auth{}, "pending_authz").SetKeys(false, "ID").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(Auth{}, "authz").SetKeys(false, "ID")
 	ssa.dbMap.AddTableWithName(Certificate{}, "certificates").SetKeys(false, "Serial")
-	ssa.dbMap.AddTableWithName(CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial")
+	ssa.dbMap.AddTableWithName(CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
 	ssa.dbMap.AddTableWithName(Crl{}, "crls").SetKeys(false, "CreatedAt")
 
