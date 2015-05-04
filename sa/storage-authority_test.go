@@ -157,11 +157,9 @@ func TestAddCertificate(t *testing.T) {
 // TestGetCertificateByShortSerial tests some failure conditions for GetCertificate.
 // Success conditions are tested above in TestAddCertificate.
 func TestGetCertificateByShortSerial(t *testing.T) {
-	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")
-	test.AssertNotError(t, err, "Failed to create SA")
-	sa.InitTables()
+	sa := initSA(t)
 
-	_, err = sa.GetCertificateByShortSerial("")
+	_, err := sa.GetCertificateByShortSerial("")
 	test.AssertError(t, err, "Should've failed on empty serial")
 
 	_, err = sa.GetCertificateByShortSerial("01020304050607080102030405060708")
