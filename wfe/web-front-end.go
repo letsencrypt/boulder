@@ -178,7 +178,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	body, key, err := verifyPOST(request)
 	if err != nil {
-		wfe.sendError(response, fmt.Sprintf("Unable to read/verify body: %v", err), http.StatusBadRequest)
+		wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 		return
 	}
 
@@ -227,7 +227,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 
 	body, key, err := verifyPOST(request)
 	if err != nil {
-		wfe.sendError(response, fmt.Sprintf("Unable to read/verify body: %v", err), http.StatusBadRequest)
+		wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 		return
 	}
 

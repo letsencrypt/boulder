@@ -54,6 +54,8 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "404") {
 			http.NotFound(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "wrongtoken") {
+			fmt.Fprintf(w, "wrongtoken")
 		}
 		fmt.Fprintf(w, "%s", token)
 	})
@@ -139,6 +141,18 @@ func TestSimpleHttps(t *testing.T) {
 	invalidChall = va.validateSimpleHTTPS(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 
+	chall.Path = "wrongtoken"
+	invalidChall = va.validateSimpleHTTPS(ident, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+
+	chall.Path = ""
+	invalidChall = va.validateSimpleHTTPS(ident, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+
+	chall.Path = "validish"
+	invalidChall = va.validateSimpleHTTPS(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+
 	stopChan <- true
 }
 
@@ -147,7 +161,7 @@ func TestDvsni(t *testing.T) {
 
 	a := []byte{1,2,3,4,5,6,7,8,9,0}
 	ba := core.B64enc(a)
-	chall := core.Challenge{Path: "test", R: ba, S: ba}
+	chall := core.Challenge{R: ba, S: ba}
 
 	invalidChall := va.validateDvsni(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -160,6 +174,14 @@ func TestDvsni(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 
 	chall.R = ba[5:]
+	invalidChall = va.validateDvsni(ident, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+
+	invalidChall = va.validateSimpleHTTPS(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+
+	chall.R = ba
+	chall.S = "!@#"
 	invalidChall = va.validateDvsni(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 }

@@ -301,7 +301,7 @@ func TestRegistration(t *testing.T) {
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body: No body on POST\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -309,7 +309,7 @@ func TestRegistration(t *testing.T) {
 		Method: "POST",
 		Body:   makeBody("hi"),
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body: invalid character 'h' looking for beginning of value\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -356,7 +356,7 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Unable to read/verify body: crypto/rsa: verification error\"}")
+		"{\"detail\":\"Unable to read/verify body\"}")
 
 	key, _ := rsa.GenerateKey(rand.Reader, 512)
 	jws, err := jose.Sign(jose.RSAPSSWithSHA256, *key, []byte("{\"contact\":[\"tel:123456789\"]}"))
@@ -393,7 +393,7 @@ func TestAuthorization(t *testing.T) {
 	wfe.NewAuthorization(responseWriter, &http.Request{
 		Method: "POST",
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body: No body on POST\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -401,7 +401,7 @@ func TestAuthorization(t *testing.T) {
 		Method: "POST",
 		Body:   makeBody("hi"),
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body: invalid character 'h' looking for beginning of value\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -448,7 +448,7 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Unable to read/verify body: crypto/rsa: verification error\"}")
+		"{\"detail\":\"Unable to read/verify body\"}")
 
 	key, _ := rsa.GenerateKey(rand.Reader, 512)
 	jws, err := jose.Sign(jose.RSAPSSWithSHA256, *key, []byte("{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}"))
