@@ -214,17 +214,3 @@ func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate) er
 
 func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization) {
 }
-
-func TestValidate(t *testing.T) {
-	va := NewValidationAuthorityImpl(false)
-	va.RA = &MockRegistrationAuthority{}
-
-	a := []byte{1,2,3,4,5,6,7,8,9,0}
-	ba := core.B64enc(a)
-	Dchall := core.Challenge{Path: "test", R: ba, S: ba}
-	Schall := core.Challenge{Path: "test", Token: "THETOKEN"}
-
-	authz := core.Authorization{Identifier: ident, Challenges: []core.Challenge{Dchall, Schall}}
-
-	va.validate(authz)
-}
