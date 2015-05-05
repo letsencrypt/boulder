@@ -6,8 +6,11 @@
 package wfe
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -15,6 +18,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
@@ -277,4 +282,182 @@ func TestChallenge(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Body.String(),
 		"{\"type\":\"dns\",\"uri\":\"/acme/authz/asdf?challenge=foo\"}")
+}
+
+func TestRegistration(t *testing.T) {
+	wfe := NewWebFrontEndImpl()
+	wfe.RA = &MockRegistrationAuthority{}
+	wfe.Stats, _ = statsd.NewNoopClient()
+	responseWriter := httptest.NewRecorder()
+
+	// GET instead of POST should be rejected
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "GET",
+	})
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Method not allowed\"}")
+
+	// POST, but no body.
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+	})
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
+
+	// POST, but body that isn't valid JWS
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody("hi"),
+	})
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
+
+	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`
+{
+    "header": {
+        "alg": "RS256",
+        "jwk": {
+            "e": "AQAB",
+            "kty": "RSA",
+            "n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+        }
+    },
+    "payload": "Zm9vCg",
+    "signature": "hRt2eYqBd_MyMRNIh8PEIACoFtmBi7BHTLBaAhpSU6zyDAFdEBaX7us4VB9Vo1afOL03Q8iuoRA0AT4akdV_mQTAQ_jhTcVOAeXPr0tB8b8Q11UPQ0tXJYmU4spAW2SapJIvO50ntUaqU05kZd0qw8-noH1Lja-aNnU-tQII4iYVvlTiRJ5g8_CADsvJqOk6FcHuo2mG643TRnhkAxUtazvHyIHeXMxydMMSrpwUwzMtln4ZJYBNx4QGEq6OhpAD_VSp-w8Lq5HOwGQoNs0bPxH1SGrArt67LFQBfjlVr94E1sn26p4vigXm83nJdNhWAMHHE9iV67xN-r29LT-FjA"
+}
+		`),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"detail\":\"Error unmarshaling JSON\"}")
+
+	// Same signed body, but payload modified by one byte, breaking signature.
+	// should fail JWS verification.
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`
+			{
+					"header": {
+							"alg": "RS256",
+							"jwk": {
+									"e": "AQAB",
+									"kty": "RSA",
+									"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw"
+							}
+					},
+					"payload": "xm9vCg",
+					"signature": "RjUQ679fxJgeAJlxqgvDP_sfGZnJ-1RgWF2qmcbnBWljs6h1qp63pLnJOl13u81bP_bCSjaWkelGG8Ymx_X-aQ"
+			}
+    	`),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"detail\":\"Unable to read/verify body\"}")
+
+	key, _ := rsa.GenerateKey(rand.Reader, 512)
+	jws, err := jose.Sign(jose.RSAPSSWithSHA256, *key, []byte("{\"contact\":[\"tel:123456789\"]}"))
+	fmt.Println(err)
+	requestPayload, _ := json.Marshal(jws)
+
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(string(requestPayload)),
+	})
+
+	var reg core.Registration
+	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
+	uu := url.URL(reg.Contact[0])
+	test.AssertEquals(t, uu.String(), "tel:123456789")
+}
+
+func TestAuthorization(t *testing.T) {
+	wfe := NewWebFrontEndImpl()
+	wfe.RA = &MockRegistrationAuthority{}
+	wfe.Stats, _ = statsd.NewNoopClient()
+	responseWriter := httptest.NewRecorder()
+
+	// GET instead of POST should be rejected
+	wfe.NewAuthorization(responseWriter, &http.Request{
+		Method: "GET",
+	})
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Method not allowed\"}")
+
+	// POST, but no body.
+	responseWriter.Body.Reset()
+	wfe.NewAuthorization(responseWriter, &http.Request{
+		Method: "POST",
+	})
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
+
+	// POST, but body that isn't valid JWS
+	responseWriter.Body.Reset()
+	wfe.NewAuthorization(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody("hi"),
+	})
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
+
+	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
+	responseWriter.Body.Reset()
+	wfe.NewAuthorization(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`
+{
+    "header": {
+        "alg": "RS256",
+        "jwk": {
+            "e": "AQAB",
+            "kty": "RSA",
+            "n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+        }
+    },
+    "payload": "Zm9vCg",
+    "signature": "hRt2eYqBd_MyMRNIh8PEIACoFtmBi7BHTLBaAhpSU6zyDAFdEBaX7us4VB9Vo1afOL03Q8iuoRA0AT4akdV_mQTAQ_jhTcVOAeXPr0tB8b8Q11UPQ0tXJYmU4spAW2SapJIvO50ntUaqU05kZd0qw8-noH1Lja-aNnU-tQII4iYVvlTiRJ5g8_CADsvJqOk6FcHuo2mG643TRnhkAxUtazvHyIHeXMxydMMSrpwUwzMtln4ZJYBNx4QGEq6OhpAD_VSp-w8Lq5HOwGQoNs0bPxH1SGrArt67LFQBfjlVr94E1sn26p4vigXm83nJdNhWAMHHE9iV67xN-r29LT-FjA"
+}
+		`),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"detail\":\"Error unmarshaling JSON\"}")
+
+	// Same signed body, but payload modified by one byte, breaking signature.
+	// should fail JWS verification.
+	responseWriter.Body.Reset()
+	wfe.NewAuthorization(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`
+			{
+					"header": {
+							"alg": "RS256",
+							"jwk": {
+									"e": "AQAB",
+									"kty": "RSA",
+									"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw"
+							}
+					},
+					"payload": "xm9vCg",
+					"signature": "RjUQ679fxJgeAJlxqgvDP_sfGZnJ-1RgWF2qmcbnBWljs6h1qp63pLnJOl13u81bP_bCSjaWkelGG8Ymx_X-aQ"
+			}
+    	`),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"detail\":\"Unable to read/verify body\"}")
+
+	key, _ := rsa.GenerateKey(rand.Reader, 512)
+	jws, err := jose.Sign(jose.RSAPSSWithSHA256, *key, []byte("{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}"))
+	fmt.Println(err)
+	requestPayload, _ := json.Marshal(jws)
+	
+	responseWriter.Body.Reset()
+	wfe.NewAuthorization(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(string(requestPayload)),
+	})
 }
