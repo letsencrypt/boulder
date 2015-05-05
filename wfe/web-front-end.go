@@ -104,8 +104,6 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 	response.Header().Set("Content-Type", "text/html")
 }
 
-type emptyJson struct {}
-
 func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
 	zeroKey := jose.JsonWebKey{}
 
