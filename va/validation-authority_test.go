@@ -62,7 +62,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 	conn, err := net.Listen("tcp", httpsServer.Addr)
 	if err != nil {
 		waitChan <- true
-		t.Fatalf(fmt.Sprintf("%v", err))
+		t.Fatalf("Couldn't listen on %s: %s", httpsServer.Addr, err)
 	}
 
 	go func() {
@@ -113,7 +113,7 @@ func dvsniSrv(t *testing.T, R, S []byte, waitChan chan bool) {
 	conn, err := net.Listen("tcp", httpsServer.Addr)
 	if err != nil {
 		waitChan <- true
-		t.Fatalf("wat %s", err)
+		t.Fatalf("Couldn't listen on %s: %s", httpsServer.Addr, err)
 	}
 	tlsListener := tls.NewListener(conn, tlsConfig)
 	waitChan <- true
