@@ -278,3 +278,109 @@ func TestChallenge(t *testing.T) {
 		t, responseWriter.Body.String(),
 		"{\"type\":\"dns\",\"uri\":\"/acme/authz/asdf?challenge=foo\"}")
 }
+
+func TestRegistration(t *testing.T) {
+	wfe := NewWebFrontEndImpl()
+	wfe.RA = &MockRegistrationAuthority{}
+	responseWriter := httptest.NewRecorder()
+
+	var key jose.JsonWebKey
+	err := json.Unmarshal([]byte(`{
+						"e": "AQAB",
+						"kty": "RSA",
+						"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+							}`), &key)
+	test.AssertNotError(t, err, "Could not unmarshal testing key")
+
+	// GET instead of POST should be rejected
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "GET",
+	})
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Method not allowed\"}")
+
+	// POST, but no body.
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+	})
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body: No body on POST\"}")
+
+	// POST, but body that isn't valid JWS
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody("hi"),
+	})
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body: invalid character 'h' looking for beginning of value\"}")
+
+	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`
+{
+    "header": {
+        "alg": "RS256",
+        "jwk": {
+            "e": "AQAB",
+            "kty": "RSA",
+            "n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+        }
+    },
+    "payload": "Zm9vCg",
+    "signature": "hRt2eYqBd_MyMRNIh8PEIACoFtmBi7BHTLBaAhpSU6zyDAFdEBaX7us4VB9Vo1afOL03Q8iuoRA0AT4akdV_mQTAQ_jhTcVOAeXPr0tB8b8Q11UPQ0tXJYmU4spAW2SapJIvO50ntUaqU05kZd0qw8-noH1Lja-aNnU-tQII4iYVvlTiRJ5g8_CADsvJqOk6FcHuo2mG643TRnhkAxUtazvHyIHeXMxydMMSrpwUwzMtln4ZJYBNx4QGEq6OhpAD_VSp-w8Lq5HOwGQoNs0bPxH1SGrArt67LFQBfjlVr94E1sn26p4vigXm83nJdNhWAMHHE9iV67xN-r29LT-FjA"
+}
+		`),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"detail\":\"Error unmarshaling JSON\"}")
+
+	// Same signed body, but payload modified by one byte, breaking signature.
+	// should fail JWS verification.
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`
+			{
+					"header": {
+							"alg": "RS256",
+							"jwk": {
+									"e": "AQAB",
+									"kty": "RSA",
+									"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw"
+							}
+					},
+					"payload": "xm9vCg",
+					"signature": "RjUQ679fxJgeAJlxqgvDP_sfGZnJ-1RgWF2qmcbnBWljs6h1qp63pLnJOl13u81bP_bCSjaWkelGG8Ymx_X-aQ"
+			}
+    	`),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"detail\":\"Unable to read/verify body: crypto/rsa: verification error\"}")
+
+	// Valid, signed JWS body, payload is '{}'
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`
+			{
+					"header": {
+							"alg": "RS256",
+							"jwk": {
+									"e": "AQAB",
+									"kty": "RSA",
+									"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+							}
+					},
+					"payload": "e30K",
+					"signature": "JXYA_pin91Bc5oz5I6dqCNNWDrBaYTB31EnWorrj4JEFRaidafC9mpLDLLA9jR9kX_Vy2bA5b6pPpXVKm0w146a0L551OdL8JrrLka9q6LypQdDLLQa76XD03hSBOFcC-Oo5FLPa3WRWS1fQ37hYAoLxtS3isWXMIq_4Onx5bq8bwKyu-3E3fRb_lzIZ8hTIWwcblCTOfufUe6AoK4m6MfBjz0NGhyyk4lEZZw6Sttm2VuZo3xmWoRTJEyJG5AOJ6fkNJ9iQQ1kVhMr0ZZ7NVCaOZAnxrwv2sCjY6R3f4HuEVe1yzT75Mq2IuXq-tadGyFujvUxF6BWHCulbEnss7g"
+			}
+		`),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"detail\":\"Empty payload\"}")
+
+}

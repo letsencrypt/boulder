@@ -104,6 +104,8 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 	response.Header().Set("Content-Type", "text/html")
 }
 
+type emptyJson struct {}
+
 func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
 	zeroKey := jose.JsonWebKey{}
 
@@ -179,6 +181,13 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	body, key, err := verifyPOST(request)
 	if err != nil {
 		wfe.sendError(response, fmt.Sprintf("Unable to read/verify body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Don't allow an empty payload {}
+	var empty emptyJson
+	if err = json.Unmarshal(body, &empty); err == nil {
+		wfe.sendError(response, "Empty payload", http.StatusBadRequest)
 		return
 	}
 
