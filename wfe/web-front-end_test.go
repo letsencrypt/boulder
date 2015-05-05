@@ -6,8 +6,11 @@
 package wfe
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -15,6 +18,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/jose"
@@ -282,15 +287,8 @@ func TestChallenge(t *testing.T) {
 func TestRegistration(t *testing.T) {
 	wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
+	wfe.Stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
-
-	var key jose.JsonWebKey
-	err := json.Unmarshal([]byte(`{
-						"e": "AQAB",
-						"kty": "RSA",
-						"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
-							}`), &key)
-	test.AssertNotError(t, err, "Could not unmarshal testing key")
 
 	// GET instead of POST should be rejected
 	wfe.NewRegistration(responseWriter, &http.Request{
@@ -360,27 +358,21 @@ func TestRegistration(t *testing.T) {
 		responseWriter.Body.String(),
 		"{\"detail\":\"Unable to read/verify body: crypto/rsa: verification error\"}")
 
-	// Valid, signed JWS body, payload is '{}'
+	key, _ := rsa.GenerateKey(rand.Reader, 512)
+	jws, err := jose.Sign(jose.RSAPSSWithSHA256, *key, []byte("{\"contact\":[\"tel:123456789\"]}"))
+	fmt.Println(err)
+	requestPayload, _ := json.Marshal(jws)
+
 	responseWriter.Body.Reset()
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(`
-			{
-					"header": {
-							"alg": "RS256",
-							"jwk": {
-									"e": "AQAB",
-									"kty": "RSA",
-									"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
-							}
-					},
-					"payload": "e30K",
-					"signature": "JXYA_pin91Bc5oz5I6dqCNNWDrBaYTB31EnWorrj4JEFRaidafC9mpLDLLA9jR9kX_Vy2bA5b6pPpXVKm0w146a0L551OdL8JrrLka9q6LypQdDLLQa76XD03hSBOFcC-Oo5FLPa3WRWS1fQ37hYAoLxtS3isWXMIq_4Onx5bq8bwKyu-3E3fRb_lzIZ8hTIWwcblCTOfufUe6AoK4m6MfBjz0NGhyyk4lEZZw6Sttm2VuZo3xmWoRTJEyJG5AOJ6fkNJ9iQQ1kVhMr0ZZ7NVCaOZAnxrwv2sCjY6R3f4HuEVe1yzT75Mq2IuXq-tadGyFujvUxF6BWHCulbEnss7g"
-			}
-		`),
+		Body: makeBody(string(requestPayload)),
 	})
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		"{\"detail\":\"Empty payload\"}")
+	fmt.Println("BODY:", responseWriter.Body.String())
 
+	var reg core.Registration
+	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
+	uu := url.URL(reg.Contact[0])
+	test.AssertEquals(t, uu.String(), "tel:123456789")
 }

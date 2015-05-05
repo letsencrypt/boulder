@@ -184,13 +184,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 
-	// Don't allow an empty payload {}
-	var empty emptyJson
-	if err = json.Unmarshal(body, &empty); err == nil {
-		wfe.sendError(response, "Empty payload", http.StatusBadRequest)
-		return
-	}
-
 	var init core.Registration
 	err = json.Unmarshal(body, &init)
 	if err != nil {
