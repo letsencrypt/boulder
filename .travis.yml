@@ -14,4 +14,4 @@ before_install:
   - go get github.com/modocache/gover
 
 script:
-  - sudo PATH=$PATH GOPATH=$GOPATH GOROOT=$GOROOT bash test.sh
+  - bash test.sh

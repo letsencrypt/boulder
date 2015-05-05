@@ -50,14 +50,28 @@ var TheKey rsa.PrivateKey = rsa.PrivateKey{
 
 var ident core.AcmeIdentifier = core.AcmeIdentifier{Type: core.IdentifierType("dns"), Value: "localhost"}
 
-func simpleSrv(token string) {
+func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "404") {
 			http.NotFound(w, r)
 		}
 		fmt.Fprintf(w, "%s", token)
 	})
-	http.ListenAndServe("localhost:5001", nil)
+
+	httpsServer := &http.Server{Addr: "localhost:5001"}
+	conn, err := net.Listen("tcp", httpsServer.Addr)
+	if err != nil {
+		waitChan <- true
+		t.Fatalf(fmt.Sprintf("%v", err))
+	}
+
+	go func() {
+		<-stopChan
+		conn.Close()
+	}()
+
+	waitChan <- true
+	t.Fatalf("%s", httpsServer.Serve(conn))
 }
 
 func dvsniSrv(t *testing.T, R, S []byte, waitChan chan bool) {
@@ -95,7 +109,7 @@ func dvsniSrv(t *testing.T, R, S []byte, waitChan chan bool) {
 		NextProtos: []string{"http/1.1"},
 	}
 
-	httpsServer := &http.Server{Addr: "localhost:443"}
+	httpsServer := &http.Server{Addr: "localhost:5001"}
 	conn, err := net.Listen("tcp", httpsServer.Addr)
 	if err != nil {
 		waitChan <- true
@@ -114,7 +128,9 @@ func TestSimpleHttps(t *testing.T) {
 	invalidChall := va.validateSimpleHTTPS(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 
-	go simpleSrv("THETOKEN")
+	stopChan := make(chan bool, 1)
+	waitChan := make(chan bool, 1)
+	go simpleSrv(t, "THETOKEN", stopChan, waitChan)
 
 	finChall := va.validateSimpleHTTPS(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
@@ -122,10 +138,12 @@ func TestSimpleHttps(t *testing.T) {
 	chall.Path = "404"
 	invalidChall = va.validateSimpleHTTPS(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+
+	stopChan <- true
 }
 
 func TestDvsni(t *testing.T) {
-	va := NewValidationAuthorityImpl(false)
+	va := NewValidationAuthorityImpl(true)
 
 	a := []byte{1,2,3,4,5,6,7,8,9,0}
 	ba := core.B64enc(a)
