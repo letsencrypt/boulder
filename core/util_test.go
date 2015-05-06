@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/letsencrypt/boulder/test"
 	"math"
+	"math/big"
 )
 
 // challenges.go
@@ -33,4 +34,17 @@ func TestNewToken(t *testing.T) {
 func TestRandString(t *testing.T) {
   // This is covered by NewToken
   return
+}
+
+func TestSerialUtils(t *testing.T) {
+	serial := SerialToString(big.NewInt(100000000000000000))
+	test.AssertEquals(t, serial, "0000000000000000016345785d8a0000")
+
+	serialNum, err := StringToSerial("0000000000000000016345785d8a0000")
+	test.AssertNotError(t, err, "Couldn't convert serial number to *big.Int")
+	test.AssertBigIntEquals(t, serialNum, big.NewInt(100000000000000000))
+
+	badSerial, err := StringToSerial("doop!!!!000")
+	test.AssertEquals(t, fmt.Sprintf("%v", err), "Serial number should be 32 characters long")
+	fmt.Println(badSerial)
 }
