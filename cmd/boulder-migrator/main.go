@@ -91,21 +91,13 @@ func createMigrationTable(Sql *sql.DB) (err error) {
 	return
 }
 
-type timeSlice []time.Time
-
-// Order most least recent to most
-func (t timeSlice) Len() int {return len(t)}
-func (t timeSlice) Less(i, j int) bool {return t[i].Before(t[j])}
-func (t timeSlice) Swap(i, j int) {t[i], t[j] = t[j], t[i]}
-
-var timestampFormat string = "02-01-06T15:04"
+var timestampFormat string = "20060102-150405"
 
 func orderedMigrationList(migrationDir string) (sortedList []string, err error) {
 	migrationList, err := ioutil.ReadDir(migrationDir)
 	if err != nil {
 		return
 	}
-	var timeList timeSlice
 	for  _, file := range migrationList {
 		if strings.ToLower(filepath.Ext(file.Name())) != ".json" {
 			continue
@@ -113,17 +105,14 @@ func orderedMigrationList(migrationDir string) (sortedList []string, err error) 
 		if file.Name() == "/" {
 			continue
 		}
-		var nameTime time.Time
-		nameTime, err = time.Parse(timestampFormat, nameFromFile(file.Name()))
+		migrationName := nameFromFile(file.Name())
+		_, err := time.Parse(timestampFormat, migrationName)
 		if err != nil {
-			return
+			continue
 		}
-		timeList = append(timeList, nameTime)
+		sortedList = append(sortedList, migrationName)
 	}
-	sort.Sort(timeList)
-	for _, ts := range timeList {
-		sortedList = append(sortedList, ts.Format(timestampFormat))
-	}
+	sort.Strings(sortedList)
 	return
 }
 
