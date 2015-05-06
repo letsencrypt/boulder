@@ -44,6 +44,27 @@ func TestEvenExponent(t *testing.T) {
 	test.Assert(t, !GoodKey(&key), "Should have rejected even exponent.")
 }
 
+func TestEvenModulus(t *testing.T) {
+	bigOne := big.NewInt(1)
+	key := rsa.PublicKey{
+		N: bigOne.Lsh(bigOne, 2048),
+		E: (1 << 17) + 1,
+	}
+	test.Assert(t, !GoodKey(&key), "Should have rejected even exponent.")
+}
+
+func TestModulusDivisibleBy752(t *testing.T) {
+	N := big.NewInt(1)
+	N.Lsh(N, 2048)
+	N.Add(N, big.NewInt(1))
+	N.Mul(N, big.NewInt(751))
+	key := rsa.PublicKey{
+		N: N,
+		E: (1 << 17) + 1,
+	}
+	test.Assert(t, !GoodKey(&key), "Should have rejected even exponent.")
+}
+
 func TestGoodKey(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error generating key")
