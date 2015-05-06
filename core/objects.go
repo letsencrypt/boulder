@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"github.com/letsencrypt/boulder/jose"
 	"time"
+	"strings"
 )
 
 type IdentifierType string
@@ -150,6 +151,71 @@ type Challenge struct {
 	R     string `json:"r,omitempty"`
 	S     string `json:"s,omitempty"`
 	Nonce string `json:"nonce,omitempty"`
+}
+
+// Check the sanity of a challenge object before issued to the client (completed = false)
+// and before validation (completed = true).
+func (ch Challenge) IsSane(completed bool) bool {
+	switch ch.Type {
+	case ChallengeTypeSimpleHTTPS:
+		// check extra fields aren't used
+		if ch.R != "" || ch.S != "" || ch.Nonce != "" {
+			return false
+		}
+
+		if completed {
+			// see if ch.Path starts with /.well-known/acme-challenge/
+			if ch.Path == "" || !strings.HasPrefix(ch.Path, "/.well-known/acme-challenge/") {
+				return false
+			}
+		} else {
+			if ch.Path != "" {
+				return false
+			}
+		}
+
+		// check token is present, corrent length, and contains b64 encoded string
+		if ch.Token == "" || len(ch.Token) != 43 {
+			return false
+		}
+		if _, err := B64dec(ch.Token); err != nil {
+			return false
+		}
+	case ChallengeTypeDVSNI:
+		// check extra fields aren't used
+		if ch.Path != "" || ch.Token != "" {
+			return false
+		}
+
+		if ch.Nonce == "" {
+			return false
+		}
+
+		// Check R & S are sane
+		if ch.R == "" || len(ch.R) != 43 {
+			return false
+		}
+		if _, err := B64dec(ch.R); err != nil {
+			return false
+		}
+
+		if completed {
+			if ch.S == "" || len(ch.S) != 43 {
+				return false
+			}
+			if _, err := B64dec(ch.S); err != nil {
+				return false
+			}
+		} else {
+			if ch.S != "" {
+				return false
+			}
+		}
+	default:
+		return false
+	}
+
+	return true
 }
 
 // Merge a client-provide response to a challenge with the issued challenge
