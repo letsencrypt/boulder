@@ -7,6 +7,7 @@ package core
 
 import (
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"github.com/letsencrypt/boulder/jose"
 	"time"
@@ -187,7 +188,10 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 
-		if ch.Nonce == "" {
+		if ch.Nonce == "" || len(ch.Nonce) != 32 {
+			return false
+		}
+		if _, err := hex.DecodeString(ch.Nonce); err != nil {
 			return false
 		}
 

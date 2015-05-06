@@ -39,6 +39,10 @@ func TestSanityCheck(t *testing.T) {
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall.Nonce = "wutwut"
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+	chall.Nonce = "!2345678901234567890123456789012"
+	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+	chall.Nonce = "12345678901234567890123456789012"
+	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall.R = "notlongenough"
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall.R = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ+PCt92wr+o!"
@@ -52,5 +56,4 @@ func TestSanityCheck(t *testing.T) {
 	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
 	chall.S = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
 	test.Assert(t, chall.IsSane(true), "IsSane should be true")
-
 }
