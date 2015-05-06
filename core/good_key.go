@@ -9,7 +9,10 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"fmt"
+	"reflect"
+
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/jose"
 )
 
 // GoodKey returns true iff the key is acceptable for both TLS use and account
@@ -17,10 +20,15 @@ import (
 // strength and algorithm checking.
 func GoodKey(key crypto.PublicKey) bool {
 	log := blog.GetAuditLogger()
-	rsaKey, ok := key.(rsa.PublicKey)
+	rsaKey, ok := key.(*rsa.PublicKey)
 	if !ok {
-		log.Debug("Non-RSA keys not yet supported.")
-		return false
+		if jwk, ok := key.(jose.JsonWebKey); ok && jwk.Rsa != nil {
+			rsaKey = jwk.Rsa
+		} else {
+			log.Debug(fmt.Sprintf("Non-RSA keys not yet supported, got %s",
+				reflect.TypeOf(key)))
+			return false
+		}
 	}
 	// Baseline Requirements Appendix A
 	// Modulus must be >= 2048 bits
