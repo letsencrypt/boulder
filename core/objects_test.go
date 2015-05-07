@@ -12,13 +12,15 @@ import (
 )
 
 func TestSanityCheck(t *testing.T) {
-	chall := Challenge{Type: ChallengeTypeSimpleHTTPS}
+	chall := Challenge{Type: ChallengeTypeSimpleHTTPS, Status: StatusValid}
+	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+	chall.Status = StatusPending
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall.R = "bad"
 	chall.S = "bad"
 	chall.Nonce = "bad"
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall = Challenge{Type: ChallengeTypeSimpleHTTPS, Path: "bad"}
+	chall = Challenge{Type: ChallengeTypeSimpleHTTPS, Path: "bad", Status: StatusPending}
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall.Path = ""
 	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
@@ -31,11 +33,11 @@ func TestSanityCheck(t *testing.T) {
 	chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
 	test.Assert(t, chall.IsSane(false), "IsSane should be true")
 
-	chall = Challenge{Type: ChallengeTypeDVSNI}
+	chall = Challenge{Type: ChallengeTypeDVSNI, Status: StatusPending}
 	chall.Path = "bad"
 	chall.Token = "bad"
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall = Challenge{Type: ChallengeTypeDVSNI}
+	chall = Challenge{Type: ChallengeTypeDVSNI, Status: StatusPending}
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall.Nonce = "wutwut"
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")

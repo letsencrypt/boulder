@@ -157,6 +157,10 @@ type Challenge struct {
 // Check the sanity of a challenge object before issued to the client (completed = false)
 // and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
+	if ch.Status != StatusPending {
+		return false
+	}
+
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTPS:
 		// check extra fields aren't used
