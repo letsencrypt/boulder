@@ -498,12 +498,24 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	}
 	oldAuth := authObj.(*PendingAuthzModel)
 
-	err = ssa.dbMap.Insert(auth)
+	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
 	}
 
-	_, err = ssa.dbMap.Delete(oldAuth)
+	err = tx.Insert(auth)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	_, err = tx.Delete(oldAuth)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	tx.Commit()
 	return
 }
 
