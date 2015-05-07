@@ -40,13 +40,13 @@ var dialectMap map[string]interface{} = map[string]interface{}{
 }
 
 // Utility models
-type PendingAuthzModel struct {
+type pendingauthzModel struct {
 	core.Authorization
 
 	LockCol int64
 }
 
-type AuthzModel struct {
+type authzModel struct {
 	core.Authorization
 
 	Sequence           int64 `db:"sequence"`
@@ -141,8 +141,8 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 
 func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	ssa.dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(false, "ID").SetVersionCol("LockCol")
-	ssa.dbMap.AddTableWithName(PendingAuthzModel{}, "pending_authz").SetKeys(false, "ID").SetVersionCol("LockCol")
-	ssa.dbMap.AddTableWithName(AuthzModel{}, "authz").SetKeys(false, "ID")
+	ssa.dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID").SetVersionCol("LockCol")
+	ssa.dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
 	ssa.dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	ssa.dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
@@ -167,7 +167,7 @@ func (ssa *SQLStorageAuthority) DumpTables() {
 	}
 
 	fmt.Printf("\n----- pending_authz -----\n")
-	var pending_authz []PendingAuthzModel
+	var pending_authz []pendingauthzModel
 	_, err = ssa.dbMap.Select(&pending_authz, "SELECT * FROM pending_authz")
 	if err != nil {
 		fmt.Println(err)
@@ -178,7 +178,7 @@ func (ssa *SQLStorageAuthority) DumpTables() {
 	}
 
 	fmt.Printf("\n----- authz -----\n")
-	var authz []AuthzModel
+	var authz []authzModel
 	_, err = ssa.dbMap.Select(&authz, "SELECT * FROM authz")
 	if err != nil {
 		fmt.Println(err)
@@ -269,12 +269,12 @@ func (ssa *SQLStorageAuthority) GetRegistration(id string) (reg core.Registratio
 }
 
 func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authorization, err error) {
-	authObj, err := ssa.dbMap.Get(PendingAuthzModel{}, id)
+	authObj, err := ssa.dbMap.Get(pendingauthzModel{}, id)
 	if err != nil {
 		return
 	}
 	if authObj == nil {
-		authObj, err = ssa.dbMap.Get(AuthzModel{}, id)
+		authObj, err = ssa.dbMap.Get(authzModel{}, id)
 		if err != nil {
 			return
 		}
@@ -282,11 +282,11 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 			err = fmt.Errorf("No pending_authz or authz with ID %s", id)
 			return
 		}
-		authD := authObj.(*AuthzModel)
+		authD := authObj.(*authzModel)
 		authz = authD.Authorization
 		return
 	}
-	authD := *authObj.(*PendingAuthzModel)
+	authD := *authObj.(*pendingauthzModel)
 	authz = authD.Authorization
 	return
 }
@@ -437,7 +437,7 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization() (id string, err error)
 	}
 
 	// Insert a stub row in pending
-	pending_authz := &PendingAuthzModel{Authorization: core.Authorization{ID: id}}
+	pending_authz := &pendingauthzModel{Authorization: core.Authorization{ID: id}}
 	err = ssa.dbMap.Insert(pending_authz)
 	return
 }
@@ -458,11 +458,11 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 		return
 	}
 
-	authObj, err := ssa.dbMap.Get(PendingAuthzModel{}, authz.ID)
+	authObj, err := ssa.dbMap.Get(pendingauthzModel{}, authz.ID)
 	if err != nil {
 		return
 	}
-	auth := authObj.(*PendingAuthzModel)
+	auth := authObj.(*pendingauthzModel)
 	auth.Authorization = authz
 	_, err = ssa.dbMap.Update(auth)
 	return
@@ -491,12 +491,12 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		sequence += sequenceObj.Int64 + 1
 	}
 
-	auth := &AuthzModel{authz, sequence}
-	authObj, err := ssa.dbMap.Get(PendingAuthzModel{}, authz.ID)
+	auth := &authzModel{authz, sequence}
+	authObj, err := ssa.dbMap.Get(pendingauthzModel{}, authz.ID)
 	if err != nil {
 		return
 	}
-	oldAuth := authObj.(*PendingAuthzModel)
+	oldAuth := authObj.(*pendingauthzModel)
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
