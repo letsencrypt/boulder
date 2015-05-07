@@ -593,8 +593,8 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	if err != nil {
 		return
 	}
-	serial := fmt.Sprintf("%032x", parsedCertificate.SerialNumber)
 	digest = core.Fingerprint256(certDER)
+	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
 	cert := &core.Certificate{
 		Serial: serial,

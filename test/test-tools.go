@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 	"runtime"
 	"strings"
 	"testing"
@@ -70,6 +71,12 @@ func AssertByteEquals(t *testing.T, one []byte, two []byte) {
 
 func AssertIntEquals(t *testing.T, one int, two int) {
 	if one != two {
+		t.Errorf("%s Int [%d] != [%d]", caller(), one, two)
+	}
+}
+
+func AssertBigIntEquals(t *testing.T, one *big.Int, two *big.Int) {
+	if one.Cmp(two) != 0 {
 		t.Errorf("%s Int [%d] != [%d]", caller(), one, two)
 	}
 }

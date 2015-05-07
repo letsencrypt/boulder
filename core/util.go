@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	blog "github.com/letsencrypt/boulder/log"
 	"hash"
 	"io"
@@ -187,4 +188,17 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 	}
 
 	return errors.New("Unsupported CSR signing algorithm")
+}
+
+func SerialToString(serial *big.Int) string {
+	return fmt.Sprintf("%032x", serial)
+}
+
+func StringToSerial(serial string) (*big.Int, error)  {
+	var serialNum big.Int
+	if len(serial) != 32 {
+		return &serialNum, errors.New("Serial number should be 32 characters long")
+	}
+	_, err := fmt.Sscanf(serial, "%032x", &serialNum)
+	return &serialNum, err
 }

@@ -356,7 +356,7 @@ func TestRevoke(t *testing.T) {
 	}
 	cert, err := x509.ParseCertificate(certObj.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
-	serialString := fmt.Sprintf("%032x", cert.SerialNumber)
+	serialString := core.SerialToString(cert.SerialNumber)
 	err = ca.RevokeCertificate(serialString)
 	test.AssertNotError(t, err, "Revocation failed")
 
@@ -415,7 +415,7 @@ func TestIssueCertificate(t *testing.T) {
 		}
 
 		// Verify that the cert got stored in the DB
-		serialString := fmt.Sprintf("%032x", cert.SerialNumber)
+		serialString := core.SerialToString(cert.SerialNumber)
 		certBytes, err := storageAuthority.GetCertificate(serialString)
 		test.AssertNotError(t, err,
 			fmt.Sprintf("Certificate %s not found in database", serialString))
