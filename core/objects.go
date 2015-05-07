@@ -204,7 +204,7 @@ type Authorization struct {
 
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
-	Combinations [][]int `json:"combinations,omitempty" db:"Combinations"`
+	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
 
 	// The client may provide contact URIs to allow the server
 	// to push information to it.
@@ -235,26 +235,58 @@ type Certificate struct {
 // latest data about the status of the certificate, required for OCSP updating
 // and for validating that the subscriber has accepted the certificate.
 type CertificateStatus struct {
+	Serial                 string `db:"serial"`
+
+	// subscriberApproved: true iff the subscriber has posted back to the server
+	//   that they accept the certificate, otherwise 0.
 	SubscriberApproved bool `db:"subscriberApproved"`
+
+	// status: 'good' or 'revoked'. Note that good, expired certificates remain		
+	//   with status 'good' but don't necessarily get fresh OCSP responses.
 	Status OCSPStatus `db:"status"`
+
+	// ocspLastUpdated: The date and time of the last time we generated an OCSP		
+	//   response. If we have never generated one, this has the zero value of		
+	//   time.Time, i.e. Jan 1 1970.
 	OCSPLastUpdated time.Time `db:"ocspLastUpdated"`
 
-	Serial                 string `db:"serial"`
+	// revokedDate: If status is 'revoked', this is the date and time it was		
+	//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
 	RevokedDate            time.Time `db:"revokedDate"`
+
+	// revokedReason: If status is 'revoked', this is the reason code for the		
+	//   revocation. Otherwise it is zero (which happens to be the reason		
+	//   code for 'unspecified').
 	RevokedReason          int `db:"revokedReason"`
 
 	LockCol int64
 }
 
+// A large table of OCSP responses. This contains all historical OCSP		
+// responses we've signed, is append-only, and is likely to get quite		
+// large. We'll probably want administratively truncate it at some point.
 type OcspResponse struct {
 	ID        int `db:"id"`
+
+	// serial: Same as certificate serial.
 	Serial    string `db:"serial"`
+
+	// createdAt: The date the response was signed.
 	CreatedAt time.Time `db:"createdAt"`
+
+	// response: The encoded and signed CRL.
 	Response  []byte `db:"response"`
 }
 
+// A large table of signed CRLs. This contains all historical CRLs		
+// we've signed, is append-only, and is likely to get quite large.
 type Crl struct {
+	// serial: Same as certificate serial.
 	Serial    string `db:"serial"`
+
+	// createdAt: The date the CRL was signed.
 	CreatedAt time.Time `db:"createdAt"`
+
+	// crl: The encoded and signed CRL.
 	Crl       string `db:"crl"`
 }
