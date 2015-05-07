@@ -28,7 +28,6 @@ import (
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
-	CA    core.CertificateAuthority
 	Stats statsd.Statter
 	log   *blog.AuditLogger
 
@@ -394,7 +393,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 		return
 	}
 
-	err = wfe.CA.RevokeCertificate(serial)
+	err = wfe.RA.RevokeCertificate(*parsedCertificate)
 	if err != nil {
 		wfe.sendError(response,
 			"Failed to revoke certificate",
