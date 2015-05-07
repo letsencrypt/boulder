@@ -39,53 +39,17 @@ var dialectMap map[string]interface{} = map[string]interface{}{
 	"postgres": gorp.PostgresDialect{},
 }
 
-// Models
-type Registration struct {
-	Thumbprint        string `db:"thumbprint"`
-	core.Registration
-
-	LockCol int64
-}
-
-type Pending_auth struct {
+// Utility models
+type PendingAuthzModel struct {
 	core.Authorization
 
 	LockCol int64
 }
 
-type Auth struct {
+type AuthzModel struct {
+	core.Authorization
+
 	Sequence           int64 `db:"sequence"`
-	Digest             string `db:"digest"`
-	core.Authorization
-}
-
-type Certificate struct {
-	Serial   string `db:"serial"`
-	Digest   string `db:"digest"`
-	Content  []byte `db:"content"`
-	Issued   time.Time `db:"issued"`
-}
-
-type CertificateStatus struct {
-	Serial                 string `db:"serial"`
-	RevokedDate            time.Time `db:"revokedDate"`
-	RevokedReason          int `db:"revokedReason"`
-	core.CertificateStatus
-
-	LockCol int64
-}
-
-type OcspResponse struct {
-	ID        int `db:"id"`
-	Serial    string `db:"serial"`
-	CreatedAt time.Time `db:"createdAt"`
-	Response  []byte `db:"response"`
-}
-
-type Crl struct {
-	Serial    string `db:"serial"`
-	CreatedAt time.Time `db:"createdAt"`
-	Crl       string `db:"crl"`
 }
 
 // Type converter
@@ -176,13 +140,13 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 }
 
 func (ssa *SQLStorageAuthority) InitTables() (err error) {
-	ssa.dbMap.AddTableWithName(Registration{}, "registrations").SetKeys(false, "ID").SetVersionCol("LockCol")
-	ssa.dbMap.AddTableWithName(Pending_auth{}, "pending_authz").SetKeys(false, "ID").SetVersionCol("LockCol")
-	ssa.dbMap.AddTableWithName(Auth{}, "authz").SetKeys(false, "ID")
-	ssa.dbMap.AddTableWithName(Certificate{}, "certificates").SetKeys(false, "Serial")
-	ssa.dbMap.AddTableWithName(CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
-	ssa.dbMap.AddTableWithName(OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
-	ssa.dbMap.AddTableWithName(Crl{}, "crls").SetKeys(false, "Serial")
+	ssa.dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(false, "ID").SetVersionCol("LockCol")
+	ssa.dbMap.AddTableWithName(PendingAuthzModel{}, "pending_authz").SetKeys(false, "ID").SetVersionCol("LockCol")
+	ssa.dbMap.AddTableWithName(AuthzModel{}, "authz").SetKeys(false, "ID")
+	ssa.dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
+	ssa.dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
+	ssa.dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
+	ssa.dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
 
 	err = ssa.dbMap.CreateTablesIfNotExists()
 	return
@@ -192,7 +156,7 @@ func (ssa *SQLStorageAuthority) DumpTables() {
 	fmt.Printf("===== TABLE DUMP =====\n")
 
 	fmt.Printf("\n----- registrations -----\n")
-	var registrations []Registration
+	var registrations []core.Registration
 	_, err := ssa.dbMap.Select(&registrations, "SELECT * FROM registrations ")
 	if err != nil {
 		fmt.Println(err)
@@ -203,7 +167,7 @@ func (ssa *SQLStorageAuthority) DumpTables() {
 	}
 
 	fmt.Printf("\n----- pending_authz -----\n")
-	var pending_authz []Pending_auth
+	var pending_authz []PendingAuthzModel
 	_, err = ssa.dbMap.Select(&pending_authz, "SELECT * FROM pending_authz")
 	if err != nil {
 		fmt.Println(err)
@@ -214,7 +178,7 @@ func (ssa *SQLStorageAuthority) DumpTables() {
 	}
 
 	fmt.Printf("\n----- authz -----\n")
-	var authz []Auth
+	var authz []AuthzModel
 	_, err = ssa.dbMap.Select(&authz, "SELECT * FROM authz")
 	if err != nil {
 		fmt.Println(err)
@@ -225,7 +189,7 @@ func (ssa *SQLStorageAuthority) DumpTables() {
 	}
 
 	fmt.Printf("\n----- certificates -----\n")
-	var certificates []Certificate
+	var certificates []core.Certificate
 	_, err = ssa.dbMap.Select(&certificates, "SELECT * FROM certificates")
 	if err != nil {
 		fmt.Println(err)
@@ -236,7 +200,7 @@ func (ssa *SQLStorageAuthority) DumpTables() {
 	}
 
 	fmt.Printf("\n----- certificateStatus -----\n")
-	var certificateStatuses []CertificateStatus
+	var certificateStatuses []core.CertificateStatus
 	_, err = ssa.dbMap.Select(&certificateStatuses, "SELECT * FROM certificateStatus")
 	if err != nil {
 		fmt.Println(err)
@@ -247,7 +211,7 @@ func (ssa *SQLStorageAuthority) DumpTables() {
 	}
 
 	fmt.Printf("\n----- ocspResponses -----\n")
-	var ocspResponses []OcspResponse
+	var ocspResponses []core.OcspResponse
 	_, err = ssa.dbMap.Select(&ocspResponses, "SELECT * FROM ocspResponses")
 	if err != nil {
 		fmt.Println(err)
@@ -258,7 +222,7 @@ func (ssa *SQLStorageAuthority) DumpTables() {
 	}
 
 	fmt.Printf("\n----- crls -----\n")
-	var crls []Crl
+	var crls []core.Crl
 	_, err = ssa.dbMap.Select(&crls, "SELECT * FROM crls")
 	if err != nil {
 		fmt.Println(err)
@@ -292,7 +256,7 @@ func (ssa *SQLStorageAuthority) existingRegistration(id string) (bool) {
 }
 
 func (ssa *SQLStorageAuthority) GetRegistration(id string) (reg core.Registration, err error) {
-	regObj, err := ssa.dbMap.Get(Registration{}, id)
+	regObj, err := ssa.dbMap.Get(core.Registration{}, id)
 	if err != nil {
 		return
 	}
@@ -300,18 +264,17 @@ func (ssa *SQLStorageAuthority) GetRegistration(id string) (reg core.Registratio
 		err = fmt.Errorf("No registrations with ID %s", id)
 		return
 	}
-	regD := regObj.(*Registration)
-	reg = regD.Registration
+	reg = *regObj.(*core.Registration)
 	return
 }
 
 func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authorization, err error) {
-	authObj, err := ssa.dbMap.Get(Pending_auth{}, id)
+	authObj, err := ssa.dbMap.Get(PendingAuthzModel{}, id)
 	if err != nil {
 		return
 	}
 	if authObj == nil {
-		authObj, err = ssa.dbMap.Get(Auth{}, id)
+		authObj, err = ssa.dbMap.Get(AuthzModel{}, id)
 		if err != nil {
 			return
 		}
@@ -319,11 +282,11 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 			err = fmt.Errorf("No pending_authz or authz with ID %s", id)
 			return
 		}
-		authD := authObj.(*Auth)
+		authD := authObj.(*AuthzModel)
 		authz = authD.Authorization
 		return
 	}
-	authD := authObj.(*Pending_auth)
+	authD := *authObj.(*PendingAuthzModel)
 	authz = authD.Authorization
 	return
 }
@@ -340,7 +303,7 @@ func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) 
 		return
 	}
 
-	var certificate Certificate
+	var certificate core.Certificate
 	err = ssa.dbMap.SelectOne(&certificate, "SELECT content FROM certificates WHERE serial LIKE :shortSerial",
 		map[string]interface{} {"shortSerial": shortSerial+"%"})
 	if err != nil {
@@ -358,7 +321,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (cert []byte, err 
 		return
 	}
 
-	var certificate Certificate
+	var certificate core.Certificate
 	err = ssa.dbMap.SelectOne(&certificate, "SELECT content FROM certificates WHERE serial = :serial",
 		map[string]interface{} {"serial": serial})
 	if err != nil {
@@ -377,13 +340,12 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 		return
 	}
 
-	certificateStats, err := ssa.dbMap.Get(CertificateStatus{}, serial)
+	certificateStats, err := ssa.dbMap.Get(core.CertificateStatus{}, serial)
 	if err != nil {
 		return
 	}
 
-	cs := certificateStats.(*CertificateStatus)
-	status = cs.CertificateStatus
+	status = *certificateStats.(*core.CertificateStatus)
 	return
 }
 
@@ -394,7 +356,7 @@ func (ssa *SQLStorageAuthority) NewRegistration() (id string, err error) {
 		id = core.NewToken()
 	}
 
-	reg := &Registration{}
+	reg := &core.Registration{}
 	reg.ID = id
 
 	err = ssa.dbMap.Insert(reg)
@@ -424,14 +386,14 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 	}
 
 	// TODO: Also update crls.
-	ocspResp := &OcspResponse{Serial: serial, CreatedAt: time.Now(), Response: ocspResponse}
+	ocspResp := &core.OcspResponse{Serial: serial, CreatedAt: time.Now(), Response: ocspResponse}
 	err = tx.Insert(ocspResp)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
-	statusObj, err := tx.Get(CertificateStatus{}, serial)
+	statusObj, err := tx.Get(core.CertificateStatus{}, serial)
 	if err != nil {
 		tx.Rollback()
 		return
@@ -441,7 +403,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 		tx.Rollback()
 		return
 	}
-	status := statusObj.(*CertificateStatus)
+	status := statusObj.(*core.CertificateStatus)
 	status.Status = core.OCSPStatusRevoked
 	status.RevokedDate = time.Now()
 	status.RevokedReason = reasonCode
@@ -463,13 +425,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err e
 		return
 	}
 
-	regObj, err := ssa.dbMap.Get(Registration{}, reg.ID)
-	if err != nil {
-		return
-	}
-	newReg := regObj.(*Registration)
-	newReg.Registration = reg
-	_, err = ssa.dbMap.Update(newReg)
+	_, err = ssa.dbMap.Update(&reg)
 	return
 }
 
@@ -481,7 +437,7 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization() (id string, err error)
 	}
 
 	// Insert a stub row in pending
-	pending_authz := &Pending_auth{Authorization: core.Authorization{ID: id}}
+	pending_authz := &PendingAuthzModel{Authorization: core.Authorization{ID: id}}
 	err = ssa.dbMap.Insert(pending_authz)
 	return
 }
@@ -502,11 +458,11 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 		return
 	}
 
-	authObj, err := ssa.dbMap.Get(Pending_auth{}, authz.ID)
+	authObj, err := ssa.dbMap.Get(PendingAuthzModel{}, authz.ID)
 	if err != nil {
 		return
 	}
-	auth := authObj.(*Pending_auth)
+	auth := authObj.(*PendingAuthzModel)
 	auth.Authorization = authz
 	_, err = ssa.dbMap.Update(auth)
 	return
@@ -535,19 +491,12 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		sequence += sequenceObj.Int64 + 1
 	}
 
-	jsonAuthz, err := json.Marshal(authz)
+	auth := &AuthzModel{authz, sequence}
+	authObj, err := ssa.dbMap.Get(PendingAuthzModel{}, authz.ID)
 	if err != nil {
 		return
 	}
-	// ???: is this still needed? ^+v
-	digest := core.Fingerprint256(jsonAuthz)
-
-	auth := &Auth{sequence, digest, authz}
-	authObj, err := ssa.dbMap.Get(Pending_auth{}, authz.ID)
-	if err != nil {
-		return
-	}
-	oldAuth := authObj.(*Pending_auth)
+	oldAuth := authObj.(*PendingAuthzModel)
 
 	err = ssa.dbMap.Insert(auth)
 	if err != nil {
@@ -567,9 +516,21 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	serial := fmt.Sprintf("%032x", parsedCertificate.SerialNumber)
 	digest = core.Fingerprint256(certDER)
 
-	cert := &Certificate{serial, digest, certDER, time.Now()}
-	certStatus := &CertificateStatus{serial, time.Time{}, 0,
-		core.CertificateStatus{SubscriberApproved: false, Status: core.OCSPStatus("good"), OCSPLastUpdated: time.Time{}}, 0}
+	cert := &core.Certificate{
+		Serial: serial,
+		Digest: digest,
+		Content: certDER,
+		Issued: time.Now(),
+	}
+	certStatus := &core.CertificateStatus{
+		SubscriberApproved: false,
+		Status: core.OCSPStatus("good"),
+		OCSPLastUpdated: time.Time{},
+		Serial: serial,
+		RevokedDate: time.Time{},
+		RevokedReason: 0,
+		LockCol: 0,
+	}
 	
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {

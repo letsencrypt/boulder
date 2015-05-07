@@ -110,6 +110,11 @@ type Registration struct {
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty" db:"agreement"`
+
+	//
+	Thumbprint        string `db:"thumbprint"`
+
+	LockCol int64
 }
 
 func (r *Registration) MergeUpdate(input Registration) {
@@ -210,15 +215,20 @@ type Authorization struct {
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
 	// The encoded, signed certificate
-	DER jose.JsonBuffer
+	DER jose.JsonBuffer `db:"-"`
 
 	// The parsed version of DER. Useful for extracting things like serial number.
-	ParsedCertificate *x509.Certificate
+	ParsedCertificate *x509.Certificate `db:"-"`
 
 	// The revocation status of the certificate.
 	// * "valid" - not revoked
 	// * "revoked" - revoked
-	Status AcmeStatus
+	Status AcmeStatus `db:"status"`
+
+	Serial   string `db:"serial"`
+	Digest   string `db:"digest"`
+	Content  []byte `db:"content"`
+	Issued   time.Time `db:"issued"`
 }
 
 // CertificateStatus structs are internal to the server. They represent the
@@ -228,4 +238,23 @@ type CertificateStatus struct {
 	SubscriberApproved bool `db:"subscriberApproved"`
 	Status OCSPStatus `db:"status"`
 	OCSPLastUpdated time.Time `db:"ocspLastUpdated"`
+
+	Serial                 string `db:"serial"`
+	RevokedDate            time.Time `db:"revokedDate"`
+	RevokedReason          int `db:"revokedReason"`
+
+	LockCol int64
+}
+
+type OcspResponse struct {
+	ID        int `db:"id"`
+	Serial    string `db:"serial"`
+	CreatedAt time.Time `db:"createdAt"`
+	Response  []byte `db:"response"`
+}
+
+type Crl struct {
+	Serial    string `db:"serial"`
+	CreatedAt time.Time `db:"createdAt"`
+	Crl       string `db:"crl"`
 }
