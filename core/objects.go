@@ -99,19 +99,24 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 // to account keys.
 type Registration struct {
 	// Unique identifier
-	ID string `json:"-"`
+	ID string `json:"-" db:"id"`
 
 	// Account key to which the details are attached
-	Key jose.JsonWebKey `json:"key"`
+	Key jose.JsonWebKey `json:"key" db:"key"`
 
 	// Recovery Token is used to prove connection to an earlier transaction
-	RecoveryToken string `json:"recoveryToken"`
+	RecoveryToken string `json:"recoveryToken" db:"recoveryToken"`
 
 	// Contact URIs
-	Contact []AcmeURL `json:"contact,omitempty"`
+	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 
 	// Agreement with terms of service
-	Agreement string `json:"agreement,omitempty"`
+	Agreement string `json:"agreement,omitempty" db:"agreement"`
+
+	//
+	Thumbprint        string `db:"thumbprint"`
+
+	LockCol int64
 }
 
 func (r *Registration) MergeUpdate(input Registration) {
@@ -249,57 +254,113 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 type Authorization struct {
 	// An identifier for this authorization, unique across
 	// authorizations and certificates within this instance.
-	ID string `json:"id,omitempty"`
+	ID string `json:"id,omitempty" db:"id"`
 
 	// The identifier for which authorization is being given
-	Identifier AcmeIdentifier `json:"identifier,omitempty"`
+	Identifier AcmeIdentifier `json:"identifier,omitempty" db:"identifier"`
 
 	// The account key that is authorized for the identifier
-	Key jose.JsonWebKey `json:"key,omitempty"`
+	Key jose.JsonWebKey `json:"key,omitempty" db:"key"`
 
 	// The status of the validation of this authorization
-	Status AcmeStatus `json:"status,omitempty"`
+	Status AcmeStatus `json:"status,omitempty" db:"status"`
 
 	// The date after which this authorization will be no
 	// longer be considered valid
-	Expires time.Time `json:"expires,omitempty"`
+	Expires time.Time `json:"expires,omitempty" db:"expires"`
 
 	// An array of challenges objects used to validate the
 	// applicant's control of the identifier.  For authorizations
 	// in process, these are challenges to be fulfilled; for
 	// final authorizations, they describe the evidence that
 	// the server used in support of granting the authorization.
-	Challenges []Challenge `json:"challenges,omitempty"`
+	Challenges []Challenge `json:"challenges,omitempty" db:"challenges"`
 
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
-	Combinations [][]int `json:"combinations,omitempty"`
+	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
 
 	// The client may provide contact URIs to allow the server
 	// to push information to it.
-	Contact []AcmeURL `json:"contact,omitempty"`
+	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 }
 
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
 	// The encoded, signed certificate
-	DER jose.JsonBuffer
+	DER jose.JsonBuffer `db:"-"`
 
 	// The parsed version of DER. Useful for extracting things like serial number.
-	ParsedCertificate *x509.Certificate
+	ParsedCertificate *x509.Certificate `db:"-"`
 
 	// The revocation status of the certificate.
 	// * "valid" - not revoked
 	// * "revoked" - revoked
-	Status AcmeStatus
+	Status AcmeStatus `db:"status"`
+
+	Serial   string `db:"serial"`
+	Digest   string `db:"digest"`
+	Content  []byte `db:"content"`
+	Issued   time.Time `db:"issued"`
 }
 
 // CertificateStatus structs are internal to the server. They represent the
 // latest data about the status of the certificate, required for OCSP updating
 // and for validating that the subscriber has accepted the certificate.
 type CertificateStatus struct {
-	SubscriberApproved bool
-	Status OCSPStatus
-	OCSPLastUpdated time.Time
+	Serial                 string `db:"serial"`
+
+	// subscriberApproved: true iff the subscriber has posted back to the server
+	//   that they accept the certificate, otherwise 0.
+	SubscriberApproved bool `db:"subscriberApproved"`
+
+	// status: 'good' or 'revoked'. Note that good, expired certificates remain		
+	//   with status 'good' but don't necessarily get fresh OCSP responses.
+	Status OCSPStatus `db:"status"`
+
+	// ocspLastUpdated: The date and time of the last time we generated an OCSP		
+	//   response. If we have never generated one, this has the zero value of		
+	//   time.Time, i.e. Jan 1 1970.
+	OCSPLastUpdated time.Time `db:"ocspLastUpdated"`
+
+	// revokedDate: If status is 'revoked', this is the date and time it was		
+	//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
+	RevokedDate            time.Time `db:"revokedDate"`
+
+	// revokedReason: If status is 'revoked', this is the reason code for the		
+	//   revocation. Otherwise it is zero (which happens to be the reason		
+	//   code for 'unspecified').
+	RevokedReason          int `db:"revokedReason"`
+
+	LockCol int64
+}
+
+// A large table of OCSP responses. This contains all historical OCSP		
+// responses we've signed, is append-only, and is likely to get quite		
+// large. We'll probably want administratively truncate it at some point.
+type OcspResponse struct {
+	ID        int `db:"id"`
+
+	// serial: Same as certificate serial.
+	Serial    string `db:"serial"`
+
+	// createdAt: The date the response was signed.
+	CreatedAt time.Time `db:"createdAt"`
+
+	// response: The encoded and signed CRL.
+	Response  []byte `db:"response"`
+}
+
+// A large table of signed CRLs. This contains all historical CRLs		
+// we've signed, is append-only, and is likely to get quite large.
+type Crl struct {
+	// serial: Same as certificate serial.
+	Serial    string `db:"serial"`
+
+	// createdAt: The date the CRL was signed.
+	CreatedAt time.Time `db:"createdAt"`
+
+	// crl: The encoded and signed CRL.
+	Crl       string `db:"crl"`
 }

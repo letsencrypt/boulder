@@ -6,14 +6,19 @@
 package sa
 
 import (
+	"encoding/json"
+	"net/url"
+	"time"
+
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/jose"
 	"github.com/letsencrypt/boulder/test"
 	"io/ioutil"
 	"testing"
 )
 
-func TestAddCertificate(t *testing.T) {
+func initSA(t *testing.T) (*SQLStorageAuthority) {
 	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create SA")
@@ -21,6 +26,86 @@ func TestAddCertificate(t *testing.T) {
 	if err = sa.InitTables(); err != nil {
 		t.Fatalf("Failed to create SA")
 	}
+	return sa
+}
+
+var theKey string = `{
+    "kty": "RSA",
+    "n": "n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw",
+    "e": "AQAB"
+}`
+
+func TestAddRegistration(t *testing.T) {
+	sa := initSA(t)
+
+	regID, err := sa.NewRegistration()
+	test.AssertNotError(t, err, "Couldn't create new registration")
+	test.Assert(t, regID != "", "ID shouldn't be blank")
+
+	dbReg, err := sa.GetRegistration(regID)
+	test.AssertNotError(t, err, "Couldn't get registration with ID "+regID)
+
+	expectedReg := core.Registration{ID: regID}
+	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
+
+	var jwk jose.JsonWebKey
+	err = json.Unmarshal([]byte(theKey), &jwk)
+	if err != nil {
+		t.Errorf("JSON unmarshal error: %+v", err)
+		return
+	}
+
+	uu, err := url.Parse("test.com")
+	u := core.AcmeURL(*uu)
+
+	newReg := core.Registration{ID: regID, Key: jwk, RecoveryToken: "RBNvo1WzZ4oRRq0W9", Contact: []core.AcmeURL{u}, Agreement: "yes"}
+	err = sa.UpdateRegistration(newReg)
+	test.AssertNotError(t, err, "Couldn't update registration with ID "+regID)
+}
+
+func TestAddAuthorization(t *testing.T) {
+	sa := initSA(t)
+
+	paID, err := sa.NewPendingAuthorization()
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, paID != "", "ID shouldn't be blank")
+
+	dbPa, err := sa.GetAuthorization(paID)
+	test.AssertNotError(t, err, "Couldn't get pending authorization with ID "+paID)
+
+	expectedPa := core.Authorization{ID: paID}
+	test.AssertEquals(t, dbPa.ID, expectedPa.ID)
+
+	var jwk jose.JsonWebKey
+	err = json.Unmarshal([]byte(theKey), &jwk)
+	if err != nil {
+		t.Errorf("JSON unmarshal error: %+v", err)
+		return
+	}
+
+	uu, err := url.Parse("test.com")
+	u := core.AcmeURL(*uu)
+
+	chall := core.Challenge{Type: "simpleHttps", Status: core.StatusPending, URI: u, Token: "THISWOULDNTBEAGOODTOKEN", Path: "test-me"}
+
+	combos := make([][]int, 1)
+	combos[0] = []int{0,1}
+
+
+	newPa := core.Authorization{ID: paID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, Key: jwk, Status: core.StatusPending, Expires: time.Now().AddDate(0, 0, 1), Challenges: []core.Challenge{chall}, Combinations: combos, Contact: []core.AcmeURL{u}}
+	err = sa.UpdatePendingAuthorization(newPa)
+	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+paID)
+
+	newPa.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(newPa)
+	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+paID)
+
+	dbPa, err = sa.GetAuthorization(paID)
+	test.AssertNotError(t, err, "Couldn't get authorization with ID "+paID)
+}
+
+func TestAddCertificate(t *testing.T) {
+	sa := initSA(t)
 
 	// An example cert taken from EFF's website
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
@@ -72,11 +157,9 @@ func TestAddCertificate(t *testing.T) {
 // TestGetCertificateByShortSerial tests some failure conditions for GetCertificate.
 // Success conditions are tested above in TestAddCertificate.
 func TestGetCertificateByShortSerial(t *testing.T) {
-	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")
-	test.AssertNotError(t, err, "Failed to create SA")
-	sa.InitTables()
+	sa := initSA(t)
 
-	_, err = sa.GetCertificateByShortSerial("")
+	_, err := sa.GetCertificateByShortSerial("")
 	test.AssertError(t, err, "Should've failed on empty serial")
 
 	_, err = sa.GetCertificateByShortSerial("01020304050607080102030405060708")
