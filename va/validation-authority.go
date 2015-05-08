@@ -32,17 +32,17 @@ func NewValidationAuthorityImpl(tm bool) ValidationAuthorityImpl {
 
 // Validation methods
 
-func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdentifier, input core.Challenge) (challenge core.Challenge) {
-	challenge = input
+func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge) {
+	challenge := input
 
 	if len(challenge.Path) == 0 {
 		challenge.Status = core.StatusInvalid
-		return
+		return challenge
 	}
 
 	if identifier.Type != core.IdentifierDNS {
 		challenge.Status = core.StatusInvalid
-		return
+		return challenge
 	}
 	hostName := identifier.Value
 	protocol := "https"
@@ -58,7 +58,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 	if err != nil {
 		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
 		challenge.Status = core.StatusInvalid
-		return
+		return challenge
 	}
 
 	httpRequest.Host = hostName
@@ -83,12 +83,11 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		if err != nil {
 			va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
 			challenge.Status = core.StatusInvalid
-			return
+			return challenge
 		}
 
 		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
 			challenge.Status = core.StatusValid
-			return
 		} else {
 			va.log.Notice(fmt.Sprintf("Incorrect token validating SimpleHTTPS for %s %s", hostName, url))
 			challenge.Status = core.StatusInvalid
@@ -100,16 +99,17 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %d", hostName, url, httpResponse.StatusCode))
 		challenge.Status = core.StatusInvalid
 	}
-	return
+
+	return challenge
 }
 
-func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (challenge core.Challenge) {
+func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge) {
+	challenge := input
+
 	if identifier.Type != "dns" {
 		challenge.Status = core.StatusInvalid
-		return
+		return challenge
 	}
-
-	challenge = input
 
 	const DVSNI_SUFFIX = ".acme.invalid"
 	nonceName := challenge.Nonce + DVSNI_SUFFIX
@@ -117,12 +117,12 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	R, err := core.B64dec(challenge.R)
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		return
+		return challenge
 	}
 	S, err := core.B64dec(challenge.S)
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		return
+		return challenge
 	}
 	RS := append(R, S...)
 
@@ -144,7 +144,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		return
+		return challenge
 	}
 	defer conn.Close()
 
@@ -152,17 +152,17 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		challenge.Status = core.StatusInvalid
-		return
+		return challenge
 	}
 	for _, name := range certs[0].DNSNames {
 		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
 			challenge.Status = core.StatusValid
-			return
+			return challenge
 		}
 	}
 
 	challenge.Status = core.StatusInvalid
-	return
+	return challenge
 }
 
 // Overall validation process

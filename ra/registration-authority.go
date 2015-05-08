@@ -105,13 +105,15 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, jwk jose.JsonWebKey) (cert core.Certificate, err error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, jwk jose.JsonWebKey) (core.Certificate, error) {
+	emptyCert := core.Certificate{}
+	var err error
 	// Verify the CSR
 	// TODO: Verify that other aspects of the CSR are appropriate
 	csr := req.CSR
 	if err = core.VerifyCSR(csr); err != nil {
 		err = core.UnauthorizedError("Invalid signature on CSR")
-		return
+		return emptyCert, err
 	}
 
 	// Gather authorized domains from the referenced authorizations
@@ -142,17 +144,22 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	for _, name := range names {
 		if !authorizedDomains[name] {
 			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
-			return
+			return emptyCert, err
 		}
 	}
 
 	// Create the certificate
+	var cert core.Certificate
 	ra.log.Audit(fmt.Sprintf("Issuing certificate for %s", names))
 	if cert, err = ra.CA.IssueCertificate(*csr); err != nil {
-		return
+		return emptyCert, err
 	}
 	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))
-	return
+	if err != nil {
+		return emptyCert, err
+	}
+
+	return cert, nil
 }
 
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
