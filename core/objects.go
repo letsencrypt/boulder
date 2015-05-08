@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"github.com/letsencrypt/boulder/jose"
 	"time"
-	"strings"
 )
 
 type IdentifierType string
@@ -173,9 +172,10 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 
+		// If the client has marked the challenge as completed, there should be a
+		// non-empty path provided. Otherwise there should be no default path.
 		if completed {
-			// see if ch.Path starts with /.well-known/acme-challenge/
-			if ch.Path == "" || !strings.HasPrefix(ch.Path, "/.well-known/acme-challenge/") {
+			if ch.Path == "" {
 				return false
 			}
 		} else {

@@ -37,11 +37,13 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 
 	if len(challenge.Path) == 0 {
 		challenge.Status = core.StatusInvalid
+		va.log.Debug("No path provided for SimpleHTTPS challenge.")
 		return challenge
 	}
 
 	if identifier.Type != core.IdentifierDNS {
 		challenge.Status = core.StatusInvalid
+		va.log.Debug("Identifier type for SimpleHTTPS was not DNS")
 		return challenge
 	}
 	hostName := identifier.Value
@@ -107,6 +109,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	challenge := input
 
 	if identifier.Type != "dns" {
+		va.log.Debug("Identifier type for DVSNI was not DNS")
 		challenge.Status = core.StatusInvalid
 		return challenge
 	}
@@ -116,11 +119,13 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	R, err := core.B64dec(challenge.R)
 	if err != nil {
+		va.log.Debug("Failed to decode R value from DVSNI challenge")
 		challenge.Status = core.StatusInvalid
 		return challenge
 	}
 	S, err := core.B64dec(challenge.S)
 	if err != nil {
+		va.log.Debug("Failed to decode S value from DVSNI challenge")
 		challenge.Status = core.StatusInvalid
 		return challenge
 	}
@@ -143,6 +148,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	})
 
 	if err != nil {
+		va.log.Debug("Failed to connect to host for DVSNI challenge")
 		challenge.Status = core.StatusInvalid
 		return challenge
 	}
@@ -151,6 +157,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
+		va.log.Debug("No certs presented for DVSNI challenge")
 		challenge.Status = core.StatusInvalid
 		return challenge
 	}
@@ -161,6 +168,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		}
 	}
 
+	va.log.Debug("Correct zName not found for DVSNI challenge")
 	challenge.Status = core.StatusInvalid
 	return challenge
 }
@@ -172,6 +180,7 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
 	// XXX: Remove the "break" lines to process all supported validations
 	for i, challenge := range authz.Challenges {
 		if !challenge.IsSane(true) {
+			va.log.Debug(fmt.Sprintf("Challenge not considered sane: %v", challenge))
 			challenge.Status = core.StatusInvalid
 			continue
 		}
