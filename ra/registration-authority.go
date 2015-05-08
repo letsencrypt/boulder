@@ -83,6 +83,11 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		// Ignoring these errors because we construct the URLs to be correct
 		challengeURI, _ := url.Parse(ra.AuthzBase + authID + "?challenge=" + strconv.Itoa(i))
 		challenges[i].URI = core.AcmeURL(*challengeURI)
+
+		if !challenges[i].IsSane(false) {
+			err = fmt.Errorf("Challenge didn't pass sanity check: %+v", challenges[i])
+			return
+		}
 	}
 
 	// Create a new authorization object

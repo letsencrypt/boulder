@@ -171,6 +171,11 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
 	// Select the first supported validation method
 	// XXX: Remove the "break" lines to process all supported validations
 	for i, challenge := range authz.Challenges {
+		if !challenge.IsSane(true) {
+			challenge.Status = core.StatusInvalid
+			continue
+		}
+
 		switch challenge.Type {
 		case core.ChallengeTypeSimpleHTTPS:
 			authz.Challenges[i] = va.validateSimpleHTTPS(authz.Identifier, challenge)
