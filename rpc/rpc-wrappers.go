@@ -72,26 +72,26 @@ type certificateRequest struct {
 	Key jose.JsonWebKey
 }
 
-func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.RegistrationAuthority) (rpc *AmqpRPCServer, err error) {
-	rpc = NewAmqpRPCServer(serverQueue, channel)
+func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.RegistrationAuthority) (*AmqpRPCServer, error) {
+	rpc := NewAmqpRPCServer(serverQueue, channel)
 
 	rpc.Handle(MethodNewRegistration, func(req []byte) (response []byte) {
 		var rr registrationRequest
 		err := json.Unmarshal(req, &rr)
 		if err != nil {
-			return
+			return nil
 		}
 
 		reg, err := impl.NewRegistration(rr.Reg, rr.Key)
 		if err != nil {
-			return
+			return nil
 		}
 
 		response, err = json.Marshal(reg)
 		if err != nil {
 			response = []byte{}
 		}
-		return
+		return response
 	})
 
 	rpc.Handle(MethodNewAuthorization, func(req []byte) (response []byte) {
@@ -142,19 +142,19 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 		}
 		err := json.Unmarshal(req, &request)
 		if err != nil {
-			return
+			return nil
 		}
 
 		reg, err := impl.UpdateRegistration(request.Base, request.Update)
 		if err != nil {
-			return
+			return nil
 		}
 
 		response, err = json.Marshal(reg)
 		if err != nil {
 			response = []byte{}
 		}
-		return
+		return response
 	})
 
 	rpc.Handle(MethodUpdateAuthorization, func(req []byte) (response []byte) {
@@ -165,7 +165,7 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 		}
 		err := json.Unmarshal(req, &authz)
 		if err != nil {
-			return
+			return nil
 		}
 
 		newAuthz, err := impl.UpdateAuthorization(authz.Authz, authz.Index, authz.Response)
@@ -416,21 +416,21 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	return
 }
 
-func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.StorageAuthority) (rpc *AmqpRPCServer) {
-	rpc = NewAmqpRPCServer(serverQueue, channel)
+func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.StorageAuthority) (*AmqpRPCServer) {
+	rpc := NewAmqpRPCServer(serverQueue, channel)
 
 	rpc.Handle(MethodGetRegistration, func(req []byte) (response []byte) {
 		reg, err := impl.GetRegistration(string(req))
 		if err != nil {
-			return
+			return nil
 		}
 
 		jsonReg, err := json.Marshal(reg)
 		if err != nil {
-			return
+			return nil
 		}
 		response = jsonReg
-		return
+		return response
 	})
 
 	rpc.Handle(MethodGetAuthorization, func(req []byte) []byte {
@@ -467,7 +467,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		if err == nil {
 			response = []byte(id)
 		}
-		return
+		return response
 	})
 
 	rpc.Handle(MethodUpdatePendingAuthorization, func(req []byte) []byte {
@@ -499,7 +499,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		if err == nil {
 			response = []byte(cert)
 		}
-		return
+		return response
 	})
 
 	rpc.Handle(MethodGetCertificateByShortSerial, func(req []byte) (response []byte) {
@@ -507,10 +507,10 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		if err == nil {
 			response = []byte(cert)
 		}
-		return
+		return response
 	})
 
-	return
+	return rpc
 }
 
 type StorageAuthorityClient struct {

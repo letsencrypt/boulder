@@ -62,13 +62,15 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config Config) (ca *CertificateAuthorityImpl, err error) {
+func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config Config) (*CertificateAuthorityImpl, error) {
+	var ca *CertificateAuthorityImpl
+	var err error
 	logger := blog.GetAuditLogger()
 	logger.Notice("Certificate Authority Starting")
 
 	if config.SerialPrefix == 0 {
 		err = errors.New("Must have non-zero serial prefix for CA.")
-		return
+		return nil, err
 	}
 
 	// Create the remote signer
@@ -180,7 +182,9 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (err error)
 
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
 // enforcing all policies.
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (cert core.Certificate, err error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (core.Certificate, error) {
+	emptyCert := core.Certificate{}
+	var err error
 	// XXX Take in authorizations and verify that union covers CSR?
 	// Pull hostnames from CSR
 	hostNames := csr.DNSNames // DNSNames + CN from CSR
@@ -192,7 +196,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	} else {
 		err = errors.New("Cannot issue a certificate without a hostname.")
 		ca.log.WarningErr(err)
-		return
+		return emptyCert, err
 	}
 
 	if len(hostNames) == 0 {
@@ -203,14 +207,14 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if err = ca.PA.WillingToIssue(identifier); err != nil {
 		err = errors.New("Policy forbids issuing for name " + commonName)
 		ca.log.AuditErr(err)
-		return
+		return emptyCert, err
 	}
 	for _, name := range hostNames {
 		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier); err != nil {
 			err = errors.New("Policy forbids issuing for name " + name)
 			ca.log.AuditErr(err)
-			return
+			return emptyCert, err
 		}
 	}
 
@@ -224,7 +228,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	ca.DB.Begin()
 	serialDec, err := ca.DB.IncrementAndGetSerial()
 	if err != nil {
-		return
+		return emptyCert, err
 	}
 	serialHex := fmt.Sprintf("%02X%014X", ca.Prefix, serialDec)
 
@@ -242,14 +246,14 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	certPEM, err := ca.Signer.Sign(req)
 	if err != nil {
 		ca.DB.Rollback()
-		return
+		return emptyCert, err
 	}
 
 	if len(certPEM) == 0 {
 		err = errors.New("No certificate returned by server")
 		ca.log.WarningErr(err)
 		ca.DB.Rollback()
-		return
+		return emptyCert, err
 	}
 
 	block, _ := pem.Decode(certPEM)
@@ -257,25 +261,25 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		err = errors.New("Invalid certificate value returned")
 		ca.log.WarningErr(err)
 		ca.DB.Rollback()
-		return
+		return emptyCert, err
 	}
 	certDER := block.Bytes
 
-	cert = core.Certificate{
+	cert := core.Certificate{
 		DER:    certDER,
 		Status: core.StatusValid,
 	}
 	if err != nil {
-		return core.Certificate{}, err
+		return emptyCert, err
 	}
 
 	// Store the cert with the certificate authority, if provided
 	_, err = ca.SA.AddCertificate(certDER)
 	if err != nil {
 		ca.DB.Rollback()
-		return
+		return emptyCert, err
 	}
 
 	ca.DB.Commit()
-	return
+	return cert, nil
 }
