@@ -7,7 +7,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
@@ -90,15 +89,8 @@ func main() {
 		wfe.SA = sa
 		wfe.Stats = stats
 
-		if c.CA.IssuerCert == "" {
-			fmt.Fprintf(os.Stderr, "Issuer certificate was not provided in config.\n")
-			os.Exit(1)
-		}
-		certPem, err := ioutil.ReadFile(c.CA.IssuerCert)
-		if err != nil {
-			cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.CA.IssuerCert))
-		}
-		wfe.IssuerCert = string(certPem)
+		wfe.IssuerCert, err = cmd.LoadCert(c.CA.IssuerCert)
+		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.CA.IssuerCert))
 
 		ra.CA = ca
 		ra.SA = sa

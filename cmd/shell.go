@@ -23,6 +23,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -194,4 +195,17 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 
 		time.Sleep(time.Second)
 	}
+}
+
+func LoadCert(path string) (cert string, err error) {
+	if path == "" {
+		err = errors.New("Issuer certificate was not provided in config.")
+		return
+	}
+	pemBytes, err := ioutil.ReadFile(path)
+	if err != nil {
+		return
+	}
+	cert = string(pemBytes)
+	return
 }
