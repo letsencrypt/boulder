@@ -554,7 +554,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 }
 
 func (wfe *WebFrontEndImpl) Terms(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "You agree to do the right thing yo")
+	fmt.Fprintf(w, "You agree to do the right thing")
 }
 
 func (wfe *WebFrontEndImpl) Issuer(w http.ResponseWriter, r *http.Request) {
