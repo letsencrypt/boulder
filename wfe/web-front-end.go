@@ -44,6 +44,10 @@ type WebFrontEndImpl struct {
 	CertBase     string
 	CertPath     string
 	TermsPath    string
+	IssuerPath   string
+
+	// Issuer certificate (pem) for /acme/issuer-cert
+	IssuerCert   string
 }
 
 func NewWebFrontEndImpl() WebFrontEndImpl {
@@ -58,6 +62,7 @@ func NewWebFrontEndImpl() WebFrontEndImpl {
 		NewCertPath:  "/acme/new-cert",
 		CertPath:     "/acme/cert/",
 		TermsPath:    "/terms",
+		IssuerPath:   "/acme/issuer-cert",
 	}
 }
 
@@ -77,6 +82,7 @@ func (wfe *WebFrontEndImpl) HandlePaths() {
 	http.HandleFunc(wfe.AuthzPath, wfe.Authorization)
 	http.HandleFunc(wfe.CertPath, wfe.Certificate)
 	http.HandleFunc(wfe.TermsPath, wfe.Terms)
+	http.HandleFunc(wfe.IssuerPath, wfe.Issuer)
 }
 
 // Method implementations
@@ -312,6 +318,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// TODO The spec says a client should send an Accept: application/pkix-cert
 	// header; either explicitly insist or tolerate
 	response.Header().Add("Location", certURL)
+	response.Header().Add("Link", link(wfe.IssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
@@ -532,6 +539,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		// TODO: Content negotiation
 		// TODO: Link header
 		response.Header().Set("Content-Type", "application/pkix-cert")
+		response.Header().Add("Link", link(wfe.IssuerPath, "up"))
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(cert); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -546,5 +554,9 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 }
 
 func (wfe *WebFrontEndImpl) Terms(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "You agree to do the right thing")
+	fmt.Fprintf(w, "You agree to do the right thing yo")
+}
+
+func (wfe *WebFrontEndImpl) Issuer(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, wfe.IssuerCert)
 }

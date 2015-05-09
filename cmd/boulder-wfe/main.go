@@ -7,7 +7,9 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
@@ -80,6 +82,16 @@ func main() {
 		wfe.RA = &rac
 		wfe.SA = &sac
 		wfe.Stats = stats
+
+		if c.CA.IssuerCert == "" {
+			fmt.Fprintf(os.Stderr, "Issuer certificate was not provided in config.\n")
+			os.Exit(1)
+		}
+		certPem, err := ioutil.ReadFile(c.CA.IssuerCert)
+		if err != nil {
+			cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.CA.IssuerCert))
+		}
+		wfe.IssuerCert = string(certPem)
 
 		go cmd.ProfileCmd("WFE", stats)
 
