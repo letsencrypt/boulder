@@ -7,8 +7,10 @@ package core
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rsa"
 	"fmt"
+	"reflect"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -17,22 +19,40 @@ import (
 // strength and algorithm checking.
 func GoodKey(key crypto.PublicKey) bool {
 	log := blog.GetAuditLogger()
-	rsaKey, ok := key.(rsa.PublicKey)
-	if !ok {
-		log.Debug("Non-RSA keys not yet supported.")
-		return false
+	switch t := key.(type) {
+		case rsa.PublicKey:
+			return GoodKeyRSA(t)
+		case *rsa.PublicKey:
+			return GoodKeyRSA(*t)
+		case ecdsa.PublicKey:
+			return GoodKeyECDSA(t)
+		case *ecdsa.PublicKey:
+			return GoodKeyECDSA(*t)
+		default:
+			log.Debug(fmt.Sprintf("Unknown key type %s", reflect.TypeOf(key)))
+			return false
 	}
+}
+
+func GoodKeyECDSA(key ecdsa.PublicKey) bool {
+	log := blog.GetAuditLogger()
+	log.Debug(fmt.Sprintf("ECDSA keys not yet supported."))
+	return false
+}
+
+func GoodKeyRSA(key rsa.PublicKey) bool {
+	log := blog.GetAuditLogger()
 	// Baseline Requirements Appendix A
 	// Modulus must be >= 2048 bits
-	modulus := rsaKey.N
+	modulus := key.N
 	if modulus.BitLen() < 2048 {
 		log.Debug(fmt.Sprintf("Key too small: %d", modulus.BitLen()))
 		return false
 	}
 	// The CA SHALL confirm that the value of the public exponent
 	// is an odd number equal to 3 or more
-	if rsaKey.E % 2 == 0 {
-		log.Debug(fmt.Sprintf("Key exponent is an even number: %d", rsaKey.E))
+	if key.E % 2 == 0 {
+		log.Debug(fmt.Sprintf("Key exponent is an even number: %d", key.E))
 		return false
 	}
 	// Additionally, the public exponent SHOULD be in the range between
@@ -40,8 +60,8 @@ func GoodKey(key crypto.PublicKey) bool {
 	// NOTE: rsa.PublicKey cannot represent an exponent part greater than
 	// 2^256 - 1, because it stores E as an integer. So we don't check the upper
 	// bound.
-	if rsaKey.E < ((1 << 6) + 1)  {
-		log.Debug(fmt.Sprintf("Key exponent is too small: %d", rsaKey.E))
+	if key.E < ((1 << 6) + 1)  {
+		log.Debug(fmt.Sprintf("Key exponent is too small: %d", key.E))
 		return false
 	}
 	// TODO: The modulus SHOULD also have the following
