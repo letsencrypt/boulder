@@ -47,9 +47,15 @@ func lastPathSegment(url core.AcmeURL) string {
 }
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key jose.JsonWebKey) (reg core.Registration, err error) {
+	// TODO: We should be able to just pass in a JsonWebKey. Blocked on migration
+	// to go-jose.
+	if !core.GoodKey(key.Rsa) {
+		return core.Registration{}, fmt.Errorf("Invalid public key.")
+	}
+
 	regID, err := ra.SA.NewRegistration()
 	if err != nil {
-		return
+		return core.Registration{}, err
 	}
 
 	reg = core.Registration{
@@ -61,7 +67,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key
 
 	// Store the authorization object, then return it
 	err = ra.SA.UpdateRegistration(reg)
-	return
+	return reg, err
 }
 
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, key jose.JsonWebKey) (authz core.Authorization, err error) {

@@ -182,9 +182,16 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (err error)
 
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
 // enforcing all policies.
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (cert core.Certificate, err error) {
 	emptyCert := core.Certificate{}
-	var err error
+	key, ok := csr.PublicKey.(crypto.PublicKey)
+	if !ok {
+		return emptyCert, fmt.Errorf("Invalid public key in CSR.")
+	}
+	if !core.GoodKey(key) {
+		return emptyCert, fmt.Errorf("Invalid public key in CSR.")
+	}
+
 	// XXX Take in authorizations and verify that union covers CSR?
 	// Pull hostnames from CSR
 	hostNames := csr.DNSNames // DNSNames + CN from CSR
@@ -194,7 +201,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	} else if len(hostNames) > 0 {
 		commonName = hostNames[0]
 	} else {
-		err = errors.New("Cannot issue a certificate without a hostname.")
+		err = fmt.Errorf("Cannot issue a certificate without a hostname.")
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
@@ -205,14 +212,14 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
 	if err = ca.PA.WillingToIssue(identifier); err != nil {
-		err = errors.New("Policy forbids issuing for name " + commonName)
+		err = fmt.Errorf("Policy forbids issuing for name %s", commonName)
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
 	for _, name := range hostNames {
 		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier); err != nil {
-			err = errors.New("Policy forbids issuing for name " + name)
+			err = fmt.Errorf("Policy forbids issuing for name %s", name)
 			ca.log.AuditErr(err)
 			return emptyCert, err
 		}
@@ -265,7 +272,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 	certDER := block.Bytes
 
-	cert := core.Certificate{
+	cert = core.Certificate{
 		DER:    certDER,
 		Status: core.StatusValid,
 	}
@@ -281,5 +288,5 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	ca.DB.Commit()
-	return cert, nil
+	return cert, err
 }

@@ -63,12 +63,20 @@ func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
 var (
 	// These values we simulate from the client
 	AccountKeyJSON = []byte(`{
-     "kty": "EC",
-     "crv": "P-521",
-     "x": "AHKZLLOsCOzz5cY97ewNUajB957y-C-U88c3v13nmGZx6sYl_oJXu9A5RkTKqjqvjyekWF-7ytDyRXYgCF5cj0Kt",
-     "y": "AdymlHvOiLxXkEhayXQnNCvDX4h9htZaCJN34kfmC6pV5OhQHiraVySsUdaQkAgDPrwQrJmbnX9cwlGfP-HqHZR1"
-   }`)
+		"e": "AQAB",
+		"kty": "RSA",
+		"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
+		}`)
+
 	AccountKey = jose.JsonWebKey{}
+
+	ShortKeyJSON = []byte(`{
+		"e": "AQAB",
+		"kty": "RSA",
+		"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_"
+		}`)
+
+	ShortKey = jose.JsonWebKey{}
 
 	AuthzRequest = core.Authorization{
 		Identifier: core.AcmeIdentifier{
@@ -94,6 +102,9 @@ var (
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
 	err := json.Unmarshal(AccountKeyJSON, &AccountKey)
+	test.AssertNotError(t, err, "Failed to unmarshall JWK")
+
+	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
 	test.AssertNotError(t, err, "Failed to unmarshall JWK")
 
 	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
@@ -129,6 +140,60 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	test.Assert(t, a1.Status == a2.Status, "ret != DB: Status")
 	test.Assert(t, a1.Key.Equals(a2.Key), "ret != DB: Key")
 	// Not testing: Contact, Challenges
+}
+
+func TestNewRegistration(t *testing.T) {
+	_, _, sa, ra := initAuthorities(t)
+	mailto, _ := url.Parse("mailto:foo@bar.com")
+	input := core.Registration{
+		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
+	}
+
+	result, err := ra.NewRegistration(input, AccountKey)
+	test.AssertNotError(t, err, "Could not create new registration")
+
+	test.Assert(t, result.Key.Equals(AccountKey), "Key didn't match")
+	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
+	test.Assert(t, mailto.String() == result.Contact[0].String(),
+		"Contact didn't match")
+	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
+	test.Assert(t, result.RecoveryToken != "", "Recovery token not filled")
+
+	reg, err := sa.GetRegistration(result.ID)
+	test.AssertNotError(t, err, "Failed to retrieve registration")
+	test.Assert(t, reg.Key.Equals(AccountKey), "Retrieved registration differed.")
+}
+
+func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
+	_, _, _, ra := initAuthorities(t)
+	mailto, _ := url.Parse("mailto:foo@bar.com")
+	input := core.Registration{
+		ID: "hi",
+		Key: ShortKey,
+		RecoveryToken: "RecoverMe",
+		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
+		Agreement: "I agreed",
+	}
+
+	result, err := ra.NewRegistration(input, AccountKey)
+	test.AssertNotError(t, err, "Could not create new registration")
+
+	test.Assert(t, result.ID != "hi", "ID shouldn't be overwritten")
+	test.Assert(t, !result.Key.Equals(ShortKey), "Key shouldn't be overwritten")
+	// TODO: Enable this test case once we validate terms agreement.
+	// test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be overwritten with invalid URL")
+	test.Assert(t, result.RecoveryToken != "RecoverMe", "Recovery token shouldn't be overwritten")
+}
+
+func TestNewRegistrationBadKey(t *testing.T) {
+	_, _, _, ra := initAuthorities(t)
+	mailto, _ := url.Parse("mailto:foo@bar.com")
+	input := core.Registration{
+		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
+	}
+
+	_, err := ra.NewRegistration(input, ShortKey)
+	test.AssertError(t, err, "Should have rejected authorization with short key")
 }
 
 func TestNewAuthorization(t *testing.T) {

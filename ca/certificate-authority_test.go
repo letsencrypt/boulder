@@ -427,6 +427,14 @@ func TestIssueCertificate(t *testing.T) {
 		test.Assert(t, certStatus.Status == core.OCSPStatusGood, "Certificate status was not good")
 		test.Assert(t, certStatus.SubscriberApproved == false, "Subscriber shouldn't have approved cert yet.")
 	}
+}
+
+
+func TestRejectNoName(t *testing.T) {
+	cadb, storageAuthority, caConfig := setup(t)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
+	test.AssertNotError(t, err, "Failed to create CA")
+	ca.SA = storageAuthority
 
 	// Test that the CA rejects CSRs with no names
 	csrDER, _ := hex.DecodeString(NO_NAME_CSR_HEX)
@@ -434,5 +442,21 @@ func TestIssueCertificate(t *testing.T) {
 	_, err = ca.IssueCertificate(*csr)
 	if err == nil {
 		t.Errorf("CA improperly agreed to create a certificate with no name")
+	}
+}
+
+func TestShortKey(t *testing.T) {
+	cadb, storageAuthority, caConfig := setup(t)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
+	ca.SA = storageAuthority
+
+	csrDER, err := ioutil.ReadFile("shortkey-csr.der")
+	if err != nil {
+		t.Errorf("Failed to read shortkey-csr.der")
+	}
+	csr, _ := x509.ParseCertificateRequest(csrDER)
+	_, err = ca.IssueCertificate(*csr)
+	if err == nil {
+		t.Errorf("CA improperly created a certificate with short key.")
 	}
 }
