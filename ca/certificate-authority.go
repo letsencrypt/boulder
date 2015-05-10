@@ -152,6 +152,17 @@ func loadIssuerKey(filename string) (issuerKey crypto.Signer, err error) {
 	return
 }
 
+func dupeNames(names []string) bool {
+	nameMap := make(map[string], len(names))
+	for _, name := range names {
+		nameMap[name] = 1
+	}
+	if len(names) != len(nameMap) {
+		return true
+	}
+	return false
+}
+
 func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (err error) {
 	certDER, err := ca.SA.GetCertificate(serial)
 	if err != nil {
@@ -195,6 +206,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		commonName = hostNames[0]
 	} else {
 		err = errors.New("Cannot issue a certificate without a hostname.")
+		ca.log.WarningErr(err)
+		return emptyCert, err
+	}
+
+	if dupeNames(hostNames) {
+		err = errors.New("Cannot issue a certificate with duplicate DNS names.")
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
