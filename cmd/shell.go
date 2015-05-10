@@ -23,6 +23,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -197,7 +198,7 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 	}
 }
 
-func LoadCert(path string) (cert string, err error) {
+func LoadCert(path string) (cert []byte, err error) {
 	if path == "" {
 		err = errors.New("Issuer certificate was not provided in config.")
 		return
@@ -206,6 +207,13 @@ func LoadCert(path string) (cert string, err error) {
 	if err != nil {
 		return
 	}
-	cert = string(pemBytes)
+
+	block, _ := pem.Decode(pemBytes)
+	if block == nil || block.Type != "CERTIFICATE" {
+		err = errors.New("Invalid certificate value returned")
+		return
+	}
+
+	cert = block.Bytes
 	return
 }

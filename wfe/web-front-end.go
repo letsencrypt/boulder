@@ -46,8 +46,8 @@ type WebFrontEndImpl struct {
 	TermsPath    string
 	IssuerPath   string
 
-	// Issuer certificate (pem) for /acme/issuer-cert
-	IssuerCert   string
+	// Issuer certificate (DER) for /acme/issuer-cert
+	IssuerCert   []byte
 }
 
 func NewWebFrontEndImpl() WebFrontEndImpl {
@@ -558,5 +558,10 @@ func (wfe *WebFrontEndImpl) Terms(w http.ResponseWriter, r *http.Request) {
 }
 
 func (wfe *WebFrontEndImpl) Issuer(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, wfe.IssuerCert)
+	w.Header().Add("Location", wfe.IssuerPath)
+	w.Header().Set("Content-Type", "application/pkix-cert")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(wfe.IssuerCert); err != nil {
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	}
 }
