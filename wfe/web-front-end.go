@@ -537,7 +537,6 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		}
 
 		// TODO: Content negotiation
-		// TODO: Link header
 		response.Header().Set("Content-Type", "application/pkix-cert")
 		response.Header().Add("Link", link(wfe.IssuerPath, "up"))
 		response.WriteHeader(http.StatusOK)
