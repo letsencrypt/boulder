@@ -153,7 +153,7 @@ func loadIssuerKey(filename string) (issuerKey crypto.Signer, err error) {
 }
 
 func dupeNames(names []string) bool {
-	nameMap := make(map[string], len(names))
+	nameMap := make(map[string]int, len(names))
 	for _, name := range names {
 		nameMap[name] = 1
 	}
