@@ -68,8 +68,8 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 	logger := blog.GetAuditLogger()
 	logger.Notice("Certificate Authority Starting")
 
-	if config.SerialPrefix == 0 || config.SerialPrefix >= 256 {
-		err = errors.New("Must have non-zero serial prefix less than 256 for CA.")
+	if config.SerialPrefix <= 0 || config.SerialPrefix >= 256 {
+		err = errors.New("Must have a positive non-zero serial prefix less than 256 for CA.")
 		return nil, err
 	}
 
