@@ -41,10 +41,13 @@ const (
 	MethodOnValidationUpdate         = "OnValidationUpdate"         // RA
 	MethodUpdateValidations          = "UpdateValidations"          // VA
 	MethodIssueCertificate           = "IssueCertificate"           // CA
+	MethodRevokeCertificateCA        = "RevokeCertificateCA"        // CA
 	MethodGetRegistration            = "GetRegistration"            // SA
 	MethodGetAuthorization           = "GetAuthorization"           // SA
 	MethodGetCertificate             = "GetCertificate"             // SA
 	MethodGetCertificateByShortSerial = "GetCertificateByShortSerial" // SA
+	MethodGetCertificateStatus       = "GetCertificateStatus"       // SA
+	MethodMarkCertificateRevoked     = "MarkCertificateRevoked"     // SA
 	MethodNewPendingAuthorization    = "NewPendingAuthorization"    // SA
 	MethodUpdatePendingAuthorization = "UpdatePendingAuthorization" // SA
 	MethodFinalizeAuthorization      = "FinalizeAuthorization"      // SA
@@ -388,6 +391,11 @@ func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, im
 		return serialized
 	})
 
+  rpc.Handle(MethodRevokeCertificateCA, func(req []byte) []byte {
+    _ = impl.RevokeCertificate(string(req)) // XXX
+    return nil
+  })
+
 	return
 }
 
@@ -414,6 +422,11 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 
 	err = json.Unmarshal(jsonResponse, &cert)
 	return
+}
+
+func (cac CertificateAuthorityClient) RevokeCertificate(serial string) (err error) {
+  _, err = cac.rpc.DispatchSync(MethodRevokeCertificateCA, []byte(serial))
+  return
 }
 
 func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.StorageAuthority) (*AmqpRPCServer) {
@@ -510,6 +523,36 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		return response
 	})
 
+	rpc.Handle(MethodGetCertificateStatus, func(req []byte) (response []byte) {
+		status, err := impl.GetCertificateStatus(string(req))
+		if err != nil {
+			return nil
+		}
+
+		jsonStatus, err := json.Marshal(status)
+		if err != nil {
+			return nil
+		}
+		return jsonStatus
+	})
+
+	rpc.Handle(MethodMarkCertificateRevoked, func(req []byte) (response []byte) {
+		var revokeReq struct {
+			Serial				string
+			OcspResponse	[]byte
+			ReasonCode		int
+		}
+
+		err := json.Unmarshal(req, revokeReq)
+		if err != nil {
+			return nil
+		}
+
+		// Error explicitly ignored since response is nil anyway
+		_ = impl.MarkCertificateRevoked(revokeReq.Serial, revokeReq.OcspResponse, revokeReq.ReasonCode)
+		return nil
+	})
+
 	return rpc
 }
 
@@ -549,6 +592,41 @@ func (cac StorageAuthorityClient) GetAuthorization(id string) (authz core.Author
 
 func (cac StorageAuthorityClient) GetCertificate(id string) (cert []byte, err error) {
 	cert, err = cac.rpc.DispatchSync(MethodGetCertificate, []byte(id))
+	return
+}
+
+func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert []byte, err error) {
+	cert, err = cac.rpc.DispatchSync(MethodGetCertificateByShortSerial, []byte(id))
+	return
+}
+
+func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.CertificateStatus, err error) {
+	jsonStatus, err := cac.rpc.DispatchSync(MethodGetCertificateStatus, []byte(id))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonStatus, &status)
+	return
+}
+
+func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
+	var revokeReq struct {
+		Serial   			string
+		OcspResponse	[]byte
+		ReasonCode    int
+	}
+
+	revokeReq.Serial = serial
+	revokeReq.OcspResponse = ocspResponse
+	revokeReq.ReasonCode = reasonCode
+
+	data, err := json.Marshal(revokeReq)
+	if err != nil {
+		return
+	}
+
+	_, err = cac.rpc.DispatchSync(MethodMarkCertificateRevoked, data)
 	return
 }
 
