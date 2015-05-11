@@ -32,26 +32,26 @@ import (
 // so it doesn't need wrappers.
 
 const (
-	MethodNewRegistration            = "NewRegistration"            // RA, SA
-	MethodNewAuthorization           = "NewAuthorization"           // RA
-	MethodNewCertificate             = "NewCertificate"             // RA
-	MethodUpdateRegistration         = "UpdateRegistration"         // RA, SA
-	MethodUpdateAuthorization        = "UpdateAuthorization"        // RA
-	MethodRevokeCertificate          = "RevokeCertificate"          // RA
-	MethodOnValidationUpdate         = "OnValidationUpdate"         // RA
-	MethodUpdateValidations          = "UpdateValidations"          // VA
-	MethodIssueCertificate           = "IssueCertificate"           // CA
-	MethodRevokeCertificateCA        = "RevokeCertificateCA"        // CA
-	MethodGetRegistration            = "GetRegistration"            // SA
-	MethodGetAuthorization           = "GetAuthorization"           // SA
-	MethodGetCertificate             = "GetCertificate"             // SA
+	MethodNewRegistration             = "NewRegistration"             // RA, SA
+	MethodNewAuthorization            = "NewAuthorization"            // RA
+	MethodNewCertificate              = "NewCertificate"              // RA
+	MethodUpdateRegistration          = "UpdateRegistration"          // RA, SA
+	MethodUpdateAuthorization         = "UpdateAuthorization"         // RA
+	MethodRevokeCertificate           = "RevokeCertificate"           // RA
+	MethodOnValidationUpdate          = "OnValidationUpdate"          // RA
+	MethodUpdateValidations           = "UpdateValidations"           // VA
+	MethodIssueCertificate            = "IssueCertificate"            // CA
+	MethodRevokeCertificateCA         = "RevokeCertificateCA"         // CA
+	MethodGetRegistration             = "GetRegistration"             // SA
+	MethodGetAuthorization            = "GetAuthorization"            // SA
+	MethodGetCertificate              = "GetCertificate"              // SA
 	MethodGetCertificateByShortSerial = "GetCertificateByShortSerial" // SA
-	MethodGetCertificateStatus       = "GetCertificateStatus"       // SA
-	MethodMarkCertificateRevoked     = "MarkCertificateRevoked"     // SA
-	MethodNewPendingAuthorization    = "NewPendingAuthorization"    // SA
-	MethodUpdatePendingAuthorization = "UpdatePendingAuthorization" // SA
-	MethodFinalizeAuthorization      = "FinalizeAuthorization"      // SA
-	MethodAddCertificate             = "AddCertificate"             // SA
+	MethodGetCertificateStatus        = "GetCertificateStatus"        // SA
+	MethodMarkCertificateRevoked      = "MarkCertificateRevoked"      // SA
+	MethodNewPendingAuthorization     = "NewPendingAuthorization"     // SA
+	MethodUpdatePendingAuthorization  = "UpdatePendingAuthorization"  // SA
+	MethodFinalizeAuthorization       = "FinalizeAuthorization"       // SA
+	MethodAddCertificate              = "AddCertificate"              // SA
 )
 
 // RegistrationAuthorityClient / Server
@@ -391,10 +391,10 @@ func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, im
 		return serialized
 	})
 
-  rpc.Handle(MethodRevokeCertificateCA, func(req []byte) []byte {
-    _ = impl.RevokeCertificate(string(req)) // XXX
-    return nil
-  })
+	rpc.Handle(MethodRevokeCertificateCA, func(req []byte) []byte {
+		_ = impl.RevokeCertificate(string(req)) // XXX
+		return nil
+	})
 
 	return
 }
@@ -425,11 +425,11 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 }
 
 func (cac CertificateAuthorityClient) RevokeCertificate(serial string) (err error) {
-  _, err = cac.rpc.DispatchSync(MethodRevokeCertificateCA, []byte(serial))
-  return
+	_, err = cac.rpc.DispatchSync(MethodRevokeCertificateCA, []byte(serial))
+	return
 }
 
-func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.StorageAuthority) (*AmqpRPCServer) {
+func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.StorageAuthority) *AmqpRPCServer {
 	rpc := NewAmqpRPCServer(serverQueue, channel)
 
 	rpc.Handle(MethodGetRegistration, func(req []byte) (response []byte) {
@@ -538,9 +538,9 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 
 	rpc.Handle(MethodMarkCertificateRevoked, func(req []byte) (response []byte) {
 		var revokeReq struct {
-			Serial				string
-			OcspResponse	[]byte
-			ReasonCode		int
+			Serial       string
+			OcspResponse []byte
+			ReasonCode   int
 		}
 
 		err := json.Unmarshal(req, revokeReq)
@@ -612,9 +612,9 @@ func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.C
 
 func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
 	var revokeReq struct {
-		Serial   			string
-		OcspResponse	[]byte
-		ReasonCode    int
+		Serial       string
+		OcspResponse []byte
+		ReasonCode   int
 	}
 
 	revokeReq.Serial = serial
