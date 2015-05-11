@@ -152,14 +152,33 @@ func parseIDFromPath(path string) string {
 // Problem objects represent problem documents, which are
 // returned with HTTP error responses
 // https://tools.ietf.org/html/draft-ietf-appsawg-http-problem-00
+type ProblemType string
+
 type problem struct {
-	Type     string `json:"type,omitempty"`
-	Detail   string `json:"detail,omitempty"`
-	Instance string `json:"instance,omitempty"`
+	Type     ProblemType `json:"type,omitempty"`
+	Detail   string      `json:"detail,omitempty"`
 }
+
+const (
+	MalformedProblem      = ProblemType("urn:acme:error:malformed")
+	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
+	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
+)
 
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, message string, code int) {
 	problem := problem{Detail: message}
+	switch code {
+	case http.StatusForbidden:
+		problem.Type = UnauthorizedProblem
+	case http.StatusMethodNotAllowed:
+		fallthrough
+	case http.StatusNotFound:
+		fallthrough
+	case http.StatusBadRequest:
+		problem.Type = MalformedProblem
+	case http.StatusInternalServerError:
+		problem.Type = ServerInternalProblem
+	}
 	problemDoc, err := json.Marshal(problem)
 	if err != nil {
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
