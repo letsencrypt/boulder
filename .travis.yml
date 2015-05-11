@@ -14,4 +14,11 @@ before_install:
   - go get github.com/modocache/gover
 
 script:
+  - go build cmd/activity-monitor/main.go
+  - go build cmd/boulder/main.go
+  - go build cmd/boulder-ca/main.go
+  - go build cmd/boulder-ra/main.go
+  - go build cmd/boulder-sa/main.go
+  - go build cmd/boulder-va/main.go
+  - go build cmd/boulder-wfe/main.go
   - bash test.sh
