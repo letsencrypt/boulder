@@ -160,9 +160,9 @@ type problem struct {
 }
 
 const (
-	MalformedProblem      = ProblemType("malformed")
-	UnauthorizedProblem   = ProblemType("unauthorized")
-	ServerInternalProblem = ProblemType("serverInternal")
+	MalformedProblem      = ProblemType("urn:acme:error:malformed")
+	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
+	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
 )
 
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, message string, code int) {
