@@ -34,7 +34,7 @@ type Config struct {
 	DBDriver     string
 	DBName       string
 	SerialPrefix int
-	// A PEM-encoded copy of the issuer certificate.
+	// Path to a PEM-encoded copy of the issuer certificate.
 	IssuerCert string
 	// This field is only allowed if TestMode is true, indicating that we are
 	// signing with a local key. In production we will use an HSM and this
