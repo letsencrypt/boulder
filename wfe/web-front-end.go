@@ -557,7 +557,6 @@ func (wfe *WebFrontEndImpl) Terms(w http.ResponseWriter, r *http.Request) {
 }
 
 func (wfe *WebFrontEndImpl) Issuer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Location", wfe.IssuerPath)
 	w.Header().Set("Content-Type", "application/pkix-cert")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(wfe.IssuerCert); err != nil {
