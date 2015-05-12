@@ -33,7 +33,6 @@ doTest analysis
 doTest ca
 #doTest cmd
 doTest core
-doTest jose
 doTest log
 doTest policy
 doTest ra

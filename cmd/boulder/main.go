@@ -87,6 +87,7 @@ func main() {
 		// Wire them up
 		wfe.RA = &ra
 		wfe.SA = sa
+		wfe.CA = ca
 		wfe.Stats = stats
 
 		wfe.IssuerCert, err = cmd.LoadCert(c.CA.IssuerCert)

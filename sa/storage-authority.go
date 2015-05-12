@@ -17,7 +17,7 @@ import (
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -57,10 +57,23 @@ type boulderTypeConverter struct{}
 
 func (tc boulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 	switch t := val.(type) {
-	case core.AcmeIdentifier, jose.JsonWebKey, []core.Challenge, []core.AcmeURL, [][]int:
+	case core.AcmeIdentifier, []core.Challenge, []core.AcmeURL, [][]int:
 		jsonBytes, err := json.Marshal(t)
 		if err != nil {
 			return nil, err
+		}
+		return string(jsonBytes), nil
+	case jose.JsonWebKey:
+		// HACK: Some of our storage methods, like NewAuthorization, expect to
+		// write to the DB with the default, empty key, so we treat it specially,
+		// serializing to an empty string. TODO: Modify authorizations to refer
+		// to a registration id, and make sure registration ids are always filled.
+		if t.Key == nil {
+			return "", nil
+		}
+		jsonBytes, err := t.MarshalJSON()
+		if err != nil {
+			return "", err
 		}
 		return string(jsonBytes), nil
 	case core.AcmeStatus:
@@ -74,7 +87,7 @@ func (tc boulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 
 func (tc boulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, bool) {
 	switch target.(type) {
-	case *core.AcmeIdentifier, *jose.JsonWebKey, *[]core.Challenge, *[]core.AcmeURL, *[][]int:
+	case *core.AcmeIdentifier, *[]core.Challenge, *[]core.AcmeURL, *[][]int, core.JsonBuffer:
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
 			if !ok {
@@ -82,6 +95,24 @@ func (tc boulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			}
 			b := []byte(*s)
 			return json.Unmarshal(b, target)
+		}
+		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
+	case *jose.JsonWebKey:
+		binder := func(holder, target interface{}) error {
+			s, ok := holder.(*string)
+			if !ok {
+				return errors.New("FromDb: Unable to convert *string")
+			}
+			b := []byte(*s)
+			k := target.(*jose.JsonWebKey)
+			if *s != "" {
+				return k.UnmarshalJSON(b)
+			} else {
+				// HACK: Sometimes we can have an empty string the in the DB where a
+				// key should be. We should fix that (see HACK above). In the meantime,
+				// return the default JsonWebKey in such situations.
+				return nil
+			}
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.AcmeStatus:
@@ -325,13 +356,12 @@ func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) 
 	}
 
 	var certificate core.Certificate
-	err = ssa.dbMap.SelectOne(&certificate, "SELECT content FROM certificates WHERE serial LIKE :shortSerial",
+	err = ssa.dbMap.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial LIKE :shortSerial",
 		map[string]interface{} {"shortSerial": shortSerial+"%"})
 	if err != nil {
 		return
 	}
-	cert = certificate.Content
-	return
+	return certificate.DER, nil
 }
 
 // GetCertificate takes a serial number and returns the corresponding
@@ -343,13 +373,12 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (cert []byte, err 
 	}
 
 	var certificate core.Certificate
-	err = ssa.dbMap.SelectOne(&certificate, "SELECT content FROM certificates WHERE serial = :serial",
+	err = ssa.dbMap.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial = :serial",
 		map[string]interface{} {"serial": serial})
 	if err != nil {
 		return
 	}
-	cert = certificate.Content
-	return
+	return certificate.DER, nil
 }
 
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
@@ -370,29 +399,27 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 	return
 }
 
-func (ssa *SQLStorageAuthority) NewRegistration() (id string, err error) {
+func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (output core.Registration, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
 	}
 
 	// Check that it doesn't exist already
-	id = core.NewToken()
+	id := core.NewToken()
 	for existingRegistration(tx, id) {
 		id = core.NewToken()
 	}
-
-	reg := &core.Registration{}
 	reg.ID = id
 
-	err = tx.Insert(reg)
+	err = tx.Insert(&reg)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
 	err = tx.Commit()
-	return
+	return reg, err
 }
 
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
@@ -599,7 +626,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	cert := &core.Certificate{
 		Serial: serial,
 		Digest: digest,
-		Content: certDER,
+		DER: certDER,
 		Issued: time.Now(),
 	}
 	certStatus := &core.CertificateStatus{

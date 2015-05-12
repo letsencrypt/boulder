@@ -12,7 +12,7 @@ import (
 
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/test"
 	"io/ioutil"
 	"testing"
@@ -38,29 +38,35 @@ var theKey string = `{
 func TestAddRegistration(t *testing.T) {
 	sa := initSA(t)
 
-	regID, err := sa.NewRegistration()
-	test.AssertNotError(t, err, "Couldn't create new registration")
-	test.Assert(t, regID != "", "ID shouldn't be blank")
-
-	dbReg, err := sa.GetRegistration(regID)
-	test.AssertNotError(t, err, "Couldn't get registration with ID "+regID)
-
-	expectedReg := core.Registration{ID: regID}
-	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
-
 	var jwk jose.JsonWebKey
-	err = json.Unmarshal([]byte(theKey), &jwk)
+	err := json.Unmarshal([]byte(theKey), &jwk)
 	if err != nil {
 		t.Errorf("JSON unmarshal error: %+v", err)
 		return
 	}
 
+	reg, err := sa.NewRegistration(core.Registration{
+		Key: jwk,
+	})
+	test.AssertNotError(t, err, "Couldn't create new registration")
+	test.Assert(t, reg.ID != "", "ID shouldn't be blank")
+
+	dbReg, err := sa.GetRegistration(reg.ID)
+	test.AssertNotError(t, err, "Couldn't get registration with ID "+reg.ID)
+
+	expectedReg := core.Registration{
+		ID: reg.ID,
+		Key: jwk,
+	}
+	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
+	test.AssertEquals(t, core.KeyDigest(dbReg.Key), core.KeyDigest(expectedReg.Key))
+
 	uu, err := url.Parse("test.com")
 	u := core.AcmeURL(*uu)
 
-	newReg := core.Registration{ID: regID, Key: jwk, RecoveryToken: "RBNvo1WzZ4oRRq0W9", Contact: []core.AcmeURL{u}, Agreement: "yes"}
+	newReg := core.Registration{ID: reg.ID, Key: jwk, RecoveryToken: "RBNvo1WzZ4oRRq0W9", Contact: []core.AcmeURL{u}, Agreement: "yes"}
 	err = sa.UpdateRegistration(newReg)
-	test.AssertNotError(t, err, "Couldn't update registration with ID "+regID)
+	test.AssertNotError(t, err, "Couldn't update registration with ID "+reg.ID)
 }
 
 func TestAddAuthorization(t *testing.T) {

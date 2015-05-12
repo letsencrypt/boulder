@@ -19,7 +19,7 @@ import (
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
@@ -63,11 +63,11 @@ func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
 var (
 	// These values we simulate from the client
 	AccountKeyJSON = []byte(`{
-     "kty": "EC",
-     "crv": "P-521",
-     "x": "AHKZLLOsCOzz5cY97ewNUajB957y-C-U88c3v13nmGZx6sYl_oJXu9A5RkTKqjqvjyekWF-7ytDyRXYgCF5cj0Kt",
-     "y": "AdymlHvOiLxXkEhayXQnNCvDX4h9htZaCJN34kfmC6pV5OhQHiraVySsUdaQkAgDPrwQrJmbnX9cwlGfP-HqHZR1"
-   }`)
+		"kty": "EC",
+		"crv": "P-521",
+		"x": "AHKZLLOsCOzz5cY97ewNUajB957y-C-U88c3v13nmGZx6sYl_oJXu9A5RkTKqjqvjyekWF-7ytDyRXYgCF5cj0Kt",
+		"y": "AdymlHvOiLxXkEhayXQnNCvDX4h9htZaCJN34kfmC6pV5OhQHiraVySsUdaQkAgDPrwQrJmbnX9cwlGfP-HqHZR1"
+	}`)
 	AccountKey = jose.JsonWebKey{}
 
 	AuthzRequest = core.Authorization{
@@ -127,7 +127,7 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	test.Assert(t, a1.ID == a2.ID, "ret != DB: ID")
 	test.Assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
 	test.Assert(t, a1.Status == a2.Status, "ret != DB: Status")
-	test.Assert(t, a1.Key.Equals(a2.Key), "ret != DB: Key")
+	test.Assert(t, core.KeyDigest(a1.Key) == core.KeyDigest(a2.Key), "ret != DB: Key")
 	// Not testing: Contact, Challenges
 }
 
@@ -143,7 +143,7 @@ func TestNewAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the returned authz has the right information
-	test.Assert(t, authz.Key.Equals(AccountKey), "Initial authz did not get the right key")
+	test.Assert(t, core.KeyDigest(authz.Key) == core.KeyDigest(AccountKey), "Initial authz did not get the right key")
 	test.Assert(t, authz.Identifier == AuthzRequest.Identifier, "Initial authz had wrong identifier")
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 

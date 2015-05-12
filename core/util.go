@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	blog "github.com/letsencrypt/boulder/log"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"hash"
 	"io"
 	"math/big"
@@ -93,6 +94,19 @@ func Fingerprint256(data []byte) string {
 	d := sha256.New()
 	_, _ = d.Write(data) // Never returns an error
 	return B64enc(d.Sum(nil))
+}
+
+func KeyDigest(key crypto.PublicKey) string {
+	switch t := key.(type) {
+		case *jose.JsonWebKey:
+			return KeyDigest(t.Key)
+		case jose.JsonWebKey:
+			return KeyDigest(t.Key)
+		default:
+			keyDER, _ := x509.MarshalPKIXPublicKey(key)
+			spkiDigest := sha256.Sum256(keyDER)
+			return base64.StdEncoding.EncodeToString(spkiDigest[0:32])
+	}
 }
 
 // URLs that automatically marshal/unmarshal to JSON strings

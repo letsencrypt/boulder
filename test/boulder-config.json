@@ -50,7 +50,7 @@
 
   "sa": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:"
+    "dbName": "boulder.sqlite3"
   },
 
   "mail": {

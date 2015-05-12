@@ -17,52 +17,52 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/jose"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
+	CA    core.CertificateAuthority
 	Stats statsd.Statter
 	log   *blog.AuditLogger
 
 	// URL configuration parameters
-	BaseURL      string
-	NewReg       string
-	NewRegPath   string
-	RegBase      string
-	RegPath      string
-	NewAuthz     string
-	NewAuthzPath string
-	AuthzBase    string
-	AuthzPath    string
-	NewCert      string
-	NewCertPath  string
-	CertBase     string
-	CertPath     string
-	TermsPath    string
-	IssuerPath   string
+	BaseURL        string
+	NewReg         string
+	NewRegPath     string
+	RegBase        string
+	RegPath        string
+	NewAuthz       string
+	NewAuthzPath   string
+	AuthzBase      string
+	AuthzPath      string
+	NewCert        string
+	NewCertPath    string
+	CertBase       string
+	CertPath       string
+	TermsPath      string
+	IssuerPath     string
 
 	// Issuer certificate (DER) for /acme/issuer-cert
-	IssuerCert   []byte
+	IssuerCert []byte
 }
 
 func NewWebFrontEndImpl() WebFrontEndImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 	return WebFrontEndImpl{
-		log:          logger,
-		NewRegPath:   "/acme/new-reg",
-		RegPath:      "/acme/reg/",
-		NewAuthzPath: "/acme/new-authz",
-		AuthzPath:    "/acme/authz/",
-		NewCertPath:  "/acme/new-cert",
-		CertPath:     "/acme/cert/",
-		TermsPath:    "/terms",
-		IssuerPath:   "/acme/issuer-cert",
+		log:            logger,
+		NewRegPath:     "/acme/new-reg",
+		RegPath:        "/acme/reg/",
+		NewAuthzPath:   "/acme/new-authz",
+		AuthzPath:      "/acme/authz/",
+		NewCertPath:    "/acme/new-cert",
+		CertPath:       "/acme/cert/",
+		TermsPath:      "/terms",
+		IssuerPath:     "/acme/issuer-cert",
 	}
 }
 
@@ -110,23 +110,24 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 	response.Header().Set("Content-Type", "text/html")
 }
 
-func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
-	zeroKey := jose.JsonWebKey{}
-
+func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request) ([]byte, *jose.JsonWebKey, error) {
 	// Read body
 	if request.Body == nil {
-		return nil, zeroKey, errors.New("No body on POST")
+		wfe.log.Debug("No body on POST")
+		return nil, nil, errors.New("No body on POST")
 	}
 
 	body, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		return nil, zeroKey, err
+		wfe.log.Debug(fmt.Sprintf("Error reading data from POST: %v", err))
+		return nil, nil, err
 	}
 
 	// Parse as JWS
-	var jws jose.JsonWebSignature
-	if err = json.Unmarshal(body, &jws); err != nil {
-		return nil, zeroKey, err
+	parsedJws, err := jose.ParseSigned(string(body))
+	if err != nil {
+		wfe.log.Debug(fmt.Sprintf("Parse error reading JWS: %v", err))
+		return nil, nil, err
 	}
 
 	// Verify JWS
@@ -135,12 +136,25 @@ func verifyPOST(request *http.Request) ([]byte, jose.JsonWebKey, error) {
 	// RA.  However the WFE is the RA's only view of the outside world
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
-	if err = jws.Verify(); err != nil {
-		return nil, zeroKey, err
+	if len(parsedJws.Signatures) > 1 {
+		wfe.log.Debug(fmt.Sprintf("Too many signatures on POST"))
+		return nil, nil, errors.New("Too many signatures on POST")
+	}
+	if len(parsedJws.Signatures) == 0 {
+		wfe.log.Debug(fmt.Sprintf("POST not signed: %v", parsedJws))
+		return nil, nil, errors.New("POST not signed")
+	}
+	// TODO: Look up key in registrations.
+	key := parsedJws.Signatures[0].Header.JsonWebKey
+	payload, err := parsedJws.Verify(key)
+	if err != nil {
+		wfe.log.Debug(string(body))
+		wfe.log.Debug(fmt.Sprintf("JWS verification error: %v", err))
+		return nil, nil, err
 	}
 
 	// TODO Return JWS body
-	return []byte(jws.Payload), jws.Header.Key, nil
+	return []byte(payload), key, nil
 }
 
 // The ID is always the last slash-separated token in the path
@@ -155,8 +169,8 @@ func parseIDFromPath(path string) string {
 type ProblemType string
 
 type problem struct {
-	Type     ProblemType `json:"type,omitempty"`
-	Detail   string      `json:"detail,omitempty"`
+	Type   ProblemType `json:"type,omitempty"`
+	Detail string      `json:"detail,omitempty"`
 }
 
 const (
@@ -201,20 +215,21 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 
-	body, key, err := verifyPOST(request)
+	body, key, err := wfe.verifyPOST(request)
 	if err != nil {
 		wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 		return
 	}
 
-	var init core.Registration
+	var init, unmarshalled core.Registration
 	err = json.Unmarshal(body, &init)
 	if err != nil {
 		wfe.sendError(response, "Error unmarshaling JSON", http.StatusBadRequest)
 		return
 	}
+	init.MergeUpdate(unmarshalled)
 
-	reg, err := wfe.RA.NewRegistration(init, key)
+	reg, err := wfe.RA.NewRegistration(init, *key)
 	if err != nil {
 		wfe.sendError(response,
 			fmt.Sprintf("Error creating new registration: %+v", err),
@@ -250,7 +265,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		return
 	}
 
-	body, key, err := verifyPOST(request)
+	body, key, err := wfe.verifyPOST(request)
 	if err != nil {
 		wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 		return
@@ -263,7 +278,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	}
 
 	// Create new authz and return
-	authz, err := wfe.RA.NewAuthorization(init, key)
+	authz, err := wfe.RA.NewAuthorization(init, *key)
 	if err != nil {
 		wfe.sendError(response,
 			fmt.Sprintf("Error creating new authz: %+v", err),
@@ -297,7 +312,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 
-	body, key, err := verifyPOST(request)
+	body, key, err := wfe.verifyPOST(request)
 	if err != nil {
 		wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 		return
@@ -319,7 +334,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// authorized for target site, they could cause issuance for that site by
 	// lying to the RA. We should probably pass a copy of the whole rquest to the
 	// RA for secondary validation.
-	cert, err := wfe.RA.NewCertificate(init, key)
+	cert, err := wfe.RA.NewCertificate(init, *key)
 	if err != nil {
 		wfe.sendError(response,
 			fmt.Sprintf("Error creating new cert: %+v", err),
@@ -373,7 +388,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		return
 
 	case "POST":
-		body, key, err := verifyPOST(request)
+		body, key, err := wfe.verifyPOST(request)
 		if err != nil {
 			wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
 			return
@@ -386,7 +401,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		}
 
 		// Check that the signing key is the right key
-		if !key.Equals(authz.Key) {
+		if core.KeyDigest(key) != core.KeyDigest(authz.Key) {
 			wfe.sendError(response, "Signing key does not match key in authorization", http.StatusForbidden)
 			return
 		}
@@ -420,7 +435,8 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 }
 
 func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *http.Request) {
-	// Requests to this handler should have a path that leads to a known authz
+	// Requests to this handler should have a path that leads to a known
+	// registration
 	id := parseIDFromPath(request.URL.Path)
 	reg, err := wfe.SA.GetRegistration(id)
 	if err != nil {
@@ -447,9 +463,15 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		response.Write(jsonReply)
 
 	case "POST":
-		body, key, err := verifyPOST(request)
+		body, key, err := wfe.verifyPOST(request)
 		if err != nil {
 			wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+			return
+		}
+
+		// Check that the signing key is the right key
+		if core.KeyDigest(key) != core.KeyDigest(reg.Key) {
+			wfe.sendError(response, "Signing key does not match key in registration", http.StatusForbidden)
 			return
 		}
 
@@ -460,16 +482,9 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 			return
 		}
 
-		// Check that the signing key is the right key
-		if !key.Equals(reg.Key) {
-			wfe.sendError(response, "Signing key does not match key in registration", http.StatusForbidden)
-			return
-		}
-
 		// Ask the RA to update this authorization
 		updatedReg, err := wfe.RA.UpdateRegistration(reg, update)
 		if err != nil {
-			fmt.Println(err)
 			wfe.sendError(response, "Unable to update registration", http.StatusInternalServerError)
 			return
 		}
@@ -547,10 +562,11 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 			wfe.notFound(response)
 			return
 		}
-		wfe.log.Notice(fmt.Sprintf("Requested certificate ID %s", serial))
+		wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
 
 		cert, err := wfe.SA.GetCertificateByShortSerial(serial)
 		if err != nil {
+			wfe.log.Debug(fmt.Sprintf("Not found cert: %v", err))
 			wfe.notFound(response)
 			return
 		}

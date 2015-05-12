@@ -6,10 +6,12 @@
 package core
 
 import (
+	"strings"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/letsencrypt/boulder/jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"time"
 )
 
@@ -67,7 +69,7 @@ type CertificateRequest struct {
 }
 
 type rawCertificateRequest struct {
-	CSR            jose.JsonBuffer `json:"csr"`            // The encoded CSR
+	CSR            JsonBuffer          `json:"csr"`            // The encoded CSR
 	Authorizations []AcmeURL       `json:"authorizations"` // Authorizations
 }
 
@@ -284,12 +286,40 @@ type Authorization struct {
 	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 }
 
+// Fields of this type get encoded and decoded JOSE-style, in base64url encoding
+// with stripped padding.
+type JsonBuffer []byte;
+
+// Url-safe base64 encode that strips padding
+func base64URLEncode(data []byte) string {
+  var result = base64.URLEncoding.EncodeToString(data)
+  return strings.TrimRight(result, "=")
+}
+
+// Url-safe base64 decoder that adds padding
+func base64URLDecode(data string) ([]byte, error) {
+  var missing = (4 - len(data)%4) % 4
+  data += strings.Repeat("=", missing)
+  return base64.URLEncoding.DecodeString(data)
+}
+
+func (jb JsonBuffer) MarshalJSON() (result []byte, err error) {
+	return json.Marshal(base64URLEncode(jb))
+}
+
+func (jb *JsonBuffer) UnmarshalJSON(data []byte) (err error) {
+	var str string
+	err = json.Unmarshal(data, &str)
+	if err != nil {
+		return err
+	}
+	*jb, err = base64URLDecode(str)
+	return
+}
+
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
-	// The encoded, signed certificate
-	DER jose.JsonBuffer `db:"-"`
-
 	// The parsed version of DER. Useful for extracting things like serial number.
 	ParsedCertificate *x509.Certificate `db:"-"`
 
@@ -300,7 +330,7 @@ type Certificate struct {
 
 	Serial   string `db:"serial"`
 	Digest   string `db:"digest"`
-	Content  []byte `db:"content"`
+	DER      []byte `db:"der"`
 	Issued   time.Time `db:"issued"`
 }
 

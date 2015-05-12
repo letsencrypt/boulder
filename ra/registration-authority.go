@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 )
@@ -47,20 +47,14 @@ func lastPathSegment(url core.AcmeURL) string {
 }
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key jose.JsonWebKey) (reg core.Registration, err error) {
-	regID, err := ra.SA.NewRegistration()
-	if err != nil {
-		return
-	}
-
 	reg = core.Registration{
-		ID:            regID,
 		Key:           key,
 		RecoveryToken: core.NewToken(),
 	}
 	reg.MergeUpdate(init)
 
 	// Store the authorization object, then return it
-	err = ra.SA.UpdateRegistration(reg)
+	reg, err = ra.SA.NewRegistration(reg)
 	return
 }
 
@@ -105,7 +99,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, jwk jose.JsonWebKey) (core.Certificate, error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, requestKey jose.JsonWebKey) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
 	// Verify the CSR
@@ -123,7 +117,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		id := lastPathSegment(url)
 		authz, err := ra.SA.GetAuthorization(id)
 		if err != nil || // Couldn't find authorization
-			!jwk.Equals(authz.Key) || // Not for the right account key
+			core.KeyDigest(authz.Key) != core.KeyDigest(requestKey) ||
 			authz.Status != core.StatusValid || // Not finalized or not successful
 			authz.Expires.Before(now) || // Expired
 			authz.Identifier.Type != core.IdentifierDNS {
