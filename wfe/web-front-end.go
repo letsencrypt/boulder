@@ -145,6 +145,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request) ([]byte, *jose.Jso
 		return nil, nil, errors.New("POST not signed")
 	}
 	// TODO: Look up key in registrations.
+	// https://github.com/letsencrypt/boulder/issues/187
 	key := parsedJws.Signatures[0].Header.JsonWebKey
 	payload, err := parsedJws.Verify(key)
 	if err != nil {
@@ -153,7 +154,6 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request) ([]byte, *jose.Jso
 		return nil, nil, err
 	}
 
-	// TODO Return JWS body
 	return []byte(payload), key, nil
 }
 
@@ -222,7 +222,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	}
 
 	var init, unmarshalled core.Registration
-	err = json.Unmarshal(body, &init)
+	err = json.Unmarshal(body, &unmarshalled)
 	if err != nil {
 		wfe.sendError(response, "Error unmarshaling JSON", http.StatusBadRequest)
 		return
@@ -401,7 +401,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		}
 
 		// Check that the signing key is the right key
-		if core.KeyDigest(key) != core.KeyDigest(authz.Key) {
+		if !core.KeyDigestEquals(key, authz.Key) {
 			wfe.sendError(response, "Signing key does not match key in authorization", http.StatusForbidden)
 			return
 		}
@@ -470,7 +470,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		}
 
 		// Check that the signing key is the right key
-		if core.KeyDigest(key) != core.KeyDigest(reg.Key) {
+		if !core.KeyDigestEquals(key, reg.Key) {
 			wfe.sendError(response, "Signing key does not match key in registration", http.StatusForbidden)
 			return
 		}

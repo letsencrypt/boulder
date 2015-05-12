@@ -96,17 +96,33 @@ func Fingerprint256(data []byte) string {
 	return B64enc(d.Sum(nil))
 }
 
-func KeyDigest(key crypto.PublicKey) string {
+func KeyDigest(key crypto.PublicKey) (string, error) {
 	switch t := key.(type) {
 		case *jose.JsonWebKey:
 			return KeyDigest(t.Key)
 		case jose.JsonWebKey:
 			return KeyDigest(t.Key)
 		default:
-			keyDER, _ := x509.MarshalPKIXPublicKey(key)
+			keyDER, err := x509.MarshalPKIXPublicKey(key)
+			if err != nil {
+				logger := blog.GetAuditLogger()
+				logger.Debug(fmt.Sprintf("Problem marshaling public key: %s", err))
+				return "", err
+			}
 			spkiDigest := sha256.Sum256(keyDER)
-			return base64.StdEncoding.EncodeToString(spkiDigest[0:32])
+			return base64.StdEncoding.EncodeToString(spkiDigest[0:32]), nil
 	}
+}
+
+func KeyDigestEquals(j, k crypto.PublicKey) bool {
+	jDigest, jErr := KeyDigest(j)
+	kDigest, kErr := KeyDigest(k)
+	// Keys that don't have a valid digest (due to marshalling problems)
+	// are never equal. So, e.g. nil keys are not equal.
+	if jErr != nil || kErr != nil {
+		return false
+	}
+	return jDigest == kDigest
 }
 
 // URLs that automatically marshal/unmarshal to JSON strings

@@ -127,7 +127,7 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	test.Assert(t, a1.ID == a2.ID, "ret != DB: ID")
 	test.Assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
 	test.Assert(t, a1.Status == a2.Status, "ret != DB: Status")
-	test.Assert(t, core.KeyDigest(a1.Key) == core.KeyDigest(a2.Key), "ret != DB: Key")
+	test.Assert(t, core.KeyDigestEquals(a1.Key, a2.Key), "ret != DB: Key")
 	// Not testing: Contact, Challenges
 }
 
@@ -143,7 +143,7 @@ func TestNewAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the returned authz has the right information
-	test.Assert(t, core.KeyDigest(authz.Key) == core.KeyDigest(AccountKey), "Initial authz did not get the right key")
+	test.Assert(t, core.KeyDigestEquals(authz.Key, AccountKey), "Initial authz did not get the right key")
 	test.Assert(t, authz.Identifier == AuthzRequest.Identifier, "Initial authz had wrong identifier")
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 

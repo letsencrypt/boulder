@@ -59,7 +59,7 @@ func TestAddRegistration(t *testing.T) {
 		Key: jwk,
 	}
 	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
-	test.AssertEquals(t, core.KeyDigest(dbReg.Key), core.KeyDigest(expectedReg.Key))
+	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
 
 	uu, err := url.Parse("test.com")
 	u := core.AcmeURL(*uu)
