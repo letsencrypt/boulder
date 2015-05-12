@@ -52,6 +52,8 @@ const (
 	MethodUpdatePendingAuthorization  = "UpdatePendingAuthorization"  // SA
 	MethodFinalizeAuthorization       = "FinalizeAuthorization"       // SA
 	MethodAddCertificate              = "AddCertificate"              // SA
+	MethodAddDeniedCSR                = "AddDeniedCSR"                // SA
+	MethodAlreadyDeniedCSR            = "AlreadyDeniedCSR"            // SA
 )
 
 // RegistrationAuthorityClient / Server
@@ -553,6 +555,42 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		return nil
 	})
 
+	rpc.Handle(MethodAddDeniedCSR, func(req []byte) []byte {
+		var csrReq struct {
+			Der []byte
+		}
+
+		err := json.Unmarshal(req, csrReq)
+		if err != nil {
+			return nil
+		}
+
+		err = impl.AddDeniedCSR(csrReq.Der)
+		return nil
+	})
+
+	rpc.Handle(MethodAlreadyDeniedCSR, func(req []byte) []byte {
+		var csrReq struct {
+			Der []byte
+		}
+
+		err := json.Unmarshal(req, csrReq)
+		if err != nil {
+			return nil
+		}
+
+		exists, err := impl.AlreadyDeniedCSR(req)
+		if err != nil {
+			return nil
+		}
+
+		if exists {
+			return []byte{1}
+		} else {
+			return []byte{0}
+		}
+	})
+
 	return rpc
 }
 
@@ -690,5 +728,29 @@ func (cac StorageAuthorityClient) AddCertificate(cert []byte) (id string, err er
 		return
 	}
 	id = string(response)
+	return
+}
+
+func (cac StorageAuthorityClient) AddDeniedCSR(csr []byte) (err error) {
+	response, err := cac.rpc.DispatchSync(MethodAddDeniedCSR, csr)
+	if err != nil || len(response) == 0 {
+		err = errors.New("AddDeniedCSR RPC failed") // XXX
+		return
+	}
+	return
+}
+
+func (cac StorageAuthorityClient) AlreadyDeniedCSR(csr []byte) (exists bool, err error) {
+	response, err := cac.rpc.DispatchSync(MethodAlreadyDeniedCSR, csr)
+	if err != nil || len(response) == 0 {
+		err = errors.New("AddDeniedCSR RPC failed") // XXX
+		return
+	}
+	switch response[0] {
+	case 0:
+		exists = false
+	case 1:
+		exists = true
+	}
 	return
 }

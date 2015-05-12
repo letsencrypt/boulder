@@ -180,14 +180,14 @@ func TestDeniedCSR(t *testing.T) {
 	csr, _ := x509.ParseCertificateRequest(csrBytes)
 
 	sa := initSA(t)
-	exists, err := sa.AlreadyDeniedCSR(csr)
+	exists, err := sa.AlreadyDeniedCSR(csr.Raw)
 	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
 	test.Assert(t, !exists, "Found non-existent CSR")
 
-	err = sa.AddDeniedCSR(csr)
+	err = sa.AddDeniedCSR(csr.Raw)
 	test.AssertNotError(t, err, "Couldn't add the denied CSR to the DB")
 
-	exists, err = sa.AlreadyDeniedCSR(csr)
+	exists, err = sa.AlreadyDeniedCSR(csr.Raw)
 	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
 	test.Assert(t, exists, "Couldn't find denied CSR in DB")
 }

@@ -645,10 +645,8 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	return
 }
 
-func (ssa *SQLStorageAuthority) AddDeniedCSR(csr *x509.CertificateRequest) (err error) {
-	ssa.log.Audit(fmt.Sprintf("Storing denied CSR for names %v", csr.DNSNames))
-
-	deniedCSR := &core.DeniedCsr{Der: csr.Raw}
+func (ssa *SQLStorageAuthority) AddDeniedCSR(csr []byte) (err error) {
+	deniedCSR := &core.DeniedCsr{Der: csr}
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -665,12 +663,12 @@ func (ssa *SQLStorageAuthority) AddDeniedCSR(csr *x509.CertificateRequest) (err 
 	return
 }
 
-func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(csr *x509.CertificateRequest) (already bool, err error) {
+func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(csr []byte) (already bool, err error) {
 	var denied int64
 	err = ssa.dbMap.SelectOne(
 		&denied,
 		"SELECT count(*) FROM deniedCsrs WHERE der = :der",
-		map[string]interface{} {"der": csr.Raw},
+		map[string]interface{} {"der": csr},
 	)
 	if err != nil {
 		return

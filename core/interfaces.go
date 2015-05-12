@@ -93,6 +93,7 @@ type StorageGetter interface {
 	GetCertificate(string) ([]byte, error)
 	GetCertificateByShortSerial(string) ([]byte, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
+	AlreadyDeniedCSR([]byte) (bool, error)
 }
 
 type StorageAdder interface {
@@ -106,8 +107,7 @@ type StorageAdder interface {
 
 	AddCertificate([]byte) (string, error)
 
-	AddDeniedCSR(*x509.CertificateRequest) error
-	AlreadyDeniedCSR(*x509.CertificateRequest) (bool, error)
+	AddDeniedCSR([]byte) error
 }
 
 // StorageAuthority interface represents a simple key/value
