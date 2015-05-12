@@ -147,6 +147,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	ssa.dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
 	ssa.dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
+	ssa.dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID")
 
 	err = ssa.dbMap.CreateTablesIfNotExists()
 	return
@@ -235,6 +236,17 @@ func (ssa *SQLStorageAuthority) DumpTables() error {
 		return err
 	}
 	for _, c := range crls {
+		fmt.Printf("%+v\n", c)
+	}
+
+	fmt.Printf("\n----- deniedCsrs -----\n")
+	var dCsrs []core.DeniedCsr
+	_, err = tx.Select(&dCsrs, "SELECT * FROM deniedCsrs")
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, c := range dCsrs {
 		fmt.Printf("%+v\n", c)
 	}
 
@@ -583,7 +595,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		return
 	}
 
-	tx.Commit()
+	err = tx.Commit()
 	return
 }
 
@@ -632,3 +644,41 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	err = tx.Commit()
 	return
 }
+
+func (ssa *SQLStorageAuthority) AddDeniedCSR(csr *x509.CertificateRequest) (err error) {
+	ssa.log.Audit(fmt.Sprintf("Storing denied CSR for names %v", csr.DNSNames))
+
+	deniedCSR := &core.DeniedCsr{Der: csr.Raw}
+
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return
+	}
+
+	err = tx.Insert(deniedCSR)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	err = tx.Commit()
+	return
+}
+
+func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(csr *x509.CertificateRequest) (already bool, err error) {
+	var denied int64
+	err = ssa.dbMap.SelectOne(
+		&denied,
+		"SELECT count(*) FROM deniedCsrs WHERE der = :der",
+		map[string]interface{} {"der": csr.Raw},
+	)
+	if err != nil {
+		return
+	}
+	if denied > 0 {
+		already = true
+	}
+	
+	return	
+}
+

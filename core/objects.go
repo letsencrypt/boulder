@@ -364,3 +364,9 @@ type Crl struct {
 	// crl: The encoded and signed CRL.
 	Crl       string `db:"crl"`
 }
+
+type DeniedCsr struct {
+	ID int `db:"id"`
+
+	Der []byte `db:"der"`
+}

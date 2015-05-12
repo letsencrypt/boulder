@@ -152,6 +152,9 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	var cert core.Certificate
 	ra.log.Audit(fmt.Sprintf("Issuing certificate for %s", names))
 	if cert, err = ra.CA.IssueCertificate(*csr); err != nil {
+		if saErr := ra.SA.AddDeniedCSR(csr); saErr != nil {
+			return emptyCert, saErr
+		}
 		return emptyCert, err
 	}
 	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))

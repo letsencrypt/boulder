@@ -6,6 +6,10 @@
 package sa
 
 import (
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"net/url"
 	"time"
@@ -164,4 +168,26 @@ func TestGetCertificateByShortSerial(t *testing.T) {
 
 	_, err = sa.GetCertificateByShortSerial("01020304050607080102030405060708")
 	test.AssertError(t, err, "Should've failed on too-long serial")
+}
+
+func TestDeniedCSR(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 512)
+	template := &x509.CertificateRequest{
+		Subject: pkix.Name{Organization: []string{"yurp"}},
+		DNSNames: []string{"badguys.com"},
+	}
+	csrBytes, _ := x509.CreateCertificateRequest(rand.Reader, template, key)
+	csr, _ := x509.ParseCertificateRequest(csrBytes)
+
+	sa := initSA(t)
+	exists, err := sa.AlreadyDeniedCSR(csr)
+	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
+	test.Assert(t, !exists, "Found non-existent CSR")
+
+	err = sa.AddDeniedCSR(csr)
+	test.AssertNotError(t, err, "Couldn't add the denied CSR to the DB")
+
+	exists, err = sa.AlreadyDeniedCSR(csr)
+	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
+	test.Assert(t, exists, "Couldn't find denied CSR in DB")
 }
