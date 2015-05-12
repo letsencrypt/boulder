@@ -68,6 +68,7 @@ func (tc boulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 		// write to the DB with the default, empty key, so we treat it specially,
 		// serializing to an empty string. TODO: Modify authorizations to refer
 		// to a registration id, and make sure registration ids are always filled.
+		// https://github.com/letsencrypt/boulder/issues/181
 		if t.Key == nil {
 			return "", nil
 		}
@@ -111,6 +112,7 @@ func (tc boulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 				// HACK: Sometimes we can have an empty string the in the DB where a
 				// key should be. We should fix that (see HACK above). In the meantime,
 				// return the default JsonWebKey in such situations.
+				// https://github.com/letsencrypt/boulder/issues/181
 				return nil
 			}
 		}
