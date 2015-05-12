@@ -479,7 +479,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		}
 		jsonOutput, err := json.Marshal(output)
 		if err != nil {
-			return
+			return nil
 		}
 		return []byte(jsonOutput)
 	})
