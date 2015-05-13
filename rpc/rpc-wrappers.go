@@ -557,7 +557,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 
 	rpc.Handle(MethodAddDeniedCSR, func(req []byte) []byte {
 		var csrReq struct {
-			Der []byte
+			Names []string
 		}
 
 		err := json.Unmarshal(req, csrReq)
@@ -565,13 +565,13 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 			return nil
 		}
 
-		err = impl.AddDeniedCSR(csrReq.Der)
+		err = impl.AddDeniedCSR(csrReq.Names)
 		return nil
 	})
 
 	rpc.Handle(MethodAlreadyDeniedCSR, func(req []byte) []byte {
 		var csrReq struct {
-			Der []byte
+			Names []string
 		}
 
 		err := json.Unmarshal(req, csrReq)
@@ -579,7 +579,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 			return nil
 		}
 
-		exists, err := impl.AlreadyDeniedCSR(req)
+		exists, err := impl.AlreadyDeniedCSR(csrReq.Names)
 		if err != nil {
 			return nil
 		}
@@ -731,21 +731,38 @@ func (cac StorageAuthorityClient) AddCertificate(cert []byte) (id string, err er
 	return
 }
 
-func (cac StorageAuthorityClient) AddDeniedCSR(csr []byte) (err error) {
-	response, err := cac.rpc.DispatchSync(MethodAddDeniedCSR, csr)
-	if err != nil || len(response) == 0 {
-		err = errors.New("AddDeniedCSR RPC failed") // XXX
+func (cac StorageAuthorityClient) AddDeniedCSR(names []string) (err error) {
+	var sliceReq struct {
+		Names []string
+	}
+	sliceReq.Names = names
+
+	data, err := json.Marshal(sliceReq)
+	if err != nil {
 		return
 	}
+
+	_, err = cac.rpc.DispatchSync(MethodAddDeniedCSR, data)
 	return
 }
 
-func (cac StorageAuthorityClient) AlreadyDeniedCSR(csr []byte) (exists bool, err error) {
-	response, err := cac.rpc.DispatchSync(MethodAlreadyDeniedCSR, csr)
+func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool, err error) {
+	var sliceReq struct {
+		Names []string
+	}
+	sliceReq.Names = names
+
+	data, err := json.Marshal(sliceReq)
+	if err != nil {
+		return
+	}
+
+	response, err := cac.rpc.DispatchSync(MethodAlreadyDeniedCSR, data)
 	if err != nil || len(response) == 0 {
 		err = errors.New("AddDeniedCSR RPC failed") // XXX
 		return
 	}
+
 	switch response[0] {
 	case 0:
 		exists = false

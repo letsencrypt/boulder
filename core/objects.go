@@ -368,5 +368,5 @@ type Crl struct {
 type DeniedCsr struct {
 	ID int `db:"id"`
 
-	Der []byte `db:"der"`
+	Names string `db:"names"`
 }

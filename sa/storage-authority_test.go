@@ -173,21 +173,21 @@ func TestGetCertificateByShortSerial(t *testing.T) {
 func TestDeniedCSR(t *testing.T) {
 	key, _ := rsa.GenerateKey(rand.Reader, 512)
 	template := &x509.CertificateRequest{
-		Subject: pkix.Name{Organization: []string{"yurp"}},
-		DNSNames: []string{"badguys.com"},
+		Subject: pkix.Name{CommonName: "google.com"},
+		DNSNames: []string{"badguys.com", "reallybad.com"},
 	}
 	csrBytes, _ := x509.CreateCertificateRequest(rand.Reader, template, key)
 	csr, _ := x509.ParseCertificateRequest(csrBytes)
 
 	sa := initSA(t)
-	exists, err := sa.AlreadyDeniedCSR(csr.Raw)
+	exists, err := sa.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
 	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
 	test.Assert(t, !exists, "Found non-existent CSR")
 
-	err = sa.AddDeniedCSR(csr.Raw)
+	err = sa.AddDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
 	test.AssertNotError(t, err, "Couldn't add the denied CSR to the DB")
 
-	exists, err = sa.AlreadyDeniedCSR(csr.Raw)
+	exists, err = sa.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
 	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
 	test.Assert(t, exists, "Couldn't find denied CSR in DB")
 }
