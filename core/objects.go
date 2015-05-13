@@ -112,10 +112,9 @@ type Registration struct {
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty" db:"agreement"`
 
-	//
-	Thumbprint        string `db:"thumbprint"`
+	Thumbprint string `json:"thumbprint" db:"thumbprint"`
 
-	LockCol int64
+	LockCol int64 `json:"-"`
 }
 
 func (r *Registration) MergeUpdate(input Registration) {
@@ -333,7 +332,7 @@ type CertificateStatus struct {
 	//   code for 'unspecified').
 	RevokedReason          int `db:"revokedReason"`
 
-	LockCol int64
+	LockCol int64 `json:"-"`
 }
 
 // A large table of OCSP responses. This contains all historical OCSP		
