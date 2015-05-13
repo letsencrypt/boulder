@@ -121,8 +121,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 	if csrPreviousDenied {
-		ra.log.Audit(fmt.Sprintf("CSR for names %v was previously denied", csr.DNSNames))
-		err = core.UnauthorizedError("CSR has already been denied")
+		ra.log.Audit(fmt.Sprintf("CSR for names %v was previously revoked/denied", csr.DNSNames))
+		err = core.UnauthorizedError("CSR has already been revoked/denied")
 		return emptyCert, err
 	}
 
@@ -162,10 +162,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	var cert core.Certificate
 	ra.log.Audit(fmt.Sprintf("Issuing certificate for %s", names))
 	if cert, err = ra.CA.IssueCertificate(*csr); err != nil {
-		ra.log.Audit(fmt.Sprintf("Storing denied CSR for names %v", csr.DNSNames))
-		if saErr := ra.SA.AddDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName)); saErr != nil {
-			return emptyCert, saErr
-		}
 		return emptyCert, err
 	}
 	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))
