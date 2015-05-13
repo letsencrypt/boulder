@@ -112,8 +112,7 @@ type Registration struct {
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty" db:"agreement"`
 
-	//
-	Thumbprint        string `db:"thumbprint"`
+	Thumbprint string `json:"thumbprint" db:"thumbprint"`
 
 	LockCol int64 `json:"-"`
 }

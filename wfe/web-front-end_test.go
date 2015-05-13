@@ -369,6 +369,7 @@ func TestRegistration(t *testing.T) {
 		Body: makeBody(string(requestPayload)),
 	})
 
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"key\":{},\"recoveryToken\":\"\",\"contact\":[\"tel:123456789\"],\"thumbprint\":\"\"}")
 	var reg core.Registration
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
@@ -460,4 +461,10 @@ func TestAuthorization(t *testing.T) {
 		Method: "POST",
 		Body: makeBody(string(requestPayload)),
 	})
+
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"},\"key\":{},\"expires\":\"0001-01-01T00:00:00Z\"}")
+
+	var authz core.Authorization
+	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 }
