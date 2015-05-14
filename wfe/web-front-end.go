@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -248,7 +249,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	}
 
 	regURL := wfe.RegBase + string(reg.ID)
-	reg.ID = ""
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
 		wfe.sendError(response, "Error marshaling authz", http.StatusInternalServerError)
@@ -275,7 +275,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		return
 	}
 
-	body, key, _, err := wfe.verifyPOST(request, true)
+	body, _, currReg, err := wfe.verifyPOST(request, true)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			wfe.sendError(response, "No registration exists matching provided key", http.StatusForbidden)
@@ -293,7 +293,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	}
 
 	// Create new authz and return
-	authz, err := wfe.RA.NewAuthorization(init, *key)
+	authz, err := wfe.RA.NewAuthorization(init, currReg.ID)
 	if err != nil {
 		wfe.sendError(response,
 			fmt.Sprintf("Error creating new authz: %+v", err),
@@ -408,7 +408,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		return
 
 	case "POST":
-		body, key, _, err := wfe.verifyPOST(request, true)
+		body, _, currReg, err := wfe.verifyPOST(request, true)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				wfe.sendError(response, "No registration exists matching provided key", http.StatusForbidden)
@@ -426,7 +426,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		}
 
 		// Check that the signing key is the right key
-		if !core.KeyDigestEquals(key, authz.Key) {
+		if currReg.ID != authz.RegID {
 			wfe.sendError(response, "Signing key does not match key in authorization", http.StatusForbidden)
 			return
 		}
@@ -462,7 +462,12 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *http.Request) {
 	// Requests to this handler should have a path that leads to a known
 	// registration
-	id := parseIDFromPath(request.URL.Path)
+	idStr := parseIDFromPath(request.URL.Path)
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		wfe.sendError(response, "Registration ID must be an integer", http.StatusBadRequest)
+		return
+	}
 	reg, err := wfe.SA.GetRegistration(id)
 	if err != nil {
 		wfe.sendError(response,
@@ -488,7 +493,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		response.Write(jsonReply)
 
 	case "POST":
-		body, _, _, err := wfe.verifyPOST(request, true)
+		body, _, currReg, err := wfe.verifyPOST(request, true)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				wfe.sendError(response, "No registration exists matching provided key", http.StatusForbidden)
@@ -506,7 +511,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		}
 
 		// Ask the RA to update this authorization
-		updatedReg, err := wfe.RA.UpdateRegistration(reg, update)
+		updatedReg, err := wfe.RA.UpdateRegistration(currReg, update)
 		if err != nil {
 			wfe.sendError(response, "Unable to update registration", http.StatusInternalServerError)
 			return

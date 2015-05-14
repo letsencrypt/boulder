@@ -175,7 +175,7 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 }
 
 func (ssa *SQLStorageAuthority) InitTables() (err error) {
-	ssa.dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(false, "ID").SetVersionCol("LockCol")
+	ssa.dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "ID").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
 	ssa.dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
@@ -305,19 +305,19 @@ func existingFinal(tx *gorp.Transaction, id string) (bool) {
 	return count > 0
 }
 
-func existingRegistration(tx *gorp.Transaction, id string) (bool) {
+func existingRegistration(tx *gorp.Transaction, id int) (bool) {
 	var count int64
 	_ = tx.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{} {"id": id})
 	return count > 0
 }
 
-func (ssa *SQLStorageAuthority) GetRegistration(id string) (reg core.Registration, err error) {
+func (ssa *SQLStorageAuthority) GetRegistration(id int) (reg core.Registration, err error) {
 	regObj, err := ssa.dbMap.Get(core.Registration{}, id)
 	if err != nil {
 		return
 	}
 	if regObj == nil {
-		err = fmt.Errorf("No registrations with ID %s", id)
+		err = fmt.Errorf("No registrations with ID %d", id)
 		return
 	}
 	reg = *regObj.(*core.Registration)
@@ -432,11 +432,11 @@ func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (output c
 	}
 
 	// Check that it doesn't exist already
-	id := core.NewToken()
+	/*id := core.NewToken()
 	for existingRegistration(tx, id) {
 		id = core.NewToken()
 	}
-	reg.ID = id
+	reg.ID = id*/
 
 	err = tx.Insert(&reg)
 	if err != nil {
@@ -506,7 +506,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err e
 	}
 
 	if !existingRegistration(tx, reg.ID) {
-		err = errors.New("Requested registration not found " + reg.ID)
+		err = fmt.Errorf("Requested registration not found %v", reg.ID)
 		tx.Rollback()
 		return
 	}

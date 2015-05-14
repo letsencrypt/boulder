@@ -58,7 +58,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, key jose.JsonWebKey) (authz core.Authorization, err error) {
+func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int) (authz core.Authorization, err error) {
 	identifier := request.Identifier
 
 	// Check that the identifier is present and appropriate
@@ -88,7 +88,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	authz = core.Authorization{
 		ID:           authID,
 		Identifier:   identifier,
-		Key:          key,
+		RegID:        regID,
 		Status:       core.StatusPending,
 		Challenges:   challenges,
 		Combinations: combinations,
@@ -120,6 +120,11 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
+	registration, err := ra.SA.GetRegistrationByKey(requestKey)
+	if err != nil {
+		return emptyCert, err
+	}
+
 	// Gather authorized domains from the referenced authorizations
 	authorizedDomains := map[string]bool{}
 	now := time.Now()
@@ -127,7 +132,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		id := lastPathSegment(url)
 		authz, err := ra.SA.GetAuthorization(id)
 		if err != nil || // Couldn't find authorization
-			!core.KeyDigestEquals(authz.Key, requestKey) ||
+			authz.RegID != registration.ID || // Key doesn't match
 			authz.Status != core.StatusValid || // Not finalized or not successful
 			authz.Expires.Before(now) || // Expired
 			authz.Identifier.Type != core.IdentifierDNS {

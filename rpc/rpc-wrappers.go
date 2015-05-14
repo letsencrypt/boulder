@@ -70,7 +70,7 @@ type registrationRequest struct {
 
 type authorizationRequest struct {
 	Authz core.Authorization
-	Key   jose.JsonWebKey
+	RegID int
 }
 
 type certificateRequest struct {
@@ -106,7 +106,7 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 			return nil
 		}
 
-		authz, err := impl.NewAuthorization(ar.Authz, ar.Key)
+		authz, err := impl.NewAuthorization(ar.Authz, ar.RegID)
 		if err != nil {
 			return nil
 		}
@@ -239,8 +239,8 @@ func (rac RegistrationAuthorityClient) NewRegistration(reg core.Registration, ke
 	return
 }
 
-func (rac RegistrationAuthorityClient) NewAuthorization(authz core.Authorization, key jose.JsonWebKey) (newAuthz core.Authorization, err error) {
-	data, err := json.Marshal(authorizationRequest{authz, key})
+func (rac RegistrationAuthorityClient) NewAuthorization(authz core.Authorization, regID int) (newAuthz core.Authorization, err error) {
+	data, err := json.Marshal(authorizationRequest{authz, regID})
 	if err != nil {
 		return
 	}
@@ -436,7 +436,15 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 	rpc := NewAmqpRPCServer(serverQueue, channel)
 
 	rpc.Handle(MethodGetRegistration, func(req []byte) (response []byte) {
-		reg, err := impl.GetRegistration(string(req))
+		var intReq struct {
+			ID int
+		}
+		err := json.Unmarshal(req, &intReq)
+		if err != nil {
+			return nil
+		}
+
+		reg, err := impl.GetRegistration(intReq.ID)
 		if err != nil {
 			return nil
 		}
@@ -635,8 +643,18 @@ func NewStorageAuthorityClient(clientQueue, serverQueue string, channel *amqp.Ch
 	return
 }
 
-func (cac StorageAuthorityClient) GetRegistration(id string) (reg core.Registration, err error) {
-	jsonReg, err := cac.rpc.DispatchSync(MethodGetRegistration, []byte(id))
+func (cac StorageAuthorityClient) GetRegistration(id int) (reg core.Registration, err error) {
+	var intReq struct {
+		ID int
+	}
+	intReq.ID = id
+
+	data, err := json.Marshal(intReq)
+	if err != nil {
+		return
+	}
+
+	jsonReg, err := cac.rpc.DispatchSync(MethodGetRegistration, data)
 	if err != nil {
 		return
 	}

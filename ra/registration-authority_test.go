@@ -127,14 +127,14 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	test.Assert(t, a1.ID == a2.ID, "ret != DB: ID")
 	test.Assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
 	test.Assert(t, a1.Status == a2.Status, "ret != DB: Status")
-	test.Assert(t, core.KeyDigestEquals(a1.Key, a2.Key), "ret != DB: Key")
+	test.Assert(t, a1.RegID == a2.RegID, "ret != DB: Key")
 	// Not testing: Contact, Challenges
 }
 
 func TestNewAuthorization(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
 
-	authz, err := ra.NewAuthorization(AuthzRequest, AccountKey)
+	authz, err := ra.NewAuthorization(AuthzRequest, 1)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Verify that returned authz same as DB
@@ -143,7 +143,7 @@ func TestNewAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the returned authz has the right information
-	test.Assert(t, core.KeyDigestEquals(authz.Key, AccountKey), "Initial authz did not get the right key")
+	test.Assert(t, authz.RegID == 1, "Initial authz did not get the right key")
 	test.Assert(t, authz.Identifier == AuthzRequest.Identifier, "Initial authz had wrong identifier")
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
@@ -216,6 +216,8 @@ func TestOnValidationUpdate(t *testing.T) {
 
 func TestNewCertificate(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
+	sa.NewRegistration(core.Registration{Key: AccountKey})
+	AuthzFinal.RegID = 1
 	AuthzFinal.ID, _ = sa.NewPendingAuthorization()
 	sa.UpdatePendingAuthorization(AuthzFinal)
 	sa.FinalizeAuthorization(AuthzFinal)
@@ -225,6 +227,7 @@ func TestNewCertificate(t *testing.T) {
 	AuthzFinalWWW.Identifier.Value = "www.example.com"
 	AuthzFinalWWW.ID, _ = sa.NewPendingAuthorization()
 	sa.FinalizeAuthorization(AuthzFinalWWW)
+	sa.DumpTables()
 
 	// Construct a cert request referencing the two authorizations
 	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
