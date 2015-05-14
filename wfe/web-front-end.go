@@ -6,6 +6,7 @@
 package wfe
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -263,9 +264,14 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 
 	body, key, _, err := wfe.verifyPOST(request, true)
 	if err != nil {
-		wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+		if err == sql.ErrNoRows {
+			wfe.sendError(response, "No registration exists matching provided key", http.StatusForbidden)
+		} else {
+			wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+		}
 		return
 	}
+
 
 	var init core.Authorization
 	if err = json.Unmarshal(body, &init); err != nil {
@@ -310,9 +316,14 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 
 	body, key, _, err := wfe.verifyPOST(request, true)
 	if err != nil {
-		wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+		if err == sql.ErrNoRows {
+			wfe.sendError(response, "No registration exists matching provided key", http.StatusForbidden)
+		} else {
+			wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+		}
 		return
 	}
+
 
 	var init core.CertificateRequest
 	if err = json.Unmarshal(body, &init); err != nil {
@@ -386,9 +397,14 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 	case "POST":
 		body, key, _, err := wfe.verifyPOST(request, true)
 		if err != nil {
-			wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+			if err == sql.ErrNoRows {
+				wfe.sendError(response, "No registration exists matching provided key", http.StatusForbidden)
+			} else {
+				wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+			}
 			return
 		}
+
 
 		var challengeResponse core.Challenge
 		if err = json.Unmarshal(body, &challengeResponse); err != nil {
@@ -461,13 +477,11 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	case "POST":
 		body, key, _, err := wfe.verifyPOST(request, true)
 		if err != nil {
-			wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
-			return
-		}
-
-		// Check that the signing key is the right key
-		if !core.KeyDigestEquals(key, reg.Key) {
-			wfe.sendError(response, "Signing key does not match key in registration", http.StatusForbidden)
+			if err == sql.ErrNoRows {
+				wfe.sendError(response, "No registration exists matching provided key", http.StatusForbidden)
+			} else {
+				wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+			}
 			return
 		}
 
