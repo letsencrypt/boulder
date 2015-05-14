@@ -110,6 +110,16 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
+	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
+	if err != nil {
+		return emptyCert, err
+	}
+	if csrPreviousDenied {
+		ra.log.Audit(fmt.Sprintf("CSR for names %v was previously revoked/denied", csr.DNSNames))
+		err = core.UnauthorizedError("CSR has already been revoked/denied")
+		return emptyCert, err
+	}
+
 	// Gather authorized domains from the referenced authorizations
 	authorizedDomains := map[string]bool{}
 	now := time.Now()
