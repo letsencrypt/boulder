@@ -53,6 +53,10 @@ func (sa *MockSA) GetCertificateStatus(string) (core.CertificateStatus, error) {
 	return core.CertificateStatus{}, nil
 }
 
+func (sa *MockSA) AlreadyDeniedCSR([]string) (bool, error) {
+	return false, nil
+}
+
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
