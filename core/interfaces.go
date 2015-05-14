@@ -94,7 +94,6 @@ type StorageGetter interface {
 	GetCertificate(string) ([]byte, error)
 	GetCertificateByShortSerial(string) ([]byte, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
-	AlreadyDeniedCSR([]string) (bool, error)
 }
 
 type StorageAdder interface {
@@ -107,8 +106,6 @@ type StorageAdder interface {
 	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error
 
 	AddCertificate([]byte) (string, error)
-
-	AddDeniedCSR([]string) error
 }
 
 // StorageAuthority interface represents a simple key/value
