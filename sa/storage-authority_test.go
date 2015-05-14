@@ -66,7 +66,14 @@ func TestAddRegistration(t *testing.T) {
 
 	newReg := core.Registration{ID: reg.ID, Key: jwk, RecoveryToken: "RBNvo1WzZ4oRRq0W9", Contact: []core.AcmeURL{u}, Agreement: "yes"}
 	err = sa.UpdateRegistration(newReg)
-	test.AssertNotError(t, err, "Couldn't update registration with ID "+reg.ID)
+	test.AssertNotError(t, err, "Couldn't update registration with ID "+regID)
+
+	dbReg, err = sa.GetRegistrationByKey(jwk)
+	test.AssertNotError(t, err, "Couldn't update registration by key")
+
+	test.AssertEquals(t, dbReg.ID, newReg.ID)
+	test.AssertEquals(t, dbReg.RecoveryToken, newReg.RecoveryToken)
+	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 }
 
 func TestAddAuthorization(t *testing.T) {

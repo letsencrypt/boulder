@@ -310,6 +310,16 @@ func (ssa *SQLStorageAuthority) GetRegistration(id string) (reg core.Registratio
 	return
 }
 
+func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (reg core.Registration, err error) {
+	keyJson, err := key.MarshalJSON()
+	if err != nil {
+		return
+	}
+
+	err = ssa.dbMap.SelectOne(&reg, "SELECT * FROM registrations WHERE key = :key", map[string]interface{} {"key": string(keyJson)})
+	return
+}
+
 func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authorization, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {

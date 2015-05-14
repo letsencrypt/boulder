@@ -25,6 +25,34 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+type MockSA struct {
+	// empty
+}
+
+func (sa *MockSA) GetRegistration(string) (core.Registration, error) {
+	return core.Registration{}, nil
+}
+
+func (sa *MockSA) GetRegistrationByKey(jose.JsonWebKey) (core.Registration, error) {
+	return core.Registration{}, nil
+}
+
+func (sa *MockSA) GetAuthorization(string) (core.Authorization, error) {
+	return core.Authorization{}, nil
+}
+
+func (sa *MockSA) GetCertificate(string) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (sa *MockSA) GetCertificateByShortSerial(string) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (sa *MockSA) GetCertificateStatus(string) (core.CertificateStatus, error) {
+	return core.CertificateStatus{}, nil
+}
+
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
@@ -65,7 +93,6 @@ func TestIndex(t *testing.T) {
 	})
 	//test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	test.AssertEquals(t, responseWriter.Body.String(), "404 page not found\n")
-
 }
 
 // TODO: Write additional test cases for:
@@ -75,6 +102,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl()
 	wfe := NewWebFrontEndImpl()
+	wfe.SA = &MockSA{}
 	wfe.RA = &ra
 	responseWriter := httptest.NewRecorder()
 
@@ -239,6 +267,7 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization
 func TestChallenge(t *testing.T) {
 	wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
 	wfe.HandlePaths()
 	responseWriter := httptest.NewRecorder()
 
@@ -299,6 +328,7 @@ func TestChallenge(t *testing.T) {
 func TestRegistration(t *testing.T) {
 	wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 
@@ -387,6 +417,7 @@ func TestRegistration(t *testing.T) {
 func TestAuthorization(t *testing.T) {
 	wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 
