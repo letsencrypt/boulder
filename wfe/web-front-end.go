@@ -133,24 +133,24 @@ const (
 	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
 )
 
-func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, jose.JsonWebKey, core.Registration, error) {
+func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, *jose.JsonWebKey, core.Registration, error) {
 	var reg core.Registration
-	zeroKey := jose.JsonWebKey{}
 
 	// Read body
 	if request.Body == nil {
-		return nil, zeroKey, reg, errors.New("No body on POST")
+		return nil, nil, reg, errors.New("No body on POST")
 	}
 
 	body, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		return nil, zeroKey, reg, err
+		return nil, nil, reg, err
 	}
 
 	// Parse as JWS
-	var jws jose.JsonWebSignature
-	if err = json.Unmarshal(body, &jws); err != nil {
-		return nil, zeroKey, reg, err
+	parsedJws, err := jose.ParseSigned(string(body))
+	if err != nil {
+		wfe.log.Debug(fmt.Sprintf("Parse error reading JWS: %v", err))
+		return nil, nil, reg, err
 	}
 
 	// Verify JWS
@@ -159,20 +159,34 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 	// RA.  However the WFE is the RA's only view of the outside world
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
-	if err = jws.Verify(); err != nil {
-		return nil, zeroKey, reg, err
+	if len(parsedJws.Signatures) > 1 {
+		wfe.log.Debug(fmt.Sprintf("Too many signatures on POST"))
+		return nil, nil, reg, errors.New("Too many signatures on POST")
+	}
+	if len(parsedJws.Signatures) == 0 {
+		wfe.log.Debug(fmt.Sprintf("POST not signed: %v", parsedJws))
+		return nil, nil, reg, errors.New("POST not signed")
+	}
+	// TODO: Look up key in registrations.
+	// https://github.com/letsencrypt/boulder/issues/187
+	key := parsedJws.Signatures[0].Header.JsonWebKey
+	payload, err := parsedJws.Verify(key)
+	if err != nil {
+		wfe.log.Debug(string(body))
+		wfe.log.Debug(fmt.Sprintf("JWS verification error: %v", err))
+		return nil, nil, reg, err
 	}
 
 	if regCheck {
 		// Check that the key is assosiated with an actual account
-		reg, err = wfe.SA.GetRegistrationByKey(jws.Header.Key)
+		reg, err = wfe.SA.GetRegistrationByKey(*key)
 		if err != nil {
-			return nil, zeroKey, reg, err
+			return nil, nil, reg, err
 		}
 	}
 
 	// TODO Return JWS body
-	return []byte(jws.Payload), jws.Header.Key, reg, nil
+	return []byte(payload), key, reg, nil
 }
 
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, message string, code int) {
@@ -474,7 +488,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		response.Write(jsonReply)
 
 	case "POST":
-		body, key, _, err := wfe.verifyPOST(request, true)
+		body, _, _, err := wfe.verifyPOST(request, true)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				wfe.sendError(response, "No registration exists matching provided key", http.StatusForbidden)
