@@ -12,8 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
-	"strings"
 	"time"
 
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
@@ -182,7 +180,6 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	ssa.dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
 	ssa.dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
-	ssa.dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID").ColMap("Names").SetUnique(true)
 
 	err = ssa.dbMap.CreateTablesIfNotExists()
 	return
@@ -271,17 +268,6 @@ func (ssa *SQLStorageAuthority) DumpTables() error {
 		return err
 	}
 	for _, c := range crls {
-		fmt.Printf("%+v\n", c)
-	}
-
-	fmt.Printf("\n----- deniedCsrs -----\n")
-	var dCsrs []core.DeniedCsr
-	_, err = tx.Select(&dCsrs, "SELECT * FROM deniedCsrs")
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-	for _, c := range dCsrs {
 		fmt.Printf("%+v\n", c)
 	}
 
@@ -636,7 +622,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		return
 	}
 
-	err = tx.Commit()
+	tx.Commit()
 	return
 }
 
@@ -685,42 +671,3 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	err = tx.Commit()
 	return
 }
-
-func (ssa *SQLStorageAuthority) AddDeniedCSR(names []string) (err error) {
-	sort.Strings(names)
-	deniedCSR := &core.DeniedCsr{Names: strings.ToLower(strings.Join(names, ","))}
-
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return
-	}
-
-	err = tx.Insert(deniedCSR)
-	if err != nil {
-		tx.Rollback()
-		return
-	}
-
-	err = tx.Commit()
-	return
-}
-
-func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, err error) {
-	sort.Strings(names)
-
-	var denied int64
-	err = ssa.dbMap.SelectOne(
-		&denied,
-		"SELECT count(*) FROM deniedCsrs WHERE names = :names",
-		map[string]interface{} {"names": strings.ToLower(strings.Join(names, ","))},
-	)
-	if err != nil {
-		return
-	}
-	if denied > 0 {
-		already = true
-	}
-	
-	return	
-}
-
