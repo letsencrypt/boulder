@@ -311,7 +311,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(id string) (reg core.Registratio
 }
 
 func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (reg core.Registration, err error) {
-	keyJson, err := key.MarshalJSON()
+	keyJson, err := json.Marshal(key)
 	if err != nil {
 		return
 	}

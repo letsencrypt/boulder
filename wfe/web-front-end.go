@@ -133,23 +133,24 @@ const (
 	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
 )
 
-func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, jose.JsonWebKey, string, error) {
+func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, jose.JsonWebKey, core.Registration, error) {
+	var reg core.Registration
 	zeroKey := jose.JsonWebKey{}
 
 	// Read body
 	if request.Body == nil {
-		return nil, zeroKey, "", errors.New("No body on POST")
+		return nil, zeroKey, reg, errors.New("No body on POST")
 	}
 
 	body, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		return nil, zeroKey, "", err
+		return nil, zeroKey, reg, err
 	}
 
 	// Parse as JWS
 	var jws jose.JsonWebSignature
 	if err = json.Unmarshal(body, &jws); err != nil {
-		return nil, zeroKey, "", err
+		return nil, zeroKey, reg, err
 	}
 
 	// Verify JWS
@@ -159,21 +160,19 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
 	if err = jws.Verify(); err != nil {
-		return nil, zeroKey, "", err
+		return nil, zeroKey, reg, err
 	}
 
-	var regID string
 	if regCheck {
 		// Check that the key is assosiated with an actual account
-		reg, err := wfe.SA.GetRegistrationByKey(jws.Header.Key)
+		reg, err = wfe.SA.GetRegistrationByKey(jws.Header.Key)
 		if err != nil {
-			return nil, zeroKey, "", err
+			return nil, zeroKey, reg, err
 		}
-		regID = reg.ID
 	}
 
 	// TODO Return JWS body
-	return []byte(jws.Payload), jws.Header.Key, regID, nil
+	return []byte(jws.Payload), jws.Header.Key, reg, nil
 }
 
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, message string, code int) {
