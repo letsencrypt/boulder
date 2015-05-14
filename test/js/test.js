@@ -130,6 +130,17 @@ function parseLink(link) {
   }
 }
 
+function post(url, body, callback) {
+  var jws = crypto.generateSignature(state.keyPair, new Buffer(JSON.stringify(body)));
+  var payload = JSON.stringify(jws);
+
+  var req = request.post(url, callback);
+  console.log('Posting to', url, ':\n', payload);
+  req.write(payload)
+  req.end();
+  return req;
+}
+
 /*
 
 The asynchronous nature of node.js libraries makes the control flow a
@@ -189,16 +200,9 @@ function register(answers) {
   var email = answers.email;
 
   // Register public key
-  state.registration = {
+  post(state.newRegistrationURL, {
     contact: [ "mailto:" + email ]
-  }
-  var registerMessage = JSON.stringify(state.registration);
-  var jws = crypto.generateSignature(state.keyPair, new Buffer(registerMessage));
-  var payload = JSON.stringify(jws);
-
-  var req = request.post(state.newRegistrationURL, {}, getTerms);
-  req.write(payload)
-  req.end();
+  }, getTerms);
 }
 
 function getTerms(err, resp) {
@@ -249,42 +253,34 @@ function sendAgreement(answers) {
     process.exit(1);
   }
 
-  state.registration.agreement = state.termsURL;
-  var registerMessage = JSON.stringify(state.registration);
-  var jws = crypto.generateSignature(state.keyPair, new Buffer(registerMessage));
-  var payload = JSON.stringify(jws);
-
   console.log("Posting agreement to: " + state.registrationURL)
-  var req = request.post(state.registrationURL, function(err, resp, body) {
-    if (err) {
-      console.log("Couldn't POST agreement back to server, aborting.");
-      console.log("error: " + err);
-      console.log(body);
-      process.exit(1);
-    }
 
-    inquirer.prompt(questions.domain, getChallenges);
-  });
-  req.write(payload)
-  req.end();
+  state.registration = {
+    agreement: state.termsURL
+  }
+  post(state.registrationURL, state.registration,
+    function(err, resp, body) {
+      if (err || Math.floor(resp.statusCode / 100) != 2) {
+        console.log("Couldn't POST agreement back to server, aborting.");
+        console.log("error: " + err);
+        console.log(body);
+        process.exit(1);
+      }
+
+      inquirer.prompt(questions.domain, getChallenges);
+    });
 }
 
 function getChallenges(answers) {
   state.domain = answers.domain;
 
   // Register public key
-  var authzMessage = JSON.stringify({
+  post(state.newAuthorizationURL, {
     identifier: {
       type: "dns",
       value: state.domain
     }
-  });
-  var jws = crypto.generateSignature(state.keyPair, new Buffer(authzMessage));
-  var payload = JSON.stringify(jws);
-
-  var req = request.post(state.newAuthorizationURL, {}, getReadyToValidate);
-  req.write(payload)
-  req.end();
+  }, getReadyToValidate);
 }
 
 function getReadyToValidate(err, resp, body) {
@@ -348,19 +344,10 @@ function getReadyToValidate(err, resp, body) {
 }
 
 function sendResponse() {
-  var responseMessage = JSON.stringify({
-    path: state.path
-  });
-  var jws = crypto.generateSignature(state.keyPair, new Buffer(responseMessage));
-  var payload = JSON.stringify(jws);
-
   cli.spinner("Validating domain");
-
-  var options = url.parse(state.responseURL);
-  options.method = "POST";
-  var req = request.post(state.responseURL, {}, ensureValidation);
-  req.write(payload)
-  req.end();
+  post(state.responseURL, {
+    path: state.path
+  }, ensureValidation);
 }
 
 function ensureValidation(err, resp, body) {
@@ -402,8 +389,11 @@ function getCertificate() {
 
   cli.spinner("Requesting certificate");
 
+  var url = state.newCertificateURL;
+  console.log('Posting to', url, ':\n', payload);
+
   var req = request.post({
-    url: state.newCertificateURL,
+    url: url,
     encoding: null // Return body as buffer.
   }, downloadCertificate);
   req.write(payload)

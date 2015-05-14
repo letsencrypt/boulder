@@ -10,7 +10,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -22,7 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/test"
@@ -30,6 +29,16 @@ import (
 
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
+}
+
+func signRequest(t *testing.T, req string) string {
+	accountKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	signer, err := jose.NewSigner("RS256", accountKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+	result, err := signer.Sign([]byte(req))
+	test.AssertNotError(t, err, "Failed to sign req")
+	ret := result.FullSerialize()
+	return ret
 }
 
 func TestIndex(t *testing.T) {
@@ -198,6 +207,7 @@ func TestIssueCertificate(t *testing.T) {
 type MockRegistrationAuthority struct{}
 
 func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration, jwk jose.JsonWebKey) (core.Registration, error) {
+	reg.Key = jwk
 	return reg, nil
 }
 
@@ -358,20 +368,15 @@ func TestRegistration(t *testing.T) {
 		responseWriter.Body.String(),
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
-	key, _ := rsa.GenerateKey(rand.Reader, 512)
-	jws, err := jose.Sign(jose.RSAPSSWithSHA256, *key, []byte("{\"contact\":[\"tel:123456789\"]}"))
-	fmt.Println(err)
-	requestPayload, _ := json.Marshal(jws)
-
 	responseWriter.Body.Reset()
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(string(requestPayload)),
+		Body: makeBody(signRequest(t, "{\"contact\":[\"tel:123456789\"]}")),
 	})
 
 	test.AssertEquals(t, responseWriter.Body.String(), "{\"key\":{},\"recoveryToken\":\"\",\"contact\":[\"tel:123456789\"],\"thumbprint\":\"\"}")
 	var reg core.Registration
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	err := json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	uu := url.URL(reg.Contact[0])
 	test.AssertEquals(t, uu.String(), "tel:123456789")
@@ -451,15 +456,11 @@ func TestAuthorization(t *testing.T) {
 		responseWriter.Body.String(),
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
-	key, _ := rsa.GenerateKey(rand.Reader, 512)
-	jws, err := jose.Sign(jose.RSAPSSWithSHA256, *key, []byte("{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}"))
-	fmt.Println(err)
-	requestPayload, _ := json.Marshal(jws)
 	
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(string(requestPayload)),
+		Body: makeBody(signRequest(t, "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}")),
 	})
 
 	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"},\"key\":{},\"expires\":\"0001-01-01T00:00:00Z\"}")
