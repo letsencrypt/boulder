@@ -6,8 +6,6 @@
 package wfe
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"io"
@@ -32,8 +30,11 @@ func makeBody(s string) io.ReadCloser {
 }
 
 func signRequest(t *testing.T, req string) string {
-	accountKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	signer, err := jose.NewSigner("RS256", accountKey)
+	accountKeyJSON := []byte(`{"kty":"RSA","n":"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ","e":"AAEAAQ","d":"BhAmDbzBAbCeHbU0Xhzi_Ar4M0eTMOEQPnPXMSfW6bc0SRW938JO_-z1scEvFY8qsxV_C0Zr7XHVZsmHz4dc9BVmhiSan36XpuOS85jLWaY073e7dUVN9-l-ak53Ys9f6KZB_v-BmGB51rUKGB70ctWiMJ1C0EzHv0h6Moog-LCd_zo03uuZD5F5wtnPrAB3SEM3vRKeZHzm5eiGxNUsaCEzGDApMYgt6YkQuUlkJwD8Ky2CkAE6lLQSPwddAfPDhsCug-12SkSIKw1EepSHz86ZVfJEnvY-h9jHIdI57mR1v7NTCDcWqy6c6qIzxwh8n2X94QTbtWT3vGQ6HXM5AQ","p":"2uhvZwNS5i-PzeI9vGx89XbdsVmeNjVxjH08V3aRBVY0dzUzwVDYk3z7sqBIj6de53Lx6W1hjmhPIqAwqQgjIKH5Z3uUCinGguKkfGDL3KgLCzYL2UIvZMvTzr9NWLc0AHMZdee5utxWKCGnZBOqy1Rd4V-6QrqjEDBvanoqA60","q":"8odNkMEiriaDKmvwDv-vOOu3LaWbu03yB7VhABu-hK5Xx74bHcvDP2HuCwDGGJY2H-xKdMdUPs0HPwbfHMUicD2vIEUDj6uyrMMZHtbcZ3moh3-WESg3TaEaJ6vhwcWXWG7Wc46G-HbCChkuVenFYYkoi68BAAjloqEUl1JBT1E"}`)
+	var accountKey jose.JsonWebKey
+	err := json.Unmarshal(accountKeyJSON, &accountKey)
+	test.AssertNotError(t, err, "Failed to unmarshal key")
+	signer, err := jose.NewSigner("RS256", &accountKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 	result, err := signer.Sign([]byte(req))
 	test.AssertNotError(t, err, "Failed to sign req")
@@ -212,6 +213,7 @@ func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration, jwk 
 }
 
 func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, jwk jose.JsonWebKey) (core.Authorization, error) {
+	authz.Key = jwk
 	return authz, nil
 }
 
@@ -374,7 +376,7 @@ func TestRegistration(t *testing.T) {
 		Body: makeBody(signRequest(t, "{\"contact\":[\"tel:123456789\"]}")),
 	})
 
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"key\":{},\"recoveryToken\":\"\",\"contact\":[\"tel:123456789\"],\"thumbprint\":\"\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"key\":{\"kty\":\"RSA\",\"n\":\"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ\",\"e\":\"AAEAAQ\"},\"recoveryToken\":\"\",\"contact\":[\"tel:123456789\"],\"thumbprint\":\"\"}")
 	var reg core.Registration
 	err := json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
@@ -463,9 +465,9 @@ func TestAuthorization(t *testing.T) {
 		Body: makeBody(signRequest(t, "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}")),
 	})
 
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"},\"key\":{},\"expires\":\"0001-01-01T00:00:00Z\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"},\"key\":{\"kty\":\"RSA\",\"n\":\"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ\",\"e\":\"AAEAAQ\"},\"expires\":\"0001-01-01T00:00:00Z\"}")
 
 	var authz core.Authorization
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 }
