@@ -89,6 +89,7 @@ type PolicyAuthority interface {
 
 type StorageGetter interface {
 	GetRegistration(string) (Registration, error)
+	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
 	GetCertificate(string) ([]byte, error)
 	GetCertificateByShortSerial(string) ([]byte, error)

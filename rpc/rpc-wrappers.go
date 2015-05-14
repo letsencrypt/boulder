@@ -43,6 +43,7 @@ const (
 	MethodIssueCertificate            = "IssueCertificate"            // CA
 	MethodRevokeCertificateCA         = "RevokeCertificateCA"         // CA
 	MethodGetRegistration             = "GetRegistration"             // SA
+	MethodGetRegistrationByKey        = "GetRegistrationByKey"        // RA, SA
 	MethodGetAuthorization            = "GetAuthorization"            // SA
 	MethodGetCertificate              = "GetCertificate"              // SA
 	MethodGetCertificateByShortSerial = "GetCertificateByShortSerial" // SA
@@ -446,6 +447,23 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		return response
 	})
 
+	rpc.Handle(MethodGetRegistrationByKey, func(req []byte) (response []byte) {
+		var jwk jose.JsonWebKey
+		err := json.Unmarshal(req, &jwk)
+
+		reg, err := impl.GetRegistrationByKey(jwk)
+		if err != nil {
+			return nil
+		}
+
+		jsonReg, err := json.Marshal(reg)
+		if err != nil {
+			return nil
+		}
+		response = jsonReg
+		return response
+	})
+
 	rpc.Handle(MethodGetAuthorization, func(req []byte) []byte {
 		authz, err := impl.GetAuthorization(string(req))
 		if err != nil {
@@ -581,6 +599,21 @@ func NewStorageAuthorityClient(clientQueue, serverQueue string, channel *amqp.Ch
 
 func (cac StorageAuthorityClient) GetRegistration(id string) (reg core.Registration, err error) {
 	jsonReg, err := cac.rpc.DispatchSync(MethodGetRegistration, []byte(id))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonReg, &reg)
+	return
+}
+
+func (cac StorageAuthorityClient) GetRegistrationByKey(key jose.JsonWebKey) (reg core.Registration, err error) {
+	jsonKey, err := key.MarshalJSON()
+	if err != nil {
+		return
+	}
+
+	jsonReg, err := cac.rpc.DispatchSync(MethodGetRegistration, jsonKey)
 	if err != nil {
 		return
 	}
