@@ -7,6 +7,8 @@ package wfe
 
 import (
 	"database/sql"
+	"bytes"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,7 +28,6 @@ import (
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
-	CA    core.CertificateAuthority
 	Stats statsd.Statter
 	log   *blog.AuditLogger
 
@@ -44,6 +45,7 @@ type WebFrontEndImpl struct {
 	NewCertPath    string
 	CertBase       string
 	CertPath       string
+	RevokeCertPath string
 	TermsPath      string
 	IssuerPath     string
 
@@ -62,6 +64,7 @@ func NewWebFrontEndImpl() WebFrontEndImpl {
 		AuthzPath:      "/acme/authz/",
 		NewCertPath:    "/acme/new-cert",
 		CertPath:       "/acme/cert/",
+		RevokeCertPath:   "/acme/revoke-cert/",
 		TermsPath:      "/terms",
 		IssuerPath:     "/acme/issuer-cert",
 	}
@@ -82,6 +85,7 @@ func (wfe *WebFrontEndImpl) HandlePaths() {
 	http.HandleFunc(wfe.RegPath, wfe.Registration)
 	http.HandleFunc(wfe.AuthzPath, wfe.Authorization)
 	http.HandleFunc(wfe.CertPath, wfe.Certificate)
+	http.HandleFunc(wfe.RevokeCertPath, wfe.RevokeCertificate)
 	http.HandleFunc(wfe.TermsPath, wfe.Terms)
 	http.HandleFunc(wfe.IssuerPath, wfe.Issuer)
 }
@@ -319,6 +323,80 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	}
 	// incr pending auth stat (?)
 	wfe.Stats.Inc("PendingAuthorizations", 1, 1.0)
+}
+
+func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "POST" {
+		wfe.sendError(response, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, requestKey, _, err := wfe.verifyPOST(request, false)
+	if err != nil {
+		wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+		return
+	}
+
+	type RevokeRequest struct {
+		CertificateDER core.JsonBuffer `json:"certificate"`
+	}
+	var revokeRequest RevokeRequest
+	if err = json.Unmarshal(body, &revokeRequest); err != nil {
+		wfe.log.Debug(fmt.Sprintf("Couldn't unmarshal in revoke request %s", string(body)))
+		wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+		return
+	}
+	providedCert, err := x509.ParseCertificate(revokeRequest.CertificateDER)
+	if err != nil {
+		wfe.log.Debug("Couldn't parse cert in revoke request.")
+		wfe.sendError(response, "Unable to read/verify body", http.StatusBadRequest)
+		return
+	}
+
+	serial := core.SerialToString(providedCert.SerialNumber)
+	certDER, err := wfe.SA.GetCertificate(serial)
+	if err != nil || !bytes.Equal(certDER, revokeRequest.CertificateDER) {
+		wfe.sendError(response, "No such certificate", http.StatusNotFound)
+		return
+	}
+	parsedCertificate, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		wfe.sendError(response, "Invalid certificate", http.StatusInternalServerError)
+		return
+	}
+
+	certStatus, err := wfe.SA.GetCertificateStatus(serial)
+	if err != nil {
+		wfe.sendError(response, "No such certificate", http.StatusNotFound)
+		return
+	}
+
+	if certStatus.Status == core.OCSPStatusRevoked {
+		wfe.sendError(response, "Certificate already revoked", http.StatusConflict)
+		return
+	}
+
+	// TODO: Implement other methods of validating revocation, e.g. through
+	// authorizations on account.
+	if !core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) {
+		wfe.log.Debug("Key mismatch for revoke")
+		wfe.sendError(response,
+			"Revocation request must be signed by private key of cert to be revoked",
+			http.StatusForbidden)
+		return
+	}
+
+	err = wfe.RA.RevokeCertificate(*parsedCertificate)
+	if err != nil {
+		wfe.sendError(response,
+			"Failed to revoke certificate",
+			http.StatusInternalServerError)
+	} else {
+		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
+		// incr revoked cert stat
+		wfe.Stats.Inc("RevokedCertificates", 1, 1.0)
+		response.WriteHeader(http.StatusOK)
+	}
 }
 
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
@@ -601,12 +679,6 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		if _, err = response.Write(cert); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 		}
-
-	case "POST":
-		// TODO: Handle revocation in POST
-
-		// incr revoked cert stat
-		wfe.Stats.Inc("RevokedCertificates", 1, 1.0)
 	}
 }
 

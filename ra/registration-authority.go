@@ -194,8 +194,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 }
 
 func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) error {
-	// TODO: ra.CA.RevokeCertificate()
-	return nil
+	return ra.CA.RevokeCertificate(core.SerialToString(cert.SerialNumber))
 }
 
 func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) {
