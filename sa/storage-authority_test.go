@@ -54,7 +54,7 @@ func TestAddRegistration(t *testing.T) {
 		Key: jwk,
 	})
 	test.AssertNotError(t, err, "Couldn't create new registration")
-	// test.Assert(t, reg.ID != "", "ID shouldn't be blank")
+	test.Assert(t, reg.ID != 0, "ID shouldn't be 0")
 
 	dbReg, err := sa.GetRegistration(reg.ID)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
@@ -110,7 +110,7 @@ func TestAddAuthorization(t *testing.T) {
 	combos[0] = []int{0,1}
 
 
-	newPa := core.Authorization{ID: paID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, RegID: 0, Status: core.StatusPending, Expires: time.Now().AddDate(0, 0, 1), Challenges: []core.Challenge{chall}, Combinations: combos, Contact: []core.AcmeURL{u}}
+	newPa := core.Authorization{ID: paID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, RegistrationID: 0, Status: core.StatusPending, Expires: time.Now().AddDate(0, 0, 1), Challenges: []core.Challenge{chall}, Combinations: combos, Contact: []core.AcmeURL{u}}
 	err = sa.UpdatePendingAuthorization(newPa)
 	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+paID)
 

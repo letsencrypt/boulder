@@ -70,7 +70,7 @@ type registrationRequest struct {
 
 type authorizationRequest struct {
 	Authz core.Authorization
-	RegID int
+	RegID int64
 }
 
 type certificateRequest struct {
@@ -239,7 +239,7 @@ func (rac RegistrationAuthorityClient) NewRegistration(reg core.Registration, ke
 	return
 }
 
-func (rac RegistrationAuthorityClient) NewAuthorization(authz core.Authorization, regID int) (newAuthz core.Authorization, err error) {
+func (rac RegistrationAuthorityClient) NewAuthorization(authz core.Authorization, regID int64) (newAuthz core.Authorization, err error) {
 	data, err := json.Marshal(authorizationRequest{authz, regID})
 	if err != nil {
 		return
@@ -437,7 +437,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 
 	rpc.Handle(MethodGetRegistration, func(req []byte) (response []byte) {
 		var intReq struct {
-			ID int
+			ID int64
 		}
 		err := json.Unmarshal(req, &intReq)
 		if err != nil {
@@ -643,9 +643,9 @@ func NewStorageAuthorityClient(clientQueue, serverQueue string, channel *amqp.Ch
 	return
 }
 
-func (cac StorageAuthorityClient) GetRegistration(id int) (reg core.Registration, err error) {
+func (cac StorageAuthorityClient) GetRegistration(id int64) (reg core.Registration, err error) {
 	var intReq struct {
-		ID int
+		ID int64
 	}
 	intReq.ID = id
 

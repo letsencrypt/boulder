@@ -58,7 +58,11 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int) (authz core.Authorization, err error) {
+func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
+	if regID == 0 {
+		err = fmt.Errorf("Registration ID cannot be 0")
+	}
+
 	identifier := request.Identifier
 
 	// Check that the identifier is present and appropriate
@@ -86,12 +90,12 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Create a new authorization object
 	authz = core.Authorization{
-		ID:           authID,
-		Identifier:   identifier,
-		RegID:        regID,
-		Status:       core.StatusPending,
-		Challenges:   challenges,
-		Combinations: combinations,
+		ID:             authID,
+		Identifier:     identifier,
+		RegistrationID: regID,
+		Status:         core.StatusPending,
+		Challenges:     challenges,
+		Combinations:   combinations,
 	}
 
 	// Store the authorization object, then return it
@@ -132,7 +136,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		id := lastPathSegment(url)
 		authz, err := ra.SA.GetAuthorization(id)
 		if err != nil || // Couldn't find authorization
-			authz.RegID != registration.ID || // Key doesn't match
+			authz.RegistrationID != registration.ID ||
 			authz.Status != core.StatusValid || // Not finalized or not successful
 			authz.Expires.Before(now) || // Expired
 			authz.Identifier.Type != core.IdentifierDNS {

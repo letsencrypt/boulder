@@ -425,9 +425,10 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			return
 		}
 
-		// Check that the signing key is the right key
-		if currReg.ID != authz.RegID {
-			wfe.sendError(response, "Signing key does not match key in authorization", http.StatusForbidden)
+		// Check that the registration ID matching the key used matches
+		// the registration ID on the authz object
+		if currReg.ID != authz.RegistrationID {
+			wfe.sendError(response, "User registration ID doesn't match registration ID in authorization", http.StatusForbidden)
 			return
 		}
 
@@ -463,9 +464,12 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	// Requests to this handler should have a path that leads to a known
 	// registration
 	idStr := parseIDFromPath(request.URL.Path)
-	id, err := strconv.Atoi(idStr)
+	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		wfe.sendError(response, "Registration ID must be an integer", http.StatusBadRequest)
+		return
+	} else if id <= 0 {
+		wfe.sendError(response, "Registration ID must be a positive non-zero integer", http.StatusBadRequest)
 		return
 	}
 	reg, err := wfe.SA.GetRegistration(id)

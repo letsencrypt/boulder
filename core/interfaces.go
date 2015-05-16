@@ -53,7 +53,7 @@ type RegistrationAuthority interface {
 	NewRegistration(Registration, jose.JsonWebKey) (Registration, error)
 
 	// [WebFrontEnd]
-	NewAuthorization(Authorization, int) (Authorization, error)
+	NewAuthorization(Authorization, int64) (Authorization, error)
 
 	// [WebFrontEnd]
 	NewCertificate(CertificateRequest, jose.JsonWebKey) (Certificate, error)
@@ -88,7 +88,7 @@ type PolicyAuthority interface {
 }
 
 type StorageGetter interface {
-	GetRegistration(int) (Registration, error)
+	GetRegistration(int64) (Registration, error)
 	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
 	GetCertificate(string) ([]byte, error)

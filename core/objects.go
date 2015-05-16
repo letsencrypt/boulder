@@ -100,7 +100,7 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 // to account keys.
 type Registration struct {
 	// Unique identifier
-	ID int `json:"-" db:"id"`
+	ID int64 `json:"-" db:"id"`
 
 	// Account key to which the details are attached
 	Key jose.JsonWebKey `json:"key" db:"key"`
@@ -260,10 +260,8 @@ type Authorization struct {
 	// The identifier for which authorization is being given
 	Identifier AcmeIdentifier `json:"identifier,omitempty" db:"identifier"`
 
-	// The account key that is authorized for the identifier
-	// Key jose.JsonWebKey `json:"key,omitempty" db:"key"`
 	// The registration ID associated with the authorization
-	RegID int `json:"regID,omitempty" db:"regID"`
+	RegistrationID int64 `json:"-" db:"registrationID"`
 
 	// The status of the validation of this authorization
 	Status AcmeStatus `json:"status,omitempty" db:"status"`

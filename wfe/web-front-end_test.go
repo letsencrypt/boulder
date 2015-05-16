@@ -29,7 +29,7 @@ type MockSA struct {
 	// empty
 }
 
-func (sa *MockSA) GetRegistration(int) (core.Registration, error) {
+func (sa *MockSA) GetRegistration(int64) (core.Registration, error) {
 	return core.Registration{}, nil
 }
 
@@ -244,8 +244,8 @@ func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration, jwk 
 	return reg, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, regID int) (core.Authorization, error) {
-	authz.RegID = regID
+func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, regID int64) (core.Authorization, error) {
+	authz.RegistrationID = regID
 	return authz, nil
 }
 
@@ -296,7 +296,7 @@ func TestChallenge(t *testing.T) {
 				URI:  core.AcmeURL(*challengeURL),
 			},
 		},
-		RegID: 0,
+		RegistrationID: 0,
 	}
 
 	wfe.Challenge(authz, responseWriter, &http.Request{

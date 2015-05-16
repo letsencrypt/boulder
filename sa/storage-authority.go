@@ -305,13 +305,13 @@ func existingFinal(tx *gorp.Transaction, id string) (bool) {
 	return count > 0
 }
 
-func existingRegistration(tx *gorp.Transaction, id int) (bool) {
+func existingRegistration(tx *gorp.Transaction, id int64) (bool) {
 	var count int64
 	_ = tx.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{} {"id": id})
 	return count > 0
 }
 
-func (ssa *SQLStorageAuthority) GetRegistration(id int) (reg core.Registration, err error) {
+func (ssa *SQLStorageAuthority) GetRegistration(id int64) (reg core.Registration, err error) {
 	regObj, err := ssa.dbMap.Get(core.Registration{}, id)
 	if err != nil {
 		return
@@ -430,13 +430,6 @@ func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (output c
 	if err != nil {
 		return
 	}
-
-	// Check that it doesn't exist already
-	/*id := core.NewToken()
-	for existingRegistration(tx, id) {
-		id = core.NewToken()
-	}
-	reg.ID = id*/
 
 	err = tx.Insert(&reg)
 	if err != nil {
