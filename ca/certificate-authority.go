@@ -193,7 +193,7 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (err error)
 
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
 // enforcing all policies.
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
 	// XXX Take in authorizations and verify that union covers CSR?
@@ -291,7 +291,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Store the cert with the certificate authority, if provided
-	_, err = ca.SA.AddCertificate(certDER)
+	_, err = ca.SA.AddCertificate(certDER, regID)
 	if err != nil {
 		ca.DB.Rollback()
 		return emptyCert, err

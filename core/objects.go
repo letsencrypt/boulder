@@ -320,6 +320,8 @@ func (jb *JsonBuffer) UnmarshalJSON(data []byte) (err error) {
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
+	RegistrationID int64 `db:"registrationID"`
+	
 	// The parsed version of DER. Useful for extracting things like serial number.
 	ParsedCertificate *x509.Certificate `db:"-"`
 
@@ -338,7 +340,7 @@ type Certificate struct {
 // latest data about the status of the certificate, required for OCSP updating
 // and for validating that the subscriber has accepted the certificate.
 type CertificateStatus struct {
-	Serial                 string `db:"serial"`
+	Serial string `db:"serial"`
 
 	// subscriberApproved: true iff the subscriber has posted back to the server
 	//   that they accept the certificate, otherwise 0.

@@ -236,7 +236,7 @@ func TestNewCertificate(t *testing.T) {
 		Authorizations: []core.AcmeURL{core.AcmeURL(*url1), core.AcmeURL(*url2)},
 	}
 
-	cert, err := ra.NewCertificate(certRequest, AccountKey)
+	cert, err := ra.NewCertificate(certRequest, 1)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")

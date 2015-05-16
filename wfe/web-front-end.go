@@ -327,7 +327,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 
-	body, key, _, err := wfe.verifyPOST(request, true)
+	body, key, reg, err := wfe.verifyPOST(request, true)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			wfe.sendError(response, "No registration exists matching provided key", http.StatusForbidden)
@@ -354,7 +354,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// authorized for target site, they could cause issuance for that site by
 	// lying to the RA. We should probably pass a copy of the whole rquest to the
 	// RA for secondary validation.
-	cert, err := wfe.RA.NewCertificate(init, *key)
+	cert, err := wfe.RA.NewCertificate(init, reg.ID)
 	if err != nil {
 		wfe.sendError(response,
 			fmt.Sprintf("Error creating new cert: %+v", err),

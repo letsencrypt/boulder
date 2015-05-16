@@ -633,7 +633,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
-func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, err error) {
+func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
 	var parsedCertificate *x509.Certificate
 	parsedCertificate, err = x509.ParseCertificate(certDER)
 	if err != nil {
@@ -643,6 +643,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte) (digest string, e
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
 	cert := &core.Certificate{
+		RegistrationID: regID,
 		Serial: serial,
 		Digest: digest,
 		DER: certDER,

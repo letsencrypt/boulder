@@ -103,7 +103,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, requestKey jose.JsonWebKey) (core.Certificate, error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
 	// Verify the CSR
@@ -124,7 +124,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	registration, err := ra.SA.GetRegistrationByKey(requestKey)
+	registration, err := ra.SA.GetRegistration(regID)
 	if err != nil {
 		return emptyCert, err
 	}
@@ -164,7 +164,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	// Create the certificate
 	var cert core.Certificate
 	ra.log.Audit(fmt.Sprintf("Issuing certificate for %s", names))
-	if cert, err = ra.CA.IssueCertificate(*csr); err != nil {
+	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
 		return emptyCert, err
 	}
 	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))
