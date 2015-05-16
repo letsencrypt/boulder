@@ -211,13 +211,13 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 	case http.StatusInternalServerError:
 		problem.Type = ServerInternalProblem
 	}
+
 	problemDoc, err := json.Marshal(problem)
 	if err != nil {
-		return
+		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
-	// Audit log "Receipt of improper messages"
-	// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+	// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 	wfe.log.Audit(fmt.Sprintf("Improper HTTP request - %d - %s - %s", code, details, debug))
 
 	// Paraphrased from

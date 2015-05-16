@@ -151,7 +151,7 @@ WebFE -> WebFE:   [ verify authorization signature ]
 WebFE -> RA:      UpdateAuthorization(Authorization)
 RA -> RA:         [ add responses to authorization ]
 RA -> SA:         Update(Authorization.ID, Authorization)
-WebFE -> VA:      UpdateValidations(Authorization)
+RA -> VA:         UpdateValidations(Authorization)
 WebFE -> Client:  defer(authorizationID)
 
 VA -> SA:         Update(Authorization.ID, Authorization)
