@@ -106,10 +106,12 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
+
 	// Verify the CSR
 	// TODO: Verify that other aspects of the CSR are appropriate
 	csr := req.CSR
 	if err = core.VerifyCSR(csr); err != nil {
+		ra.log.Debug("Invalid signature on CSR:" + err.Error())
 		err = core.UnauthorizedError("Invalid signature on CSR")
 		return emptyCert, err
 	}
@@ -126,6 +128,11 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	registration, err := ra.SA.GetRegistration(regID)
 	if err != nil {
+		return emptyCert, err
+	}
+
+	if core.KeyDigestEquals(csr.PublicKey, registration.Key) {
+		err = core.MalformedRequestError("Certificate public key must be different than account key")
 		return emptyCert, err
 	}
 

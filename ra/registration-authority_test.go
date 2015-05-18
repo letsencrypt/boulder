@@ -7,6 +7,7 @@ package ra
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -63,12 +64,25 @@ func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
 var (
 	// These values we simulate from the client
 	AccountKeyJSON = []byte(`{
-		"kty": "EC",
-		"crv": "P-521",
-		"x": "AHKZLLOsCOzz5cY97ewNUajB957y-C-U88c3v13nmGZx6sYl_oJXu9A5RkTKqjqvjyekWF-7ytDyRXYgCF5cj0Kt",
-		"y": "AdymlHvOiLxXkEhayXQnNCvDX4h9htZaCJN34kfmC6pV5OhQHiraVySsUdaQkAgDPrwQrJmbnX9cwlGfP-HqHZR1"
+		"kty":"RSA",
+		"n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
+		"e":"AQAB"
 	}`)
 	AccountKey = jose.JsonWebKey{}
+
+	// These values we simulate from the client
+	AccountPrivateKeyJSON = []byte(`{
+		"kty":"RSA",
+		"n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
+		"e":"AQAB",
+		"d":"X4cTteJY_gn4FYPsXB8rdXix5vwsg1FLN5E3EaG6RJoVH-HLLKD9M7dx5oo7GURknchnrRweUkC7hT5fJLM0WbFAKNLWY2vv7B6NqXSzUvxT0_YSfqijwp3RTzlBaCxWp4doFk5N2o8Gy_nHNKroADIkJ46pRUohsXywbReAdYaMwFs9tv8d_cPVY3i07a3t8MN6TNwm0dSawm9v47UiCl3Sk5ZiG7xojPLu4sbg1U2jx4IBTNBznbJSzFHK66jT8bgkuqsk0GjskDJk19Z4qwjwbsnn4j2WBii3RL-Us2lGVkY8fkFzme1z0HbIkfz0Y6mqnOYtqc0X4jfcKoAC8Q",
+		"p":"83i-7IvMGXoMXCskv73TKr8637FiO7Z27zv8oj6pbWUQyLPQBQxtPVnwD20R-60eTDmD2ujnMt5PoqMrm8RfmNhVWDtjjMmCMjOpSXicFHj7XOuVIYQyqVWlWEh6dN36GVZYk93N8Bc9vY41xy8B9RzzOGVQzXvNEvn7O0nVbfs",
+		"q":"3dfOR9cuYq-0S-mkFLzgItgMEfFzB2q3hWehMuG0oCuqnb3vobLyumqjVZQO1dIrdwgTnCdpYzBcOfW5r370AFXjiWft_NGEiovonizhKpo9VVS78TzFgxkIdrecRezsZ-1kYd_s1qDbxtkDEgfAITAG9LUnADun4vIcb6yelxk",
+		"dp":"G4sPXkc6Ya9y8oJW9_ILj4xuppu0lzi_H7VTkS8xj5SdX3coE0oimYwxIi2emTAue0UOa5dpgFGyBJ4c8tQ2VF402XRugKDTP8akYhFo5tAA77Qe_NmtuYZc3C3m3I24G2GvR5sSDxUyAN2zq8Lfn9EUms6rY3Ob8YeiKkTiBj0",
+		"dq":"s9lAH9fggBsoFR8Oac2R_E2gw282rT2kGOAhvIllETE1efrA6huUUvMfBcMpn8lqeW6vzznYY5SSQF7pMdC_agI3nG8Ibp1BUb0JUiraRNqUfLhcQb_d9GF4Dh7e74WbRsobRonujTYN1xCaP6TO61jvWrX-L18txXw494Q_cgk",
+		"qi":"GyM_p6JrXySiz1toFgKbWV-JdI3jQ4ypu9rbMWx3rQJBfmt0FoYzgUIZEVFEcOqwemRN81zoDAaa-Bk0KWNGDjJHZDdDmFhW3AN7lI-puxk_mHZGJ11rxyR8O55XLSe3SPmRfKwZI6yU24ZxvQKFYItdldUKGzO6Ia6zTKhAVRU"
+	}`)
+	AccountPrivateKey = jose.JsonWebKey{}
 
 	AuthzRequest = core.Authorization{
 		Identifier: core.AcmeIdentifier{
@@ -94,7 +108,10 @@ var (
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
 	err := json.Unmarshal(AccountKeyJSON, &AccountKey)
-	test.AssertNotError(t, err, "Failed to unmarshall JWK")
+	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
+
+	err = json.Unmarshal(AccountPrivateKeyJSON, &AccountPrivateKey)
+	test.AssertNotError(t, err, "Failed to unmarshal private JWK")
 
 	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
@@ -113,6 +130,9 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	ca := ca.CertificateAuthorityImpl{Signer: signer, SA: sa, PA: pa, DB: cadb}
 	csrDER, _ := hex.DecodeString(CSR_HEX)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
+
+	// This registration implicitly gets ID = 1
+	sa.NewRegistration(core.Registration{Key: AccountKey})
 
 	ra := NewRegistrationAuthorityImpl()
 	ra.SA = sa
@@ -214,9 +234,39 @@ func TestOnValidationUpdate(t *testing.T) {
 	t.Log("DONE TestOnValidationUpdate")
 }
 
+func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
+	_, _, sa, ra := initAuthorities(t)
+	authz := core.Authorization{}
+	authz.ID, _ = sa.NewPendingAuthorization()
+	authz.Identifier = core.AcmeIdentifier{
+		Type: core.IdentifierDNS,
+		Value: "www.example.com",
+	}
+	csr := x509.CertificateRequest{
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		PublicKey: AccountKey.Key,
+		DNSNames: []string{"www.example.com"},
+	}
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csr, AccountPrivateKey.Key)
+	test.AssertNotError(t, err, "Failed to sign CSR")
+	parsedCsr, err := x509.ParseCertificateRequest(csrBytes)
+	test.AssertNotError(t, err, "Failed to parse CSR")
+	sa.UpdatePendingAuthorization(authz)
+	sa.FinalizeAuthorization(authz)
+	authzURL, _ := url.Parse("http://doesnt.matter/" + authz.ID)
+	certRequest := core.CertificateRequest{
+		CSR:            parsedCsr,
+		Authorizations: []core.AcmeURL{core.AcmeURL(*authzURL)},
+	}
+
+	// Registration id 1 has key == AccountKey
+	_, err = ra.NewCertificate(certRequest, 1)
+	test.AssertError(t, err, "Should have rejected cert with key = account key")
+	test.AssertEquals(t, err.Error(), "Certificate public key must be different than account key")
+}
+
 func TestNewCertificate(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
-	sa.NewRegistration(core.Registration{Key: AccountKey})
 	AuthzFinal.RegistrationID = 1
 	AuthzFinal.ID, _ = sa.NewPendingAuthorization()
 	sa.UpdatePendingAuthorization(AuthzFinal)
@@ -231,6 +281,7 @@ func TestNewCertificate(t *testing.T) {
 	// Construct a cert request referencing the two authorizations
 	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
 	url2, _ := url.Parse("http://doesnt.matter/" + AuthzFinalWWW.ID)
+
 	certRequest := core.CertificateRequest{
 		CSR:            ExampleCSR,
 		Authorizations: []core.AcmeURL{core.AcmeURL(*url1), core.AcmeURL(*url2)},
