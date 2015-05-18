@@ -58,7 +58,11 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, key jose.JsonWebKey) (authz core.Authorization, err error) {
+func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
+	if regID == 0 {
+		err = fmt.Errorf("Registration ID cannot be 0")
+	}
+
 	identifier := request.Identifier
 
 	// Check that the identifier is present and appropriate
@@ -86,12 +90,12 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Create a new authorization object
 	authz = core.Authorization{
-		ID:           authID,
-		Identifier:   identifier,
-		Key:          key,
-		Status:       core.StatusPending,
-		Challenges:   challenges,
-		Combinations: combinations,
+		ID:             authID,
+		Identifier:     identifier,
+		RegistrationID: regID,
+		Status:         core.StatusPending,
+		Challenges:     challenges,
+		Combinations:   combinations,
 	}
 
 	// Store the authorization object, then return it
@@ -99,7 +103,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, requestKey jose.JsonWebKey) (core.Certificate, error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
 	// Verify the CSR
@@ -120,6 +124,11 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
+	registration, err := ra.SA.GetRegistration(regID)
+	if err != nil {
+		return emptyCert, err
+	}
+
 	// Gather authorized domains from the referenced authorizations
 	authorizedDomains := map[string]bool{}
 	now := time.Now()
@@ -127,7 +136,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		id := lastPathSegment(url)
 		authz, err := ra.SA.GetAuthorization(id)
 		if err != nil || // Couldn't find authorization
-			!core.KeyDigestEquals(authz.Key, requestKey) ||
+			authz.RegistrationID != registration.ID ||
 			authz.Status != core.StatusValid || // Not finalized or not successful
 			authz.Expires.Before(now) || // Expired
 			authz.Identifier.Type != core.IdentifierDNS {
@@ -155,7 +164,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	// Create the certificate
 	var cert core.Certificate
 	ra.log.Audit(fmt.Sprintf("Issuing certificate for %s", names))
-	if cert, err = ra.CA.IssueCertificate(*csr); err != nil {
+	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
 		return emptyCert, err
 	}
 	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))

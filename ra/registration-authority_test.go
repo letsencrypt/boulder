@@ -127,14 +127,14 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	test.Assert(t, a1.ID == a2.ID, "ret != DB: ID")
 	test.Assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
 	test.Assert(t, a1.Status == a2.Status, "ret != DB: Status")
-	test.Assert(t, core.KeyDigestEquals(a1.Key, a2.Key), "ret != DB: Key")
+	test.Assert(t, a1.RegistrationID == a2.RegistrationID, "ret != DB: RegID")
 	// Not testing: Contact, Challenges
 }
 
 func TestNewAuthorization(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
 
-	authz, err := ra.NewAuthorization(AuthzRequest, AccountKey)
+	authz, err := ra.NewAuthorization(AuthzRequest, 1)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Verify that returned authz same as DB
@@ -143,7 +143,7 @@ func TestNewAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the returned authz has the right information
-	test.Assert(t, core.KeyDigestEquals(authz.Key, AccountKey), "Initial authz did not get the right key")
+	test.Assert(t, authz.RegistrationID == 1, "Initial authz did not get the right registration ID")
 	test.Assert(t, authz.Identifier == AuthzRequest.Identifier, "Initial authz had wrong identifier")
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
@@ -216,6 +216,8 @@ func TestOnValidationUpdate(t *testing.T) {
 
 func TestNewCertificate(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
+	sa.NewRegistration(core.Registration{Key: AccountKey})
+	AuthzFinal.RegistrationID = 1
 	AuthzFinal.ID, _ = sa.NewPendingAuthorization()
 	sa.UpdatePendingAuthorization(AuthzFinal)
 	sa.FinalizeAuthorization(AuthzFinal)
@@ -234,7 +236,7 @@ func TestNewCertificate(t *testing.T) {
 		Authorizations: []core.AcmeURL{core.AcmeURL(*url1), core.AcmeURL(*url2)},
 	}
 
-	cert, err := ra.NewCertificate(certRequest, AccountKey)
+	cert, err := ra.NewCertificate(certRequest, 1)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")

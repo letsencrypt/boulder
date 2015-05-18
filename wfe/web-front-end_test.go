@@ -29,7 +29,7 @@ type MockSA struct {
 	// empty
 }
 
-func (sa *MockSA) GetRegistration(string) (core.Registration, error) {
+func (sa *MockSA) GetRegistration(int64) (core.Registration, error) {
 	return core.Registration{}, nil
 }
 
@@ -244,12 +244,12 @@ func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration, jwk 
 	return reg, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, jwk jose.JsonWebKey) (core.Authorization, error) {
-	authz.Key = jwk
+func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, regID int64) (core.Authorization, error) {
+	authz.RegistrationID = regID
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, jwk jose.JsonWebKey) (core.Certificate, error) {
+func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 
@@ -296,7 +296,7 @@ func TestChallenge(t *testing.T) {
 				URI:  core.AcmeURL(*challengeURL),
 			},
 		},
-		Key: key,
+		RegistrationID: 0,
 	}
 
 	wfe.Challenge(authz, responseWriter, &http.Request{
@@ -500,7 +500,7 @@ func TestAuthorization(t *testing.T) {
 		Body: makeBody(signRequest(t, "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}")),
 	})
 
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"},\"key\":{\"kty\":\"RSA\",\"n\":\"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ\",\"e\":\"AAEAAQ\"},\"expires\":\"0001-01-01T00:00:00Z\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"},\"expires\":\"0001-01-01T00:00:00Z\"}")
 
 	var authz core.Authorization
 	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)

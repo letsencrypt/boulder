@@ -53,10 +53,10 @@ type RegistrationAuthority interface {
 	NewRegistration(Registration, jose.JsonWebKey) (Registration, error)
 
 	// [WebFrontEnd]
-	NewAuthorization(Authorization, jose.JsonWebKey) (Authorization, error)
+	NewAuthorization(Authorization, int64) (Authorization, error)
 
 	// [WebFrontEnd]
-	NewCertificate(CertificateRequest, jose.JsonWebKey) (Certificate, error)
+	NewCertificate(CertificateRequest, int64) (Certificate, error)
 
 	// [WebFrontEnd]
 	UpdateRegistration(Registration, Registration) (Registration, error)
@@ -78,7 +78,7 @@ type ValidationAuthority interface {
 
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest) (Certificate, error)
+	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
 	RevokeCertificate(serial string) error
 }
 
@@ -88,7 +88,7 @@ type PolicyAuthority interface {
 }
 
 type StorageGetter interface {
-	GetRegistration(string) (Registration, error)
+	GetRegistration(int64) (Registration, error)
 	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
 	GetCertificate(string) ([]byte, error)
@@ -106,7 +106,7 @@ type StorageAdder interface {
 	FinalizeAuthorization(Authorization) error
 	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error
 
-	AddCertificate([]byte) (string, error)
+	AddCertificate([]byte, int64) (string, error)
 
 	AddDeniedCSR([]string) error
 }

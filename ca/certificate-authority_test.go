@@ -368,7 +368,7 @@ func TestRevoke(t *testing.T) {
 
 	csrDER, _ := hex.DecodeString(CN_AND_SAN_CSR_HEX)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	certObj, err := ca.IssueCertificate(*csr)
+	certObj, err := ca.IssueCertificate(*csr, 1)
 	test.AssertNotError(t, err, "Failed to sign certificate")
 	if err != nil {
 		return
@@ -408,7 +408,7 @@ func TestIssueCertificate(t *testing.T) {
 		csr, _ := x509.ParseCertificateRequest(csrDER)
 
 		// Sign CSR
-		certObj, err := ca.IssueCertificate(*csr)
+		certObj, err := ca.IssueCertificate(*csr, 1)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 		if err != nil {
 			continue
@@ -450,7 +450,7 @@ func TestIssueCertificate(t *testing.T) {
 	// Test that the CA rejects CSRs with no names
 	csrDER, _ := hex.DecodeString(NO_NAME_CSR_HEX)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr)
+	_, err = ca.IssueCertificate(*csr, 1)
 	if err == nil {
 		t.Errorf("CA improperly agreed to create a certificate with no name")
 	}
@@ -458,7 +458,7 @@ func TestIssueCertificate(t *testing.T) {
 	// Test that the CA rejects CSRs with duplicate names
 	csrDER, _ = hex.DecodeString(DUPE_NAME_CSR_HEX)
 	csr, _ = x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr)
+	_, err = ca.IssueCertificate(*csr, 1)
 	if err == nil {
 		t.Errorf("CA improperly agreed to create a certificate with duplicate names")
 	}
