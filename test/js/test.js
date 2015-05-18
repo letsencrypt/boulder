@@ -81,7 +81,8 @@ var questions = {
 };
 
 var state = {
-  keyPair: null,
+  certPrivateKey: null,
+  accountPrivateKey: null,
 
   //newRegistrationURL: "https://www.letsencrypt-demo.org/acme/new-reg",
   newRegistrationURL: "http://localhost:4000/acme/new-reg",
@@ -131,7 +132,7 @@ function parseLink(link) {
 }
 
 function post(url, body, callback) {
-  var jws = crypto.generateSignature(state.keyPair, new Buffer(JSON.stringify(body)));
+  var jws = crypto.generateSignature(state.accountPrivateKey, new Buffer(JSON.stringify(body)));
   var payload = JSON.stringify(jws);
 
   var req = request.post(url, callback);
@@ -183,13 +184,27 @@ function main() {
 function makeKeyPair(answers) {
   state.certFile = answers.certFile;
   state.keyFile = answers.keyFile;
-  console.log("Generating key pair...");
+  console.log("Generating cert key pair...");
   child_process.exec("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=foo -nodes -x509 -out temp-cert.pem", function (error, stdout, stderr) {
     if (error) {
       console.log(error);
       process.exit(1);
     }
-    state.keyPair = crypto.importPemPrivateKey(fs.readFileSync(state.keyFile));
+    state.certPrivateKey = crypto.importPemPrivateKey(fs.readFileSync(state.keyFile));
+
+    console.log();
+    makeAccountKeyPair(answers)
+  });
+}
+
+function makeAccountKeyPair(answers) {
+  console.log("Generating account key pair...");
+  child_process.exec("openssl genrsa -out account-key.pem 2048", function (error, stdout, stderr) {
+    if (error) {
+      console.log(error);
+      process.exit(1);
+    }
+    state.accountPrivateKey = crypto.importPemPrivateKey(fs.readFileSync("account-key.pem"));
 
     console.log();
     inquirer.prompt(questions.email, register)
@@ -378,13 +393,13 @@ function ensureValidation(err, resp, body) {
 }
 
 function getCertificate() {
-  var csr = crypto.generateCSR(state.keyPair, state.domain);
+  var csr = crypto.generateCSR(state.certPrivateKey, state.domain);
 
   var certificateMessage = JSON.stringify({
     csr: csr,
     authorizations: [ state.authorizationURL ]
   });
-  var jws = crypto.generateSignature(state.keyPair, new Buffer(certificateMessage));
+  var jws = crypto.generateSignature(state.accountPrivateKey, new Buffer(certificateMessage));
   var payload = JSON.stringify(jws);
 
   cli.spinner("Requesting certificate");
