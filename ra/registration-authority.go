@@ -59,6 +59,11 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key
 }
 
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
+	if regID <= 0 {
+		err = fmt.Errorf("Invalid registration ID")
+		return authz, err
+	}
+
 	identifier := request.Identifier
 
 	// Check that the identifier is present and appropriate
@@ -102,6 +107,11 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
+
+	if regID <= 0 {
+		err = fmt.Errorf("Invalid registration ID")
+		return emptyCert, err
+	}
 
 	// Verify the CSR
 	// TODO: Verify that other aspects of the CSR are appropriate

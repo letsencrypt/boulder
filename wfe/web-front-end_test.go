@@ -34,7 +34,7 @@ func (sa *MockSA) GetRegistration(int64) (core.Registration, error) {
 }
 
 func (sa *MockSA) GetRegistrationByKey(jose.JsonWebKey) (core.Registration, error) {
-	return core.Registration{}, nil
+	return core.Registration{ID: 1}, nil
 }
 
 func (sa *MockSA) GetAuthorization(string) (core.Authorization, error) {
@@ -296,7 +296,7 @@ func TestChallenge(t *testing.T) {
 				URI:  core.AcmeURL(*challengeURL),
 			},
 		},
-		RegistrationID: 0,
+		RegistrationID: 1,
 	}
 
 	wfe.Challenge(authz, responseWriter, &http.Request{
