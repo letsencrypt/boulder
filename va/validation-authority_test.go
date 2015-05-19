@@ -6,24 +6,24 @@
 package va
 
 import (
-	"testing"
-	"net"
-	"net/http"
-	"fmt"
-	"strings"
-	"math/big"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
+	"math/big"
+	"net"
+	"net/http"
+	"strings"
+	"testing"
 	"time"
 
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 )
 
 func bigIntFromB64(b64 string) *big.Int {
@@ -87,10 +87,10 @@ func dvsniSrv(t *testing.T, R, S []byte, waitChan chan bool) {
 			Organization: []string{"tests"},
 		},
 		NotBefore: time.Now(),
-		NotAfter: time.Now().AddDate(0, 0, 1),
+		NotAfter:  time.Now().AddDate(0, 0, 1),
 
-		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 
 		DNSNames: []string{zName},
@@ -99,12 +99,12 @@ func dvsniSrv(t *testing.T, R, S []byte, waitChan chan bool) {
 	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
 	cert := &tls.Certificate{
 		Certificate: [][]byte{certBytes},
-		PrivateKey: &TheKey,
+		PrivateKey:  &TheKey,
 	}
 
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{*cert},
-		ClientAuth: tls.NoClientCert,
+		ClientAuth:   tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			fmt.Println(clientHello)
 			return cert, nil
@@ -160,7 +160,7 @@ func TestSimpleHttps(t *testing.T) {
 func TestDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 
-	a := []byte{1,2,3,4,5,6,7,8,9,0}
+	a := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
 	ba := core.B64enc(a)
 	chall := core.Challenge{R: ba, S: ba}
 

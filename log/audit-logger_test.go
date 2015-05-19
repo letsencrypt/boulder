@@ -152,7 +152,7 @@ func TestEmergencyExit(t *testing.T) {
 
 	called := false
 
-	audit.SetEmergencyExitFunc(func(){ called = true })
+	audit.SetEmergencyExitFunc(func() { called = true })
 	audit.EmergencyExit("Emergency!")
 	test.AssertEquals(t, called, true)
 }

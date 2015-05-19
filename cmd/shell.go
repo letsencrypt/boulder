@@ -37,9 +37,9 @@ import (
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/ca"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
-	"github.com/letsencrypt/boulder/ca"
 )
 
 // Config stores configuration parameters that applications

@@ -6,9 +6,9 @@
 package wfe
 
 import (
-	"database/sql"
 	"bytes"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,7 +67,7 @@ func NewWebFrontEndImpl() WebFrontEndImpl {
 		AuthzPath:      "/acme/authz/",
 		NewCertPath:    "/acme/new-cert",
 		CertPath:       "/acme/cert/",
-		RevokeCertPath:   "/acme/revoke-cert/",
+		RevokeCertPath: "/acme/revoke-cert/",
 		TermsPath:      "/terms",
 		IssuerPath:     "/acme/issuer-cert",
 	}
@@ -130,8 +130,8 @@ func parseIDFromPath(path string) string {
 type ProblemType string
 
 type problem struct {
-	Type     ProblemType `json:"type,omitempty"`
-	Detail   string      `json:"detail,omitempty"`
+	Type   ProblemType `json:"type,omitempty"`
+	Detail string      `json:"detail,omitempty"`
 }
 
 const (
@@ -219,7 +219,7 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
-	switch(problem.Type) {
+	switch problem.Type {
 	case ServerInternalProblem:
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", details, debug))
@@ -304,7 +304,6 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		}
 		return
 	}
-
 
 	var init core.Authorization
 	if err = json.Unmarshal(body, &init); err != nil {
@@ -433,7 +432,6 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 
-
 	var init core.CertificateRequest
 	if err = json.Unmarshal(body, &init); err != nil {
 		fmt.Println(err)
@@ -511,7 +509,6 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			}
 			return
 		}
-
 
 		var challengeResponse core.Challenge
 		if err = json.Unmarshal(body, &challengeResponse); err != nil {
