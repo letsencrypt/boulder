@@ -87,6 +87,12 @@ func AssertContains(t *testing.T, haystack string, needle string) {
 	}
 }
 
+func AssertNotContains(t *testing.T, haystack string, needle string) {
+	if strings.Contains(haystack, needle) {
+		t.Errorf("%s String [%s] contains [%s]", caller(), haystack, needle)
+	}
+}
+
 func AssertSeverity(t *testing.T, data string, severity int) {
 	expected := fmt.Sprintf("\"severity\":%d", severity)
 	AssertContains(t, data, expected)

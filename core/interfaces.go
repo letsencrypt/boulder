@@ -68,7 +68,7 @@ type RegistrationAuthority interface {
 	RevokeCertificate(x509.Certificate) error
 
 	// [ValidationAuthority]
-	OnValidationUpdate(Authorization)
+	OnValidationUpdate(Authorization) error
 }
 
 type ValidationAuthority interface {
