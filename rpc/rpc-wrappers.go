@@ -374,8 +374,8 @@ func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, imp
 	rpc.Handle(MethodUpdateValidations, func(req []byte) []byte {
 		var authz core.Authorization
 		if err := json.Unmarshal(req, &authz); err != nil {
-      // AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-      improperMessage(MethodUpdateValidations, err, req)
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodUpdateValidations, err, req)
 			return nil
 		}
 

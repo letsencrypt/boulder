@@ -214,11 +214,22 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 
 	problemDoc, err := json.Marshal(problem)
 	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		wfe.log.Audit(fmt.Sprintf("Could not marshal error message: %s - %+v", err.Error(), problem))
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
-	// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-	wfe.log.Audit(fmt.Sprintf("Improper HTTP request - %d - %s - %s", code, details, debug))
+	switch(problem.Type) {
+	case ServerInternalProblem:
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", details, debug))
+	case MalformedProblem:
+		// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+		wfe.log.Audit(fmt.Sprintf("Improper HTTP request - %s - %s", details, debug))
+	case UnauthorizedProblem:
+		// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+		wfe.log.Audit(fmt.Sprintf("Unauthorized HTTP request - %s - %s", details, debug))
+	}
 
 	// Paraphrased from
 	// https://golang.org/src/net/http/server.go#L1272

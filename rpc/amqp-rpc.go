@@ -8,7 +8,6 @@ package rpc
 import (
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
@@ -195,6 +194,7 @@ type AmqpRPCCLient struct {
 	channel     *amqp.Channel
 	pending     map[string]chan []byte
 	timeout     time.Duration
+	log         *blog.AuditLogger
 }
 
 func NewAmqpRPCCLient(clientQueue, serverQueue string, channel *amqp.Channel) (rpc *AmqpRPCCLient, err error) {
@@ -204,6 +204,7 @@ func NewAmqpRPCCLient(clientQueue, serverQueue string, channel *amqp.Channel) (r
 		channel:     channel,
 		pending:     make(map[string]chan []byte),
 		timeout:     10 * time.Second,
+		log:         blog.GetAuditLogger(),
 	}
 
 	// Subscribe to the response queue and dispatch
@@ -218,7 +219,7 @@ func NewAmqpRPCCLient(clientQueue, serverQueue string, channel *amqp.Channel) (r
 			corrID := msg.CorrelationId
 			responseChan, present := rpc.pending[corrID]
 
-			log.Printf(" [c<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), corrID)
+			rpc.log.Debug(fmt.Sprintf(" [c<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), corrID))
 			if !present {
 				continue
 			}
@@ -243,7 +244,7 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 	rpc.pending[corrID] = responseChan
 
 	// Send the request
-	log.Printf(" [c>] sending %s(%s) [%s]", method, core.B64enc(body), corrID)
+	rpc.log.Debug(fmt.Sprintf(" [c>] sending %s(%s) [%s]", method, core.B64enc(body), corrID))
 	rpc.channel.Publish(
 		AmqpExchange,
 		rpc.serverQueue,
@@ -264,15 +265,13 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 	case response = <-rpc.Dispatch(method, body):
 		return
 	case <-time.After(rpc.timeout):
-		log.Printf(" [c!] AMQP-RPC timeout [%s]", method)
+		rpc.log.Warning(fmt.Sprintf(" [c!] AMQP-RPC timeout [%s]", method))
 		err = errors.New("AMQP-RPC timeout")
 		return
 	}
 }
 
 func (rpc *AmqpRPCCLient) SyncDispatchWithTimeout(method string, body []byte, ttl time.Duration) (response []byte, err error) {
-	switch {
-
-	}
+	err = errors.New("Not Implemented")
 	return
 }

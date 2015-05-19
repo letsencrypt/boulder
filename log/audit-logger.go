@@ -147,7 +147,7 @@ func (log *AuditLogger) auditAtLevel(level, msg string) (err error) {
 	return log.logAtLevel(level, text)
 }
 
-// AuditPanic catches panics executables. This method should be added
+// AuditPanic catches panicking executables. This method should be added
 // in a defer statement as early as possible
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *AuditLogger) AuditPanic() {
@@ -158,7 +158,7 @@ func (log *AuditLogger) AuditPanic() {
 
 // WarningErr formats an error for the Warn level.
 func (log *AuditLogger) WarningErr(msg error) (err error) {
-	return log.logAtLevel("Logging.Warning", fmt.Sprintf("%s", msg))
+	return log.logAtLevel("Logging.Warning", msg.Error())
 }
 
 // Alert level messages pass through normally.
@@ -211,7 +211,7 @@ func (log *AuditLogger) Audit(msg string) (err error) {
 // AuditErr can format an error for auditing; it does so at ERR level.
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *AuditLogger) AuditErr(msg error) (err error) {
-	return log.auditAtLevel("Logging.Err", fmt.Sprintf("%s", msg))
+	return log.auditAtLevel("Logging.Err", msg.Error())
 }
 
 // SetEmergencyExitFunc changes the systems' behavior on an emergency exit.

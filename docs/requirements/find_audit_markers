@@ -5,7 +5,7 @@
 
 audit_dir=$(cd $(dirname ${0}); pwd)
 root=$(dirname $(dirname ${audit_dir}))
-cat ${audit_dir}/audit_events.csv | tail +2 | while read r; do
+cat ${audit_dir}/audit_events.csv | tail -n +2 | while read r; do
 	uuid=$(echo $r | awk -F "," '{print $1;}')
 	desc=$(echo $r | awk -F "," '{print $2;}')
 	echo "==================================="

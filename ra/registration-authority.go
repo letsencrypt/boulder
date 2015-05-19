@@ -124,29 +124,58 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
+	var logEventResult string
+
+	// Assume the worst
+	logEventResult = "error"
+
+	// Construct the log event
+	logEvent := certificateRequestEvent{
+		ID:                  core.NewToken(),
+		Requester:           regID,
+		RequestMethod:       "online",
+		RequestTime:         time.Now(),
+	}
+
+	// No matter what, log the request
+	defer func() {
+		jsonLogEvent, logErr := json.Marshal(logEvent)
+		if logErr != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			ra.log.Audit(fmt.Sprintf("Certificate request logEvent could not be serialized. Raw: %+v", logEvent))
+			return
+		}
+
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ra.log.Audit(fmt.Sprintf("Certificate request %s - %s", logEventResult, string(jsonLogEvent)))
+	}()
 
 	// Verify the CSR
 	// TODO: Verify that other aspects of the CSR are appropriate
 	csr := req.CSR
 	if err = core.VerifyCSR(csr); err != nil {
-		ra.log.Debug("Invalid signature on CSR:" + err.Error())
+		logEvent.Error = err.Error()
 		err = core.UnauthorizedError("Invalid signature on CSR")
 		return emptyCert, err
 	}
 
+	logEvent.CommonName = csr.Subject.CommonName
+	logEvent.Names = csr.DNSNames
+
 	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
 	if err != nil {
+		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 	if csrPreviousDenied {
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ra.log.Audit(fmt.Sprintf("CSR for names %v was previously revoked/denied", csr.DNSNames))
 		err = core.UnauthorizedError("CSR has already been revoked/denied")
+		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
 	registration, err := ra.SA.GetRegistration(regID)
 	if err != nil {
+		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -185,6 +214,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	for method, _ := range verificationMethodSet {
 		verificationMethods = append(verificationMethods, method)
 	}
+	logEvent.VerificationMethods = verificationMethods
+
 
 	// Validate that authorization key is authorized for all domains
 	names := csr.DNSNames
@@ -192,55 +223,23 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		names = append(names, csr.Subject.CommonName)
 	}
 
-	// Construct the log event
-	logEvent := certificateRequestEvent{
-		ID:                  core.NewToken(),
-		Requester:           registration.ID,
-		RequestMethod:       "online",
-		VerificationMethods: verificationMethods,
-		VerifiedFields:      []string{"subject.commonName", "subjectAltName"},
-		CommonName:          names[0],
-		Names:               names,
-		RequestTime:         time.Now(),
-	}
-
 	// Validate all domains
 	for _, name := range names {
 		if !authorizedDomains[name] {
 			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
-
 			logEvent.Error = err.Error()
-			jsonLogEvent, logErr := json.Marshal(logEvent)
-			if logErr != nil {
-				return emptyCert, logErr
-			}
-
-			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-			ra.log.Audit(fmt.Sprintf("Certificate request unauthorized - %s", string(jsonLogEvent)))
 			return emptyCert, err
 		}
 	}
 
-	// Log the request
-	jsonLogEvent, err := json.Marshal(logEvent)
-	if err != nil {
-		return emptyCert, err
-	}
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	ra.log.Audit(fmt.Sprintf("Certificate request - %s", string(jsonLogEvent)))
+	// Mark that we verified the CN and SANs
+	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
 	var cert core.Certificate
 	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
 		logEvent.Error = err.Error()
-		logEvent.ResponseTime = time.Now()
-		jsonLogEvent, err = json.Marshal(logEvent)
-		if err != nil {
-			return emptyCert, err
-		}
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ra.log.Audit(fmt.Sprintf("Certificate request - error - %s", string(jsonLogEvent)))
-		return cert, nil
+		return emptyCert, nil
 	}
 
 	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))
@@ -250,12 +249,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.NotBefore = cert.ParsedCertificate.NotBefore
 	logEvent.NotAfter = cert.ParsedCertificate.NotAfter
 	logEvent.ResponseTime = time.Now()
-	jsonLogEvent, err = json.Marshal(logEvent)
-	if err != nil {
-		return emptyCert, err
-	}
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	err = ra.log.Audit(fmt.Sprintf("Certificate request - result - %s", string(jsonLogEvent)))
+
+	logEventResult = "successful"
 	return cert, nil
 }
 
