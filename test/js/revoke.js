@@ -15,12 +15,13 @@ var fs = require('fs');
 var request = require('request');
 
 function main() {
-  if (process.argv.length != 4) {
-    console.log('Usage: js revoke.js cert.der key.pem');
+  if (process.argv.length != 5) {
+    console.log('Usage: js revoke.js cert.der key.pem REVOKE_URL');
     process.exit(1);
   }
   var key = crypto.importPemPrivateKey(fs.readFileSync(process.argv[3]));
   var certDER = fs.readFileSync(process.argv[2])
+  var revokeUrl = process.argv[4];
   var certDERB64URL = util.b64enc(new Buffer(certDER))
   var revokeMessage = JSON.stringify({
     // For some reason forge adds an extra, incorrect '00' at the front of the
@@ -29,7 +30,7 @@ function main() {
   });
   console.log('Requesting revocation:', revokeMessage)
   var jws = crypto.generateSignature(key, new Buffer(revokeMessage));
-  var req = request.post('http://localhost:4000/acme/revoke-cert/', function(err, resp) {
+  var req = request.post(revokeUrl, function(err, resp) {
     if (err) {
       console.log('Error: ', err);
     }

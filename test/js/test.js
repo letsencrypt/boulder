@@ -14,6 +14,7 @@
 
 "use strict";
 
+var colors = require("colors");
 var cli = require("cli");
 var crypto = require("./crypto-util");
 var child_process = require('child_process');
@@ -80,19 +81,30 @@ var questions = {
   }],
 };
 
+var cliOptions = cli.parse({
+  // To test against the demo instance, pass --newReg "https://www.letsencrypt-demo.org/acme/new-reg"
+  // To get a cert from the demo instance, you must be publicly reachable on
+  // port 443 under the DNS name you are trying to get, and run test.js as root.
+  newReg:  ["new-reg", "New Registration URL", "string", "http://localhost:4000/acme/new-reg"],
+  certKeyFile:  ["certKey", "File for cert key (created if not exists)", "path", "cert-key.pem"],
+  certFile:  ["cert", "Path to output certificate (DER format)", "path", "cert.pem"],
+  email:  ["email", "Email address", "string", null],
+  agreeTerms:  ["agree", "Agree to terms of service", "boolean", null],
+  domain:  ["domain", "Domain name for which to request a certificate", "string", null],
+});
+
 var state = {
   certPrivateKey: null,
   accountPrivateKey: null,
 
-  //newRegistrationURL: "https://www.letsencrypt-demo.org/acme/new-reg",
-  newRegistrationURL: "http://localhost:4000/acme/new-reg",
+  newRegistrationURL: cliOptions.newReg,
   registrationURL: "",
 
   termsRequired: false,
-  termsAgreed: false,
+  termsAgreed: null,
   termsURL: null,
 
-  domain: null,
+  domain: cliOptions.domain,
 
   newAuthorizationURL: "",
   authorizationURL: "",
@@ -102,8 +114,8 @@ var state = {
 
   newCertificateURL: "",
   certificateURL: "",
-  certFile: "",
-  keyFile: ""
+  certFile: cliOptions.certFile,
+  keyFile: cliOptions.certKeyFile,
 };
 
 function parseLink(link) {
@@ -136,11 +148,28 @@ function post(url, body, callback) {
   var jws = crypto.generateSignature(state.accountPrivateKey, new Buffer(payload));
   var signed = JSON.stringify(jws, null, 2);
 
-  var req = request.post(url, callback);
-  console.log('Posting to', url, ':\n', signed);
-  console.log('Payload:', payload);
+  console.log('Posting to', url, ':');
+  console.log(signed.green);
+  console.log('Payload:')
+  console.log(payload.blue);
+  var req = request.post({
+    url: url,
+    encoding: null // Return body as buffer, needed for certificate response
+    }, function(error, response, body) {
+    // Don't print non-ASCII characters (like DER-encoded cert) to the terminal
+    if (body && !body.toString().match(/[^\x00-\x7F]/)) {
+      var parsed = JSON.parse(body);
+      console.log(JSON.stringify(parsed, null, 2).cyan);
+    }
+    callback(error, response, body)
+  });
   req.on('response', function(response) {
-    console.log(response.headers)
+    Object.keys(response.headers).forEach(function(key) {
+      var value = response.headers[key];
+      var upcased = key.charAt(0).toUpperCase() + key.slice(1);
+      console.log((upcased + ": " + value).yellow)
+    });
+    console.log()
   })
   req.write(signed)
   req.end();
@@ -183,12 +212,10 @@ saveFiles
 */
 
 function main() {
-  inquirer.prompt(questions.files, makeKeyPair);
+  makeKeyPair();
 }
 
-function makeKeyPair(answers) {
-  state.certFile = answers.certFile;
-  state.keyFile = answers.keyFile;
+function makeKeyPair() {
   console.log("Generating cert key pair...");
   child_process.exec("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=foo -nodes -x509 -out temp-cert.pem", function (error, stdout, stderr) {
     if (error) {
@@ -198,7 +225,7 @@ function makeKeyPair(answers) {
     state.certPrivateKey = crypto.importPemPrivateKey(fs.readFileSync(state.keyFile));
 
     console.log();
-    makeAccountKeyPair(answers)
+    makeAccountKeyPair()
   });
 }
 
@@ -212,7 +239,11 @@ function makeAccountKeyPair(answers) {
     state.accountPrivateKey = crypto.importPemPrivateKey(fs.readFileSync("account-key.pem"));
 
     console.log();
-    inquirer.prompt(questions.email, register)
+    if (cliOptions.email) {
+      register({email: cliOptions.email});
+    } else {
+      inquirer.prompt(questions.email, register)
+    }
   });
 }
 
@@ -229,13 +260,13 @@ function getTerms(err, resp) {
   if (err || Math.floor(resp.statusCode / 100) != 2) {
     // Non-2XX response
     console.log("Registration request failed:" + err);
-    return;
+    process.exit(1);
   }
 
   var links = parseLink(resp.headers["link"]);
   if (!links || !("next" in links)) {
     console.log("The server did not provide information to proceed");
-    return
+    process.exit(1);
   }
 
   state.registrationURL = resp.headers["location"];
@@ -262,7 +293,11 @@ function getAgreement(err, resp, body) {
   console.log(body);
   console.log();
 
-  inquirer.prompt(questions.terms, sendAgreement);
+  if (!cliOptions.agreeTerms) {
+    inquirer.prompt(questions.terms, sendAgreement);
+  } else {
+    sendAgreement({terms: true});
+  }
 }
 
 function sendAgreement(answers) {
@@ -286,7 +321,11 @@ function sendAgreement(answers) {
         console.log("Couldn't POST agreement back to server, aborting.");
         process.exit(1);
       } else {
-        inquirer.prompt(questions.domain, getChallenges);
+        if (!state.domain) {
+          inquirer.prompt(questions.domain, getChallenges);
+        } else {
+          getChallenges({domain: state.domain});
+        }
       }
     });
 }
@@ -307,13 +346,13 @@ function getReadyToValidate(err, resp, body) {
   if (err || Math.floor(resp.statusCode / 100) != 2) {
     // Non-2XX response
     console.log("Authorization request failed with code " + resp.statusCode)
-    return;
+    process.exit(1);
   }
 
   var links = parseLink(resp.headers["link"]);
   if (!links || !("next" in links)) {
     console.log("The server did not provide information to proceed");
-    return
+    process.exit(1);
   }
 
   state.authorizationURL = resp.headers["location"];
@@ -324,19 +363,18 @@ function getReadyToValidate(err, resp, body) {
   var simpleHttps = authz.challenges.filter(function(x) { return x.type == "simpleHttps"; });
   if (simpleHttps.length == 0) {
     console.log("The server didn't offer any challenges we can handle.");
-    return;
+    process.exit(1);
   }
 
   var challenge = simpleHttps[0];
   var path = crypto.randomString(8) + ".txt";
   var challengePath = ".well-known/acme-challenge/" + path;
-  fs.writeFileSync(challengePath, challenge.token);
   state.responseURL = challenge["uri"];
   state.path = path;
 
   // For local, test-mode validation
   function httpResponder(req, response) {
-    console.log("Got request for", req.url);
+    console.log("\nGot request for", req.url);
     var host = req.headers["host"];
     if ((host === state.domain || /localhost/.test(state.newRegistrationURL)) &&
         req.method === "GET" &&
@@ -348,7 +386,7 @@ function getReadyToValidate(err, resp, body) {
       response.writeHead(404, {"Content-Type": "text/plain"});
       response.end("");
     }
-  };
+  }
   if (/localhost/.test(state.newRegistrationURL)) {
     var httpServer = http.createServer(httpResponder)
     httpServer.listen(5001)
@@ -360,10 +398,6 @@ function getReadyToValidate(err, resp, body) {
     httpServer.listen(443)
   }
 
-  inquirer.prompt(questions.readyToValidate, sendResponse);
-}
-
-function sendResponse() {
   cli.spinner("Validating domain");
   post(state.responseURL, {
     path: state.path
@@ -374,7 +408,7 @@ function ensureValidation(err, resp, body) {
   if (Math.floor(resp.statusCode / 100) != 2) {
     // Non-2XX response
     console.log("Authorization status request failed with code " + resp.statusCode)
-    return;
+    process.exit(1);
   }
 
   var authz = JSON.parse(body);
@@ -389,35 +423,21 @@ function ensureValidation(err, resp, body) {
     getCertificate();
   } else if (authz.status == "invalid") {
     console.log("The CA was unable to validate the file you provisioned:"  + body);
-    return;
+    process.exit(1);
   } else {
     console.log("The CA returned an authorization in an unexpected state");
     console.log(JSON.stringify(authz, null, "  "));
-    return;
+    process.exit(1);
   }
 }
 
 function getCertificate() {
+  cli.spinner("Requesting certificate");
   var csr = crypto.generateCSR(state.certPrivateKey, state.domain);
-
-  var certificateMessage = JSON.stringify({
+  post(state.newCertificateURL, {
     csr: csr,
     authorizations: [ state.authorizationURL ]
-  });
-  var jws = crypto.generateSignature(state.accountPrivateKey, new Buffer(certificateMessage));
-  var payload = JSON.stringify(jws);
-
-  cli.spinner("Requesting certificate");
-
-  var url = state.newCertificateURL;
-  console.log('Posting to', url, ':\n', payload);
-
-  var req = request.post({
-    url: url,
-    encoding: null // Return body as buffer.
   }, downloadCertificate);
-  req.write(payload)
-  req.end();
 }
 
 function downloadCertificate(err, resp, body) {
@@ -425,7 +445,7 @@ function downloadCertificate(err, resp, body) {
     // Non-2XX response
     console.log("Certificate request failed with code " + resp.statusCode);
     console.log(body.toString());
-    return;
+    process.exit(1);
   }
 
   cli.spinner("Requesting certificate ... done", true);

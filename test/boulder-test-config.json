@@ -1,0 +1,62 @@
+{
+  "syslog": {
+    "network": "",
+    "server": "",
+    "tag": "boulder"
+  },
+
+  "amqp": {
+    "server": "amqp://guest:guest@localhost:5672",
+    "RA": {
+      "client": "RA.client",
+      "server": "RA.server"
+    },
+    "VA": {
+      "client": "VA.client",
+      "server": "VA.server"
+    },
+    "SA": {
+      "client": "SA.client",
+      "server": "SA.server"
+    },
+    "CA": {
+      "client": "CA.client",
+      "server": "CA.server"
+    }
+  },
+
+  "statsd": {
+      "server": "localhost:8125",
+      "prefix": "Boulder"
+  },
+
+  "wfe": {
+    "baseURL": "http://localhost:4300",
+    "listenAddress": "0.0.0.0:4300"
+  },
+
+  "ca": {
+    "server": "localhost:9300",
+    "authKey": "79999d86250c367a2b517a1ae7d409c1",
+    "serialPrefix": 255,
+    "profile": "ee",
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:",
+    "testMode": true,
+    "issuerCert": "test/test-ca.pem",
+    "_comment": "This should only be present in testMode. In prod use an HSM.",
+    "issuerKey": "test/test-ca.key"
+  },
+
+  "sa": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:"
+  },
+
+  "mail": {
+    "server": "mail.example.com",
+    "port": "25",
+    "username": "cert-master@example.com",
+    "password": "password"
+  }
+}

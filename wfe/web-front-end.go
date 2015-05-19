@@ -275,7 +275,10 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 
-	regURL := fmt.Sprintf("%s%s", wfe.RegBase, string(reg.ID))
+	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
+	// that reg.ID is a string being passed to %d.
+	var id int64 = reg.ID
+	regURL := fmt.Sprintf("%s%d", wfe.RegBase, id)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
 		wfe.sendError(response, "Error marshaling authz", err, http.StatusInternalServerError)
