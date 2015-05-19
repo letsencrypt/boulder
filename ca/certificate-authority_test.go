@@ -7,16 +7,16 @@ package ca
 
 import (
 	"bytes"
-	"crypto/x509"
 	"crypto"
+	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"testing"
 	"time"
-	"os"
 
 	apisign "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api/sign"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
@@ -260,7 +260,6 @@ func TestMain(m *testing.M) {
 	caCertPEM, _ := ioutil.ReadFile(caCertFile)
 	caCert, _ := helpers.ParseCertificatePEM(caCertPEM)
 
-
 	// Create an online CFSSL instance
 	// This is designed to mimic what LE plans to do
 	authHandler, _ := auth.New(authKey, nil)
@@ -330,19 +329,18 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 	ssa.InitTables()
 	storageAuthority = ssa
 
-
 	cadb, _ = NewMockCertificateAuthorityDatabase()
 
 	// Create a CA
 	// Uncomment to test with a remote signer
 	caConfig = Config{
-		Server: hostPort,
-		AuthKey: authKey,
-		Profile: profileName,
+		Server:       hostPort,
+		AuthKey:      authKey,
+		Profile:      profileName,
 		SerialPrefix: 17,
-		IssuerCert: "../test/test-ca.pem",
-		IssuerKey: "../test/test-ca.key",
-		TestMode: true,
+		IssuerCert:   "../test/test-ca.pem",
+		IssuerKey:    "../test/test-ca.key",
+		TestMode:     true,
 	}
 	return cadb, storageAuthority, caConfig
 }

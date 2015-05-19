@@ -7,7 +7,9 @@ package ra
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -44,6 +46,22 @@ var allButLastPathSegment = regexp.MustCompile("^.*/")
 
 func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
+}
+
+type certificateRequestEvent struct {
+	ID                  string    `json:"omitempty"`
+	Requester           int64     `json:"omitempty"`
+	SerialNumber        *big.Int  `json:"omitempty"`
+	RequestMethod       string    `json:"omitempty"`
+	VerificationMethods []string  `json:"omitempty"`
+	VerifiedFields      []string  `json:"omitempty"`
+	CommonName          string    `json:"omitempty"`
+	Names               []string  `json:"omitempty"`
+	NotBefore           time.Time `json:"omitempty"`
+	NotAfter            time.Time `json:"omitempty"`
+	RequestTime         time.Time `json:"omitempty"`
+	ResponseTime        time.Time `json:"omitempty"`
+	Error               string    `json:"omitempty"`
 }
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key jose.JsonWebKey) (reg core.Registration, err error) {
@@ -107,6 +125,31 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
+	var logEventResult string
+
+	// Assume the worst
+	logEventResult = "error"
+
+	// Construct the log event
+	logEvent := certificateRequestEvent{
+		ID:            core.NewToken(),
+		Requester:     regID,
+		RequestMethod: "online",
+		RequestTime:   time.Now(),
+	}
+
+	// No matter what, log the request
+	defer func() {
+		jsonLogEvent, logErr := json.Marshal(logEvent)
+		if logErr != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			ra.log.Audit(fmt.Sprintf("Certificate request logEvent could not be serialized. Raw: %+v", logEvent))
+			return
+		}
+
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ra.log.Audit(fmt.Sprintf("Certificate request %s - %s", logEventResult, string(jsonLogEvent)))
+	}()
 
 	if regID <= 0 {
 		err = fmt.Errorf("Invalid registration ID")
@@ -117,23 +160,28 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	// TODO: Verify that other aspects of the CSR are appropriate
 	csr := req.CSR
 	if err = core.VerifyCSR(csr); err != nil {
-		ra.log.Debug("Invalid signature on CSR:" + err.Error())
+		logEvent.Error = err.Error()
 		err = core.UnauthorizedError("Invalid signature on CSR")
 		return emptyCert, err
 	}
 
+	logEvent.CommonName = csr.Subject.CommonName
+	logEvent.Names = csr.DNSNames
+
 	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
 	if err != nil {
+		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 	if csrPreviousDenied {
-		ra.log.Audit(fmt.Sprintf("CSR for names %v was previously revoked/denied", csr.DNSNames))
 		err = core.UnauthorizedError("CSR has already been revoked/denied")
+		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
 	registration, err := ra.SA.GetRegistration(regID)
 	if err != nil {
+		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -144,6 +192,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Gather authorized domains from the referenced authorizations
 	authorizedDomains := map[string]bool{}
+	verificationMethodSet := map[string]bool{}
 	now := time.Now()
 	for _, url := range req.Authorizations {
 		id := lastPathSegment(url)
@@ -159,32 +208,54 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 			continue
 		}
 
+		for _, challenge := range authz.Challenges {
+			if challenge.Status == core.StatusValid {
+				verificationMethodSet[challenge.Type] = true
+			}
+		}
+
 		authorizedDomains[authz.Identifier.Value] = true
 	}
+	verificationMethods := []string{}
+	for method, _ := range verificationMethodSet {
+		verificationMethods = append(verificationMethods, method)
+	}
+	logEvent.VerificationMethods = verificationMethods
 
 	// Validate that authorization key is authorized for all domains
 	names := csr.DNSNames
 	if len(csr.Subject.CommonName) > 0 {
 		names = append(names, csr.Subject.CommonName)
 	}
+
+	// Validate all domains
 	for _, name := range names {
 		if !authorizedDomains[name] {
 			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
+			logEvent.Error = err.Error()
 			return emptyCert, err
 		}
 	}
 
-	// Create the certificate
+	// Mark that we verified the CN and SANs
+	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
+
+	// Create the certificate and log the result
 	var cert core.Certificate
-	ra.log.Audit(fmt.Sprintf("Issuing certificate for %s", names))
 	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
-		return emptyCert, err
-	}
-	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))
-	if err != nil {
-		return emptyCert, err
+		logEvent.Error = err.Error()
+		return emptyCert, nil
 	}
 
+	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))
+
+	logEvent.SerialNumber = cert.ParsedCertificate.SerialNumber
+	logEvent.CommonName = cert.ParsedCertificate.Subject.CommonName
+	logEvent.NotBefore = cert.ParsedCertificate.NotBefore
+	logEvent.NotAfter = cert.ParsedCertificate.NotAfter
+	logEvent.ResponseTime = time.Now()
+
+	logEventResult = "successful"
 	return cert, nil
 }
 
@@ -216,10 +287,20 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 }
 
 func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) error {
-	return ra.CA.RevokeCertificate(core.SerialToString(cert.SerialNumber))
+	serialString := core.SerialToString(cert.SerialNumber)
+	err := ra.CA.RevokeCertificate(serialString)
+
+	// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
+	if err != nil {
+		ra.log.Audit(fmt.Sprintf("Revocation error - %s - %s", serialString, err))
+	} else {
+		ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
+	}
+
+	return err
 }
 
-func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) {
+func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) error {
 	// Check to see whether the updated validations are sufficient
 	// Current policy is to accept if any validation succeeded
 	for _, val := range authz.Challenges {
@@ -239,5 +320,5 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 	}
 
 	// Finalize the authorization (error ignored)
-	_ = ra.SA.FinalizeAuthorization(authz)
+	return ra.SA.FinalizeAuthorization(authz)
 }

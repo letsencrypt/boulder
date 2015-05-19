@@ -6,12 +6,12 @@
 package core
 
 import (
-	"strings"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"strings"
 	"time"
 )
 
@@ -69,8 +69,8 @@ type CertificateRequest struct {
 }
 
 type rawCertificateRequest struct {
-	CSR            JsonBuffer          `json:"csr"`            // The encoded CSR
-	Authorizations []AcmeURL       `json:"authorizations"` // Authorizations
+	CSR            JsonBuffer `json:"csr"`            // The encoded CSR
+	Authorizations []AcmeURL  `json:"authorizations"` // Authorizations
 }
 
 func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
@@ -288,19 +288,19 @@ type Authorization struct {
 
 // Fields of this type get encoded and decoded JOSE-style, in base64url encoding
 // with stripped padding.
-type JsonBuffer []byte;
+type JsonBuffer []byte
 
 // Url-safe base64 encode that strips padding
 func base64URLEncode(data []byte) string {
-  var result = base64.URLEncoding.EncodeToString(data)
-  return strings.TrimRight(result, "=")
+	var result = base64.URLEncoding.EncodeToString(data)
+	return strings.TrimRight(result, "=")
 }
 
 // Url-safe base64 decoder that adds padding
 func base64URLDecode(data string) ([]byte, error) {
-  var missing = (4 - len(data)%4) % 4
-  data += strings.Repeat("=", missing)
-  return base64.URLEncoding.DecodeString(data)
+	var missing = (4 - len(data)%4) % 4
+	data += strings.Repeat("=", missing)
+	return base64.URLEncoding.DecodeString(data)
 }
 
 func (jb JsonBuffer) MarshalJSON() (result []byte, err error) {
@@ -321,7 +321,7 @@ func (jb *JsonBuffer) UnmarshalJSON(data []byte) (err error) {
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
 	RegistrationID int64 `db:"registrationID"`
-	
+
 	// The parsed version of DER. Useful for extracting things like serial number.
 	ParsedCertificate *x509.Certificate `db:"-"`
 
@@ -330,10 +330,10 @@ type Certificate struct {
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`
 
-	Serial   string `db:"serial"`
-	Digest   string `db:"digest"`
-	DER      []byte `db:"der"`
-	Issued   time.Time `db:"issued"`
+	Serial string    `db:"serial"`
+	Digest string    `db:"digest"`
+	DER    []byte    `db:"der"`
+	Issued time.Time `db:"issued"`
 }
 
 // CertificateStatus structs are internal to the server. They represent the
@@ -346,54 +346,54 @@ type CertificateStatus struct {
 	//   that they accept the certificate, otherwise 0.
 	SubscriberApproved bool `db:"subscriberApproved"`
 
-	// status: 'good' or 'revoked'. Note that good, expired certificates remain		
+	// status: 'good' or 'revoked'. Note that good, expired certificates remain
 	//   with status 'good' but don't necessarily get fresh OCSP responses.
 	Status OCSPStatus `db:"status"`
 
-	// ocspLastUpdated: The date and time of the last time we generated an OCSP		
-	//   response. If we have never generated one, this has the zero value of		
+	// ocspLastUpdated: The date and time of the last time we generated an OCSP
+	//   response. If we have never generated one, this has the zero value of
 	//   time.Time, i.e. Jan 1 1970.
 	OCSPLastUpdated time.Time `db:"ocspLastUpdated"`
 
-	// revokedDate: If status is 'revoked', this is the date and time it was		
+	// revokedDate: If status is 'revoked', this is the date and time it was
 	//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
-	RevokedDate            time.Time `db:"revokedDate"`
+	RevokedDate time.Time `db:"revokedDate"`
 
-	// revokedReason: If status is 'revoked', this is the reason code for the		
-	//   revocation. Otherwise it is zero (which happens to be the reason		
+	// revokedReason: If status is 'revoked', this is the reason code for the
+	//   revocation. Otherwise it is zero (which happens to be the reason
 	//   code for 'unspecified').
-	RevokedReason          int `db:"revokedReason"`
+	RevokedReason int `db:"revokedReason"`
 
 	LockCol int64 `json:"-"`
 }
 
-// A large table of OCSP responses. This contains all historical OCSP		
-// responses we've signed, is append-only, and is likely to get quite		
+// A large table of OCSP responses. This contains all historical OCSP
+// responses we've signed, is append-only, and is likely to get quite
 // large. We'll probably want administratively truncate it at some point.
 type OcspResponse struct {
-	ID        int `db:"id"`
+	ID int `db:"id"`
 
 	// serial: Same as certificate serial.
-	Serial    string `db:"serial"`
+	Serial string `db:"serial"`
 
 	// createdAt: The date the response was signed.
 	CreatedAt time.Time `db:"createdAt"`
 
 	// response: The encoded and signed CRL.
-	Response  []byte `db:"response"`
+	Response []byte `db:"response"`
 }
 
-// A large table of signed CRLs. This contains all historical CRLs		
+// A large table of signed CRLs. This contains all historical CRLs
 // we've signed, is append-only, and is likely to get quite large.
 type Crl struct {
 	// serial: Same as certificate serial.
-	Serial    string `db:"serial"`
+	Serial string `db:"serial"`
 
 	// createdAt: The date the CRL was signed.
 	CreatedAt time.Time `db:"createdAt"`
 
 	// crl: The encoded and signed CRL.
-	Crl       string `db:"crl"`
+	Crl string `db:"crl"`
 }
 
 type DeniedCsr struct {

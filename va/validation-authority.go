@@ -32,7 +32,7 @@ func NewValidationAuthorityImpl(tm bool) ValidationAuthorityImpl {
 
 // Validation methods
 
-func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge) {
+func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdentifier, input core.Challenge) core.Challenge {
 	challenge := input
 
 	if len(challenge.Path) == 0 {
@@ -105,7 +105,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 	return challenge
 }
 
-func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge) {
+func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) core.Challenge {
 	challenge := input
 
 	if identifier.Type != "dns" {

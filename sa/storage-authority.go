@@ -18,8 +18,8 @@ import (
 
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
-	"github.com/letsencrypt/boulder/core"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -51,7 +51,7 @@ type pendingauthzModel struct {
 type authzModel struct {
 	core.Authorization
 
-	Sequence           int64 `db:"sequence"`
+	Sequence int64 `db:"sequence"`
 }
 
 // Type converter
@@ -293,21 +293,21 @@ func statusIsPending(status core.AcmeStatus) bool {
 	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
 }
 
-func existingPending(tx *gorp.Transaction, id string) (bool) {
+func existingPending(tx *gorp.Transaction, id string) bool {
 	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM pending_authz WHERE id = :id", map[string]interface{} {"id": id})
+	_ = tx.SelectOne(&count, "SELECT count(*) FROM pending_authz WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
 }
 
-func existingFinal(tx *gorp.Transaction, id string) (bool) {
+func existingFinal(tx *gorp.Transaction, id string) bool {
 	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{} {"id": id})
+	_ = tx.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
 }
 
-func existingRegistration(tx *gorp.Transaction, id int64) (bool) {
+func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{} {"id": id})
+	_ = tx.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
 }
 
@@ -330,7 +330,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (reg c
 		return
 	}
 
-	err = ssa.dbMap.SelectOne(&reg, "SELECT * FROM registrations WHERE key = :key", map[string]interface{} {"key": string(keyJson)})
+	err = ssa.dbMap.SelectOne(&reg, "SELECT * FROM registrations WHERE key = :key", map[string]interface{}{"key": string(keyJson)})
 	return
 }
 
@@ -383,7 +383,7 @@ func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) 
 
 	var certificate core.Certificate
 	err = ssa.dbMap.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial LIKE :shortSerial",
-		map[string]interface{} {"shortSerial": shortSerial+"%"})
+		map[string]interface{}{"shortSerial": shortSerial + "%"})
 	if err != nil {
 		return
 	}
@@ -400,7 +400,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (cert []byte, err 
 
 	var certificate core.Certificate
 	err = ssa.dbMap.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial = :serial",
-		map[string]interface{} {"serial": serial})
+		map[string]interface{}{"serial": serial})
 	if err != nil {
 		return
 	}
@@ -644,21 +644,21 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 
 	cert := &core.Certificate{
 		RegistrationID: regID,
-		Serial: serial,
-		Digest: digest,
-		DER: certDER,
-		Issued: time.Now(),
+		Serial:         serial,
+		Digest:         digest,
+		DER:            certDER,
+		Issued:         time.Now(),
 	}
 	certStatus := &core.CertificateStatus{
 		SubscriberApproved: false,
-		Status: core.OCSPStatus("good"),
-		OCSPLastUpdated: time.Time{},
-		Serial: serial,
-		RevokedDate: time.Time{},
-		RevokedReason: 0,
-		LockCol: 0,
+		Status:             core.OCSPStatus("good"),
+		OCSPLastUpdated:    time.Time{},
+		Serial:             serial,
+		RevokedDate:        time.Time{},
+		RevokedReason:      0,
+		LockCol:            0,
 	}
-	
+
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
@@ -706,7 +706,7 @@ func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, 
 	err = ssa.dbMap.SelectOne(
 		&denied,
 		"SELECT count(*) FROM deniedCsrs WHERE names = :names",
-		map[string]interface{} {"names": strings.ToLower(strings.Join(names, ","))},
+		map[string]interface{}{"names": strings.ToLower(strings.Join(names, ","))},
 	)
 	if err != nil {
 		return
@@ -714,7 +714,6 @@ func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, 
 	if denied > 0 {
 		already = true
 	}
-	
-	return	
-}
 
+	return
+}
