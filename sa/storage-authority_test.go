@@ -6,24 +6,24 @@
 package sa
 
 import (
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"time"
 
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
-	"github.com/letsencrypt/boulder/core"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 	"io/ioutil"
 	"testing"
 )
 
-func initSA(t *testing.T) (*SQLStorageAuthority) {
+func initSA(t *testing.T) *SQLStorageAuthority {
 	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create SA")
@@ -63,7 +63,7 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
 	expectedReg := core.Registration{
-		ID: reg.ID,
+		ID:  reg.ID,
 		Key: jwk,
 	}
 	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
@@ -114,8 +114,7 @@ func TestAddAuthorization(t *testing.T) {
 	chall := core.Challenge{Type: "simpleHttps", Status: core.StatusPending, URI: u, Token: "THISWOULDNTBEAGOODTOKEN", Path: "test-me"}
 
 	combos := make([][]int, 1)
-	combos[0] = []int{0,1}
-
+	combos[0] = []int{0, 1}
 
 	newPa := core.Authorization{ID: paID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, RegistrationID: 0, Status: core.StatusPending, Expires: time.Now().AddDate(0, 0, 1), Challenges: []core.Challenge{chall}, Combinations: combos, Contact: []core.AcmeURL{u}}
 	err = sa.UpdatePendingAuthorization(newPa)
@@ -194,7 +193,7 @@ func TestGetCertificateByShortSerial(t *testing.T) {
 func TestDeniedCSR(t *testing.T) {
 	key, _ := rsa.GenerateKey(rand.Reader, 512)
 	template := &x509.CertificateRequest{
-		Subject: pkix.Name{CommonName: "google.com"},
+		Subject:  pkix.Name{CommonName: "google.com"},
 		DNSNames: []string{"badguys.com", "reallybad.com"},
 	}
 	csrBytes, _ := x509.CreateCertificateRequest(rand.Reader, template, key)

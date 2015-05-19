@@ -18,9 +18,9 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
@@ -242,13 +242,13 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	authz := core.Authorization{}
 	authz.ID, _ = sa.NewPendingAuthorization()
 	authz.Identifier = core.AcmeIdentifier{
-		Type: core.IdentifierDNS,
+		Type:  core.IdentifierDNS,
 		Value: "www.example.com",
 	}
 	csr := x509.CertificateRequest{
 		SignatureAlgorithm: x509.SHA256WithRSA,
-		PublicKey: AccountKey.Key,
-		DNSNames: []string{"www.example.com"},
+		PublicKey:          AccountKey.Key,
+		DNSNames:           []string{"www.example.com"},
 	}
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csr, AccountPrivateKey.Key)
 	test.AssertNotError(t, err, "Failed to sign CSR")

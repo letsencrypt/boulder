@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 )
