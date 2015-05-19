@@ -59,15 +59,11 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key
 }
 
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
-	if regID == 0 {
-		err = fmt.Errorf("Registration ID cannot be 0")
-	}
-
 	identifier := request.Identifier
 
 	// Check that the identifier is present and appropriate
 	if err = ra.PA.WillingToIssue(identifier); err != nil {
-		return
+		return authz, err
 	}
 
 	// Create validations
@@ -75,7 +71,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	challenges, combinations := ra.PA.ChallengesFor(identifier)
 	authID, err := ra.SA.NewPendingAuthorization()
 	if err != nil {
-		return
+		return authz, err
 	}
 	for i := range challenges {
 		// Ignoring these errors because we construct the URLs to be correct
@@ -84,7 +80,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 		if !challenges[i].IsSane(false) {
 			err = fmt.Errorf("Challenge didn't pass sanity check: %+v", challenges[i])
-			return
+			return authz, err
 		}
 	}
 
@@ -100,7 +96,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Store the authorization object, then return it
 	err = ra.SA.UpdatePendingAuthorization(authz)
-	return
+	return authz, err
 }
 
 func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
