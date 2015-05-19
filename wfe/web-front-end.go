@@ -53,6 +53,9 @@ type WebFrontEndImpl struct {
 
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
+
+	// URL to the current subscriber agreement (should contain some version identifier)
+	SubscriberAgreementURL string
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -258,6 +261,10 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	err = json.Unmarshal(body, &unmarshalled)
 	if err != nil {
 		wfe.sendError(response, "Error unmarshaling JSON", err, http.StatusBadRequest)
+		return
+	}
+	if len(unmarshalled.Agreement) > 0 && unmarshalled.Agreement != wfe.SubscriberAgreementURL {
+		wfe.sendError(response, fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", unmarshalled.Agreement, wfe.SubscriberAgreementURL), nil, http.StatusBadRequest)
 		return
 	}
 	init.MergeUpdate(unmarshalled)
@@ -604,6 +611,11 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		err = json.Unmarshal(body, &update)
 		if err != nil {
 			wfe.sendError(response, "Error unmarshaling registration", err, http.StatusBadRequest)
+			return
+		}
+
+		if len(update.Agreement) > 0 && update.Agreement != wfe.SubscriberAgreementURL {
+			wfe.sendError(response, fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL), nil, http.StatusBadRequest)
 			return
 		}
 
