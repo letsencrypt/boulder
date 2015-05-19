@@ -132,12 +132,17 @@ function parseLink(link) {
 }
 
 function post(url, body, callback) {
-  var jws = crypto.generateSignature(state.accountPrivateKey, new Buffer(JSON.stringify(body)));
-  var payload = JSON.stringify(jws);
+  var payload = JSON.stringify(body, null, 2);
+  var jws = crypto.generateSignature(state.accountPrivateKey, new Buffer(payload));
+  var signed = JSON.stringify(jws, null, 2);
 
   var req = request.post(url, callback);
-  console.log('Posting to', url, ':\n', payload);
-  req.write(payload)
+  console.log('Posting to', url, ':\n', signed);
+  console.log('Payload:', payload);
+  req.on('response', function(response) {
+    console.log(response.headers)
+  })
+  req.write(signed)
   req.end();
   return req;
 }
@@ -276,13 +281,13 @@ function sendAgreement(answers) {
   post(state.registrationURL, state.registration,
     function(err, resp, body) {
       if (err || Math.floor(resp.statusCode / 100) != 2) {
-        console.log("Couldn't POST agreement back to server, aborting.");
-        console.log("error: " + err);
         console.log(body);
+        console.log("error: " + err);
+        console.log("Couldn't POST agreement back to server, aborting.");
         process.exit(1);
+      } else {
+        inquirer.prompt(questions.domain, getChallenges);
       }
-
-      inquirer.prompt(questions.domain, getChallenges);
     });
 }
 

@@ -91,7 +91,7 @@ func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
 	var parsedKey jose.JsonWebKey
 	parsedKey.UnmarshalJSON(keyJSON)
 
-	return core.Registration{Key: parsedKey}, nil
+	return core.Registration{ID: id, Key: parsedKey}, nil
 }
 
 func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
@@ -106,7 +106,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
-		return core.Registration{}, sql.ErrNoRows
+		return core.Registration{ID: 2}, sql.ErrNoRows
 	}
 
 	// Return a fake registration
@@ -602,35 +602,15 @@ func TestRegistration(t *testing.T) {
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
 	responseWriter.Body.Reset()
 
-	// Test GET missing entry
-	path, _ = url.Parse("/100")
-	wfe.Registration(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to find registration\"}")
-	responseWriter.Body.Reset()
-
-	// Test GET malformed entry
-	path, _ = url.Parse("/101")
-	wfe.Registration(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:serverInternal\",\"detail\":\"Failed to marshal authz\"}")
-	responseWriter.Body.Reset()
-
-	// Test GET proper entry
+	// Test GET proper entry returns 405
 	path, _ = url.Parse("/1")
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
 	})
-	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
 	responseWriter.Body.Reset()
 
 	// Test POST invalid JSON
@@ -646,7 +626,7 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON but key is not registered
-	path, _ = url.Parse("/1")
+	path, _ = url.Parse("/2")
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
 		Body: makeBody(`{
@@ -662,7 +642,7 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with registration up in the mock
-	path, _ = url.Parse("/2")
+	path, _ = url.Parse("/1")
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
 		Body: makeBody(`{
