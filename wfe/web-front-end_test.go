@@ -101,7 +101,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 	test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
-		return core.Registration{Key: jwk}, nil
+		return core.Registration{ID: 1, Key: jwk}, nil
 	}
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
@@ -110,7 +110,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 	}
 
 	// Return a fake registration
-	return core.Registration{}, nil
+	return core.Registration{ID: 1}, nil
 }
 
 func (sa *MockSA) GetAuthorization(string) (core.Authorization, error) {
@@ -373,7 +373,7 @@ func TestChallenge(t *testing.T) {
 				URI:  core.AcmeURL(*challengeURL),
 			},
 		},
-		RegistrationID: 0,
+		RegistrationID: 1,
 	}
 
 	wfe.Challenge(authz, responseWriter, &http.Request{
