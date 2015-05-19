@@ -31,7 +31,7 @@ const auditTag = "[AUDIT]"
 const emergencyReturnValue = 13
 
 // exitFunction closes the running system
-type exitFunction func ()
+type exitFunction func()
 
 // Default to calling os.Exit()
 func defaultEmergencyExit() {
@@ -45,7 +45,7 @@ func defaultEmergencyExit() {
 // to send a message as an audit event.
 type AuditLogger struct {
 	*syslog.Writer
-	Stats statsd.Statter
+	Stats        statsd.Statter
 	exitFunction exitFunction
 }
 

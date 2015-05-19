@@ -63,4 +63,15 @@ else
   run go test ${dirlist}
 fi
 
+echo "Checking for unformatted files:"
+unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1  gofmt -l)
+if [ "x${unformatted}" != "x" ] ; then
+  echo "Unformatted files found; setting failure state."
+  echo "Please run 'go fmt' on each of these files and amend your commit to continue."
+  FAILURE=1
+  for f in ${unformatted}; do
+    echo "- ${f}"
+  done
+fi
+
 exit ${FAILURE}

@@ -19,8 +19,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	blog "github.com/letsencrypt/boulder/log"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	blog "github.com/letsencrypt/boulder/log"
 	"hash"
 	"io"
 	"math/big"
@@ -98,19 +98,19 @@ func Fingerprint256(data []byte) string {
 
 func KeyDigest(key crypto.PublicKey) (string, error) {
 	switch t := key.(type) {
-		case *jose.JsonWebKey:
-			return KeyDigest(t.Key)
-		case jose.JsonWebKey:
-			return KeyDigest(t.Key)
-		default:
-			keyDER, err := x509.MarshalPKIXPublicKey(key)
-			if err != nil {
-				logger := blog.GetAuditLogger()
-				logger.Debug(fmt.Sprintf("Problem marshaling public key: %s", err))
-				return "", err
-			}
-			spkiDigest := sha256.Sum256(keyDER)
-			return base64.StdEncoding.EncodeToString(spkiDigest[0:32]), nil
+	case *jose.JsonWebKey:
+		return KeyDigest(t.Key)
+	case jose.JsonWebKey:
+		return KeyDigest(t.Key)
+	default:
+		keyDER, err := x509.MarshalPKIXPublicKey(key)
+		if err != nil {
+			logger := blog.GetAuditLogger()
+			logger.Debug(fmt.Sprintf("Problem marshaling public key: %s", err))
+			return "", err
+		}
+		spkiDigest := sha256.Sum256(keyDER)
+		return base64.StdEncoding.EncodeToString(spkiDigest[0:32]), nil
 	}
 }
 
@@ -224,7 +224,7 @@ func SerialToString(serial *big.Int) string {
 	return fmt.Sprintf("%032x", serial)
 }
 
-func StringToSerial(serial string) (*big.Int, error)  {
+func StringToSerial(serial string) (*big.Int, error) {
 	var serialNum big.Int
 	if len(serial) != 32 {
 		return &serialNum, errors.New("Serial number should be 32 characters long")

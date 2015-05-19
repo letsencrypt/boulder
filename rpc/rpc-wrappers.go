@@ -11,9 +11,9 @@ import (
 	"errors"
 	"fmt"
 
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/core"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -75,7 +75,7 @@ type authorizationRequest struct {
 }
 
 type certificateRequest struct {
-	Req core.CertificateRequest
+	Req   core.CertificateRequest
 	RegID int64
 }
 
@@ -87,7 +87,6 @@ func errorCondition(method string, err error, obj interface{}) {
 	log := blog.GetAuditLogger()
 	log.Audit(fmt.Sprintf("Error condition. method: %s err: %s data: %+v", method, err, obj))
 }
-
 
 func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.RegistrationAuthority) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
@@ -381,7 +380,7 @@ func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, imp
 
 		if err := impl.UpdateValidations(authz); err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-      errorCondition(MethodUpdateValidations, err, authz)
+			errorCondition(MethodUpdateValidations, err, authz)
 		}
 		return nil
 	})
@@ -626,10 +625,10 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 			return nil
 		}
 
-	  if err := impl.UpdatePendingAuthorization(authz); err != nil {
+		if err := impl.UpdatePendingAuthorization(authz); err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodUpdatePendingAuthorization, err, authz)
-	  }
+		}
 		return nil
 	})
 

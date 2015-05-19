@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 )
@@ -131,10 +131,10 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Construct the log event
 	logEvent := certificateRequestEvent{
-		ID:                  core.NewToken(),
-		Requester:           regID,
-		RequestMethod:       "online",
-		RequestTime:         time.Now(),
+		ID:            core.NewToken(),
+		Requester:     regID,
+		RequestMethod: "online",
+		RequestTime:   time.Now(),
 	}
 
 	// No matter what, log the request
@@ -216,7 +216,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}
 	logEvent.VerificationMethods = verificationMethods
 
-
 	// Validate that authorization key is authorized for all domains
 	names := csr.DNSNames
 	if len(csr.Subject.CommonName) > 0 {
@@ -283,7 +282,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 
 func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.CA.RevokeCertificate(serialString);
+	err := ra.CA.RevokeCertificate(serialString)
 
 	// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 	if err != nil {
