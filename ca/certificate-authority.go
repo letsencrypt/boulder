@@ -96,11 +96,9 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	// In test mode, load a private key from a file. In production, use an HSM.
-	if !config.TestMode {
-		err = errors.New("OCSP signing with a PKCS#11 key not yet implemented.")
-		return nil, err
-	}
+	// In test mode, load a private key from a file.
+	// TODO: This should rely on the CFSSL config, to make it easy to use a key
+	// from a file vs an HSM. https://github.com/letsencrypt/boulder/issues/163
 	issuerKey, err := loadIssuerKey(config.IssuerKey)
 	if err != nil {
 		return nil, err
