@@ -268,7 +268,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 
-	regURL := wfe.RegBase + string(reg.ID)
+	regURL := fmt.Sprintf("%s%d", wfe.RegBase, reg.ID)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
 		wfe.sendError(response, "Error marshaling authz", err, http.StatusInternalServerError)
@@ -554,6 +554,24 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 }
 
 func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "POST" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, _, currReg, err := wfe.verifyPOST(request, true)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			wfe.sendError(response,
+				"No registration exists matching provided key",
+				err, http.StatusForbidden)
+		} else {
+			wfe.sendError(response,
+				"Unable to read/verify body", err, http.StatusBadRequest)
+		}
+		return
+	}
+
 	// Requests to this handler should have a path that leads to a known
 	// registration
 	idStr := parseIDFromPath(request.URL.Path)
@@ -564,66 +582,38 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	} else if id <= 0 {
 		wfe.sendError(response, "Registration ID must be a positive non-zero integer", id, http.StatusBadRequest)
 		return
+	} else if id != currReg.ID {
+		wfe.sendError(response, "Request signing key did not match registration key", "", http.StatusForbidden)
+		return
 	}
-	reg, err := wfe.SA.GetRegistration(id)
+
+	var update core.Registration
+	err = json.Unmarshal(body, &update)
 	if err != nil {
-		wfe.sendError(response,
-			"Unable to find registration", err,
-			http.StatusNotFound)
+		wfe.sendError(response, "Error unmarshaling registration", err, http.StatusBadRequest)
 		return
 	}
-	reg.ID = id
 
-	switch request.Method {
-	default:
-		wfe.sendError(response, "Method not allowed", "", http.StatusMethodNotAllowed)
+	// MergeUpdate copies over only the fields that a client is allowed to modify.
+	// Note: The RA will also use MergeUpdate to filter out non-updateable fields,
+	// but we do it here too, so that/ input filtering happens as early in the
+	// request processing as possible.
+	currReg.MergeUpdate(update)
+	// Ask the RA to update this authorization.
+	updatedReg, err := wfe.RA.UpdateRegistration(currReg, currReg)
+	if err != nil {
+		wfe.sendError(response, "Unable to update registration", err, http.StatusInternalServerError)
 		return
-
-	case "GET":
-		jsonReply, err := json.Marshal(reg)
-		if err != nil {
-			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
-			return
-		}
-		response.Header().Set("Content-Type", "application/json")
-		response.WriteHeader(http.StatusOK)
-		response.Write(jsonReply)
-
-	case "POST":
-		body, _, currReg, err := wfe.verifyPOST(request, true)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				wfe.sendError(response, "No registration exists matching provided key", err, http.StatusForbidden)
-			} else {
-				wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
-			}
-			return
-		}
-
-		var update core.Registration
-		err = json.Unmarshal(body, &update)
-		if err != nil {
-			wfe.sendError(response, "Error unmarshaling registration", err, http.StatusBadRequest)
-			return
-		}
-
-		// Ask the RA to update this authorization
-		updatedReg, err := wfe.RA.UpdateRegistration(currReg, update)
-		if err != nil {
-			wfe.sendError(response, "Unable to update registration", err, http.StatusInternalServerError)
-			return
-		}
-
-		jsonReply, err := json.Marshal(updatedReg)
-		if err != nil {
-			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
-			return
-		}
-		response.Header().Set("Content-Type", "application/json")
-		response.WriteHeader(http.StatusAccepted)
-		response.Write(jsonReply)
-
 	}
+
+	jsonReply, err := json.Marshal(updatedReg)
+	if err != nil {
+		wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(http.StatusAccepted)
+	response.Write(jsonReply)
 }
 
 func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request *http.Request) {
