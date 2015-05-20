@@ -352,13 +352,6 @@ func TestFailNoSerial(t *testing.T) {
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
-func TestFailNoTestMode(t *testing.T) {
-	cadb, _, caConfig := setup(t)
-	caConfig.TestMode = false
-	_, err := NewCertificateAuthorityImpl(cadb, caConfig)
-	test.AssertError(t, err, "CA should have failed with TestMode = false, but key provided")
-}
-
 func TestRevoke(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
 	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)

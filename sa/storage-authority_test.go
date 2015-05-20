@@ -56,6 +56,9 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create new registration")
 	test.Assert(t, reg.ID != 0, "ID shouldn't be 0")
 
+	_, err = sa.GetRegistration(0)
+	test.AssertError(t, err, "Registration object for ID 0 was returned")
+
 	dbReg, err := sa.GetRegistration(reg.ID)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
@@ -74,11 +77,15 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
 	dbReg, err = sa.GetRegistrationByKey(jwk)
-	test.AssertNotError(t, err, "Couldn't update registration by key")
+	test.AssertNotError(t, err, "Couldn't get registration by key")
 
 	test.AssertEquals(t, dbReg.ID, newReg.ID)
 	test.AssertEquals(t, dbReg.RecoveryToken, newReg.RecoveryToken)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
+
+	jwk.KeyID = "bad"
+	_, err = sa.GetRegistrationByKey(jwk)
+	test.AssertError(t, err, "Registration object for invalid key was returned")
 }
 
 func TestAddAuthorization(t *testing.T) {

@@ -92,7 +92,7 @@ func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
 	var parsedKey jose.JsonWebKey
 	parsedKey.UnmarshalJSON(keyJSON)
 
-	return core.Registration{Key: parsedKey, Agreement: "yup"}, nil
+	return core.Registration{ID: id, Key: parsedKey, Agreement: "yup"}, nil
 }
 
 func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
@@ -102,16 +102,16 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 	test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
-		return core.Registration{Key: jwk}, nil
+		return core.Registration{ID: 1, Key: jwk}, nil
 	}
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
-		return core.Registration{}, sql.ErrNoRows
+		return core.Registration{ID: 2}, sql.ErrNoRows
 	}
 
 	// Return a fake registration
-	return core.Registration{Agreement: "yup"}, nil
+	return core.Registration{ID: 1, Agreement: "yup"}, nil
 }
 
 func (sa *MockSA) GetAuthorization(string) (core.Authorization, error) {
@@ -374,7 +374,7 @@ func TestChallenge(t *testing.T) {
 				URI:  core.AcmeURL(*challengeURL),
 			},
 		},
-		RegistrationID: 0,
+		RegistrationID: 1,
 	}
 
 	wfe.Challenge(authz, responseWriter, &http.Request{
@@ -614,35 +614,15 @@ func TestRegistration(t *testing.T) {
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
 	responseWriter.Body.Reset()
 
-	// Test GET missing entry
-	path, _ = url.Parse("/100")
-	wfe.Registration(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to find registration\"}")
-	responseWriter.Body.Reset()
-
-	// Test GET malformed entry
-	path, _ = url.Parse("/101")
-	wfe.Registration(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:serverInternal\",\"detail\":\"Failed to marshal authz\"}")
-	responseWriter.Body.Reset()
-
-	// Test GET proper entry
+	// Test GET proper entry returns 405
 	path, _ = url.Parse("/1")
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
 	})
-	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
 	responseWriter.Body.Reset()
 
 	// Test POST invalid JSON
@@ -658,7 +638,7 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON but key is not registered
-	path, _ = url.Parse("/1")
+	path, _ = url.Parse("/2")
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
 		Body: makeBody(`{
@@ -684,6 +664,9 @@ func TestRegistration(t *testing.T) {
 
 	// Test POST valid JSON with registration up in the mock (with incorrect agreement URL)
 	result, err := signer.Sign([]byte("{\"agreement\":\"https://letsencrypt.org/im-bad\"}"))
+
+	// Test POST valid JSON with registration up in the mock
+	path, _ = url.Parse("/1")
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
 		Body:   makeBody(result.FullSerialize()),
