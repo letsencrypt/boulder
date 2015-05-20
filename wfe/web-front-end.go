@@ -466,7 +466,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// TODO The spec says a client should send an Accept: application/pkix-cert
 	// header; either explicitly insist or tolerate
 	response.Header().Add("Location", certURL)
-	response.Header().Add("Link", link(wfe.BaseURL + wfe.IssuerPath, "up"))
+	response.Header().Add("Link", link(wfe.BaseURL+wfe.IssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
