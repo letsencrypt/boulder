@@ -92,7 +92,7 @@ func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
 	var parsedKey jose.JsonWebKey
 	parsedKey.UnmarshalJSON(keyJSON)
 
-	return core.Registration{Key: parsedKey}, nil
+	return core.Registration{Key: parsedKey, Agreement: "yup"}, nil
 }
 
 func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
@@ -111,7 +111,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 	}
 
 	// Return a fake registration
-	return core.Registration{}, nil
+	return core.Registration{Agreement: "yup"}, nil
 }
 
 func (sa *MockSA) GetAuthorization(string) (core.Authorization, error) {

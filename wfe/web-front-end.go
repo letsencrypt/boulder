@@ -311,6 +311,10 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		}
 		return
 	}
+	if currReg.Agreement == "" {
+		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
+		return
+	}
 
 	var init core.Authorization
 	if err = json.Unmarshal(body, &init); err != nil {
@@ -353,9 +357,13 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 		return
 	}
 
-	body, requestKey, _, err := wfe.verifyPOST(request, false)
+	body, requestKey, reg, err := wfe.verifyPOST(request, false)
 	if err != nil {
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
+		return
+	}
+	if reg.Agreement == "" {
+		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 		return
 	}
 
@@ -438,6 +446,10 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		}
 		return
 	}
+	if reg.Agreement == "" {
+		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
+		return
+	}
 
 	var init core.CertificateRequest
 	if err = json.Unmarshal(body, &init); err != nil {
@@ -514,6 +526,10 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			} else {
 				wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 			}
+			return
+		}
+		if currReg.Agreement == "" {
+			wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 			return
 		}
 
