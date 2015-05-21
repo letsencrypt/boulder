@@ -196,7 +196,7 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
 		}
 
 		if !challenge.IsSane(true) {
-			challenge.Status = core.StatusInvalid
+			authz.Challenges[i].Status = core.StatusInvalid
 			logEvent.Error = fmt.Sprintf("Challenge failed sanity check.")
 			logEvent.Challenge = challenge
 		} else {
