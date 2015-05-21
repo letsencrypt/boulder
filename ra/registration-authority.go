@@ -7,7 +7,6 @@ package ra
 
 import (
 	"crypto/x509"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/url"
@@ -49,19 +48,19 @@ func lastPathSegment(url core.AcmeURL) string {
 }
 
 type certificateRequestEvent struct {
-	ID                  string    `json:"omitempty"`
-	Requester           int64     `json:"omitempty"`
-	SerialNumber        *big.Int  `json:"omitempty"`
-	RequestMethod       string    `json:"omitempty"`
-	VerificationMethods []string  `json:"omitempty"`
-	VerifiedFields      []string  `json:"omitempty"`
-	CommonName          string    `json:"omitempty"`
-	Names               []string  `json:"omitempty"`
-	NotBefore           time.Time `json:"omitempty"`
-	NotAfter            time.Time `json:"omitempty"`
-	RequestTime         time.Time `json:"omitempty"`
-	ResponseTime        time.Time `json:"omitempty"`
-	Error               string    `json:"omitempty"`
+	ID                  string    `json:",omitempty"`
+	Requester           int64     `json:",omitempty"`
+	SerialNumber        *big.Int  `json:",omitempty"`
+	RequestMethod       string    `json:",omitempty"`
+	VerificationMethods []string  `json:",omitempty"`
+	VerifiedFields      []string  `json:",omitempty"`
+	CommonName          string    `json:",omitempty"`
+	Names               []string  `json:",omitempty"`
+	NotBefore           time.Time `json:",omitempty"`
+	NotAfter            time.Time `json:",omitempty"`
+	RequestTime         time.Time `json:",omitempty"`
+	ResponseTime        time.Time `json:",omitempty"`
+	Error               string    `json:",omitempty"`
 }
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key jose.JsonWebKey) (reg core.Registration, err error) {
@@ -140,15 +139,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// No matter what, log the request
 	defer func() {
-		jsonLogEvent, logErr := json.Marshal(logEvent)
-		if logErr != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			ra.log.Audit(fmt.Sprintf("Certificate request logEvent could not be serialized. Raw: %+v", logEvent))
-			return
-		}
-
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ra.log.Audit(fmt.Sprintf("Certificate request %s - %s", logEventResult, string(jsonLogEvent)))
+		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
 	}()
 
 	if regID <= 0 {

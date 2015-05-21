@@ -139,6 +139,38 @@ func TestPanic(t *testing.T) {
 	// Can't assert anything here or golint gets angry
 }
 
+func TestAuditObject(t *testing.T) {
+	t.Parallel()
+	stats, _ := statsd.NewNoopClient(nil)
+	audit, _ := Dial("", "", "tag", stats)
+
+	// Test a simple object
+	err := audit.AuditObject("Prefix", "String")
+	test.AssertNotError(t, err, "Simple objects should be serializable")
+
+	// Test a system object
+	err = audit.AuditObject("Prefix", t)
+	test.AssertNotError(t, err, "System objects should be serializable")
+
+	// Test a complex object
+	type validObj struct {
+		A string
+		B string
+	}
+	var valid = validObj{A: "B", B: "C"}
+	err = audit.AuditObject("Prefix", valid)
+	test.AssertNotError(t, err, "Complex objects should be serializable")
+
+	type invalidObj struct {
+		A chan string
+	}
+
+	var invalid = invalidObj{A: make(chan string)}
+	err = audit.AuditObject("Prefix", invalid)
+	test.AssertError(t, err, "Invalid objects should fail serialization")
+
+}
+
 func TestEmergencyExit(t *testing.T) {
 	t.Parallel()
 	// Write all logs to UDP on a high port so as to not bother the system
