@@ -275,7 +275,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 
-	regURL := fmt.Sprintf("%s%d", wfe.RegBase, reg.ID)
+	regURL := fmt.Sprintf("%s%s", wfe.RegBase, string(reg.ID))
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
 		wfe.sendError(response, "Error marshaling authz", err, http.StatusInternalServerError)

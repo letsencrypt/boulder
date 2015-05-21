@@ -24,7 +24,7 @@ type PolicyAuthorityImpl struct {
 
 func NewPolicyAuthorityImpl() *PolicyAuthorityImpl {
 	logger := blog.GetAuditLogger()
-	logger.Notice("Registration Authority Starting")
+	logger.Notice("Policy Authority Starting")
 
 	pa := PolicyAuthorityImpl{log: logger}
 

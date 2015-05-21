@@ -6,6 +6,7 @@
 package log
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/syslog"
@@ -203,9 +204,21 @@ func (log *AuditLogger) Notice(msg string) (err error) {
 
 // Audit sends a NOTICE-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
-// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *AuditLogger) Audit(msg string) (err error) {
 	return log.auditAtLevel("Logging.Notice", msg)
+}
+
+// AuditObject sends a NOTICE-severity JSON-serialized object message that is prefixed
+// with the audit tag, for special handling at the upstream system logger.
+func (log *AuditLogger) AuditObject(msg string, obj interface{}) (err error) {
+	jsonLogEvent, logErr := json.Marshal(obj)
+	if logErr != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		log.auditAtLevel("Logging.Err", fmt.Sprintf("%s - logEvent could not be serialized. Raw: %+v", msg, obj))
+		return logErr
+	}
+
+	return log.auditAtLevel("Logging.Notice", fmt.Sprintf("%s - %s", msg, jsonLogEvent))
 }
 
 // AuditErr can format an error for auditing; it does so at ERR level.

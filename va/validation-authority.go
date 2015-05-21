@@ -30,21 +30,31 @@ func NewValidationAuthorityImpl(tm bool) ValidationAuthorityImpl {
 	return ValidationAuthorityImpl{log: logger, TestMode: tm}
 }
 
+// Used for audit logging
+type verificationRequestEvent struct {
+	ID           string         `json:",omitempty"`
+	Requester    int64          `json:",omitempty"`
+	Challenge    core.Challenge `json:",omitempty"`
+	RequestTime  time.Time      `json:",omitempty"`
+	ResponseTime time.Time      `json:",omitempty"`
+	Error        string         `json:",omitempty"`
+}
+
 // Validation methods
 
-func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdentifier, input core.Challenge) core.Challenge {
+func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if len(challenge.Path) == 0 {
 		challenge.Status = core.StatusInvalid
-		va.log.Debug("No path provided for SimpleHTTPS challenge.")
-		return challenge
+		err := fmt.Errorf("No path provided for SimpleHTTPS challenge.")
+		return challenge, err
 	}
 
 	if identifier.Type != core.IdentifierDNS {
 		challenge.Status = core.StatusInvalid
-		va.log.Debug("Identifier type for SimpleHTTPS was not DNS")
-		return challenge
+		err := fmt.Errorf("Identifier type for SimpleHTTPS was not DNS")
+		return challenge, err
 	}
 	hostName := identifier.Value
 	protocol := "https"
@@ -55,12 +65,12 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 
 	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", protocol, hostName, challenge.Path)
 
-	va.log.Notice(fmt.Sprintf("Attempting to validate SimpleHTTPS for %s %s", hostName, url))
+	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+	va.log.Audit(fmt.Sprintf("Attempting to validate SimpleHTTPS for %s", url))
 	httpRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
 		challenge.Status = core.StatusInvalid
-		return challenge
+		return challenge, err
 	}
 
 	httpRequest.Host = hostName
@@ -81,37 +91,36 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 
 	if err == nil && httpResponse.StatusCode == 200 {
 		// Read body & test
-		body, err := ioutil.ReadAll(httpResponse.Body)
-		if err != nil {
-			va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
+		body, readErr := ioutil.ReadAll(httpResponse.Body)
+		if readErr != nil {
 			challenge.Status = core.StatusInvalid
-			return challenge
+			return challenge, readErr
 		}
 
 		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
 			challenge.Status = core.StatusValid
 		} else {
-			va.log.Notice(fmt.Sprintf("Incorrect token validating SimpleHTTPS for %s %s", hostName, url))
+			err = fmt.Errorf("Incorrect token validating SimpleHTTPS for %s", url)
 			challenge.Status = core.StatusInvalid
 		}
 	} else if err != nil {
-		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %s", hostName, url, err))
+		va.log.Debug(fmt.Sprintf("Could not connect to %s: %s", url, err.Error()))
 		challenge.Status = core.StatusInvalid
 	} else {
-		va.log.Notice(fmt.Sprintf("Error validating SimpleHTTPS for %s %s: %d", hostName, url, httpResponse.StatusCode))
+		err = fmt.Errorf("Invalid response from %s: %d", url, httpResponse.StatusCode)
 		challenge.Status = core.StatusInvalid
 	}
 
-	return challenge
+	return challenge, err
 }
 
-func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) core.Challenge {
+func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != "dns" {
-		va.log.Debug("Identifier type for DVSNI was not DNS")
+		err := fmt.Errorf("Identifier type for DVSNI was not DNS")
 		challenge.Status = core.StatusInvalid
-		return challenge
+		return challenge, err
 	}
 
 	const DVSNI_SUFFIX = ".acme.invalid"
@@ -121,13 +130,13 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	if err != nil {
 		va.log.Debug("Failed to decode R value from DVSNI challenge")
 		challenge.Status = core.StatusInvalid
-		return challenge
+		return challenge, err
 	}
 	S, err := core.B64dec(challenge.S)
 	if err != nil {
 		va.log.Debug("Failed to decode S value from DVSNI challenge")
 		challenge.Status = core.StatusInvalid
-		return challenge
+		return challenge, err
 	}
 	RS := append(R, S...)
 
@@ -150,52 +159,70 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	if err != nil {
 		va.log.Debug("Failed to connect to host for DVSNI challenge")
 		challenge.Status = core.StatusInvalid
-		return challenge
+		return challenge, err
 	}
 	defer conn.Close()
 
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		va.log.Debug("No certs presented for DVSNI challenge")
+		err = fmt.Errorf("No certs presented for DVSNI challenge")
 		challenge.Status = core.StatusInvalid
-		return challenge
+		return challenge, err
 	}
 	for _, name := range certs[0].DNSNames {
 		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
 			challenge.Status = core.StatusValid
-			return challenge
+			return challenge, nil
 		}
 	}
 
-	va.log.Debug("Correct zName not found for DVSNI challenge")
+	err = fmt.Errorf("Correct zName not found for DVSNI challenge")
 	challenge.Status = core.StatusInvalid
-	return challenge
+	return challenge, err
 }
 
 // Overall validation process
 
 func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
+
 	// Select the first supported validation method
 	// XXX: Remove the "break" lines to process all supported validations
 	for i, challenge := range authz.Challenges {
-		if !challenge.IsSane(true) {
-			va.log.Debug(fmt.Sprintf("Challenge not considered sane: %v", challenge))
-			challenge.Status = core.StatusInvalid
-			continue
+		logEvent := verificationRequestEvent{
+			ID:          authz.ID,
+			Requester:   authz.RegistrationID,
+			RequestTime: time.Now(),
 		}
 
-		switch challenge.Type {
-		case core.ChallengeTypeSimpleHTTPS:
-			authz.Challenges[i] = va.validateSimpleHTTPS(authz.Identifier, challenge)
-			break
-		case core.ChallengeTypeDVSNI:
-			authz.Challenges[i] = va.validateDvsni(authz.Identifier, challenge)
-			break
+		if !challenge.IsSane(true) {
+			challenge.Status = core.StatusInvalid
+			logEvent.Error = fmt.Sprintf("Challenge failed sanity check.")
+			logEvent.Challenge = challenge
+		} else {
+
+			var err error
+
+			switch challenge.Type {
+			case core.ChallengeTypeSimpleHTTPS:
+				authz.Challenges[i], err = va.validateSimpleHTTPS(authz.Identifier, challenge)
+				break
+			case core.ChallengeTypeDVSNI:
+				authz.Challenges[i], err = va.validateDvsni(authz.Identifier, challenge)
+				break
+			}
+
+			logEvent.Challenge = authz.Challenges[i]
+			if err != nil {
+				logEvent.Error = err.Error()
+			}
 		}
+
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		va.log.AuditObject("Validation result", logEvent)
 	}
 
-	va.log.Notice(fmt.Sprintf("Validations: %v", authz))
+	va.log.Notice(fmt.Sprintf("Validations: %+v", authz))
 
 	va.RA.OnValidationUpdate(authz)
 }
