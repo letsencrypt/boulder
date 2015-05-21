@@ -5,17 +5,6 @@ if type realpath >/dev/null 2>/dev/null; then
 fi
 
 # Kill all children on exit.
-trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM EXIT
-
 export BOULDER_CONFIG=${BOULDER_CONFIG:-test/boulder-config.json}
 
-go run ./cmd/boulder/main.go &
-go run Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl/cfssl.go \
-  -loglevel 0 \
-  serve \
-  -port 9000 \
-  -ca test/test-ca.pem \
-  -ca-key test/test-ca.key \
-  -config test/cfssl-config.json &
-
-sleep 100000
+exec go run ./cmd/boulder/main.go

@@ -31,21 +31,58 @@
   },
 
   "wfe": {
-    "listenAddress": "0.0.0.0:4000"
+    "listenAddress": "127.0.0.1:4000"
   },
 
   "ca": {
-    "server": "localhost:9000",
-    "authKey": "79999d86250c367a2b517a1ae7d409c1",
     "serialPrefix": 255,
     "profile": "ee",
     "dbDriver": "sqlite3",
     "dbName": ":memory:",
     "testMode": true,
     "_comment": "This should only be present in testMode. In prod use an HSM.",
-    "issuerKey": "test/test-ca.key",
+    "Key": {
+      "File": "test/test-ca.key"
+    },
     "expiry": "2160h",
-    "maxNames": 1000
+    "maxNames": 1000,
+    "cfssl": {
+      "signing": {
+        "profiles": {
+          "ee": {
+            "usages": [
+              "digital signature",
+              "key encipherment",
+              "server auth"
+            ],
+            "backdate": "1h",
+            "is_ca": false,
+            "issuer_urls": [
+              "http://int-x1.letsencrypt.org/cert"
+            ],
+            "ocsp_url": "http://int-x1.letsencrypt.org/ocsp",
+            "crl_url": "http://int-x1.letsencrypt.org/crl",
+            "policies": [
+              "1.3.6.1.4.1.44947.1.1.1",
+              "2.23.140.1.2.1"
+            ],
+            "expiry": "8760h",
+            "CSRWhitelist": {
+              "PublicKeyAlgorithm": true,
+              "PublicKey": true,
+              "SignatureAlgorithm": true
+            },
+            "UseSerialSeq": true
+          }
+        },
+        "default": {
+          "usages": [
+            "digital signature"
+          ],
+          "expiry": "8760h"
+        }
+      }
+    }
   },
 
   "sa": {
