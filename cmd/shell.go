@@ -86,6 +86,8 @@ type Config struct {
 		Username string
 		Password string
 	}
+
+	SubscriberAgreementURL string
 }
 
 // QueuePair describes a client-server pair of queue names

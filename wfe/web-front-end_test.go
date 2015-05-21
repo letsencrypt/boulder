@@ -6,6 +6,7 @@
 package wfe
 
 import (
+	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
@@ -91,7 +92,7 @@ func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
 	var parsedKey jose.JsonWebKey
 	parsedKey.UnmarshalJSON(keyJSON)
 
-	return core.Registration{ID: id, Key: parsedKey}, nil
+	return core.Registration{ID: id, Key: parsedKey, Agreement: "yup"}, nil
 }
 
 func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
@@ -110,7 +111,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 	}
 
 	// Return a fake registration
-	return core.Registration{ID: 1}, nil
+	return core.Registration{ID: 1, Agreement: "yup"}, nil
 }
 
 func (sa *MockSA) GetAuthorization(string) (core.Authorization, error) {
@@ -411,6 +412,7 @@ func TestNewRegistration(t *testing.T) {
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.SubscriberAgreementURL = "https://letsencrypt.org/be-good"
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -484,10 +486,19 @@ func TestNewRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
-		Body:   makeBody(signRequest(t, "{\"contact\":[\"tel:123456789\"]}")),
+		Body:   makeBody(signRequest(t, "{\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/im-bad\"}")),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [https://letsencrypt.org/be-good]\"}")
+
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody(signRequest(t, "{\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/be-good\"}")),
 	})
 
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"key\":{\"kty\":\"RSA\",\"n\":\"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ\",\"e\":\"AAEAAQ\"},\"recoveryToken\":\"\",\"contact\":[\"tel:123456789\"],\"thumbprint\":\"\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"key\":{\"kty\":\"RSA\",\"n\":\"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ\",\"e\":\"AAEAAQ\"},\"recoveryToken\":\"\",\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/be-good\",\"thumbprint\":\"\"}")
 	var reg core.Registration
 	err := json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
@@ -588,6 +599,7 @@ func TestRegistration(t *testing.T) {
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.SubscriberAgreementURL = "https://letsencrypt.org/be-good"
 	responseWriter := httptest.NewRecorder()
 
 	// Test invalid method
@@ -641,16 +653,36 @@ func TestRegistration(t *testing.T) {
 		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"No registration exists matching provided key\"}")
 	responseWriter.Body.Reset()
 
+	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+
+	path, _ = url.Parse("/2")
+
+	// Test POST valid JSON with registration up in the mock (with incorrect agreement URL)
+	result, err := signer.Sign([]byte("{\"agreement\":\"https://letsencrypt.org/im-bad\"}"))
+
 	// Test POST valid JSON with registration up in the mock
 	path, _ = url.Parse("/1")
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(`{
-		   "payload" : "ewogICJjb250YWN0IjogWwogICAgIm1haWx0bzpjZXJ0LWFkbWluQGV4YW1wbGUuY29tIiwKICAgICJ0ZWw6KzEyMDI1NTUxMjEyIgogIF0sCiAgImFncmVlbWVudCI6ICJ5ZXMiCn0K",
-		   "protected" : "eyJhbGciOiJQUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoieU5XVmh0WUVLSlIyMXk5eHNIVi1QRF9iWXdiWFNlTnVGYWw0NnhZeFZmUkw1bXFoYTd2dHR2akJfdmM3WGcyUnZnQ3hIUENxb3hnTVBUekhyWlQ3NUxqQ3dJVzJLX2tsQllOOG9ZdlR3d21lU2tBejZ1dDdaeFB2LW5aYVQ1VEpoR2swTlQya2hfelNwZHJpRUpfM3ZXLW1xeFliYkJtcHZIcXNhMV96eDlmU3VIWWN0QVpKV3p4elVaWHlrYldNV1FacEVpRTBKNGFqajUxZkluRXpWbjdWeFYtbXpmTXlib1FqdWpQaDdhTkp4QVdTcTRvUUVKSkRnV3dTaDlsZXlvSm9QcE9OSHhoNW5FRTVBakUwMUZrR0lDU3hqcFpzRi13OGhPVEkzWFhvaFVkdTI5U2UyNmsyQjBQb2xEU3VqMEdJUVU2LVc5VGRMWFNqQmIyU3BRIiwiZSI6IkFBRUFBUSJ9fQ",
-		   "signature" : "qZ5WWZJxhub1VCNdgAv-y02YLIc9QtHS7lKxVAiRqXPynENsL7_x63whkfvvHHEUiSyyf9pJCLY9NJfiFr-b4QiBOS7QB4JGj8NTghAeFycPerb6e4XCVx9xKljefybAm5yDOUFjG8PYW-XqrxarnVuykRUBIZuBR2d7sxhH09D5uZzJC9I96D7qEliqiglTdzBCAupDY_V7YQc46UzmQ3O_NGWOHr9Z7WYNOZpADwBzfIyWZQlmq3HxS0xYPYbY8FLYI6NzsHTQFkVGCTmZ7KmsyYsYj6uldchn88zcG9KO-53hZh8S5Kdy5FXh8iB_HqUn4j8yKGC9YmK4ERLlGg"
-		}`),
-		URL: path,
+		Body:   makeBody(result.FullSerialize()),
+		URL:    path,
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [https://letsencrypt.org/be-good]\"}")
+	responseWriter.Body.Reset()
+
+	// Test POST valid JSON with registration up in the mock (with correct agreement URL)
+	result, err = signer.Sign([]byte("{\"agreement\":\"https://letsencrypt.org/be-good\"}"))
+	wfe.Registration(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody(result.FullSerialize()),
+		URL:    path,
 	})
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
 	responseWriter.Body.Reset()

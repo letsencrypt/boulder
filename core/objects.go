@@ -124,7 +124,6 @@ func (r *Registration) MergeUpdate(input Registration) {
 		r.Contact = input.Contact
 	}
 
-	// TODO: Test to make sure this has the proper value
 	if len(input.Agreement) > 0 {
 		r.Agreement = input.Agreement
 	}

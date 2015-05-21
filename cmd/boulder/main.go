@@ -91,6 +91,7 @@ func main() {
 		wfe.RA = &ra
 		wfe.SA = sa
 		wfe.Stats = stats
+		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
 
 		wfe.IssuerCert, err = cmd.LoadCert(c.CA.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.CA.IssuerCert))
