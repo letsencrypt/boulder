@@ -125,9 +125,7 @@ func (cadb *CertificateAuthorityDatabaseImpl) IncrementAndGetSerial() (val int, 
 		return
 	}
 
-	val = val + 1
-
-	_, err = cadb.activeTx.Exec("UPDATE serialNumber SET number=?, lastUpdated=? WHERE id=1", val, time.Now())
+	_, err = cadb.activeTx.Exec("UPDATE serialNumber SET number=?, lastUpdated=? WHERE id=1", val+1, time.Now())
 	if err != nil {
 		cadb.activeTx.Rollback()
 		return

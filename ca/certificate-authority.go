@@ -246,6 +246,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 	serialHex := fmt.Sprintf("%02X%014X", ca.Prefix, serialDec)
+	fmt.Println(serialDec)
+	fmt.Println(serialHex)
 
 	// Send the cert off for signing
 	req := signer.SignRequest{
