@@ -87,6 +87,12 @@ type Config struct {
 		Password string
 	}
 
+	OCSP struct {
+		DBDriver string
+		DBName   string
+		Path     string
+	}
+
 	SubscriberAgreementURL string
 }
 
