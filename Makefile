@@ -9,7 +9,8 @@ OBJECTS = activity-monitor \
 	boulder-ra \
 	boulder-sa \
 	boulder-va \
-	boulder-wfe
+	boulder-wfe \
+	ocsp-updater
 
 .PHONY: all build
 all: build

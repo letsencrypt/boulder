@@ -400,3 +400,11 @@ type DeniedCsr struct {
 
 	Names string `db:"names"`
 }
+
+// OCSPSigningRequest is a transfer object representing an OCSP Signing Request
+type OCSPSigningRequest struct {
+	CertDER   []byte
+	Status    string
+	Reason    int
+	RevokedAt time.Time
+}

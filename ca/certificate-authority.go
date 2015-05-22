@@ -21,11 +21,12 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
+	cfsslOCSP "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/remote"
 )
 
+// Config defines the JSON configuration file schema
 type Config struct {
 	Server       string
 	AuthKey      string
@@ -51,7 +52,7 @@ type Config struct {
 type CertificateAuthorityImpl struct {
 	profile        string
 	Signer         signer.Signer
-	OCSPSigner     ocsp.Signer
+	OCSPSigner     cfsslOCSP.Signer
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
 	DB             core.CertificateAuthorityDatabase
@@ -111,7 +112,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 
 	// Set up our OCSP signer. Note this calls for both the issuer cert and the
 	// OCSP signing cert, which are the same in our case.
-	ocspSigner, err := ocsp.NewSigner(issuer, issuer, issuerKey,
+	ocspSigner, err := cfsslOCSP.NewSigner(issuer, issuer, issuerKey,
 		time.Hour*24*4)
 	if err != nil {
 		return nil, err
@@ -179,6 +180,25 @@ func dupeNames(names []string) bool {
 	return false
 }
 
+// GenerateOCSP produces a new OCSP response and returns it
+func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
+	cert, err := x509.ParseCertificate(xferObj.CertDER)
+	if err != nil {
+		return nil, err
+	}
+
+	signRequest := cfsslOCSP.SignRequest{
+		Certificate: cert,
+		Status:      xferObj.Status,
+		Reason:      xferObj.Reason,
+		RevokedAt:   xferObj.RevokedAt,
+	}
+
+	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
+	return ocspResponse, err
+}
+
+// RevokeCertificate revokes the trust of the Cert referred to by the provided Serial.
 func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode int) (err error) {
 	certDER, err := ca.SA.GetCertificate(serial)
 	if err != nil {
@@ -189,7 +209,7 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 		return err
 	}
 
-	signRequest := ocsp.SignRequest{
+	signRequest := cfsslOCSP.SignRequest{
 		Certificate: cert,
 		Status:      string(core.OCSPStatusRevoked),
 		Reason:      reasonCode,

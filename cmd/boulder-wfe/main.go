@@ -23,10 +23,10 @@ func setupWFE(c cmd.Config) (rpc.RegistrationAuthorityClient, rpc.StorageAuthori
 	ch := cmd.AmqpChannel(c.AMQP.Server)
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-	rac, err := rpc.NewRegistrationAuthorityClient(c.AMQP.RA.Client, c.AMQP.RA.Server, ch)
+	rac, err := rpc.NewRegistrationAuthorityClient("WFE->RA", c.AMQP.RA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RA client")
 
-	sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Server, ch)
+	sac, err := rpc.NewStorageAuthorityClient("WFE->SA", c.AMQP.SA.Server, ch)
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	return rac, sac, closeChan

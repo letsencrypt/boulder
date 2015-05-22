@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
@@ -43,6 +44,7 @@ const (
 	MethodUpdateValidations           = "UpdateValidations"           // VA
 	MethodIssueCertificate            = "IssueCertificate"            // CA
 	MethodRevokeCertificateCA         = "RevokeCertificateCA"         // CA
+	MethodGenerateOCSP                = "GenerateOCSP"                // CA
 	MethodGetRegistration             = "GetRegistration"             // SA
 	MethodGetRegistrationByKey        = "GetRegistrationByKey"        // RA, SA
 	MethodGetAuthorization            = "GetAuthorization"            // SA
@@ -76,6 +78,14 @@ type authorizationRequest struct {
 type certificateRequest struct {
 	Req   core.CertificateRequest
 	RegID int64
+}
+
+// ocspSigningRequest is a transfer object representing an OCSP Signing Request
+type ocspSigningRequest struct {
+	CertDER   []byte
+	Status    string
+	Reason    int
+	RevokedAt time.Time
 }
 
 func improperMessage(method string, err error, obj interface{}) {
@@ -464,6 +474,8 @@ func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, im
 		}
 		err := json.Unmarshal(req, &revokeReq)
 		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodRevokeCertificateCA, err, req)
 			return nil
 		}
 
@@ -473,6 +485,25 @@ func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, im
 		}
 
 		return nil
+	})
+
+	rpc.Handle(MethodGenerateOCSP, func(req []byte) []byte {
+		var xferObj core.OCSPSigningRequest
+		err := json.Unmarshal(req, &xferObj)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGenerateOCSP, err, req)
+			return nil
+		}
+
+		data, err := impl.GenerateOCSP(xferObj)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGenerateOCSP, err, req)
+			return nil
+		}
+
+		return data
 	})
 
 	return
@@ -524,10 +555,24 @@ func (cac CertificateAuthorityClient) RevokeCertificate(serial string, reasonCod
 
 	data, err := json.Marshal(revokeReq)
 	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		errorCondition(MethodGetRegistration, err, revokeReq)
 		return
 	}
 
 	_, err = cac.rpc.DispatchSync(MethodRevokeCertificateCA, data)
+	return
+}
+
+func (cac CertificateAuthorityClient) GenerateOCSP(signRequest core.OCSPSigningRequest) (resp []byte, err error) {
+	data, err := json.Marshal(signRequest)
+	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		errorCondition(MethodGetRegistration, err, signRequest)
+		return
+	}
+
+	resp, err = cac.rpc.DispatchSync(MethodGenerateOCSP, data)
 	return
 }
 

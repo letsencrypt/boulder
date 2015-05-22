@@ -38,13 +38,13 @@ func main() {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-			vac, err := rpc.NewValidationAuthorityClient(c.AMQP.VA.Client, c.AMQP.VA.Server, ch)
+			vac, err := rpc.NewValidationAuthorityClient("RA->VA", c.AMQP.VA.Server, ch)
 			cmd.FailOnError(err, "Unable to create VA client")
 
-			cac, err := rpc.NewCertificateAuthorityClient(c.AMQP.CA.Client, c.AMQP.CA.Server, ch)
+			cac, err := rpc.NewCertificateAuthorityClient("RA->CA", c.AMQP.CA.Server, ch)
 			cmd.FailOnError(err, "Unable to create CA client")
 
-			sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Server, ch)
+			sac, err := rpc.NewStorageAuthorityClient("RA->SA", c.AMQP.SA.Server, ch)
 			cmd.FailOnError(err, "Unable to create SA client")
 
 			rai.VA = &vac

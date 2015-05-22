@@ -8,7 +8,6 @@ package sa
 import (
 	"crypto/sha256"
 	"crypto/x509"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,12 +34,6 @@ func digest256(data []byte) []byte {
 	return d.Sum(nil)
 }
 
-var dialectMap map[string]interface{} = map[string]interface{}{
-	"sqlite3":  gorp.SqliteDialect{},
-	"mysql":    gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"},
-	"postgres": gorp.PostgresDialect{},
-}
-
 // Utility models
 type pendingauthzModel struct {
 	core.Authorization
@@ -52,25 +45,6 @@ type authzModel struct {
 	core.Authorization
 
 	Sequence int64 `db:"sequence"`
-}
-
-func NewDbMap(driver, dbName string) (dbMap *gorp.DbMap, err error) {
-	db, err := sql.Open(driver, dbName)
-	if err != nil {
-		return
-	}
-	if err = db.Ping(); err != nil {
-		return
-	}
-
-	dialect, ok := dialectMap[driver].(gorp.Dialect)
-	if !ok {
-		err = fmt.Errorf("Couldn't find dialect for %s", driver)
-		return
-	}
-
-	dbMap = &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
-	return
 }
 
 // SQLLogger adapts the AuditLogger to a format GORP can use.
@@ -344,19 +318,19 @@ func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) 
 
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
-func (ssa *SQLStorageAuthority) GetCertificate(serial string) (cert []byte, err error) {
+func (ssa *SQLStorageAuthority) GetCertificate(serial string) ([]byte, error) {
 	if len(serial) != 32 {
-		err = errors.New("Invalid certificate serial " + serial)
-		return
+		err := fmt.Errorf("Invalid certificate serial %s", serial)
+		return nil, err
 	}
 
-	var certificate core.Certificate
-	err = ssa.dbMap.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial = :serial",
-		map[string]interface{}{"serial": serial})
+	certObj, err := ssa.dbMap.Get(core.Certificate{}, serial)
 	if err != nil {
-		return
+		return nil, err
 	}
-	return certificate.DER, nil
+
+	cert := certObj.(*core.Certificate)
+	return cert.DER, err
 }
 
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial

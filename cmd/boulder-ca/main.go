@@ -50,7 +50,7 @@ func main() {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-			sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Client, ch)
+			sac, err := rpc.NewStorageAuthorityClient("CA->SA", c.AMQP.SA.Server, ch)
 			cmd.FailOnError(err, "Failed to create SA client")
 
 			cai.SA = &sac
