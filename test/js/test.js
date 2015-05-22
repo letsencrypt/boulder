@@ -158,8 +158,12 @@ function post(url, body, callback) {
     }, function(error, response, body) {
     // Don't print non-ASCII characters (like DER-encoded cert) to the terminal
     if (body && !body.toString().match(/[^\x00-\x7F]/)) {
-      var parsed = JSON.parse(body);
-      console.log(JSON.stringify(parsed, null, 2).cyan);
+      try {
+        var parsed = JSON.parse(body);
+        console.log(JSON.stringify(parsed, null, 2).cyan);
+      } catch (e) {
+        console.log(body.toString().cyan);
+      }
     }
     callback(error, response, body)
   });
