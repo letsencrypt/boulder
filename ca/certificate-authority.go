@@ -54,6 +54,7 @@ type CertificateAuthorityImpl struct {
 	DB         core.CertificateAuthorityDatabase
 	log        *blog.AuditLogger
 	Prefix     int // Prepended to the serial number
+	NotAfter   time.Time
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -119,6 +120,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		DB:         cadb,
 		Prefix:     config.SerialPrefix,
 		log:        logger,
+		NotAfter:   issuer.NotAfter,
 	}
 	return ca, err
 }
@@ -210,6 +212,14 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	if dupeNames(hostNames) {
 		err = errors.New("Cannot issue a certificate with duplicate DNS names.")
+		ca.log.WarningErr(err)
+		return emptyCert, err
+	}
+
+	fmt.Println(ca.NotAfter)
+	fmt.Println(time.Now().AddDate(0, 0, 365))
+	if ca.NotAfter.Before(time.Now().AddDate(0, 0, 365)) {
+		err = errors.New("Cannot issue a certificate that expires after the intermediate certificate.")
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
