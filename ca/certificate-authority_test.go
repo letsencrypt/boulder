@@ -341,6 +341,7 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 		IssuerCert:   "../test/test-ca.pem",
 		IssuerKey:    "../test/test-ca.key",
 		TestMode:     true,
+		Expiry:       "8760h",
 	}
 	return cadb, storageAuthority, caConfig
 }
