@@ -341,6 +341,7 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 		IssuerCert:   "../test/test-ca.pem",
 		IssuerKey:    "../test/test-ca.key",
 		TestMode:     true,
+		Expiry:       "8760h",
 	}
 	return cadb, storageAuthority, caConfig
 }
@@ -453,6 +454,13 @@ func TestIssueCertificate(t *testing.T) {
 	if err == nil {
 		t.Errorf("CA improperly agreed to create a certificate with duplicate names")
 	}
+
+	// Test that the CA rejects CSRs that would expire after the intermediate cert
+	csrDER, _ = hex.DecodeString(NO_CN_CSR_HEX)
+	csr, _ = x509.ParseCertificateRequest(csrDER)
+	ca.NotAfter = time.Now()
+	_, err = ca.IssueCertificate(*csr, 1)
+	test.AssertEquals(t, err.Error(), "Cannot issue a certificate that expires after the intermediate certificate.")
 }
 
 func TestDupeNames(t *testing.T) {
