@@ -58,5 +58,7 @@
     "port": "25",
     "username": "cert-master@example.com",
     "password": "password"
-  }
+  },
+
+  "subscriberAgreementURL": "http://localhost:4300/terms"
 }

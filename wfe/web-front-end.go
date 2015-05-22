@@ -288,8 +288,8 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	response.Header().Add("Location", regURL)
 	response.Header().Set("Content-Type", "application/json")
 	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
-	if len(wfe.TermsPath) > 0 {
-		response.Header().Add("Link", link(wfe.BaseURL+wfe.TermsPath, "terms-of-service"))
+	if len(wfe.SubscriberAgreementURL) > 0 {
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
 	response.WriteHeader(http.StatusCreated)
@@ -360,13 +360,11 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 		return
 	}
 
-	body, requestKey, reg, err := wfe.verifyPOST(request, false)
+	// We don't ask verifyPOST to verify there is a correponding registration,
+	// because anyone with the right private key can revoke a certificate.
+	body, requestKey, _, err := wfe.verifyPOST(request, false)
 	if err != nil {
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
-		return
-	}
-	if reg.Agreement == "" {
-		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 		return
 	}
 
@@ -621,7 +619,9 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	}
 
 	if len(update.Agreement) > 0 && update.Agreement != wfe.SubscriberAgreementURL {
-		wfe.sendError(response, fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL), nil, http.StatusBadRequest)
+		wfe.sendError(response,
+			fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]",
+				update.Agreement, wfe.SubscriberAgreementURL), nil, http.StatusBadRequest)
 		return
 	}
 
