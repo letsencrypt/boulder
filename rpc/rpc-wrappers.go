@@ -450,7 +450,16 @@ func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, im
 	})
 
 	rpc.Handle(MethodRevokeCertificateCA, func(req []byte) []byte {
-		if err := impl.RevokeCertificate(string(req)); err != nil {
+		var revokeReq struct {
+			Serial     string
+			ReasonCode int
+		}
+		err := json.Unmarshal(req, &revokeReq)
+		if err != nil {
+			return nil
+		}
+
+		if err := impl.RevokeCertificate(revokeReq.Serial, revokeReq.ReasonCode); err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodRevokeCertificateCA, err, req)
 		}
@@ -497,8 +506,20 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	return
 }
 
-func (cac CertificateAuthorityClient) RevokeCertificate(serial string) (err error) {
-	_, err = cac.rpc.DispatchSync(MethodRevokeCertificateCA, []byte(serial))
+func (cac CertificateAuthorityClient) RevokeCertificate(serial string, reasonCode int) (err error) {
+	var revokeReq struct {
+		Serial     string
+		ReasonCode int
+	}
+	revokeReq.Serial = serial
+	revokeReq.ReasonCode = reasonCode
+
+	data, err := json.Marshal(revokeReq)
+	if err != nil {
+		return
+	}
+
+	_, err = cac.rpc.DispatchSync(MethodRevokeCertificateCA, data)
 	return
 }
 

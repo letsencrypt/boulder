@@ -35,7 +35,7 @@ func digest256(data []byte) []byte {
 	return d.Sum(nil)
 }
 
-var dialectMap map[string]interface{} = map[string]interface{}{
+var DialectMap map[string]interface{} = map[string]interface{}{
 	"sqlite3":  gorp.SqliteDialect{},
 	"mysql":    gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"},
 	"postgres": gorp.PostgresDialect{},
@@ -140,11 +140,8 @@ func (tc boulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 	}
 }
 
-func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthority, err error) {
-	logger := blog.GetAuditLogger()
-	logger.Notice("Storage Authority Starting")
-
-	db, err := sql.Open(driver, name)
+func NewDbMap(driver, dbName string) (dbMap *gorp.DbMap, err error) {
+	db, err := sql.Open(driver, dbName)
 	if err != nil {
 		return
 	}
@@ -152,16 +149,27 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 		return
 	}
 
-	dialect, ok := dialectMap[driver].(gorp.Dialect)
+	dialect, ok := DialectMap[driver].(gorp.Dialect)
 	if !ok {
 		err = fmt.Errorf("Couldn't find dialect for %s", driver)
 		return
 	}
 
-	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: boulderTypeConverter{}}
+	dbMap = &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: boulderTypeConverter{}}
+	return
+}
+
+func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthority, err error) {
+	logger := blog.GetAuditLogger()
+	logger.Notice("Storage Authority Starting")
+
+	dbMap, err := NewDbMap(driver, name)
+	if err != nil {
+		return
+	}
 
 	ssa = &SQLStorageAuthority{
-		dbMap:  dbmap,
+		dbMap:  dbMap,
 		log:    logger,
 		bucket: make(map[string]interface{}),
 	}
@@ -182,7 +190,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	ssa.dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
 	ssa.dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
-	ssa.dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID").ColMap("Names").SetUnique(true)
+	// ssa.dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID").ColMap("Names").SetUnique(true)
 
 	err = ssa.dbMap.CreateTablesIfNotExists()
 	return
