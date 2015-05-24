@@ -35,7 +35,7 @@ func digest256(data []byte) []byte {
 	return d.Sum(nil)
 }
 
-var DialectMap map[string]interface{} = map[string]interface{}{
+var dialectMap map[string]interface{} = map[string]interface{}{
 	"sqlite3":  gorp.SqliteDialect{},
 	"mysql":    gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"},
 	"postgres": gorp.PostgresDialect{},
@@ -149,7 +149,7 @@ func NewDbMap(driver, dbName string) (dbMap *gorp.DbMap, err error) {
 		return
 	}
 
-	dialect, ok := DialectMap[driver].(gorp.Dialect)
+	dialect, ok := dialectMap[driver].(gorp.Dialect)
 	if !ok {
 		err = fmt.Errorf("Couldn't find dialect for %s", driver)
 		return
@@ -688,24 +688,24 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 	return
 }
 
-func (ssa *SQLStorageAuthority) AddDeniedCSR(names []string) (err error) {
-	sort.Strings(names)
-	deniedCSR := &core.DeniedCsr{Names: strings.ToLower(strings.Join(names, ","))}
+// func (ssa *SQLStorageAuthority) AddDeniedCSR(names []string) (err error) {
+// 	sort.Strings(names)
+// 	deniedCSR := &core.DeniedCsr{Names: strings.ToLower(strings.Join(names, ","))}
 
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return
-	}
+// 	tx, err := ssa.dbMap.Begin()
+// 	if err != nil {
+// 		return
+// 	}
 
-	err = tx.Insert(deniedCSR)
-	if err != nil {
-		tx.Rollback()
-		return
-	}
+// 	err = tx.Insert(deniedCSR)
+// 	if err != nil {
+// 		tx.Rollback()
+// 		return
+// 	}
 
-	err = tx.Commit()
-	return
-}
+// 	err = tx.Commit()
+// 	return
+// }
 
 func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, err error) {
 	sort.Strings(names)
