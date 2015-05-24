@@ -17,7 +17,6 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	// "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
@@ -154,7 +153,7 @@ func main() {
 	app.Commands = []cli.Command{
 		{
 			Name: "serial-revoke",
-			Usage: "Revoke a single certificate by the full hex serial number",
+			Usage: "Revoke a single certificate by the hex serial number",
 			Action: func(c *cli.Context) {
 				config, err := loadConfig(c)
 				cmd.FailOnError(err, "Failed to load Boulder configuration")
@@ -182,23 +181,6 @@ func main() {
 				cmd.FailOnError(err, "Couldn't cleanly close transaction")
 			},
 		},
-		// It would be nice to be able to revoke all certificates by the signing key
-		// fingerprint, but this currently isn't stored in the DB
-		// {
-		// 	Name: "key-revoke",
-		// 	Usage: "Revoke all certificates signed by a key",
-		// 	Action: func(c *cli.Context) {
-		// 		config, err := loadConfig(c)
-		// 		cmd.FailOnError(err, "Failed to load Boulder configuration")
-
-		// 		// 1: key fingerprint(?),  2: reasonCode (3: deny flag)
-		// 		key := c.Args().First()
-		// 		reasonCode, err := strconv.Atoi(c.Args().Get(2))
-		// 		cmd.FailOnError(err, "Reason code argument must be a integer")
-
-		// 		revokeByKey(key, reasonCode, config)
-		// 	},
-		// },
 		{
 			Name: "reg-revoke",
 			Usage: "Revoke all certificates associated with a registration ID",
