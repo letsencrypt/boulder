@@ -60,16 +60,17 @@ func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.A
 	c, err := loadConfig(context)
 	cmd.FailOnError(err, "Failed to load Boulder configuration")
 
-	ch := cmd.AmqpChannel(c.AMQP.Server)
-
-	cac, err := rpc.NewCertificateAuthorityClient(c.AMQP.CA.Client, c.AMQP.CA.Server, ch)
-	cmd.FailOnError(err, "Unable to create CA client")
-
 	stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 	cmd.FailOnError(err, "Couldn't connect to statsd")
 
 	auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 	cmd.FailOnError(err, "Could not connect to Syslog")
+	blog.SetAuditLogger(auditlogger)
+
+	ch := cmd.AmqpChannel(c.AMQP.Server)
+
+	cac, err := rpc.NewCertificateAuthorityClient(c.AMQP.CA.Client, c.AMQP.CA.Server, ch)
+	cmd.FailOnError(err, "Unable to create CA client")
 
 	dbMap, err := sa.NewDbMap(c.Revoker.DBDriver, c.Revoker.DBName)
 	cmd.FailOnError(err, "Couldn't setup database connection")
@@ -156,14 +157,11 @@ func main() {
 			Action: func(c *cli.Context) {
 				// 1: serial,  2: reasonCode (3: deny flag)
 				serial := c.Args().First()
-				reasonCode, err := strconv.Atoi(c.Args().Get(2))
+				reasonCode, err := strconv.Atoi(c.Args().Get(1))
 				cmd.FailOnError(err, "Reason code argument must be a integer")
 				deny := c.GlobalBool("deny")
 
 				cac, auditlogger, dbMap := setupContext(c)
-				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-				defer auditlogger.AuditPanic()
-				blog.SetAuditLogger(auditlogger)
 
 				tx, err := dbMap.Begin()
 				if err != nil {
@@ -184,14 +182,13 @@ func main() {
 				// 1: registration ID,  2: reasonCode (3: deny flag)
 				regID, err := strconv.Atoi(c.Args().First())
 				cmd.FailOnError(err, "Registration ID argument must be a integer")
-				reasonCode, err := strconv.Atoi(c.Args().Get(2))
+				reasonCode, err := strconv.Atoi(c.Args().Get(1))
 				cmd.FailOnError(err, "Reason code argument must be a integer")
 				deny := c.GlobalBool("deny")
 
 				cac, auditlogger, dbMap := setupContext(c)
 				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 				defer auditlogger.AuditPanic()
-				blog.SetAuditLogger(auditlogger)
 
 				tx, err := dbMap.Begin()
 				if err != nil {
@@ -207,7 +204,7 @@ func main() {
 		},
 		{
 			Name:  "list-reasons",
-			Usage: "List possible revocation reason codes",
+			Usage: "List all revocation reason codes",
 			Action: func(c *cli.Context) {
 				var codes []int
 				for k, _ := range reasons {
