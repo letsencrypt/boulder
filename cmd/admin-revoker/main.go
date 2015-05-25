@@ -56,7 +56,10 @@ func loadConfig(c *cli.Context) (config cmd.Config, err error) {
 	return
 }
 
-func setupContext(c cmd.Config) (rpc.CertificateAuthorityClient, *blog.AuditLogger, *gorp.DbMap) {
+func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.AuditLogger, *gorp.DbMap) {
+	c, err := loadConfig(context)
+	cmd.FailOnError(err, "Failed to load Boulder configuration")
+
 	ch := cmd.AmqpChannel(c.AMQP.Server)
 
 	cac, err := rpc.NewCertificateAuthorityClient(c.AMQP.CA.Client, c.AMQP.CA.Server, ch)
@@ -155,16 +158,13 @@ func main() {
 			Name: "serial-revoke",
 			Usage: "Revoke a single certificate by the hex serial number",
 			Action: func(c *cli.Context) {
-				config, err := loadConfig(c)
-				cmd.FailOnError(err, "Failed to load Boulder configuration")
-
 				// 1: serial,  2: reasonCode (3: deny flag)
 				serial := c.Args().First()
 				reasonCode, err := strconv.Atoi(c.Args().Get(2))
 				cmd.FailOnError(err, "Reason code argument must be a integer")
 				deny := c.GlobalBool("deny")
 
-				cac, auditlogger, dbMap := setupContext(config)
+				cac, auditlogger, dbMap := setupContext(c)
 				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 				defer auditlogger.AuditPanic()
 				blog.SetAuditLogger(auditlogger)
@@ -185,9 +185,6 @@ func main() {
 			Name: "reg-revoke",
 			Usage: "Revoke all certificates associated with a registration ID",
 			Action: func(c *cli.Context) {
-				config, err := loadConfig(c)
-				cmd.FailOnError(err, "Failed to load Boulder configuration")
-
 				// 1: registration ID,  2: reasonCode (3: deny flag)
 				regID, err := strconv.Atoi(c.Args().First())
 				cmd.FailOnError(err, "Registration ID argument must be a integer")
@@ -195,7 +192,7 @@ func main() {
 				cmd.FailOnError(err, "Reason code argument must be a integer")
 				deny := c.GlobalBool("deny")
 
-				cac, auditlogger, dbMap := setupContext(config)
+				cac, auditlogger, dbMap := setupContext(c)
 				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 				defer auditlogger.AuditPanic()
 				blog.SetAuditLogger(auditlogger)

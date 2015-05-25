@@ -190,7 +190,6 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	ssa.dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
 	ssa.dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
-	// ssa.dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID").ColMap("Names").SetUnique(true)
 
 	err = ssa.dbMap.CreateTablesIfNotExists()
 	return
@@ -687,25 +686,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 	err = tx.Commit()
 	return
 }
-
-// func (ssa *SQLStorageAuthority) AddDeniedCSR(names []string) (err error) {
-// 	sort.Strings(names)
-// 	deniedCSR := &core.DeniedCsr{Names: strings.ToLower(strings.Join(names, ","))}
-
-// 	tx, err := ssa.dbMap.Begin()
-// 	if err != nil {
-// 		return
-// 	}
-
-// 	err = tx.Insert(deniedCSR)
-// 	if err != nil {
-// 		tx.Rollback()
-// 		return
-// 	}
-
-// 	err = tx.Commit()
-// 	return
-// }
 
 func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, err error) {
 	sort.Strings(names)
