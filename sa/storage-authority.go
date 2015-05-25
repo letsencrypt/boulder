@@ -190,6 +190,7 @@ func (ssa *SQLStorageAuthority) InitTables() (err error) {
 	ssa.dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
 	ssa.dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
+	ssa.dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID")
 
 	err = ssa.dbMap.CreateTablesIfNotExists()
 	return

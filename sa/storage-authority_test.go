@@ -203,11 +203,4 @@ func TestDeniedCSR(t *testing.T) {
 	exists, err := sa.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
 	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
 	test.Assert(t, !exists, "Found non-existent CSR")
-
-	err = sa.AddDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
-	test.AssertNotError(t, err, "Couldn't add the denied CSR to the DB")
-
-	exists, err = sa.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
-	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
-	test.Assert(t, exists, "Couldn't find denied CSR in DB")
 }

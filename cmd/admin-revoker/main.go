@@ -11,12 +11,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strconv"
 	"sort"
+	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
@@ -32,13 +32,13 @@ import (
 )
 
 var reasons map[int]string = map[int]string{
-	0:  "unspecified",
-	1:  "keyCompromise",
-	2:  "cACompromise",
-	3:  "affiliationChanged",
-	4:  "superseded",
-	5:  "cessationOfOperation",
-	6:  "certificateHold",
+	0: "unspecified",
+	1: "keyCompromise",
+	2: "cACompromise",
+	3: "affiliationChanged",
+	4: "superseded",
+	5: "cessationOfOperation",
+	6: "certificateHold",
 	// 7 is unused
 	8:  "removeFromCRL", // needed?
 	9:  "privilegeWithdrawn",
@@ -73,10 +73,6 @@ func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.A
 
 	dbMap, err := sa.NewDbMap(c.Revoker.DBDriver, c.Revoker.DBName)
 	cmd.FailOnError(err, "Couldn't setup database connection")
-
-	dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID")
-	err = dbMap.CreateTablesIfNotExists()
-	cmd.FailOnError(err, "Could not create the deniedCsrs table")
 
 	return cac, auditlogger, dbMap
 }
@@ -146,7 +142,7 @@ func main() {
 			Name:   "config",
 			Value:  "config.json",
 			EnvVar: "BOULDER_CONFIG",
-			Usage: "Path to Boulder JSON configuration file",
+			Usage:  "Path to Boulder JSON configuration file",
 		},
 		cli.BoolFlag{
 			Name:  "deny-future",
@@ -155,7 +151,7 @@ func main() {
 	}
 	app.Commands = []cli.Command{
 		{
-			Name: "serial-revoke",
+			Name:  "serial-revoke",
 			Usage: "Revoke a single certificate by the hex serial number",
 			Action: func(c *cli.Context) {
 				// 1: serial,  2: reasonCode (3: deny flag)
@@ -182,7 +178,7 @@ func main() {
 			},
 		},
 		{
-			Name: "reg-revoke",
+			Name:  "reg-revoke",
 			Usage: "Revoke all certificates associated with a registration ID",
 			Action: func(c *cli.Context) {
 				// 1: registration ID,  2: reasonCode (3: deny flag)
@@ -196,7 +192,7 @@ func main() {
 				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 				defer auditlogger.AuditPanic()
 				blog.SetAuditLogger(auditlogger)
-				
+
 				tx, err := dbMap.Begin()
 				if err != nil {
 					tx.Rollback()
@@ -210,7 +206,7 @@ func main() {
 			},
 		},
 		{
-			Name: "list-reasons",
+			Name:  "list-reasons",
 			Usage: "List possible revocation reason codes",
 			Action: func(c *cli.Context) {
 				var codes []int
@@ -218,7 +214,7 @@ func main() {
 					codes = append(codes, k)
 				}
 				sort.Ints(codes)
-				fmt.Println("Revocation reason codes\n-----------------------\n")
+				fmt.Printf("Revocation reason codes\n-----------------------\n\n")
 				for _, k := range codes {
 					fmt.Printf("%d: %s\n", k, reasons[k])
 				}

@@ -727,24 +727,6 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		return nil
 	})
 
-	rpc.Handle(MethodAddDeniedCSR, func(req []byte) []byte {
-		var csrReq struct {
-			Names []string
-		}
-
-		if err := json.Unmarshal(req, csrReq); err != nil {
-			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodAddDeniedCSR, err, req)
-			return nil
-		}
-
-		if err := impl.AddDeniedCSR(csrReq.Names); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodAddDeniedCSR, err, csrReq)
-		}
-		return nil
-	})
-
 	rpc.Handle(MethodAlreadyDeniedCSR, func(req []byte) []byte {
 		var csrReq struct {
 			Names []string
@@ -956,21 +938,6 @@ func (cac StorageAuthorityClient) AddCertificate(cert []byte, regID int64) (id s
 	return
 }
 
-func (cac StorageAuthorityClient) AddDeniedCSR(names []string) (err error) {
-	var sliceReq struct {
-		Names []string
-	}
-	sliceReq.Names = names
-
-	data, err := json.Marshal(sliceReq)
-	if err != nil {
-		return
-	}
-
-	_, err = cac.rpc.DispatchSync(MethodAddDeniedCSR, data)
-	return
-}
-
 func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool, err error) {
 	var sliceReq struct {
 		Names []string
@@ -984,7 +951,7 @@ func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool,
 
 	response, err := cac.rpc.DispatchSync(MethodAlreadyDeniedCSR, data)
 	if err != nil || len(response) == 0 {
-		err = errors.New("AddDeniedCSR RPC failed") // XXX
+		err = errors.New("AlreadyDeniedCSR RPC failed") // XXX
 		return
 	}
 

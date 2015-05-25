@@ -280,7 +280,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 
 func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.CA.RevokeCertificate(serialString)
+	err := ra.CA.RevokeCertificate(serialString, 0)
 
 	// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 	if err != nil {
