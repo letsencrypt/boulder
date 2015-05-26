@@ -243,7 +243,7 @@ func TestValidateHTTPS(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{challHTTPS},
 	}
-	va.validate(authz)
+	va.validate(authz, 0)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -276,7 +276,7 @@ func TestValidateDvsni(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{challDvsni},
 	}
-	va.validate(authz)
+	va.validate(authz, 0)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -309,7 +309,7 @@ func TestValidateDvsniNotSane(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{challDvsni},
 	}
-	va.validate(authz)
+	va.validate(authz, 0)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -323,10 +323,10 @@ func TestUpdateValidations(t *testing.T) {
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{},
+		Challenges:     []core.Challenge{core.DvsniChallenge()},
 	}
 
-	va.UpdateValidations(authz)
+	va.UpdateValidations(authz, 0)
 
 	// Nothing to assert.
 }

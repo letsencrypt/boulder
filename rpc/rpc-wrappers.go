@@ -371,16 +371,19 @@ func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, imp
 	rpc = NewAmqpRPCServer(serverQueue, channel)
 
 	rpc.Handle(MethodUpdateValidations, func(req []byte) []byte {
-		var authz core.Authorization
-		if err := json.Unmarshal(req, &authz); err != nil {
+		var vaReq struct {
+			Authz core.Authorization
+			Index int
+		}
+		if err := json.Unmarshal(req, &vaReq); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodUpdateValidations, err, req)
 			return nil
 		}
 
-		if err := impl.UpdateValidations(authz); err != nil {
+		if err := impl.UpdateValidations(vaReq.Authz, vaReq.Index); err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateValidations, err, authz)
+			errorCondition(MethodUpdateValidations, err, vaReq)
 		}
 		return nil
 	})
@@ -402,8 +405,14 @@ func NewValidationAuthorityClient(clientQueue, serverQueue string, channel *amqp
 	return
 }
 
-func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization) error {
-	data, err := json.Marshal(authz)
+func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization, index int) error {
+	var vaReq struct {
+		Authz core.Authorization
+		Index int
+	}
+	vaReq.Authz = authz
+	vaReq.Index = index
+	data, err := json.Marshal(vaReq)
 	if err != nil {
 		return err
 	}

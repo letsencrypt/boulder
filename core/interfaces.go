@@ -73,7 +73,7 @@ type RegistrationAuthority interface {
 
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
-	UpdateValidations(Authorization) error
+	UpdateValidations(Authorization, int) error
 }
 
 type CertificateAuthority interface {

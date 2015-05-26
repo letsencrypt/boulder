@@ -273,7 +273,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	}
 
 	// Dispatch to the VA for service
-	ra.VA.UpdateValidations(authz)
+	ra.VA.UpdateValidations(authz, challengeIndex)
 
 	return
 }
