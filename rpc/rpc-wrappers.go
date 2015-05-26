@@ -66,7 +66,6 @@ const (
 //  -> OnValidationUpdate
 type registrationRequest struct {
 	Reg core.Registration
-	Key jose.JsonWebKey
 }
 
 type authorizationRequest struct {
@@ -100,7 +99,7 @@ func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, i
 			return nil
 		}
 
-		reg, err := impl.NewRegistration(rr.Reg, rr.Key)
+		reg, err := impl.NewRegistration(rr.Reg)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodNewRegistration, err, reg)
@@ -262,8 +261,8 @@ func NewRegistrationAuthorityClient(clientQueue, serverQueue string, channel *am
 	return
 }
 
-func (rac RegistrationAuthorityClient) NewRegistration(reg core.Registration, key jose.JsonWebKey) (newReg core.Registration, err error) {
-	data, err := json.Marshal(registrationRequest{reg, key})
+func (rac RegistrationAuthorityClient) NewRegistration(reg core.Registration) (newReg core.Registration, err error) {
+	data, err := json.Marshal(registrationRequest{reg})
 	if err != nil {
 		return
 	}

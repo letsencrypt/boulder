@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
@@ -63,9 +62,8 @@ type certificateRequestEvent struct {
 	Error               string    `json:",omitempty"`
 }
 
-func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration, key jose.JsonWebKey) (reg core.Registration, err error) {
+func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
 	reg = core.Registration{
-		Key:           key,
 		RecoveryToken: core.NewToken(),
 	}
 	reg.MergeUpdate(init)

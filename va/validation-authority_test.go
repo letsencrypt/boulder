@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -335,7 +334,7 @@ type MockRegistrationAuthority struct {
 	lastAuthz *core.Authorization
 }
 
-func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration, jwk jose.JsonWebKey) (core.Registration, error) {
+func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
 	return reg, nil
 }
 

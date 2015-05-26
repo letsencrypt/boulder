@@ -50,7 +50,7 @@ type WebFrontEnd interface {
 
 type RegistrationAuthority interface {
 	// [WebFrontEnd]
-	NewRegistration(Registration, jose.JsonWebKey) (Registration, error)
+	NewRegistration(Registration) (Registration, error)
 
 	// [WebFrontEnd]
 	NewAuthorization(Authorization, int64) (Authorization, error)

@@ -316,8 +316,7 @@ func TestIssueCertificate(t *testing.T) {
 
 type MockRegistrationAuthority struct{}
 
-func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration, jwk jose.JsonWebKey) (core.Registration, error) {
-	reg.Key = jwk
+func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
 	return reg, nil
 }
 
