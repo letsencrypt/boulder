@@ -177,7 +177,7 @@ func main() {
 				if err != nil {
 					tx.Rollback()
 				}
-				cmd.FailOnError(err, "Couldn't being transaction")
+				cmd.FailOnError(err, "Couldn't begin transaction")
 
 				err = revokeBySerial(serial, reasonCode, deny, cac, auditlogger, tx)
 				if err != nil {
@@ -208,7 +208,7 @@ func main() {
 				if err != nil {
 					tx.Rollback()
 				}
-				cmd.FailOnError(err, "Couldn't being transaction")
+				cmd.FailOnError(err, "Couldn't begin transaction")
 
 				err = revokeByReg(regID, reasonCode, deny, cac, auditlogger, tx)
 				if err != nil {
