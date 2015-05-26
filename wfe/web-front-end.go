@@ -709,7 +709,11 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 
 		cert, err := wfe.SA.GetCertificateByShortSerial(serial)
 		if err != nil {
-			wfe.sendError(response, "Not found", err, http.StatusNotFound)
+			if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
+				wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusInternalServerError)
+			} else {
+				wfe.sendError(response, "Not found", err, http.StatusNotFound)
+			}
 			return
 		}
 
