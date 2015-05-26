@@ -184,50 +184,46 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 // Overall validation process
 
-func (va ValidationAuthorityImpl) validate(authz core.Authorization) {
+func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int) {
 
 	// Select the first supported validation method
 	// XXX: Remove the "break" lines to process all supported validations
-	for i, challenge := range authz.Challenges {
-		logEvent := verificationRequestEvent{
-			ID:          authz.ID,
-			Requester:   authz.RegistrationID,
-			RequestTime: time.Now(),
-		}
-
-		if !challenge.IsSane(true) {
-			authz.Challenges[i].Status = core.StatusInvalid
-			logEvent.Error = fmt.Sprintf("Challenge failed sanity check.")
-			logEvent.Challenge = challenge
-		} else {
-
-			var err error
-
-			switch challenge.Type {
-			case core.ChallengeTypeSimpleHTTPS:
-				authz.Challenges[i], err = va.validateSimpleHTTPS(authz.Identifier, challenge)
-				break
-			case core.ChallengeTypeDVSNI:
-				authz.Challenges[i], err = va.validateDvsni(authz.Identifier, challenge)
-				break
-			}
-
-			logEvent.Challenge = authz.Challenges[i]
-			if err != nil {
-				logEvent.Error = err.Error()
-			}
-		}
-
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		va.log.AuditObject("Validation result", logEvent)
+	logEvent := verificationRequestEvent{
+		ID:          authz.ID,
+		Requester:   authz.RegistrationID,
+		RequestTime: time.Now(),
 	}
+	if !authz.Challenges[challengeIndex].IsSane(true) {
+		authz.Challenges[challengeIndex].Status = core.StatusInvalid
+		logEvent.Error = fmt.Sprintf("Challenge failed sanity check.")
+		logEvent.Challenge = authz.Challenges[challengeIndex]
+	} else {
+		var err error
+
+		switch authz.Challenges[challengeIndex].Type {
+		case core.ChallengeTypeSimpleHTTPS:
+			authz.Challenges[challengeIndex], err = va.validateSimpleHTTPS(authz.Identifier, authz.Challenges[challengeIndex])
+			break
+		case core.ChallengeTypeDVSNI:
+			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
+			break
+		}
+
+		logEvent.Challenge = authz.Challenges[challengeIndex]
+		if err != nil {
+			logEvent.Error = err.Error()
+		}
+	}
+
+	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+	va.log.AuditObject("Validation result", logEvent)
 
 	va.log.Notice(fmt.Sprintf("Validations: %+v", authz))
 
 	va.RA.OnValidationUpdate(authz)
 }
 
-func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization) error {
-	go va.validate(authz)
+func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
+	go va.validate(authz, challengeIndex)
 	return nil
 }
