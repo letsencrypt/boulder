@@ -78,21 +78,15 @@ func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.A
 	return cac, auditlogger, dbMap
 }
 
-func AddDeniedNames(tx *gorp.Transaction, names []string) (err error) {
+func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
 	sort.Strings(names)
 	deniedCSR := &core.DeniedCsr{Names: strings.ToLower(strings.Join(names, ","))}
 
 	err = tx.Insert(deniedCSR)
-	if err != nil {
-		tx.Rollback()
-		return
-	}
-
-	err = tx.Commit()
 	return
 }
 
-func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) {
+func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
@@ -100,35 +94,51 @@ func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.Certificat
 	if deny {
 		// Retrieve DNS names associated with serial
 		var certificate core.Certificate
-		err := tx.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial = :serial",
+		err = tx.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial = :serial",
 			map[string]interface{}{"serial": serial})
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't retrieve certificate with serial %s", serial))
-		cert, err := x509.ParseCertificate(certificate.DER)
-		cmd.FailOnError(err, "Couldn't parse certificate")
-		err = AddDeniedNames(tx, append(cert.DNSNames, cert.Subject.CommonName))
-		cmd.FailOnError(err, "Couldn't add DNS names to denied CSR table")
+		if err != nil {
+			return
+		}
+		var cert *x509.Certificate
+		cert, err = x509.ParseCertificate(certificate.DER)
+		if err != nil {
+			return
+		}
+		err = addDeniedNames(tx, append(cert.DNSNames, cert.Subject.CommonName))
+		if err != nil {
+			return
+		}
 	}
 
-	err := cac.RevokeCertificate(serial, reasonCode)
-	cmd.FailOnError(err, "Couldn't revoke certificate serial")
+	err = cac.RevokeCertificate(serial, reasonCode)
+	if err != nil {
+		return
+	}
 
 	auditlogger.Info(fmt.Sprintf("Revoked certificate %s with reason '%s'", serial, reasons[reasonCode]))
+	return
 }
 
-func revokeByReg(regID int, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) {
-	_, err := tx.Get(core.Registration{}, regID)
+func revokeByReg(regID int, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
+	_, err = tx.Get(core.Registration{}, regID)
 	if err != nil {
-		tx.Rollback()
+		return
 	}
-	cmd.FailOnError(err, "Couldn't retrieve registration")
 
 	var certs []core.Certificate
 	_, err = tx.Select(certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
-	cmd.FailOnError(err, "Couldn't retrieve certificates")
+	if err != nil {
+		return
+	}
 
 	for _, cert := range certs {
-		revokeBySerial(cert.Serial, reasonCode, deny, cac, auditlogger, tx)
+		err = revokeBySerial(cert.Serial, reasonCode, deny, cac, auditlogger, tx)
+		if err != nil {
+			return
+		}
 	}
+
+	return
 }
 
 var version string = "0.0.1"
@@ -169,7 +179,11 @@ func main() {
 				}
 				cmd.FailOnError(err, "Couldn't being transaction")
 
-				revokeBySerial(serial, reasonCode, deny, cac, auditlogger, tx)
+				err = revokeBySerial(serial, reasonCode, deny, cac, auditlogger, tx)
+				if err != nil {
+					tx.Rollback()
+				}
+				cmd.FailOnError(err, "Couldn't revoke certificate")
 
 				err = tx.Commit()
 				cmd.FailOnError(err, "Couldn't cleanly close transaction")
@@ -196,7 +210,11 @@ func main() {
 				}
 				cmd.FailOnError(err, "Couldn't being transaction")
 
-				revokeByReg(regID, reasonCode, deny, cac, auditlogger, tx)
+				err = revokeByReg(regID, reasonCode, deny, cac, auditlogger, tx)
+				if err != nil {
+					tx.Rollback()
+				}
+				cmd.FailOnError(err, "Couldn't revoke certificate")
 
 				err = tx.Commit()
 				cmd.FailOnError(err, "Couldn't cleanly close transaction")
