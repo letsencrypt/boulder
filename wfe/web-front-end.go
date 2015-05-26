@@ -268,8 +268,9 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 	init.MergeUpdate(unmarshalled)
+	init.Key = *key
 
-	reg, err := wfe.RA.NewRegistration(init, *key)
+	reg, err := wfe.RA.NewRegistration(init)
 	if err != nil {
 		wfe.sendError(response, "Error creating new registration", err, http.StatusInternalServerError)
 		return
