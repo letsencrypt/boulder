@@ -130,6 +130,9 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		NotAfter:   issuer.NotAfter,
 	}
 
+	if config.Expiry == "" {
+		return nil, errors.New("Config must specify an expiry period.")
+	}
 	ca.ValidityPeriod, err = time.ParseDuration(config.Expiry)
 	if err != nil {
 		return nil, err
