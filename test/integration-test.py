@@ -1,10 +1,11 @@
 #!/usr/bin/env python2.7
 import os
+import shutil
+import socket
 import subprocess
+import sys
 import tempfile
 import time
-import socket
-import sys
 
 tempdir = tempfile.mkdtemp()
 
@@ -53,17 +54,35 @@ def run_test():
           --certKey %s/key.pem --cert %s/cert.der
         ''' % (tempdir, tempdir), shell=True)
     if issue.wait() != 0:
-        exit(1)
+        sys.exit(1)
     revoke = subprocess.Popen('''
         node revoke.js %s/cert.der %s/key.pem http://localhost:4300/acme/revoke-cert/
         ''' % (tempdir, tempdir), shell=True)
     if revoke.wait() != 0:
-        exit(1)
-    print("SUCCESS")
+        sys.exit(1)
 
 try:
     run_test()
 finally:
-    boulder.kill()
-    cfssl.kill()
+    status = 0
+    # Check whether boulder died. This can happen, for instance, if there was an
+    # existing boulder already listening on the port.
+    if boulder.poll() is not None:
+        print("Boulder died")
+        status = 1
+    else:
+        boulder.kill()
 
+    if cfssl.poll() is not None:
+        print("CFSSL died")
+        status = 1
+    else:
+        cfssl.kill()
+
+    shutil.rmtree(tempdir)
+
+    if status == 0:
+        print("SUCCESS")
+    else:
+        print("FAILURE")
+    sys.exit(status)
