@@ -176,7 +176,7 @@ func dupeNames(names []string) bool {
 	return false
 }
 
-func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (err error) {
+func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode int) (err error) {
 	certDER, err := ca.SA.GetCertificate(serial)
 	if err != nil {
 		return err
@@ -186,21 +186,17 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string) (err error)
 		return err
 	}
 
-	// Per https://tools.ietf.org/html/rfc5280, CRLReason 0 is "unspecified."
-	// TODO: Add support for specifying reason.
-	reason := 0
-
 	signRequest := ocsp.SignRequest{
 		Certificate: cert,
 		Status:      string(core.OCSPStatusRevoked),
-		Reason:      reason,
+		Reason:      reasonCode,
 		RevokedAt:   time.Now(),
 	}
 	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
 	if err != nil {
 		return err
 	}
-	err = ca.SA.MarkCertificateRevoked(serial, ocspResponse, reason)
+	err = ca.SA.MarkCertificateRevoked(serial, ocspResponse, reasonCode)
 	return err
 }
 

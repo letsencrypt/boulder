@@ -79,7 +79,7 @@ type ValidationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
-	RevokeCertificate(serial string) error
+	RevokeCertificate(string, int) error
 }
 
 type PolicyAuthority interface {
@@ -107,8 +107,6 @@ type StorageAdder interface {
 	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error
 
 	AddCertificate([]byte, int64) (string, error)
-
-	AddDeniedCSR([]string) error
 }
 
 // StorageAuthority interface represents a simple key/value

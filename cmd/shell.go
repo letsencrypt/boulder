@@ -80,6 +80,11 @@ type Config struct {
 		Tag     string
 	}
 
+	Revoker struct {
+		DBDriver string
+		DBName   string
+	}
+
 	Mail struct {
 		Server   string
 		Port     string

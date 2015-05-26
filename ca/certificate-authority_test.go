@@ -368,7 +368,7 @@ func TestRevoke(t *testing.T) {
 	cert, err := x509.ParseCertificate(certObj.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	serialString := core.SerialToString(cert.SerialNumber)
-	err = ca.RevokeCertificate(serialString)
+	err = ca.RevokeCertificate(serialString, 0)
 	test.AssertNotError(t, err, "Revocation failed")
 
 	status, err := storageAuthority.GetCertificateStatus(serialString)
