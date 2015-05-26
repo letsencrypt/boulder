@@ -65,6 +65,7 @@ type certificateRequestEvent struct {
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
 	reg = core.Registration{
 		RecoveryToken: core.NewToken(),
+		Key:           init.Key,
 	}
 	reg.MergeUpdate(init)
 
