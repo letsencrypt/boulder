@@ -51,8 +51,12 @@
 
   "sa": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:",
-    "SQLDebug": false
+    "dbName": ":memory:"
+  },
+
+  "sql": {
+    "SQLDebug": true,
+    "CreateTables": false
   },
 
   "revoker": {

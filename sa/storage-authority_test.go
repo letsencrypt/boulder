@@ -28,7 +28,7 @@ func initSA(t *testing.T) *SQLStorageAuthority {
 	if err != nil {
 		t.Fatalf("Failed to create SA")
 	}
-	if err = sa.InitTables(); err != nil {
+	if err = sa.CreateTablesIfNotExists(); err != nil {
 		t.Fatalf("Failed to create SA")
 	}
 	return sa

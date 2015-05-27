@@ -185,11 +185,7 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 		bucket: make(map[string]interface{}),
 	}
 
-	err = ssa.InitTables()
-	if err != nil {
-		return
-	}
-
+	ssa.initTables()
 	return
 }
 
@@ -203,19 +199,29 @@ func (ssa *SQLStorageAuthority) SetSQLDebug(state bool) {
 	}
 }
 
-func (ssa *SQLStorageAuthority) InitTables() (err error) {
+// initTables constructs the table map for the ORM. If you want to also create
+// the tables, call CreateTablesIfNotExists.
+func (ssa *SQLStorageAuthority) initTables() {
 	regTable := ssa.dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "ID")
 	regTable.SetVersionCol("LockCol")
 	regTable.ColMap("Key").SetMaxSize(512).SetNotNull(true)
 
-	ssa.dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID").SetVersionCol("LockCol")
-	ssa.dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
+	pendingAuthzTable := ssa.dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
+	pendingAuthzTable.SetVersionCol("LockCol")
+	pendingAuthzTable.ColMap("Challenges").SetMaxSize(1536)
+
+	authzTable := ssa.dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
+	authzTable.ColMap("Challenges").SetMaxSize(1536)
+
 	ssa.dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	ssa.dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
 	ssa.dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
 	ssa.dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID")
+}
 
+// CreateTablesIfNotExists instructs the ORM to create any missing tables.
+func (ssa *SQLStorageAuthority) CreateTablesIfNotExists() (err error) {
 	err = ssa.dbMap.CreateTablesIfNotExists()
 	return
 }
