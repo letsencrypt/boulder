@@ -204,7 +204,7 @@ func (ssa *SQLStorageAuthority) SetSQLDebug(state bool) {
 func (ssa *SQLStorageAuthority) initTables() {
 	regTable := ssa.dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "ID")
 	regTable.SetVersionCol("LockCol")
-	regTable.ColMap("Key").SetMaxSize(512).SetNotNull(true)
+	regTable.ColMap("Key").SetMaxSize(1024).SetNotNull(true)
 
 	pendingAuthzTable := ssa.dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
 	pendingAuthzTable.SetVersionCol("LockCol")
