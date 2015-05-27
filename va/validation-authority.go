@@ -227,3 +227,9 @@ func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, ch
 	go va.validate(authz, challengeIndex)
 	return nil
 }
+
+// CheckCAA verifies that the indicated subscriber domain has a CAA record
+// authorizing the specified CA domain to issue a certificate.
+func (va *ValidationAuthority) CheckCAARecords(subscriberDomain string) (present, valid bool, err error) {
+
+}
