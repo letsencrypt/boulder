@@ -6,7 +6,10 @@ fi
 
 # Kill all children on exit.
 trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM EXIT
-go run ./cmd/boulder/main.go --config test/boulder-config.json &
+
+BOULDER_CONFIG=${BOULDER_CONFIG:-test/boulder-config.json}
+
+go run ./cmd/boulder/main.go &
 go run Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl/cfssl.go \
   -loglevel 0 \
   serve \

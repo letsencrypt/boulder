@@ -51,7 +51,8 @@
 
   "sa": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:"
+    "dbName": ":memory:",
+    "SQLDebug": false
   },
 
   "revoker": {

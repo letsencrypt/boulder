@@ -35,6 +35,7 @@ func main() {
 
 		sai, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Failed to create SA impl")
+		sai.SetSQLDebug(c.SA.SQLDebug)
 
 		go cmd.ProfileCmd("SA", stats)
 

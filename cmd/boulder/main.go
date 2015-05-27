@@ -77,6 +77,7 @@ func main() {
 		wfe := wfe.NewWebFrontEndImpl()
 		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Unable to create SA")
+		sa.SetSQLDebug(c.SA.SQLDebug)
 
 		ra := ra.NewRegistrationAuthorityImpl()
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)

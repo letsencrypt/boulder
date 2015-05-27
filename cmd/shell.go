@@ -67,6 +67,7 @@ type Config struct {
 	SA struct {
 		DBDriver string
 		DBName   string
+		SQLDebug bool
 	}
 
 	Statsd struct {
