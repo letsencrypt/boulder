@@ -159,6 +159,17 @@ func NewDbMap(driver, dbName string) (dbMap *gorp.DbMap, err error) {
 	return
 }
 
+// SQLLogger adapts the AuditLogger to a format GORP can use.
+type SQLLogger struct {
+	log *blog.AuditLogger
+}
+
+// Printf adapts the AuditLogger to GORP's interface
+func (log *SQLLogger) Printf(format string, v ...interface{}) {
+	log.log.Debug(fmt.Sprintf(format, v))
+}
+
+// NewSQLStorageAuthority provides persistence using a SQL backend for Boulder.
 func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthority, err error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Storage Authority Starting")
@@ -174,24 +185,43 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 		bucket: make(map[string]interface{}),
 	}
 
-	err = ssa.InitTables()
-	if err != nil {
-		return
-	}
-
+	ssa.initTables()
 	return
 }
 
-func (ssa *SQLStorageAuthority) InitTables() (err error) {
-	ssa.dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "ID").SetVersionCol("LockCol")
-	ssa.dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID").SetVersionCol("LockCol")
-	ssa.dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
+// SetSQLDebug enables/disables GORP SQL-level Debugging
+func (ssa *SQLStorageAuthority) SetSQLDebug(state bool) {
+	ssa.dbMap.TraceOff()
+
+	if state {
+		// Enable logging
+		ssa.dbMap.TraceOn("SQL: ", &SQLLogger{blog.GetAuditLogger()})
+	}
+}
+
+// initTables constructs the table map for the ORM. If you want to also create
+// the tables, call CreateTablesIfNotExists.
+func (ssa *SQLStorageAuthority) initTables() {
+	regTable := ssa.dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "ID")
+	regTable.SetVersionCol("LockCol")
+	regTable.ColMap("Key").SetMaxSize(1024).SetNotNull(true)
+
+	pendingAuthzTable := ssa.dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
+	pendingAuthzTable.SetVersionCol("LockCol")
+	pendingAuthzTable.ColMap("Challenges").SetMaxSize(1536)
+
+	authzTable := ssa.dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
+	authzTable.ColMap("Challenges").SetMaxSize(1536)
+
 	ssa.dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	ssa.dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	ssa.dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
 	ssa.dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
 	ssa.dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID")
+}
 
+// CreateTablesIfNotExists instructs the ORM to create any missing tables.
+func (ssa *SQLStorageAuthority) CreateTablesIfNotExists() (err error) {
 	err = ssa.dbMap.CreateTablesIfNotExists()
 	return
 }
@@ -207,7 +237,7 @@ func (ssa *SQLStorageAuthority) DumpTables() error {
 
 	fmt.Printf("\n----- registrations -----\n")
 	var registrations []core.Registration
-	_, err = tx.Select(&registrations, "SELECT * FROM registrations ")
+	_, err = tx.Select(&registrations, "SELECT * FROM registrations")
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -338,7 +368,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (reg c
 		return
 	}
 
-	err = ssa.dbMap.SelectOne(&reg, "SELECT * FROM registrations WHERE key = :key", map[string]interface{}{"key": string(keyJson)})
+	err = ssa.dbMap.SelectOne(&reg, "SELECT * FROM registrations WHERE jwk = :key", map[string]interface{}{"key": string(keyJson)})
 	return
 }
 

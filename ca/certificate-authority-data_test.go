@@ -35,6 +35,9 @@ func TestBeginCommit(t *testing.T) {
 	cadb, err := NewCertificateAuthorityDatabaseImpl(sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
 
+	err = cadb.CreateTablesIfNotExists()
+	test.AssertNotError(t, err, "Could not construct tables")
+
 	err = cadb.Begin()
 	test.AssertNotError(t, err, "Could not begin")
 
@@ -53,6 +56,9 @@ func TestGetSetSequenceOutsideTx(t *testing.T) {
 	cadb, err := NewCertificateAuthorityDatabaseImpl(sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
 
+	err = cadb.CreateTablesIfNotExists()
+	test.AssertNotError(t, err, "Could not construct tables")
+
 	_, err = cadb.IncrementAndGetSerial()
 	test.AssertError(t, err, "Not permitted")
 }
@@ -60,6 +66,9 @@ func TestGetSetSequenceOutsideTx(t *testing.T) {
 func TestGetSetSequenceNumber(t *testing.T) {
 	cadb, err := NewCertificateAuthorityDatabaseImpl(sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
+
+	err = cadb.CreateTablesIfNotExists()
+	test.AssertNotError(t, err, "Could not construct tables")
 
 	err = cadb.Begin()
 	test.AssertNotError(t, err, "Could not begin")

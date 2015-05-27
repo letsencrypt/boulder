@@ -322,11 +322,15 @@ func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
 	return 1, nil
 }
 
+func (cadb *MockCADatabase) CreateTablesIfNotExists() error {
+	return nil
+}
+
 func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthority core.StorageAuthority, caConfig Config) {
 	// Create an SA
 	ssa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
-	ssa.InitTables()
+	ssa.CreateTablesIfNotExists()
 	storageAuthority = ssa
 
 	cadb, _ = NewMockCertificateAuthorityDatabase()

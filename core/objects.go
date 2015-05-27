@@ -103,7 +103,7 @@ type Registration struct {
 	ID int64 `json:"-" db:"id"`
 
 	// Account key to which the details are attached
-	Key jose.JsonWebKey `json:"key" db:"key"`
+	Key jose.JsonWebKey `json:"key" db:"jwk"`
 
 	// Recovery Token is used to prove connection to an earlier transaction
 	RecoveryToken string `json:"recoveryToken" db:"recoveryToken"`

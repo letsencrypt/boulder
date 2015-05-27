@@ -54,6 +54,11 @@
     "dbName": ":memory:"
   },
 
+  "sql": {
+    "SQLDebug": true,
+    "CreateTables": false
+  },
+
   "revoker": {
     "dbDriver": "sqlite3",
     "dbName": ":memory:"
