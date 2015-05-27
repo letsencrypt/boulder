@@ -97,6 +97,10 @@
 			"Rev": "308067797b0fcce4ca06362580dc6db77c1bfeda"
 		},
 		{
+			"ImportPath": "github.com/miekg/dns",
+			"Rev": "015384b10e412f5cc44ae408d1a2bd773027474c"
+		},
+		{
 			"ImportPath": "github.com/square/go-jose",
 			"Rev": "d3ba9be3fbf631c353e477ab8fba8ec04f05a8b4"
 		},

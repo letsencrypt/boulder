@@ -1,0 +1,175 @@
+// Copyright 2015 ISRG.  All rights reserved
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+package va
+
+import (
+	"encoding/hex"
+	"fmt"
+	"strings"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+)
+
+// CAA Holds decoded CAA record.
+type CAA struct {
+	flag uint8
+	tag string
+	value string
+	valueBuf []byte
+}
+
+// RFC 6844 based CAA record decoder
+func newCAA(encodedRDATA []byte) *CAA {
+	if len(encodedRDATA) < 2 {
+		// *very* badly formatted record, discard
+		return nil
+	}
+
+	// first octet is uint8 flags
+	flag := uint8(encodedRDATA[0])
+
+	// second octet is uint8 length of tag
+	tagLen := uint8(encodedRDATA[1])
+
+	if uint8(len(encodedRDATA)) < 2+tagLen {
+		// badly formatted record, discard
+		return nil
+	}
+
+	tag := string(encodedRDATA[2:2+tagLen])
+
+	// Only decode tags we understand, value/valuebuf can be empty
+	// (that would be weird though...)
+	var valueBuf []byte
+	var value string
+	if tag == "issue" || tag == "issuewild" || tag == "iodef" {
+		value = string(encodedRDATA[2+tagLen:])
+	} else {
+		valueBuf = encodedRDATA[2+tagLen:]
+	}
+	
+	return &CAA{flag: flag, tag: tag, valueBuf: valueBuf, value: value}
+}
+
+// contains returned CAA records filtered by tag.
+type CAASet struct {
+	issue []*CAA
+	issuewild []*CAA
+	iodef []*CAA
+	unknown []*CAA
+}
+
+// returns true if any CAA records have unknown tag properties and are flagged critical.
+func (caaSet CAASet) criticalUnknown() bool {
+	if len(caaSet.unknown) > 0 {
+		for _, caaRecord := range caaSet.unknown {
+			// Critical flag is 1, but acording to RFC 6844any flag other than
+			// 0 should currently be interpreted as critical. 
+			if caaRecord.flag > 0 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func newCAASet(CAAs []*CAA) *CAASet {
+	var issueSet []*CAA
+	var issuewildSet []*CAA
+	var iodefSet []*CAA
+	var unknownSet []*CAA
+
+	for _, caaRecord := range CAAs {
+		switch caaRecord.tag {
+		case "issue":
+			issueSet = append(issueSet, caaRecord)
+		case "issuewild":
+			issuewildSet = append(issuewildSet, caaRecord)
+		case "iodef":
+			iodefSet = append(iodefSet, caaRecord)
+		default:
+			unknownSet = append(unknownSet, caaRecord)
+		}
+	}
+
+	return &CAASet{issue: issueSet, issuewild: issuewildSet, iodef: iodefSet, unknown: unknownSet}
+}
+
+func lookupCNAME(client *dns.Client, domain string) (string, error) {
+	m := new(dns.Msg)
+	m.SetQuestion(domain, dns.TypeCNAME)
+	m.SetEdns0(4096, true)
+	r, _, err := client.Exchange(m, server)
+	if err != nil {
+		return "", err
+	}
+
+	for _, answer := range r.Answer {
+		if cname, ok := answer.(*dns.CNAME); ok {
+			return cname.Target
+		}
+	}
+
+	return "", nil
+}
+
+func getCaa(client *dns.Client, domain string, alias bool, server string) ([]*CAA, error) {
+	if alias {
+		canonName, err := lookupCNAME(client, dns.Fqdn(domain))
+		if err != nil {
+			return []*CAA{}, err
+		}
+		if canonName == "" || canonName == domain {
+			return []*CAA{}, nil
+		}
+		domain = canonName
+	}
+
+	m := new(dns.Msg)
+	m.SetQuestion(domain, dns.TypeCAA)
+	m.SetEdns0(4096, true)
+	r, _, err := client.Exchange(m, server)
+	if err != nil {
+		return []*CAA{}, err
+	}
+
+	var CAAs []*CAA
+	for _, answer := range r.Answer {
+		if answer.Header().Rrtype == dns.TypeCAA {
+			caaData, err := hex.DecodeString(answer.String()[len(answer.String()) - int(answer.Header().Rdlength*2):])
+			if err != nil {
+				return []*CAA{}, err
+			}
+			CAAs = append(CAAs, newCAA([]byte(caaData)))
+		}
+	}
+
+	return CAAs, nil
+}
+
+func getCaaSet(domain string, server string) (*CAASet, error) {
+	dnsClient := new(dns.Client)
+
+	domain = strings.TrimRight(domain, ".")	
+	splitDomain := strings.Split(domain, ".")
+	// RFC 6844 CAA set query sequence, 'x.y.z.com' => ['x.y.z.com', 'y.z.com', 'z.com']
+	for i := range splitDomain[0:len(splitDomain)-1] {
+			queryDomain := strings.Join(splitDomain[i:], ".")
+			for _, alias := range []bool{false, true} {
+				CAAs, err := getCaa(dnsClient, queryDomain, alias, server); 
+				if err != nil {
+					return nil, err
+				}
+				if len(CAAs) > 0 {
+					return newCAASet(CAAs), nil
+				}
+			}
+	}
+	
+	// no CAA records found, good times
+	return nil, nil
+}
