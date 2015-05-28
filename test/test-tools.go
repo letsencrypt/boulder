@@ -8,8 +8,10 @@ package test
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math/big"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -51,6 +53,23 @@ func AssertError(t *testing.T, err error, message string) {
 func AssertEquals(t *testing.T, one interface{}, two interface{}) {
 	if one != two {
 		t.Errorf("%s [%v] != [%v]", caller(), one, two)
+	}
+}
+
+func AssertDeepEquals(t *testing.T, one interface{}, two interface{}) {
+	if !reflect.DeepEqual(one, two) {
+		t.Errorf("%s [%+v] !(deep)= [%+v]", caller(), one, two)
+	}
+}
+
+func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
+	oneJSON, err := json.Marshal(one)
+	AssertNotError(t, err, "Could not marshal 1st argument")
+	twoJSON, err := json.Marshal(two)
+	AssertNotError(t, err, "Could not marshal 2nd argument")
+
+	if !bytes.Equal(oneJSON, twoJSON) {
+		t.Errorf("%s [%s] !(json)= [%s]", caller(), oneJSON, twoJSON)
 	}
 }
 

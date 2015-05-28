@@ -329,9 +329,10 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		return
 	}
 
-	// Make a URL for this authz, then blow away the ID before serializing
+	// Make a URL for this authz, then blow away the ID and RegID before serializing
 	authzURL := wfe.AuthzBase + string(authz.ID)
 	authz.ID = ""
+	authz.RegistrationID = 0
 	responseBody, err := json.Marshal(authz)
 	if err != nil {
 		wfe.sendError(response, "Error marshaling authz", err, http.StatusInternalServerError)
@@ -475,7 +476,14 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// We use only the sequential part of the serial number, because it should
 	// uniquely identify the certificate, and this makes it easy for anybody to
 	// enumerate and mirror our certificates.
-	serial := cert.ParsedCertificate.SerialNumber
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	if err != nil {
+		wfe.sendError(response,
+			"Error creating new cert", err,
+			http.StatusBadRequest)
+		return
+	}
+	serial := parsedCertificate.SerialNumber
 	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, serial.Rsh(serial, 64))
 
 	// TODO The spec says a client should send an Accept: application/pkix-cert
@@ -531,7 +539,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 
 		var challengeResponse core.Challenge
 		if err = json.Unmarshal(body, &challengeResponse); err != nil {
-			wfe.sendError(response, "Error unmarshaling authorization", err, http.StatusBadRequest)
+			wfe.sendError(response, "Error unmarshaling challenge response", err, http.StatusBadRequest)
 			return
 		}
 
@@ -555,7 +563,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		// assumption: UpdateAuthorization does not modify order of challenges
 		jsonReply, err := json.Marshal(challenge)
 		if err != nil {
-			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
+			wfe.sendError(response, "Failed to marshal challenge", err, http.StatusInternalServerError)
 			return
 		}
 
@@ -634,7 +642,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 
 	jsonReply, err := json.Marshal(updatedReg)
 	if err != nil {
-		wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
+		wfe.sendError(response, "Failed to marshal registration", err, http.StatusInternalServerError)
 		return
 	}
 	response.Header().Set("Content-Type", "application/json")
@@ -665,6 +673,10 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 		return
 
 	case "GET":
+		// Blank out ID and regID
+		authz.ID = ""
+		authz.RegistrationID = 0
+
 		jsonReply, err := json.Marshal(authz)
 		if err != nil {
 			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)

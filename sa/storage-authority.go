@@ -440,27 +440,28 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err e
 	return
 }
 
-func (ssa *SQLStorageAuthority) NewPendingAuthorization() (id string, err error) {
+func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
 	}
 
 	// Check that it doesn't exist already
-	id = core.NewToken()
-	for existingPending(tx, id) || existingFinal(tx, id) {
-		id = core.NewToken()
+	authz.ID = core.NewToken()
+	for existingPending(tx, authz.ID) || existingFinal(tx, authz.ID) {
+		authz.ID = core.NewToken()
 	}
 
 	// Insert a stub row in pending
-	pending_authz := &pendingauthzModel{Authorization: core.Authorization{ID: id}}
-	err = tx.Insert(pending_authz)
+	pending_authz := pendingauthzModel{Authorization: authz}
+	err = tx.Insert(&pending_authz)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
 	err = tx.Commit()
+	output = pending_authz.Authorization
 	return
 }
 

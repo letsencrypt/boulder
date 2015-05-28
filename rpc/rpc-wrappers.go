@@ -697,7 +697,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		return []byte(id)
 	})
 
-	rpc.Handle(MethodNewRegistration, func(req []byte) (response []byte) {
+	rpc.Handle(MethodNewRegistration, func(req []byte) []byte {
 		var registration core.Registration
 		err := json.Unmarshal(req, &registration)
 		if err != nil {
@@ -722,16 +722,28 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		return []byte(jsonOutput)
 	})
 
-	rpc.Handle(MethodNewPendingAuthorization, func(req []byte) (response []byte) {
-		id, err := impl.NewPendingAuthorization()
+	rpc.Handle(MethodNewPendingAuthorization, func(req []byte) []byte {
+		var authz core.Authorization
+		if err := json.Unmarshal(req, &authz); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodNewPendingAuthorization, err, req)
+			return nil
+		}
+
+		output, err := impl.NewPendingAuthorization(authz)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodNewPendingAuthorization, err, req)
 			return nil
 		}
 
-		response = []byte(id)
-		return response
+		jsonOutput, err := json.Marshal(output)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodNewPendingAuthorization, err, req)
+			return nil
+		}
+		return []byte(jsonOutput)
 	})
 
 	rpc.Handle(MethodUpdatePendingAuthorization, func(req []byte) []byte {
@@ -983,13 +995,21 @@ func (cac StorageAuthorityClient) NewRegistration(reg core.Registration) (output
 	return output, nil
 }
 
-func (cac StorageAuthorityClient) NewPendingAuthorization() (id string, err error) {
-	response, err := cac.rpc.DispatchSync(MethodNewPendingAuthorization, nil)
+func (cac StorageAuthorityClient) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
+	jsonAuthz, err := json.Marshal(authz)
+	if err != nil {
+		return
+	}
+	response, err := cac.rpc.DispatchSync(MethodNewPendingAuthorization, jsonAuthz)
 	if err != nil || len(response) == 0 {
 		err = errors.New("NewPendingAuthorization RPC failed") // XXX
 		return
 	}
-	id = string(response)
+	err = json.Unmarshal(response, &output)
+	if err != nil {
+		err = errors.New("NewRegistration RPC failed")
+		return
+	}
 	return
 }
 

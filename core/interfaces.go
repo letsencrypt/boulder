@@ -102,7 +102,7 @@ type StorageAdder interface {
 	NewRegistration(Registration) (Registration, error)
 	UpdateRegistration(Registration) error
 
-	NewPendingAuthorization() (string, error)
+	NewPendingAuthorization(Authorization) (Authorization, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
 	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error

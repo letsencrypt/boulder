@@ -250,7 +250,7 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 // of an account key holder to act on behalf of a domain.  This
 // struct is intended to be used both internally and for JSON
 // marshaling on the wire.  Any fields that should be suppressed
-// on the wire (e.g., ID) must be made empty before marshaling.
+// on the wire (e.g., ID, regID) must be made empty before marshaling.
 type Authorization struct {
 	// An identifier for this authorization, unique across
 	// authorizations and certificates within this instance.
@@ -260,7 +260,7 @@ type Authorization struct {
 	Identifier AcmeIdentifier `json:"identifier,omitempty" db:"identifier"`
 
 	// The registration ID associated with the authorization
-	RegistrationID int64 `json:"-" db:"registrationID"`
+	RegistrationID int64 `json:"regId,omitempty" db:"registrationID"`
 
 	// The status of the validation of this authorization
 	Status AcmeStatus `json:"status,omitempty" db:"status"`
@@ -320,9 +320,6 @@ func (jb *JsonBuffer) UnmarshalJSON(data []byte) (err error) {
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
 	RegistrationID int64 `db:"registrationID"`
-
-	// The parsed version of DER. Useful for extracting things like serial number.
-	ParsedCertificate *x509.Certificate `db:"-"`
 
 	// The revocation status of the certificate.
 	// * "valid" - not revoked
