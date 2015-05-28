@@ -351,16 +351,16 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 	return
 }
 
-func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (output core.Registration, err error) {
+func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return reg, err
 	}
 
 	err = tx.Insert(&reg)
 	if err != nil {
 		tx.Rollback()
-		return
+		return reg, err
 	}
 
 	err = tx.Commit()

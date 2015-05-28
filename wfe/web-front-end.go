@@ -282,7 +282,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	regURL := fmt.Sprintf("%s%d", wfe.RegBase, id)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
-		wfe.sendError(response, "Error marshaling authz", err, http.StatusInternalServerError)
+		wfe.sendError(response, "Error marshaling registration", err, http.StatusInternalServerError)
 		return
 	}
 

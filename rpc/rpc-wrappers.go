@@ -659,7 +659,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 
 	rpc.Handle(MethodNewRegistration, func(req []byte) (response []byte) {
 		var registration core.Registration
-		err := json.Unmarshal(req, registration)
+		err := json.Unmarshal(req, &registration)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodNewRegistration, err, req)
@@ -693,7 +693,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 
 	rpc.Handle(MethodUpdatePendingAuthorization, func(req []byte) []byte {
 		var authz core.Authorization
-		if err := json.Unmarshal(req, authz); err != nil {
+		if err := json.Unmarshal(req, &authz); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodUpdatePendingAuthorization, err, req)
 			return nil
@@ -708,7 +708,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 
 	rpc.Handle(MethodFinalizeAuthorization, func(req []byte) []byte {
 		var authz core.Authorization
-		if err := json.Unmarshal(req, authz); err != nil {
+		if err := json.Unmarshal(req, &authz); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodFinalizeAuthorization, err, req)
 			return nil
@@ -765,7 +765,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 			ReasonCode   int
 		}
 
-		if err := json.Unmarshal(req, revokeReq); err != nil {
+		if err := json.Unmarshal(req, &revokeReq); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodMarkCertificateRevoked, err, req)
 			return nil
@@ -785,7 +785,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 			Names []string
 		}
 
-		err := json.Unmarshal(req, csrReq)
+		err := json.Unmarshal(req, &csrReq)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodAlreadyDeniedCSR, err, req)
@@ -849,7 +849,7 @@ func (cac StorageAuthorityClient) GetRegistrationByKey(key jose.JsonWebKey) (reg
 		return
 	}
 
-	jsonReg, err := cac.rpc.DispatchSync(MethodGetRegistration, jsonKey)
+	jsonReg, err := cac.rpc.DispatchSync(MethodGetRegistrationByKey, jsonKey)
 	if err != nil {
 		return
 	}
@@ -930,7 +930,7 @@ func (cac StorageAuthorityClient) NewRegistration(reg core.Registration) (output
 		err = errors.New("NewRegistration RPC failed") // XXX
 		return
 	}
-	err = json.Unmarshal(response, output)
+	err = json.Unmarshal(response, &output)
 	if err != nil {
 		err = errors.New("NewRegistration RPC failed")
 		return
