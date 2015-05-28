@@ -32,7 +32,7 @@
 
   "wfe": {
     "baseURL": "http://localhost:4300",
-    "listenAddress": "0.0.0.0:4300"
+    "listenAddress": "127.0.0.1:4300"
   },
 
   "ca": {
@@ -52,6 +52,11 @@
   "sa": {
     "dbDriver": "sqlite3",
     "dbName": ":memory:"
+  },
+
+  "sql": {
+    "SQLDebug": false,
+    "CreateTables": true
   },
 
   "mail": {

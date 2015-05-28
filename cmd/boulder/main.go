@@ -77,6 +77,7 @@ func main() {
 		wfe := wfe.NewWebFrontEndImpl()
 		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Unable to create SA")
+		sa.SetSQLDebug(c.SQL.SQLDebug)
 
 		ra := ra.NewRegistrationAuthorityImpl()
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
@@ -86,6 +87,14 @@ func main() {
 
 		ca, err := ca.NewCertificateAuthorityImpl(cadb, c.CA)
 		cmd.FailOnError(err, "Unable to create CA")
+
+		if c.SQL.CreateTables {
+			err = sa.CreateTablesIfNotExists()
+			cmd.FailOnError(err, "Failed to create SA tables")
+
+			err = cadb.CreateTablesIfNotExists()
+			cmd.FailOnError(err, "Failed to create CA tables")
+		}
 
 		// Wire them up
 		wfe.RA = &ra

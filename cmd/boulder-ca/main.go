@@ -36,6 +36,11 @@ func main() {
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")
 
+		if c.SQL.CreateTables {
+			err = cadb.CreateTablesIfNotExists()
+			cmd.FailOnError(err, "Failed to create CA tables")
+		}
+
 		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA)
 		cmd.FailOnError(err, "Failed to create CA impl")
 

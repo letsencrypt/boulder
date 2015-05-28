@@ -39,16 +39,14 @@ func NewCertificateAuthorityDatabaseImpl(driver string, name string) (cadb core.
 		db:  db,
 		log: logger,
 	}
-
-	err = createTablesIfNotExist(db)
 	return
 }
 
 // createTablesIfNotExist builds the database tables and inserts the initial
 // state, if the tables do not already exist. It is not an error for the tables
 // to already exist.
-func createTablesIfNotExist(db *sql.DB) (err error) {
-	tx, err := db.Begin()
+func (cadb *CertificateAuthorityDatabaseImpl) CreateTablesIfNotExists() (err error) {
+	tx, err := cadb.db.Begin()
 	if err != nil {
 		return
 	}

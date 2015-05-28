@@ -62,6 +62,10 @@ func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
 	return 1, nil
 }
 
+func (cadb *MockCADatabase) CreateTablesIfNotExists() error {
+	return nil
+}
+
 var (
 	// These values we simulate from the client
 	AccountKeyJSON = []byte(`{
@@ -116,7 +120,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 
 	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
-	sa.InitTables()
+	sa.CreateTablesIfNotExists()
 
 	va := &DummyValidationAuthority{}
 

@@ -10,6 +10,7 @@ bin
 
 # Test files
 test/js/node_modules
+test/js/*.pem
 
 # Architecture specific extensions/prefixes
 *.[568vq]

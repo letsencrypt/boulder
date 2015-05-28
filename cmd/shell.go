@@ -69,6 +69,11 @@ type Config struct {
 		DBName   string
 	}
 
+	SQL struct {
+		CreateTables bool
+		SQLDebug     bool
+	}
+
 	Statsd struct {
 		Server string
 		Prefix string

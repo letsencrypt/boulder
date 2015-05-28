@@ -119,9 +119,9 @@ type StorageAuthority interface {
 
 // CertificateAuthorityDatabase represents an atomic sequence source
 type CertificateAuthorityDatabase interface {
+	CreateTablesIfNotExists() error
 	Begin() error
 	Commit() error
 	Rollback() error
-
 	IncrementAndGetSerial() (int, error)
 }
