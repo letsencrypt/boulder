@@ -19,6 +19,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -133,6 +134,8 @@ func main() {
 
 		// Configure HTTP
 		http.Handle(c.OCSP.Path, cfocsp.Responder{Source: src})
+
+		auditlogger.Info(app.VersionString())
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))

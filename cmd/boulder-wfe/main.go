@@ -8,10 +8,10 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -109,6 +109,8 @@ func main() {
 		// Set up paths
 		wfe.BaseURL = c.WFE.BaseURL
 		wfe.HandlePaths()
+
+		auditlogger.Info(app.VersionString())
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))

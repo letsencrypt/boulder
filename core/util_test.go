@@ -48,3 +48,7 @@ func TestSerialUtils(t *testing.T) {
 	test.AssertEquals(t, fmt.Sprintf("%v", err), "Serial number should be 32 characters long")
 	fmt.Println(badSerial)
 }
+
+func TestBuildID(t *testing.T) {
+	test.AssertEquals(t, "Unspecified", GetBuildID())
+}

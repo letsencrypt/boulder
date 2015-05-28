@@ -181,6 +181,8 @@ func main() {
 			}
 		}()
 
+		auditlogger.Info(app.VersionString())
+
 		// Calculate the cut-off timestamp
 		dur, err := time.ParseDuration(c.OCSP.MinTimeToExpiry)
 		cmd.FailOnError(err, "Could not parse MinTimeToExpiry from config.")

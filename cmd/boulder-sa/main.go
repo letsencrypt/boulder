@@ -50,6 +50,8 @@ func main() {
 
 			sas := rpc.NewStorageAuthorityServer(c.AMQP.SA.Server, ch, sai)
 
+			auditlogger.Info(app.VersionString())
+
 			cmd.RunUntilSignaled(auditlogger, sas, closeChan)
 		}
 	}
