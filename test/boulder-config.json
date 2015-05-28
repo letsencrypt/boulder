@@ -54,6 +54,11 @@
     "dbName": ":memory:"
   },
 
+  "va": {
+    "dnsResolver": "8.8.8.8:53",
+    "dnsTimeout": "10s"
+  },
+
   "sql": {
     "SQLDebug": true,
     "CreateTables": false

@@ -33,6 +33,10 @@ func main() {
 		go cmd.ProfileCmd("VA", stats)
 
 		vai := va.NewValidationAuthorityImpl(c.CA.TestMode)
+		vai.DNSResolver = c.VA.DNSResolver
+		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
+		cmd.FailOnError(err, "Couldn't parse DNS timeout")
+		vai.DNSTimeout = dnsTimeout
 
 		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
