@@ -17,7 +17,7 @@ before_install:
   - go get github.com/golang/lint/golint
   - go get github.com/mattn/goveralls
   - go get github.com/modocache/gover
-  - npm install
+  - npm install test/js/
 
 script:
   - make -j4 # Travis has 2 cores per build instance
