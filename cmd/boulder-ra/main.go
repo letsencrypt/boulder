@@ -13,6 +13,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/rpc"
+	"github.com/letsencrypt/boulder/wfe"
 )
 
 func main() {
@@ -31,6 +32,7 @@ func main() {
 		blog.SetAuditLogger(auditlogger)
 
 		rai := ra.NewRegistrationAuthorityImpl()
+		rai.AuthzBase = c.WFE.BaseURL + wfe.AuthzPath
 
 		go cmd.ProfileCmd("RA", stats)
 
