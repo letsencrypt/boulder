@@ -7,7 +7,6 @@ package va
 
 import (
 	"encoding/hex"
-	"fmt"
 	"strings"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -15,9 +14,9 @@ import (
 
 // CAA Holds decoded CAA record.
 type CAA struct {
-	flag uint8
-	tag string
-	value string
+	flag     uint8
+	tag      string
+	value    string
 	valueBuf []byte
 }
 
@@ -38,8 +37,7 @@ func newCAA(encodedRDATA []byte) *CAA {
 		// badly formatted record, discard
 		return nil
 	}
-
-	tag := string(encodedRDATA[2:2+tagLen])
+	tag := string(encodedRDATA[2 : 2+tagLen])
 
 	// Only decode tags we understand, value/valuebuf can be empty
 	// (that would be weird though...)
@@ -48,26 +46,27 @@ func newCAA(encodedRDATA []byte) *CAA {
 	if tag == "issue" || tag == "issuewild" || tag == "iodef" {
 		value = string(encodedRDATA[2+tagLen:])
 	} else {
+		// unknown tag value may not be string, so store in buf
 		valueBuf = encodedRDATA[2+tagLen:]
 	}
-	
+
 	return &CAA{flag: flag, tag: tag, valueBuf: valueBuf, value: value}
 }
 
 // contains returned CAA records filtered by tag.
 type CAASet struct {
-	issue []*CAA
+	issue     []*CAA
 	issuewild []*CAA
-	iodef []*CAA
-	unknown []*CAA
+	iodef     []*CAA
+	unknown   []*CAA
 }
 
 // returns true if any CAA records have unknown tag properties and are flagged critical.
 func (caaSet CAASet) criticalUnknown() bool {
 	if len(caaSet.unknown) > 0 {
 		for _, caaRecord := range caaSet.unknown {
-			// Critical flag is 1, but acording to RFC 6844any flag other than
-			// 0 should currently be interpreted as critical. 
+			// Critical flag is 1, but acording to RFC 6844 any flag other than
+			// 0 should currently be interpreted as critical.
 			if caaRecord.flag > 0 {
 				return true
 			}
@@ -99,7 +98,7 @@ func newCAASet(CAAs []*CAA) *CAASet {
 	return &CAASet{issue: issueSet, issuewild: issuewildSet, iodef: iodefSet, unknown: unknownSet}
 }
 
-func lookupCNAME(client *dns.Client, domain string) (string, error) {
+func lookupCNAME(client *dns.Client, server, domain string) (string, error) {
 	m := new(dns.Msg)
 	m.SetQuestion(domain, dns.TypeCNAME)
 	m.SetEdns0(4096, true)
@@ -110,18 +109,18 @@ func lookupCNAME(client *dns.Client, domain string) (string, error) {
 
 	for _, answer := range r.Answer {
 		if cname, ok := answer.(*dns.CNAME); ok {
-			return cname.Target
+			return cname.Target, nil
 		}
 	}
 
 	return "", nil
 }
 
-func getCaa(client *dns.Client, domain string, alias bool, server string) ([]*CAA, error) {
+func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CAA, error) {
 	if alias {
-		canonName, err := lookupCNAME(client, dns.Fqdn(domain))
+		canonName, err := lookupCNAME(client, server, dns.Fqdn(domain))
 		if err != nil {
-			return []*CAA{}, err
+			return nil, err
 		}
 		if canonName == "" || canonName == domain {
 			return []*CAA{}, nil
@@ -130,19 +129,19 @@ func getCaa(client *dns.Client, domain string, alias bool, server string) ([]*CA
 	}
 
 	m := new(dns.Msg)
-	m.SetQuestion(domain, dns.TypeCAA)
+	m.SetQuestion(dns.Fqdn(domain), dns.TypeCAA)
 	m.SetEdns0(4096, true)
 	r, _, err := client.Exchange(m, server)
 	if err != nil {
-		return []*CAA{}, err
+		return nil, err
 	}
 
 	var CAAs []*CAA
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeCAA {
-			caaData, err := hex.DecodeString(answer.String()[len(answer.String()) - int(answer.Header().Rdlength*2):])
+			caaData, err := hex.DecodeString(answer.String()[len(answer.String())-int(answer.Header().Rdlength*2):])
 			if err != nil {
-				return []*CAA{}, err
+				return nil, err
 			}
 			CAAs = append(CAAs, newCAA([]byte(caaData)))
 		}
@@ -154,22 +153,22 @@ func getCaa(client *dns.Client, domain string, alias bool, server string) ([]*CA
 func getCaaSet(domain string, server string) (*CAASet, error) {
 	dnsClient := new(dns.Client)
 
-	domain = strings.TrimRight(domain, ".")	
+	domain = strings.TrimRight(domain, ".")
 	splitDomain := strings.Split(domain, ".")
 	// RFC 6844 CAA set query sequence, 'x.y.z.com' => ['x.y.z.com', 'y.z.com', 'z.com']
-	for i := range splitDomain[0:len(splitDomain)-1] {
-			queryDomain := strings.Join(splitDomain[i:], ".")
-			for _, alias := range []bool{false, true} {
-				CAAs, err := getCaa(dnsClient, queryDomain, alias, server); 
-				if err != nil {
-					return nil, err
-				}
-				if len(CAAs) > 0 {
-					return newCAASet(CAAs), nil
-				}
+	for i := range splitDomain[0 : len(splitDomain)-1] {
+		queryDomain := strings.Join(splitDomain[i:], ".")
+		for _, alias := range []bool{false, true} {
+			CAAs, err := getCaa(dnsClient, server, queryDomain, alias)
+			if err != nil {
+				return nil, err
 			}
+			if len(CAAs) > 0 {
+				return newCAASet(CAAs), nil
+			}
+		}
 	}
-	
+
 	// no CAA records found, good times
 	return nil, nil
 }

@@ -330,6 +330,49 @@ func TestUpdateValidations(t *testing.T) {
 	// Nothing to assert.
 }
 
+func TestCAAChecking(t *testing.T) {
+	type CAATest struct {
+		Domain  string
+		Present bool
+		Valid   bool
+	}
+	tests := []CAATest{
+		// Reserved
+		CAATest{"google.com", true, false},
+		CAATest{"mail.google.com", true, false},
+		CAATest{"comodo.com", true, false},
+		CAATest{"0day.net", true, false},
+		CAATest{"darktangent.org", true, false},
+		CAATest{"instantssl.com", true, false},
+		CAATest{"nails.eu.org", true, false},
+		// Critical
+		CAATest{"goop.org", true, false},
+		CAATest{"nethemba.com", true, false},
+		CAATest{"arrakis.tv", true, false},
+		CAATest{"mail2.bevenhall.se", true, false},
+		// Good (absent)
+		CAATest{"bracewel.net", false, true},
+		CAATest{"linux.org", false, true},
+		CAATest{"pir.org", false, true},
+		// Good (present, none of my DNS providers support CAA currently)
+		// CAATest{"letsencrypt.org", true, true},
+	}
+
+	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = "8.8.8.8:53"
+	for _, caaTest := range tests {
+		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
+		// If DNS times out skip checks
+		if err != nil && err.Error() == "read udp 8.8.8.8:53: i/o timeout" {
+			continue
+		}
+		test.AssertNotError(t, err, caaTest.Domain)
+		fmt.Println(caaTest.Domain)
+		test.AssertEquals(t, caaTest.Present, present)
+		test.AssertEquals(t, caaTest.Valid, valid)
+	}
+}
+
 type MockRegistrationAuthority struct {
 	lastAuthz *core.Authorization
 }

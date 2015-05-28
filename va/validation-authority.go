@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -19,9 +20,11 @@ import (
 )
 
 type ValidationAuthorityImpl struct {
-	RA       core.RegistrationAuthority
-	log      *blog.AuditLogger
-	TestMode bool
+	RA           core.RegistrationAuthority
+	log          *blog.AuditLogger
+	DNSResolver  string
+	IssuerDomain string
+	TestMode     bool
 }
 
 func NewValidationAuthorityImpl(tm bool) ValidationAuthorityImpl {
@@ -230,6 +233,37 @@ func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, ch
 
 // CheckCAA verifies that the indicated subscriber domain has a CAA record
 // authorizing the specified CA domain to issue a certificate.
-func (va *ValidationAuthority) CheckCAARecords(subscriberDomain string) (present, valid bool, err error) {
+func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
+	domain := strings.ToLower(identifier.Value)
+	caaSet, err := getCaaSet(domain, va.DNSResolver)
 
+	if caaSet == nil {
+		// No CAA records found, can issue
+		present = false
+		valid = true
+		return
+	} else if caaSet.criticalUnknown() {
+		present = true
+		valid = false
+		return
+	} else if len(caaSet.issue) > 0 || len(caaSet.issuewild) > 0 {
+		present = true
+		var checkSet []*CAA
+		if strings.SplitN(domain, ".", 2)[0] == "*" {
+			checkSet = append(caaSet.issuewild, caaSet.issue...)
+		} else {
+			checkSet = caaSet.issue
+		}
+		for _, caa := range checkSet {
+			if caa.value == va.IssuerDomain {
+				valid = true
+				return
+			}
+		}
+
+		valid = false
+		return
+	}
+
+	return
 }
