@@ -124,5 +124,5 @@ type CertificateAuthorityDatabase interface {
 	Begin() error
 	Commit() error
 	Rollback() error
-	IncrementAndGetSerial() (int, error)
+	IncrementAndGetSerial() (int64, error)
 }

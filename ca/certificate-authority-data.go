@@ -6,20 +6,28 @@
 package ca
 
 import (
-	"database/sql"
 	"errors"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/sa"
+
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
 // CertificateAuthorityDatabaseImpl represents a database used by the CA; it
 // enforces transaction semantics, and is effectively single-threaded.
 type CertificateAuthorityDatabaseImpl struct {
 	log      *blog.AuditLogger
-	db       *sql.DB
-	activeTx *sql.Tx
+	dbMap    *gorp.DbMap
+	activeTx *gorp.Transaction
+}
+
+type SerialNumber struct {
+	ID          int       `db:"id"`
+	Number      int64     `db:"number"`
+	LastUpdated time.Time `db:"lastUpdated"`
 }
 
 // NewCertificateAuthorityDatabaseImpl constructs a Database for the
@@ -27,46 +35,32 @@ type CertificateAuthorityDatabaseImpl struct {
 func NewCertificateAuthorityDatabaseImpl(driver string, name string) (cadb core.CertificateAuthorityDatabase, err error) {
 	logger := blog.GetAuditLogger()
 
-	db, err := sql.Open(driver, name)
+	dbMap, err := sa.NewDbMap(driver, name)
 	if err != nil {
-		return
-	}
-	if err = db.Ping(); err != nil {
-		return
+		return nil, err
 	}
 
+	dbMap.AddTableWithName(SerialNumber{}, "serialNumber").SetKeys(true, "ID")
+
 	cadb = &CertificateAuthorityDatabaseImpl{
-		db:  db,
-		log: logger,
+		dbMap: dbMap,
+		log:   logger,
 	}
-	return
+	return cadb, nil
 }
 
 // createTablesIfNotExist builds the database tables and inserts the initial
 // state, if the tables do not already exist. It is not an error for the tables
 // to already exist.
 func (cadb *CertificateAuthorityDatabaseImpl) CreateTablesIfNotExists() (err error) {
-	tx, err := cadb.db.Begin()
+	// Create serial number table
+	err = cadb.dbMap.CreateTablesIfNotExists()
 	if err != nil {
 		return
-	}
-
-	// Create serial number table
-	_, err = tx.Exec("CREATE TABLE serialNumber (id INTEGER, number INTEGER, lastUpdated DATETIME);")
-	if err != nil {
-		// If the table exists, exit early
-		tx.Rollback()
-		return nil
 	}
 
 	// Initialize the serial number
-	_, err = tx.Exec("INSERT INTO serialNumber (id, number, lastUpdated) VALUES (1, 1, ?);", time.Now())
-	if err != nil {
-		tx.Rollback()
-		return
-	}
-
-	err = tx.Commit()
+	err = cadb.dbMap.Insert(&SerialNumber{ID: 1, Number: 1, LastUpdated: time.Now()})
 	return
 }
 
@@ -77,7 +71,7 @@ func (cadb *CertificateAuthorityDatabaseImpl) Begin() (err error) {
 		err = errors.New("Transaction already open")
 		return
 	}
-	cadb.activeTx, err = cadb.db.Begin()
+	cadb.activeTx, err = cadb.dbMap.Begin()
 	return
 }
 
@@ -109,21 +103,23 @@ func (cadb *CertificateAuthorityDatabaseImpl) Rollback() (err error) {
 // it in the database before returning. There must be an active transaction to
 // call this method. Callers should Begin the transaction, call this method,
 // perform any other work, and Commit at the end once the certificate is issued.
-func (cadb *CertificateAuthorityDatabaseImpl) IncrementAndGetSerial() (val int, err error) {
+func (cadb *CertificateAuthorityDatabaseImpl) IncrementAndGetSerial() (val int64, err error) {
 	if cadb.activeTx == nil {
 		err = errors.New("No transaction open")
 		return
 	}
 
-	row := cadb.activeTx.QueryRow("SELECT number FROM serialNumber LIMIT 1;")
-
-	err = row.Scan(&val)
+	rowObj, err := cadb.activeTx.Get(SerialNumber{}, 1)
 	if err != nil {
 		cadb.activeTx.Rollback()
 		return
 	}
 
-	_, err = cadb.activeTx.Exec("UPDATE serialNumber SET number=?, lastUpdated=? WHERE id=1", val+1, time.Now())
+	row := rowObj.(*SerialNumber)
+	val = row.Number
+	row.Number = val + 1
+
+	_, err = cadb.activeTx.Update(row)
 	if err != nil {
 		cadb.activeTx.Rollback()
 		return

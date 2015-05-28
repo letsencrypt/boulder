@@ -14,17 +14,15 @@ import (
 	"net/http"
 	"time"
 
-	// Load both drivers to allow configuring either
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/sa"
 )
 
 type timedHandler struct {
@@ -76,8 +74,8 @@ type DBSource struct {
 	caKeyHash []byte
 }
 
-func NewSourceFromDatabase(db *sql.DB, caKeyHash []byte) (src *DBSource, err error) {
-	src = &DBSource{db: db, caKeyHash: caKeyHash}
+func NewSourceFromDatabase(dbMap *gorp.DbMap, caKeyHash []byte) (src *DBSource, err error) {
+	src = &DBSource{db: dbMap.Db, caKeyHash: caKeyHash}
 	return
 }
 
@@ -118,10 +116,9 @@ func main() {
 
 		go cmd.ProfileCmd("OCSP", stats)
 
-		// Connect to the DB
-		db, err := sql.Open(c.OCSPResponder.DBDriver, c.OCSPResponder.DBName)
+		// Configure DB
+		dbMap, err := sa.NewDbMap(c.OCSPResponder.DBDriver, c.OCSPResponder.DBName)
 		cmd.FailOnError(err, "Could not connect to database")
-		defer db.Close()
 
 		// Load the CA's key and hash it
 		caCertDER, err := cmd.LoadCert(c.CA.IssuerCert)
@@ -133,7 +130,7 @@ func main() {
 		caKeyHash := h.Sum(nil)
 
 		// Construct source from DB
-		src, err := NewSourceFromDatabase(db, caKeyHash)
+		src, err := NewSourceFromDatabase(dbMap, caKeyHash)
 		cmd.FailOnError(err, "Could not connect to OCSP database")
 
 		// Configure HTTP
