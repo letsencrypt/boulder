@@ -38,6 +38,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/ca"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 )
@@ -161,6 +162,11 @@ func (as *AppShell) Run() {
 
 	err := as.App.Run(os.Args)
 	FailOnError(err, "Failed to run application")
+}
+
+// VersionString produces a friendly Application version string
+func (as *AppShell) VersionString() string {
+	return fmt.Sprintf("%s (version %s, build %s)", as.App.Name, as.App.Version, core.GetBuildID())
 }
 
 // FailOnError exits and prints an error message if we encountered a problem

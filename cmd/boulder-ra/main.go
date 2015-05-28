@@ -56,6 +56,8 @@ func main() {
 			ras, err := rpc.NewRegistrationAuthorityServer(c.AMQP.RA.Server, ch, &rai)
 			cmd.FailOnError(err, "Unable to create RA server")
 
+			auditlogger.Info(app.VersionString())
+
 			cmd.RunUntilSignaled(auditlogger, ras, closeChan)
 		}
 
