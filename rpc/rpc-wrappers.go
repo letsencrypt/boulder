@@ -452,11 +452,11 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 	return nil
 }
 
-func (vac ValidationAuthorityClient) CheckCAARecords(authz core.Authorization) (present bool, valid bool, err error) {
+func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) (present bool, valid bool, err error) {
 	var caaReq struct {
-		Authz core.Authorization
+		Ident core.AcmeIdentifier
 	}
-	caaReq.Authz = authz
+	caaReq.Ident = ident
 	data, err := json.Marshal(caaReq)
 	if err != nil {
 		return
