@@ -74,6 +74,7 @@ type RegistrationAuthority interface {
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
 	UpdateValidations(Authorization, int) error
+	CheckCAARecords(AcmeIdentifier) (bool, bool, error)
 }
 
 type CertificateAuthority interface {

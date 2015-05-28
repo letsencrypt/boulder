@@ -7,6 +7,7 @@ package ra
 
 import (
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/url"
@@ -84,6 +85,17 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Check that the identifier is present and appropriate
 	if err = ra.PA.WillingToIssue(identifier); err != nil {
+		return authz, err
+	}
+
+	// Check CAA records for the requested identifier
+	present, valid, err := ra.VA.CheckCAARecords(identifier)
+	if err != nil {
+		return authz, err
+	}
+	ra.log.Audit(fmt.Sprintf("Checked CAA records for %s [Present: %v, Valid for issuance: %v]", identifier.Value, present, valid))
+	if !valid {
+		err = errors.New("CAA check for identifier failed")
 		return authz, err
 	}
 

@@ -360,9 +360,10 @@ func TestCAAChecking(t *testing.T) {
 
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = "8.8.8.8:53"
+	va.DNSTimeout = time.Second * 5
 	for _, caaTest := range tests {
 		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
-		// If DNS times out skip checks
+		// Ignore tests if DNS req has timed out
 		if err != nil && err.Error() == "read udp 8.8.8.8:53: i/o timeout" {
 			continue
 		}

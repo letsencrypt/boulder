@@ -23,6 +23,7 @@ type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
 	DNSResolver  string
+	DNSTimeout   time.Duration
 	IssuerDomain string
 	TestMode     bool
 }
@@ -235,7 +236,7 @@ func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, ch
 // authorizing the specified CA domain to issue a certificate.
 func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	domain := strings.ToLower(identifier.Value)
-	caaSet, err := getCaaSet(domain, va.DNSResolver)
+	caaSet, err := getCaaSet(domain, va.DNSResolver, va.DNSTimeout)
 
 	if caaSet == nil {
 		// No CAA records found, can issue

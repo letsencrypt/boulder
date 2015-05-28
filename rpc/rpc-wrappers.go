@@ -41,6 +41,7 @@ const (
 	MethodRevokeCertificate           = "RevokeCertificate"           // RA
 	MethodOnValidationUpdate          = "OnValidationUpdate"          // RA
 	MethodUpdateValidations           = "UpdateValidations"           // VA
+	MethodCheckCAARecords             = "CheckCAARecords"             // VA
 	MethodIssueCertificate            = "IssueCertificate"            // CA
 	MethodRevokeCertificateCA         = "RevokeCertificateCA"         // CA
 	MethodGetRegistration             = "GetRegistration"             // SA
@@ -387,6 +388,37 @@ func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, imp
 		return nil
 	})
 
+	rpc.Handle(MethodCheckCAARecords, func(req []byte) []byte {
+		var caaReq struct {
+			Ident core.AcmeIdentifier
+		}
+		if err := json.Unmarshal(req, &caaReq); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodCheckCAARecords, err, req)
+			return nil
+		}
+
+		present, valid, err := impl.CheckCAARecords(caaReq.Ident)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodCheckCAARecords, err, caaReq)
+		}
+
+		var caaResp struct {
+			Present bool
+			Valid   bool
+			Err     error
+		}
+		caaResp.Present = present
+		caaResp.Valid = valid
+		caaResp.Err = err
+		response, err := json.Marshal(caaResp)
+		if err != nil {
+			return nil
+		}
+		return response
+	})
+
 	return rpc, nil
 }
 
@@ -418,6 +450,36 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 
 	vac.rpc.Dispatch(MethodUpdateValidations, data)
 	return nil
+}
+
+func (vac ValidationAuthorityClient) CheckCAARecords(authz core.Authorization) (present bool, valid bool, err error) {
+	var caaReq struct {
+		Authz core.Authorization
+	}
+	caaReq.Authz = authz
+	data, err := json.Marshal(caaReq)
+	if err != nil {
+		return
+	}
+
+	jsonResp, err := vac.rpc.DispatchSync(MethodCheckCAARecords, data)
+	if err != nil {
+		return
+	}
+
+	var caaResp struct {
+		Present bool
+		Valid   bool
+		Err     error
+	}
+
+	err = json.Unmarshal(jsonResp, &caaResp)
+	if err != nil {
+		return
+	}
+	present = caaResp.Present
+	valid = caaResp.Valid
+	return
 }
 
 // CertificateAuthorityClient / Server

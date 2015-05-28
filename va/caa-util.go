@@ -8,6 +8,7 @@ package va
 import (
 	"encoding/hex"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
@@ -150,8 +151,11 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 	return CAAs, nil
 }
 
-func getCaaSet(domain string, server string) (*CAASet, error) {
+func getCaaSet(domain string, server string, timeout time.Duration) (*CAASet, error) {
 	dnsClient := new(dns.Client)
+	dnsClient.DialTimeout = timeout
+	dnsClient.ReadTimeout = timeout
+	dnsClient.WriteTimeout = timeout
 
 	domain = strings.TrimRight(domain, ".")
 	splitDomain := strings.Split(domain, ".")
