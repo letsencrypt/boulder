@@ -14,6 +14,10 @@ import (
 	"net/http"
 	"time"
 
+	// Load both drivers to allow configuring either
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"golang.org/x/crypto/ocsp"
@@ -98,7 +102,7 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 }
 
 func main() {
-	app := cmd.NewAppShell("boulder-ocsp")
+	app := cmd.NewAppShell("boulder-ocsp-responder")
 	app.Action = func(c cmd.Config) {
 		// Set up logging
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
@@ -115,7 +119,7 @@ func main() {
 		go cmd.ProfileCmd("OCSP", stats)
 
 		// Connect to the DB
-		db, err := sql.Open(c.OCSP.DBDriver, c.OCSP.DBName)
+		db, err := sql.Open(c.OCSPResponder.DBDriver, c.OCSPResponder.DBName)
 		cmd.FailOnError(err, "Could not connect to database")
 		defer db.Close()
 
@@ -133,12 +137,13 @@ func main() {
 		cmd.FailOnError(err, "Could not connect to OCSP database")
 
 		// Configure HTTP
-		http.Handle(c.OCSP.Path, cfocsp.Responder{Source: src})
+		http.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
 
 		auditlogger.Info(app.VersionString())
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
-		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
+		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.OCSPResponder.ListenAddress))
+		err = http.ListenAndServe(c.OCSPResponder.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 
