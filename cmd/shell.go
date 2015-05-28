@@ -99,10 +99,16 @@ type Config struct {
 		Password string
 	}
 
-	OCSP struct {
+	OCSPResponder struct {
+		DBDriver      string
+		DBName        string
+		Path          string
+		ListenAddress string
+	}
+
+	OCSPUpdater struct {
 		DBDriver        string
 		DBName          string
-		Path            string
 		MinTimeToExpiry string
 		ResponseLimit   int
 	}

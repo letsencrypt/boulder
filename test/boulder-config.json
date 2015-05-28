@@ -64,7 +64,14 @@
     "dbName": ":memory:"
   },
 
-  "ocsp": {
+  "ocspResponder": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:",
+    "path": "http://localhost:4001",
+    "listenAddress": "localhost:4001"
+  },
+
+  "ocspUpdater": {
     "dbDriver": "sqlite3",
     "dbName": ":memory:",
     "minTimeToExpiry": "72h"
