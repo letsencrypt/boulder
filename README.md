@@ -42,18 +42,14 @@ Quickstart
 > cd $GOPATH/src/github.com/letsencrypt/boulder
 # This starts both Boulder and cfssl with test configs. Ctrl-C kills both.
 > ./start.sh
+> cd test/js
+> npm install
+> nodejs test.js
 ```
 
-The ["restify" branch of node-acme](https://github.com/letsencrypt/node-acme/tree/restify) has a client that works with this server (`npm install node-acme && node node-acme/demo.js`).
-
-```
-> git clone https://github.com/letsencrypt/node-acme.git
-> cd node-acme
-> git branch -f restify origin/restify && git checkout restify
-> cd ..
-> npm install node-acme
-> node node-acme/demo.js
-```
+You can also check out the official client from
+https://github.com/letsencrypt/lets-encrypt-preview/ and follow the setup
+instructions there.
 
 Component Model
 ---------------

@@ -8,10 +8,10 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -23,10 +23,10 @@ func setupWFE(c cmd.Config) (rpc.RegistrationAuthorityClient, rpc.StorageAuthori
 	ch := cmd.AmqpChannel(c.AMQP.Server)
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-	rac, err := rpc.NewRegistrationAuthorityClient(c.AMQP.RA.Client, c.AMQP.RA.Server, ch)
+	rac, err := rpc.NewRegistrationAuthorityClient("WFE->RA", c.AMQP.RA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RA client")
 
-	sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Server, ch)
+	sac, err := rpc.NewStorageAuthorityClient("WFE->SA", c.AMQP.SA.Server, ch)
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	return rac, sac, closeChan
@@ -109,6 +109,8 @@ func main() {
 		// Set up paths
 		wfe.BaseURL = c.WFE.BaseURL
 		wfe.HandlePaths()
+
+		auditlogger.Info(app.VersionString())
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))

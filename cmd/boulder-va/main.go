@@ -44,13 +44,15 @@ func main() {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-			rac, err := rpc.NewRegistrationAuthorityClient(c.AMQP.RA.Client, c.AMQP.RA.Server, ch)
+			rac, err := rpc.NewRegistrationAuthorityClient("VA->RA", c.AMQP.RA.Server, ch)
 			cmd.FailOnError(err, "Unable to create RA client")
 
 			vai.RA = &rac
 
 			vas, err := rpc.NewValidationAuthorityServer(c.AMQP.VA.Server, ch, &vai)
 			cmd.FailOnError(err, "Unable to create VA server")
+
+			auditlogger.Info(app.VersionString())
 
 			cmd.RunUntilSignaled(auditlogger, vas, closeChan)
 		}

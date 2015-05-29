@@ -74,12 +74,13 @@ func main() {
 		go cmd.ProfileCmd("Monolith", stats)
 
 		// Create the components
-		wfe := wfe.NewWebFrontEndImpl()
+		wfei := wfe.NewWebFrontEndImpl()
 		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Unable to create SA")
 		sa.SetSQLDebug(c.SQL.SQLDebug)
 
 		ra := ra.NewRegistrationAuthorityImpl()
+
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
 		va.DNSResolver = c.VA.DNSResolver
 		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
@@ -101,12 +102,12 @@ func main() {
 		}
 
 		// Wire them up
-		wfe.RA = &ra
-		wfe.SA = sa
-		wfe.Stats = stats
-		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
+		wfei.RA = &ra
+		wfei.SA = sa
+		wfei.Stats = stats
+		wfei.SubscriberAgreementURL = c.SubscriberAgreementURL
 
-		wfe.IssuerCert, err = cmd.LoadCert(c.CA.IssuerCert)
+		wfei.IssuerCert, err = cmd.LoadCert(c.CA.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.CA.IssuerCert))
 
 		ra.CA = ca
@@ -116,12 +117,11 @@ func main() {
 		ca.SA = sa
 
 		// Set up paths
-		wfe.BaseURL = c.WFE.BaseURL
-		wfe.HandlePaths()
+		ra.AuthzBase = c.WFE.BaseURL + wfe.AuthzPath
+		wfei.BaseURL = c.WFE.BaseURL
+		wfei.HandlePaths()
 
-		// We need to tell the RA how to make challenge URIs
-		// XXX: Better way to do this?  Part of improved configuration
-		ra.AuthzBase = wfe.AuthzBase
+		auditlogger.Info(app.VersionString())
 
 		fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.WFE.ListenAddress)
 		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))

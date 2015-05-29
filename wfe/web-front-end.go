@@ -26,6 +26,19 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+const (
+	NewRegPath     = "/acme/new-reg"
+	RegPath        = "/acme/reg/"
+	NewAuthzPath   = "/acme/new-authz"
+	AuthzPath      = "/acme/authz/"
+	NewCertPath    = "/acme/new-cert"
+	CertPath       = "/acme/cert/"
+	RevokeCertPath = "/acme/revoke-cert/"
+	TermsPath      = "/terms"
+	IssuerPath     = "/acme/issuer-cert"
+	BuildIDPath    = "/build"
+)
+
 // WebFrontEndImpl represents a Boulder web service and its resources
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
@@ -34,22 +47,13 @@ type WebFrontEndImpl struct {
 	log   *blog.AuditLogger
 
 	// URL configuration parameters
-	BaseURL        string
-	NewReg         string
-	NewRegPath     string
-	RegBase        string
-	RegPath        string
-	NewAuthz       string
-	NewAuthzPath   string
-	AuthzBase      string
-	AuthzPath      string
-	NewCert        string
-	NewCertPath    string
-	CertBase       string
-	CertPath       string
-	RevokeCertPath string
-	TermsPath      string
-	IssuerPath     string
+	BaseURL   string
+	NewReg    string
+	RegBase   string
+	NewAuthz  string
+	AuthzBase string
+	NewCert   string
+	CertBase  string
 
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
@@ -63,37 +67,29 @@ func NewWebFrontEndImpl() WebFrontEndImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 	return WebFrontEndImpl{
-		log:            logger,
-		NewRegPath:     "/acme/new-reg",
-		RegPath:        "/acme/reg/",
-		NewAuthzPath:   "/acme/new-authz",
-		AuthzPath:      "/acme/authz/",
-		NewCertPath:    "/acme/new-cert",
-		CertPath:       "/acme/cert/",
-		RevokeCertPath: "/acme/revoke-cert/",
-		TermsPath:      "/terms",
-		IssuerPath:     "/acme/issuer-cert",
+		log: logger,
 	}
 }
 
 func (wfe *WebFrontEndImpl) HandlePaths() {
-	wfe.NewReg = wfe.BaseURL + wfe.NewRegPath
-	wfe.RegBase = wfe.BaseURL + wfe.RegPath
-	wfe.NewAuthz = wfe.BaseURL + wfe.NewAuthzPath
-	wfe.AuthzBase = wfe.BaseURL + wfe.AuthzPath
-	wfe.NewCert = wfe.BaseURL + wfe.NewCertPath
-	wfe.CertBase = wfe.BaseURL + wfe.CertPath
+	wfe.NewReg = wfe.BaseURL + NewRegPath
+	wfe.RegBase = wfe.BaseURL + RegPath
+	wfe.NewAuthz = wfe.BaseURL + NewAuthzPath
+	wfe.AuthzBase = wfe.BaseURL + AuthzPath
+	wfe.NewCert = wfe.BaseURL + NewCertPath
+	wfe.CertBase = wfe.BaseURL + CertPath
 
 	http.HandleFunc("/", wfe.Index)
-	http.HandleFunc(wfe.NewRegPath, wfe.NewRegistration)
-	http.HandleFunc(wfe.NewAuthzPath, wfe.NewAuthorization)
-	http.HandleFunc(wfe.NewCertPath, wfe.NewCertificate)
-	http.HandleFunc(wfe.RegPath, wfe.Registration)
-	http.HandleFunc(wfe.AuthzPath, wfe.Authorization)
-	http.HandleFunc(wfe.CertPath, wfe.Certificate)
-	http.HandleFunc(wfe.RevokeCertPath, wfe.RevokeCertificate)
-	http.HandleFunc(wfe.TermsPath, wfe.Terms)
-	http.HandleFunc(wfe.IssuerPath, wfe.Issuer)
+	http.HandleFunc(NewRegPath, wfe.NewRegistration)
+	http.HandleFunc(NewAuthzPath, wfe.NewAuthorization)
+	http.HandleFunc(NewCertPath, wfe.NewCertificate)
+	http.HandleFunc(RegPath, wfe.Registration)
+	http.HandleFunc(AuthzPath, wfe.Authorization)
+	http.HandleFunc(CertPath, wfe.Certificate)
+	http.HandleFunc(RevokeCertPath, wfe.RevokeCertificate)
+	http.HandleFunc(TermsPath, wfe.Terms)
+	http.HandleFunc(IssuerPath, wfe.Issuer)
+	http.HandleFunc(BuildIDPath, wfe.BuildID)
 }
 
 // Method implementations
@@ -282,7 +278,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	regURL := fmt.Sprintf("%s%d", wfe.RegBase, id)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
-		wfe.sendError(response, "Error marshaling authz", err, http.StatusInternalServerError)
+		wfe.sendError(response, "Error marshaling registration", err, http.StatusInternalServerError)
 		return
 	}
 
@@ -335,9 +331,10 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		return
 	}
 
-	// Make a URL for this authz, then blow away the ID before serializing
+	// Make a URL for this authz, then blow away the ID and RegID before serializing
 	authzURL := wfe.AuthzBase + string(authz.ID)
 	authz.ID = ""
+	authz.RegistrationID = 0
 	responseBody, err := json.Marshal(authz)
 	if err != nil {
 		wfe.sendError(response, "Error marshaling authz", err, http.StatusInternalServerError)
@@ -481,13 +478,20 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// We use only the sequential part of the serial number, because it should
 	// uniquely identify the certificate, and this makes it easy for anybody to
 	// enumerate and mirror our certificates.
-	serial := cert.ParsedCertificate.SerialNumber
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	if err != nil {
+		wfe.sendError(response,
+			"Error creating new cert", err,
+			http.StatusBadRequest)
+		return
+	}
+	serial := parsedCertificate.SerialNumber
 	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, serial.Rsh(serial, 64))
 
 	// TODO The spec says a client should send an Accept: application/pkix-cert
 	// header; either explicitly insist or tolerate
 	response.Header().Add("Location", certURL)
-	response.Header().Add("Link", link(wfe.BaseURL+wfe.IssuerPath, "up"))
+	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
@@ -537,7 +541,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 
 		var challengeResponse core.Challenge
 		if err = json.Unmarshal(body, &challengeResponse); err != nil {
-			wfe.sendError(response, "Error unmarshaling authorization", err, http.StatusBadRequest)
+			wfe.sendError(response, "Error unmarshaling challenge response", err, http.StatusBadRequest)
 			return
 		}
 
@@ -561,7 +565,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		// assumption: UpdateAuthorization does not modify order of challenges
 		jsonReply, err := json.Marshal(challenge)
 		if err != nil {
-			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
+			wfe.sendError(response, "Failed to marshal challenge", err, http.StatusInternalServerError)
 			return
 		}
 
@@ -640,7 +644,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 
 	jsonReply, err := json.Marshal(updatedReg)
 	if err != nil {
-		wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
+		wfe.sendError(response, "Failed to marshal registration", err, http.StatusInternalServerError)
 		return
 	}
 	response.Header().Set("Content-Type", "application/json")
@@ -671,6 +675,10 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 		return
 
 	case "GET":
+		// Blank out ID and regID
+		authz.ID = ""
+		authz.RegistrationID = 0
+
 		jsonReply, err := json.Marshal(authz)
 		if err != nil {
 			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
@@ -696,11 +704,11 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	case "GET":
 		// Certificate paths consist of the CertBase path, plus exactly sixteen hex
 		// digits.
-		if !strings.HasPrefix(path, wfe.CertPath) {
+		if !strings.HasPrefix(path, CertPath) {
 			wfe.sendError(response, "Not found", path, http.StatusNotFound)
 			return
 		}
-		serial := path[len(wfe.CertPath):]
+		serial := path[len(CertPath):]
 		if len(serial) != 16 || !allHex.Match([]byte(serial)) {
 			wfe.sendError(response, "Not found", serial, http.StatusNotFound)
 			return
@@ -719,7 +727,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 
 		// TODO: Content negotiation
 		response.Header().Set("Content-Type", "application/pkix-cert")
-		response.Header().Add("Link", link(wfe.IssuerPath, "up"))
+		response.Header().Add("Link", link(IssuerPath, "up"))
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(cert); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
@@ -735,6 +743,15 @@ func (wfe *WebFrontEndImpl) Issuer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/pkix-cert")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(wfe.IssuerCert); err != nil {
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	}
+}
+
+// BuildID tells the requestor what build we're running.
+func (wfe *WebFrontEndImpl) BuildID(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	if _, err := fmt.Fprintln(w, core.GetBuildID()); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }

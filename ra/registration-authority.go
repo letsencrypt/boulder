@@ -100,16 +100,27 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		return authz, err
 	}
 
-	// Create validations
-	// TODO: Assign URLs
+	// Create validations, but we have to update them with URIs later
 	challenges, combinations := ra.PA.ChallengesFor(identifier)
-	authID, err := ra.SA.NewPendingAuthorization()
+
+	// Partially-filled object
+	authz = core.Authorization{
+		Identifier:     identifier,
+		RegistrationID: regID,
+		Status:         core.StatusPending,
+		Combinations:   combinations,
+	}
+
+	// Get a pending Auth first so we can get our ID back, then update with challenges
+	authz, err = ra.SA.NewPendingAuthorization(authz)
 	if err != nil {
 		return authz, err
 	}
+
+	// Construct all the challenge URIs
 	for i := range challenges {
 		// Ignoring these errors because we construct the URLs to be correct
-		challengeURI, _ := url.Parse(ra.AuthzBase + authID + "?challenge=" + strconv.Itoa(i))
+		challengeURI, _ := url.Parse(ra.AuthzBase + authz.ID + "?challenge=" + strconv.Itoa(i))
 		challenges[i].URI = core.AcmeURL(*challengeURI)
 
 		if !challenges[i].IsSane(false) {
@@ -118,15 +129,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		}
 	}
 
-	// Create a new authorization object
-	authz = core.Authorization{
-		ID:             authID,
-		Identifier:     identifier,
-		RegistrationID: regID,
-		Status:         core.StatusPending,
-		Challenges:     challenges,
-		Combinations:   combinations,
-	}
+	// Update object
+	authz.Challenges = challenges
 
 	// Store the authorization object, then return it
 	err = ra.SA.UpdatePendingAuthorization(authz)
@@ -251,12 +255,16 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, nil
 	}
 
-	cert.ParsedCertificate, err = x509.ParseCertificate([]byte(cert.DER))
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	if err != nil {
+		logEvent.Error = err.Error()
+		return emptyCert, err
+	}
 
-	logEvent.SerialNumber = cert.ParsedCertificate.SerialNumber
-	logEvent.CommonName = cert.ParsedCertificate.Subject.CommonName
-	logEvent.NotBefore = cert.ParsedCertificate.NotBefore
-	logEvent.NotAfter = cert.ParsedCertificate.NotAfter
+	logEvent.SerialNumber = parsedCertificate.SerialNumber
+	logEvent.CommonName = parsedCertificate.Subject.CommonName
+	logEvent.NotBefore = parsedCertificate.NotBefore
+	logEvent.NotAfter = parsedCertificate.NotAfter
 	logEvent.ResponseTime = time.Now()
 
 	logEventResult = "successful"

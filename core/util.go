@@ -28,6 +28,12 @@ import (
 	"strings"
 )
 
+// Package Variables Variables
+
+// BuildID is set by the compiler (using -ldflags "-X core.BuildID $(git rev-parse --short HEAD)")
+// and is used by GetBuildID
+var BuildID string
+
 // Errors
 
 type NotSupportedError string
@@ -231,4 +237,13 @@ func StringToSerial(serial string) (*big.Int, error) {
 	}
 	_, err := fmt.Sscanf(serial, "%032x", &serialNum)
 	return &serialNum, err
+}
+
+// GetBuildID identifies what build is running.
+func GetBuildID() (retID string) {
+	retID = BuildID
+	if retID == "" {
+		retID = "Unspecified"
+	}
+	return
 }
