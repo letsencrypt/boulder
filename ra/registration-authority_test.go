@@ -172,7 +172,7 @@ func TestNewRegistration(t *testing.T) {
 	mailto, _ := url.Parse("mailto:foo@bar.com")
 	input := core.Registration{
 		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
-		Key: AccountKey,
+		Key:     AccountKey,
 	}
 
 	result, err := ra.NewRegistration(input)
@@ -194,11 +194,11 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, _, ra := initAuthorities(t)
 	mailto, _ := url.Parse("mailto:foo@bar.com")
 	input := core.Registration{
-		ID: 23,
-		Key: AccountKey,
+		ID:            23,
+		Key:           AccountKey,
 		RecoveryToken: "RecoverMe",
-		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
-		Agreement: "I agreed",
+		Contact:       []core.AcmeURL{core.AcmeURL(*mailto)},
+		Agreement:     "I agreed",
 	}
 
 	result, err := ra.NewRegistration(input)
@@ -210,8 +210,8 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	test.Assert(t, result.RecoveryToken != "RecoverMe", "Recovery token shouldn't be set by user")
 
 	result2, err := ra.UpdateRegistration(result, core.Registration{
-		ID: 33,
-		Key: ShortKey,
+		ID:            33,
+		Key:           ShortKey,
 		RecoveryToken: "RecoverMe2",
 	})
 	test.AssertNotError(t, err, "Could not update registration")
@@ -226,7 +226,7 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	mailto, _ := url.Parse("mailto:foo@bar.com")
 	input := core.Registration{
 		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
-		Key: ShortKey,
+		Key:     ShortKey,
 	}
 
 	_, err := ra.NewRegistration(input)

@@ -444,7 +444,6 @@ func TestIssueCertificate(t *testing.T) {
 	}
 }
 
-
 func TestRejectNoName(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
 	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
