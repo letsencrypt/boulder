@@ -205,7 +205,7 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
 // enforcing all policies.
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
 	// XXX Take in authorizations and verify that union covers CSR?
@@ -228,8 +228,16 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
-	if ca.NotAfter.Before(time.Now().Add(ca.ValidityPeriod)) {
+	notAfter := time.Now().Add(ca.ValidityPeriod)
+
+	if ca.NotAfter.Before(notAfter) {
 		err = errors.New("Cannot issue a certificate that expires after the intermediate certificate.")
+		ca.log.WarningErr(err)
+		return emptyCert, err
+	}
+
+	if earliestExpiry.Before(notAfter) {
+		err = errors.New(fmt.Sprintf("Cannot issue a certificate that expires after the shortest underlying authorization. [%v] [%v]", earliestExpiry, notAfter))
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}

@@ -242,6 +242,10 @@ var DUPE_NAME_CSR_HEX = "3082018d3081f90201003016311430120603550403130b6578616d7
 	"5b7c0134e95b77a43a6b5789ff97b3262f949e75690314e417c4c2bd3d1f" +
 	"7bedb21db1dd5dd4f71b82"
 
+// Times for validity checking
+var FarFuture = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+var FarPast = time.Date(1950, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // CFSSL config
 const hostPort = "localhost:9000"
 const authKey = "79999d86250c367a2b517a1ae7d409c1"
@@ -364,7 +368,7 @@ func TestRevoke(t *testing.T) {
 
 	csrDER, _ := hex.DecodeString(CN_AND_SAN_CSR_HEX)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	certObj, err := ca.IssueCertificate(*csr, 1)
+	certObj, err := ca.IssueCertificate(*csr, 1, FarFuture)
 	test.AssertNotError(t, err, "Failed to sign certificate")
 	if err != nil {
 		return
@@ -404,7 +408,7 @@ func TestIssueCertificate(t *testing.T) {
 		csr, _ := x509.ParseCertificateRequest(csrDER)
 
 		// Sign CSR
-		certObj, err := ca.IssueCertificate(*csr, 1)
+		certObj, err := ca.IssueCertificate(*csr, 1, FarFuture)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 		if err != nil {
 			continue
@@ -443,10 +447,19 @@ func TestIssueCertificate(t *testing.T) {
 		test.Assert(t, certStatus.SubscriberApproved == false, "Subscriber shouldn't have approved cert yet.")
 	}
 
-	// Test that the CA rejects CSRs with no names
-	csrDER, _ := hex.DecodeString(NO_NAME_CSR_HEX)
+	// Test that the CA rejects an otherwise valid request if the earliest
+	// expiry date is in the past
+	csrDER, _ := hex.DecodeString(CN_AND_SAN_CSR_HEX)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1)
+	_, err = ca.IssueCertificate(*csr, 1, FarPast)
+	if err == nil {
+		t.Errorf("CA improperly agreed to create a certificate with too long a lifetime")
+	}
+
+	// Test that the CA rejects CSRs with no names
+	csrDER, _ = hex.DecodeString(NO_NAME_CSR_HEX)
+	csr, _ = x509.ParseCertificateRequest(csrDER)
+	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
 	if err == nil {
 		t.Errorf("CA improperly agreed to create a certificate with no name")
 	}
@@ -454,7 +467,7 @@ func TestIssueCertificate(t *testing.T) {
 	// Test that the CA rejects CSRs with duplicate names
 	csrDER, _ = hex.DecodeString(DUPE_NAME_CSR_HEX)
 	csr, _ = x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1)
+	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
 	if err == nil {
 		t.Errorf("CA improperly agreed to create a certificate with duplicate names")
 	}
@@ -463,7 +476,7 @@ func TestIssueCertificate(t *testing.T) {
 	csrDER, _ = hex.DecodeString(NO_CN_CSR_HEX)
 	csr, _ = x509.ParseCertificateRequest(csrDER)
 	ca.NotAfter = time.Now()
-	_, err = ca.IssueCertificate(*csr, 1)
+	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
 	test.AssertEquals(t, err.Error(), "Cannot issue a certificate that expires after the intermediate certificate.")
 }
 
