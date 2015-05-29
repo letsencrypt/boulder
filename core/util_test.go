@@ -6,11 +6,11 @@
 package core
 
 import (
-	"testing"
 	"fmt"
 	"github.com/letsencrypt/boulder/test"
 	"math"
 	"math/big"
+	"testing"
 )
 
 // challenges.go
@@ -18,22 +18,22 @@ func TestNewToken(t *testing.T) {
 	token := NewToken()
 	fmt.Println(token)
 	tokenLength := int(math.Ceil(32 * 8 / 6.0)) // 32 bytes, b64 encoded
-	test.AssertIntEquals(t,len(token),tokenLength)
+	test.AssertIntEquals(t, len(token), tokenLength)
 	collider := map[string]bool{}
 	// Test for very blatant RNG failures:
 	// Try 2^20 birthdays in a 2^72 search space...
 	// our naive collision probability here is  2^-32...
-	for i:=0; i < 1000000; i++ {
+	for i := 0; i < 1000000; i++ {
 		token = NewToken()[:12] // just sample a portion
-		test.Assert(t,!collider[token],"Token collision!")
+		test.Assert(t, !collider[token], "Token collision!")
 		collider[token] = true
 	}
 	return
 }
 
 func TestRandString(t *testing.T) {
-  // This is covered by NewToken
-  return
+	// This is covered by NewToken
+	return
 }
 
 func TestSerialUtils(t *testing.T) {
@@ -47,4 +47,8 @@ func TestSerialUtils(t *testing.T) {
 	badSerial, err := StringToSerial("doop!!!!000")
 	test.AssertEquals(t, fmt.Sprintf("%v", err), "Serial number should be 32 characters long")
 	fmt.Println(badSerial)
+}
+
+func TestBuildID(t *testing.T) {
+	test.AssertEquals(t, "Unspecified", GetBuildID())
 }

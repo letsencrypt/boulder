@@ -12,13 +12,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
-	"time"
 )
 
 const (
@@ -149,6 +150,8 @@ func main() {
 		ch := cmd.AmqpChannel(c.AMQP.Server)
 
 		go cmd.ProfileCmd("AM", stats)
+
+		auditlogger.Info(app.VersionString())
 
 		startMonitor(ch, auditlogger, stats)
 	}

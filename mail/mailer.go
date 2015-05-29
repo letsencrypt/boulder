@@ -20,9 +20,9 @@ func NewMailer(server, port, username, password string) Mailer {
 	auth := smtp.PlainAuth("", username, password, server)
 	return Mailer{
 		Server: server,
-		Port: port,
-		Auth: auth,
-		From: username,
+		Port:   port,
+		Auth:   auth,
+		From:   username,
 	}
 }
 

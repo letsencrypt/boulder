@@ -7,6 +7,7 @@ package ra
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -14,12 +15,13 @@ import (
 	"fmt"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/jose"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
@@ -30,7 +32,7 @@ type DummyValidationAuthority struct {
 	Argument core.Authorization
 }
 
-func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization) (err error) {
+func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
 	dva.Called = true
 	dva.Argument = authz
 	return
@@ -60,15 +62,32 @@ func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
 	return 1, nil
 }
 
+func (cadb *MockCADatabase) CreateTablesIfNotExists() error {
+	return nil
+}
+
 var (
 	// These values we simulate from the client
 	AccountKeyJSON = []byte(`{
-		"e": "AQAB",
-		"kty": "RSA",
-		"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
-		}`)
-
+		"kty":"RSA",
+		"n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
+		"e":"AQAB"
+	}`)
 	AccountKey = jose.JsonWebKey{}
+
+	// These values we simulate from the client
+	AccountPrivateKeyJSON = []byte(`{
+		"kty":"RSA",
+		"n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
+		"e":"AQAB",
+		"d":"X4cTteJY_gn4FYPsXB8rdXix5vwsg1FLN5E3EaG6RJoVH-HLLKD9M7dx5oo7GURknchnrRweUkC7hT5fJLM0WbFAKNLWY2vv7B6NqXSzUvxT0_YSfqijwp3RTzlBaCxWp4doFk5N2o8Gy_nHNKroADIkJ46pRUohsXywbReAdYaMwFs9tv8d_cPVY3i07a3t8MN6TNwm0dSawm9v47UiCl3Sk5ZiG7xojPLu4sbg1U2jx4IBTNBznbJSzFHK66jT8bgkuqsk0GjskDJk19Z4qwjwbsnn4j2WBii3RL-Us2lGVkY8fkFzme1z0HbIkfz0Y6mqnOYtqc0X4jfcKoAC8Q",
+		"p":"83i-7IvMGXoMXCskv73TKr8637FiO7Z27zv8oj6pbWUQyLPQBQxtPVnwD20R-60eTDmD2ujnMt5PoqMrm8RfmNhVWDtjjMmCMjOpSXicFHj7XOuVIYQyqVWlWEh6dN36GVZYk93N8Bc9vY41xy8B9RzzOGVQzXvNEvn7O0nVbfs",
+		"q":"3dfOR9cuYq-0S-mkFLzgItgMEfFzB2q3hWehMuG0oCuqnb3vobLyumqjVZQO1dIrdwgTnCdpYzBcOfW5r370AFXjiWft_NGEiovonizhKpo9VVS78TzFgxkIdrecRezsZ-1kYd_s1qDbxtkDEgfAITAG9LUnADun4vIcb6yelxk",
+		"dp":"G4sPXkc6Ya9y8oJW9_ILj4xuppu0lzi_H7VTkS8xj5SdX3coE0oimYwxIi2emTAue0UOa5dpgFGyBJ4c8tQ2VF402XRugKDTP8akYhFo5tAA77Qe_NmtuYZc3C3m3I24G2GvR5sSDxUyAN2zq8Lfn9EUms6rY3Ob8YeiKkTiBj0",
+		"dq":"s9lAH9fggBsoFR8Oac2R_E2gw282rT2kGOAhvIllETE1efrA6huUUvMfBcMpn8lqeW6vzznYY5SSQF7pMdC_agI3nG8Ibp1BUb0JUiraRNqUfLhcQb_d9GF4Dh7e74WbRsobRonujTYN1xCaP6TO61jvWrX-L18txXw494Q_cgk",
+		"qi":"GyM_p6JrXySiz1toFgKbWV-JdI3jQ4ypu9rbMWx3rQJBfmt0FoYzgUIZEVFEcOqwemRN81zoDAaa-Bk0KWNGDjJHZDdDmFhW3AN7lI-puxk_mHZGJ11rxyR8O55XLSe3SPmRfKwZI6yU24ZxvQKFYItdldUKGzO6Ia6zTKhAVRU"
+	}`)
+	AccountPrivateKey = jose.JsonWebKey{}
 
 	ShortKeyJSON = []byte(`{
 		"e": "AQAB",
@@ -102,14 +121,17 @@ var (
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
 	err := json.Unmarshal(AccountKeyJSON, &AccountKey)
-	test.AssertNotError(t, err, "Failed to unmarshall JWK")
+	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
+
+	err = json.Unmarshal(AccountPrivateKeyJSON, &AccountPrivateKey)
+	test.AssertNotError(t, err, "Failed to unmarshal private JWK")
 
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
 	test.AssertNotError(t, err, "Failed to unmarshall JWK")
 
 	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
-	sa.InitTables()
+	sa.CreateTablesIfNotExists()
 
 	va := &DummyValidationAuthority{}
 
@@ -121,9 +143,12 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, nil)
 	pa := policy.NewPolicyAuthorityImpl()
 	cadb := &MockCADatabase{}
-	ca := ca.CertificateAuthorityImpl{Signer: signer, SA: sa, PA: pa, DB: cadb}
+	ca := ca.CertificateAuthorityImpl{Signer: signer, SA: sa, PA: pa, DB: cadb, ValidityPeriod: time.Hour * 8760, NotAfter: time.Now().Add(time.Hour * 8761)}
 	csrDER, _ := hex.DecodeString(CSR_HEX)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
+
+	// This registration implicitly gets ID = 1
+	sa.NewRegistration(core.Registration{Key: AccountKey})
 
 	ra := NewRegistrationAuthorityImpl()
 	ra.SA = sa
@@ -138,7 +163,7 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	test.Assert(t, a1.ID == a2.ID, "ret != DB: ID")
 	test.Assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
 	test.Assert(t, a1.Status == a2.Status, "ret != DB: Status")
-	test.Assert(t, a1.Key.Equals(a2.Key), "ret != DB: Key")
+	test.Assert(t, a1.RegistrationID == a2.RegistrationID, "ret != DB: RegID")
 	// Not testing: Contact, Challenges
 }
 
@@ -199,7 +224,10 @@ func TestNewRegistrationBadKey(t *testing.T) {
 func TestNewAuthorization(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
 
-	authz, err := ra.NewAuthorization(AuthzRequest, AccountKey)
+	_, err := ra.NewAuthorization(AuthzRequest, 0)
+	test.AssertError(t, err, "Authorization cannot have registrationID == 0")
+
+	authz, err := ra.NewAuthorization(AuthzRequest, 1)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Verify that returned authz same as DB
@@ -208,7 +236,7 @@ func TestNewAuthorization(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 
 	// Verify that the returned authz has the right information
-	test.Assert(t, authz.Key.Equals(AccountKey), "Initial authz did not get the right key")
+	test.Assert(t, authz.RegistrationID == 1, "Initial authz did not get the right registration ID")
 	test.Assert(t, authz.Identifier == AuthzRequest.Identifier, "Initial authz had wrong identifier")
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
@@ -226,7 +254,7 @@ func TestNewAuthorization(t *testing.T) {
 
 func TestUpdateAuthorization(t *testing.T) {
 	_, va, sa, ra := initAuthorities(t)
-	AuthzInitial.ID, _ = sa.NewPendingAuthorization()
+	AuthzInitial, _ = sa.NewPendingAuthorization(AuthzInitial)
 	sa.UpdatePendingAuthorization(AuthzInitial)
 
 	authz, err := ra.UpdateAuthorization(AuthzInitial, ResponseIndex, Response)
@@ -255,7 +283,7 @@ func TestUpdateAuthorization(t *testing.T) {
 
 func TestOnValidationUpdate(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
-	AuthzUpdated.ID, _ = sa.NewPendingAuthorization()
+	AuthzUpdated, _ = sa.NewPendingAuthorization(AuthzUpdated)
 	sa.UpdatePendingAuthorization(AuthzUpdated)
 
 	// Simulate a successful simpleHTTPS challenge
@@ -279,27 +307,60 @@ func TestOnValidationUpdate(t *testing.T) {
 	t.Log("DONE TestOnValidationUpdate")
 }
 
+func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
+	_, _, sa, ra := initAuthorities(t)
+	authz := core.Authorization{}
+	authz, _ = sa.NewPendingAuthorization(authz)
+	authz.Identifier = core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "www.example.com",
+	}
+	csr := x509.CertificateRequest{
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		PublicKey:          AccountKey.Key,
+		DNSNames:           []string{"www.example.com"},
+	}
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csr, AccountPrivateKey.Key)
+	test.AssertNotError(t, err, "Failed to sign CSR")
+	parsedCsr, err := x509.ParseCertificateRequest(csrBytes)
+	test.AssertNotError(t, err, "Failed to parse CSR")
+	sa.UpdatePendingAuthorization(authz)
+	sa.FinalizeAuthorization(authz)
+	authzURL, _ := url.Parse("http://doesnt.matter/" + authz.ID)
+	certRequest := core.CertificateRequest{
+		CSR:            parsedCsr,
+		Authorizations: []core.AcmeURL{core.AcmeURL(*authzURL)},
+	}
+
+	// Registration id 1 has key == AccountKey
+	_, err = ra.NewCertificate(certRequest, 1)
+	test.AssertError(t, err, "Should have rejected cert with key = account key")
+	test.AssertEquals(t, err.Error(), "Certificate public key must be different than account key")
+}
+
 func TestNewCertificate(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
-	AuthzFinal.ID, _ = sa.NewPendingAuthorization()
+	AuthzFinal.RegistrationID = 1
+	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
 	sa.UpdatePendingAuthorization(AuthzFinal)
 	sa.FinalizeAuthorization(AuthzFinal)
 
 	// Inject another final authorization to cover www.example.com
 	AuthzFinalWWW = AuthzFinal
 	AuthzFinalWWW.Identifier.Value = "www.example.com"
-	AuthzFinalWWW.ID, _ = sa.NewPendingAuthorization()
+	AuthzFinalWWW, _ = sa.NewPendingAuthorization(AuthzFinalWWW)
 	sa.FinalizeAuthorization(AuthzFinalWWW)
 
 	// Construct a cert request referencing the two authorizations
 	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
 	url2, _ := url.Parse("http://doesnt.matter/" + AuthzFinalWWW.ID)
+
 	certRequest := core.CertificateRequest{
 		CSR:            ExampleCSR,
 		Authorizations: []core.AcmeURL{core.AcmeURL(*url1), core.AcmeURL(*url2)},
 	}
 
-	cert, err := ra.NewCertificate(certRequest, AccountKey)
+	cert, err := ra.NewCertificate(certRequest, 1)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")

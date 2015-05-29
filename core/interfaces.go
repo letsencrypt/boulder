@@ -7,7 +7,7 @@ package core
 
 import (
 	"crypto/x509"
-	"github.com/letsencrypt/boulder/jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"net/http"
 )
 
@@ -50,13 +50,13 @@ type WebFrontEnd interface {
 
 type RegistrationAuthority interface {
 	// [WebFrontEnd]
-	NewRegistration(Registration, jose.JsonWebKey) (Registration, error)
+	NewRegistration(Registration) (Registration, error)
 
 	// [WebFrontEnd]
-	NewAuthorization(Authorization, jose.JsonWebKey) (Authorization, error)
+	NewAuthorization(Authorization, int64) (Authorization, error)
 
 	// [WebFrontEnd]
-	NewCertificate(CertificateRequest, jose.JsonWebKey) (Certificate, error)
+	NewCertificate(CertificateRequest, int64) (Certificate, error)
 
 	// [WebFrontEnd]
 	UpdateRegistration(Registration, Registration) (Registration, error)
@@ -68,18 +68,19 @@ type RegistrationAuthority interface {
 	RevokeCertificate(x509.Certificate) error
 
 	// [ValidationAuthority]
-	OnValidationUpdate(Authorization)
+	OnValidationUpdate(Authorization) error
 }
 
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
-	UpdateValidations(Authorization) error
+	UpdateValidations(Authorization, int) error
 }
 
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest) (Certificate, error)
-	RevokeCertificate(serial string) error
+	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
+	RevokeCertificate(string, int) error
+	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
 
 type PolicyAuthority interface {
@@ -88,23 +89,25 @@ type PolicyAuthority interface {
 }
 
 type StorageGetter interface {
-	GetRegistration(string) (Registration, error)
+	GetRegistration(int64) (Registration, error)
+	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
 	GetCertificate(string) ([]byte, error)
 	GetCertificateByShortSerial(string) ([]byte, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
+	AlreadyDeniedCSR([]string) (bool, error)
 }
 
 type StorageAdder interface {
-	NewRegistration() (string, error)
+	NewRegistration(Registration) (Registration, error)
 	UpdateRegistration(Registration) error
 
-	NewPendingAuthorization() (string, error)
+	NewPendingAuthorization(Authorization) (Authorization, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
 	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error
 
-	AddCertificate([]byte) (string, error)
+	AddCertificate([]byte, int64) (string, error)
 }
 
 // StorageAuthority interface represents a simple key/value
@@ -117,9 +120,9 @@ type StorageAuthority interface {
 
 // CertificateAuthorityDatabase represents an atomic sequence source
 type CertificateAuthorityDatabase interface {
+	CreateTablesIfNotExists() error
 	Begin() error
 	Commit() error
 	Rollback() error
-
 	IncrementAndGetSerial() (int, error)
 }

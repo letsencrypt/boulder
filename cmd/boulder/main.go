@@ -65,17 +65,22 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		defer auditlogger.AuditPanic()
+
 		blog.SetAuditLogger(auditlogger)
 
 		// Run StatsD profiling
 		go cmd.ProfileCmd("Monolith", stats)
 
 		// Create the components
-		wfe := wfe.NewWebFrontEndImpl()
+		wfei := wfe.NewWebFrontEndImpl()
 		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Unable to create SA")
+		sa.SetSQLDebug(c.SQL.SQLDebug)
 
 		ra := ra.NewRegistrationAuthorityImpl()
+
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
@@ -84,10 +89,23 @@ func main() {
 		ca, err := ca.NewCertificateAuthorityImpl(cadb, c.CA)
 		cmd.FailOnError(err, "Unable to create CA")
 
+		if c.SQL.CreateTables {
+			err = sa.CreateTablesIfNotExists()
+			cmd.FailOnError(err, "Failed to create SA tables")
+
+			err = cadb.CreateTablesIfNotExists()
+			cmd.FailOnError(err, "Failed to create CA tables")
+		}
+
 		// Wire them up
-		wfe.RA = &ra
-		wfe.SA = sa
-		wfe.Stats = stats
+		wfei.RA = &ra
+		wfei.SA = sa
+		wfei.Stats = stats
+		wfei.SubscriberAgreementURL = c.SubscriberAgreementURL
+
+		wfei.IssuerCert, err = cmd.LoadCert(c.CA.IssuerCert)
+		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.CA.IssuerCert))
+
 		ra.CA = ca
 		ra.SA = sa
 		ra.VA = &va
@@ -95,12 +113,11 @@ func main() {
 		ca.SA = sa
 
 		// Set up paths
-		wfe.BaseURL = c.WFE.BaseURL
-		wfe.HandlePaths()
+		ra.AuthzBase = c.WFE.BaseURL + wfe.AuthzPath
+		wfei.BaseURL = c.WFE.BaseURL
+		wfei.HandlePaths()
 
-		// We need to tell the RA how to make challenge URIs
-		// XXX: Better way to do this?  Part of improved configuration
-		ra.AuthzBase = wfe.AuthzBase
+		auditlogger.Info(app.VersionString())
 
 		fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.WFE.ListenAddress)
 		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))

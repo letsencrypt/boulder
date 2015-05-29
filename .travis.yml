@@ -6,6 +6,11 @@ go:
 matrix:
   fast_finish: true
 
+# Only build pushes to the master branch (and PRs)
+branches:
+  only:
+    - master
+
 before_install:
   - go get golang.org/x/tools/cmd/vet
   - go get golang.org/x/tools/cmd/cover
@@ -14,4 +19,5 @@ before_install:
   - go get github.com/modocache/gover
 
 script:
+  - make -j4 # Travis has 2 cores per build instance
   - bash test.sh

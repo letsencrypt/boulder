@@ -28,10 +28,18 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		defer auditlogger.AuditPanic()
+
 		blog.SetAuditLogger(auditlogger)
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")
+
+		if c.SQL.CreateTables {
+			err = cadb.CreateTablesIfNotExists()
+			cmd.FailOnError(err, "Failed to create CA tables")
+		}
 
 		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA)
 		cmd.FailOnError(err, "Failed to create CA impl")
@@ -42,13 +50,15 @@ func main() {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-			sac, err := rpc.NewStorageAuthorityClient(c.AMQP.SA.Client, c.AMQP.SA.Client, ch)
+			sac, err := rpc.NewStorageAuthorityClient("CA->SA", c.AMQP.SA.Server, ch)
 			cmd.FailOnError(err, "Failed to create SA client")
 
 			cai.SA = &sac
 
 			cas, err := rpc.NewCertificateAuthorityServer(c.AMQP.CA.Server, ch, cai)
 			cmd.FailOnError(err, "Unable to create CA server")
+
+			auditlogger.Info(app.VersionString())
 
 			cmd.RunUntilSignaled(auditlogger, cas, closeChan)
 		}

@@ -23,6 +23,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -35,9 +37,10 @@ import (
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/ca"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
-	"github.com/letsencrypt/boulder/ca"
 )
 
 // Config stores configuration parameters that applications
@@ -49,10 +52,11 @@ type Config struct {
 	// General
 	AMQP struct {
 		Server string
-		RA     QueuePair
-		VA     QueuePair
-		SA     QueuePair
-		CA     QueuePair
+		RA     Queue
+		VA     Queue
+		SA     Queue
+		CA     Queue
+		OCSP   Queue
 	}
 
 	WFE struct {
@@ -67,6 +71,11 @@ type Config struct {
 		DBName   string
 	}
 
+	SQL struct {
+		CreateTables bool
+		SQLDebug     bool
+	}
+
 	Statsd struct {
 		Server string
 		Prefix string
@@ -78,24 +87,39 @@ type Config struct {
 		Tag     string
 	}
 
+	Revoker struct {
+		DBDriver string
+		DBName   string
+	}
+
 	Mail struct {
 		Server   string
 		Port     string
 		Username string
 		Password string
 	}
+
+	OCSP struct {
+		DBDriver        string
+		DBName          string
+		Path            string
+		MinTimeToExpiry string
+		ResponseLimit   int
+	}
+
+	SubscriberAgreementURL string
 }
 
-// QueuePair describes a client-server pair of queue names
-type QueuePair struct {
-	Client string
+// Queue describes a queue name
+type Queue struct {
 	Server string
 }
 
 // AppShell contains CLI Metadata
 type AppShell struct {
 	Action func(Config)
-	app    *cli.App
+	Config func(*cli.Context, Config) Config
+	App    *cli.App
 }
 
 // NewAppShell creates a basic AppShell object containing CLI metadata
@@ -110,16 +134,17 @@ func NewAppShell(name string) (shell *AppShell) {
 			Name:   "config",
 			Value:  "config.json",
 			EnvVar: "BOULDER_CONFIG",
+			Usage:  "Path to Config JSON",
 		},
 	}
 
-	return &AppShell{app: app}
+	return &AppShell{App: app}
 }
 
 // Run begins the application context, reading config and passing
 // control to the default commandline action.
 func (as *AppShell) Run() {
-	as.app.Action = func(c *cli.Context) {
+	as.App.Action = func(c *cli.Context) {
 		configFileName := c.GlobalString("config")
 		configJSON, err := ioutil.ReadFile(configFileName)
 		FailOnError(err, "Unable to read config file")
@@ -128,18 +153,27 @@ func (as *AppShell) Run() {
 		err = json.Unmarshal(configJSON, &config)
 		FailOnError(err, "Failed to read configuration")
 
+		if as.Config != nil {
+			config = as.Config(c, config)
+		}
+
 		as.Action(config)
 	}
 
-	err := as.app.Run(os.Args)
+	err := as.App.Run(os.Args)
 	FailOnError(err, "Failed to run application")
+}
+
+// VersionString produces a friendly Application version string
+func (as *AppShell) VersionString() string {
+	return fmt.Sprintf("%s (version %s, build %s)", as.App.Name, as.App.Version, core.GetBuildID())
 }
 
 // FailOnError exits and prints an error message if we encountered a problem
 func FailOnError(err error, msg string) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
-		os.Exit(1)
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		panic(fmt.Sprintf("%s: %s", msg, err))
 	}
 }
 
@@ -194,4 +228,24 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 
 		time.Sleep(time.Second)
 	}
+}
+
+func LoadCert(path string) (cert []byte, err error) {
+	if path == "" {
+		err = errors.New("Issuer certificate was not provided in config.")
+		return
+	}
+	pemBytes, err := ioutil.ReadFile(path)
+	if err != nil {
+		return
+	}
+
+	block, _ := pem.Decode(pemBytes)
+	if block == nil || block.Type != "CERTIFICATE" {
+		err = errors.New("Invalid certificate value returned")
+		return
+	}
+
+	cert = block.Bytes
+	return
 }

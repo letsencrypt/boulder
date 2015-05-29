@@ -28,10 +28,19 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		defer auditlogger.AuditPanic()
+
 		blog.SetAuditLogger(auditlogger)
 
 		sai, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Failed to create SA impl")
+		sai.SetSQLDebug(c.SQL.SQLDebug)
+
+		if c.SQL.CreateTables {
+			err = sai.CreateTablesIfNotExists()
+			cmd.FailOnError(err, "Failed to create tables")
+		}
 
 		go cmd.ProfileCmd("SA", stats)
 
@@ -40,6 +49,8 @@ func main() {
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
 			sas := rpc.NewStorageAuthorityServer(c.AMQP.SA.Server, ch, sai)
+
+			auditlogger.Info(app.VersionString())
 
 			cmd.RunUntilSignaled(auditlogger, sas, closeChan)
 		}

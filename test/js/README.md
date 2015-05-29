@@ -24,7 +24,4 @@ The node.js scripts in this directory provide a simple end-to-end test of Boulde
 
 # Client side
 
-    mkdir -p .well-known/acme-challenge/
     node test.js
-    mv -- *.txt .well-known/acme-challenge/ # In a different window
-    python -m SimpleHTTPServer 5001         # In yet another window

@@ -6,24 +6,29 @@
 package sa
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"time"
 
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/jose"
 	"github.com/letsencrypt/boulder/test"
 	"io/ioutil"
 	"testing"
 )
 
-func initSA(t *testing.T) (*SQLStorageAuthority) {
+func initSA(t *testing.T) *SQLStorageAuthority {
 	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create SA")
 	}
-	if err = sa.InitTables(); err != nil {
+	if err = sa.CreateTablesIfNotExists(); err != nil {
 		t.Fatalf("Failed to create SA")
 	}
 	return sa
@@ -38,43 +43,66 @@ var theKey string = `{
 func TestAddRegistration(t *testing.T) {
 	sa := initSA(t)
 
-	regID, err := sa.NewRegistration()
-	test.AssertNotError(t, err, "Couldn't create new registration")
-	test.Assert(t, regID != "", "ID shouldn't be blank")
-
-	dbReg, err := sa.GetRegistration(regID)
-	test.AssertNotError(t, err, "Couldn't get registration with ID "+regID)
-
-	expectedReg := core.Registration{ID: regID}
-	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
-
 	var jwk jose.JsonWebKey
-	err = json.Unmarshal([]byte(theKey), &jwk)
+	err := json.Unmarshal([]byte(theKey), &jwk)
 	if err != nil {
 		t.Errorf("JSON unmarshal error: %+v", err)
 		return
 	}
 
+	reg, err := sa.NewRegistration(core.Registration{
+		Key: jwk,
+	})
+	test.AssertNotError(t, err, "Couldn't create new registration")
+	test.Assert(t, reg.ID != 0, "ID shouldn't be 0")
+
+	_, err = sa.GetRegistration(0)
+	test.AssertError(t, err, "Registration object for ID 0 was returned")
+
+	dbReg, err := sa.GetRegistration(reg.ID)
+	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
+
+	expectedReg := core.Registration{
+		ID:  reg.ID,
+		Key: jwk,
+	}
+	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
+	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
+
 	uu, err := url.Parse("test.com")
 	u := core.AcmeURL(*uu)
 
-	newReg := core.Registration{ID: regID, Key: jwk, RecoveryToken: "RBNvo1WzZ4oRRq0W9", Contact: []core.AcmeURL{u}, Agreement: "yes"}
+	newReg := core.Registration{ID: reg.ID, Key: jwk, RecoveryToken: "RBNvo1WzZ4oRRq0W9", Contact: []core.AcmeURL{u}, Agreement: "yes"}
 	err = sa.UpdateRegistration(newReg)
-	test.AssertNotError(t, err, "Couldn't update registration with ID "+regID)
+	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
+
+	dbReg, err = sa.GetRegistrationByKey(jwk)
+	test.AssertNotError(t, err, "Couldn't get registration by key")
+
+	test.AssertEquals(t, dbReg.ID, newReg.ID)
+	test.AssertEquals(t, dbReg.RecoveryToken, newReg.RecoveryToken)
+	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
+
+	jwk.KeyID = "bad"
+	_, err = sa.GetRegistrationByKey(jwk)
+	test.AssertError(t, err, "Registration object for invalid key was returned")
 }
 
 func TestAddAuthorization(t *testing.T) {
 	sa := initSA(t)
 
-	paID, err := sa.NewPendingAuthorization()
+	PA := core.Authorization{}
+
+	PA, err := sa.NewPendingAuthorization(PA)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
-	test.Assert(t, paID != "", "ID shouldn't be blank")
+	test.Assert(t, PA.ID != "", "ID shouldn't be blank")
 
-	dbPa, err := sa.GetAuthorization(paID)
-	test.AssertNotError(t, err, "Couldn't get pending authorization with ID "+paID)
+	dbPa, err := sa.GetAuthorization(PA.ID)
+	test.AssertNotError(t, err, "Couldn't get pending authorization with ID "+PA.ID)
+	test.AssertMarshaledEquals(t, PA, dbPa)
 
-	expectedPa := core.Authorization{ID: paID}
-	test.AssertEquals(t, dbPa.ID, expectedPa.ID)
+	expectedPa := core.Authorization{ID: PA.ID}
+	test.AssertMarshaledEquals(t, dbPa.ID, expectedPa.ID)
 
 	var jwk jose.JsonWebKey
 	err = json.Unmarshal([]byte(theKey), &jwk)
@@ -89,19 +117,18 @@ func TestAddAuthorization(t *testing.T) {
 	chall := core.Challenge{Type: "simpleHttps", Status: core.StatusPending, URI: u, Token: "THISWOULDNTBEAGOODTOKEN", Path: "test-me"}
 
 	combos := make([][]int, 1)
-	combos[0] = []int{0,1}
+	combos[0] = []int{0, 1}
 
-
-	newPa := core.Authorization{ID: paID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, Key: jwk, Status: core.StatusPending, Expires: time.Now().AddDate(0, 0, 1), Challenges: []core.Challenge{chall}, Combinations: combos, Contact: []core.AcmeURL{u}}
+	newPa := core.Authorization{ID: PA.ID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, RegistrationID: 0, Status: core.StatusPending, Expires: time.Now().AddDate(0, 0, 1), Challenges: []core.Challenge{chall}, Combinations: combos, Contact: []core.AcmeURL{u}}
 	err = sa.UpdatePendingAuthorization(newPa)
-	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+paID)
+	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 
 	newPa.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(newPa)
-	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+paID)
+	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+PA.ID)
 
-	dbPa, err = sa.GetAuthorization(paID)
-	test.AssertNotError(t, err, "Couldn't get authorization with ID "+paID)
+	dbPa, err = sa.GetAuthorization(PA.ID)
+	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 }
 
 func TestAddCertificate(t *testing.T) {
@@ -111,7 +138,7 @@ func TestAddCertificate(t *testing.T) {
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
-	digest, err := sa.AddCertificate(certDER)
+	digest, err := sa.AddCertificate(certDER, 1)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
@@ -134,7 +161,7 @@ func TestAddCertificate(t *testing.T) {
 	certDER2, err := ioutil.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
-	digest2, err := sa.AddCertificate(certDER2)
+	digest2, err := sa.AddCertificate(certDER2, 1)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 	test.AssertEquals(t, digest2, "CMVYqWzyqUW7pfBF2CxL0Uk6I0Upsk7p4EWSnd_vYx4")
 
@@ -164,4 +191,19 @@ func TestGetCertificateByShortSerial(t *testing.T) {
 
 	_, err = sa.GetCertificateByShortSerial("01020304050607080102030405060708")
 	test.AssertError(t, err, "Should've failed on too-long serial")
+}
+
+func TestDeniedCSR(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 512)
+	template := &x509.CertificateRequest{
+		Subject:  pkix.Name{CommonName: "google.com"},
+		DNSNames: []string{"badguys.com", "reallybad.com"},
+	}
+	csrBytes, _ := x509.CreateCertificateRequest(rand.Reader, template, key)
+	csr, _ := x509.ParseCertificateRequest(csrBytes)
+
+	sa := initSA(t)
+	exists, err := sa.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
+	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
+	test.Assert(t, !exists, "Found non-existent CSR")
 }

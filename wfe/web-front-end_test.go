@@ -6,11 +6,11 @@
 package wfe
 
 import (
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -21,15 +21,134 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/jose"
 
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/test"
 )
 
+type MockSA struct {
+	// empty
+}
+
+const (
+	test1KeyPublicJSON = `
+	{
+		"kty":"RSA",
+		"n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
+		"e":"AAEAAQ"
+	}`
+
+	test1KeyPrivatePEM = `
+-----BEGIN RSA PRIVATE KEY-----
+MIIEowIBAAKCAQEAyNWVhtYEKJR21y9xsHV+PD/bYwbXSeNuFal46xYxVfRL5mqh
+a7vttvjB/vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K/klBYN8oYvTwwmeSkAz
+6ut7ZxPv+nZaT5TJhGk0NT2kh/zSpdriEJ/3vW+mqxYbbBmpvHqsa1/zx9fSuHYc
+tAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV+mzfMyboQjujPh7aNJxAWS
+q4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF+w8hOTI3XXohUdu
+29Se26k2B0PolDSuj0GIQU6+W9TdLXSjBb2SpQIDAQABAoIBAHw58SXYV/Yp72Cn
+jjFSW+U0sqWMY7rmnP91NsBjl9zNIe3C41pagm39bTIjB2vkBNR8ZRG7pDEB/QAc
+Cn9Keo094+lmTArjL407ien7Ld+koW7YS8TyKADYikZo0vAK3qOy14JfQNiFAF9r
+Bw61hG5/E58cK5YwQZe+YcyBK6/erM8fLrJEyw4CV49wWdq/QqmNYU1dx4OExAkl
+KMfvYXpjzpvyyTnZuS4RONfHsO8+JTyJVm+lUv2x+bTce6R4W++UhQY38HakJ0x3
+XRfXooRv1Bletu5OFlpXfTSGz/5gqsfemLSr5UHncsCcFMgoFBsk2t/5BVukBgC7
+PnHrAjkCgYEA887PRr7zu3OnaXKxylW5U5t4LzdMQLpslVW7cLPD4Y08Rye6fF5s
+O/jK1DNFXIoUB7iS30qR7HtaOnveW6H8/kTmMv/YAhLO7PAbRPCKxxcKtniEmP1x
+ADH0tF2g5uHB/zeZhCo9qJiF0QaJynvSyvSyJFmY6lLvYZsAW+C+PesCgYEA0uCi
+Q8rXLzLpfH2NKlLwlJTi5JjE+xjbabgja0YySwsKzSlmvYJqdnE2Xk+FHj7TCnSK
+KUzQKR7+rEk5flwEAf+aCCNh3W4+Hp9MmrdAcCn8ZsKmEW/o7oDzwiAkRCmLw/ck
+RSFJZpvFoxEg15riT37EjOJ4LBZ6SwedsoGA/a8CgYEA2Ve4sdGSR73/NOKZGc23
+q4/B4R2DrYRDPhEySnMGoPCeFrSU6z/lbsUIU4jtQWSaHJPu4n2AfncsZUx9WeSb
+OzTCnh4zOw33R4N4W8mvfXHODAJ9+kCc1tax1YRN5uTEYzb2dLqPQtfNGxygA1DF
+BkaC9CKnTeTnH3TlKgK8tUcCgYB7J1lcgh+9ntwhKinBKAL8ox8HJfkUM+YgDbwR
+sEM69E3wl1c7IekPFvsLhSFXEpWpq3nsuMFw4nsVHwaGtzJYAHByhEdpTDLXK21P
+heoKF1sioFbgJB1C/Ohe3OqRLDpFzhXOkawOUrbPjvdBM2Erz/r11GUeSlpNazs7
+vsoYXQKBgFwFM1IHmqOf8a2wEFa/a++2y/WT7ZG9nNw1W36S3P04K4lGRNRS2Y/S
+snYiqxD9nL7pVqQP2Qbqbn0yD6d3G5/7r86F7Wu2pihM8g6oyMZ3qZvvRIBvKfWo
+eROL1ve1vmQF3kjrMPhhK2kr6qdWnTE5XlPllVSZFQenSTzj98AO
+-----END RSA PRIVATE KEY-----
+`
+
+	test2KeyPublicJSON = `
+	{
+		"kty":"RSA",
+		"n":"m5Cpx3vZ0CjATirDpbILvq78fm3Dv5RBkO1VLWFmJj5Mb54vc9oYZWc1V1k-LJoESuuPHhaNO2Eu8T9tslQWcZSzr5NImxAwMk970gVQa-Hqv-Jr6xstrBpq7TKpXHTx2FnfA2wQrfIQSlBXu0t4jdUOr3oJh-QXvma8nLITdtjpC0AZNtqd0QkRJX_90SaNrl18Rr_0JrBH9ZmUSFcf3mo_BtL0Gx0jE3n-iwCI8rQtfyVP__9-n__r4IhalKLzaeio6o-qrdemh0EZgjKGCS1_RpTIeArkO8uia1KgOq-z-GfemKEm4s07WO_a0_9dLqbvpnyyZvUi405m3vGDfQ",
+		"e":"AAEAAQ"
+	}`
+)
+
+func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
+	if id == 100 {
+		// Tag meaning "Missing"
+		return core.Registration{}, errors.New("missing")
+	}
+	if id == 101 {
+		// Tag meaning "Malformed"
+		return core.Registration{}, nil
+	}
+
+	keyJSON := []byte(test1KeyPublicJSON)
+	var parsedKey jose.JsonWebKey
+	parsedKey.UnmarshalJSON(keyJSON)
+
+	return core.Registration{ID: id, Key: parsedKey, Agreement: "yup"}, nil
+}
+
+func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
+	var test1KeyPublic jose.JsonWebKey
+	var test2KeyPublic jose.JsonWebKey
+	test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
+	test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
+
+	if core.KeyDigestEquals(jwk, test1KeyPublic) {
+		return core.Registration{ID: 1, Key: jwk}, nil
+	}
+
+	if core.KeyDigestEquals(jwk, test2KeyPublic) {
+		// No key found
+		return core.Registration{ID: 2}, sql.ErrNoRows
+	}
+
+	// Return a fake registration
+	return core.Registration{ID: 1, Agreement: "yup"}, nil
+}
+
+func (sa *MockSA) GetAuthorization(string) (core.Authorization, error) {
+	return core.Authorization{}, nil
+}
+
+func (sa *MockSA) GetCertificate(string) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (sa *MockSA) GetCertificateByShortSerial(string) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (sa *MockSA) GetCertificateStatus(string) (core.CertificateStatus, error) {
+	return core.CertificateStatus{}, nil
+}
+
+func (sa *MockSA) AlreadyDeniedCSR([]string) (bool, error) {
+	return false, nil
+}
+
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
+}
+
+func signRequest(t *testing.T, req string) string {
+	accountKeyJSON := []byte(`{"kty":"RSA","n":"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ","e":"AAEAAQ","d":"BhAmDbzBAbCeHbU0Xhzi_Ar4M0eTMOEQPnPXMSfW6bc0SRW938JO_-z1scEvFY8qsxV_C0Zr7XHVZsmHz4dc9BVmhiSan36XpuOS85jLWaY073e7dUVN9-l-ak53Ys9f6KZB_v-BmGB51rUKGB70ctWiMJ1C0EzHv0h6Moog-LCd_zo03uuZD5F5wtnPrAB3SEM3vRKeZHzm5eiGxNUsaCEzGDApMYgt6YkQuUlkJwD8Ky2CkAE6lLQSPwddAfPDhsCug-12SkSIKw1EepSHz86ZVfJEnvY-h9jHIdI57mR1v7NTCDcWqy6c6qIzxwh8n2X94QTbtWT3vGQ6HXM5AQ","p":"2uhvZwNS5i-PzeI9vGx89XbdsVmeNjVxjH08V3aRBVY0dzUzwVDYk3z7sqBIj6de53Lx6W1hjmhPIqAwqQgjIKH5Z3uUCinGguKkfGDL3KgLCzYL2UIvZMvTzr9NWLc0AHMZdee5utxWKCGnZBOqy1Rd4V-6QrqjEDBvanoqA60","q":"8odNkMEiriaDKmvwDv-vOOu3LaWbu03yB7VhABu-hK5Xx74bHcvDP2HuCwDGGJY2H-xKdMdUPs0HPwbfHMUicD2vIEUDj6uyrMMZHtbcZ3moh3-WESg3TaEaJ6vhwcWXWG7Wc46G-HbCChkuVenFYYkoi68BAAjloqEUl1JBT1E"}`)
+	var accountKey jose.JsonWebKey
+	err := json.Unmarshal(accountKeyJSON, &accountKey)
+	test.AssertNotError(t, err, "Failed to unmarshal key")
+	signer, err := jose.NewSigner("RS256", &accountKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+	result, err := signer.Sign([]byte(req))
+	test.AssertNotError(t, err, "Failed to sign req")
+	ret := result.FullSerialize()
+	return ret
 }
 
 func TestIndex(t *testing.T) {
@@ -55,7 +174,6 @@ func TestIndex(t *testing.T) {
 	})
 	//test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	test.AssertEquals(t, responseWriter.Body.String(), "404 page not found\n")
-
 }
 
 // TODO: Write additional test cases for:
@@ -65,6 +183,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl()
 	wfe := NewWebFrontEndImpl()
+	wfe.SA = &MockSA{}
 	wfe.RA = &ra
 	responseWriter := httptest.NewRecorder()
 
@@ -74,7 +193,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Method not allowed\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
@@ -83,7 +202,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Unable to read/verify body\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -93,7 +212,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Unable to read/verify body\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -116,7 +235,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Error unmarshaling certificate request\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error unmarshaling certificate request\"}")
 
 	// Same signed body, but payload modified by one byte, breaking signature.
 	// should fail JWS verification.
@@ -140,7 +259,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Unable to read/verify body\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
 	// Valid, signed JWS body, payload is '{}'
 	responseWriter.Body.Reset()
@@ -163,7 +282,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Error unmarshaling certificate request\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error unmarshaling certificate request\"}")
 
 	// Valid, signed JWS body, payload has a legit CSR but no authorizations:
 	// {
@@ -192,20 +311,21 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		// TODO: I think this is wrong. The CSR in the payload above was created by openssl and should be valid.
-		"{\"detail\":\"Error creating new cert: Invalid signature on CSR\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error creating new cert\"}")
 }
 
 type MockRegistrationAuthority struct{}
 
-func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration, jwk jose.JsonWebKey) (core.Registration, error) {
+func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
 	return reg, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, jwk jose.JsonWebKey) (core.Authorization, error) {
+func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, regID int64) (core.Authorization, error) {
+	authz.RegistrationID = regID
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, jwk jose.JsonWebKey) (core.Certificate, error) {
+func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 
@@ -221,12 +341,14 @@ func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate) er
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization) {
+func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization) error {
+	return nil
 }
 
 func TestChallenge(t *testing.T) {
 	wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
 	wfe.HandlePaths()
 	responseWriter := httptest.NewRecorder()
 
@@ -251,7 +373,7 @@ func TestChallenge(t *testing.T) {
 				URI:  core.AcmeURL(*challengeURL),
 			},
 		},
-		Key: key,
+		RegistrationID: 1,
 	}
 
 	wfe.Challenge(authz, responseWriter, &http.Request{
@@ -284,24 +406,26 @@ func TestChallenge(t *testing.T) {
 		"{\"type\":\"dns\",\"uri\":\"/acme/authz/asdf?challenge=foo\"}")
 }
 
-func TestRegistration(t *testing.T) {
+func TestNewRegistration(t *testing.T) {
 	wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.SubscriberAgreementURL = "https://letsencrypt.org/be-good"
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "GET",
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Method not allowed\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -309,7 +433,7 @@ func TestRegistration(t *testing.T) {
 		Method: "POST",
 		Body:   makeBody("hi"),
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -332,7 +456,7 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Error unmarshaling JSON\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error unmarshaling JSON\"}")
 
 	// Same signed body, but payload modified by one byte, breaking signature.
 	// should fail JWS verification.
@@ -356,21 +480,26 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Unable to read/verify body\"}")
-
-	key, _ := rsa.GenerateKey(rand.Reader, 512)
-	jws, err := jose.Sign(jose.RSAPSSWithSHA256, *key, []byte("{\"contact\":[\"tel:123456789\"]}"))
-	fmt.Println(err)
-	requestPayload, _ := json.Marshal(jws)
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
 	responseWriter.Body.Reset()
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(string(requestPayload)),
+		Body:   makeBody(signRequest(t, "{\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/im-bad\"}")),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [https://letsencrypt.org/be-good]\"}")
+
+	responseWriter.Body.Reset()
+	wfe.NewRegistration(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody(signRequest(t, "{\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/be-good\"}")),
 	})
 
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"id\":0,\"key\":{\"kty\":\"RSA\",\"n\":\"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ\",\"e\":\"AAEAAQ\"},\"recoveryToken\":\"\",\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/be-good\",\"thumbprint\":\"\"}")
 	var reg core.Registration
-	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	err := json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	uu := url.URL(reg.Contact[0])
 	test.AssertEquals(t, uu.String(), "tel:123456789")
@@ -379,6 +508,7 @@ func TestRegistration(t *testing.T) {
 func TestAuthorization(t *testing.T) {
 	wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 
@@ -386,14 +516,14 @@ func TestAuthorization(t *testing.T) {
 	wfe.NewAuthorization(responseWriter, &http.Request{
 		Method: "GET",
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Method not allowed\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(responseWriter, &http.Request{
 		Method: "POST",
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -401,7 +531,7 @@ func TestAuthorization(t *testing.T) {
 		Method: "POST",
 		Body:   makeBody("hi"),
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"detail\":\"Unable to read/verify body\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -424,7 +554,7 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Error unmarshaling JSON\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error unmarshaling JSON\"}")
 
 	// Same signed body, but payload modified by one byte, breaking signature.
 	// should fail JWS verification.
@@ -448,16 +578,111 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"detail\":\"Unable to read/verify body\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
-	key, _ := rsa.GenerateKey(rand.Reader, 512)
-	jws, err := jose.Sign(jose.RSAPSSWithSHA256, *key, []byte("{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}"))
-	fmt.Println(err)
-	requestPayload, _ := json.Marshal(jws)
-	
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(string(requestPayload)),
+		Body:   makeBody(signRequest(t, "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}")),
 	})
+
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"},\"expires\":\"0001-01-01T00:00:00Z\"}")
+
+	var authz core.Authorization
+	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
+}
+
+func TestRegistration(t *testing.T) {
+	wfe := NewWebFrontEndImpl()
+	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
+	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.SubscriberAgreementURL = "https://letsencrypt.org/be-good"
+	responseWriter := httptest.NewRecorder()
+
+	// Test invalid method
+	path, _ := url.Parse("/1")
+	wfe.Registration(responseWriter, &http.Request{
+		Method: "MAKE-COFFEE",
+		Body:   makeBody("invalid"),
+		URL:    path,
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
+	responseWriter.Body.Reset()
+
+	// Test GET proper entry returns 405
+	path, _ = url.Parse("/1")
+	wfe.Registration(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    path,
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
+	responseWriter.Body.Reset()
+
+	// Test POST invalid JSON
+	path, _ = url.Parse("/2")
+	wfe.Registration(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody("invalid"),
+		URL:    path,
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
+	responseWriter.Body.Reset()
+
+	// Test POST valid JSON but key is not registered
+	path, _ = url.Parse("/2")
+	wfe.Registration(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`{
+		   "payload" : "ewogICJjb250YWN0IjogWwogICAgIm1haWx0bzpjZXJ0LWFkbWluQGV4YW1wbGUuY28ubnoiLAogICAgInRlbDorMjQ5NTU1MTIxMiIKICBdLAogICJhZ3JlZW1lbnQiOiAieWVzIgp9Cg",
+		   "protected" : "eyJhbGciOiJQUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoibTVDcHgzdlowQ2pBVGlyRHBiSUx2cTc4Zm0zRHY1UkJrTzFWTFdGbUpqNU1iNTR2YzlvWVpXYzFWMWstTEpvRVN1dVBIaGFOTzJFdThUOXRzbFFXY1pTenI1TklteEF3TWs5NzBnVlFhLUhxdi1KcjZ4c3RyQnBxN1RLcFhIVHgyRm5mQTJ3UXJmSVFTbEJYdTB0NGpkVU9yM29KaC1RWHZtYThuTElUZHRqcEMwQVpOdHFkMFFrUkpYXzkwU2FOcmwxOFJyXzBKckJIOVptVVNGY2YzbW9fQnRMMEd4MGpFM24taXdDSThyUXRmeVZQX185LW5fX3I0SWhhbEtMemFlaW82by1xcmRlbWgwRVpnaktHQ1MxX1JwVEllQXJrTzh1aWExS2dPcS16LUdmZW1LRW00czA3V09fYTBfOWRMcWJ2cG55eVp2VWk0MDVtM3ZHRGZRIiwiZSI6IkFBRUFBUSJ9fQ",
+		   "signature" : "exg0HJRHk-oSDiaOlgtTkT_COqDRyIAJr4g9fDAJh5GF5evXAfT0Hbkfy4TYzqvF6oOldIaCylYhXjYtve4JLXEMdAj1DaR7kGVALskLg-XbiZ0-IaFBiDDaT6mwyLBTfstX4DD2OL7x0vyuTK16bHEIF0hncwHYVSoX5eFOBQLVu_gjxc7J5OZK4ugSJxZEilTVta0A9EdXdUxth0qqbZg_hJDmGOyNge03C71GbhMs-DF-rujlhe7L4VhcV3U0Wj8kSuAGn_DIHBJ1zM0H46PRgyz_9DgkJ6XnE5W8ZA3kF0VPFSp4ofqBhkFUXLXPPJJUEurAQxBJMaU31ef8bg"
+		}`),
+		URL: path,
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"No registration exists matching provided key\"}")
+	responseWriter.Body.Reset()
+
+	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+
+	path, _ = url.Parse("/2")
+
+	// Test POST valid JSON with registration up in the mock (with incorrect agreement URL)
+	result, err := signer.Sign([]byte("{\"agreement\":\"https://letsencrypt.org/im-bad\"}"))
+
+	// Test POST valid JSON with registration up in the mock
+	path, _ = url.Parse("/1")
+	wfe.Registration(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody(result.FullSerialize()),
+		URL:    path,
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [https://letsencrypt.org/be-good]\"}")
+	responseWriter.Body.Reset()
+
+	// Test POST valid JSON with registration up in the mock (with correct agreement URL)
+	result, err = signer.Sign([]byte("{\"agreement\":\"https://letsencrypt.org/be-good\"}"))
+	wfe.Registration(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody(result.FullSerialize()),
+		URL:    path,
+	})
+	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	responseWriter.Body.Reset()
 }

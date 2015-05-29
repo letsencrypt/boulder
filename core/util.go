@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	blog "github.com/letsencrypt/boulder/log"
 	"hash"
 	"io"
@@ -26,6 +27,12 @@ import (
 	"net/url"
 	"strings"
 )
+
+// Package Variables Variables
+
+// BuildID is set by the compiler (using -ldflags "-X core.BuildID $(git rev-parse --short HEAD)")
+// and is used by GetBuildID
+var BuildID string
 
 // Errors
 
@@ -93,6 +100,35 @@ func Fingerprint256(data []byte) string {
 	d := sha256.New()
 	_, _ = d.Write(data) // Never returns an error
 	return B64enc(d.Sum(nil))
+}
+
+func KeyDigest(key crypto.PublicKey) (string, error) {
+	switch t := key.(type) {
+	case *jose.JsonWebKey:
+		return KeyDigest(t.Key)
+	case jose.JsonWebKey:
+		return KeyDigest(t.Key)
+	default:
+		keyDER, err := x509.MarshalPKIXPublicKey(key)
+		if err != nil {
+			logger := blog.GetAuditLogger()
+			logger.Debug(fmt.Sprintf("Problem marshaling public key: %s", err))
+			return "", err
+		}
+		spkiDigest := sha256.Sum256(keyDER)
+		return base64.StdEncoding.EncodeToString(spkiDigest[0:32]), nil
+	}
+}
+
+func KeyDigestEquals(j, k crypto.PublicKey) bool {
+	jDigest, jErr := KeyDigest(j)
+	kDigest, kErr := KeyDigest(k)
+	// Keys that don't have a valid digest (due to marshalling problems)
+	// are never equal. So, e.g. nil keys are not equal.
+	if jErr != nil || kErr != nil {
+		return false
+	}
+	return jDigest == kDigest
 }
 
 // URLs that automatically marshal/unmarshal to JSON strings
@@ -199,11 +235,20 @@ func SerialToString(serial *big.Int) string {
 	return fmt.Sprintf("%032x", serial)
 }
 
-func StringToSerial(serial string) (*big.Int, error)  {
+func StringToSerial(serial string) (*big.Int, error) {
 	var serialNum big.Int
 	if len(serial) != 32 {
 		return &serialNum, errors.New("Serial number should be 32 characters long")
 	}
 	_, err := fmt.Sscanf(serial, "%032x", &serialNum)
 	return &serialNum, err
+}
+
+// GetBuildID identifies what build is running.
+func GetBuildID() (retID string) {
+	retID = BuildID
+	if retID == "" {
+		retID = "Unspecified"
+	}
+	return
 }

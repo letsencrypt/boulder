@@ -7,9 +7,11 @@ package core
 
 import (
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/letsencrypt/boulder/jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"strings"
 	"time"
 )
 
@@ -67,8 +69,8 @@ type CertificateRequest struct {
 }
 
 type rawCertificateRequest struct {
-	CSR            jose.JsonBuffer `json:"csr"`            // The encoded CSR
-	Authorizations []AcmeURL       `json:"authorizations"` // Authorizations
+	CSR            JsonBuffer `json:"csr"`            // The encoded CSR
+	Authorizations []AcmeURL  `json:"authorizations"` // Authorizations
 }
 
 func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
@@ -98,10 +100,10 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 // to account keys.
 type Registration struct {
 	// Unique identifier
-	ID string `json:"-" db:"id"`
+	ID int64 `json:"id" db:"id"`
 
 	// Account key to which the details are attached
-	Key jose.JsonWebKey `json:"key" db:"key"`
+	Key jose.JsonWebKey `json:"key" db:"jwk"`
 
 	// Recovery Token is used to prove connection to an earlier transaction
 	RecoveryToken string `json:"recoveryToken" db:"recoveryToken"`
@@ -112,10 +114,9 @@ type Registration struct {
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty" db:"agreement"`
 
-	//
-	Thumbprint        string `db:"thumbprint"`
+	Thumbprint string `json:"thumbprint" db:"thumbprint"`
 
-	LockCol int64
+	LockCol int64 `json:"-"`
 }
 
 func (r *Registration) MergeUpdate(input Registration) {
@@ -123,7 +124,6 @@ func (r *Registration) MergeUpdate(input Registration) {
 		r.Contact = input.Contact
 	}
 
-	// TODO: Test to make sure this has the proper value
 	if len(input.Agreement) > 0 {
 		r.Agreement = input.Agreement
 	}
@@ -250,7 +250,7 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 // of an account key holder to act on behalf of a domain.  This
 // struct is intended to be used both internally and for JSON
 // marshaling on the wire.  Any fields that should be suppressed
-// on the wire (e.g., ID) must be made empty before marshaling.
+// on the wire (e.g., ID, regID) must be made empty before marshaling.
 type Authorization struct {
 	// An identifier for this authorization, unique across
 	// authorizations and certificates within this instance.
@@ -259,8 +259,8 @@ type Authorization struct {
 	// The identifier for which authorization is being given
 	Identifier AcmeIdentifier `json:"identifier,omitempty" db:"identifier"`
 
-	// The account key that is authorized for the identifier
-	Key jose.JsonWebKey `json:"key,omitempty" db:"key"`
+	// The registration ID associated with the authorization
+	RegistrationID int64 `json:"regId,omitempty" db:"registrationID"`
 
 	// The status of the validation of this authorization
 	Status AcmeStatus `json:"status,omitempty" db:"status"`
@@ -285,82 +285,123 @@ type Authorization struct {
 	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 }
 
+// Fields of this type get encoded and decoded JOSE-style, in base64url encoding
+// with stripped padding.
+type JsonBuffer []byte
+
+// Url-safe base64 encode that strips padding
+func base64URLEncode(data []byte) string {
+	var result = base64.URLEncoding.EncodeToString(data)
+	return strings.TrimRight(result, "=")
+}
+
+// Url-safe base64 decoder that adds padding
+func base64URLDecode(data string) ([]byte, error) {
+	var missing = (4 - len(data)%4) % 4
+	data += strings.Repeat("=", missing)
+	return base64.URLEncoding.DecodeString(data)
+}
+
+func (jb JsonBuffer) MarshalJSON() (result []byte, err error) {
+	return json.Marshal(base64URLEncode(jb))
+}
+
+func (jb *JsonBuffer) UnmarshalJSON(data []byte) (err error) {
+	var str string
+	err = json.Unmarshal(data, &str)
+	if err != nil {
+		return err
+	}
+	*jb, err = base64URLDecode(str)
+	return
+}
+
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
-	// The encoded, signed certificate
-	DER jose.JsonBuffer `db:"-"`
-
-	// The parsed version of DER. Useful for extracting things like serial number.
-	ParsedCertificate *x509.Certificate `db:"-"`
+	RegistrationID int64 `db:"registrationID"`
 
 	// The revocation status of the certificate.
 	// * "valid" - not revoked
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`
 
-	Serial   string `db:"serial"`
-	Digest   string `db:"digest"`
-	Content  []byte `db:"content"`
-	Issued   time.Time `db:"issued"`
+	Serial string    `db:"serial"`
+	Digest string    `db:"digest"`
+	DER    []byte    `db:"der"`
+	Issued time.Time `db:"issued"`
 }
 
 // CertificateStatus structs are internal to the server. They represent the
 // latest data about the status of the certificate, required for OCSP updating
 // and for validating that the subscriber has accepted the certificate.
 type CertificateStatus struct {
-	Serial                 string `db:"serial"`
+	Serial string `db:"serial"`
 
 	// subscriberApproved: true iff the subscriber has posted back to the server
 	//   that they accept the certificate, otherwise 0.
 	SubscriberApproved bool `db:"subscriberApproved"`
 
-	// status: 'good' or 'revoked'. Note that good, expired certificates remain		
+	// status: 'good' or 'revoked'. Note that good, expired certificates remain
 	//   with status 'good' but don't necessarily get fresh OCSP responses.
 	Status OCSPStatus `db:"status"`
 
-	// ocspLastUpdated: The date and time of the last time we generated an OCSP		
-	//   response. If we have never generated one, this has the zero value of		
+	// ocspLastUpdated: The date and time of the last time we generated an OCSP
+	//   response. If we have never generated one, this has the zero value of
 	//   time.Time, i.e. Jan 1 1970.
 	OCSPLastUpdated time.Time `db:"ocspLastUpdated"`
 
-	// revokedDate: If status is 'revoked', this is the date and time it was		
+	// revokedDate: If status is 'revoked', this is the date and time it was
 	//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
-	RevokedDate            time.Time `db:"revokedDate"`
+	RevokedDate time.Time `db:"revokedDate"`
 
-	// revokedReason: If status is 'revoked', this is the reason code for the		
-	//   revocation. Otherwise it is zero (which happens to be the reason		
+	// revokedReason: If status is 'revoked', this is the reason code for the
+	//   revocation. Otherwise it is zero (which happens to be the reason
 	//   code for 'unspecified').
-	RevokedReason          int `db:"revokedReason"`
+	RevokedReason int `db:"revokedReason"`
 
-	LockCol int64
+	LockCol int64 `json:"-"`
 }
 
-// A large table of OCSP responses. This contains all historical OCSP		
-// responses we've signed, is append-only, and is likely to get quite		
+// A large table of OCSP responses. This contains all historical OCSP
+// responses we've signed, is append-only, and is likely to get quite
 // large. We'll probably want administratively truncate it at some point.
 type OcspResponse struct {
-	ID        int `db:"id"`
+	ID int `db:"id"`
 
 	// serial: Same as certificate serial.
-	Serial    string `db:"serial"`
+	Serial string `db:"serial"`
 
 	// createdAt: The date the response was signed.
 	CreatedAt time.Time `db:"createdAt"`
 
 	// response: The encoded and signed CRL.
-	Response  []byte `db:"response"`
+	Response []byte `db:"response"`
 }
 
-// A large table of signed CRLs. This contains all historical CRLs		
+// A large table of signed CRLs. This contains all historical CRLs
 // we've signed, is append-only, and is likely to get quite large.
 type Crl struct {
 	// serial: Same as certificate serial.
-	Serial    string `db:"serial"`
+	Serial string `db:"serial"`
 
 	// createdAt: The date the CRL was signed.
 	CreatedAt time.Time `db:"createdAt"`
 
 	// crl: The encoded and signed CRL.
-	Crl       string `db:"crl"`
+	Crl string `db:"crl"`
+}
+
+type DeniedCsr struct {
+	ID int `db:"id"`
+
+	Names string `db:"names"`
+}
+
+// OCSPSigningRequest is a transfer object representing an OCSP Signing Request
+type OCSPSigningRequest struct {
+	CertDER   []byte
+	Status    string
+	Reason    int
+	RevokedAt time.Time
 }

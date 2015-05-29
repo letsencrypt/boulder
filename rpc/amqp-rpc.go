@@ -7,11 +7,13 @@ package rpc
 
 import (
 	"errors"
-	"log"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // TODO: AMQP-RPC messages should be wrapped in JWS.  To implement that,
@@ -51,7 +53,7 @@ func amqpConnect(url string) (ch *amqp.Channel, err error) {
 }
 
 // A simplified way to declare and subscribe to an AMQP queue
-func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, err error) {
+func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (msgs <-chan amqp.Delivery, err error) {
 	err = ch.ExchangeDeclare(
 		AmqpExchange,
 		AmqpExchangeType,
@@ -61,7 +63,7 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		log.Fatalf("Could not declare exchange: %s", err)
+		log.Crit(fmt.Sprintf("Could not declare exchange: %s", err))
 		return
 	}
 
@@ -73,7 +75,7 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		log.Fatalf("Could not declare queue: %s", err)
+		log.Crit(fmt.Sprintf("Could not declare queue: %s", err))
 		return
 	}
 
@@ -84,7 +86,7 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		false,
 		nil)
 	if err != nil {
-		log.Fatalf("Could not bind queue: %s", err)
+		log.Crit(fmt.Sprintf("Could not bind queue: %s", err))
 		return
 	}
 
@@ -97,7 +99,7 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		log.Fatalf("Could not subscribe to queue: %s", err)
+		log.Crit(fmt.Sprintf("Could not subscribe to queue: %s", err))
 		return
 	}
 
@@ -113,6 +115,7 @@ func amqpSubscribe(ch *amqp.Channel, name string) (msgs <-chan amqp.Delivery, er
 type AmqpRPCServer struct {
 	serverQueue   string
 	channel       *amqp.Channel
+	log           *blog.AuditLogger
 	dispatchTable map[string]func([]byte) []byte
 }
 
@@ -120,9 +123,11 @@ type AmqpRPCServer struct {
 // Note that you must call Start() to actually start the server
 // listening for requests.
 func NewAmqpRPCServer(serverQueue string, channel *amqp.Channel) *AmqpRPCServer {
+	log := blog.GetAuditLogger()
 	return &AmqpRPCServer{
 		serverQueue:   serverQueue,
 		channel:       channel,
+		log:           log,
 		dispatchTable: make(map[string]func([]byte) []byte),
 	}
 }
@@ -134,7 +139,7 @@ func (rpc *AmqpRPCServer) Handle(method string, handler func([]byte) []byte) {
 // Starts the AMQP-RPC server running in a separate thread.
 // There is currently no Stop() method.
 func (rpc *AmqpRPCServer) Start() (err error) {
-	msgs, err := amqpSubscribe(rpc.channel, rpc.serverQueue)
+	msgs, err := amqpSubscribe(rpc.channel, rpc.serverQueue, rpc.log)
 	if err != nil {
 		return
 	}
@@ -143,12 +148,14 @@ func (rpc *AmqpRPCServer) Start() (err error) {
 		for msg := range msgs {
 			// XXX-JWS: jws.Verify(body)
 			cb, present := rpc.dispatchTable[msg.Type]
-			log.Printf(" [s<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), msg.CorrelationId)
+			rpc.log.Info(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
 			if !present {
+				// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
+				rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
 				continue
 			}
 			response := cb(msg.Body)
-			log.Printf(" [s>] sending %s(%s) [%s]", msg.Type, core.B64enc(response), msg.CorrelationId)
+			rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(response), msg.CorrelationId))
 			rpc.channel.Publish(
 				AmqpExchange,
 				msg.ReplyTo,
@@ -188,21 +195,30 @@ type AmqpRPCCLient struct {
 	channel     *amqp.Channel
 	pending     map[string]chan []byte
 	timeout     time.Duration
+	log         *blog.AuditLogger
 }
 
-func NewAmqpRPCCLient(clientQueue, serverQueue string, channel *amqp.Channel) (rpc *AmqpRPCCLient, err error) {
+func NewAmqpRPCCLient(clientQueuePrefix, serverQueue string, channel *amqp.Channel) (rpc *AmqpRPCCLient, err error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
+
+	clientQueue := fmt.Sprintf("%s.%s", clientQueuePrefix, hostname)
+
 	rpc = &AmqpRPCCLient{
 		serverQueue: serverQueue,
 		clientQueue: clientQueue,
 		channel:     channel,
 		pending:     make(map[string]chan []byte),
 		timeout:     10 * time.Second,
+		log:         blog.GetAuditLogger(),
 	}
 
 	// Subscribe to the response queue and dispatch
-	msgs, err := amqpSubscribe(rpc.channel, clientQueue)
+	msgs, err := amqpSubscribe(rpc.channel, clientQueue, nil)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	go func() {
@@ -211,8 +227,10 @@ func NewAmqpRPCCLient(clientQueue, serverQueue string, channel *amqp.Channel) (r
 			corrID := msg.CorrelationId
 			responseChan, present := rpc.pending[corrID]
 
-			log.Printf(" [c<] received %s(%s) [%s]", msg.Type, core.B64enc(msg.Body), corrID)
+			rpc.log.Debug(fmt.Sprintf(" [c<][%s] response %s(%s) [%s]", clientQueue, msg.Type, core.B64enc(msg.Body), corrID))
 			if !present {
+				// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
+				rpc.log.Audit(fmt.Sprintf(" [c<][%s] Misrouted message: %s - %s - %s", clientQueue, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
 				continue
 			}
 			responseChan <- msg.Body
@@ -220,7 +238,7 @@ func NewAmqpRPCCLient(clientQueue, serverQueue string, channel *amqp.Channel) (r
 		}
 	}()
 
-	return
+	return rpc, err
 }
 
 func (rpc *AmqpRPCCLient) SetTimeout(ttl time.Duration) {
@@ -236,7 +254,7 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 	rpc.pending[corrID] = responseChan
 
 	// Send the request
-	log.Printf(" [c>] sending %s(%s) [%s]", method, core.B64enc(body), corrID)
+	rpc.log.Debug(fmt.Sprintf(" [c>][%s] requesting %s(%s) [%s]", rpc.clientQueue, method, core.B64enc(body), corrID))
 	rpc.channel.Publish(
 		AmqpExchange,
 		rpc.serverQueue,
@@ -257,15 +275,13 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 	case response = <-rpc.Dispatch(method, body):
 		return
 	case <-time.After(rpc.timeout):
-		log.Printf(" [c!] AMQP-RPC timeout [%s]", method)
+		rpc.log.Warning(fmt.Sprintf(" [c!][%s] AMQP-RPC timeout [%s]", rpc.clientQueue, method))
 		err = errors.New("AMQP-RPC timeout")
 		return
 	}
 }
 
 func (rpc *AmqpRPCCLient) SyncDispatchWithTimeout(method string, body []byte, ttl time.Duration) (response []byte, err error) {
-	switch {
-
-	}
+	err = errors.New("Not Implemented")
 	return
 }
