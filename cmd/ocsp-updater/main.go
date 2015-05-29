@@ -1,4 +1,4 @@
-// Copyright 2014 ISRG.  All rights reserved
+// Copyright 2015 ISRG.  All rights reserved
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -11,10 +11,6 @@ import (
 	"fmt"
 	"math"
 	"time"
-
-	// Load both drivers to allow configuring either
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
@@ -50,8 +46,14 @@ func processResponse(cac rpc.CertificateAuthorityClient, tx *gorp.Transaction, s
 		return err
 	}
 
-	cert := certObj.(*core.Certificate)
-	status := statusObj.(*core.CertificateStatus)
+	cert, ok := certObj.(*core.Certificate)
+	if !ok {
+		return fmt.Errorf("Cast failure")
+	}
+	status, ok := statusObj.(*core.CertificateStatus)
+	if !ok {
+		return fmt.Errorf("Cast failure")
+	}
 
 	_, err = x509.ParseCertificate(cert.DER)
 	if err != nil {
@@ -93,8 +95,6 @@ func processResponse(cac rpc.CertificateAuthorityClient, tx *gorp.Transaction, s
 func findStaleResponses(cac rpc.CertificateAuthorityClient, dbMap *gorp.DbMap, oldestLastUpdatedTime time.Time, responseLimit int) error {
 	log := blog.GetAuditLogger()
 
-	// If there are fewer than this many days left before the currently-signed
-	// OCSP response expires, sign a new OCSP response.
 	var certificateStatus []core.CertificateStatus
 	_, err := dbMap.Select(&certificateStatus,
 		`SELECT cs.* FROM certificateStatus AS cs
@@ -123,6 +123,7 @@ func findStaleResponses(cac rpc.CertificateAuthorityClient, dbMap *gorp.DbMap, o
 			if err := processResponse(cac, tx, status.Serial); err != nil {
 				log.Err(fmt.Sprintf("Could not process OCSP Response for %s: %s", status.Serial, err))
 				tx.Rollback()
+				return err
 			} else {
 				log.Info(fmt.Sprintf("OCSP %d: %s OK", i, status.Serial))
 				tx.Commit()
@@ -144,7 +145,7 @@ func main() {
 	})
 
 	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
-		config.OCSP.ResponseLimit = c.GlobalInt("limit")
+		config.OCSPUpdater.ResponseLimit = c.GlobalInt("limit")
 		return config
 	}
 
@@ -162,12 +163,8 @@ func main() {
 		blog.SetAuditLogger(auditlogger)
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.OCSP.DBDriver, c.OCSP.DBName)
+		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBDriver, c.OCSPUpdater.DBName)
 		cmd.FailOnError(err, "Could not connect to database")
-
-		dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
-		dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
-		dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 
 		cac, closeChan := setupClients(c)
 
@@ -184,13 +181,13 @@ func main() {
 		auditlogger.Info(app.VersionString())
 
 		// Calculate the cut-off timestamp
-		dur, err := time.ParseDuration(c.OCSP.MinTimeToExpiry)
+		dur, err := time.ParseDuration(c.OCSPUpdater.MinTimeToExpiry)
 		cmd.FailOnError(err, "Could not parse MinTimeToExpiry from config.")
 
 		oldestLastUpdatedTime := time.Now().Add(-dur)
 		auditlogger.Info(fmt.Sprintf("Searching for OCSP reponses older than %s", oldestLastUpdatedTime))
 
-		count := int(math.Min(float64(ocspResponseLimit), float64(c.OCSP.ResponseLimit)))
+		count := int(math.Min(float64(ocspResponseLimit), float64(c.OCSPUpdater.ResponseLimit)))
 
 		err = findStaleResponses(cac, dbMap, oldestLastUpdatedTime, count)
 		if err != nil {

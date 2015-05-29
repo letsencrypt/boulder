@@ -201,7 +201,7 @@ type AmqpRPCCLient struct {
 func NewAmqpRPCCLient(clientQueuePrefix, serverQueue string, channel *amqp.Channel) (rpc *AmqpRPCCLient, err error) {
 	hostname, err := os.Hostname()
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	clientQueue := fmt.Sprintf("%s.%s", clientQueuePrefix, hostname)
@@ -218,7 +218,7 @@ func NewAmqpRPCCLient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 	// Subscribe to the response queue and dispatch
 	msgs, err := amqpSubscribe(rpc.channel, clientQueue, nil)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	go func() {
@@ -238,7 +238,7 @@ func NewAmqpRPCCLient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 		}
 	}()
 
-	return
+	return rpc, err
 }
 
 func (rpc *AmqpRPCCLient) SetTimeout(ttl time.Duration) {

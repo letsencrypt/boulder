@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
@@ -77,14 +76,6 @@ type authorizationRequest struct {
 type certificateRequest struct {
 	Req   core.CertificateRequest
 	RegID int64
-}
-
-// ocspSigningRequest is a transfer object representing an OCSP Signing Request
-type ocspSigningRequest struct {
-	CertDER   []byte
-	Status    string
-	Reason    int
-	RevokedAt time.Time
 }
 
 func improperMessage(method string, err error, obj interface{}) {
