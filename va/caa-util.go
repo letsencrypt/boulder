@@ -7,6 +7,8 @@ package va
 
 import (
 	"encoding/hex"
+	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -140,8 +142,18 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 	var CAAs []*CAA
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeCAA {
+			caaLenStr := strings.Fields(answer.String())[5]
+			caaLen, err := strconv.Atoi(caaLenStr)
+			if err != nil {
+				return nil, err
+			}
 			caaData, err := hex.DecodeString(answer.String()[len(answer.String())-int(answer.Header().Rdlength*2):])
 			if err != nil {
+				return nil, err
+			}
+			if caaLen != len(caaData) {
+				// Malformed record
+				err = errors.New("RDATA length field doesn't match RDATA length")
 				return nil, err
 			}
 			CAAs = append(CAAs, newCAA([]byte(caaData)))
