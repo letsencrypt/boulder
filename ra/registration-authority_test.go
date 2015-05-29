@@ -172,12 +172,13 @@ func TestNewRegistration(t *testing.T) {
 	mailto, _ := url.Parse("mailto:foo@bar.com")
 	input := core.Registration{
 		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
+		Key: AccountKey,
 	}
 
-	result, err := ra.NewRegistration(input, AccountKey)
+	result, err := ra.NewRegistration(input)
 	test.AssertNotError(t, err, "Could not create new registration")
 
-	test.Assert(t, result.Key.Equals(AccountKey), "Key didn't match")
+	test.Assert(t, core.KeyDigestEquals(result.Key, AccountKey), "Key didn't match")
 	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
 	test.Assert(t, mailto.String() == result.Contact[0].String(),
 		"Contact didn't match")
@@ -186,28 +187,38 @@ func TestNewRegistration(t *testing.T) {
 
 	reg, err := sa.GetRegistration(result.ID)
 	test.AssertNotError(t, err, "Failed to retrieve registration")
-	test.Assert(t, reg.Key.Equals(AccountKey), "Retrieved registration differed.")
+	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKey), "Retrieved registration differed.")
 }
 
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, _, ra := initAuthorities(t)
 	mailto, _ := url.Parse("mailto:foo@bar.com")
 	input := core.Registration{
-		ID: "hi",
-		Key: ShortKey,
+		ID: 23,
+		Key: AccountKey,
 		RecoveryToken: "RecoverMe",
 		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
 		Agreement: "I agreed",
 	}
 
-	result, err := ra.NewRegistration(input, AccountKey)
+	result, err := ra.NewRegistration(input)
 	test.AssertNotError(t, err, "Could not create new registration")
 
-	test.Assert(t, result.ID != "hi", "ID shouldn't be overwritten")
-	test.Assert(t, !result.Key.Equals(ShortKey), "Key shouldn't be overwritten")
+	test.Assert(t, result.ID != 23, "ID shouldn't be set by user")
 	// TODO: Enable this test case once we validate terms agreement.
-	// test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be overwritten with invalid URL")
-	test.Assert(t, result.RecoveryToken != "RecoverMe", "Recovery token shouldn't be overwritten")
+	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
+	test.Assert(t, result.RecoveryToken != "RecoverMe", "Recovery token shouldn't be set by user")
+
+	result2, err := ra.UpdateRegistration(result, core.Registration{
+		ID: 33,
+		Key: ShortKey,
+		RecoveryToken: "RecoverMe2",
+	})
+	test.AssertNotError(t, err, "Could not update registration")
+	test.Assert(t, result2.ID != 33, "ID shouldn't be overwritten.")
+	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
+
+	test.Assert(t, result2.RecoveryToken != "RecoverMe2", "Recovery token shouldn't be overwritten by user")
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
@@ -215,9 +226,10 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	mailto, _ := url.Parse("mailto:foo@bar.com")
 	input := core.Registration{
 		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
+		Key: ShortKey,
 	}
 
-	_, err := ra.NewRegistration(input, ShortKey)
+	_, err := ra.NewRegistration(input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
 }
 

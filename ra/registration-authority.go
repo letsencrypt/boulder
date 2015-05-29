@@ -63,7 +63,7 @@ type certificateRequestEvent struct {
 }
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
-	if !core.GoodKey(init.key.Rsa) {
+	if !core.GoodKey(init.Key.Key) {
 		return core.Registration{}, fmt.Errorf("Invalid public key.")
 	}
 	reg = core.Registration{

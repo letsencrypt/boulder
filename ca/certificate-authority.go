@@ -227,6 +227,7 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 // enforcing all policies.
 func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
+	var err error
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
 		return emptyCert, fmt.Errorf("Invalid public key in CSR.")
@@ -327,7 +328,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 	certDER := block.Bytes
 
-	cert = core.Certificate{
+	cert := core.Certificate{
 		DER:    certDER,
 		Status: core.StatusValid,
 	}

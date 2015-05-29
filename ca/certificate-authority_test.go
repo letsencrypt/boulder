@@ -494,7 +494,7 @@ func TestShortKey(t *testing.T) {
 		t.Errorf("Failed to read shortkey-csr.der")
 	}
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr)
+	_, err = ca.IssueCertificate(*csr, 1)
 	if err == nil {
 		t.Errorf("CA improperly created a certificate with short key.")
 	}
