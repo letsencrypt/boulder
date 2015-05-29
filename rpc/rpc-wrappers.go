@@ -402,6 +402,7 @@ func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, imp
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodCheckCAARecords, err, caaReq)
+			return nil
 		}
 
 		var caaResp struct {
@@ -414,6 +415,8 @@ func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, imp
 		caaResp.Err = err
 		response, err := json.Marshal(caaResp)
 		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodCheckCAARecords, err, caaReq)
 			return nil
 		}
 		return response
