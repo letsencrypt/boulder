@@ -239,7 +239,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	var cert core.Certificate
 	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
 		logEvent.Error = err.Error()
-		return emptyCert, nil
+		return emptyCert, err
 	}
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))

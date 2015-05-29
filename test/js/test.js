@@ -447,8 +447,10 @@ function getCertificate() {
 function downloadCertificate(err, resp, body) {
   if (err || Math.floor(resp.statusCode / 100) != 2) {
     // Non-2XX response
-    console.log("Certificate request failed with code " + resp.statusCode);
-    console.log(body.toString());
+    console.log("Certificate request failed with error ", err);
+    if (body) {
+      console.log(body.toString());
+    }
     process.exit(1);
   }
 
