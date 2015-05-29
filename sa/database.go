@@ -9,6 +9,8 @@ import (
 	"database/sql"
 	"fmt"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -20,6 +22,9 @@ var dialectMap map[string]interface{} = map[string]interface{}{
 
 // NewDbMap creates the root gorp mapping object. Create one of these for each
 // database schema you wish to map. Each DbMap contains a list of mapped tables.
+// It automatically maps the tables for the primary parts of Boulder around the
+// Storage Authority. This may require some further work when we use a disjoint
+// schema, like that for `certificate-authority-data.go`.
 func NewDbMap(driver string, name string) (*gorp.DbMap, error) {
 	logger := blog.GetAuditLogger()
 
@@ -42,5 +47,29 @@ func NewDbMap(driver string, name string) (*gorp.DbMap, error) {
 	logger.Info(fmt.Sprintf("Connected to database %s %s", driver, name))
 
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
+
+	initTables(dbmap)
+
 	return dbmap, err
+}
+
+// initTables constructs the table map for the ORM. If you want to also create
+// the tables, call CreateTablesIfNotExists on the DbMap.
+func initTables(dbMap *gorp.DbMap) {
+	regTable := dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "ID")
+	regTable.SetVersionCol("LockCol")
+	regTable.ColMap("Key").SetMaxSize(1024).SetNotNull(true)
+
+	pendingAuthzTable := dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
+	pendingAuthzTable.SetVersionCol("LockCol")
+	pendingAuthzTable.ColMap("Challenges").SetMaxSize(1536)
+
+	authzTable := dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
+	authzTable.ColMap("Challenges").SetMaxSize(1536)
+
+	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
+	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
+	dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
+	dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
+	dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID")
 }

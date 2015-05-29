@@ -50,8 +50,14 @@ func processResponse(cac rpc.CertificateAuthorityClient, tx *gorp.Transaction, s
 		return err
 	}
 
-	cert := certObj.(*core.Certificate)
-	status := statusObj.(*core.CertificateStatus)
+	cert, ok := certObj.(*core.Certificate)
+	if !ok {
+		return fmt.Errorf("Cast failure")
+	}
+	status, ok := statusObj.(*core.CertificateStatus)
+	if !ok {
+		return fmt.Errorf("Cast failure")
+	}
 
 	_, err = x509.ParseCertificate(cert.DER)
 	if err != nil {
@@ -93,8 +99,6 @@ func processResponse(cac rpc.CertificateAuthorityClient, tx *gorp.Transaction, s
 func findStaleResponses(cac rpc.CertificateAuthorityClient, dbMap *gorp.DbMap, oldestLastUpdatedTime time.Time, responseLimit int) error {
 	log := blog.GetAuditLogger()
 
-	// If there are fewer than this many days left before the currently-signed
-	// OCSP response expires, sign a new OCSP response.
 	var certificateStatus []core.CertificateStatus
 	_, err := dbMap.Select(&certificateStatus,
 		`SELECT cs.* FROM certificateStatus AS cs
@@ -123,6 +127,7 @@ func findStaleResponses(cac rpc.CertificateAuthorityClient, dbMap *gorp.DbMap, o
 			if err := processResponse(cac, tx, status.Serial); err != nil {
 				log.Err(fmt.Sprintf("Could not process OCSP Response for %s: %s", status.Serial, err))
 				tx.Rollback()
+				return err
 			} else {
 				log.Info(fmt.Sprintf("OCSP %d: %s OK", i, status.Serial))
 				tx.Commit()
@@ -164,10 +169,6 @@ func main() {
 		// Configure DB
 		dbMap, err := sa.NewDbMap(c.OCSP.DBDriver, c.OCSP.DBName)
 		cmd.FailOnError(err, "Could not connect to database")
-
-		dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
-		dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
-		dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 
 		cac, closeChan := setupClients(c)
 
