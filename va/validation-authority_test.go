@@ -65,6 +65,10 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 		} else if strings.HasSuffix(r.URL.Path, pathWrongToken) {
 			t.Logf("SIMPLESRV: Got a wrongtoken req\n")
 			fmt.Fprintf(w, "wrongtoken")
+		} else if strings.HasSuffix(r.URL.Path, "wait") {
+			t.Logf("SIMPLESRV: Got a block req\n")
+			time.Sleep(time.Second * 5)
+			fmt.Fprintf(w, "%s", token)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
 			fmt.Fprintf(w, "%s", token)
@@ -318,16 +322,34 @@ func TestUpdateValidations(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
+	challHTTPS := core.SimpleHTTPSChallenge()
+	challHTTPS.Path = "wait"
+
+	stopChanHTTPS := make(chan bool, 1)
+	waitChanHTTPS := make(chan bool, 1)
+	go simpleSrv(t, challHTTPS.Token, stopChanHTTPS, waitChanHTTPS)
+
+	// Let them start
+	<-waitChanHTTPS
+
+	// shutdown cleanly
+	defer func() {
+		stopChanHTTPS <- true
+	}()
+
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{core.DvsniChallenge()},
+		Challenges:     []core.Challenge{challHTTPS},
 	}
 
+	started := time.Now()
 	va.UpdateValidations(authz, 0)
+	took := time.Since(started)
 
-	// Nothing to assert.
+	// Check that the call to va.UpdateValidations didn't block for 5 seconds
+	test.Assert(t, (took < (time.Second * 5)), "UpdateValidations blocked")
 }
 
 type MockRegistrationAuthority struct {
