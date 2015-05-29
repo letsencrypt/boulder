@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"net/http"
+	"time"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -78,9 +79,9 @@ type ValidationAuthority interface {
 
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
-	RevokeCertificate(string, int) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
+	IssueCertificate(x509.CertificateRequest, int64, time.Time) (Certificate, error)
+	RevokeCertificate(string, int) error
 }
 
 type PolicyAuthority interface {

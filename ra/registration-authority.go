@@ -204,6 +204,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	// Gather authorized domains from the referenced authorizations
 	authorizedDomains := map[string]bool{}
 	verificationMethodSet := map[string]bool{}
+	earliestExpiry := time.Date(2100, 01, 01, 0, 0, 0, 0, time.UTC)
 	now := time.Now()
 	for _, url := range req.Authorizations {
 		id := lastPathSegment(url)
@@ -217,6 +218,10 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 			//      However, it seems like this treatment is more in the spirit of Postel's
 			//      law, and it hides information from attackers.
 			continue
+		}
+
+		if authz.Expires.Before(earliestExpiry) {
+			earliestExpiry = authz.Expires
 		}
 
 		for _, challenge := range authz.Challenges {
@@ -247,7 +252,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Create the certificate and log the result
 	var cert core.Certificate
-	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
+	if cert, err = ra.CA.IssueCertificate(*csr, regID, earliestExpiry); err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}

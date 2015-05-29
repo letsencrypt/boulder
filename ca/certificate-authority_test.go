@@ -279,6 +279,10 @@ var TOO_MANY_NAME_CSR_HEX = "308202aa30820192020100300d310b300906035504061302555
 	"9c470101aed4852cd7b3a0a5a489b264779118b30d51907dc745879a821b" +
 	"85f19a24d20dc5b48141eff276aa73bb41141305905b0223ded7"
 
+// Times for validity checking
+var FarFuture = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+var FarPast = time.Date(1950, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // CFSSL config
 const hostPort = "localhost:9000"
 const authKey = "79999d86250c367a2b517a1ae7d409c1"
@@ -403,7 +407,7 @@ func TestRevoke(t *testing.T) {
 
 	csrDER, _ := hex.DecodeString(CN_AND_SAN_CSR_HEX)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	certObj, err := ca.IssueCertificate(*csr, 1)
+	certObj, err := ca.IssueCertificate(*csr, 1, FarFuture)
 	test.AssertNotError(t, err, "Failed to sign certificate")
 	if err != nil {
 		return
@@ -443,7 +447,7 @@ func TestIssueCertificate(t *testing.T) {
 		csr, _ := x509.ParseCertificateRequest(csrDER)
 
 		// Sign CSR
-		certObj, err := ca.IssueCertificate(*csr, 1)
+		certObj, err := ca.IssueCertificate(*csr, 1, FarFuture)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 		if err != nil {
 			continue
@@ -506,7 +510,7 @@ func TestRejectNoName(t *testing.T) {
 	// Test that the CA rejects CSRs with no names
 	csrDER, _ := hex.DecodeString(NO_NAME_CSR_HEX)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1)
+	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
 	if err == nil {
 		t.Errorf("CA improperly agreed to create a certificate with no name")
 	}
@@ -521,7 +525,7 @@ func TestRejectTooManyNames(t *testing.T) {
 	// Test that the CA collapses duplicate names
 	csrDER, _ := hex.DecodeString(TOO_MANY_NAME_CSR_HEX)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1)
+	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
 	test.Assert(t, err != nil, "Issued certificate with too many names")
 }
 
@@ -534,7 +538,7 @@ func TestDeduplication(t *testing.T) {
 	// Test that the CA collapses duplicate names
 	csrDER, _ := hex.DecodeString(DUPE_NAME_CSR_HEX)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	cert, err := ca.IssueCertificate(*csr, 1)
+	cert, err := ca.IssueCertificate(*csr, 1, FarFuture)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with duplicate names")
 	if err != nil {
 		return
@@ -560,10 +564,10 @@ func TestRejectValidityTooLong(t *testing.T) {
 	ca.SA = storageAuthority
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	csrDER, _ := hex.DecodeString(NO_CN_CSR_HEX)
-	csr, _ := x509.ParseCertificateRequest(csrDER)
+	csrDER, _ = hex.DecodeString(NO_CN_CSR_HEX)
+	csr, _ = x509.ParseCertificateRequest(csrDER)
 	ca.NotAfter = time.Now()
-	_, err = ca.IssueCertificate(*csr, 1)
+	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
 	test.AssertEquals(t, err.Error(), "Cannot issue a certificate that expires after the intermediate certificate.")
 }
 
@@ -577,7 +581,7 @@ func TestShortKey(t *testing.T) {
 		t.Errorf("Failed to read shortkey-csr.der")
 	}
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1)
+	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
 	if err == nil {
 		t.Errorf("CA improperly created a certificate with short key.")
 	}
