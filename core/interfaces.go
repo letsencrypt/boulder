@@ -80,7 +80,7 @@ type ValidationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest, int64, time.Time) (Certificate, error)
-	RevokeCertificate(string) error
+	RevokeCertificate(string, int) error
 }
 
 type PolicyAuthority interface {
