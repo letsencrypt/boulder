@@ -189,7 +189,7 @@ func TestNewAuthorization(t *testing.T) {
 
 func TestUpdateAuthorization(t *testing.T) {
 	_, va, sa, ra := initAuthorities(t)
-	AuthzInitial.ID, _ = sa.NewPendingAuthorization()
+	AuthzInitial, _ = sa.NewPendingAuthorization(AuthzInitial)
 	sa.UpdatePendingAuthorization(AuthzInitial)
 
 	authz, err := ra.UpdateAuthorization(AuthzInitial, ResponseIndex, Response)
@@ -218,7 +218,7 @@ func TestUpdateAuthorization(t *testing.T) {
 
 func TestOnValidationUpdate(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
-	AuthzUpdated.ID, _ = sa.NewPendingAuthorization()
+	AuthzUpdated, _ = sa.NewPendingAuthorization(AuthzUpdated)
 	sa.UpdatePendingAuthorization(AuthzUpdated)
 
 	// Simulate a successful simpleHTTPS challenge
@@ -245,7 +245,7 @@ func TestOnValidationUpdate(t *testing.T) {
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
 	authz := core.Authorization{}
-	authz.ID, _ = sa.NewPendingAuthorization()
+	authz, _ = sa.NewPendingAuthorization(authz)
 	authz.Identifier = core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: "www.example.com",
@@ -276,14 +276,14 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 func TestNewCertificate(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
 	AuthzFinal.RegistrationID = 1
-	AuthzFinal.ID, _ = sa.NewPendingAuthorization()
+	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
 	sa.UpdatePendingAuthorization(AuthzFinal)
 	sa.FinalizeAuthorization(AuthzFinal)
 
 	// Inject another final authorization to cover www.example.com
 	AuthzFinalWWW = AuthzFinal
 	AuthzFinalWWW.Identifier.Value = "www.example.com"
-	AuthzFinalWWW.ID, _ = sa.NewPendingAuthorization()
+	AuthzFinalWWW, _ = sa.NewPendingAuthorization(AuthzFinalWWW)
 	sa.FinalizeAuthorization(AuthzFinalWWW)
 
 	// Construct a cert request referencing the two authorizations

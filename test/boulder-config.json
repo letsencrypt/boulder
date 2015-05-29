@@ -64,6 +64,12 @@
     "dbName": ":memory:"
   },
 
+  "ocsp": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:",
+    "minTimeToExpiry": "72h"
+  },
+
   "mail": {
     "server": "mail.example.com",
     "port": "25",
