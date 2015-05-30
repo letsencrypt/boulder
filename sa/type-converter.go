@@ -26,14 +26,6 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 		}
 		return string(jsonBytes), nil
 	case jose.JsonWebKey:
-		// HACK: Some of our storage methods, like NewAuthorization, expect to
-		// write to the DB with the default, empty key, so we treat it specially,
-		// serializing to an empty string. TODO: Modify authorizations to refer
-		// to a registration id, and make sure registration ids are always filled.
-		// https://github.com/letsencrypt/boulder/issues/181
-		if t.Key == nil {
-			return "", nil
-		}
 		jsonBytes, err := t.MarshalJSON()
 		if err != nil {
 			return "", err
