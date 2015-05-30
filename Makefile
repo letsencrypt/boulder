@@ -4,6 +4,7 @@
 OBJDIR = ./bin
 
 OBJECTS = activity-monitor \
+	admin-revoker \
 	boulder \
 	boulder-ca \
 	boulder-ra \
