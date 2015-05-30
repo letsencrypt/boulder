@@ -15,15 +15,22 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestUnknownKeyType(t *testing.T) {
+	notAKey := struct{}{}
+	test.Assert(t, !GoodKey(notAKey), "Should have rejeected a key of unknown type")
+}
+
 func TestWrongKeyType(t *testing.T) {
 	ecdsaKey := ecdsa.PublicKey{}
 	test.Assert(t, !GoodKey(&ecdsaKey), "Should have rejected ECDSA key.")
+	test.Assert(t, !GoodKey(ecdsaKey), "Should have rejected ECDSA key.")
 }
 
 func TestSmallModulus(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2040)
 	test.AssertNotError(t, err, "Error generating key")
 	test.Assert(t, !GoodKey(&private.PublicKey), "Should have rejected too-short key.")
+	test.Assert(t, !GoodKey(private.PublicKey), "Should have rejected too-short key.")
 }
 
 func TestSmallExponent(t *testing.T) {
