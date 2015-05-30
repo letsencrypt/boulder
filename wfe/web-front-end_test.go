@@ -76,6 +76,7 @@ eROL1ve1vmQF3kjrMPhhK2kr6qdWnTE5XlPllVSZFQenSTzj98AO
 )
 
 var RandomCert []byte = []byte{48, 130, 1, 186, 48, 130, 1, 102, 160, 3, 2, 1, 2, 2, 2, 6, 117, 48, 11, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 11, 48, 52, 49, 16, 48, 14, 6, 3, 85, 4, 6, 19, 7, 65, 117, 115, 116, 114, 105, 97, 49, 17, 48, 15, 6, 3, 85, 4, 10, 19, 8, 72, 101, 97, 112, 108, 111, 99, 107, 49, 13, 48, 11, 6, 3, 85, 4, 11, 19, 4, 84, 72, 79, 82, 48, 30, 23, 13, 48, 57, 49, 49, 49, 48, 50, 51, 48, 48, 48, 48, 90, 23, 13, 49, 57, 49, 49, 49, 48, 50, 51, 48, 48, 48, 48, 90, 48, 52, 49, 16, 48, 14, 6, 3, 85, 4, 6, 19, 7, 65, 117, 115, 116, 114, 105, 97, 49, 17, 48, 15, 6, 3, 85, 4, 10, 19, 8, 72, 101, 97, 112, 108, 111, 99, 107, 49, 13, 48, 11, 6, 3, 85, 4, 11, 19, 4, 84, 72, 79, 82, 48, 92, 48, 13, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 1, 5, 0, 3, 75, 0, 48, 72, 2, 65, 0, 164, 165, 0, 127, 188, 218, 118, 45, 136, 247, 42, 198, 96, 21, 113, 217, 137, 179, 151, 167, 194, 251, 194, 96, 36, 124, 119, 62, 11, 149, 192, 157, 16, 11, 67, 23, 15, 224, 108, 74, 100, 149, 41, 7, 139, 144, 249, 230, 17, 168, 156, 164, 112, 179, 81, 63, 73, 251, 180, 46, 85, 92, 108, 217, 2, 3, 1, 0, 1, 163, 100, 48, 98, 48, 14, 6, 3, 85, 29, 15, 1, 1, 255, 4, 4, 3, 2, 0, 132, 48, 29, 6, 3, 85, 29, 37, 4, 22, 48, 20, 6, 8, 43, 6, 1, 5, 5, 7, 3, 2, 6, 8, 43, 6, 1, 5, 5, 7, 3, 1, 48, 15, 6, 3, 85, 29, 19, 1, 1, 255, 4, 5, 48, 3, 1, 1, 255, 48, 14, 6, 3, 85, 29, 14, 4, 7, 4, 5, 1, 2, 3, 4, 5, 48, 16, 6, 3, 85, 29, 35, 4, 9, 48, 7, 128, 5, 1, 2, 3, 4, 5, 48, 11, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 11, 3, 65, 0, 33, 47, 156, 173, 234, 114, 157, 142, 179, 109, 157, 252, 3, 95, 47, 22, 189, 86, 26, 11, 48, 223, 165, 248, 56, 192, 204, 113, 40, 158, 229, 250, 238, 214, 13, 92, 62, 177, 168, 122, 236, 172, 130, 120, 85, 220, 194, 251, 137, 221, 191, 224, 94, 188, 220, 102, 125, 15, 46, 49, 204, 241, 217, 13}
+var wfe WebFrontEndImpl = NewWebFrontEndImpl()
 
 type MockSA struct {
 	// empty
@@ -176,6 +177,7 @@ func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration) (cor
 
 func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, regID int64) (core.Authorization, error) {
 	authz.RegistrationID = regID
+	authz.ID = "doop"
 	return authz, nil
 }
 
@@ -232,10 +234,16 @@ func signRequest(t *testing.T, req string) string {
 	return ret
 }
 
+func TestSetup(t *testing.T) {
+	// Very first test to run, now everyone can enjoy HandlePaths()
+	// for header checks.
+	wfe.HandlePaths()
+}
+
 func TestIndex(t *testing.T) {
-	wfe := NewWebFrontEndImpl()
+	// wfe := NewWebFrontEndImpl()
 	// panic: http: multiple registrations for / [recovered]
-	//wfe.HandlePaths()
+	// wfe.HandlePaths()
 	wfe.NewReg = "/acme/new-reg"
 	responseWriter := httptest.NewRecorder()
 
@@ -265,7 +273,7 @@ func TestIssueCertificate(t *testing.T) {
 	ra := ra.NewRegistrationAuthorityImpl()
 	ra.SA = &MockSA{}
 	ra.CA = &MockCA{}
-	wfe := NewWebFrontEndImpl()
+	// wfe := NewWebFrontEndImpl()
 	wfe.SA = &MockSA{}
 	wfe.RA = &ra
 	wfe.Stats, _ = statsd.NewNoopClient()
@@ -450,7 +458,7 @@ func TestIssueCertificate(t *testing.T) {
 		string(RandomCert))
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"0000000000000000")
+		"/acme/cert/0000000000000000")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
 		"</acme/issuer-cert>;rel=\"up\"")
@@ -460,10 +468,9 @@ func TestIssueCertificate(t *testing.T) {
 }
 
 func TestChallenge(t *testing.T) {
-	wfe := NewWebFrontEndImpl()
+	// wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
-	wfe.HandlePaths()
 	responseWriter := httptest.NewRecorder()
 
 	var key jose.JsonWebKey
@@ -521,7 +528,7 @@ func TestChallenge(t *testing.T) {
 }
 
 func TestNewRegistration(t *testing.T) {
-	wfe := NewWebFrontEndImpl()
+	// wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
@@ -617,10 +624,17 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	uu := url.URL(reg.Contact[0])
 	test.AssertEquals(t, uu.String(), "tel:123456789")
+
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Location"),
+		"/acme/reg/0")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		"</acme/new-authz>;rel=\"next\"")
 }
 
 func TestAuthorization(t *testing.T) {
-	wfe := NewWebFrontEndImpl()
+	// wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
@@ -700,6 +714,13 @@ func TestAuthorization(t *testing.T) {
 		Body:   makeBody(signRequest(t, "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}")),
 	})
 
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Location"),
+		"/acme/authz/doop")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		"</acme/new-cert>;rel=\"next\"")
+
 	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"},\"expires\":\"0001-01-01T00:00:00Z\"}")
 
 	var authz core.Authorization
@@ -708,7 +729,7 @@ func TestAuthorization(t *testing.T) {
 }
 
 func TestRegistration(t *testing.T) {
-	wfe := NewWebFrontEndImpl()
+	// wfe := NewWebFrontEndImpl()
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
