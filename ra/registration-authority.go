@@ -149,7 +149,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
 	}()
 
-
 	if regID <= 0 {
 		err = fmt.Errorf("Invalid registration ID")
 		return emptyCert, err

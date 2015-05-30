@@ -201,7 +201,7 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization
 	return nil
 }
 
-type MockCA struct {}
+type MockCA struct{}
 
 func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	// Just a random cert
