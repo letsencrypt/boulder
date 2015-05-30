@@ -269,6 +269,8 @@ func TestIssueCertificate(t *testing.T) {
 	wfe.SA = &MockSA{}
 	wfe.RA = &ra
 	wfe.Stats, _ = statsd.NewNoopClient()
+	// panic: http: multiple registrations for / [recovered]
+	// wfe.HandlePaths()
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -448,7 +450,13 @@ func TestIssueCertificate(t *testing.T) {
 		string(RandomCert))
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"/acme/authz/asdf?challenge=foo")
+		"0000000000000000")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		"</acme/issuer-cert>;rel=\"up\"")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Content-Type"),
+		"application/pkix-cert")
 }
 
 func TestChallenge(t *testing.T) {
