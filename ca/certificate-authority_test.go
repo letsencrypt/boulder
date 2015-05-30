@@ -425,8 +425,22 @@ func TestIssueCertificate(t *testing.T) {
 
 		test.AssertEquals(t, cert.Subject.CommonName, "not-example.com")
 
-		if len(cert.DNSNames) == 0 || cert.DNSNames[0] != "not-example.com" {
-			// NB: This does not check for www.not-example.com in the 'both' case
+		switch len(cert.DNSNames) {
+		case 1:
+			if cert.DNSNames[0] != "not-example.com" {
+				t.Errorf("Improper list of domain names %v", cert.DNSNames)
+			}
+		case 2:
+			switch {
+			case (cert.DNSNames[0] == "not-example.com" && cert.DNSNames[1] == "www.not-example.com"):
+				t.Log("case 1")
+			case (cert.DNSNames[0] == "www.not-example.com" && cert.DNSNames[1] == "not-example.com"):
+				t.Log("case 2")
+			default:
+				t.Errorf("Improper list of domain names %v", cert.DNSNames)
+			}
+
+		default:
 			t.Errorf("Improper list of domain names %v", cert.DNSNames)
 		}
 
