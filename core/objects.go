@@ -114,8 +114,6 @@ type Registration struct {
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty" db:"agreement"`
 
-	Thumbprint string `json:"thumbprint" db:"thumbprint"`
-
 	LockCol int64 `json:"-"`
 }
 
@@ -279,10 +277,6 @@ type Authorization struct {
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
 	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
-
-	// The client may provide contact URIs to allow the server
-	// to push information to it.
-	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 }
 
 // Fields of this type get encoded and decoded JOSE-style, in base64url encoding
