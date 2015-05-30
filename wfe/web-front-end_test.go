@@ -446,6 +446,9 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		string(RandomCert))
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Location"),
+		"/acme/authz/asdf?challenge=foo")
 }
 
 func TestChallenge(t *testing.T) {
