@@ -12,10 +12,6 @@ import (
 	"math"
 	"time"
 
-	// Load both drivers to allow configuring either
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
-
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
@@ -149,7 +145,7 @@ func main() {
 	})
 
 	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
-		config.OCSP.ResponseLimit = c.GlobalInt("limit")
+		config.OCSPUpdater.ResponseLimit = c.GlobalInt("limit")
 		return config
 	}
 
@@ -167,7 +163,7 @@ func main() {
 		blog.SetAuditLogger(auditlogger)
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.OCSP.DBDriver, c.OCSP.DBName)
+		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBDriver, c.OCSPUpdater.DBName)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		cac, closeChan := setupClients(c)
@@ -185,13 +181,13 @@ func main() {
 		auditlogger.Info(app.VersionString())
 
 		// Calculate the cut-off timestamp
-		dur, err := time.ParseDuration(c.OCSP.MinTimeToExpiry)
+		dur, err := time.ParseDuration(c.OCSPUpdater.MinTimeToExpiry)
 		cmd.FailOnError(err, "Could not parse MinTimeToExpiry from config.")
 
 		oldestLastUpdatedTime := time.Now().Add(-dur)
 		auditlogger.Info(fmt.Sprintf("Searching for OCSP reponses older than %s", oldestLastUpdatedTime))
 
-		count := int(math.Min(float64(ocspResponseLimit), float64(c.OCSP.ResponseLimit)))
+		count := int(math.Min(float64(ocspResponseLimit), float64(c.OCSPUpdater.ResponseLimit)))
 
 		err = findStaleResponses(cac, dbMap, oldestLastUpdatedTime, count)
 		if err != nil {

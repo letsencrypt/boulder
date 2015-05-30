@@ -58,7 +58,7 @@ func (cadb *MockCADatabase) Rollback() error {
 	return nil
 }
 
-func (cadb *MockCADatabase) IncrementAndGetSerial() (int, error) {
+func (cadb *MockCADatabase) IncrementAndGetSerial() (int64, error) {
 	return 1, nil
 }
 

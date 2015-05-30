@@ -10,7 +10,8 @@ OBJECTS = activity-monitor \
 	boulder-sa \
 	boulder-va \
 	boulder-wfe \
-	ocsp-updater
+	ocsp-updater \
+	ocsp-responder
 
 REVID = $(shell git symbolic-ref --short HEAD):$(shell git rev-parse --short HEAD)
 BUILD_ID_VAR = github.com/letsencrypt/boulder/core.BuildID
