@@ -45,6 +45,8 @@ type Config struct {
 	// How long issue certificates are valid for, should match expiry field
 	// in cfssl config.
 	Expiry string
+	// The maximum number of subjectAltNames in a single certificate
+	MaxNames int
 }
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -60,6 +62,7 @@ type CertificateAuthorityImpl struct {
 	Prefix         int // Prepended to the serial number
 	ValidityPeriod time.Duration
 	NotAfter       time.Time
+	MaxNames       int
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -138,6 +141,8 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 	if err != nil {
 		return nil, err
 	}
+
+	ca.MaxNames = config.MaxNames
 
 	return ca, nil
 }
@@ -256,6 +261,11 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	// Collapse any duplicate names.  Note that this operation may re-order the names
 	hostNames = uniqueNames(hostNames)
+	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
+		err = errors.New(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
+		ca.log.WarningErr(err)
+		return emptyCert, err
+	}
 
 	if ca.NotAfter.Before(time.Now().Add(ca.ValidityPeriod)) {
 		err = errors.New("Cannot issue a certificate that expires after the intermediate certificate.")
