@@ -173,6 +173,12 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		names = append(names, csr.Subject.CommonName)
 	}
 
+	if len(names) == 0 {
+		err = core.UnauthorizedError("CSR has no names in it")
+		logEvent.Error = err.Error()
+		return emptyCert, err
+	}
+
 	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(names)
 	if err != nil {
 		logEvent.Error = err.Error()
