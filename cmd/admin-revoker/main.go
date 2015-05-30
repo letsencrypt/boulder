@@ -92,18 +92,18 @@ func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.Certificat
 	}
 
 	var certificate core.Certificate
-	err = tx.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial = :serial",
+	err = tx.SelectOne(&certificate, "SELECT serial, der FROM certificates WHERE serial = :serial",
 		map[string]interface{}{"serial": serial})
-	if err != nil {
-		return
-	}
-	var cert *x509.Certificate
-	cert, err = x509.ParseCertificate(certificate.DER)
 	if err != nil {
 		return
 	}
 	if deny {
 		// Retrieve DNS names associated with serial
+		var cert *x509.Certificate
+		cert, err = x509.ParseCertificate(certificate.DER)
+		if err != nil {
+			return
+		}
 		err = addDeniedNames(tx, append(cert.DNSNames, cert.Subject.CommonName))
 		if err != nil {
 			return
