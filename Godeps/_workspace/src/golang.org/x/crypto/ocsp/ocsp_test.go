@@ -194,11 +194,11 @@ func TestOCSPResponse(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(resp.RevokedAt, template.RevokedAt) {
-		t.Errorf("resp.NextUpdate: got %d, want %d", resp.NextUpdate, template.NextUpdate)
+		t.Errorf("resp.RevokedAt: got %d, want %d", resp.RevokedAt, template.RevokedAt)
 	}
 
-	if !reflect.DeepEqual(resp.ProducedAt, producedAt) {
-		t.Errorf("resp.NextUpdate: got %d, want %d", resp.NextUpdate, template.NextUpdate)
+	if !resp.ProducedAt.Equal(producedAt) {
+		t.Errorf("resp.ProducedAt: got %d, want %d", resp.ProducedAt, producedAt)
 	}
 
 	if resp.Status != template.Status {
@@ -333,9 +333,9 @@ const ocspResponseWithoutCertHex = "308201d40a0100a08201cd308201c906092b06010505
 	"20a1a65c7f0b6427a224b3c98edd96b9b61f706099951188b0289555ad30a216fb774651" +
 	"5a35fca2e054dfa8"
 
-const ocspRequestHex = "30563054a003020100304d304b3049300906052b0e03021a05000414c0fe0278fc991888" +
-	"91b3f212e9c7e1b21ab7bfc004140dfc1df0a9e0f01ce7f2b213177e6f8d157cd4f60210" +
-	"017f77deb3bcbb235d44ccc7dba62e72"
+const ocspRequestHex = "3051304f304d304b3049300906052b0e03021a05000414c0fe0278fc99188891b3f212e9" +
+	"c7e1b21ab7bfc004140dfc1df0a9e0f01ce7f2b213177e6f8d157cd4f60210017f77deb3" +
+	"bcbb235d44ccc7dba62e72"
 
 const leafCertHex = "308203c830820331a0030201020210017f77deb3bcbb235d44ccc7dba62e72300d06092a" +
 	"864886f70d01010505003081ba311f301d060355040a1316566572695369676e20547275" +
