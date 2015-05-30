@@ -101,8 +101,8 @@ func findStaleResponses(cac rpc.CertificateAuthorityClient, dbMap *gorp.DbMap, o
 
 	var certificateStatus []core.CertificateStatus
 	_, err := dbMap.Select(&certificateStatus,
-		`SELECT cs.* FROM certificateStatus AS cs
-		 WHERE cs.ocspLastUpdated < ?
+		`SELECT cs.* FROM certificateStatus AS cs JOIN certificates AS cert ON cs.serial = cert.serial
+		 WHERE cs.ocspLastUpdated < ? AND cert.expires > now()
 		 ORDER BY cs.ocspLastUpdated ASC
 		 LIMIT ?`, oldestLastUpdatedTime, responseLimit)
 

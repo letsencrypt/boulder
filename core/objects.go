@@ -320,10 +320,11 @@ type Certificate struct {
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`
 
-	Serial string    `db:"serial"`
-	Digest string    `db:"digest"`
-	DER    []byte    `db:"der"`
-	Issued time.Time `db:"issued"`
+	Serial  string    `db:"serial"`
+	Digest  string    `db:"digest"`
+	DER     []byte    `db:"der"`
+	Issued  time.Time `db:"issued"`
+	Expires time.Time `db:"expires"`
 }
 
 // CertificateStatus structs are internal to the server. They represent the
