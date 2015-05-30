@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
@@ -27,10 +28,6 @@ import (
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/test"
 )
-
-type MockSA struct {
-	// empty
-}
 
 const (
 	test1KeyPublicJSON = `
@@ -78,6 +75,12 @@ eROL1ve1vmQF3kjrMPhhK2kr6qdWnTE5XlPllVSZFQenSTzj98AO
 	}`
 )
 
+var RandomCert []byte = []byte{48, 130, 1, 186, 48, 130, 1, 102, 160, 3, 2, 1, 2, 2, 2, 6, 117, 48, 11, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 11, 48, 52, 49, 16, 48, 14, 6, 3, 85, 4, 6, 19, 7, 65, 117, 115, 116, 114, 105, 97, 49, 17, 48, 15, 6, 3, 85, 4, 10, 19, 8, 72, 101, 97, 112, 108, 111, 99, 107, 49, 13, 48, 11, 6, 3, 85, 4, 11, 19, 4, 84, 72, 79, 82, 48, 30, 23, 13, 48, 57, 49, 49, 49, 48, 50, 51, 48, 48, 48, 48, 90, 23, 13, 49, 57, 49, 49, 49, 48, 50, 51, 48, 48, 48, 48, 90, 48, 52, 49, 16, 48, 14, 6, 3, 85, 4, 6, 19, 7, 65, 117, 115, 116, 114, 105, 97, 49, 17, 48, 15, 6, 3, 85, 4, 10, 19, 8, 72, 101, 97, 112, 108, 111, 99, 107, 49, 13, 48, 11, 6, 3, 85, 4, 11, 19, 4, 84, 72, 79, 82, 48, 92, 48, 13, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 1, 5, 0, 3, 75, 0, 48, 72, 2, 65, 0, 164, 165, 0, 127, 188, 218, 118, 45, 136, 247, 42, 198, 96, 21, 113, 217, 137, 179, 151, 167, 194, 251, 194, 96, 36, 124, 119, 62, 11, 149, 192, 157, 16, 11, 67, 23, 15, 224, 108, 74, 100, 149, 41, 7, 139, 144, 249, 230, 17, 168, 156, 164, 112, 179, 81, 63, 73, 251, 180, 46, 85, 92, 108, 217, 2, 3, 1, 0, 1, 163, 100, 48, 98, 48, 14, 6, 3, 85, 29, 15, 1, 1, 255, 4, 4, 3, 2, 0, 132, 48, 29, 6, 3, 85, 29, 37, 4, 22, 48, 20, 6, 8, 43, 6, 1, 5, 5, 7, 3, 2, 6, 8, 43, 6, 1, 5, 5, 7, 3, 1, 48, 15, 6, 3, 85, 29, 19, 1, 1, 255, 4, 5, 48, 3, 1, 1, 255, 48, 14, 6, 3, 85, 29, 14, 4, 7, 4, 5, 1, 2, 3, 4, 5, 48, 16, 6, 3, 85, 29, 35, 4, 9, 48, 7, 128, 5, 1, 2, 3, 4, 5, 48, 11, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 11, 3, 65, 0, 33, 47, 156, 173, 234, 114, 157, 142, 179, 109, 157, 252, 3, 95, 47, 22, 189, 86, 26, 11, 48, 223, 165, 248, 56, 192, 204, 113, 40, 158, 229, 250, 238, 214, 13, 92, 62, 177, 168, 122, 236, 172, 130, 120, 85, 220, 194, 251, 137, 221, 191, 224, 94, 188, 220, 102, 125, 15, 46, 49, 204, 241, 217, 13}
+
+type MockSA struct {
+	// empty
+}
+
 func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
 	if id == 100 {
 		// Tag meaning "Missing"
@@ -102,7 +105,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 	test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
-		return core.Registration{ID: 1, Key: jwk}, nil
+		return core.Registration{ID: 1, Key: jwk, Agreement: "yup"}, nil
 	}
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
@@ -114,7 +117,10 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 	return core.Registration{ID: 1, Agreement: "yup"}, nil
 }
 
-func (sa *MockSA) GetAuthorization(string) (core.Authorization, error) {
+func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
+	if id == "valid" {
+		return core.Authorization{Status: core.StatusValid, RegistrationID: 1, Expires: time.Now().AddDate(0, 0, 1), Identifier: core.AcmeIdentifier{Type: "dns", Value: "meep.com"}}, nil
+	}
 	return core.Authorization{}, nil
 }
 
@@ -132,6 +138,81 @@ func (sa *MockSA) GetCertificateStatus(string) (core.CertificateStatus, error) {
 
 func (sa *MockSA) AlreadyDeniedCSR([]string) (bool, error) {
 	return false, nil
+}
+
+func (sa *MockSA) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
+	return
+}
+
+func (sa *MockSA) FinalizeAuthorization(authz core.Authorization) (err error) {
+	return
+}
+
+func (sa *MockSA) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
+	return
+}
+
+func (sa *MockSA) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
+	return
+}
+
+func (sa *MockSA) NewRegistration(reg core.Registration) (regR core.Registration, err error) {
+	return
+}
+
+func (sa *MockSA) UpdatePendingAuthorization(authz core.Authorization) (err error) {
+	return
+}
+
+func (sa *MockSA) UpdateRegistration(reg core.Registration) (err error) {
+	return
+}
+
+type MockRegistrationAuthority struct{}
+
+func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
+	return reg, nil
+}
+
+func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, regID int64) (core.Authorization, error) {
+	authz.RegistrationID = regID
+	return authz, nil
+}
+
+func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
+	return core.Certificate{}, nil
+}
+
+func (ra *MockRegistrationAuthority) UpdateRegistration(reg core.Registration, updated core.Registration) (core.Registration, error) {
+	return reg, nil
+}
+
+func (ra *MockRegistrationAuthority) UpdateAuthorization(authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
+	return authz, nil
+}
+
+func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate) error {
+	return nil
+}
+
+func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization) error {
+	return nil
+}
+
+type MockCA struct {}
+
+func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
+	// Just a random cert
+	cert.DER = RandomCert
+	return
+}
+
+func (ca *MockCA) GenerateOCSP(xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
+	return
+}
+
+func (ca *MockCA) RevokeCertificate(serial string, reasonCode int) (err error) {
+	return
 }
 
 func makeBody(s string) io.ReadCloser {
@@ -182,9 +263,12 @@ func TestIndex(t *testing.T) {
 func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl()
+	ra.SA = &MockSA{}
+	ra.CA = &MockCA{}
 	wfe := NewWebFrontEndImpl()
 	wfe.SA = &MockSA{}
 	wfe.RA = &ra
+	wfe.Stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -284,12 +368,11 @@ func TestIssueCertificate(t *testing.T) {
 		responseWriter.Body.String(),
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error unmarshaling certificate request\"}")
 
-	// Valid, signed JWS body, payload has a legit CSR but no authorizations:
+	// Valid, signed JWS body, payload has a invalid signature on CSR and no authorizations:
 	// {
 	//   "csr": "MIICU...",
 	//   "authorizations: []
 	// }
-	// Payload was created by: openssl  req -new -nodes -subj /CN=foo
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
@@ -310,39 +393,59 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		// TODO: I think this is wrong. The CSR in the payload above was created by openssl and should be valid.
+		// TODO: I think this is wrong. The CSR in the payload above was created by openssl and should be valid. (But the signature isn't)
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error creating new cert\"}")
-}
 
-type MockRegistrationAuthority struct{}
+	// Valid, signed JWS body, payload has a CSR with no DNS names
+	responseWriter.Body.Reset()
+	wfe.NewCertificate(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`
+			{
+				"payload":"eyJhdXRob3JpemF0aW9ucyI6W10sImNzciI6Ik1JSUJCVENCc2dJQkFEQk5NUW93Q0FZRFZRUUdFd0ZqTVFvd0NBWURWUVFLRXdGdk1Rc3dDUVlEVlFRTEV3SnZkVEVLTUFnR0ExVUVCeE1CYkRFS01BZ0dBMVVFQ0JNQmN6RU9NQXdHQTFVRUF4TUZUMmdnYUdrd1hEQU5CZ2txaGtpRzl3MEJBUUVGQUFOTEFEQklBa0VBc3I3NlprVTJSVHFpNDFlSGZtcEU1aHREdmtyMjAyeWpSUzh4Mk01eXpUNTJvb1QyV0VWdG5TdWltMFlmT0V3NmYtZkhtYnFzYXNxS21xbHNKZGd6MlFJREFRQUJvQUF3Q3dZSktvWklodmNOQVFFRkEwRUFIa0N2NGtWUEphNTNsdE9HcmhwZEgwbVQwNHFIVXFpVGxsSlBQanhYeG42aXdpVllMOG5RdWhzNFEyNzU4RU5vT0RCdU0yRjhnSDE5VElvWGxjbTNMUT09In0",
+				"protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoieU5XVmh0WUVLSlIyMXk5eHNIVi1QRF9iWXdiWFNlTnVGYWw0NnhZeFZmUkw1bXFoYTd2dHR2akJfdmM3WGcyUnZnQ3hIUENxb3hnTVBUekhyWlQ3NUxqQ3dJVzJLX2tsQllOOG9ZdlR3d21lU2tBejZ1dDdaeFB2LW5aYVQ1VEpoR2swTlQya2hfelNwZHJpRUpfM3ZXLW1xeFliYkJtcHZIcXNhMV96eDlmU3VIWWN0QVpKV3p4elVaWHlrYldNV1FacEVpRTBKNGFqajUxZkluRXpWbjdWeFYtbXpmTXlib1FqdWpQaDdhTkp4QVdTcTRvUUVKSkRnV3dTaDlsZXlvSm9QcE9OSHhoNW5FRTVBakUwMUZrR0lDU3hqcFpzRi13OGhPVEkzWFhvaFVkdTI5U2UyNmsyQjBQb2xEU3VqMEdJUVU2LVc5VGRMWFNqQmIyU3BRIiwiZSI6IkFBRUFBUSJ9fQ",
+				"signature":"LslpZp6wLYQo0LAgMl9_jyTFhKVnvFWcD455-v2b3q3wXJX5Ksvp4sxyczM63j2RGwTUc_Tfu3WEWa2xQ-D74H69XGMnWCikmChwVPDcWwaDwydOEFXff5cGY4Trkxl7xnsO2g3BslxuZ_7uud5IkHIy1-8xa4mHpNHb3XHTAhX5E3tXA1VqC4pVWzD5W74bg4GxuRd8IM2p3toMjgInbzp9vhY7dnPYogwnA8B1uYduF99azdKkb5VbHNBJi5SpTz7nyjvbvh7KTLhaJ1epkSFnd74a-fhyzo8t1Nju9UPT1nc8kF6G3CpOAyWYX27YyA9T0UyM3CVz_hFpvubZjg"
+			}
+		`),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error creating new cert\"}")
 
-func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
-	return reg, nil
-}
+	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
+	// {
+	//   "csr": "MIIBK...",
+	//   "authorizations: []
+	// }
+	responseWriter.Body.Reset()
+	wfe.NewCertificate(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`
+			{
+				"payload":"eyJhdXRob3JpemF0aW9ucyI6W10sImNzciI6Ik1JSUJLekNCMkFJQkFEQk5NUW93Q0FZRFZRUUdFd0ZqTVFvd0NBWURWUVFLRXdGdk1Rc3dDUVlEVlFRTEV3SnZkVEVLTUFnR0ExVUVCeE1CYkRFS01BZ0dBMVVFQ0JNQmN6RU9NQXdHQTFVRUF4TUZUMmdnYUdrd1hEQU5CZ2txaGtpRzl3MEJBUUVGQUFOTEFEQklBa0VBcXZGRUdCTnJqQW90UGJjZFRTeURweHNFU04wLWVZbDRUcVMwWkxZd0xUVi1GdVBIVFBqRmlxMm9IMUJFZ21SempiOFlpUFZYRk1uYU9lSEU3enV1WFFJREFRQUJvQ1l3SkFZSktvWklodmNOQVFrT01SY3dGVEFUQmdOVkhSRUVEREFLZ2dodFpXVndMbU52YlRBTEJna3Foa2lHOXcwQkFRVURRUUJTRWNFcS1sTVVuenYxRE84akswaEpSOFlLYzB5Vjh6dVdWZkFXTjBfZHNQZzVOeS1PSGh0SmNPVElyVXJMVGJfeENVN2NqaUt4VThpM2oxa2FULXJ0In0",
+				"protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoieU5XVmh0WUVLSlIyMXk5eHNIVi1QRF9iWXdiWFNlTnVGYWw0NnhZeFZmUkw1bXFoYTd2dHR2akJfdmM3WGcyUnZnQ3hIUENxb3hnTVBUekhyWlQ3NUxqQ3dJVzJLX2tsQllOOG9ZdlR3d21lU2tBejZ1dDdaeFB2LW5aYVQ1VEpoR2swTlQya2hfelNwZHJpRUpfM3ZXLW1xeFliYkJtcHZIcXNhMV96eDlmU3VIWWN0QVpKV3p4elVaWHlrYldNV1FacEVpRTBKNGFqajUxZkluRXpWbjdWeFYtbXpmTXlib1FqdWpQaDdhTkp4QVdTcTRvUUVKSkRnV3dTaDlsZXlvSm9QcE9OSHhoNW5FRTVBakUwMUZrR0lDU3hqcFpzRi13OGhPVEkzWFhvaFVkdTI5U2UyNmsyQjBQb2xEU3VqMEdJUVU2LVc5VGRMWFNqQmIyU3BRIiwiZSI6IkFBRUFBUSJ9fQ",
+				"signature":"kdu5tXk-Jz9umbi6RH-BACBj5ObJlVPA4qGsLsdbqPfn9W9CDw66Q9E1QQxt9Fxpe-fqdSDiVSfmuXhO7u068xdYptgFxWNDJXM1MH3iCs0EJz5KQ9SfGiJXrhkji_FbOdYwcxSvbThOF_qyztFmBCgZPfKKHbcGJKV3nvFDLHb6P7hIr6iqMutsFykTToYBUv3czzc87iYFpR_ukAnISLJ0hQucbMBqlinvq8TOmzi47o_uv2Fy8MF0V_C9ZYJmhZGjihhVvVlr00OaFE5bNM2uLMfr_02oG83HTjNJOGaxsqi-tuu41m3Dr5M8Ubh2oPA0OrKIuMisMMZ3aCzRtA"
+			}
+		`),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error creating new cert\"}")
 
-func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, regID int64) (core.Authorization, error) {
-	authz.RegistrationID = regID
-	return authz, nil
-}
-
-func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
-	return core.Certificate{}, nil
-}
-
-func (ra *MockRegistrationAuthority) UpdateRegistration(reg core.Registration, updated core.Registration) (core.Registration, error) {
-	return reg, nil
-}
-
-func (ra *MockRegistrationAuthority) UpdateAuthorization(authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
-	return authz, nil
-}
-
-func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate) error {
-	return nil
-}
-
-func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization) error {
-	return nil
+	responseWriter.Body.Reset()
+	wfe.NewCertificate(responseWriter, &http.Request{
+		Method: "POST",
+		Body: makeBody(`
+			{
+				"payload":"eyJhdXRob3JpemF0aW9ucyI6WyJ2YWxpZCJdLCJjc3IiOiJNSUlCR3pDQnlBSUJBREE5TVFvd0NBWURWUVFHRXdGak1Rb3dDQVlEVlFRS0V3RnZNUXN3Q1FZRFZRUUxFd0p2ZFRFS01BZ0dBMVVFQnhNQmJERUtNQWdHQTFVRUNCTUJjekJjTUEwR0NTcUdTSWIzRFFFQkFRVUFBMHNBTUVnQ1FRRFpEa3V2TllMZi1sdW1KajZyYzdoaWZiMmpxYVhxZVBYY1FhQVdGOU1YWVhDWkwwYjJRSXdRQm9ZZkp6dzA0RnNPSlFuSlpJXzBQV2MtTFMyb2FKaFRBZ01CQUFHZ0pqQWtCZ2txaGtpRzl3MEJDUTR4RnpBVk1CTUdBMVVkRVFRTU1BcUNDRzFsWlhBdVkyOXRNQXNHQ1NxR1NJYjNEUUVCQlFOQkFLVTkwcHpvMU1TbFFYZnNLWlVQTXJDcXFHWHpXWkxmY29MaHZ0Y3NfWnpDQkpscm9xYzJoUGpMQzBISXBBODNZdEFwaTlsbjIyRmlxdXdNNWVwUHZfST0ifQ",
+				"protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoieU5XVmh0WUVLSlIyMXk5eHNIVi1QRF9iWXdiWFNlTnVGYWw0NnhZeFZmUkw1bXFoYTd2dHR2akJfdmM3WGcyUnZnQ3hIUENxb3hnTVBUekhyWlQ3NUxqQ3dJVzJLX2tsQllOOG9ZdlR3d21lU2tBejZ1dDdaeFB2LW5aYVQ1VEpoR2swTlQya2hfelNwZHJpRUpfM3ZXLW1xeFliYkJtcHZIcXNhMV96eDlmU3VIWWN0QVpKV3p4elVaWHlrYldNV1FacEVpRTBKNGFqajUxZkluRXpWbjdWeFYtbXpmTXlib1FqdWpQaDdhTkp4QVdTcTRvUUVKSkRnV3dTaDlsZXlvSm9QcE9OSHhoNW5FRTVBakUwMUZrR0lDU3hqcFpzRi13OGhPVEkzWFhvaFVkdTI5U2UyNmsyQjBQb2xEU3VqMEdJUVU2LVc5VGRMWFNqQmIyU3BRIiwiZSI6IkFBRUFBUSJ9fQ",
+				"signature":"n7JIc5QeR0PK1JyIOIdJ_KWwNwtz2Ke89FGbnAb3LRbpSbkMnZNx1TNeg5TNxSLGv9FSoCcmNvMlmK5DR1sRJddsnryI1F36qZl6lvv-ZrVjKlJ6__HiQCXdVsXGo5hMNLc834cyp1RwadmjQr46cv5vv0cOSuPfSsjdNC9Aqw7AqVtqOT6ONmZQdwQFKVxK8I34wx67-pc4Rwia5Bbo6yZFebgKQkDc3EzJsqeUHY5aTbCK6aD9wKx4PA5M3bwVy5xTPNsUAsSYHdxvnTQ9WpzY20f_7ha8Zdw8Xf2y6pZ1F8mjGHAifqTzEMZpHTjW8-6syiq9nSWUM4KiIODkdA"
+			}
+		`),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		string(RandomCert))
 }
 
 func TestChallenge(t *testing.T) {
