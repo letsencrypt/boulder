@@ -169,15 +169,17 @@ func loadIssuerKey(filename string) (issuerKey crypto.Signer, err error) {
 	return
 }
 
-func dupeNames(names []string) bool {
+func uniqueNames(names []string) (unique []string) {
 	nameMap := make(map[string]int, len(names))
 	for _, name := range names {
 		nameMap[name] = 1
 	}
-	if len(names) != len(nameMap) {
-		return true
+
+	unique = make([]string, 0, len(nameMap))
+	for name := range nameMap {
+		unique = append(unique, name)
 	}
-	return false
+	return
 }
 
 // GenerateOCSP produces a new OCSP response and returns it
@@ -236,12 +238,14 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, fmt.Errorf("Invalid public key in CSR.")
 	}
 
-	// XXX Take in authorizations and verify that union covers CSR?
 	// Pull hostnames from CSR
-	hostNames := csr.DNSNames // DNSNames + CN from CSR
-	var commonName string
+	// Authorization is checked by the RA
+	commonName := ""
+	hostNames := make([]string, len(csr.DNSNames))
+	copy(hostNames, csr.DNSNames)
 	if len(csr.Subject.CommonName) > 0 {
 		commonName = csr.Subject.CommonName
+		hostNames = append(hostNames, csr.Subject.CommonName)
 	} else if len(hostNames) > 0 {
 		commonName = hostNames[0]
 	} else {
@@ -250,11 +254,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
-	if dupeNames(hostNames) {
-		err = errors.New("Cannot issue a certificate with duplicate DNS names.")
-		ca.log.WarningErr(err)
-		return emptyCert, err
-	}
+	// Collapse any duplicate names.  Note that this operation may re-order the names
+	hostNames = uniqueNames(hostNames)
 
 	if ca.NotAfter.Before(time.Now().Add(ca.ValidityPeriod)) {
 		err = errors.New("Cannot issue a certificate that expires after the intermediate certificate.")
