@@ -91,10 +91,13 @@ func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.Certificat
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
 
-	var certificate core.Certificate
-	err = tx.SelectOne(&certificate, "SELECT serial, der FROM certificates WHERE serial = :serial",
-		map[string]interface{}{"serial": serial})
+	certObj, err := tx.Get(core.Certificate{}, serial)
 	if err != nil {
+		return
+	}
+	certificate, ok := certObj.(*core.Certificate)
+	if !ok {
+		err = fmt.Errorf("Cast failure")
 		return
 	}
 	if deny {
