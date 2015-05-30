@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -73,10 +74,24 @@ eROL1ve1vmQF3kjrMPhhK2kr6qdWnTE5XlPllVSZFQenSTzj98AO
 		"n":"m5Cpx3vZ0CjATirDpbILvq78fm3Dv5RBkO1VLWFmJj5Mb54vc9oYZWc1V1k-LJoESuuPHhaNO2Eu8T9tslQWcZSzr5NImxAwMk970gVQa-Hqv-Jr6xstrBpq7TKpXHTx2FnfA2wQrfIQSlBXu0t4jdUOr3oJh-QXvma8nLITdtjpC0AZNtqd0QkRJX_90SaNrl18Rr_0JrBH9ZmUSFcf3mo_BtL0Gx0jE3n-iwCI8rQtfyVP__9-n__r4IhalKLzaeio6o-qrdemh0EZgjKGCS1_RpTIeArkO8uia1KgOq-z-GfemKEm4s07WO_a0_9dLqbvpnyyZvUi405m3vGDfQ",
 		"e":"AAEAAQ"
 	}`
+
+	RandomCert = "308201ba30820166a00302010202020675300b06092a864886f70d01010b3034" +
+		"3110300e06035504061307417573747269613111300f060355040a1308486561" +
+		"706c6f636b310d300b060355040b130454484f52301e170d3039313131303233" +
+		"303030305a170d3139313131303233303030305a30343110300e060355040613" +
+		"07417573747269613111300f060355040a1308486561706c6f636b310d300b06" +
+		"0355040b130454484f52305c300d06092a864886f70d0101010500034b003048" +
+		"024100a4a5007fbcda762d88f72ac6601571d989b397a7c2fbc260247c773e0b" +
+		"95c09d100b43170fe06c4a649529078b90f9e611a89ca470b3513f49fbb42e55" +
+		"5c6cd90203010001a3643062300e0603551d0f0101ff040403020084301d0603" +
+		"551d250416301406082b0601050507030206082b06010505070301300f060355" +
+		"1d130101ff040530030101ff300e0603551d0e04070405010203040530100603" +
+		"551d230409300780050102030405300b06092a864886f70d01010b034100212f" +
+		"9cadea729d8eb36d9dfc035f2f16bd561a0b30dfa5f838c0cc71289ee5faeed6" +
+		"0d5c3eb1a87aecac827855dcc2fb89ddbfe05ebcdc667d0f2e31ccf1d90d"
 )
 
-var RandomCert []byte = []byte{48, 130, 1, 186, 48, 130, 1, 102, 160, 3, 2, 1, 2, 2, 2, 6, 117, 48, 11, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 11, 48, 52, 49, 16, 48, 14, 6, 3, 85, 4, 6, 19, 7, 65, 117, 115, 116, 114, 105, 97, 49, 17, 48, 15, 6, 3, 85, 4, 10, 19, 8, 72, 101, 97, 112, 108, 111, 99, 107, 49, 13, 48, 11, 6, 3, 85, 4, 11, 19, 4, 84, 72, 79, 82, 48, 30, 23, 13, 48, 57, 49, 49, 49, 48, 50, 51, 48, 48, 48, 48, 90, 23, 13, 49, 57, 49, 49, 49, 48, 50, 51, 48, 48, 48, 48, 90, 48, 52, 49, 16, 48, 14, 6, 3, 85, 4, 6, 19, 7, 65, 117, 115, 116, 114, 105, 97, 49, 17, 48, 15, 6, 3, 85, 4, 10, 19, 8, 72, 101, 97, 112, 108, 111, 99, 107, 49, 13, 48, 11, 6, 3, 85, 4, 11, 19, 4, 84, 72, 79, 82, 48, 92, 48, 13, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 1, 5, 0, 3, 75, 0, 48, 72, 2, 65, 0, 164, 165, 0, 127, 188, 218, 118, 45, 136, 247, 42, 198, 96, 21, 113, 217, 137, 179, 151, 167, 194, 251, 194, 96, 36, 124, 119, 62, 11, 149, 192, 157, 16, 11, 67, 23, 15, 224, 108, 74, 100, 149, 41, 7, 139, 144, 249, 230, 17, 168, 156, 164, 112, 179, 81, 63, 73, 251, 180, 46, 85, 92, 108, 217, 2, 3, 1, 0, 1, 163, 100, 48, 98, 48, 14, 6, 3, 85, 29, 15, 1, 1, 255, 4, 4, 3, 2, 0, 132, 48, 29, 6, 3, 85, 29, 37, 4, 22, 48, 20, 6, 8, 43, 6, 1, 5, 5, 7, 3, 2, 6, 8, 43, 6, 1, 5, 5, 7, 3, 1, 48, 15, 6, 3, 85, 29, 19, 1, 1, 255, 4, 5, 48, 3, 1, 1, 255, 48, 14, 6, 3, 85, 29, 14, 4, 7, 4, 5, 1, 2, 3, 4, 5, 48, 16, 6, 3, 85, 29, 35, 4, 9, 48, 7, 128, 5, 1, 2, 3, 4, 5, 48, 11, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 11, 3, 65, 0, 33, 47, 156, 173, 234, 114, 157, 142, 179, 109, 157, 252, 3, 95, 47, 22, 189, 86, 26, 11, 48, 223, 165, 248, 56, 192, 204, 113, 40, 158, 229, 250, 238, 214, 13, 92, 62, 177, 168, 122, 236, 172, 130, 120, 85, 220, 194, 251, 137, 221, 191, 224, 94, 188, 220, 102, 125, 15, 46, 49, 204, 241, 217, 13}
-var wfe WebFrontEndImpl = NewWebFrontEndImpl()
+var wfe = NewWebFrontEndImpl()
 
 type MockSA struct {
 	// empty
@@ -205,7 +220,8 @@ type MockCA struct{}
 
 func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	// Just a random cert
-	cert.DER = RandomCert
+	randomCertDer, _ := hex.DecodeString(RandomCert)
+	cert.DER = randomCertDer
 	return
 }
 
@@ -453,9 +469,10 @@ func TestIssueCertificate(t *testing.T) {
 			}
 		`),
 	})
+	randomCertDer, _ := hex.DecodeString(RandomCert)
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		string(RandomCert))
+		string(randomCertDer))
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"/acme/cert/0000000000000000")
