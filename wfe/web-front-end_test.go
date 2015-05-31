@@ -423,7 +423,6 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		// TODO: I think this is wrong. The CSR in the payload above was created by openssl and should be valid. (But the signature isn't)
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error creating new cert\"}")
 
 	// Valid, signed JWS body, payload has a CSR with no DNS names
