@@ -564,6 +564,12 @@ func TestRejectValidityTooLong(t *testing.T) {
 	ca.SA = storageAuthority
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
+	csrDER, _ := hex.DecodeString(NO_CN_CSR_HEX)
+	csr, _ := x509.ParseCertificateRequest(csrDER)
+	_, err = ca.IssueCertificate(*csr, 1, FarPast)
+	test.Assert(t, err != nil, "Cannot issue a certificate that expires after the underlying authorization.")
+
+	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ = hex.DecodeString(NO_CN_CSR_HEX)
 	csr, _ = x509.ParseCertificateRequest(csrDER)
 	ca.NotAfter = time.Now()
