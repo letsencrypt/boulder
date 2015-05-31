@@ -91,15 +91,18 @@ func TestAddRegistration(t *testing.T) {
 func TestAddAuthorization(t *testing.T) {
 	sa := initSA(t)
 
-	paID, err := sa.NewPendingAuthorization()
+	PA := core.Authorization{}
+
+	PA, err := sa.NewPendingAuthorization(PA)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
-	test.Assert(t, paID != "", "ID shouldn't be blank")
+	test.Assert(t, PA.ID != "", "ID shouldn't be blank")
 
-	dbPa, err := sa.GetAuthorization(paID)
-	test.AssertNotError(t, err, "Couldn't get pending authorization with ID "+paID)
+	dbPa, err := sa.GetAuthorization(PA.ID)
+	test.AssertNotError(t, err, "Couldn't get pending authorization with ID "+PA.ID)
+	test.AssertMarshaledEquals(t, PA, dbPa)
 
-	expectedPa := core.Authorization{ID: paID}
-	test.AssertEquals(t, dbPa.ID, expectedPa.ID)
+	expectedPa := core.Authorization{ID: PA.ID}
+	test.AssertMarshaledEquals(t, dbPa.ID, expectedPa.ID)
 
 	var jwk jose.JsonWebKey
 	err = json.Unmarshal([]byte(theKey), &jwk)
@@ -116,16 +119,16 @@ func TestAddAuthorization(t *testing.T) {
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}
 
-	newPa := core.Authorization{ID: paID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, RegistrationID: 0, Status: core.StatusPending, Expires: time.Now().AddDate(0, 0, 1), Challenges: []core.Challenge{chall}, Combinations: combos, Contact: []core.AcmeURL{u}}
+	newPa := core.Authorization{ID: PA.ID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, RegistrationID: 0, Status: core.StatusPending, Expires: time.Now().AddDate(0, 0, 1), Challenges: []core.Challenge{chall}, Combinations: combos}
 	err = sa.UpdatePendingAuthorization(newPa)
-	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+paID)
+	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 
 	newPa.Status = core.StatusValid
 	err = sa.FinalizeAuthorization(newPa)
-	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+paID)
+	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+PA.ID)
 
-	dbPa, err = sa.GetAuthorization(paID)
-	test.AssertNotError(t, err, "Couldn't get authorization with ID "+paID)
+	dbPa, err = sa.GetAuthorization(PA.ID)
+	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 }
 
 func TestAddCertificate(t *testing.T) {

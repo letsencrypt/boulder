@@ -106,7 +106,8 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
-			"Rev": "c57d4a71915a248dbad846d60825145062b4c18e"
+			"Comment": "ocsp-unauthorized.mailed",
+			"Rev": "88aa4b6881d17665db91c95982b2feda28140f9d"
 		},
 		{
 			"ImportPath": "gopkg.in/gorp.v1",

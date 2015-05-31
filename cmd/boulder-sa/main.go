@@ -9,9 +9,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
-	// Load both drivers to allow configuring either
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
@@ -49,6 +46,8 @@ func main() {
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
 			sas := rpc.NewStorageAuthorityServer(c.AMQP.SA.Server, ch, sai)
+
+			auditlogger.Info(app.VersionString())
 
 			cmd.RunUntilSignaled(auditlogger, sas, closeChan)
 		}

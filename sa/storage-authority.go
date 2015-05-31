@@ -8,7 +8,6 @@ package sa
 import (
 	"crypto/sha256"
 	"crypto/x509"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,12 +34,6 @@ func digest256(data []byte) []byte {
 	return d.Sum(nil)
 }
 
-var dialectMap map[string]interface{} = map[string]interface{}{
-	"sqlite3":  gorp.SqliteDialect{},
-	"mysql":    gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"},
-	"postgres": gorp.PostgresDialect{},
-}
-
 // Utility models
 type pendingauthzModel struct {
 	core.Authorization
@@ -52,111 +45,6 @@ type authzModel struct {
 	core.Authorization
 
 	Sequence int64 `db:"sequence"`
-}
-
-// Type converter
-type boulderTypeConverter struct{}
-
-func (tc boulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
-	switch t := val.(type) {
-	case core.AcmeIdentifier, []core.Challenge, []core.AcmeURL, [][]int:
-		jsonBytes, err := json.Marshal(t)
-		if err != nil {
-			return nil, err
-		}
-		return string(jsonBytes), nil
-	case jose.JsonWebKey:
-		// HACK: Some of our storage methods, like NewAuthorization, expect to
-		// write to the DB with the default, empty key, so we treat it specially,
-		// serializing to an empty string. TODO: Modify authorizations to refer
-		// to a registration id, and make sure registration ids are always filled.
-		// https://github.com/letsencrypt/boulder/issues/181
-		if t.Key == nil {
-			return "", nil
-		}
-		jsonBytes, err := t.MarshalJSON()
-		if err != nil {
-			return "", err
-		}
-		return string(jsonBytes), nil
-	case core.AcmeStatus:
-		return string(t), nil
-	case core.OCSPStatus:
-		return string(t), nil
-	default:
-		return val, nil
-	}
-}
-
-func (tc boulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, bool) {
-	switch target.(type) {
-	case *core.AcmeIdentifier, *[]core.Challenge, *[]core.AcmeURL, *[][]int, core.JsonBuffer:
-		binder := func(holder, target interface{}) error {
-			s, ok := holder.(*string)
-			if !ok {
-				return errors.New("FromDb: Unable to convert *string")
-			}
-			b := []byte(*s)
-			return json.Unmarshal(b, target)
-		}
-		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
-	case *jose.JsonWebKey:
-		binder := func(holder, target interface{}) error {
-			s, ok := holder.(*string)
-			if !ok {
-				return errors.New("FromDb: Unable to convert *string")
-			}
-			b := []byte(*s)
-			k := target.(*jose.JsonWebKey)
-			if *s != "" {
-				return k.UnmarshalJSON(b)
-			} else {
-				// HACK: Sometimes we can have an empty string the in the DB where a
-				// key should be. We should fix that (see HACK above). In the meantime,
-				// return the default JsonWebKey in such situations.
-				// https://github.com/letsencrypt/boulder/issues/181
-				return nil
-			}
-		}
-		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
-	case *core.AcmeStatus:
-		binder := func(holder, target interface{}) error {
-			s := holder.(*string)
-			st := target.(*core.AcmeStatus)
-			*st = core.AcmeStatus(*s)
-			return nil
-		}
-		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
-	case *core.OCSPStatus:
-		binder := func(holder, target interface{}) error {
-			s := holder.(*string)
-			st := target.(*core.OCSPStatus)
-			*st = core.OCSPStatus(*s)
-			return nil
-		}
-		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
-	default:
-		return gorp.CustomScanner{}, false
-	}
-}
-
-func NewDbMap(driver, dbName string) (dbMap *gorp.DbMap, err error) {
-	db, err := sql.Open(driver, dbName)
-	if err != nil {
-		return
-	}
-	if err = db.Ping(); err != nil {
-		return
-	}
-
-	dialect, ok := dialectMap[driver].(gorp.Dialect)
-	if !ok {
-		err = fmt.Errorf("Couldn't find dialect for %s", driver)
-		return
-	}
-
-	dbMap = &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: boulderTypeConverter{}}
-	return
 }
 
 // SQLLogger adapts the AuditLogger to a format GORP can use.
@@ -185,7 +73,6 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 		bucket: make(map[string]interface{}),
 	}
 
-	ssa.initTables()
 	return
 }
 
@@ -197,27 +84,6 @@ func (ssa *SQLStorageAuthority) SetSQLDebug(state bool) {
 		// Enable logging
 		ssa.dbMap.TraceOn("SQL: ", &SQLLogger{blog.GetAuditLogger()})
 	}
-}
-
-// initTables constructs the table map for the ORM. If you want to also create
-// the tables, call CreateTablesIfNotExists.
-func (ssa *SQLStorageAuthority) initTables() {
-	regTable := ssa.dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "ID")
-	regTable.SetVersionCol("LockCol")
-	regTable.ColMap("Key").SetMaxSize(1024).SetNotNull(true)
-
-	pendingAuthzTable := ssa.dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
-	pendingAuthzTable.SetVersionCol("LockCol")
-	pendingAuthzTable.ColMap("Challenges").SetMaxSize(1536)
-
-	authzTable := ssa.dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
-	authzTable.ColMap("Challenges").SetMaxSize(1536)
-
-	ssa.dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
-	ssa.dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
-	ssa.dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
-	ssa.dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
-	ssa.dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID")
 }
 
 // CreateTablesIfNotExists instructs the ORM to create any missing tables.
@@ -358,7 +224,12 @@ func (ssa *SQLStorageAuthority) GetRegistration(id int64) (reg core.Registration
 		err = fmt.Errorf("No registrations with ID %d", id)
 		return
 	}
-	reg = *regObj.(*core.Registration)
+	regPtr, ok := regObj.(*core.Registration)
+	if !ok {
+		err = fmt.Errorf("Invalid cast")
+	}
+
+	reg = *regPtr
 	return
 }
 
@@ -430,19 +301,19 @@ func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) 
 
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
-func (ssa *SQLStorageAuthority) GetCertificate(serial string) (cert []byte, err error) {
+func (ssa *SQLStorageAuthority) GetCertificate(serial string) ([]byte, error) {
 	if len(serial) != 32 {
-		err = errors.New("Invalid certificate serial " + serial)
-		return
+		err := fmt.Errorf("Invalid certificate serial %s", serial)
+		return nil, err
 	}
 
-	var certificate core.Certificate
-	err = ssa.dbMap.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial = :serial",
-		map[string]interface{}{"serial": serial})
+	certObj, err := ssa.dbMap.Get(core.Certificate{}, serial)
 	if err != nil {
-		return
+		return nil, err
 	}
-	return certificate.DER, nil
+
+	cert := certObj.(*core.Certificate)
+	return cert.DER, err
 }
 
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
@@ -463,16 +334,16 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 	return
 }
 
-func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (output core.Registration, err error) {
+func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return reg, err
 	}
 
 	err = tx.Insert(&reg)
 	if err != nil {
 		tx.Rollback()
-		return
+		return reg, err
 	}
 
 	err = tx.Commit()
@@ -552,27 +423,28 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err e
 	return
 }
 
-func (ssa *SQLStorageAuthority) NewPendingAuthorization() (id string, err error) {
+func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
 	}
 
 	// Check that it doesn't exist already
-	id = core.NewToken()
-	for existingPending(tx, id) || existingFinal(tx, id) {
-		id = core.NewToken()
+	authz.ID = core.NewToken()
+	for existingPending(tx, authz.ID) || existingFinal(tx, authz.ID) {
+		authz.ID = core.NewToken()
 	}
 
 	// Insert a stub row in pending
-	pending_authz := &pendingauthzModel{Authorization: core.Authorization{ID: id}}
-	err = tx.Insert(pending_authz)
+	pending_authz := pendingauthzModel{Authorization: authz}
+	err = tx.Insert(&pending_authz)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
 	err = tx.Commit()
+	output = pending_authz.Authorization
 	return
 }
 
@@ -686,6 +558,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		Digest:         digest,
 		DER:            certDER,
 		Issued:         time.Now(),
+		Expires:        parsedCertificate.NotAfter,
 	}
 	certStatus := &core.CertificateStatus{
 		SubscriberApproved: false,

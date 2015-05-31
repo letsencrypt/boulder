@@ -63,7 +63,7 @@ else
   run go test ${dirlist}
 fi
 
-run python test/integration-test.py
+[ ${FAILURE} == 0 ] && run python test/integration-test.py
 
 unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1  gofmt -l)
 if [ "x${unformatted}" != "x" ] ; then

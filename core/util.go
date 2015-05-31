@@ -28,6 +28,12 @@ import (
 	"strings"
 )
 
+// Package Variables Variables
+
+// BuildID is set by the compiler (using -ldflags "-X core.BuildID $(git rev-parse --short HEAD)")
+// and is used by GetBuildID
+var BuildID string
+
 // Errors
 
 type NotSupportedError string
@@ -127,6 +133,11 @@ func KeyDigestEquals(j, k crypto.PublicKey) bool {
 
 // URLs that automatically marshal/unmarshal to JSON strings
 type AcmeURL url.URL
+
+func (u AcmeURL) String() string {
+	url := url.URL(u)
+	return url.String()
+}
 
 func (u AcmeURL) PathSegments() (segments []string) {
 	segments = strings.Split(u.Path, "/")
@@ -231,4 +242,13 @@ func StringToSerial(serial string) (*big.Int, error) {
 	}
 	_, err := fmt.Sscanf(serial, "%032x", &serialNum)
 	return &serialNum, err
+}
+
+// GetBuildID identifies what build is running.
+func GetBuildID() (retID string) {
+	retID = BuildID
+	if retID == "" {
+		retID = "Unspecified"
+	}
+	return
 }

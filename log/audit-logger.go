@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"log/syslog"
 	"os"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -149,12 +151,21 @@ func (log *AuditLogger) auditAtLevel(level, msg string) (err error) {
 	return log.logAtLevel(level, text)
 }
 
+// Return short format caller info for panic events, skipping to before the
+// panic handler.
+func caller(level int) string {
+	_, file, line, _ := runtime.Caller(level)
+	splits := strings.Split(file, "/")
+	filename := splits[len(splits)-1]
+	return fmt.Sprintf("%s:%d:", filename, line)
+}
+
 // AuditPanic catches panicking executables. This method should be added
 // in a defer statement as early as possible
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *AuditLogger) AuditPanic() {
 	if err := recover(); err != nil {
-		log.Audit(fmt.Sprintf("Panic: %v", err))
+		log.Audit(fmt.Sprintf("Panic: %s %v", caller(4), err))
 	}
 }
 

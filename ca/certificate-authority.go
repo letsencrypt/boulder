@@ -21,11 +21,12 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
+	cfsslOCSP "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/remote"
 )
 
+// Config defines the JSON configuration file schema
 type Config struct {
 	Server       string
 	AuthKey      string
@@ -44,6 +45,8 @@ type Config struct {
 	// How long issue certificates are valid for, should match expiry field
 	// in cfssl config.
 	Expiry string
+	// The maximum number of subjectAltNames in a single certificate
+	MaxNames int
 }
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -51,7 +54,7 @@ type Config struct {
 type CertificateAuthorityImpl struct {
 	profile        string
 	Signer         signer.Signer
-	OCSPSigner     ocsp.Signer
+	OCSPSigner     cfsslOCSP.Signer
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
 	DB             core.CertificateAuthorityDatabase
@@ -59,6 +62,7 @@ type CertificateAuthorityImpl struct {
 	Prefix         int // Prepended to the serial number
 	ValidityPeriod time.Duration
 	NotAfter       time.Time
+	MaxNames       int
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -111,7 +115,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 
 	// Set up our OCSP signer. Note this calls for both the issuer cert and the
 	// OCSP signing cert, which are the same in our case.
-	ocspSigner, err := ocsp.NewSigner(issuer, issuer, issuerKey,
+	ocspSigner, err := cfsslOCSP.NewSigner(issuer, issuer, issuerKey,
 		time.Hour*24*4)
 	if err != nil {
 		return nil, err
@@ -137,6 +141,8 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 	if err != nil {
 		return nil, err
 	}
+
+	ca.MaxNames = config.MaxNames
 
 	return ca, nil
 }
@@ -168,17 +174,38 @@ func loadIssuerKey(filename string) (issuerKey crypto.Signer, err error) {
 	return
 }
 
-func dupeNames(names []string) bool {
+func uniqueNames(names []string) (unique []string) {
 	nameMap := make(map[string]int, len(names))
 	for _, name := range names {
 		nameMap[name] = 1
 	}
-	if len(names) != len(nameMap) {
-		return true
+
+	unique = make([]string, 0, len(nameMap))
+	for name := range nameMap {
+		unique = append(unique, name)
 	}
-	return false
+	return
 }
 
+// GenerateOCSP produces a new OCSP response and returns it
+func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
+	cert, err := x509.ParseCertificate(xferObj.CertDER)
+	if err != nil {
+		return nil, err
+	}
+
+	signRequest := cfsslOCSP.SignRequest{
+		Certificate: cert,
+		Status:      xferObj.Status,
+		Reason:      xferObj.Reason,
+		RevokedAt:   xferObj.RevokedAt,
+	}
+
+	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
+	return ocspResponse, err
+}
+
+// RevokeCertificate revokes the trust of the Cert referred to by the provided Serial.
 func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode int) (err error) {
 	certDER, err := ca.SA.GetCertificate(serial)
 	if err != nil {
@@ -189,7 +216,7 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 		return err
 	}
 
-	signRequest := ocsp.SignRequest{
+	signRequest := cfsslOCSP.SignRequest{
 		Certificate: cert,
 		Status:      string(core.OCSPStatusRevoked),
 		Reason:      reasonCode,
@@ -208,22 +235,34 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
-	// XXX Take in authorizations and verify that union covers CSR?
+	key, ok := csr.PublicKey.(crypto.PublicKey)
+	if !ok {
+		return emptyCert, fmt.Errorf("Invalid public key in CSR.")
+	}
+	if !core.GoodKey(key) {
+		return emptyCert, fmt.Errorf("Invalid public key in CSR.")
+	}
+
 	// Pull hostnames from CSR
-	hostNames := csr.DNSNames // DNSNames + CN from CSR
-	var commonName string
+	// Authorization is checked by the RA
+	commonName := ""
+	hostNames := make([]string, len(csr.DNSNames))
+	copy(hostNames, csr.DNSNames)
 	if len(csr.Subject.CommonName) > 0 {
 		commonName = csr.Subject.CommonName
+		hostNames = append(hostNames, csr.Subject.CommonName)
 	} else if len(hostNames) > 0 {
 		commonName = hostNames[0]
 	} else {
-		err = errors.New("Cannot issue a certificate without a hostname.")
+		err = fmt.Errorf("Cannot issue a certificate without a hostname.")
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
 
-	if dupeNames(hostNames) {
-		err = errors.New("Cannot issue a certificate with duplicate DNS names.")
+	// Collapse any duplicate names.  Note that this operation may re-order the names
+	hostNames = uniqueNames(hostNames)
+	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
+		err = errors.New(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
@@ -248,14 +287,14 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
 	if err = ca.PA.WillingToIssue(identifier); err != nil {
-		err = errors.New("Policy forbids issuing for name " + commonName)
+		err = fmt.Errorf("Policy forbids issuing for name %s", commonName)
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
 	for _, name := range hostNames {
 		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier); err != nil {
-			err = errors.New("Policy forbids issuing for name " + name)
+			err = fmt.Errorf("Policy forbids issuing for name %s", name)
 			ca.log.AuditErr(err)
 			return emptyCert, err
 		}
@@ -324,5 +363,5 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	ca.DB.Commit()
-	return cert, nil
+	return cert, err
 }

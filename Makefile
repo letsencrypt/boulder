@@ -4,12 +4,18 @@
 OBJDIR = ./bin
 
 OBJECTS = activity-monitor \
+	admin-revoker \
 	boulder \
 	boulder-ca \
 	boulder-ra \
 	boulder-sa \
 	boulder-va \
-	boulder-wfe
+	boulder-wfe \
+	ocsp-updater \
+	ocsp-responder
+
+REVID = $(shell git symbolic-ref --short HEAD):$(shell git rev-parse --short HEAD)
+BUILD_ID_VAR = github.com/letsencrypt/boulder/core.BuildID
 
 .PHONY: all build
 all: build
@@ -22,7 +28,7 @@ pre:
 
 # Compile each of the binaries
 $(OBJECTS): pre
-	go build -o ./bin/$@ cmd/$@/main.go
+	go build -o ./bin/$@ -ldflags "-X $(BUILD_ID_VAR) $(REVID)" cmd/$@/main.go
 
 clean:
 	rm -f $(OBJDIR)/*

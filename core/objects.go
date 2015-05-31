@@ -100,7 +100,7 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 // to account keys.
 type Registration struct {
 	// Unique identifier
-	ID int64 `json:"-" db:"id"`
+	ID int64 `json:"id" db:"id"`
 
 	// Account key to which the details are attached
 	Key jose.JsonWebKey `json:"key" db:"jwk"`
@@ -113,8 +113,6 @@ type Registration struct {
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty" db:"agreement"`
-
-	Thumbprint string `json:"thumbprint" db:"thumbprint"`
 
 	LockCol int64 `json:"-"`
 }
@@ -250,7 +248,7 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 // of an account key holder to act on behalf of a domain.  This
 // struct is intended to be used both internally and for JSON
 // marshaling on the wire.  Any fields that should be suppressed
-// on the wire (e.g., ID) must be made empty before marshaling.
+// on the wire (e.g., ID, regID) must be made empty before marshaling.
 type Authorization struct {
 	// An identifier for this authorization, unique across
 	// authorizations and certificates within this instance.
@@ -260,7 +258,7 @@ type Authorization struct {
 	Identifier AcmeIdentifier `json:"identifier,omitempty" db:"identifier"`
 
 	// The registration ID associated with the authorization
-	RegistrationID int64 `json:"-" db:"registrationID"`
+	RegistrationID int64 `json:"regId,omitempty" db:"registrationID"`
 
 	// The status of the validation of this authorization
 	Status AcmeStatus `json:"status,omitempty" db:"status"`
@@ -279,10 +277,6 @@ type Authorization struct {
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
 	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
-
-	// The client may provide contact URIs to allow the server
-	// to push information to it.
-	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 }
 
 // Fields of this type get encoded and decoded JOSE-style, in base64url encoding
@@ -321,18 +315,16 @@ func (jb *JsonBuffer) UnmarshalJSON(data []byte) (err error) {
 type Certificate struct {
 	RegistrationID int64 `db:"registrationID"`
 
-	// The parsed version of DER. Useful for extracting things like serial number.
-	ParsedCertificate *x509.Certificate `db:"-"`
-
 	// The revocation status of the certificate.
 	// * "valid" - not revoked
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`
 
-	Serial string    `db:"serial"`
-	Digest string    `db:"digest"`
-	DER    []byte    `db:"der"`
-	Issued time.Time `db:"issued"`
+	Serial  string    `db:"serial"`
+	Digest  string    `db:"digest"`
+	DER     []byte    `db:"der"`
+	Issued  time.Time `db:"issued"`
+	Expires time.Time `db:"expires"`
 }
 
 // CertificateStatus structs are internal to the server. They represent the
@@ -399,4 +391,12 @@ type DeniedCsr struct {
 	ID int `db:"id"`
 
 	Names string `db:"names"`
+}
+
+// OCSPSigningRequest is a transfer object representing an OCSP Signing Request
+type OCSPSigningRequest struct {
+	CertDER   []byte
+	Status    string
+	Reason    int
+	RevokedAt time.Time
 }

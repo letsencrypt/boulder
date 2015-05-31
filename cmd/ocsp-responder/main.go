@@ -1,4 +1,4 @@
-// Copyright 2014 ISRG.  All rights reserved
+// Copyright 2015 ISRG.  All rights reserved
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -14,12 +14,15 @@ import (
 	"net/http"
 	"time"
 
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"golang.org/x/crypto/ocsp"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/sa"
 )
 
 type timedHandler struct {
@@ -71,8 +74,8 @@ type DBSource struct {
 	caKeyHash []byte
 }
 
-func NewSourceFromDatabase(db *sql.DB, caKeyHash []byte) (src *DBSource, err error) {
-	src = &DBSource{db: db, caKeyHash: caKeyHash}
+func NewSourceFromDatabase(dbMap *gorp.DbMap, caKeyHash []byte) (src *DBSource, err error) {
+	src = &DBSource{db: dbMap.Db, caKeyHash: caKeyHash}
 	return
 }
 
@@ -97,7 +100,7 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 }
 
 func main() {
-	app := cmd.NewAppShell("boulder-ocsp")
+	app := cmd.NewAppShell("boulder-ocsp-responder")
 	app.Action = func(c cmd.Config) {
 		// Set up logging
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
@@ -113,10 +116,9 @@ func main() {
 
 		go cmd.ProfileCmd("OCSP", stats)
 
-		// Connect to the DB
-		db, err := sql.Open(c.OCSP.DBDriver, c.OCSP.DBName)
+		// Configure DB
+		dbMap, err := sa.NewDbMap(c.OCSPResponder.DBDriver, c.OCSPResponder.DBName)
 		cmd.FailOnError(err, "Could not connect to database")
-		defer db.Close()
 
 		// Load the CA's key and hash it
 		caCertDER, err := cmd.LoadCert(c.CA.IssuerCert)
@@ -128,14 +130,17 @@ func main() {
 		caKeyHash := h.Sum(nil)
 
 		// Construct source from DB
-		src, err := NewSourceFromDatabase(db, caKeyHash)
+		src, err := NewSourceFromDatabase(dbMap, caKeyHash)
 		cmd.FailOnError(err, "Could not connect to OCSP database")
 
 		// Configure HTTP
-		http.Handle(c.OCSP.Path, cfocsp.Responder{Source: src})
+		http.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
+
+		auditlogger.Info(app.VersionString())
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
-		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
+		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.OCSPResponder.ListenAddress))
+		err = http.ListenAndServe(c.OCSPResponder.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

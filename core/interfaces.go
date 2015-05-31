@@ -81,6 +81,7 @@ type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest, int64, time.Time) (Certificate, error)
 	RevokeCertificate(string, int) error
+	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
 
 type PolicyAuthority interface {
@@ -102,7 +103,7 @@ type StorageAdder interface {
 	NewRegistration(Registration) (Registration, error)
 	UpdateRegistration(Registration) error
 
-	NewPendingAuthorization() (string, error)
+	NewPendingAuthorization(Authorization) (Authorization, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
 	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error
@@ -124,5 +125,5 @@ type CertificateAuthorityDatabase interface {
 	Begin() error
 	Commit() error
 	Rollback() error
-	IncrementAndGetSerial() (int, error)
+	IncrementAndGetSerial() (int64, error)
 }
