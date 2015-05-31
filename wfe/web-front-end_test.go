@@ -219,7 +219,7 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization
 
 type MockCA struct{}
 
-func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64, valid time.Time) (cert core.Certificate, err error) {
+func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (cert core.Certificate, err error) {
 	// Return a basic certificate so NewCertificate can continue
 	randomCertDer, _ := hex.DecodeString(GoodTestCert)
 	cert.DER = randomCertDer
