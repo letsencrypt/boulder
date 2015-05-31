@@ -94,8 +94,6 @@ eROL1ve1vmQF3kjrMPhhK2kr6qdWnTE5XlPllVSZFQenSTzj98AO
 		"a3"
 )
 
-var wfe = NewWebFrontEndImpl()
-
 type MockSA struct {
 	// empty
 }
@@ -253,14 +251,22 @@ func signRequest(t *testing.T, req string) string {
 	return ret
 }
 
-func TestSetup(t *testing.T) {
-	// Very first test to run, now everyone can enjoy HandlePaths()
-	// for header checks.
-	wfe.HandlePaths()
+func setupWFE() WebFrontEndImpl {
+	wfe := NewWebFrontEndImpl()
+
+	wfe.NewReg = wfe.BaseURL + NewRegPath
+	wfe.RegBase = wfe.BaseURL + RegPath
+	wfe.NewAuthz = wfe.BaseURL + NewAuthzPath
+	wfe.AuthzBase = wfe.BaseURL + AuthzPath
+	wfe.NewCert = wfe.BaseURL + NewCertPath
+	wfe.CertBase = wfe.BaseURL + CertPath
+
+	return wfe
 }
 
 func TestIndex(t *testing.T) {
-	wfe.NewReg = "/acme/new-reg"
+	wfe := setupWFE()
+
 	responseWriter := httptest.NewRecorder()
 
 	url, _ := url.Parse("/")
@@ -284,6 +290,8 @@ func TestIndex(t *testing.T) {
 // TODO: Write additional test cases for:
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
+	wfe := setupWFE()
+
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl()
 	ra.SA = &MockSA{}
@@ -481,6 +489,8 @@ func TestIssueCertificate(t *testing.T) {
 }
 
 func TestChallenge(t *testing.T) {
+	wfe := setupWFE()
+
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	responseWriter := httptest.NewRecorder()
@@ -542,6 +552,8 @@ func TestChallenge(t *testing.T) {
 }
 
 func TestNewRegistration(t *testing.T) {
+	wfe := setupWFE()
+
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
@@ -647,6 +659,8 @@ func TestNewRegistration(t *testing.T) {
 }
 
 func TestAuthorization(t *testing.T) {
+	wfe := setupWFE()
+
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
@@ -741,6 +755,8 @@ func TestAuthorization(t *testing.T) {
 }
 
 func TestRegistration(t *testing.T) {
+	wfe := setupWFE()
+
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
