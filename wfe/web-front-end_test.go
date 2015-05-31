@@ -439,7 +439,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error creating new cert\"}")
+		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert\"}")
 
 	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
 	// {
@@ -459,7 +459,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error creating new cert\"}")
+		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert\"}")
 
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
