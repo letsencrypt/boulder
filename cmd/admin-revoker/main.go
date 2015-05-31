@@ -91,14 +91,17 @@ func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.Certificat
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
 
+	certObj, err := tx.Get(core.Certificate{}, serial)
+	if err != nil {
+		return
+	}
+	certificate, ok := certObj.(*core.Certificate)
+	if !ok {
+		err = fmt.Errorf("Cast failure")
+		return
+	}
 	if deny {
 		// Retrieve DNS names associated with serial
-		var certificate core.Certificate
-		err = tx.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial = :serial",
-			map[string]interface{}{"serial": serial})
-		if err != nil {
-			return
-		}
 		var cert *x509.Certificate
 		cert, err = x509.ParseCertificate(certificate.DER)
 		if err != nil {
@@ -110,7 +113,7 @@ func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.Certificat
 		}
 	}
 
-	err = cac.RevokeCertificate(serial, reasonCode)
+	err = cac.RevokeCertificate(certificate.Serial, reasonCode)
 	if err != nil {
 		return
 	}
@@ -126,7 +129,7 @@ func revokeByReg(regID int, reasonCode int, deny bool, cac rpc.CertificateAuthor
 	}
 
 	var certs []core.Certificate
-	_, err = tx.Select(certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
+	_, err = tx.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
 		return
 	}
