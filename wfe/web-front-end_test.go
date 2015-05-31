@@ -310,8 +310,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		// TODO: I think this is wrong. The CSR in the payload above was created by openssl and should be valid.
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error creating new cert\"}")
+		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert\"}")
 }
 
 type MockRegistrationAuthority struct{}
