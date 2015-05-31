@@ -6,10 +6,31 @@
 package core
 
 import (
+	"encoding/json"
+	"net/url"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
 )
+
+func TestRegistrationUupdate(t *testing.T) {
+	oldURL, _ := url.Parse("http://old.invalid")
+	newURL, _ := url.Parse("http://new.invalid")
+
+	reg := Registration{
+		ID:        1,
+		Contact:   []AcmeURL{AcmeURL(*oldURL)},
+		Agreement: "",
+	}
+	update := Registration{
+		Contact:   []AcmeURL{AcmeURL(*newURL)},
+		Agreement: "totally!",
+	}
+
+	reg.MergeUpdate(update)
+	test.Assert(t, len(reg.Contact) == 1 && reg.Contact[0] == update.Contact[0], "Contact was not updated %v != %v")
+	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
+}
 
 func TestSanityCheck(t *testing.T) {
 	chall := Challenge{Type: ChallengeTypeSimpleHTTPS, Status: StatusValid}
@@ -58,4 +79,18 @@ func TestSanityCheck(t *testing.T) {
 	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
 	chall.S = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
 	test.Assert(t, chall.IsSane(true), "IsSane should be true")
+
+	chall = Challenge{Type: "bogus", Status: StatusPending}
+	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
+}
+
+func TestJsonBufferUnmarshal(t *testing.T) {
+	testStruct := struct {
+		Buffer JsonBuffer
+	}{}
+
+	notValidBase64 := []byte(`{"Buffer":"!!!!"}`)
+	err := json.Unmarshal(notValidBase64, &testStruct)
+	test.Assert(t, err != nil, "Should have choked on invalid base64")
 }

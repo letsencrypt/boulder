@@ -69,7 +69,7 @@ func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.A
 
 	ch := cmd.AmqpChannel(c.AMQP.Server)
 
-	cac, err := rpc.NewCertificateAuthorityClient(c.AMQP.CA.Client, c.AMQP.CA.Server, ch)
+	cac, err := rpc.NewCertificateAuthorityClient("revoker->CA", c.AMQP.CA.Server, ch)
 	cmd.FailOnError(err, "Unable to create CA client")
 
 	dbMap, err := sa.NewDbMap(c.Revoker.DBDriver, c.Revoker.DBName)

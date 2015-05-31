@@ -46,7 +46,8 @@
     "issuerCert": "test/test-ca.pem",
     "_comment": "This should only be present in testMode. In prod use an HSM.",
     "issuerKey": "test/test-ca.key",
-    "expiry": "8760h"
+    "expiry": "8760h",
+    "maxNames": 1000
   },
 
   "sa": {
