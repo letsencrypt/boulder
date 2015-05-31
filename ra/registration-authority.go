@@ -252,7 +252,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Create the certificate and log the result
 	var cert core.Certificate
-	if cert, err = ra.CA.IssueCertificate(*csr, regID, earliestExpiry); err != nil {
+	if cert, err = ra.CA.IssueCertificate(*csr, regID, earliestExpiry, req.ValidityDays); err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}

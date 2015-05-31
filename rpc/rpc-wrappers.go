@@ -440,6 +440,7 @@ func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, im
 			Bytes          []byte
 			RegID          int64
 			EarliestExpiry time.Time
+			ValidityDays   int
 		}
 		err := json.Unmarshal(req, &icReq)
 		if err != nil {
@@ -455,7 +456,7 @@ func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, im
 			return nil // XXX
 		}
 
-		cert, err := impl.IssueCertificate(*csr, icReq.RegID, icReq.EarliestExpiry)
+		cert, err := impl.IssueCertificate(*csr, icReq.RegID, icReq.EarliestExpiry, ValidityDays)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodIssueCertificate, err, csr)
@@ -528,14 +529,17 @@ func NewCertificateAuthorityClient(clientQueue, serverQueue string, channel *amq
 	return
 }
 
-func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (cert core.Certificate, err error) {
+func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time, validityDays int) (cert core.Certificate, err error) {
 	var icReq struct {
 		Bytes          []byte
 		RegID          int64
 		EarliestExpiry time.Time
+		ValidityDays   int
 	}
 	icReq.Bytes = csr.Raw
 	icReq.RegID = regID
+	icReq.EarliestExpiry = earliestExpiry
+	icReq.ValidityDays = validityDays
 	data, err := json.Marshal(icReq)
 	if err != nil {
 		return

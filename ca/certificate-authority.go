@@ -232,7 +232,7 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
 // enforcing all policies.
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time, validityDays int) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
 	key, ok := csr.PublicKey.(crypto.PublicKey)
@@ -267,7 +267,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
-	notAfter := time.Now().Add(ca.ValidityPeriod)
+	validity := ca.ValidityPeriod
+	if validityDays > 0 {
+		validity = validityDays * 24 * time.Hour
+	}
+	notAfter := time.Now().Add(validity)
+	// TODO actually make this the notAfter date of the certificate
 
 	if ca.NotAfter.Before(notAfter) {
 		err = errors.New("Cannot issue a certificate that expires after the intermediate certificate.")

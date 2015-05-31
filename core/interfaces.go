@@ -79,7 +79,7 @@ type ValidationAuthority interface {
 
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest, int64, time.Time) (Certificate, error)
+	IssueCertificate(x509.CertificateRequest, int64, time.Time, int) (Certificate, error)
 	RevokeCertificate(string, int) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }

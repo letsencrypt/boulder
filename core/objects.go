@@ -65,11 +65,13 @@ type AcmeIdentifier struct {
 // JSON unmarshal to properly unmarshal client requests.)
 type CertificateRequest struct {
 	CSR            *x509.CertificateRequest // The CSR
+	ValidityDays   int                      // Number of days the cert should be valid for
 	Authorizations []AcmeURL                // Links to Authorization over the account key
 }
 
 type rawCertificateRequest struct {
 	CSR            JsonBuffer `json:"csr"`            // The encoded CSR
+	ValidityDays   int        `json:"validityDays"`   // Days of validity
 	Authorizations []AcmeURL  `json:"authorizations"` // Authorizations
 }
 
