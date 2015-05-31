@@ -165,7 +165,14 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, nil)
 	pa := policy.NewPolicyAuthorityImpl()
 	cadb := &MockCADatabase{}
-	ca := ca.CertificateAuthorityImpl{Signer: signer, SA: sa, PA: pa, DB: cadb, ValidityPeriod: time.Hour * 8760, NotAfter: time.Now().Add(time.Hour * 8761)}
+	ca := ca.CertificateAuthorityImpl{
+		Signer:         signer,
+		SA:             sa,
+		PA:             pa,
+		DB:             cadb,
+		ValidityPeriod: time.Hour * 2190,
+		NotAfter:       time.Now().Add(time.Hour * 8761),
+	}
 	csrDER, _ := hex.DecodeString(CSR_HEX)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 
@@ -186,7 +193,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 
 	AuthzFinal = AuthzUpdated
 	AuthzFinal.Status = "valid"
-	AuthzFinal.Expires = time.Now().Add(24 * time.Hour)
+	AuthzFinal.Expires = time.Now().Add(365 * 24 * time.Hour)
 	AuthzFinal.Challenges[0].Status = "valid"
 
 	return &ca, va, sa, &ra
@@ -288,10 +295,6 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
 	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTPS, "Challenge 0 not SimpleHTTPS")
 	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
-
-	// If we get to here, we'll use this authorization for the next test
-	fmt.Printf("AuthzInitial: %+v\n", authz)
-	AuthzInitial = authz
 
 	// TODO Test failure cases
 	t.Log("DONE TestNewAuthorization")
