@@ -166,12 +166,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.CommonName = csr.Subject.CommonName
 	logEvent.Names = csr.DNSNames
 
-	if len(csr.DNSNames) == 0 {
-		err = core.MalformedRequestError("CSR contains no DNS names")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
 	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
 	if err != nil {
 		logEvent.Error = err.Error()
