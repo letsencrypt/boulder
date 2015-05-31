@@ -522,7 +522,7 @@ func TestRejectTooManyNames(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 
-	// Test that the CA collapses duplicate names
+	// Test that the CA rejects a CSR with too many names
 	csrDER, _ := hex.DecodeString(TOO_MANY_NAME_CSR_HEX)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
 	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
