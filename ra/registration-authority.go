@@ -166,7 +166,20 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.CommonName = csr.Subject.CommonName
 	logEvent.Names = csr.DNSNames
 
-	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
+	// Validate that authorization key is authorized for all domains
+	names := make([]string, len(csr.DNSNames))
+	copy(names, csr.DNSNames)
+	if len(csr.Subject.CommonName) > 0 {
+		names = append(names, csr.Subject.CommonName)
+	}
+
+	if len(names) == 0 {
+		err = core.UnauthorizedError("CSR has no names in it")
+		logEvent.Error = err.Error()
+		return emptyCert, err
+	}
+
+	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(names)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
@@ -219,12 +232,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		verificationMethods = append(verificationMethods, method)
 	}
 	logEvent.VerificationMethods = verificationMethods
-
-	// Validate that authorization key is authorized for all domains
-	names := csr.DNSNames
-	if len(csr.Subject.CommonName) > 0 {
-		names = append(names, csr.Subject.CommonName)
-	}
 
 	// Validate all domains
 	for _, name := range names {

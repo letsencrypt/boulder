@@ -558,6 +558,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		Digest:         digest,
 		DER:            certDER,
 		Issued:         time.Now(),
+		Expires:        parsedCertificate.NotAfter,
 	}
 	certStatus := &core.CertificateStatus{
 		SubscriberApproved: false,

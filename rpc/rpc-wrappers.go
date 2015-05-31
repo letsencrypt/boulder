@@ -54,7 +54,6 @@ const (
 	MethodUpdatePendingAuthorization  = "UpdatePendingAuthorization"  // SA
 	MethodFinalizeAuthorization       = "FinalizeAuthorization"       // SA
 	MethodAddCertificate              = "AddCertificate"              // SA
-	MethodAddDeniedCSR                = "AddDeniedCSR"                // SA
 	MethodAlreadyDeniedCSR            = "AlreadyDeniedCSR"            // SA
 )
 
