@@ -167,6 +167,12 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
+	registration, err := ra.SA.GetRegistration(regID)
+	if err != nil {
+		logEvent.Error = err.Error()
+		return emptyCert, err
+	}
+
 	// Verify the CSR
 	csr := req.CSR
 	if err = core.VerifyCSR(csr); err != nil {
