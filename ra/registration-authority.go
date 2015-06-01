@@ -64,7 +64,7 @@ type certificateRequestEvent struct {
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
 	if !core.GoodKey(init.Key.Key) {
-		return core.Registration{}, fmt.Errorf("Invalid public key.")
+		return core.Registration{}, core.UnauthorizedError("Invalid public key.")
 	}
 	reg = core.Registration{
 		RecoveryToken: core.NewToken(),
@@ -74,12 +74,15 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 
 	// Store the authorization object, then return it
 	reg, err = ra.SA.NewRegistration(reg)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+	}
 	return
 }
 
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
 	if regID <= 0 {
-		err = fmt.Errorf("Invalid registration ID")
+		err = core.InternalServerError("Invalid registration ID")
 		return authz, err
 	}
 
@@ -87,6 +90,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Check that the identifier is present and appropriate
 	if err = ra.PA.WillingToIssue(identifier); err != nil {
+		err = core.UnauthorizedError(err.Error())
 		return authz, err
 	}
 
@@ -104,6 +108,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Get a pending Auth first so we can get our ID back, then update with challenges
 	authz, err = ra.SA.NewPendingAuthorization(authz)
 	if err != nil {
+		err = core.InternalServerError(err.Error())
 		return authz, err
 	}
 
@@ -114,7 +119,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		challenges[i].URI = core.AcmeURL(*challengeURI)
 
 		if !challenges[i].IsSane(false) {
-			err = fmt.Errorf("Challenge didn't pass sanity check: %+v", challenges[i])
+			err = core.InternalServerError(fmt.Sprintf("Challenge didn't pass sanity check: %+v", challenges[i]))
 			return authz, err
 		}
 	}
@@ -124,12 +129,14 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Store the authorization object, then return it
 	err = ra.SA.UpdatePendingAuthorization(authz)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+	}
 	return authz, err
 }
 
-func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	emptyCert := core.Certificate{}
-	var err error
 	var logEventResult string
 
 	// Assume the worst
@@ -150,7 +157,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}()
 
 	if regID <= 0 {
-		err = fmt.Errorf("Invalid registration ID")
+		err = core.InternalServerError("Invalid registration ID")
 		return emptyCert, err
 	}
 
@@ -192,6 +199,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	registration, err := ra.SA.GetRegistration(regID)
 	if err != nil {
+		err = core.InternalServerError(err.Error())
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
@@ -251,14 +259,15 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	var cert core.Certificate
 	if cert, err = ra.CA.IssueCertificate(*csr, regID, earliestExpiry); err != nil {
+		err = core.InternalServerError(err.Error())
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
+		err = core.InternalServerError(err.Error())
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
@@ -277,6 +286,9 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 	base.MergeUpdate(update)
 	reg = base
 	err = ra.SA.UpdateRegistration(base)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+	}
 	return
 }
 
@@ -291,6 +303,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 
 	// Store the updated version
 	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
+		err = core.InternalServerError(err.Error())
 		return
 	}
 
@@ -300,18 +313,19 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) error {
+func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.CA.RevokeCertificate(serialString, 0)
+	err = ra.CA.RevokeCertificate(serialString, 0)
 
 	// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 	if err != nil {
 		ra.log.Audit(fmt.Sprintf("Revocation error - %s - %s", serialString, err))
-	} else {
-		ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
+		err = core.InternalServerError(err.Error())
+		return
 	}
 
-	return err
+	ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
+	return
 }
 
 func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) error {

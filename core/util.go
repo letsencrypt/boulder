@@ -36,6 +36,7 @@ var BuildID string
 
 // Errors
 
+type InternalServerError string
 type NotSupportedError string
 type MalformedRequestError string
 type UnauthorizedError string
@@ -44,6 +45,7 @@ type SyntaxError string
 type SignatureValidationError string
 type CertificateIssuanceError string
 
+func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
 func (e MalformedRequestError) Error() string    { return string(e) }
 func (e UnauthorizedError) Error() string        { return string(e) }

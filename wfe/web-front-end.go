@@ -62,6 +62,18 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 }
 
+func statusCodeFromError(err interface{}) int {
+	// Populate these as needed.  We probably should trim the error list in util.go
+	switch err.(type) {
+	case core.MalformedRequestError:
+		return http.StatusBadRequest
+	case core.UnauthorizedError:
+		return http.StatusForbidden
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl() WebFrontEndImpl {
 	logger := blog.GetAuditLogger()
@@ -268,7 +280,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	reg, err := wfe.RA.NewRegistration(init)
 	if err != nil {
-		wfe.sendError(response, "Error creating new registration", err, http.StatusInternalServerError)
+		wfe.sendError(response, "Error creating new registration", err, statusCodeFromError(err))
 		return
 	}
 
@@ -325,9 +337,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	// Create new authz and return
 	authz, err := wfe.RA.NewAuthorization(init, currReg.ID)
 	if err != nil {
-		wfe.sendError(response,
-			"Error creating new authz", err,
-			http.StatusInternalServerError)
+		wfe.sendError(response, "Error creating new authz", err, statusCodeFromError(err))
 		return
 	}
 
@@ -418,10 +428,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 
 	err = wfe.RA.RevokeCertificate(*parsedCertificate)
 	if err != nil {
-		wfe.sendError(response,
-			"Failed to revoke certificate",
-			err,
-			http.StatusInternalServerError)
+		wfe.sendError(response, "Failed to revoke certificate", err, statusCodeFromError(err))
 	} else {
 		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
 		// incr revoked cert stat
@@ -468,9 +475,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// RA for secondary validation.
 	cert, err := wfe.RA.NewCertificate(init, reg.ID)
 	if err != nil {
-		wfe.sendError(response,
-			"Error creating new cert", err,
-			http.StatusBadRequest)
+		wfe.sendError(response, "Error creating new cert", err, statusCodeFromError(err))
 		return
 	}
 
@@ -557,7 +562,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		// Ask the RA to update this authorization
 		updatedAuthz, err := wfe.RA.UpdateAuthorization(authz, challengeIndex, challengeResponse)
 		if err != nil {
-			wfe.sendError(response, "Unable to update authorization", err, http.StatusInternalServerError)
+			wfe.sendError(response, "Unable to update authorization", err, statusCodeFromError(err))
 			return
 		}
 
@@ -638,7 +643,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	// Ask the RA to update this authorization.
 	updatedReg, err := wfe.RA.UpdateRegistration(currReg, currReg)
 	if err != nil {
-		wfe.sendError(response, "Unable to update registration", err, http.StatusInternalServerError)
+		wfe.sendError(response, "Unable to update registration", err, statusCodeFromError(err))
 		return
 	}
 
