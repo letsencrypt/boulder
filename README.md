@@ -189,8 +189,4 @@ WebFE -> Client:  revocation
 TODO
 ----
 
-* Ensure that distributed mode works with multiple processes
-* Add message signing and verification to the AMQP message layer
-* Add monitoring / syslog
-* Factor out policy layer (e.g., selection of challenges)
-* Add persistent storage
+See [the issues list](https://github.com/letsencrypt/boulder/issues)

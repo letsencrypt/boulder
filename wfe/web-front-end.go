@@ -173,8 +173,6 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		wfe.log.Debug(fmt.Sprintf("POST not signed: %v", parsedJws))
 		return nil, nil, reg, errors.New("POST not signed")
 	}
-	// TODO: Look up key in registrations.
-	// https://github.com/letsencrypt/boulder/issues/187
 	key := parsedJws.Signatures[0].Header.JsonWebKey
 	payload, err := parsedJws.Verify(key)
 	if err != nil {
@@ -191,7 +189,6 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		}
 	}
 
-	// TODO Return JWS body
 	return []byte(payload), key, reg, nil
 }
 
@@ -488,8 +485,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	serial := parsedCertificate.SerialNumber
 	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, serial.Rsh(serial, 64))
 
-	// TODO The spec says a client should send an Accept: application/pkix-cert
-	// header; either explicitly insist or tolerate
+	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
 	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
@@ -725,7 +721,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 			return
 		}
 
-		// TODO: Content negotiation
+		// TODO Content negotiation
 		response.Header().Set("Content-Type", "application/pkix-cert")
 		response.Header().Add("Link", link(IssuerPath, "up"))
 		response.WriteHeader(http.StatusOK)

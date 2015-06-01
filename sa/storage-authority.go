@@ -282,8 +282,6 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 // serial number and returns the first certificate whose full serial number is
 // lexically greater than that id. This allows clients to query on the known
 // sequential half of our serial numbers to enumerate all certificates.
-// TODO: Implement error when there are multiple certificates with the same
-// sequential half.
 func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert []byte, err error) {
 	if len(shortSerial) != 16 {
 		err = errors.New("Invalid certificate short serial " + shortSerial)
@@ -368,7 +366,6 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 		return
 	}
 
-	// TODO: Also update crls.
 	ocspResp := &core.OcspResponse{Serial: serial, CreatedAt: time.Now(), Response: ocspResponse}
 	err = tx.Insert(ocspResp)
 	if err != nil {
@@ -575,6 +572,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		return
 	}
 
+	// TODO Verify that the serial number doesn't yet exist
 	err = tx.Insert(cert)
 	if err != nil {
 		tx.Rollback()

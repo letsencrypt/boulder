@@ -155,7 +155,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}
 
 	// Verify the CSR
-	// TODO: Verify that other aspects of the CSR are appropriate
 	csr := req.CSR
 	if err = core.VerifyCSR(csr); err != nil {
 		logEvent.Error = err.Error()
