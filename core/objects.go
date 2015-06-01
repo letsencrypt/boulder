@@ -299,10 +299,14 @@ type Authorization struct {
 }
 
 // This method needs to be called before marshaling an Authorization
-// object for public consumption, in order suppress the "expires" field.
-// The Go time.Time type does not have proper behavior with respect to omitempty
+// object for public consumption, in order suppress various fields.
+// With regard to "expires" in particular: The Go time.Time type does
+// not have proper behavior with respect to omitempty
 // https://github.com/golang/go/issues/4357
 func (authz *Authorization) PrepareForPublicMarshal() {
+	authz.ID = ""
+	authz.RegistrationID = 0
+
 	if !authz.Expires.IsZero() {
 		t := authz.Expires
 		authz.RawExpires = &t

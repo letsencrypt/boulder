@@ -315,7 +315,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) er
 
 func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) error {
 	// Consider validation successful if any of the combinations
-	// specified in the authorizatoin has been fulfilled
+	// specified in the authorization has been fulfilled
 	validated := map[int]bool{}
 	for i, ch := range authz.Challenges {
 		if ch.Status == core.StatusValid {
