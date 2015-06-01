@@ -78,28 +78,17 @@ In Boulder, these components are represented by Go interfaces.  This allows us t
 
 Internally, the logic of the system is based around two types of objects, authorizations and certificates, mapping directly to the resources of the same name in ACME.
 
-Requests from ACME clients result in new objects and changes objects.  The Storage Authority maintains persistent copies of the current set of objects.
+Requests from ACME clients result in new objects and changes to objects.  The Storage Authority maintains persistent copies of the current set of objects.
 
 Objects are also passed from one component to another on change events.  For example, when a client provides a successful response to a validation challenge, it results in a change to the corresponding validation object.  The Validation Authority forward the new validation object to the Storage Authority for storage, and to the Registration Authority for any updates to a related Authorization object.
 
 Boulder supports distributed operation using AMQP as a message bus (e.g., via RabbitMQ).  For components that you want to be remote, it is necessary to instantiate a "client" and "server" for that component.  The client implements the component's Go interface, while the server has the actual logic for the component.  More details in `amqp-rpc.go`.
 
-Files
------
+The full details of how the various ACME operations happen in Boulder are laid out in [DESIGN.md](https://github.com/letsencrypt/boulder/blob/master/DESIGN.md)
 
-* `interfaces.go` - Interfaces to the components, implemented in:
-  * `web-front-end.go`
-  * `registration-authority.go`
-  * `validation-authority.go`
-  * `certificate-authority.go`
-  * `storage-authority.go`
-* `amqp-rpc.go` - A lightweight RPC framework overlaid on AMQP
-  * `rpc-wrappers.go` - RPC wrappers for the various component type
-* `objects.go` - Objects that are passed between components
-* `util.go` - Miscellaneous utility methods
-* `boulder_test.go` - Unit tests
 
-Dependencies:
+Dependencies
+------------
 
 All dependencies are vendorized under the Godeps directory,
 both to [make dependency management
@@ -122,67 +111,6 @@ git add Godeps
 git commit
 # Assuming you had no other iptables rules, re-enable port 80.
 sudo iptables -D OUTPUT 1
-```
-
-ACME Processing
----------------
-
-```
-Client -> WebFE:  challengeRequest
-WebFE -> RA:      NewAuthorization(AuthorizationRequest)
-RA -> RA:         [ select challenges ]
-RA -> RA:         [ create Validations with challenges ]
-RA -> RA:         [ create Authorization with Validations ]
-RA -> SA:         Update(Authorization.ID, Authorization)
-RA -> WebFE:      Authorization
-WebFE -> WebFE:   [ create challenge from Authorization ]
-WebFE -> WebFE:   [ generate nonce and add ]
-WebFE -> Client:  challenge
-
-----------
-
-Client -> WebFE:  authorizationRequest
-WebFE -> WebFE:   [ look up authorization based on nonce ]
-WebFE -> WebFE:   [ verify authorization signature ]
-WebFE -> RA:      UpdateAuthorization(Authorization)
-RA -> RA:         [ add responses to authorization ]
-RA -> SA:         Update(Authorization.ID, Authorization)
-RA -> VA:         UpdateValidations(Authorization)
-WebFE -> Client:  defer(authorizationID)
-
-VA -> SA:         Update(Authorization.ID, Authorization)
-VA -> RA:         OnValidationUpdate(Authorization)
-RA -> RA:         [ check that validation sufficient ]
-RA -> RA:         [ finalize authorization ]
-RA -> SA:         Update(Authorization.ID, Authorization)
-RA -> WebFE:      OnAuthorizationUpdate(Authorization)
-Client -> WebFE:  statusRequest
-WebFE -> Client:  error / authorization
-
-----------
-
-Client -> WebFE:  certificateRequest
-WebFE -> WebFE:   [ verify authorization signature ]
-WebFE -> RA:      NewCertificate(CertificateRequest)
-RA -> RA:         [ verify CSR signature ]
-RA -> RA:         [ verify authorization to issue ]
-RA -> RA:         [ select CA based on issuer ]
-RA -> CA:         IssueCertificate(CertificateRequest)
-CA -> RA:         Certificate
-RA -> CA:         [ look up ancillary data ]
-RA -> WebFE:      AcmeCertificate
-WebFE -> Client:  certificate
-
-----------
-
-Client -> WebFE:  revocationRequest
-WebFE -> WebFE:   [ verify authorization signature ]
-WebFE -> RA:      RevokeCertificate(RevocationRequest)
-RA -> RA:         [ verify authorization ]
-RA -> CA:         RevokeCertificate(Certificate)
-CA -> RA:         RevocationResult
-RA -> WebFE:      RevocationResult
-WebFE -> Client:  revocation
 ```
 
 
