@@ -679,14 +679,14 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 			return
 		}
 
-		// Verify that key is either the account key or cert key
-		reg, regErr := wfe.SA.GetRegistrationByKey(*requestKey)
+		// Verify that key is either the cert key or account key
 		parsedCertificate, err := x509.ParseCertificate(cert.DER)
 		if err != nil {
 			wfe.log.Debug("Couldn't parse cert in revoke request.")
 			wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 			return
 		}
+		reg, regErr := wfe.SA.GetRegistrationByKey(*requestKey)
 		if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) ||
 			(regErr == nil && reg.ID == cert.RegistrationID)) {
 			wfe.sendError(response, "Signing key not authorized to revoke this cert", err, http.StatusUnauthorized)
