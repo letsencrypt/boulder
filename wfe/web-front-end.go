@@ -528,6 +528,24 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		wfe.sendError(response, "Method not allowed", "", http.StatusMethodNotAllowed)
 		return
 
+	case "GET":
+		challenge := authz.Challenges[challengeIndex]
+		jsonReply, err := json.Marshal(challenge)
+		if err != nil {
+			wfe.sendError(response, "Failed to marshal challenge", err, http.StatusInternalServerError)
+			return
+		}
+
+		authzURL := wfe.AuthzBase + string(authz.ID)
+		challengeURL := url.URL(challenge.URI)
+		response.Header().Add("Location", challengeURL.String())
+		response.Header().Set("Content-Type", "application/json")
+		response.Header().Add("Link", link(authzURL, "up"))
+		response.WriteHeader(http.StatusAccepted)
+		if _, err := response.Write(jsonReply); err != nil {
+			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		}
+
 	case "POST":
 		body, _, currReg, err := wfe.verifyPOST(request, true)
 		if err != nil {
