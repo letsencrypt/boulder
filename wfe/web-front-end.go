@@ -336,8 +336,6 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
 	authzURL := wfe.AuthzBase + string(authz.ID)
-	authz.ID = ""
-	authz.RegistrationID = 0
 	authz.PrepareForPublicMarshal()
 	responseBody, err := json.Marshal(authz)
 	if err != nil {
@@ -621,10 +619,6 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 		return
 
 	case "GET":
-		// Blank out ID and regID
-		authz.ID = ""
-		authz.RegistrationID = 0
-
 		authz.PrepareForPublicMarshal()
 		jsonReply, err := json.Marshal(authz)
 		if err != nil {
