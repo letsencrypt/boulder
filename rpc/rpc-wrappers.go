@@ -811,7 +811,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 	rpc.Handle(MethodMarkCertificateRevoked, func(req []byte) (response []byte) {
 		var revokeReq struct {
 			Serial       string
-			OcspResponse []byte
+			OCSPResponse []byte
 			ReasonCode   int
 		}
 
@@ -822,7 +822,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		}
 
 		// Error explicitly ignored since response is nil anyway
-		err := impl.MarkCertificateRevoked(revokeReq.Serial, revokeReq.OcspResponse, revokeReq.ReasonCode)
+		err := impl.MarkCertificateRevoked(revokeReq.Serial, revokeReq.OCSPResponse, revokeReq.ReasonCode)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodMarkCertificateRevoked, err, revokeReq)
@@ -941,12 +941,12 @@ func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.C
 func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
 	var revokeReq struct {
 		Serial       string
-		OcspResponse []byte
+		OCSPResponse []byte
 		ReasonCode   int
 	}
 
 	revokeReq.Serial = serial
-	revokeReq.OcspResponse = ocspResponse
+	revokeReq.OCSPResponse = ocspResponse
 	revokeReq.ReasonCode = reasonCode
 
 	data, err := json.Marshal(revokeReq)

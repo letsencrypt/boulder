@@ -80,7 +80,7 @@ func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.A
 
 func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
 	sort.Strings(names)
-	deniedCSR := &core.DeniedCsr{Names: strings.ToLower(strings.Join(names, ","))}
+	deniedCSR := &core.DeniedCSR{Names: strings.ToLower(strings.Join(names, ","))}
 
 	err = tx.Insert(deniedCSR)
 	return
