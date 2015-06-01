@@ -319,7 +319,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		}
 		return
 	}
-	if currReg.Agreement == "" {
+	if currReg.Agreement != wfe.SubscriberAgreementURL {
 		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 		return
 	}
@@ -448,7 +448,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		}
 		return
 	}
-	if reg.Agreement == "" {
+	if reg.Agreement != wfe.SubscriberAgreementURL {
 		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 		return
 	}
@@ -534,7 +534,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			}
 			return
 		}
-		if currReg.Agreement == "" {
+		if currReg.Agreement != wfe.SubscriberAgreementURL {
 			wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 			return
 		}
