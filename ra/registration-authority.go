@@ -161,8 +161,13 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
+	registration, err := ra.SA.GetRegistration(regID)
+	if err != nil {
+		logEvent.Error = err.Error()
+		return emptyCert, err
+	}
+
 	// Verify the CSR
-	// TODO: Verify that other aspects of the CSR are appropriate
 	csr := req.CSR
 	if err = core.VerifyCSR(csr); err != nil {
 		logEvent.Error = err.Error()
@@ -197,13 +202,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	registration, err := ra.SA.GetRegistration(regID)
-	if err != nil {
-		err = core.InternalServerError(err.Error())
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
 	if core.KeyDigestEquals(csr.PublicKey, registration.Key) {
 		err = core.MalformedRequestError("Certificate public key must be different than account key")
 		return emptyCert, err
@@ -218,7 +216,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		id := lastPathSegment(url)
 		authz, err := ra.SA.GetAuthorization(id)
 		if err != nil || // Couldn't find authorization
-			authz.RegistrationID != registration.ID ||
+			authz.RegistrationID != registration.ID || // Not for this account
 			authz.Status != core.StatusValid || // Not finalized or not successful
 			authz.Expires.Before(now) || // Expired
 			authz.Identifier.Type != core.IdentifierDNS {
@@ -320,21 +318,32 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) (e
 	// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 	if err != nil {
 		ra.log.Audit(fmt.Sprintf("Revocation error - %s - %s", serialString, err))
-		err = core.InternalServerError(err.Error())
-		return
+		return err
 	}
 
 	ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
-	return
+	return err
 }
 
 func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) error {
-	// Check to see whether the updated validations are sufficient
-	// Current policy is to accept if any validation succeeded
-	for _, val := range authz.Challenges {
-		if val.Status == core.StatusValid {
+	// Consider validation successful if any of the combinations
+	// specified in the authorization has been fulfilled
+	validated := map[int]bool{}
+	for i, ch := range authz.Challenges {
+		if ch.Status == core.StatusValid {
+			validated[i] = true
+		}
+	}
+	for _, combo := range authz.Combinations {
+		comboValid := true
+		for _, i := range combo {
+			if !validated[i] {
+				comboValid = false
+				break
+			}
+		}
+		if comboValid {
 			authz.Status = core.StatusValid
-			break
 		}
 	}
 

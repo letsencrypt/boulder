@@ -31,6 +31,8 @@ import (
 )
 
 const (
+	agreementURL = "http://example.invalid/terms"
+
 	test1KeyPublicJSON = `
 	{
 		"kty":"RSA",
@@ -112,7 +114,7 @@ func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
 	var parsedKey jose.JsonWebKey
 	parsedKey.UnmarshalJSON(keyJSON)
 
-	return core.Registration{ID: id, Key: parsedKey, Agreement: "yup"}, nil
+	return core.Registration{ID: id, Key: parsedKey, Agreement: agreementURL}, nil
 }
 
 func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
@@ -122,7 +124,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 	test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
-		return core.Registration{ID: 1, Key: jwk, Agreement: "yup"}, nil
+		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL}, nil
 	}
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
@@ -131,7 +133,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 	}
 
 	// Return a fake registration
-	return core.Registration{ID: 1, Agreement: "yup"}, nil
+	return core.Registration{ID: 1, Agreement: agreementURL}, nil
 }
 
 func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
@@ -145,8 +147,8 @@ func (sa *MockSA) GetCertificate(string) ([]byte, error) {
 	return []byte{}, nil
 }
 
-func (sa *MockSA) GetCertificateByShortSerial(string) ([]byte, error) {
-	return []byte{}, nil
+func (sa *MockSA) GetCertificateByShortSerial(string) (core.Certificate, error) {
+	return core.Certificate{}, nil
 }
 
 func (sa *MockSA) GetCertificateStatus(string) (core.CertificateStatus, error) {
@@ -260,6 +262,7 @@ func setupWFE() WebFrontEndImpl {
 	wfe.AuthzBase = wfe.BaseURL + AuthzPath
 	wfe.NewCert = wfe.BaseURL + NewCertPath
 	wfe.CertBase = wfe.BaseURL + CertPath
+	wfe.SubscriberAgreementURL = agreementURL
 
 	return wfe
 }
@@ -556,7 +559,7 @@ func TestNewRegistration(t *testing.T) {
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
-	wfe.SubscriberAgreementURL = "https://letsencrypt.org/be-good"
+	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -634,15 +637,15 @@ func TestNewRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [https://letsencrypt.org/be-good]\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL ["+agreementURL+"]\"}")
 
 	responseWriter.Body.Reset()
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
-		Body:   makeBody(signRequest(t, "{\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/be-good\"}")),
+		Body:   makeBody(signRequest(t, "{\"contact\":[\"tel:123456789\"],\"agreement\":\""+agreementURL+"\"}")),
 	})
 
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"id\":0,\"key\":{\"kty\":\"RSA\",\"n\":\"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ\",\"e\":\"AAEAAQ\"},\"recoveryToken\":\"\",\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/be-good\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"id\":0,\"key\":{\"kty\":\"RSA\",\"n\":\"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ\",\"e\":\"AAEAAQ\"},\"recoveryToken\":\"\",\"contact\":[\"tel:123456789\"],\"agreement\":\""+agreementURL+"\"}")
 	var reg core.Registration
 	err := json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
@@ -746,7 +749,7 @@ func TestAuthorization(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		"</acme/new-cert>;rel=\"next\"")
 
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"},\"expires\":\"0001-01-01T00:00:00Z\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}")
 
 	var authz core.Authorization
 	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
@@ -759,7 +762,7 @@ func TestRegistration(t *testing.T) {
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
-	wfe.SubscriberAgreementURL = "https://letsencrypt.org/be-good"
+	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
 
 	// Test invalid method
@@ -834,11 +837,11 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [https://letsencrypt.org/be-good]\"}")
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL ["+agreementURL+"]\"}")
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with registration up in the mock (with correct agreement URL)
-	result, err = signer.Sign([]byte("{\"agreement\":\"https://letsencrypt.org/be-good\"}"))
+	result, err = signer.Sign([]byte("{\"agreement\":\"" + agreementURL + "\"}"))
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
 		Body:   makeBody(result.FullSerialize()),

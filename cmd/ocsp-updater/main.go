@@ -75,7 +75,7 @@ func processResponse(cac rpc.CertificateAuthorityClient, tx *gorp.Transaction, s
 	timeStamp := time.Now()
 
 	// Record the response.
-	ocspResp := &core.OcspResponse{Serial: serial, CreatedAt: timeStamp, Response: ocspResponse}
+	ocspResp := &core.OCSPResponse{Serial: serial, CreatedAt: timeStamp, Response: ocspResponse}
 	err = tx.Insert(ocspResp)
 	if err != nil {
 		return err

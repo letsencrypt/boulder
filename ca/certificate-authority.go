@@ -267,24 +267,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
-	notAfter := time.Now().Add(ca.ValidityPeriod)
-
-	if ca.NotAfter.Before(notAfter) {
-		err = errors.New("Cannot issue a certificate that expires after the intermediate certificate.")
-		ca.log.WarningErr(err)
-		return emptyCert, err
-	}
-
-	if earliestExpiry.Before(notAfter) {
-		err = errors.New(fmt.Sprintf("Cannot issue a certificate that expires after the shortest underlying authorization. [%v] [%v]", earliestExpiry, notAfter))
-		ca.log.WarningErr(err)
-		return emptyCert, err
-	}
-
-	if len(hostNames) == 0 {
-		hostNames = []string{commonName}
-	}
-
+	// Verify that names are allowed by policy
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
 	if err = ca.PA.WillingToIssue(identifier); err != nil {
 		err = fmt.Errorf("Policy forbids issuing for name %s", commonName)
@@ -298,6 +281,20 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 			ca.log.AuditErr(err)
 			return emptyCert, err
 		}
+	}
+
+	notAfter := time.Now().Add(ca.ValidityPeriod)
+
+	if ca.NotAfter.Before(notAfter) {
+		err = errors.New("Cannot issue a certificate that expires after the intermediate certificate.")
+		ca.log.WarningErr(err)
+		return emptyCert, err
+	}
+
+	if earliestExpiry.Before(notAfter) {
+		err = errors.New(fmt.Sprintf("Cannot issue a certificate that expires after the shortest underlying authorization. [%v] [%v]", earliestExpiry, notAfter))
+		ca.log.WarningErr(err)
+		return emptyCert, err
 	}
 
 	// Convert the CSR to PEM

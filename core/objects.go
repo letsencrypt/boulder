@@ -42,6 +42,10 @@ const (
 )
 
 const (
+	CertActionRevoke = "revoke"
+)
+
+const (
 	IdentifierDNS = IdentifierType("dns")
 )
 
@@ -94,6 +98,17 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 		CSR:            cr.CSR.Raw,
 		Authorizations: cr.Authorizations,
 	})
+}
+
+// An ACME Certificate Action Request is a message that is POSTed
+// to a certificate URL to request some action on that certificate.
+type CertActionRequest struct {
+	// Right now, the only action is "revoke"
+	Action string `json:"action"`
+
+	// The SHA-256 fingerprint of the cert to be acted on, to prevent
+	// replay between certificate URLs
+	Fingerprint JsonBuffer `json:"fingerprint"`
 }
 
 // Registration objects represent non-public metadata attached
@@ -230,7 +245,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 }
 
 // Merge a client-provide response to a challenge with the issued challenge
-// TODO: Remove return type from this method
+// Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	// Only override fields that are supposed to be client-provided
 	if len(ch.Path) == 0 {
@@ -265,7 +280,11 @@ type Authorization struct {
 
 	// The date after which this authorization will be no
 	// longer be considered valid
-	Expires time.Time `json:"expires,omitempty" db:"expires"`
+	Expires time.Time `json:"-" db:"expires"`
+
+	// This field is used only for marshaling, because time.Time
+	// does not have proper omitempty behavior (see below)
+	RawExpires *time.Time `json:"expires,omitempty" db:"-"`
 
 	// An array of challenges objects used to validate the
 	// applicant's control of the identifier.  For authorizations
@@ -277,6 +296,21 @@ type Authorization struct {
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
 	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
+}
+
+// This method needs to be called before marshaling an Authorization
+// object for public consumption, in order suppress various fields.
+// With regard to "expires" in particular: The Go time.Time type does
+// not have proper behavior with respect to omitempty
+// https://github.com/golang/go/issues/4357
+func (authz *Authorization) PrepareForPublicMarshal() {
+	authz.ID = ""
+	authz.RegistrationID = 0
+
+	if !authz.Expires.IsZero() {
+		t := authz.Expires
+		authz.RawExpires = &t
+	}
 }
 
 // Fields of this type get encoded and decoded JOSE-style, in base64url encoding
@@ -320,11 +354,11 @@ type Certificate struct {
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`
 
-	Serial  string    `db:"serial"`
-	Digest  string    `db:"digest"`
-	DER     []byte    `db:"der"`
-	Issued  time.Time `db:"issued"`
-	Expires time.Time `db:"expires"`
+	Serial  string     `db:"serial"`
+	Digest  string     `db:"digest"`
+	DER     JsonBuffer `db:"der"`
+	Issued  time.Time  `db:"issued"`
+	Expires time.Time  `db:"expires"`
 }
 
 // CertificateStatus structs are internal to the server. They represent the
@@ -361,7 +395,7 @@ type CertificateStatus struct {
 // A large table of OCSP responses. This contains all historical OCSP
 // responses we've signed, is append-only, and is likely to get quite
 // large. We'll probably want administratively truncate it at some point.
-type OcspResponse struct {
+type OCSPResponse struct {
 	ID int `db:"id"`
 
 	// serial: Same as certificate serial.
@@ -376,7 +410,7 @@ type OcspResponse struct {
 
 // A large table of signed CRLs. This contains all historical CRLs
 // we've signed, is append-only, and is likely to get quite large.
-type Crl struct {
+type CRL struct {
 	// serial: Same as certificate serial.
 	Serial string `db:"serial"`
 
@@ -384,10 +418,10 @@ type Crl struct {
 	CreatedAt time.Time `db:"createdAt"`
 
 	// crl: The encoded and signed CRL.
-	Crl string `db:"crl"`
+	CRL string `db:"crl"`
 }
 
-type DeniedCsr struct {
+type DeniedCSR struct {
 	ID int `db:"id"`
 
 	Names string `db:"names"`

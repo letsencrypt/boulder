@@ -22,7 +22,7 @@ import (
 // where ROLE covers:
 //  * RegistrationAuthority
 //  * ValidationAuthority
-//  * CertficateAuthority
+//  * CertificateAuthority
 //  * StorageAuthority
 //
 // For each one of these, the are ${ROLE}Client and ${ROLE}Server
@@ -785,10 +785,16 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetCertificateByShortSerial, err, req)
-		} else {
-			response = []byte(cert)
 		}
-		return response
+
+		jsonResponse, err := json.Marshal(cert)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetCertificateByShortSerial, err, req)
+			return nil
+		}
+
+		return jsonResponse
 	})
 
 	rpc.Handle(MethodGetCertificateStatus, func(req []byte) (response []byte) {
@@ -811,7 +817,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 	rpc.Handle(MethodMarkCertificateRevoked, func(req []byte) (response []byte) {
 		var revokeReq struct {
 			Serial       string
-			OcspResponse []byte
+			OCSPResponse []byte
 			ReasonCode   int
 		}
 
@@ -822,7 +828,7 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		}
 
 		// Error explicitly ignored since response is nil anyway
-		err := impl.MarkCertificateRevoked(revokeReq.Serial, revokeReq.OcspResponse, revokeReq.ReasonCode)
+		err := impl.MarkCertificateRevoked(revokeReq.Serial, revokeReq.OCSPResponse, revokeReq.ReasonCode)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodMarkCertificateRevoked, err, revokeReq)
@@ -923,8 +929,13 @@ func (cac StorageAuthorityClient) GetCertificate(id string) (cert []byte, err er
 	return
 }
 
-func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert []byte, err error) {
-	cert, err = cac.rpc.DispatchSync(MethodGetCertificateByShortSerial, []byte(id))
+func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert core.Certificate, err error) {
+	jsonCert, err := cac.rpc.DispatchSync(MethodGetCertificateByShortSerial, []byte(id))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonCert, &cert)
 	return
 }
 
@@ -941,12 +952,12 @@ func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.C
 func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
 	var revokeReq struct {
 		Serial       string
-		OcspResponse []byte
+		OCSPResponse []byte
 		ReasonCode   int
 	}
 
 	revokeReq.Serial = serial
-	revokeReq.OcspResponse = ocspResponse
+	revokeReq.OCSPResponse = ocspResponse
 	revokeReq.ReasonCode = reasonCode
 
 	data, err := json.Marshal(revokeReq)
