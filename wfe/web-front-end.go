@@ -117,11 +117,9 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 
 	tmpl := template.Must(template.New("body").Parse(`<html>
   <body>
-    <a href="https://letsencrypt.org/">Let's Encrypt</a> Certificate Authority
-    running <a href="https://github.com/letsencrypt/boulder">Boulder</a>,
-    a reference <a href="https://letsencrypt.github.io/acme-spec/">ACME</a>
-    server implementation. New registration is available at
-    <a href="{{.NewReg}}">{{.NewReg}}</a>.
+    This is an <a href="https://github.com/letsencrypt/acme-spec/">ACME</a>
+    Certificate Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>,
+    New registration is available at <a href="{{.NewReg}}">{{.NewReg}}</a>.
   </body>
 </html>
 `))
