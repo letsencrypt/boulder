@@ -45,7 +45,6 @@ def start():
           -ca-key test/test-ca.key \
           -config test/cfssl-config.json
         ''' % tempdir, shell=True, stdout=None)]
-    # time.sleep(30)
 
 def run_test():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
