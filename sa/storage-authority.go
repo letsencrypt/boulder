@@ -282,19 +282,15 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 // serial number and returns the first certificate whose full serial number is
 // lexically greater than that id. This allows clients to query on the known
 // sequential half of our serial numbers to enumerate all certificates.
-func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert []byte, err error) {
+func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert core.Certificate, err error) {
 	if len(shortSerial) != 16 {
 		err = errors.New("Invalid certificate short serial " + shortSerial)
 		return
 	}
 
-	var certificate core.Certificate
-	err = ssa.dbMap.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial LIKE :shortSerial",
+	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE serial LIKE :shortSerial",
 		map[string]interface{}{"shortSerial": shortSerial + "%"})
-	if err != nil {
-		return
-	}
-	return certificate.DER, nil
+	return
 }
 
 // GetCertificate takes a serial number and returns the corresponding

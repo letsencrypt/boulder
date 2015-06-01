@@ -147,8 +147,8 @@ func (sa *MockSA) GetCertificate(string) ([]byte, error) {
 	return []byte{}, nil
 }
 
-func (sa *MockSA) GetCertificateByShortSerial(string) ([]byte, error) {
-	return []byte{}, nil
+func (sa *MockSA) GetCertificateByShortSerial(string) (core.Certificate, error) {
+	return core.Certificate{}, nil
 }
 
 func (sa *MockSA) GetCertificateStatus(string) (core.CertificateStatus, error) {
