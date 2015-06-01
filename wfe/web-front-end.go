@@ -250,17 +250,16 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 
-	var init, unmarshalled core.Registration
-	err = json.Unmarshal(body, &unmarshalled)
+	var init core.Registration
+	err = json.Unmarshal(body, &init)
 	if err != nil {
 		wfe.sendError(response, "Error unmarshaling JSON", err, http.StatusBadRequest)
 		return
 	}
-	if len(unmarshalled.Agreement) > 0 && unmarshalled.Agreement != wfe.SubscriberAgreementURL {
-		wfe.sendError(response, fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", unmarshalled.Agreement, wfe.SubscriberAgreementURL), nil, http.StatusBadRequest)
+	if len(init.Agreement) > 0 && init.Agreement != wfe.SubscriberAgreementURL {
+		wfe.sendError(response, fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", init.Agreement, wfe.SubscriberAgreementURL), nil, http.StatusBadRequest)
 		return
 	}
-	init.MergeUpdate(unmarshalled)
 	init.Key = *key
 
 	reg, err := wfe.RA.NewRegistration(init)
@@ -626,11 +625,6 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		return
 	}
 
-	// MergeUpdate copies over only the fields that a client is allowed to modify.
-	// Note: The RA will also use MergeUpdate to filter out non-updateable fields,
-	// but we do it here too, so that/ input filtering happens as early in the
-	// request processing as possible.
-	currReg.MergeUpdate(update)
 	// Ask the RA to update this authorization.
 	updatedReg, err := wfe.RA.UpdateRegistration(currReg, currReg)
 	if err != nil {
