@@ -318,7 +318,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) (e
 	// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 	if err != nil {
 		ra.log.Audit(fmt.Sprintf("Revocation error - %s - %s", serialString, err))
-		return
+		return err
 	}
 
 	ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
@@ -326,12 +326,24 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) (e
 }
 
 func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) error {
-	// Check to see whether the updated validations are sufficient
-	// Current policy is to accept if any validation succeeded
-	for _, val := range authz.Challenges {
-		if val.Status == core.StatusValid {
+	// Consider validation successful if any of the combinations
+	// specified in the authorizatoin has been fulfilled
+	validated := map[int]bool{}
+	for i, ch := range authz.Challenges {
+		if ch.Status == core.StatusValid {
+			validated[i] = true
+		}
+	}
+	for _, combo := range authz.Combinations {
+		comboValid := true
+		for _, i := range combo {
+			if !validated[i] {
+				comboValid = false
+				break
+			}
+		}
+		if comboValid {
 			authz.Status = core.StatusValid
-			break
 		}
 	}
 
