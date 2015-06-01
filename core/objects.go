@@ -230,7 +230,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 }
 
 // Merge a client-provide response to a challenge with the issued challenge
-// TODO: Remove return type from this method
+// Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	// Only override fields that are supposed to be client-provided
 	if len(ch.Path) == 0 {

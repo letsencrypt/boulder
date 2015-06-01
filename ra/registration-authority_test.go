@@ -291,12 +291,11 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Identifier == AuthzRequest.Identifier, "Initial authz had wrong identifier")
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
-	// TODO Verify challenges
+	// TODO Verify that challenges are correct
 	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
 	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTPS, "Challenge 0 not SimpleHTTPS")
 	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
 
-	// TODO Test failure cases
 	t.Log("DONE TestNewAuthorization")
 }
 
@@ -322,7 +321,6 @@ func TestUpdateAuthorization(t *testing.T) {
 	simpleHttps := va.Argument.Challenges[0]
 	test.Assert(t, simpleHttps.Path == Response.Path, "simpleHttps changed")
 
-	// TODO Test failure cases
 	t.Log("DONE TestUpdateAuthorization")
 }
 
@@ -345,7 +343,6 @@ func TestOnValidationUpdate(t *testing.T) {
 	t.Log(" ~~> from VA: ", authzFromVA.Status)
 	t.Log(" ~~> from DB: ", dbAuthz.Status)
 
-	// TODO Test failure cases
 	t.Log("DONE TestOnValidationUpdate")
 }
 
