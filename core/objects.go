@@ -265,7 +265,11 @@ type Authorization struct {
 
 	// The date after which this authorization will be no
 	// longer be considered valid
-	Expires time.Time `json:"expires,omitempty" db:"expires"`
+	Expires time.Time `json:"-" db:"expires"`
+
+	// This field is used only for marshaling, because time.Time
+	// does not have proper omitempty behavior (see below)
+	RawExpires *time.Time `json:"expires,omitempty" db:"-"`
 
 	// An array of challenges objects used to validate the
 	// applicant's control of the identifier.  For authorizations
@@ -277,6 +281,17 @@ type Authorization struct {
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
 	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
+}
+
+// This method needs to be called before marshaling an Authorization
+// object for public consumption, in order suppress the "expires" field.
+// The Go time.Time type does not have proper behavior with respect to omitempty
+// https://github.com/golang/go/issues/4357
+func (authz *Authorization) PrepareForPublicMarshal() {
+	if !authz.Expires.IsZero() {
+		t := authz.Expires
+		authz.RawExpires = &t
+	}
 }
 
 // Fields of this type get encoded and decoded JOSE-style, in base64url encoding
