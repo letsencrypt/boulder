@@ -497,6 +497,11 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 }
 
 func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" && request.Method != "POST" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
 	// Check that the requested challenge exists within the authorization
 	found := false
 	var challengeIndex int
@@ -643,6 +648,11 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 }
 
 func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" && request.Method != "POST" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
 	// Requests to this handler should have a path that leads to a known authz
 	id := parseIDFromPath(request.URL.Path)
 	authz, err := wfe.SA.GetAuthorization(id)
@@ -686,6 +696,11 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" && request.Method != "POST" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
 	path := request.URL.Path
 	switch request.Method {
 	default:
@@ -727,10 +742,21 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 }
 
 func (wfe *WebFrontEndImpl) Terms(w http.ResponseWriter, r *http.Request) {
+	if request.Method != "GET" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
 	fmt.Fprintf(w, "You agree to do the right thing")
 }
 
 func (wfe *WebFrontEndImpl) Issuer(w http.ResponseWriter, r *http.Request) {
+	if request.Method != "GET" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// TODO Content negotiation
 	w.Header().Set("Content-Type", "application/pkix-cert")
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(wfe.IssuerCert); err != nil {
@@ -740,6 +766,11 @@ func (wfe *WebFrontEndImpl) Issuer(w http.ResponseWriter, r *http.Request) {
 
 // BuildID tells the requestor what build we're running.
 func (wfe *WebFrontEndImpl) BuildID(w http.ResponseWriter, r *http.Request) {
+	if request.Method != "GET" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	if _, err := fmt.Fprintln(w, core.GetBuildID()); err != nil {
