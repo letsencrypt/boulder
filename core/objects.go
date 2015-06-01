@@ -361,7 +361,7 @@ type CertificateStatus struct {
 // A large table of OCSP responses. This contains all historical OCSP
 // responses we've signed, is append-only, and is likely to get quite
 // large. We'll probably want administratively truncate it at some point.
-type OcspResponse struct {
+type OCSPResponse struct {
 	ID int `db:"id"`
 
 	// serial: Same as certificate serial.
@@ -376,7 +376,7 @@ type OcspResponse struct {
 
 // A large table of signed CRLs. This contains all historical CRLs
 // we've signed, is append-only, and is likely to get quite large.
-type Crl struct {
+type CRL struct {
 	// serial: Same as certificate serial.
 	Serial string `db:"serial"`
 
@@ -384,10 +384,10 @@ type Crl struct {
 	CreatedAt time.Time `db:"createdAt"`
 
 	// crl: The encoded and signed CRL.
-	Crl string `db:"crl"`
+	CRL string `db:"crl"`
 }
 
-type DeniedCsr struct {
+type DeniedCSR struct {
 	ID int `db:"id"`
 
 	Names string `db:"names"`
