@@ -679,6 +679,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
 			return
 		}
+		response.Header().Add("Link", link(wfe.NewCert, "next"))
 		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(jsonReply); err != nil {
