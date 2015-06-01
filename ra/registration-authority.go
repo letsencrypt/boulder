@@ -209,7 +209,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		id := lastPathSegment(url)
 		authz, err := ra.SA.GetAuthorization(id)
 		if err != nil || // Couldn't find authorization
-			authz.RegistrationID != registration.ID ||
+			authz.RegistrationID != registration.ID || // Not for this account
 			authz.Status != core.StatusValid || // Not finalized or not successful
 			authz.Expires.Before(now) || // Expired
 			authz.Identifier.Type != core.IdentifierDNS {
@@ -306,10 +306,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) er
 	// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 	if err != nil {
 		ra.log.Audit(fmt.Sprintf("Revocation error - %s - %s", serialString, err))
-	} else {
-		ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
+		return
 	}
 
+	ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
 	return err
 }
 
