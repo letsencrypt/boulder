@@ -575,7 +575,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	}
 
 	// Ask the RA to update this authorization.
-	updatedReg, err := wfe.RA.UpdateRegistration(currReg, currReg)
+	updatedReg, err := wfe.RA.UpdateRegistration(currReg, update)
 	if err != nil {
 		wfe.sendError(response, "Unable to update registration", err, statusCodeFromError(err))
 		return
