@@ -750,7 +750,7 @@ func (wfe *WebFrontEndImpl) Terms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Fprintf(w, "You agree to do the right thing")
+	fmt.Fprintf(w, "TODO: Add terms of use here")
 }
 
 func (wfe *WebFrontEndImpl) Issuer(w http.ResponseWriter, r *http.Request) {
