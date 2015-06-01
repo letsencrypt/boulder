@@ -261,3 +261,16 @@ func GetBuildID() (retID string) {
 	}
 	return
 }
+
+func UniqueNames(names []string) (unique []string) {
+	nameMap := make(map[string]int, len(names))
+	for _, name := range names {
+		nameMap[name] = 1
+	}
+
+	unique = make([]string, 0, len(nameMap))
+	for name := range nameMap {
+		unique = append(unique, name)
+	}
+	return
+}
