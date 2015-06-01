@@ -739,39 +739,39 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	}
 }
 
-func (wfe *WebFrontEndImpl) Terms(w http.ResponseWriter, r *http.Request) {
+func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Request) {
 	if request.Method != "GET" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
-	fmt.Fprintf(w, "TODO: Add terms of use here")
+	fmt.Fprintf(response, "TODO: Add terms of use here")
 }
 
-func (wfe *WebFrontEndImpl) Issuer(w http.ResponseWriter, r *http.Request) {
+func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.Request) {
 	if request.Method != "GET" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
 	// TODO Content negotiation
-	w.Header().Set("Content-Type", "application/pkix-cert")
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(wfe.IssuerCert); err != nil {
+	response.Header().Set("Content-Type", "application/pkix-cert")
+	response.WriteHeader(http.StatusOK)
+	if _, err := response.Write(wfe.IssuerCert); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
 
 // BuildID tells the requestor what build we're running.
-func (wfe *WebFrontEndImpl) BuildID(w http.ResponseWriter, r *http.Request) {
+func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.Request) {
 	if request.Method != "GET" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	if _, err := fmt.Fprintln(w, core.GetBuildID()); err != nil {
+	response.Header().Set("Content-Type", "text/plain")
+	response.WriteHeader(http.StatusOK)
+	if _, err := fmt.Fprintln(response, core.GetBuildID()); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
