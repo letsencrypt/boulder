@@ -534,18 +534,18 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			return
 		}
 
-		var challengeResponse core.Challenge
-		if err = json.Unmarshal(body, &challengeResponse); err != nil {
-			wfe.sendError(response, "Error unmarshaling challenge response", err, http.StatusBadRequest)
-			return
-		}
-
 		// Check that the registration ID matching the key used matches
 		// the registration ID on the authz object
 		if currReg.ID != authz.RegistrationID {
 			wfe.sendError(response, "User registration ID doesn't match registration ID in authorization",
 				fmt.Sprintf("User: %v != Authorization: %v", currReg.ID, authz.RegistrationID),
 				http.StatusForbidden)
+			return
+		}
+
+		var challengeResponse core.Challenge
+		if err = json.Unmarshal(body, &challengeResponse); err != nil {
+			wfe.sendError(response, "Error unmarshaling challenge response", err, http.StatusBadRequest)
 			return
 		}
 
