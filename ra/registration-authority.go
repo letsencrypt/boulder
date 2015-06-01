@@ -286,22 +286,13 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}
 
 	// Check issued certificate matches what was expected from the CSR
-	commonName := ""
-	hostNames := make([]string, len(csr.DNSNames))
-	copy(hostNames, csr.DNSNames)
-	if len(csr.Subject.CommonName) > 0 {
-		commonName = csr.Subject.CommonName
-		hostNames = append(hostNames, csr.Subject.CommonName)
-	} else if len(hostNames) > 0 {
-		commonName = hostNames[0]
-	}
-	hostNames = core.UniqueNames(hostNames)
+	hostNames := core.UniqueNames(csr.DNSNames)
 
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
 		err = core.MalformedRequestError("Generated certificate public key doesn't match CSR public key")
 		return emptyCert, err
 	}
-	if parsedCertificate.Subject.CommonName != commonName {
+	if len(csr.Subject.CommonName) > 0 && parsedCertificate.Subject.CommonName != csr.Subject.CommonName {
 		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
 		logEvent.Error = err.Error()
 		return emptyCert, err
