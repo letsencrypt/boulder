@@ -21,8 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"fmt"
-
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
@@ -488,16 +486,6 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Content-Type"),
 		"application/pkix-cert")
-
-	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
-	test.AssertNotError(t, err, "Failed to load key")
-	rsaKey, ok := key.(*rsa.PrivateKey)
-	test.Assert(t, ok, "Couldn't load RSA key")
-	signer, err := jose.NewSigner("RS256", rsaKey)
-	test.AssertNotError(t, err, "Failed to make signer")
-
-	result, err := signer.Sign([]byte(`{"csr":"MIH1MIGiAgEAMA0xCzAJBgNVBAYTAlVTMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAO08fOM1MAaMceCMzv1AhtpOvTprl5bDQu2DNG-Ut0iRKG4OwtEyBf_3fJpSQAWyESEOtSgYazCRb9zH51TVeu0CAwEAAaAwMC4GCSqGSIb3DQEJDjEhMB8wHQYDVR0RBBYwFIISbm90LWFuLWV4YW1wbGUuY29tMAsGCSqGSIb3DQEBCwNBACnKIj8PwHMsEOaOxOCM17y0ID5dnvrvyItLF31XL4Bu-aXQAqlO40jmdf0V-zk9HGra7G8KI1oLrIYyucZJ_A0=","authorizations":["valid"]}`))
-	fmt.Println(result.FullSerialize())
 }
 
 func TestChallenge(t *testing.T) {
