@@ -62,6 +62,13 @@ var questions = {
     }
   }],
 
+  anotherDomain: [{
+    type: "confirm",
+    name: "anotherDomain",
+    message: "Any more domains to validate?",
+    default: true,
+  }],
+
   readyToValidate: [{
     type: "input",
     name: "noop",
@@ -105,6 +112,8 @@ var state = {
   termsURL: null,
 
   domain: cliOptions.domain,
+  validatedDomains: [],
+  validAuthorizationURLs: [],
 
   newAuthorizationURL: "",
   authorizationURL: "",
@@ -392,14 +401,14 @@ function getReadyToValidate(err, resp, body) {
     }
   }
   if (/localhost/.test(state.newRegistrationURL)) {
-    var httpServer = http.createServer(httpResponder)
-    httpServer.listen(5001)
+    state.httpServer = http.createServer(httpResponder)
+    state.httpServer.listen(5001)
   } else {
-    var httpServer = https.createServer({
+    state.httpServer = https.createServer({
       cert: fs.readFileSync("temp-cert.pem"),
-      key: fs.readFileSync(state.keyFile) 
+      key: fs.readFileSync(state.keyFile)
     }, httpResponder)
-    httpServer.listen(443)
+    state.httpServer.listen(443)
   }
 
   cli.spinner("Validating domain");
@@ -417,6 +426,10 @@ function ensureValidation(err, resp, body) {
 
   var authz = JSON.parse(body);
 
+  if (authz.status != "pending") {
+    state.httpServer.close();
+  }
+
   if (authz.status == "pending") {
     setTimeout(function() {
       request.get(state.authorizationURL, {}, ensureValidation);
@@ -424,7 +437,23 @@ function ensureValidation(err, resp, body) {
   } else if (authz.status == "valid") {
     cli.spinner("Validating domain ... done", true);
     console.log();
-    getCertificate();
+    state.validatedDomains.push(state.domain);
+    state.validAuthorizationURLs.push(state.authorizationURL);
+
+    // If we're doing this for a CLI-provided domain, only one
+    // domain is supported; no need to loop back
+    if (cliOptions.domain) {
+      getCertificate();
+      return;
+    }
+
+    inquirer.prompt(questions.anotherDomain, function(answers) {
+      if (answers.anotherDomain) {
+        inquirer.prompt(questions.domain, getChallenges);
+      } else {
+        getCertificate();
+      }
+    });
   } else if (authz.status == "invalid") {
     console.log("The CA was unable to validate the file you provisioned:"  + body);
     process.exit(1);
@@ -437,10 +466,10 @@ function ensureValidation(err, resp, body) {
 
 function getCertificate() {
   cli.spinner("Requesting certificate");
-  var csr = crypto.generateCSR(state.certPrivateKey, state.domain);
+  var csr = crypto.generateCSR(state.certPrivateKey, state.validatedDomains);
   post(state.newCertificateURL, {
     csr: csr,
-    authorizations: [ state.authorizationURL ]
+    authorizations: state.validAuthorizationURLs
   }, downloadCertificate);
 }
 
