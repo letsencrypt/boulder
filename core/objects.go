@@ -69,16 +69,12 @@ func cmpExtKeyUsageSlice(a, b []x509.ExtKeyUsage) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	intA := make([]int, len(a))
-	intB := make([]int, len(b))
+	testMap := make(map[int]bool, len(a))
 	for i := range a {
-		intA[i] = int(a[i])
-		intB[i] = int(b[i])
+		testMap[int(a[i])] = true
 	}
-	sort.Ints(intA)
-	sort.Ints(intB)
-	for i := range a {
-		if a[i] != b[i] {
+	for i := range b {
+		if !testMap[int(b[i])] {
 			return false
 		}
 	}
@@ -397,6 +393,16 @@ type Certificate struct {
 	Expires time.Time  `db:"expires"`
 }
 
+// Certificate.MatchesCSR tests the contents of a generated certificate to
+// make sure that the PublicKey, CommonName, and DNSNames match those provided
+// in the CSR that was used to generate the certificate. It also checks the
+// following fields for:
+//		* notAfter is after earliestExpiry
+//		* notBefore is not more than 24 hours ago
+//		* BasicConstraintsValid is true
+//		* IsCA is false
+//		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
+//		* Subject only contains CommonName & Names
 func (cert Certificate) MatchesCSR(csr *x509.CertificateRequest, earliestExpiry time.Time) (err error) {
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
@@ -421,6 +427,13 @@ func (cert Certificate) MatchesCSR(csr *x509.CertificateRequest, earliestExpiry 
 	}
 	if !cmpStrSlice(parsedCertificate.DNSNames, hostNames) {
 		err = InternalServerError("Generated certificate DNSNames don't match CSR DNSNames")
+		return
+	}
+	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
+		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
+		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
+		len(parsedCertificate.Subject.PostalCode) > 0 || len(parsedCertificate.Subject.SerialNumber) > 0 {
+		err = InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
 		return
 	}
 	if parsedCertificate.NotAfter.After(earliestExpiry) {
