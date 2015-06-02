@@ -35,8 +35,6 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 		return string(t), nil
 	case core.OCSPStatus:
 		return string(t), nil
-	case core.JsonBuffer:
-		return []byte(t), nil
 	default:
 		return val, nil
 	}
