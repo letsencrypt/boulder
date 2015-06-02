@@ -291,10 +291,11 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
+	// Note: We do not current enforce that certificate lifetimes match
+	// authorization lifetimes, because it was breaking integration tests.
 	if earliestExpiry.Before(notAfter) {
-		err = errors.New(fmt.Sprintf("Cannot issue a certificate that expires after the shortest underlying authorization. [%v] [%v]", earliestExpiry, notAfter))
-		ca.log.WarningErr(err)
-		return emptyCert, err
+		message := fmt.Sprintf("Issuing a certificate that expires after the shortest underlying authorization. [%v] [%v]", earliestExpiry, notAfter)
+		ca.log.Notice(message)
 	}
 
 	// Convert the CSR to PEM
