@@ -13,8 +13,7 @@ def run(path):
     binary = os.path.join(tempdir, os.path.basename(path))
     cmd = 'go build -o %s %s' % (binary, path)
     print(cmd)
-    if subprocess.Popen(cmd, shell=True).wait() != 0:
-        sys.exit(1)
+    subprocess.Popen(cmd, shell=True).wait()
     return subprocess.Popen('''
         exec %s --config test/boulder-test-config.json
         ''' % binary, shell=True)
