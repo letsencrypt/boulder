@@ -9,11 +9,18 @@ import time
 
 tempdir = tempfile.mkdtemp()
 
+exit_status = 0
+
+def die():
+    global exit_status
+    exit_status = 1
+    sys.exit(1)
+
 def build(path):
     cmd = 'go build -o %s/%s %s' % (tempdir, os.path.basename(path), path)
     print(cmd)
     if subprocess.Popen(cmd, shell=True).wait() != 0:
-        sys.exit(1)
+        die()
 
 # A strange Go bug: If cfssl is up-to-date, we'll get a failure building
 # Boulder. Work around by touching cfssl.go.
@@ -48,41 +55,46 @@ def run_test():
             pass
         time.sleep(1)
 
+    if subprocess.Popen('npm install', shell=True).wait() != 0:
+        die()
+
     issue = subprocess.Popen('''
         node test.js --email foo@bar.com --agree true \
-          --domain foo.com --new-reg http://localhost:4300/acme/new-reg \
+          --domains foo.com --new-reg http://localhost:4300/acme/new-reg \
           --certKey %s/key.pem --cert %s/cert.der
         ''' % (tempdir, tempdir), shell=True)
     if issue.wait() != 0:
-        sys.exit(1)
+        die()
     revoke = subprocess.Popen('''
         node revoke.js %s/cert.der %s/key.pem http://localhost:4300/acme/revoke-cert/
         ''' % (tempdir, tempdir), shell=True)
     if revoke.wait() != 0:
-        sys.exit(1)
+        die()
 
 try:
     run_test()
+except Exception as e:
+    exit_status = 1
+    print e
 finally:
-    status = 0
     # Check whether boulder died. This can happen, for instance, if there was an
     # existing boulder already listening on the port.
     if boulder.poll() is not None:
         print("Boulder died")
-        status = 1
+        exit_status = 1
     else:
         boulder.kill()
 
     if cfssl.poll() is not None:
         print("CFSSL died")
-        status = 1
+        exit_status = 1
     else:
         cfssl.kill()
 
     shutil.rmtree(tempdir)
 
-    if status == 0:
+    if exit_status == 0:
         print("SUCCESS")
     else:
         print("FAILURE")
-    sys.exit(status)
+    sys.exit(exit_status)
