@@ -138,6 +138,10 @@ func (log *AuditLogger) logAtLevel(level, msg string) (err error) {
 		err = log.Writer.Info(msg)
 	case "Logging.Warning":
 		err = log.Writer.Warning(msg)
+	case "Logging.Notice":
+		err = log.Writer.Notice(msg)
+	default:
+		err = fmt.Errorf("Unknown logging level: %s", level)
 	}
 	return
 }

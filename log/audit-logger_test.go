@@ -7,8 +7,11 @@ package log
 
 import (
 	"errors"
+	"fmt"
 	"log/syslog"
+	"net"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/test"
@@ -187,4 +190,78 @@ func TestEmergencyExit(t *testing.T) {
 	audit.SetEmergencyExitFunc(func() { called = true })
 	audit.EmergencyExit("Emergency!")
 	test.AssertEquals(t, called, true)
+}
+
+func TestUnknownLoggingLevel(t *testing.T) {
+	t.Parallel()
+	stats, _ := statsd.NewNoopClient(nil)
+	audit, _ := Dial("", "", "tag", stats)
+
+	err := audit.logAtLevel("Logging.Unknown", "string")
+	test.AssertError(t, err, "Should have been unknown.")
+}
+
+func TestTransmission(t *testing.T) {
+	t.Parallel()
+
+	l, err := newUDPListener("127.0.0.1:0")
+	test.AssertNotError(t, err, "Failed to open log server")
+	defer l.Close()
+
+	stats, _ := statsd.NewNoopClient(nil)
+	fmt.Printf("Going to %s\n", l.LocalAddr().String())
+	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+	test.AssertNotError(t, err, "Failed to find connect to log server")
+
+	audit, err := NewAuditLogger(writer, stats)
+	test.AssertNotError(t, err, "Failed to construct audit logger")
+
+	data := make([]byte, 128)
+
+	audit.Audit("audit-logger_test.go: audit-notice")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+
+	audit.Crit("audit-logger_test.go: critical")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+
+	audit.Debug("audit-logger_test.go: debug")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+
+	audit.Emerg("audit-logger_test.go: emerg")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+
+	audit.Err("audit-logger_test.go: err")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+
+	audit.Info("audit-logger_test.go: info")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+
+	audit.Notice("audit-logger_test.go: notice")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+
+	audit.Warning("audit-logger_test.go: warning")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+
+	audit.Alert("audit-logger_test.go: alert")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+}
+
+func newUDPListener(addr string) (*net.UDPConn, error) {
+	l, err := net.ListenPacket("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+	l.SetDeadline(time.Now().Add(100 * time.Millisecond))
+	l.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	l.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+	return l.(*net.UDPConn), nil
 }
