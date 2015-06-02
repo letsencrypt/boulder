@@ -94,7 +94,7 @@ type StorageGetter interface {
 	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
 	GetCertificate(string) ([]byte, error)
-	GetCertificateByShortSerial(string) (Certificate, error)
+	GetCertificateByShortSerial(string) ([]byte, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
 }

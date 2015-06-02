@@ -22,7 +22,7 @@ import (
 // where ROLE covers:
 //  * RegistrationAuthority
 //  * ValidationAuthority
-//  * CertificateAuthority
+//  * CertficateAuthority
 //  * StorageAuthority
 //
 // For each one of these, the are ${ROLE}Client and ${ROLE}Server
@@ -785,16 +785,10 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetCertificateByShortSerial, err, req)
+		} else {
+			response = []byte(cert)
 		}
-
-		jsonResponse, err := json.Marshal(cert)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetCertificateByShortSerial, err, req)
-			return nil
-		}
-
-		return jsonResponse
+		return response
 	})
 
 	rpc.Handle(MethodGetCertificateStatus, func(req []byte) (response []byte) {
@@ -929,13 +923,8 @@ func (cac StorageAuthorityClient) GetCertificate(id string) (cert []byte, err er
 	return
 }
 
-func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert core.Certificate, err error) {
-	jsonCert, err := cac.rpc.DispatchSync(MethodGetCertificateByShortSerial, []byte(id))
-	if err != nil {
-		return
-	}
-
-	err = json.Unmarshal(jsonCert, &cert)
+func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert []byte, err error) {
+	cert, err = cac.rpc.DispatchSync(MethodGetCertificateByShortSerial, []byte(id))
 	return
 }
 

@@ -6,7 +6,6 @@
 package core
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -132,12 +131,6 @@ func KeyDigestEquals(j, k crypto.PublicKey) bool {
 		return false
 	}
 	return jDigest == kDigest
-}
-
-func FingerprintEquals(buffer []byte, fingerprint []byte) bool {
-	d := sha256.New()
-	d.Write(buffer)
-	return (bytes.Compare(d.Sum(nil), fingerprint) == 0)
 }
 
 // URLs that automatically marshal/unmarshal to JSON strings

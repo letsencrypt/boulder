@@ -42,10 +42,6 @@ const (
 )
 
 const (
-	CertActionRevoke = "revoke"
-)
-
-const (
 	IdentifierDNS = IdentifierType("dns")
 )
 
@@ -98,17 +94,6 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 		CSR:            cr.CSR.Raw,
 		Authorizations: cr.Authorizations,
 	})
-}
-
-// An ACME Certificate Action Request is a message that is POSTed
-// to a certificate URL to request some action on that certificate.
-type CertActionRequest struct {
-	// Right now, the only action is "revoke"
-	Action string `json:"action"`
-
-	// The SHA-256 fingerprint of the cert to be acted on, to prevent
-	// replay between certificate URLs
-	Fingerprint JsonBuffer `json:"fingerprint"`
 }
 
 // Registration objects represent non-public metadata attached
@@ -335,11 +320,11 @@ type Certificate struct {
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`
 
-	Serial  string     `db:"serial"`
-	Digest  string     `db:"digest"`
-	DER     JsonBuffer `db:"der"`
-	Issued  time.Time  `db:"issued"`
-	Expires time.Time  `db:"expires"`
+	Serial  string    `db:"serial"`
+	Digest  string    `db:"digest"`
+	DER     []byte    `db:"der"`
+	Issued  time.Time `db:"issued"`
+	Expires time.Time `db:"expires"`
 }
 
 // CertificateStatus structs are internal to the server. They represent the
