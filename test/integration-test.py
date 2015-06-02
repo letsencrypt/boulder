@@ -50,7 +50,7 @@ def run_test():
 
     issue = subprocess.Popen('''
         node test.js --email foo@bar.com --agree true \
-          --domain foo.com --new-reg http://localhost:4300/acme/new-reg \
+          --domains foo.com --new-reg http://localhost:4300/acme/new-reg \
           --certKey %s/key.pem --cert %s/cert.der
         ''' % (tempdir, tempdir), shell=True)
     if issue.wait() != 0:
