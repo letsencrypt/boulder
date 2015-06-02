@@ -97,7 +97,7 @@ var cliOptions = cli.parse({
   certFile:  ["cert", "Path to output certificate (DER format)", "path", "cert.pem"],
   email:  ["email", "Email address", "string", null],
   agreeTerms:  ["agree", "Agree to terms of service", "boolean", null],
-  domain:  ["domain", "Domain name for which to request a certificate", "string", null],
+  domains:  ["domains", "Domain name(s) for which to request a certificate (comma-separated)", "string", null],
 });
 
 var state = {
@@ -111,7 +111,8 @@ var state = {
   termsAgreed: null,
   termsURL: null,
 
-  domain: cliOptions.domain,
+  haveCLIDomains: !!(cliOptions.domains),
+  domains: cliOptions.domains && cliOptions.domains.replace(/\s/g, "").split(/[^\w.-]+/),
   validatedDomains: [],
   validAuthorizationURLs: [],
 
@@ -334,10 +335,10 @@ function sendAgreement(answers) {
         console.log("Couldn't POST agreement back to server, aborting.");
         process.exit(1);
       } else {
-        if (!state.domain) {
+        if (!state.domains || state.domains.length == 0) {
           inquirer.prompt(questions.domain, getChallenges);
         } else {
-          getChallenges({domain: state.domain});
+          getChallenges({domain: state.domains.pop()});
         }
       }
     });
@@ -440,20 +441,24 @@ function ensureValidation(err, resp, body) {
     state.validatedDomains.push(state.domain);
     state.validAuthorizationURLs.push(state.authorizationURL);
 
-    // If we're doing this for a CLI-provided domain, only one
-    // domain is supported; no need to loop back
-    if (cliOptions.domain) {
-      getCertificate();
-      return;
-    }
-
-    inquirer.prompt(questions.anotherDomain, function(answers) {
-      if (answers.anotherDomain) {
-        inquirer.prompt(questions.domain, getChallenges);
+    if (state.haveCLIDomains) {
+      console.log("have CLI domains: ");
+      console.log(state.domains);
+      if (state.haveCLIDomains && state.domains.length > 0) {
+        getChallenges({domain: state.domains.pop()});
+        return;
       } else {
         getCertificate();
       }
-    });
+    } else {
+      inquirer.prompt(questions.anotherDomain, function(answers) {
+        if (answers.anotherDomain) {
+          inquirer.prompt(questions.domain, getChallenges);
+        } else {
+          getCertificate();
+        }
+      });
+    }
   } else if (authz.status == "invalid") {
     console.log("The CA was unable to validate the file you provisioned:"  + body);
     process.exit(1);
