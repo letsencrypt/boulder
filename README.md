@@ -6,7 +6,6 @@ This is an initial implementation of an ACME-based CA. The [ACME protocol](https
 
 [![Build Status](https://travis-ci.org/letsencrypt/boulder.svg)](https://travis-ci.org/letsencrypt/boulder)
 [![Coverage Status](https://coveralls.io/repos/letsencrypt/boulder/badge.svg)](https://coveralls.io/r/letsencrypt/boulder)
-[![Docker Repository on Quay.io](https://quay.io/repository/letsencrypt/boulder/status "Docker Repository on Quay.io")](https://quay.io/repository/letsencrypt/boulder)
 
 Docker
 ------
@@ -15,7 +14,13 @@ Boulder is available as a [Docker image from Quay.io](https://quay.io/repository
 
 (Note: You can override the `config.json` location by specifying a different BOULDER_CONFIG environment variable, such as with `-e BOULDER_CONFIG=mypath/myfile.config`.)
 
-The default command is the monolithic "boulder" executable, which does not require an AMQP service.
+There are no default commands; you must choose one of the executables from the `cmd` path.
+
+There are several tags available:
+ - `stable` is maintained by the Let's Encrypt team as a fairly stable copy of Boulder.
+ - `latest` is a more recent build of Boulder. It may lag behind the `master` ref, as automated builds are being reworked.
+ - Tags for individual short-format git refs, representing those builds.
+
 
 A quick-start method for running a Boulder instance is to use one of the example configurations:
 
@@ -28,10 +33,8 @@ A quick-start method for running a Boulder instance is to use one of the example
 To run a single module, specifying the AMQP server, you might use something more like:
 
 ```
-> docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:latest boulder-ra
+> docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:stable boulder-ra
 ```
-
-The submodules are under the `cmd/` directory.
 
 
 Quickstart
