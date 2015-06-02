@@ -40,14 +40,18 @@ To run a single module, specifying the AMQP server, you might use something more
 Quickstart
 ----------
 
+Install RabbitMQ from https://rabbitmq.com/download.html. It's required to run
+tests.
+
 ```
 > go get github.com/letsencrypt/boulder # Ignore errors about no buildable files
 > cd $GOPATH/src/github.com/letsencrypt/boulder
-# This starts both Boulder and cfssl with test configs. Ctrl-C kills both.
-> ./start.sh
+# This starts each Boulder component with test configs. Ctrl-C kills all.
+> python ./start.py
 > cd test/js
 > npm install
 > nodejs test.js
+> ./test.sh
 ```
 
 You can also check out the official client from

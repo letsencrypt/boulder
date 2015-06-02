@@ -9,16 +9,25 @@ import time
 
 tempdir = tempfile.mkdtemp()
 
+exit_status = 0
+
+def die():
+    global exit_status
+    exit_status = 1
+    sys.exit(1)
+
+processes = []
+
 def run(path):
+    global processes
     binary = os.path.join(tempdir, os.path.basename(path))
     cmd = 'go build -o %s %s' % (binary, path)
     print(cmd)
-    subprocess.Popen(cmd, shell=True).wait()
-    return subprocess.Popen('''
+    if subprocess.Popen(cmd, shell=True).wait() != 0:
+        die()
+    processes.append(subprocess.Popen('''
         exec %s --config test/boulder-test-config.json
-        ''' % binary, shell=True)
-
-processes = []
+        ''' % binary, shell=True))
 
 def start():
     # A strange Go bug: If cfssl is up-to-date, we'll get a failure building
@@ -27,23 +36,22 @@ def start():
     cmd = 'go build -o %s/cfssl ./Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl' % (tempdir)
     print(cmd)
     if subprocess.Popen(cmd, shell=True).wait() != 0:
-        sys.exit(1)
-    global processes
-    processes = [
-        run('./cmd/boulder-wfe'),
-        run('./cmd/boulder-ra'),
-        run('./cmd/boulder-sa'),
-        run('./cmd/boulder-ca'),
-        run('./cmd/boulder-va'),
-        subprocess.Popen('''
-        exec %s/cfssl \
-          -loglevel 0 \
-          serve \
-          -port 9300 \
-          -ca test/test-ca.pem \
-          -ca-key test/test-ca.key \
-          -config test/cfssl-config.json
-        ''' % tempdir, shell=True, stdout=None)]
+        die()
+    run('./cmd/boulder-wfe')
+    run('./cmd/boulder-ra')
+    run('./cmd/boulder-sa')
+    run('./cmd/boulder-ca')
+    run('./cmd/boulder-va')
+
+    processes.append(subprocess.Popen('''
+    exec %s/cfssl \
+      -loglevel 0 \
+      serve \
+      -port 9300 \
+      -ca test/test-ca.pem \
+      -ca-key test/test-ca.key \
+      -config test/cfssl-config.json
+    ''' % tempdir, shell=True, stdout=None))
 
 def run_test():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -51,39 +59,45 @@ def run_test():
         s.connect(('localhost', 4300))
     except socket.error, e:
         print("Cannot connect to WFE")
-        sys.exit(1)
+        die()
 
     os.chdir('test/js')
 
     if subprocess.Popen('npm install', shell=True).wait() != 0:
         print("\n Installing NPM modules failed")
-        return 1
+        die()
     if subprocess.Popen('''
         node test.js --email foo@bar.com --agree true \
           --domains foo.com --new-reg http://localhost:4300/acme/new-reg \
           --certKey %s/key.pem --cert %s/cert.der
         ''' % (tempdir, tempdir), shell=True).wait() != 0:
         print("\nIssuing failed")
-        return 1
+        die()
     if subprocess.Popen('''
         node revoke.js %s/cert.der %s/key.pem http://localhost:4300/acme/revoke-cert/
         ''' % (tempdir, tempdir), shell=True).wait() != 0:
         print("\nRevoking failed")
-        return 1
+        die()
 
     return 0
 
 try:
     start()
-    status = run_test()
+    run_test()
+except Exception as e:
+    exit_status = 1
+    print e
 finally:
     for p in processes:
         if p.poll() is None:
             p.kill()
         else:
-            status = 1
-    if status == 0:
+            exit_status = 1
+
+    shutil.rmtree(tempdir)
+
+    if exit_status == 0:
         print("\n\nSUCCESS")
     else:
         print("\n\nFAILURE")
-    sys.exit(status)
+    sys.exit(exit_status)
