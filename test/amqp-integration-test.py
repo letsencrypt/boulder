@@ -56,20 +56,22 @@ def run_test():
 
     os.chdir('test/js')
 
-    issue = subprocess.Popen('''
+    if subprocess.Popen('npm install', shell=True).wait() != 0:
+        print("\n Installing NPM modules failed")
+        return 1
+    if subprocess.Popen('''
         node test.js --email foo@bar.com --agree true \
-          --domain foo.com --new-reg http://localhost:4300/acme/new-reg \
+          --domains foo.com --new-reg http://localhost:4300/acme/new-reg \
           --certKey %s/key.pem --cert %s/cert.der
-        ''' % (tempdir, tempdir), shell=True)
-    if issue.wait() != 0:
+        ''' % (tempdir, tempdir), shell=True).wait() != 0:
         print("\nIssuing failed")
         return 1
-    revoke = subprocess.Popen('''
+    if subprocess.Popen('''
         node revoke.js %s/cert.der %s/key.pem http://localhost:4300/acme/revoke-cert/
-        ''' % (tempdir, tempdir), shell=True)
-    if revoke.wait() != 0:
+        ''' % (tempdir, tempdir), shell=True).wait() != 0:
         print("\nRevoking failed")
         return 1
+
     return 0
 
 try:
