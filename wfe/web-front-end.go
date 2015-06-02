@@ -574,8 +574,14 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		return
 	}
 
+	// Registration objects contain a JWK object, which must be non-nil. We know
+	// the key of the updated registration object is going to be the same as the
+	// key of the current one, so we set it here. This ensures we can cleanly
+	// serialize the update as JSON to send via AMQP to the RA.
+	update.Key = currReg.Key
+
 	// Ask the RA to update this authorization.
-	updatedReg, err := wfe.RA.UpdateRegistration(currReg, currReg)
+	updatedReg, err := wfe.RA.UpdateRegistration(currReg, update)
 	if err != nil {
 		wfe.sendError(response, "Unable to update registration", err, statusCodeFromError(err))
 		return
