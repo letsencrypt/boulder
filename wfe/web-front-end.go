@@ -336,7 +336,8 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
 	authzURL := wfe.AuthzBase + string(authz.ID)
-	authz.PrepareForPublicMarshal()
+	authz.ID = ""
+	authz.RegistrationID = 0
 	responseBody, err := json.Marshal(authz)
 	if err != nil {
 		wfe.sendError(response, "Error marshaling authz", err, http.StatusInternalServerError)
@@ -625,7 +626,10 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 		return
 
 	case "GET":
-		authz.PrepareForPublicMarshal()
+		// Blank out ID and regID
+		authz.ID = ""
+		authz.RegistrationID = 0
+
 		jsonReply, err := json.Marshal(authz)
 		if err != nil {
 			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
