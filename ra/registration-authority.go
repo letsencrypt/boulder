@@ -11,7 +11,6 @@ import (
 	"math/big"
 	"net/url"
 	"regexp"
-	"sort"
 	"strconv"
 	"time"
 
@@ -45,20 +44,6 @@ var allButLastPathSegment = regexp.MustCompile("^.*/")
 
 func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
-}
-
-func cmpStrSlice(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	sort.Strings(a)
-	sort.Strings(b)
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 type certificateRequestEvent struct {
@@ -278,51 +263,15 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
+	err = cert.MatchesCSR(csr, earliestExpiry)
+	if err != nil {
+		logEvent.Error = err.Error()
+		return emptyCert, err
+	}
+
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		err = core.InternalServerError(err.Error())
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
-	// Check issued certificate matches what was expected from the CSR
-	hostNames := make([]string, len(csr.DNSNames))
-	copy(hostNames, csr.DNSNames)
-	if len(csr.Subject.CommonName) > 0 {
-		hostNames = append(hostNames, csr.Subject.CommonName)
-	}
-	hostNames = core.UniqueNames(hostNames)
-
-	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
-		err = core.MalformedRequestError("Generated certificate public key doesn't match CSR public key")
-		return emptyCert, err
-	}
-	if len(csr.Subject.CommonName) > 0 && parsedCertificate.Subject.CommonName != csr.Subject.CommonName {
-		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-	if !cmpStrSlice(parsedCertificate.Subject.Country, csr.Subject.Country) || !cmpStrSlice(parsedCertificate.Subject.Organization, csr.Subject.Organization) ||
-		!cmpStrSlice(parsedCertificate.Subject.OrganizationalUnit, csr.Subject.OrganizationalUnit) || !cmpStrSlice(parsedCertificate.Subject.Locality, csr.Subject.Locality) ||
-		!cmpStrSlice(parsedCertificate.Subject.Province, csr.Subject.Province) || !cmpStrSlice(parsedCertificate.Subject.StreetAddress, csr.Subject.StreetAddress) ||
-		!cmpStrSlice(parsedCertificate.Subject.PostalCode, csr.Subject.PostalCode) {
-		err = core.InternalServerError("Generated certificate Subject doesn't match CSR Subject")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-	if !cmpStrSlice(parsedCertificate.DNSNames, hostNames) {
-		err = core.InternalServerError("Generated certificate DNSNames don't match CSR DNSNames")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-	now = time.Now()
-	if now.After(parsedCertificate.NotAfter) {
-		err = core.InternalServerError("Generated certificate is already expired")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-	if now.Before(parsedCertificate.NotBefore) {
-		err = core.InternalServerError(fmt.Sprintf("Generated certificate won't be valid for %s", parsedCertificate.NotBefore.Sub(now)))
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
