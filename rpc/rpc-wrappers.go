@@ -7,6 +7,7 @@ package rpc
 
 import (
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -783,8 +784,10 @@ func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl c
 	rpc.Handle(MethodGetCertificateByShortSerial, func(req []byte) (response []byte) {
 		cert, err := impl.GetCertificateByShortSerial(string(req))
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetCertificateByShortSerial, err, req)
+			if err != sql.ErrNoRows {
+				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+				errorCondition(MethodGetCertificateByShortSerial, err, req)
+			}
 		} else {
 			response = []byte(cert)
 		}

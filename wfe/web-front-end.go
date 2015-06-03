@@ -225,16 +225,11 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
-	switch problem.Type {
-	case ServerInternalProblem:
+	// Only audit log internal errors so users cannot purposefully cause
+	// auditable events.
+	if problem.Type == ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", details, debug))
-	case MalformedProblem:
-		// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-		wfe.log.Audit(fmt.Sprintf("Improper HTTP request - %s - %s", details, debug))
-	case UnauthorizedProblem:
-		// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-		wfe.log.Audit(fmt.Sprintf("Unauthorized HTTP request - %s - %s", details, debug))
 	}
 
 	// Paraphrased from
