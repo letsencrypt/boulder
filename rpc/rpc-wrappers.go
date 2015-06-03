@@ -308,7 +308,11 @@ func (rac RegistrationAuthorityClient) NewCertificate(cr core.CertificateRequest
 	}
 
 	certData, err := rac.rpc.DispatchSync(MethodNewCertificate, data)
-	if err != nil || len(certData) == 0 {
+	if err != nil {
+		return
+	}
+	if len(certData) == 0 {
+		err = errors.New("NewCertificate RPC to RA failed.")
 		return
 	}
 
@@ -542,8 +546,11 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	}
 
 	jsonResponse, err := cac.rpc.DispatchSync(MethodIssueCertificate, data)
+	if err != nil {
+		return
+	}
 	if len(jsonResponse) == 0 {
-		// TODO: Better error handling
+		err = errors.New("IssueCertificate RPC to CA failed.")
 		return
 	}
 
