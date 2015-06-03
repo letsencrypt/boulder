@@ -225,6 +225,8 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
+	// Only audit log internal errors so users cannot purposefully cause
+	// auditable events.
 	if problem.Type == ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", details, debug))
