@@ -30,6 +30,12 @@ def start():
     # A strange Go bug: If cfssl is up-to-date, we'll get a failure building
     # Boulder. Work around by touching cfssl.go.
     subprocess.Popen('touch Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl/cfssl.go', shell=True).wait()
+
+    cmd = 'go build -o %s/cfssl ./Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl' % (tempdir)
+    print(cmd)
+    if subprocess.Popen(cmd, shell=True).wait() != 0:
+        die()
+
     global processes
     processes = [
         run('./cmd/boulder-wfe'),
@@ -41,7 +47,7 @@ def start():
         exec %s/cfssl \
           -loglevel 0 \
           serve \
-          -port 9300 \
+          -port 9000 \
           -ca test/test-ca.pem \
           -ca-key test/test-ca.key \
           -config test/cfssl-config.json
