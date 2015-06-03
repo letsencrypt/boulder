@@ -113,6 +113,12 @@ type Config struct {
 		ResponseLimit   int
 	}
 
+	Common struct {
+		BaseURL string
+		// Path to a PEM-encoded copy of the issuer certificate.
+		IssuerCert string
+	}
+
 	SubscriberAgreementURL string
 }
 

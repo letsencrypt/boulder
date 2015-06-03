@@ -38,7 +38,7 @@ func main() {
 			cmd.FailOnError(err, "Failed to create CA tables")
 		}
 
-		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA)
+		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert)
 		cmd.FailOnError(err, "Failed to create CA impl")
 
 		go cmd.ProfileCmd("CA", stats)

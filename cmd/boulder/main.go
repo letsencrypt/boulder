@@ -84,7 +84,7 @@ func main() {
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")
 
-		ca, err := ca.NewCertificateAuthorityImpl(cadb, c.CA)
+		ca, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert)
 		cmd.FailOnError(err, "Unable to create CA")
 
 		if c.SQL.CreateTables {
@@ -101,8 +101,8 @@ func main() {
 		wfei.Stats = stats
 		wfei.SubscriberAgreementURL = c.SubscriberAgreementURL
 
-		wfei.IssuerCert, err = cmd.LoadCert(c.CA.IssuerCert)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.CA.IssuerCert))
+		wfei.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
+		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
 		ra.CA = ca
 		ra.SA = sa
@@ -111,8 +111,8 @@ func main() {
 		ca.SA = sa
 
 		// Set up paths
-		ra.AuthzBase = c.WFE.BaseURL + wfe.AuthzPath
-		wfei.BaseURL = c.WFE.BaseURL
+		ra.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
+		wfei.BaseURL = c.Common.BaseURL
 		wfei.HandlePaths()
 
 		auditlogger.Info(app.VersionString())

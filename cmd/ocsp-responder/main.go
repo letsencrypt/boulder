@@ -121,10 +121,10 @@ func main() {
 		cmd.FailOnError(err, "Could not connect to database")
 
 		// Load the CA's key and hash it
-		caCertDER, err := cmd.LoadCert(c.CA.IssuerCert)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.CA.IssuerCert))
+		caCertDER, err := cmd.LoadCert(c.Common.IssuerCert)
+		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 		caCert, err := x509.ParseCertificate(caCertDER)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't parse cert read from [%s]", c.CA.IssuerCert))
+		cmd.FailOnError(err, fmt.Sprintf("Couldn't parse cert read from [%s]", c.Common.IssuerCert))
 		h := sha1.New()
 		h.Write(caCert.RawSubjectPublicKeyInfo)
 		caKeyHash := h.Sum(nil)
