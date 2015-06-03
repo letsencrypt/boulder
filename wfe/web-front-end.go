@@ -317,7 +317,10 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		}
 		return
 	}
-	if currReg.Agreement != wfe.SubscriberAgreementURL {
+	// Any version of the agreement is acceptable here. Version match is enforced in
+	// wfe.Registration when agreeing the first time. Agreement updates happen
+	// by mailing subscribers and don't require a registration update.
+	if currReg.Agreement == "" {
 		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 		return
 	}
@@ -446,7 +449,10 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		}
 		return
 	}
-	if reg.Agreement != wfe.SubscriberAgreementURL {
+	// Any version of the agreement is acceptable here. Version match is enforced in
+	// wfe.Registration when agreeing the first time. Agreement updates happen
+	// by mailing subscribers and don't require a registration update.
+	if reg.Agreement == "" {
 		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 		return
 	}
@@ -555,7 +561,10 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			}
 			return
 		}
-		if currReg.Agreement != wfe.SubscriberAgreementURL {
+		// Any version of the agreement is acceptable here. Version match is enforced in
+		// wfe.Registration when agreeing the first time. Agreement updates happen
+		// by mailing subscribers and don't require a registration update.
+		if currReg.Agreement == "" {
 			wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 			return
 		}
