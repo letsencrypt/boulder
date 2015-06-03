@@ -383,7 +383,6 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 		AuthKey:      authKey,
 		Profile:      profileName,
 		SerialPrefix: 17,
-		IssuerCert:   "../test/test-ca.pem",
 		IssuerKey:    "../test/test-ca.key",
 		TestMode:     true,
 		Expiry:       "8760h",
@@ -395,13 +394,13 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 func TestFailNoSerial(t *testing.T) {
 	cadb, _, caConfig := setup(t)
 	caConfig.SerialPrefix = 0
-	_, err := NewCertificateAuthorityImpl(cadb, caConfig)
+	_, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
 func TestRevoke(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 
@@ -428,7 +427,7 @@ func TestRevoke(t *testing.T) {
 
 func TestIssueCertificate(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 
@@ -503,7 +502,7 @@ func TestIssueCertificate(t *testing.T) {
 
 func TestRejectNoName(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 
@@ -518,7 +517,7 @@ func TestRejectNoName(t *testing.T) {
 
 func TestRejectTooManyNames(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 
@@ -531,7 +530,7 @@ func TestRejectTooManyNames(t *testing.T) {
 
 func TestDeduplication(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 
@@ -559,7 +558,7 @@ func TestDeduplication(t *testing.T) {
 
 func TestRejectValidityTooLong(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 
@@ -579,7 +578,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 
 func TestShortKey(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	ca.SA = storageAuthority
 
 	csrDER, err := ioutil.ReadFile("shortkey-csr.der")

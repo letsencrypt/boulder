@@ -35,8 +35,6 @@ type Config struct {
 	DBDriver     string
 	DBName       string
 	SerialPrefix int
-	// Path to a PEM-encoded copy of the issuer certificate.
-	IssuerCert string
 	// This field is only allowed if TestMode is true, indicating that we are
 	// signing with a local key. In production we will use an HSM and this
 	// IssuerKey must be empty (and TestMode must be false). PEM-encoded private
@@ -71,7 +69,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config Config) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config Config, IssuerCert string) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -100,7 +98,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	issuer, err := loadIssuer(config.IssuerCert)
+	issuer, err := loadIssuer(IssuerCert)
 	if err != nil {
 		return nil, err
 	}

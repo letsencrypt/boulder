@@ -32,7 +32,7 @@ func main() {
 		blog.SetAuditLogger(auditlogger)
 
 		rai := ra.NewRegistrationAuthorityImpl()
-		rai.AuthzBase = c.WFE.BaseURL + wfe.AuthzPath
+		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 
 		go cmd.ProfileCmd("RA", stats)
 

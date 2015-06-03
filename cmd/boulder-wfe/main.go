@@ -85,8 +85,8 @@ func main() {
 		wfe.Stats = stats
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
 
-		wfe.IssuerCert, err = cmd.LoadCert(c.CA.IssuerCert)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.CA.IssuerCert))
+		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
+		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
 		go cmd.ProfileCmd("WFE", stats)
 
@@ -107,7 +107,7 @@ func main() {
 		}()
 
 		// Set up paths
-		wfe.BaseURL = c.WFE.BaseURL
+		wfe.BaseURL = c.Common.BaseURL
 		wfe.HandlePaths()
 
 		auditlogger.Info(app.VersionString())
