@@ -14,6 +14,13 @@ import time
 
 tempdir = tempfile.mkdtemp()
 
+config = os.environ.get('BOULDER_CONFIG')
+if config is None:
+	config = 'test/boulder-config.json'
+cfsslConfig = os.environ.get('CFSSL_CONFIG')
+if cfsslConfig is None:
+	cfsslConfig = 'test/cfssl-config.json'
+
 def run(path):
     binary = os.path.join(tempdir, os.path.basename(path))
     cmd = 'go build -o %s %s' % (binary, path)
@@ -21,8 +28,8 @@ def run(path):
     if subprocess.Popen(cmd, shell=True).wait() != 0:
         sys.exit(1)
     return subprocess.Popen('''
-        exec %s --config test/boulder-config.json
-        ''' % binary, shell=True)
+        exec %s --config %s
+        ''' % (binary, config), shell=True)
 
 processes = []
 
@@ -50,8 +57,8 @@ def start():
           -port 9000 \
           -ca test/test-ca.pem \
           -ca-key test/test-ca.key \
-          -config test/cfssl-config.json
-        ''' % tempdir, shell=True, stdout=None)]
+          -config %s
+        ''' % (tempdir, cfsslConfig), shell=True, stdout=None)]
     time.sleep(100000)
 
 try:
