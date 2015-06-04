@@ -63,7 +63,7 @@ func NewDbMap(driver string, name string) (*gorp.DbMap, error) {
 func initTables(dbMap *gorp.DbMap) {
 	regTable := dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "ID")
 	regTable.SetVersionCol("LockCol")
-	regTable.ColMap("Key").SetMaxSize(1024).SetNotNull(true)
+	regTable.ColMap("Key").SetMaxSize(1024).SetNotNull(true).SetUnique(true)
 
 	pendingAuthzTable := dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
 	pendingAuthzTable.SetVersionCol("LockCol")

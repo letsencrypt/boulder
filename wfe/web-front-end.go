@@ -208,6 +208,8 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 	switch code {
 	case http.StatusForbidden:
 		problem.Type = UnauthorizedProblem
+	case http.StatusConflict:
+		fallthrough
 	case http.StatusMethodNotAllowed:
 		fallthrough
 	case http.StatusNotFound:
@@ -252,6 +254,11 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	body, key, _, err := wfe.verifyPOST(request, false)
 	if err != nil {
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
+		return
+	}
+
+	if _, err = wfe.SA.GetRegistrationByKey(*key); err == nil {
+		wfe.sendError(response, "Registration key is already in use", nil, http.StatusConflict)
 		return
 	}
 
