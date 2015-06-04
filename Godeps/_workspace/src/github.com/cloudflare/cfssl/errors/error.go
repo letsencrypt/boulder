@@ -49,6 +49,9 @@ const (
 
 	// OCSPError indicates a problem with OCSP signing
 	OCSPError // 8XXX
+
+	// CSRError indicates a problem with CSR parsing
+	CSRError // 9XXX
 )
 
 // None is a non-specified error.
@@ -213,7 +216,7 @@ func New(category Category, reason Reason) *Error {
 		case BadRequest:
 			msg = "Invalid certificate request"
 		default:
-			panic(fmt.Sprintf("Unsupported CF-SSL error reason %d under category CertificateError.",
+			panic(fmt.Sprintf("Unsupported CFSSL error reason %d under category CertificateError.",
 				reason))
 
 		}
@@ -238,7 +241,7 @@ func New(category Category, reason Reason) *Error {
 		case Unavailable:
 			msg = "Private key is unavailable"
 		default:
-			panic(fmt.Sprintf("Unsupported CF-SSL error reason %d under category PrivateKeyError.",
+			panic(fmt.Sprintf("Unsupported CFSSL error reason %d under category PrivateKeyError.",
 				reason))
 		}
 	case IntermediatesError:
@@ -252,7 +255,7 @@ func New(category Category, reason Reason) *Error {
 		case ParseFailed:
 			msg = "Failed to parse intermediate certificate"
 		default:
-			panic(fmt.Sprintf("Unsupported CF-SSL error reason %d under category IntermediatesError.",
+			panic(fmt.Sprintf("Unsupported CFSSL error reason %d under category IntermediatesError.",
 				reason))
 		}
 	case RootError:
@@ -266,7 +269,7 @@ func New(category Category, reason Reason) *Error {
 		case ParseFailed:
 			msg = "Failed to parse root certificate"
 		default:
-			panic(fmt.Sprintf("Unsupported CF-SSL error reason %d under category RootError.",
+			panic(fmt.Sprintf("Unsupported CFSSL error reason %d under category RootError.",
 				reason))
 		}
 	case PolicyError:
@@ -280,7 +283,7 @@ func New(category Category, reason Reason) *Error {
 		case InvalidRequest:
 			msg = "Policy violation request"
 		default:
-			panic(fmt.Sprintf("Unsupported CF-SSL error reason %d under category PolicyError.",
+			panic(fmt.Sprintf("Unsupported CFSSL error reason %d under category PolicyError.",
 				reason))
 		}
 	case DialError:
@@ -288,7 +291,7 @@ func New(category Category, reason Reason) *Error {
 		case Unknown:
 			msg = "Failed to dial remote server"
 		default:
-			panic(fmt.Sprintf("Unsupported CF-SSL error reason %d under category DialError.",
+			panic(fmt.Sprintf("Unsupported CFSSL error reason %d under category DialError.",
 				reason))
 		}
 	case APIClientError:
@@ -304,12 +307,27 @@ func New(category Category, reason Reason) *Error {
 		case ServerRequestFailed:
 			msg = "API client error: Server request failed"
 		default:
-			panic(fmt.Sprintf("Unsupported CF-SSL error reason %d under category APIClientError.",
+			panic(fmt.Sprintf("Unsupported CFSSL error reason %d under category APIClientError.",
 				reason))
+		}
+	case CSRError:
+		switch reason {
+		case Unknown:
+			msg = "CSR parsing failed due to unknown error"
+		case ReadFailed:
+			msg = "CSR file read failed"
+		case ParseFailed:
+			msg = "CSR Parsing failed"
+		case DecodeFailed:
+			msg = "CSR Decode failed"
+		case BadRequest:
+			msg = "CSR Bad request"
+		default:
+			panic(fmt.Sprintf("Unsupported CF-SSL error reason %d under category APIClientError.", reason))
 		}
 
 	default:
-		panic(fmt.Sprintf("Unsupported CF-SSL error type: %d.",
+		panic(fmt.Sprintf("Unsupported CFSSL error type: %d.",
 			category))
 	}
 	return &Error{ErrorCode: errorCode, Message: msg}
@@ -342,10 +360,10 @@ func Wrap(category Category, reason Reason, err error) *Error {
 				errorCode += unknownAuthority
 			}
 		}
-	case PrivateKeyError, IntermediatesError, RootError, PolicyError, DialError, APIClientError:
+	case PrivateKeyError, IntermediatesError, RootError, PolicyError, DialError, APIClientError, CSRError:
 		// no-op, just use the error
 	default:
-		panic(fmt.Sprintf("Unsupported CF-SSL error type: %d.",
+		panic(fmt.Sprintf("Unsupported CFSSL error type: %d.",
 			category))
 	}
 

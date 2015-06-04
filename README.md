@@ -101,11 +101,25 @@ All dependencies are vendorized under the Godeps directory,
 both to [make dependency management
 easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8)
 and to [avoid insecure fallback in go
-get](https://github.com/golang/go/issues/9637). To update dependencies:
+get](https://github.com/golang/go/issues/9637).
+
+We need to use the build tag 'pkcs11' to really pull in all our dependencies.
+To do this, you'll need to pull and install this godep branch, which supports
+build tags: https://github.com/tools/godep/pull/117/files. NOTE: If you skip
+this step, godep will delete some of the vendorized depdendencies.
+
+To update dependencies:
 
 ```
 # Disable insecure fallback by blocking port 80.
 sudo /sbin/iptables -A OUTPUT -p tcp --dport 80 -j DROP
+# Fetch godep
+go get https://github.com/tools/godep.git
+# Pull in the tags branch and install
+cd $GOPATH/src/github.com/tools/godep
+git pull https://github.com/jnfeinstein/godep.git jnfeinstein
+go install
+
 # Update to the latest version of a dependency. Alternately you can cd to the
 # directory under GOPATH and check out a specific revision.
 go get -u github.com/cloudflare/cfssl/...
@@ -113,7 +127,7 @@ go get -u github.com/cloudflare/cfssl/...
 godep update github.com/cloudflare/cfssl/...
 # Save the dependencies, rewriting any internal or external dependencies that
 # may have been added.
-godep save -r ./...
+godep save -r -tags pkcs11 ./...
 git add Godeps
 git commit
 # Assuming you had no other iptables rules, re-enable port 80.

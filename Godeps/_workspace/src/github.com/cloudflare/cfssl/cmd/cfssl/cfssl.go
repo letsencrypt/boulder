@@ -27,6 +27,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/bundle"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/gencert"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/genkey"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/info"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/ocspserve"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/ocspsign"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/scan"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cli/selfsign"
@@ -38,20 +40,22 @@ import (
 
 // main defines the cfssl usage and registers all defined commands and flags.
 func main() {
-	flag.Usage = nil
 	// Add command names to cfssl usage
+	flag.Usage = nil // this is set to nil for testabilty
 	flag.IntVar(&log.Level, "loglevel", log.LevelInfo, "Log level")
 	// Register commands.
 	cmds := map[string]*cli.Command{
-		"bundle":   bundle.Command,
-		"sign":     sign.Command,
-		"serve":    serve.Command,
-		"version":  version.Command,
-		"genkey":   genkey.Command,
-		"gencert":  gencert.Command,
-		"ocspsign": ocspsign.Command,
-		"selfsign": selfsign.Command,
-		"scan":     scan.Command,
+		"bundle":    bundle.Command,
+		"sign":      sign.Command,
+		"serve":     serve.Command,
+		"version":   version.Command,
+		"genkey":    genkey.Command,
+		"gencert":   gencert.Command,
+		"ocspsign":  ocspsign.Command,
+		"ocspserve": ocspserve.Command,
+		"selfsign":  selfsign.Command,
+		"scan":      scan.Command,
+		"info":      info.Command,
 	}
 	// Register all command flags.
 	cli.Start(cmds)
