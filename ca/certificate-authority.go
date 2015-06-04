@@ -172,19 +172,6 @@ func loadIssuerKey(filename string) (issuerKey crypto.Signer, err error) {
 	return
 }
 
-func uniqueNames(names []string) (unique []string) {
-	nameMap := make(map[string]int, len(names))
-	for _, name := range names {
-		nameMap[name] = 1
-	}
-
-	unique = make([]string, 0, len(nameMap))
-	for name := range nameMap {
-		unique = append(unique, name)
-	}
-	return
-}
-
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
@@ -258,7 +245,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Collapse any duplicate names.  Note that this operation may re-order the names
-	hostNames = uniqueNames(hostNames)
+	hostNames = core.UniqueNames(hostNames)
 	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
 		err = errors.New(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
 		ca.log.WarningErr(err)

@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
@@ -162,7 +163,19 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
 	caCertPEM, _ := pem.Decode([]byte(CA_CERT_PEM))
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
-	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, nil)
+	basicPolicy := &cfsslConfig.Signing{
+		Default: &cfsslConfig.SigningProfile{
+			Usage:  []string{"server auth", "client auth"},
+			Expiry: 1 * time.Hour,
+			CSRWhitelist: &cfsslConfig.CSRWhitelist{
+				PublicKey:          true,
+				PublicKeyAlgorithm: true,
+				SignatureAlgorithm: true,
+				DNSNames:           true,
+			},
+		},
+	}
+	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
 	pa := policy.NewPolicyAuthorityImpl()
 	cadb := &MockCADatabase{}
 	ca := ca.CertificateAuthorityImpl{

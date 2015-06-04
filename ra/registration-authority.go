@@ -263,6 +263,12 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
+	err = cert.MatchesCSR(csr, earliestExpiry)
+	if err != nil {
+		logEvent.Error = err.Error()
+		return emptyCert, err
+	}
+
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		err = core.InternalServerError(err.Error())
