@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
@@ -339,34 +340,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-type MockCADatabase struct {
-	// empty
-}
-
-func NewMockCertificateAuthorityDatabase() (core.CertificateAuthorityDatabase, error) {
-	return &MockCADatabase{}, nil
-}
-
-func (cadb *MockCADatabase) Begin() error {
-	return nil
-}
-
-func (cadb *MockCADatabase) Commit() error {
-	return nil
-}
-
-func (cadb *MockCADatabase) Rollback() error {
-	return nil
-}
-
-func (cadb *MockCADatabase) IncrementAndGetSerial() (int64, error) {
-	return 1, nil
-}
-
-func (cadb *MockCADatabase) CreateTablesIfNotExists() error {
-	return nil
-}
-
 func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthority core.StorageAuthority, caConfig Config) {
 	// Create an SA
 	ssa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
@@ -374,7 +347,7 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 	ssa.CreateTablesIfNotExists()
 	storageAuthority = ssa
 
-	cadb, _ = NewMockCertificateAuthorityDatabase()
+	cadb, _ = test.NewMockCertificateAuthorityDatabase()
 
 	// Create a CA
 	// Uncomment to test with a remote signer

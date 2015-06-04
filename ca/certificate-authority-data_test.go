@@ -31,27 +31,6 @@ func TestConstruction(t *testing.T) {
 	test.AssertError(t, err, "Should have failed construction")
 }
 
-func TestBeginCommit(t *testing.T) {
-	cadb, err := NewCertificateAuthorityDatabaseImpl(sqliteDriver, sqliteName)
-	test.AssertNotError(t, err, "Could not construct CA DB")
-
-	err = cadb.CreateTablesIfNotExists()
-	test.AssertNotError(t, err, "Could not construct tables")
-
-	err = cadb.Begin()
-	test.AssertNotError(t, err, "Could not begin")
-
-	err = cadb.Begin()
-	test.AssertError(t, err, "Should have already begun")
-
-	err = cadb.Commit()
-	test.AssertNotError(t, err, "Could not commit")
-
-	err = cadb.Commit()
-	test.AssertError(t, err, "Should have already committed")
-
-}
-
 func TestGetSetSequenceOutsideTx(t *testing.T) {
 	cadb, err := NewCertificateAuthorityDatabaseImpl(sqliteDriver, sqliteName)
 	test.AssertNotError(t, err, "Could not construct CA DB")
@@ -59,7 +38,19 @@ func TestGetSetSequenceOutsideTx(t *testing.T) {
 	err = cadb.CreateTablesIfNotExists()
 	test.AssertNotError(t, err, "Could not construct tables")
 
-	_, err = cadb.IncrementAndGetSerial()
+	_, err = cadb.IncrementAndGetSerial(nil)
+	test.AssertError(t, err, "Not permitted")
+
+	tx, err := cadb.Begin()
+	test.AssertNotError(t, err, "Could not begin")
+	tx.Commit()
+	_, err = cadb.IncrementAndGetSerial(tx)
+	test.AssertError(t, err, "Not permitted")
+
+	tx2, err := cadb.Begin()
+	test.AssertNotError(t, err, "Could not begin")
+	tx2.Rollback()
+	_, err = cadb.IncrementAndGetSerial(tx2)
 	test.AssertError(t, err, "Not permitted")
 }
 
@@ -70,16 +61,16 @@ func TestGetSetSequenceNumber(t *testing.T) {
 	err = cadb.CreateTablesIfNotExists()
 	test.AssertNotError(t, err, "Could not construct tables")
 
-	err = cadb.Begin()
+	tx, err := cadb.Begin()
 	test.AssertNotError(t, err, "Could not begin")
 
-	num, err := cadb.IncrementAndGetSerial()
+	num, err := cadb.IncrementAndGetSerial(tx)
 	test.AssertNotError(t, err, "Could not get number")
 
-	num2, err := cadb.IncrementAndGetSerial()
+	num2, err := cadb.IncrementAndGetSerial(tx)
 	test.AssertNotError(t, err, "Could not get number")
 	test.Assert(t, num+1 == num2, "Numbers should be incrementing")
 
-	err = cadb.Commit()
+	err = tx.Commit()
 	test.AssertNotError(t, err, "Could not commit")
 }
