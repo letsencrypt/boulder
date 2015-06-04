@@ -139,7 +139,7 @@ func NewAppShell(name string) (shell *AppShell) {
 	app := cli.NewApp()
 
 	app.Name = name
-	app.Version = "0.0.0"
+	app.Version = fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -178,7 +178,7 @@ func (as *AppShell) Run() {
 
 // VersionString produces a friendly Application version string
 func (as *AppShell) VersionString() string {
-	return fmt.Sprintf("%s (version %s, build %s)", as.App.Name, as.App.Version, core.GetBuildID())
+	return fmt.Sprintf("%s (build %s)", as.App.Name, core.GetBuildID())
 }
 
 // FailOnError exits and prints an error message if we encountered a problem
