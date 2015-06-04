@@ -65,8 +65,8 @@ func (cadb *CertificateAuthorityDatabaseImpl) CreateTablesIfNotExists() (err err
 }
 
 // GetDbMap gets a pointer to the CA DB's GORP map object.
-func (cadb *CertificateAuthorityDatabaseImpl) GetDbMap() *gorp.DbMap {
-	return cadb.dbMap
+func (cadb *CertificateAuthorityDatabaseImpl) Begin() (*gorp.Transaction, error) {
+	return cadb.dbMap.Begin()
 }
 
 // IncrementAndGetSerial returns the next-available serial number, incrementing

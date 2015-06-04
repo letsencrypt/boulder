@@ -125,5 +125,5 @@ type StorageAuthority interface {
 type CertificateAuthorityDatabase interface {
 	CreateTablesIfNotExists() error
 	IncrementAndGetSerial(*gorp.Transaction) (int64, error)
-	GetDbMap() *gorp.DbMap
+	Begin() (*gorp.Transaction, error)
 }

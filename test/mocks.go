@@ -24,8 +24,8 @@ func NewMockCertificateAuthorityDatabase() (mock *MockCADatabase, err error) {
 	return mock, err
 }
 
-func (cadb *MockCADatabase) GetDbMap() *gorp.DbMap {
-	return cadb.db
+func (cadb *MockCADatabase) Begin() (*gorp.Transaction, error) {
+	return cadb.db.Begin()
 }
 
 func (cadb *MockCADatabase) IncrementAndGetSerial(*gorp.Transaction) (int64, error) {

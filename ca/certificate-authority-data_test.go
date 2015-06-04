@@ -41,13 +41,13 @@ func TestGetSetSequenceOutsideTx(t *testing.T) {
 	_, err = cadb.IncrementAndGetSerial(nil)
 	test.AssertError(t, err, "Not permitted")
 
-	tx, err := cadb.GetDbMap().Begin()
+	tx, err := cadb.Begin()
 	test.AssertNotError(t, err, "Could not begin")
 	tx.Commit()
 	_, err = cadb.IncrementAndGetSerial(tx)
 	test.AssertError(t, err, "Not permitted")
 
-	tx2, err := cadb.GetDbMap().Begin()
+	tx2, err := cadb.Begin()
 	test.AssertNotError(t, err, "Could not begin")
 	tx2.Rollback()
 	_, err = cadb.IncrementAndGetSerial(tx2)
@@ -61,7 +61,7 @@ func TestGetSetSequenceNumber(t *testing.T) {
 	err = cadb.CreateTablesIfNotExists()
 	test.AssertNotError(t, err, "Could not construct tables")
 
-	tx, err := cadb.GetDbMap().Begin()
+	tx, err := cadb.Begin()
 	test.AssertNotError(t, err, "Could not begin")
 
 	num, err := cadb.IncrementAndGetSerial(tx)
