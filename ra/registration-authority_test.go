@@ -38,34 +38,6 @@ func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization,
 	return
 }
 
-type MockCADatabase struct {
-	// empty
-}
-
-func NewMockCertificateAuthorityDatabase() (core.CertificateAuthorityDatabase, error) {
-	return &MockCADatabase{}, nil
-}
-
-func (cadb *MockCADatabase) Begin() error {
-	return nil
-}
-
-func (cadb *MockCADatabase) Commit() error {
-	return nil
-}
-
-func (cadb *MockCADatabase) Rollback() error {
-	return nil
-}
-
-func (cadb *MockCADatabase) IncrementAndGetSerial() (int64, error) {
-	return 1, nil
-}
-
-func (cadb *MockCADatabase) CreateTablesIfNotExists() error {
-	return nil
-}
-
 var (
 	// These values we simulate from the client
 	AccountKeyJSON = []byte(`{
@@ -164,7 +136,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, nil)
 	pa := policy.NewPolicyAuthorityImpl()
-	cadb := &MockCADatabase{}
+	cadb, _ := test.NewMockCertificateAuthorityDatabase()
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
 		SA:             sa,

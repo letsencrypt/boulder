@@ -189,6 +189,8 @@ func uniqueNames(names []string) (unique []string) {
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
 	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.log.AuditErr(err)
 		return nil, err
 	}
 
@@ -207,10 +209,14 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode int) (err error) {
 	certDER, err := ca.SA.GetCertificate(serial)
 	if err != nil {
+		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
+		ca.log.AuditErr(err)
 		return err
 	}
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
+		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
+		ca.log.AuditErr(err)
 		return err
 	}
 
@@ -222,6 +228,8 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 	}
 	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
 	if err != nil {
+		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
+		ca.log.AuditErr(err)
 		return err
 	}
 	err = ca.SA.MarkCertificateRevoked(serial, ocspResponse, reasonCode)
@@ -235,10 +243,16 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	var err error
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
-		return emptyCert, fmt.Errorf("Invalid public key in CSR.")
+		err = fmt.Errorf("Invalid public key in CSR.")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
 	}
 	if !core.GoodKey(key) {
-		return emptyCert, fmt.Errorf("Invalid public key in CSR.")
+		err = fmt.Errorf("Invalid public key in CSR.")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
 	}
 
 	// Pull hostnames from CSR
@@ -253,14 +267,15 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		commonName = hostNames[0]
 	} else {
 		err = fmt.Errorf("Cannot issue a certificate without a hostname.")
-		ca.log.WarningErr(err)
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
 
 	// Collapse any duplicate names.  Note that this operation may re-order the names
 	hostNames = uniqueNames(hostNames)
 	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
-		err = errors.New(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
+		err = fmt.Errorf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames)
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
@@ -269,6 +284,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
 	if err = ca.PA.WillingToIssue(identifier); err != nil {
 		err = fmt.Errorf("Policy forbids issuing for name %s", commonName)
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
@@ -276,6 +292,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier); err != nil {
 			err = fmt.Errorf("Policy forbids issuing for name %s", name)
+			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 			ca.log.AuditErr(err)
 			return emptyCert, err
 		}
@@ -284,8 +301,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	notAfter := time.Now().Add(ca.ValidityPeriod)
 
 	if ca.NotAfter.Before(notAfter) {
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		err = errors.New("Cannot issue a certificate that expires after the intermediate certificate.")
-		ca.log.WarningErr(err)
+		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
 
@@ -303,9 +321,18 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}))
 
 	// Get the next serial number
-	ca.DB.Begin()
-	serialDec, err := ca.DB.IncrementAndGetSerial()
+	tx, err := ca.DB.GetDbMap().Begin()
 	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.log.AuditErr(err)
+		return emptyCert, err
+	}
+
+	serialDec, err := ca.DB.IncrementAndGetSerial(tx)
+	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.log.Audit(fmt.Sprintf("Serial increment failed, rolling back: err=[%v]", err))
+		tx.Rollback()
 		return emptyCert, err
 	}
 	serialHex := fmt.Sprintf("%02X%014X", ca.Prefix, serialDec)
@@ -323,22 +350,27 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	certPEM, err := ca.Signer.Sign(req)
 	if err != nil {
-		ca.DB.Rollback()
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.log.Audit(fmt.Sprintf("Signer failed, rolling back: serial=[%s] err=[%v]", serialHex, err))
+		tx.Rollback()
 		return emptyCert, err
 	}
 
 	if len(certPEM) == 0 {
-		err = errors.New("No certificate returned by server")
-		ca.log.WarningErr(err)
-		ca.DB.Rollback()
+		err = fmt.Errorf("No certificate returned by server")
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.log.Audit(fmt.Sprintf("PEM empty from Signer, rolling back: serial=[%s] err=[%v]", serialHex, err))
+		tx.Rollback()
 		return emptyCert, err
 	}
 
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
-		err = errors.New("Invalid certificate value returned")
-		ca.log.WarningErr(err)
-		ca.DB.Rollback()
+		err = fmt.Errorf("Invalid certificate value returned")
+
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.log.Audit(fmt.Sprintf("PEM decode error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
+		tx.Rollback()
 		return emptyCert, err
 	}
 	certDER := block.Bytes
@@ -347,17 +379,29 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		DER:    certDER,
 		Status: core.StatusValid,
 	}
+
+	// This is one last check for uncaught errors
 	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.log.Audit(fmt.Sprintf("Uncaught error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
+		tx.Rollback()
 		return emptyCert, err
 	}
 
 	// Store the cert with the certificate authority, if provided
 	_, err = ca.SA.AddCertificate(certDER, regID)
 	if err != nil {
-		ca.DB.Rollback()
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.log.Audit(fmt.Sprintf("Failed RPC to store at SA, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
+		tx.Rollback()
 		return emptyCert, err
 	}
 
-	ca.DB.Commit()
+	if err = tx.Commit(); err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.log.Audit(fmt.Sprintf("Failed to commit, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
+		return emptyCert, err
+	}
+
 	return cert, err
 }
