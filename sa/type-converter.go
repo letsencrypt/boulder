@@ -8,8 +8,11 @@ package sa
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -57,28 +60,45 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
 			if !ok {
-				return errors.New("FromDb: Unable to convert *string")
+				return fmt.Errorf("FromDb: Unable to convert %T to *string", holder)
 			}
 			if *s == "" {
 				return errors.New("FromDb: Empty JWK field.")
 			}
 			b := []byte(*s)
-			k := target.(*jose.JsonWebKey)
+			k, ok := target.(*jose.JsonWebKey)
+			if !ok {
+				return fmt.Errorf("FromDb: Unable to convert %T to *jose.JsonWebKey", target)
+			}
 			return k.UnmarshalJSON(b)
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.AcmeStatus:
 		binder := func(holder, target interface{}) error {
-			s := holder.(*string)
-			st := target.(*core.AcmeStatus)
+			s, ok := holder.(*string)
+			if !ok {
+				return fmt.Errorf("FromDb: Unable to convert %T to *string", holder)
+			}
+			st, ok := target.(*core.AcmeStatus)
+			if !ok {
+				return fmt.Errorf("FromDb: Unable to convert %T to *core.AcmeStatus", target)
+			}
+
 			*st = core.AcmeStatus(*s)
 			return nil
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.OCSPStatus:
 		binder := func(holder, target interface{}) error {
-			s := holder.(*string)
-			st := target.(*core.OCSPStatus)
+			s, ok := holder.(*string)
+			if !ok {
+				return fmt.Errorf("FromDb: Unable to convert %T to *string", holder)
+			}
+			st, ok := target.(*core.OCSPStatus)
+			if !ok {
+				return fmt.Errorf("FromDb: Unable to convert %T to *core.OCSPStatus", target)
+			}
+
 			*st = core.OCSPStatus(*s)
 			return nil
 		}
