@@ -42,7 +42,7 @@ go install ./Godeps/_workspace/src/github.com/mattn/go-sqlite3
 if [ "${TRAVIS}" == "true" ] ; then
   # Run each test by itself for Travis, so we can get coverage
   for dir in ${TESTDIRS}; do
-    run go test -covermode=count -coverprofile=${dir}.coverprofile ./${dir}/
+    run go test -tags pkcs11 -covermode=count -coverprofile=${dir}.coverprofile ./${dir}/
   done
 
   # Gather all the coverprofiles
@@ -60,7 +60,7 @@ else
     dirlist="${dirlist} ./${dir}/"
   done
 
-  run go test ${dirlist}
+  run go test -tags pkcs11 ${dirlist}
 fi
 
 [ ${FAILURE} == 0 ] && run python test/amqp-integration-test.py

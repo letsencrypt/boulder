@@ -28,7 +28,7 @@ pre:
 
 # Compile each of the binaries
 $(OBJECTS): pre
-	go build -o ./bin/$@ -ldflags "-X $(BUILD_ID_VAR) $(REVID)" cmd/$@/main.go
+	go build -tags pkcs11 -o ./bin/$@ -ldflags "-X $(BUILD_ID_VAR) $(REVID)" cmd/$@/main.go
 
 clean:
 	rm -f $(OBJDIR)/*
