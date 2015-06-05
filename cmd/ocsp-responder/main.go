@@ -90,7 +90,7 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 		return
 	}
 
-	serialString := fmt.Sprintf("%032x", req.SerialNumber)
+	serialString := core.SerialToString(req.SerialNumber)
 	log.Debug(fmt.Sprintf("Searching for OCSP issued by us for serial %s", serialString))
 
 	var ocspResponse core.OCSPResponse
