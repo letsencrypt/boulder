@@ -58,6 +58,26 @@ func NewDbMap(driver string, name string) (*gorp.DbMap, error) {
 	return dbmap, err
 }
 
+// SetSQLDebug enables/disables GORP SQL-level Debugging
+func SetSQLDebug(dbMap *gorp.DbMap, state bool) {
+	dbMap.TraceOff()
+
+	if state {
+		// Enable logging
+		dbMap.TraceOn("SQL: ", &SQLLogger{blog.GetAuditLogger()})
+	}
+}
+
+// SQLLogger adapts the AuditLogger to a format GORP can use.
+type SQLLogger struct {
+	log *blog.AuditLogger
+}
+
+// Printf adapts the AuditLogger to GORP's interface
+func (log *SQLLogger) Printf(format string, v ...interface{}) {
+	log.log.Debug(fmt.Sprintf(format, v))
+}
+
 // initTables constructs the table map for the ORM. If you want to also create
 // the tables, call CreateTablesIfNotExists on the DbMap.
 func initTables(dbMap *gorp.DbMap) {
