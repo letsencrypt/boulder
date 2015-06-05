@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -71,6 +72,21 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 		Key:           init.Key,
 	}
 	reg.MergeUpdate(init)
+
+	for _, contact := range reg.Contact {
+		// If contact email provided check MX records exist for the domain
+		if contact.Scheme == "mailto" {
+			splitEmail := strings.SplitN(contact.Opaque, "@", -1)
+			domain := strings.ToLower(splitEmail[len(splitEmail)-1])
+			mx, err := net.LookupMX(domain)
+			if err != nil {
+				return
+			}
+			if len(mx) == 0 {
+				err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
+			}
+		}
+	}
 
 	// Store the authorization object, then return it
 	reg, err = ra.SA.NewRegistration(reg)
