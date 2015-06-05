@@ -104,7 +104,7 @@
   "ocspResponder": {
     "dbDriver": "sqlite3",
     "dbName": ":memory:",
-    "path": "http://localhost:4001",
+    "path": "/",
     "listenAddress": "localhost:4001"
   },
 
