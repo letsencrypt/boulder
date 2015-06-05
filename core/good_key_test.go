@@ -15,7 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var maxKeySize int = 4096
+var maxKeySize int = 2048
 
 func TestUnknownKeyType(t *testing.T) {
 	notAKey := struct{}{}
