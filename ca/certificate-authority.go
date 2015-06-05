@@ -61,6 +61,7 @@ type CertificateAuthorityImpl struct {
 	ValidityPeriod time.Duration
 	NotAfter       time.Time
 	MaxNames       int
+	MaxKeySize     int
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -235,7 +236,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
-	if !core.GoodKey(key) {
+	if !core.GoodKey(key, ca.MaxKeySize) {
 		err = fmt.Errorf("Invalid public key in CSR.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)

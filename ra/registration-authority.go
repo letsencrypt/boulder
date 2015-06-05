@@ -28,7 +28,8 @@ type RegistrationAuthorityImpl struct {
 	PA  core.PolicyAuthority
 	log *blog.AuditLogger
 
-	AuthzBase string
+	AuthzBase  string
+	MaxKeySize int
 }
 
 func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
@@ -63,7 +64,7 @@ type certificateRequestEvent struct {
 }
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
-	if !core.GoodKey(init.Key.Key) {
+	if !core.GoodKey(init.Key.Key, ra.MaxKeySize) {
 		return core.Registration{}, core.UnauthorizedError("Invalid public key.")
 	}
 	reg = core.Registration{

@@ -117,6 +117,7 @@ type Config struct {
 		BaseURL string
 		// Path to a PEM-encoded copy of the issuer certificate.
 		IssuerCert string
+		MaxKeySize int
 	}
 
 	SubscriberAgreementURL string
