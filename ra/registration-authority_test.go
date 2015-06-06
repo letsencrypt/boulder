@@ -194,7 +194,7 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 
 func TestNewRegistration(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
-	mailto, _ := url.Parse("mailto:foo@bar.com")
+	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
 	input := core.Registration{
 		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
 		Key:     AccountKey,
@@ -217,7 +217,7 @@ func TestNewRegistration(t *testing.T) {
 
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, _, ra := initAuthorities(t)
-	mailto, _ := url.Parse("mailto:foo@bar.com")
+	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
 	input := core.Registration{
 		ID:            23,
 		Key:           AccountKey,
@@ -247,7 +247,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 
 func TestNewRegistrationBadKey(t *testing.T) {
 	_, _, _, ra := initAuthorities(t)
-	mailto, _ := url.Parse("mailto:foo@bar.com")
+	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
 	input := core.Registration{
 		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
 		Key:     ShortKey,

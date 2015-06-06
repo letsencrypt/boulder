@@ -9,6 +9,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"math/big"
+	"net"
+	"net/mail"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -75,15 +77,27 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 
 	for _, contact := range reg.Contact {
 		// If contact email provided check MX records exist for the domain
+		if !strings.HasPrefix(contact.Scheme, "mailto") && !strings.HasPrefix(contact.Scheme, "tel") {
+			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
+			return
+		}
 		if contact.Scheme == "mailto" {
+			_, err = mail.ParseAddress(contact.Opaque)
+			if err != nil {
+				err = core.MalformedRequestError(err.Error())
+				return
+			}
 			splitEmail := strings.SplitN(contact.Opaque, "@", -1)
 			domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-			mx, err := net.LookupMX(domain)
+			var mx []*net.MX
+			mx, err = net.LookupMX(domain)
 			if err != nil {
+				err = core.InternalServerError(err.Error())
 				return
 			}
 			if len(mx) == 0 {
 				err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
+				return
 			}
 		}
 	}
