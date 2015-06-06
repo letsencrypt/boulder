@@ -50,7 +50,7 @@ def run_test():
         print("\n Installing NPM modules failed")
         die()
     if subprocess.Popen('''
-        node test.js --email foo@bar.com --agree true \
+        node test.js --email foo@letsencrypt.org --agree true \
           --domains foo.com --new-reg http://localhost:4300/acme/new-reg \
           --certKey %s/key.pem --cert %s/cert.der
         ''' % (tempdir, tempdir), shell=True).wait() != 0:

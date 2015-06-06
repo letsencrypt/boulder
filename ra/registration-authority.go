@@ -9,9 +9,12 @@ import (
 	"crypto/x509"
 	"fmt"
 	"math/big"
+	"net"
+	"net/mail"
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -47,6 +50,27 @@ func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
+func validateEmail(address string) (err error) {
+	_, err = mail.ParseAddress(address)
+	if err != nil {
+		err = core.MalformedRequestError(err.Error())
+		return
+	}
+	splitEmail := strings.SplitN(address, "@", -1)
+	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
+	var mx []*net.MX
+	mx, err = net.LookupMX(domain)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		return
+	}
+	if len(mx) == 0 {
+		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
+		return
+	}
+	return
+}
+
 type certificateRequestEvent struct {
 	ID                  string    `json:",omitempty"`
 	Requester           int64     `json:",omitempty"`
@@ -73,11 +97,27 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	}
 	reg.MergeUpdate(init)
 
-	// Store the registration object, then return it
+	for _, contact := range reg.Contact {
+		switch contact.Scheme {
+		case "tel":
+			continue
+		case "mailto":
+			err = validateEmail(contact.Opaque)
+			if err != nil {
+				return
+			}
+		default:
+			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
+			return
+		}
+	}
+
+	// Store the authorization object, then return it
 	reg, err = ra.SA.NewRegistration(reg)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 	}
+
 	return
 }
 
