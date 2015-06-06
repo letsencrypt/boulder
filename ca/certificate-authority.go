@@ -8,6 +8,7 @@ package ca
 import (
 	"crypto"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -18,33 +19,40 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/auth"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
-	cfsslOCSP "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/remote"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 )
 
 // Config defines the JSON configuration file schema
 type Config struct {
-	Server       string
-	AuthKey      string
 	Profile      string
 	TestMode     bool
 	DBDriver     string
 	DBName       string
 	SerialPrefix int
-	// This field is only allowed if TestMode is true, indicating that we are
-	// signing with a local key. In production we will use an HSM and this
-	// IssuerKey must be empty (and TestMode must be false). PEM-encoded private
-	// key used for signing certificates and OCSP responses.
-	IssuerKey string
+	Key          KeyConfig
 	// How long issue certificates are valid for, should match expiry field
 	// in cfssl config.
 	Expiry string
 	// The maximum number of subjectAltNames in a single certificate
 	MaxNames int
+	CFSSL    cfsslConfig.Config
+}
+
+type KeyConfig struct {
+	File   string
+	PKCS11 PKCS11Config
+}
+
+type PKCS11Config struct {
+	Module string
+	Token  string
+	PIN    string
+	Label  string
 }
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -52,7 +60,7 @@ type Config struct {
 type CertificateAuthorityImpl struct {
 	profile        string
 	Signer         signer.Signer
-	OCSPSigner     cfsslOCSP.Signer
+	OCSPSigner     ocsp.Signer
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
 	DB             core.CertificateAuthorityDatabase
@@ -81,20 +89,19 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	// Create the remote signer
-	localProfile := cfsslConfig.SigningProfile{
-		Expiry:       time.Hour,     // BOGUS: Required by CFSSL, but not used
-		RemoteName:   config.Server, // BOGUS: Only used as a flag by CFSSL
-		RemoteServer: config.Server,
-		UseSerialSeq: true,
+	// CFSSL requires processing JSON configs through its own LoadConfig, so we
+	// serialize and then deserialize.
+	cfsslJSON, err := json.Marshal(config.CFSSL)
+	if err != nil {
+		return nil, err
 	}
-
-	localProfile.Provider, err = auth.New(config.AuthKey, nil)
+	cfsslConfigObj, err := cfsslConfig.LoadConfig(cfsslJSON)
 	if err != nil {
 		return nil, err
 	}
 
-	signer, err := remote.NewSigner(&cfsslConfig.Signing{Default: &localProfile})
+	// Load the private key, which can be a file or a PKCS#11 key.
+	priv, err := loadKey(config.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -104,18 +111,14 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	// In test mode, load a private key from a file.
-	// TODO: This should rely on the CFSSL config, to make it easy to use a key
-	// from a file vs an HSM. https://github.com/letsencrypt/boulder/issues/163
-	issuerKey, err := loadIssuerKey(config.IssuerKey)
+	signer, err := local.NewSigner(priv, issuer, x509.SHA256WithRSA, cfsslConfigObj.Signing)
 	if err != nil {
 		return nil, err
 	}
 
 	// Set up our OCSP signer. Note this calls for both the issuer cert and the
 	// OCSP signing cert, which are the same in our case.
-	ocspSigner, err := cfsslOCSP.NewSigner(issuer, issuer, issuerKey,
-		time.Hour*24*4)
+	ocspSigner, err := ocsp.NewSigner(issuer, issuer, priv, time.Hour)
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +147,24 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 	ca.MaxNames = config.MaxNames
 
 	return ca, nil
+}
+
+func loadKey(keyConfig KeyConfig) (priv crypto.Signer, err error) {
+	if keyConfig.File != "" {
+		var keyBytes []byte
+		keyBytes, err = ioutil.ReadFile(keyConfig.File)
+		if err != nil {
+			return nil, fmt.Errorf("Could not read key file %s", keyConfig.File)
+		}
+
+		priv, err = helpers.ParsePrivateKeyPEM(keyBytes)
+		return
+	} else {
+		pkcs11Config := keyConfig.PKCS11
+		priv, err = pkcs11key.New(pkcs11Config.Module,
+			pkcs11Config.Token, pkcs11Config.PIN, pkcs11Config.Label)
+		return
+	}
 }
 
 func loadIssuer(filename string) (issuerCert *x509.Certificate, err error) {
@@ -182,7 +203,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 		return nil, err
 	}
 
-	signRequest := cfsslOCSP.SignRequest{
+	signRequest := ocsp.SignRequest{
 		Certificate: cert,
 		Status:      xferObj.Status,
 		Reason:      xferObj.Reason,
@@ -208,7 +229,7 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 		return err
 	}
 
-	signRequest := cfsslOCSP.SignRequest{
+	signRequest := ocsp.SignRequest{
 		Certificate: cert,
 		Status:      string(core.OCSPStatusRevoked),
 		Reason:      reasonCode,

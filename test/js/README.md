@@ -2,26 +2,18 @@
 
 The node.js scripts in this directory provide a simple end-to-end test of Boulder.  (Using some pieces from [node-acme](https://github.com/letsencrypt/node-acme/))  To run:
 
-# Install dependencies (run in this directory).
+# Run boulder in default test mode:
 
-    npm install
+    cd ../../
+    ./start.py
 
-# Run boulder in default test mode (no Yubikey, start cfssl automatically):
+# To run cfssl with a Yubikey, edit test/boulder-pkcs11-example-config.json to
+# add your PKCS#11 PIN (and module name, token name, and label). Then run:
 
-    cd ../
-    ./start.sh
-
-# To run cfssl with a Yubikey:
-# (You'll need to make your own key, cert, and policy.)
-
-    go install -tags pkcs11 github.com/cloudflare/cfssl/cmd/cfssl
-    cfssl serve -port 9000 -ca ca.cert.pem \
-                  -pkcs11-module "/Library/OpenSC/lib/opensc-pkcs11.so" \
-                  -pkcs11-token "Yubico Yubik NEO CCID" \
-                  -pkcs11-pin 123456 \
-                  -pkcs11-label "PIV AUTH key" \
-                  -config policy.json
+    cd ../../
+    BOULDER_CONFIG=test/boulder-pkcs11-example-config.json ./start.py
 
 # Client side
 
+    npm install
     node test.js

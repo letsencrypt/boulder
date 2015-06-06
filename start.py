@@ -17,13 +17,10 @@ tempdir = tempfile.mkdtemp()
 config = os.environ.get('BOULDER_CONFIG')
 if config is None:
 	config = 'test/boulder-config.json'
-cfsslConfig = os.environ.get('CFSSL_CONFIG')
-if cfsslConfig is None:
-	cfsslConfig = 'test/cfssl-config.json'
 
 def run(path):
     binary = os.path.join(tempdir, os.path.basename(path))
-    cmd = 'go build -o %s %s' % (binary, path)
+    cmd = 'go build -tags pkcs11 -o %s %s' % (binary, path)
     print(cmd)
     if subprocess.Popen(cmd, shell=True).wait() != 0:
         sys.exit(1)
@@ -34,31 +31,13 @@ def run(path):
 processes = []
 
 def start():
-    # A strange Go bug: If cfssl is up-to-date, we'll get a failure building
-    # Boulder. Work around by touching cfssl.go.
-    subprocess.Popen('touch Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl/cfssl.go', shell=True).wait()
-
-    cmd = 'go build -o %s/cfssl ./Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl' % (tempdir)
-    print(cmd)
-    if subprocess.Popen(cmd, shell=True).wait() != 0:
-        die()
-
     global processes
     processes = [
         run('./cmd/boulder-wfe'),
         run('./cmd/boulder-ra'),
         run('./cmd/boulder-sa'),
         run('./cmd/boulder-ca'),
-        run('./cmd/boulder-va'),
-        subprocess.Popen('''
-        exec %s/cfssl \
-          -loglevel 0 \
-          serve \
-          -port 9000 \
-          -ca test/test-ca.pem \
-          -ca-key test/test-ca.key \
-          -config %s
-        ''' % (tempdir, cfsslConfig), shell=True, stdout=None)]
+        run('./cmd/boulder-va')]
     time.sleep(100000)
 
 try:

@@ -73,7 +73,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	}
 	reg.MergeUpdate(init)
 
-	// Store the authorization object, then return it
+	// Store the registration object, then return it
 	reg, err = ra.SA.NewRegistration(reg)
 	if err != nil {
 		err = core.InternalServerError(err.Error())

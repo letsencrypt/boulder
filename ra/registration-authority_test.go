@@ -41,12 +41,26 @@ func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization,
 
 var (
 	// These values we simulate from the client
-	AccountKeyJSON = []byte(`{
+	AccountKeyJSONA = []byte(`{
 		"kty":"RSA",
 		"n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
 		"e":"AQAB"
 	}`)
-	AccountKey = jose.JsonWebKey{}
+	AccountKeyA = jose.JsonWebKey{}
+
+	AccountKeyJSONB = []byte(`{
+		"kty":"RSA",
+		"n":"z8bp-jPtHt4lKBqepeKF28g_QAEOuEsCIou6sZ9ndsQsEjxEOQxQ0xNOQezsKa63eogw8YS3vzjUcPP5BJuVzfPfGd5NVUdT-vSSwxk3wvk_jtNqhrpcoG0elRPQfMVsQWmxCAXCVRz3xbcFI8GTe-syynG3l-g1IzYIIZVNI6jdljCZML1HOMTTW4f7uJJ8mM-08oQCeHbr5ejK7O2yMSSYxW03zY-Tj1iVEebROeMv6IEEJNFSS4yM-hLpNAqVuQxFGetwtwjDMC1Drs1dTWrPuUAAjKGrP151z1_dE74M5evpAhZUmpKv1hY-x85DC6N0hFPgowsanmTNNiV75w",
+		"e":"AAEAAQ"
+	}`)
+	AccountKeyB = jose.JsonWebKey{}
+
+	AccountKeyJSONC = []byte(`{
+		"kty":"RSA",
+		"n":"rFH5kUBZrlPj73epjJjyCxzVzZuV--JjKgapoqm9pOuOt20BUTdHqVfC2oDclqM7HFhkkX9OSJMTHgZ7WaVqZv9u1X2yjdx9oVmMLuspX7EytW_ZKDZSzL-sCOFCuQAuYKkLbsdcA3eHBK_lwc4zwdeHFMKIulNvLqckkqYB9s8GpgNXBDIQ8GjR5HuJke_WUNjYHSd8jY1LU9swKWsLQe2YoQUz_ekQvBvBCoaFEtrtRaSJKNLIVDObXFr2TLIiFiM0Em90kK01-eQ7ZiruZTKomll64bRFPoNo4_uwubddg3xTqur2vdF3NyhTrYdvAgTem4uC0PFjEQ1bK_djBQ",
+		"e":"AAEAAQ"
+	}`)
+	AccountKeyC = jose.JsonWebKey{}
 
 	// These values we simulate from the client
 	AccountPrivateKeyJSON = []byte(`{
@@ -115,7 +129,11 @@ var (
 )
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
-	err := json.Unmarshal(AccountKeyJSON, &AccountKey)
+	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
+	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
+	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
+	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
+	err = json.Unmarshal(AccountKeyJSONC, &AccountKeyC)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 
 	err = json.Unmarshal(AccountPrivateKeyJSON, &AccountPrivateKey)
@@ -163,7 +181,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 
 	// This registration implicitly gets ID = 1
-	Registration, _ = sa.NewRegistration(core.Registration{Key: AccountKey})
+	Registration, _ = sa.NewRegistration(core.Registration{Key: AccountKeyA})
 
 	ra := NewRegistrationAuthorityImpl()
 	ra.SA = sa
@@ -199,13 +217,13 @@ func TestNewRegistration(t *testing.T) {
 	mailto, _ := url.Parse("mailto:foo@bar.com")
 	input := core.Registration{
 		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
-		Key:     AccountKey,
+		Key:     AccountKeyB,
 	}
 
 	result, err := ra.NewRegistration(input)
 	test.AssertNotError(t, err, "Could not create new registration")
 
-	test.Assert(t, core.KeyDigestEquals(result.Key, AccountKey), "Key didn't match")
+	test.Assert(t, core.KeyDigestEquals(result.Key, AccountKeyB), "Key didn't match")
 	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
 	test.Assert(t, mailto.String() == result.Contact[0].String(),
 		"Contact didn't match")
@@ -214,7 +232,7 @@ func TestNewRegistration(t *testing.T) {
 
 	reg, err := sa.GetRegistration(result.ID)
 	test.AssertNotError(t, err, "Failed to retrieve registration")
-	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKey), "Retrieved registration differed.")
+	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
 }
 
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
@@ -222,7 +240,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	mailto, _ := url.Parse("mailto:foo@bar.com")
 	input := core.Registration{
 		ID:            23,
-		Key:           AccountKey,
+		Key:           AccountKeyC,
 		RecoveryToken: "RecoverMe",
 		Contact:       []core.AcmeURL{core.AcmeURL(*mailto)},
 		Agreement:     "I agreed",
@@ -343,7 +361,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	}
 	csr := x509.CertificateRequest{
 		SignatureAlgorithm: x509.SHA256WithRSA,
-		PublicKey:          AccountKey.Key,
+		PublicKey:          AccountKeyA.Key,
 		DNSNames:           []string{"www.example.com"},
 	}
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csr, AccountPrivateKey.Key)
@@ -358,7 +376,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 		Authorizations: []core.AcmeURL{core.AcmeURL(*authzURL)},
 	}
 
-	// Registration id 1 has key == AccountKey
+	// Registration id 1 has key == AccountKeyA
 	_, err = ra.NewCertificate(certRequest, 1)
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
 	test.AssertEquals(t, err.Error(), "Certificate public key must be different than account key")
