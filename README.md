@@ -26,7 +26,7 @@ A quick-start method for running a Boulder instance is to use one of the example
 
 ```
 > mkdir .boulder-config
-> cp test/example-config.json .boulder-config/config.json
+> cp test/boulder-config.json .boulder-config/config.json
 > docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro -p 4000:4000 quay.io/letsencrypt/boulder:latest boulder
 ```
 
@@ -42,6 +42,18 @@ Quickstart
 
 Install RabbitMQ from https://rabbitmq.com/download.html. It's required to run
 tests.
+
+Install libtool-ltdl dev libraries, which are required for Boulder's PKCS11
+support.
+
+Ubuntu:
+`sudo apt-get install libltdl3-dev`
+
+CentOS:
+`sudo yum install libtool-ltdl-devel`
+
+OS X:
+`sudo port install libtool`
 
 ```
 > go get github.com/letsencrypt/boulder # Ignore errors about no buildable files

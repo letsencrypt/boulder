@@ -47,16 +47,6 @@ type authzModel struct {
 	Sequence int64 `db:"sequence"`
 }
 
-// SQLLogger adapts the AuditLogger to a format GORP can use.
-type SQLLogger struct {
-	log *blog.AuditLogger
-}
-
-// Printf adapts the AuditLogger to GORP's interface
-func (log *SQLLogger) Printf(format string, v ...interface{}) {
-	log.log.Debug(fmt.Sprintf(format, v))
-}
-
 // NewSQLStorageAuthority provides persistence using a SQL backend for Boulder.
 func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthority, err error) {
 	logger := blog.GetAuditLogger()
@@ -78,12 +68,7 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 
 // SetSQLDebug enables/disables GORP SQL-level Debugging
 func (ssa *SQLStorageAuthority) SetSQLDebug(state bool) {
-	ssa.dbMap.TraceOff()
-
-	if state {
-		// Enable logging
-		ssa.dbMap.TraceOn("SQL: ", &SQLLogger{blog.GetAuditLogger()})
-	}
+	SetSQLDebug(ssa.dbMap, state)
 }
 
 // CreateTablesIfNotExists instructs the ORM to create any missing tables.

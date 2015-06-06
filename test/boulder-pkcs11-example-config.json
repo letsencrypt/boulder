@@ -31,7 +31,7 @@
   },
 
   "wfe": {
-    "listenAddress": "127.0.0.1:4300"
+    "listenAddress": "127.0.0.1:4000"
   },
 
   "ca": {
@@ -41,11 +41,17 @@
     "dbName": ":memory:",
     "testMode": true,
     "_comment": "This should only be present in testMode. In prod use an HSM.",
-    "Key": {
-      "File": "test/test-ca.key"
-    },
     "expiry": "2160h",
     "maxNames": 1000,
+    "Key": {
+      "PKCS11": {
+        "_comment": "On OS X, the module will likely be /Library/OpenSC/lib/opensc-pkcs11.so",
+        "Module": "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so",
+        "Token": "Yubico Yubikey NEO OTP+CCID 00 00",
+        "Label": "SIGN key",
+        "PIN": "1234"
+      }
+    },
     "cfssl": {
       "signing": {
         "profiles": {
@@ -53,8 +59,7 @@
             "usages": [
               "digital signature",
               "key encipherment",
-              "server auth",
-              "client auth"
+              "server auth"
             ],
             "backdate": "1h",
             "is_ca": false,
@@ -92,8 +97,26 @@
   },
 
   "sql": {
-    "SQLDebug": false,
+    "SQLDebug": true,
     "CreateTables": true
+  },
+
+  "revoker": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:"
+  },
+
+  "ocspResponder": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:",
+    "path": "/",
+    "listenAddress": "localhost:4001"
+  },
+
+  "ocspUpdater": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:",
+    "minTimeToExpiry": "72h"
   },
 
   "mail": {
@@ -104,9 +127,9 @@
   },
 
   "common": {
-    "baseURL": "http://localhost:4300",
-    "issuerCert": "test/test-ca.pem"
+    "baseURL": "http://localhost:4000",
+    "issuerCert": "/home/jsha/yubi-ca.pem"
   },
 
-  "subscriberAgreementURL": "http://localhost:4300/terms"
+  "subscriberAgreementURL": "http://localhost:4000/terms"
 }

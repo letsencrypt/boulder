@@ -45,7 +45,10 @@ func main() {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-			sas := rpc.NewStorageAuthorityServer(c.AMQP.SA.Server, ch, sai)
+			sas := rpc.NewAmqpRPCServer(c.AMQP.SA.Server, ch)
+
+			err = rpc.NewStorageAuthorityServer(sas, sai)
+			cmd.FailOnError(err, "Could create SA RPC server")
 
 			auditlogger.Info(app.VersionString())
 
