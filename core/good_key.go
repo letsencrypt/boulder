@@ -70,11 +70,13 @@ func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) bool {
 	// Baseline Requirements Appendix A
 	// Modulus must be >= 2048 bits and < maxKeySize
 	modulus := key.N
-	if modulus.BitLen() < 2048 {
-		log.Debug(fmt.Sprintf("Key too small: %d", modulus.BitLen()))
+	modulusBitLen := modulus.BitLen()
+	if modulusBitLen < 2048 {
+		log.Debug(fmt.Sprintf("Key too small: %d", modulusBitLen))
 		return false
-	} else if modulus.BitLen() > maxKeySize {
-		log.Debug(fmt.Sprintf("Key to large: %d", modulus.BitLen()))
+	}
+	if modulusBitLen > maxKeySize {
+		log.Debug(fmt.Sprintf("Key too large: %d > %d", modulusBitLen, maxKeySize))
 		return false
 	}
 	// The CA SHALL confirm that the value of the public exponent is an
