@@ -105,7 +105,8 @@
 
   "common": {
     "baseURL": "http://localhost:4300",
-    "issuerCert": "test/test-ca.pem"
+    "issuerCert": "test/test-ca.pem",
+    "maxKeySize": 4096
   },
 
   "subscriberAgreementURL": "http://localhost:4300/terms"

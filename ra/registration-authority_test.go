@@ -175,6 +175,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 		DB:             cadb,
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
+		MaxKeySize:     4096,
 	}
 	csrDER, _ := hex.DecodeString(CSR_HEX)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
@@ -188,6 +189,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	ra.CA = &ca
 	ra.PA = pa
 	ra.AuthzBase = "http://acme.invalid/authz/"
+	ra.MaxKeySize = 4096
 
 	AuthzInitial.RegistrationID = Registration.ID
 

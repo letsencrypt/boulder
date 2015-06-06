@@ -359,6 +359,7 @@ func TestRevoke(t *testing.T) {
 		return
 	}
 	ca.SA = storageAuthority
+	ca.MaxKeySize = 4096
 
 	csrDER, _ := hex.DecodeString(CN_AND_SAN_CSR_HEX)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
@@ -386,6 +387,7 @@ func TestIssueCertificate(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
+	ca.MaxKeySize = 4096
 
 	/*
 		  // Uncomment to test with a local signer
@@ -461,6 +463,7 @@ func TestRejectNoName(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
+	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs with no names
 	csrDER, _ := hex.DecodeString(NO_NAME_CSR_HEX)
@@ -489,6 +492,7 @@ func TestDeduplication(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
+	ca.MaxKeySize = 4096
 
 	// Test that the CA collapses duplicate names
 	csrDER, _ := hex.DecodeString(DUPE_NAME_CSR_HEX)
@@ -517,6 +521,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
+	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ := hex.DecodeString(NO_CN_CSR_HEX)
@@ -536,6 +541,7 @@ func TestShortKey(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
 	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
 	ca.SA = storageAuthority
+	ca.MaxKeySize = 4096
 
 	csrDER, err := ioutil.ReadFile("shortkey-csr.der")
 	if err != nil {

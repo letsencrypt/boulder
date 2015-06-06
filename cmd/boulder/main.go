@@ -115,6 +115,9 @@ func main() {
 		wfei.BaseURL = c.Common.BaseURL
 		wfei.HandlePaths()
 
+		ra.MaxKeySize = c.Common.MaxKeySize
+		ca.MaxKeySize = c.Common.MaxKeySize
+
 		auditlogger.Info(app.VersionString())
 
 		fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.WFE.ListenAddress)
