@@ -66,8 +66,12 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 			t.Logf("SIMPLESRV: Got a wrongtoken req\n")
 			fmt.Fprintf(w, "wrongtoken")
 		} else if strings.HasSuffix(r.URL.Path, "wait") {
-			t.Logf("SIMPLESRV: Got a block req\n")
+			t.Logf("SIMPLESRV: Got a wait req\n")
 			time.Sleep(time.Second * 5)
+			fmt.Fprintf(w, "%s", token)
+		} else if strings.HasSuffix(r.URL.Path, "wait-long") {
+			t.Logf("SIMPLESRV: Got a wait-long req\n")
+			time.Sleep(time.Second * 10)
 			fmt.Fprintf(w, "%s", token)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
@@ -120,7 +124,9 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 		Certificates: []tls.Certificate{*cert},
 		ClientAuth:   tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			fmt.Println(clientHello)
+			if clientHello.ServerName == "wait-long.acme.invalid" {
+				time.Sleep(time.Second * 10)
+			}
 			return cert, nil
 		},
 		NextProtos: []string{"http/1.1"},
@@ -181,6 +187,16 @@ func TestSimpleHttps(t *testing.T) {
 	invalidChall, err = va.validateSimpleHTTPS(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
+
+	chall.Path = "wait-long"
+	started := time.Now()
+	invalidChall, err = va.validateSimpleHTTPS(ident, chall)
+	took := time.Since(started)
+	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
+	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
+	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Connection should've timed out")
 }
 
 func TestDvsni(t *testing.T) {
@@ -218,6 +234,17 @@ func TestDvsni(t *testing.T) {
 	invalidChall, err = va.validateDvsni(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "S Should be illegal Base64")
+
+	chall.S = ba
+	chall.Nonce = "wait-long"
+	started := time.Now()
+	invalidChall, err = va.validateDvsni(ident, chall)
+	took := time.Since(started)
+	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
+	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
+	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Connection should've timed out")
 }
 
 func TestValidateHTTPS(t *testing.T) {
