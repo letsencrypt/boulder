@@ -19,7 +19,7 @@ var maxKeySize int = 2048
 
 func TestUnknownKeyType(t *testing.T) {
 	notAKey := struct{}{}
-	test.Assert(t, !GoodKey(notAKey, maxKeySize), "Should have rejeected a key of unknown type")
+	test.Assert(t, !GoodKey(notAKey, maxKeySize), "Should have rejected a key of unknown type")
 }
 
 func TestWrongKeyType(t *testing.T) {
