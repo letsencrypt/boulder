@@ -49,6 +49,27 @@ func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
+func validateEmail(address string) (err error) {
+	_, err = mail.ParseAddress(address)
+	if err != nil {
+		err = core.MalformedRequestError(err.Error())
+		return
+	}
+	splitEmail := strings.SplitN(address, "@", -1)
+	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
+	var mx []*net.MX
+	mx, err = net.LookupMX(domain)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		return
+	}
+	if len(mx) == 0 {
+		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
+		return
+	}
+	return
+}
+
 type certificateRequestEvent struct {
 	ID                  string    `json:",omitempty"`
 	Requester           int64     `json:",omitempty"`
@@ -76,29 +97,17 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	reg.MergeUpdate(init)
 
 	for _, contact := range reg.Contact {
-		// If contact email provided check MX records exist for the domain
-		if !strings.HasPrefix(contact.Scheme, "mailto") && !strings.HasPrefix(contact.Scheme, "tel") {
+		switch contact.Scheme {
+		case "tel":
+			continue
+		case "mailto":
+			err = validateEmail(contact.Opaque)
+			if err != nil {
+				return
+			}
+		default:
 			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
 			return
-		}
-		if contact.Scheme == "mailto" {
-			_, err = mail.ParseAddress(contact.Opaque)
-			if err != nil {
-				err = core.MalformedRequestError(err.Error())
-				return
-			}
-			splitEmail := strings.SplitN(contact.Opaque, "@", -1)
-			domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-			var mx []*net.MX
-			mx, err = net.LookupMX(domain)
-			if err != nil {
-				err = core.InternalServerError(err.Error())
-				return
-			}
-			if len(mx) == 0 {
-				err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
-				return
-			}
 		}
 	}
 
@@ -107,6 +116,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 	}
+
 	return
 }
 
