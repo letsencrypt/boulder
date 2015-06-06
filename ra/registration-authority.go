@@ -64,7 +64,7 @@ type certificateRequestEvent struct {
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
 	if !core.GoodKey(init.Key.Key) {
-		return core.Registration{}, core.UnauthorizedError("Invalid public key.")
+		return core.Registration{}, core.UnauthorizedError("Invalid public key")
 	}
 	reg = core.Registration{
 		RecoveryToken: core.NewToken(),
@@ -72,7 +72,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	}
 	reg.MergeUpdate(init)
 
-	// Store the authorization object, then return it
+	// Store the registration object, then return it
 	reg, err = ra.SA.NewRegistration(reg)
 	if err != nil {
 		err = core.InternalServerError(err.Error())

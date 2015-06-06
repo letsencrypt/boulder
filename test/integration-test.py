@@ -17,30 +17,16 @@ def die():
     sys.exit(1)
 
 def build(path):
-    cmd = 'go build -o %s/%s %s' % (tempdir, os.path.basename(path), path)
+    cmd = 'go build -tags pkcs11 -o %s/%s %s' % (tempdir, os.path.basename(path), path)
     print(cmd)
     if subprocess.Popen(cmd, shell=True).wait() != 0:
         die()
 
-# A strange Go bug: If cfssl is up-to-date, we'll get a failure building
-# Boulder. Work around by touching cfssl.go.
-subprocess.Popen('touch Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl/cfssl.go', shell=True).wait()
 build('./cmd/boulder')
-build('./Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl')
 
 boulder = subprocess.Popen('''
     exec %s/boulder --config test/boulder-test-config.json
     ''' % tempdir, shell=True)
-
-cfssl = subprocess.Popen('''
-    exec %s/cfssl \
-      -loglevel 0 \
-      serve \
-      -port 9300 \
-      -ca test/test-ca.pem \
-      -ca-key test/test-ca.key \
-      -config test/cfssl-config.json
-    ''' % tempdir, shell=True, stdout=None)
 
 def run_test():
     os.chdir('test/js')
@@ -84,12 +70,6 @@ finally:
         exit_status = 1
     else:
         boulder.kill()
-
-    if cfssl.poll() is not None:
-        print("CFSSL died")
-        exit_status = 1
-    else:
-        cfssl.kill()
 
     shutil.rmtree(tempdir)
 
