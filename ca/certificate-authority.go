@@ -257,8 +257,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
-	if !core.GoodKey(key, ca.MaxKeySize) {
-		err = fmt.Errorf("Invalid public key in CSR.")
+	if err = core.GoodKey(key, ca.MaxKeySize); err != nil {
+		err = fmt.Errorf("Invalid public key in CSR: %s", err.Error())
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err

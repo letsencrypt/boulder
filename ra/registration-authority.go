@@ -88,8 +88,8 @@ type certificateRequestEvent struct {
 }
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
-	if !core.GoodKey(init.Key.Key, ra.MaxKeySize) {
-		return core.Registration{}, core.UnauthorizedError("Invalid public key")
+	if err = core.GoodKey(init.Key.Key, ra.MaxKeySize); err != nil {
+		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	reg = core.Registration{
 		RecoveryToken: core.NewToken(),
