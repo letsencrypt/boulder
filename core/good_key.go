@@ -42,7 +42,7 @@ var (
 // key use (our requirements are the same for either one), according to basic
 // strength and algorithm checking.
 // TODO: Support JsonWebKeys once go-jose migration is done.
-func GoodKey(key crypto.PublicKey, maxKeySize int) bool {
+func GoodKey(key crypto.PublicKey, maxKeySize int) error {
 	log := blog.GetAuditLogger()
 	switch t := key.(type) {
 	case rsa.PublicKey:
@@ -54,30 +54,34 @@ func GoodKey(key crypto.PublicKey, maxKeySize int) bool {
 	case *ecdsa.PublicKey:
 		return GoodKeyECDSA(*t, maxKeySize)
 	default:
-		log.Debug(fmt.Sprintf("Unknown key type %s", reflect.TypeOf(key)))
-		return false
+		err := fmt.Errorf("Unknown key type %s", reflect.TypeOf(key))
+		log.Debug(err.Error())
+		return err
 	}
 }
 
-func GoodKeyECDSA(key ecdsa.PublicKey, maxKeySize int) bool {
+func GoodKeyECDSA(key ecdsa.PublicKey, maxKeySize int) (err error) {
 	log := blog.GetAuditLogger()
-	log.Debug(fmt.Sprintf("ECDSA keys not yet supported."))
-	return false
+	err = fmt.Errorf("ECDSA keys not yet supported")
+	log.Debug(err.Error())
+	return
 }
 
-func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) bool {
+func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) (err error) {
 	log := blog.GetAuditLogger()
 	// Baseline Requirements Appendix A
 	// Modulus must be >= 2048 bits and < maxKeySize
 	modulus := key.N
 	modulusBitLen := modulus.BitLen()
 	if modulusBitLen < 2048 {
-		log.Debug(fmt.Sprintf("Key too small: %d", modulusBitLen))
-		return false
+		err = fmt.Errorf("Key too small: %d", modulusBitLen)
+		log.Debug(err.Error())
+		return err
 	}
 	if modulusBitLen > maxKeySize {
-		log.Debug(fmt.Sprintf("Key too large: %d > %d", modulusBitLen, maxKeySize))
-		return false
+		err = fmt.Errorf("Key too large: %d > %d", modulusBitLen, maxKeySize)
+		log.Debug(err.Error())
+		return err
 	}
 	// The CA SHALL confirm that the value of the public exponent is an
 	// odd number equal to 3 or more. Additionally, the public exponent
@@ -86,8 +90,9 @@ func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) bool {
 	// 2^32 - 1 or 2^64 - 1, because it stores E as an integer. So we
 	// don't need to check the upper bound.
 	if (key.E%2) == 0 || key.E < ((1<<16)+1) {
-		log.Debug(fmt.Sprintf("Key exponent should be odd and >2^16: %d", key.E))
-		return false
+		err = fmt.Errorf("Key exponent should be odd and >2^16: %d", key.E)
+		log.Debug(err.Error())
+		return err
 	}
 	// The modulus SHOULD also have the following characteristics: an odd
 	// number, not the power of a prime, and have no factors smaller than 752.
@@ -101,9 +106,10 @@ func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) bool {
 		var result big.Int
 		result.Mod(modulus, prime)
 		if result.Sign() == 0 {
-			log.Debug(fmt.Sprintf("Key divisible by small prime: %d", prime))
-			return false
+			err = fmt.Errorf("Key divisible by small prime: %d", prime)
+			log.Debug(err.Error())
+			return err
 		}
 	}
-	return true
+	return nil
 }
