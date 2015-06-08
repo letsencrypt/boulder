@@ -139,13 +139,16 @@ module.exports = {
 
   ///// SIGNATURE GENERATION / VERIFICATION
 
-  generateSignature: function(keyPair, payload) {
-    var nonce = bytesToBuffer(forge.random.getBytesSync(NONCE_SIZE));
+  generateSignature: function(keyPair, payload, nonceIn) {
+    var nonce = nonceIn
+    if (!nonce) {
+      nonce = util.b64enc(bytesToBuffer(forge.random.getBytesSync(NONCE_SIZE)));
+    }
     var privateKey = importPrivateKey(keyPair.privateKey);
 
     // Compute JWS signature
     var protectedHeader = JSON.stringify({
-      nonce: util.b64enc(nonce)
+      nonce: nonce
     });
     var protected64 = util.b64enc(new Buffer(protectedHeader));
     var payload64 = util.b64enc(payload);

@@ -157,10 +157,10 @@ func (ctx *genericSigner) Sign(payload []byte) (*JsonWebSignature, error) {
 }
 
 // Verify validates the signature on the object and returns the payload.
-func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, error) {
+func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, []byte, error) {
 	verifier, err := newVerifier(verificationKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, signature := range obj.Signatures {
@@ -174,9 +174,9 @@ func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, error) 
 		alg := SignatureAlgorithm(headers.Alg)
 		err := verifier.verifyPayload(input, signature.signature, alg)
 		if err == nil {
-			return obj.payload, nil
+			return obj.payload, signature.original.Protected.data, nil
 		}
 	}
 
-	return nil, ErrCryptoFailure
+	return nil, nil, ErrCryptoFailure
 }
