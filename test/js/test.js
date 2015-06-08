@@ -193,7 +193,7 @@ function post(url, body, callback) {
   console.log(payload.blue);
   var req = request.post({
     url: url,
-    encoding: null, // Return body as buffer, needed for certificate response
+    encoding: null // Return body as buffer, needed for certificate response
   }, function(error, response, body) {
     Object.keys(response.headers).forEach(function(key) {
       var value = response.headers[key];
