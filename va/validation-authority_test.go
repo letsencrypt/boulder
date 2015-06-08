@@ -71,7 +71,6 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 		} else if strings.HasSuffix(r.URL.Path, "wait-long") {
 			t.Logf("SIMPLESRV: Got a wait-long req\n")
 			time.Sleep(time.Second * 10)
-			fmt.Fprintf(w, "%s", token)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
 			fmt.Fprintf(w, "%s", token)
@@ -125,6 +124,7 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			if clientHello.ServerName == "wait-long.acme.invalid" {
 				time.Sleep(time.Second * 10)
+				return nil, nil
 			}
 			return cert, nil
 		},
