@@ -67,12 +67,10 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 			fmt.Fprintf(w, "wrongtoken")
 		} else if strings.HasSuffix(r.URL.Path, "wait") {
 			t.Logf("SIMPLESRV: Got a wait req\n")
-			time.Sleep(time.Second * 5)
-			fmt.Fprintf(w, "%s", token)
+			time.Sleep(time.Second * 3)
 		} else if strings.HasSuffix(r.URL.Path, "wait-long") {
 			t.Logf("SIMPLESRV: Got a wait-long req\n")
 			time.Sleep(time.Second * 10)
-			fmt.Fprintf(w, "%s", token)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
 			fmt.Fprintf(w, "%s", token)
@@ -92,7 +90,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 	}()
 
 	waitChan <- true
-	t.Fatalf("%s", httpsServer.Serve(conn))
+	httpsServer.Serve(conn)
 }
 
 func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
@@ -126,6 +124,7 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			if clientHello.ServerName == "wait-long.acme.invalid" {
 				time.Sleep(time.Second * 10)
+				return nil, nil
 			}
 			return cert, nil
 		},
@@ -146,7 +145,7 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 	}()
 
 	waitChan <- true
-	t.Fatalf("%s", httpsServer.Serve(tlsListener))
+	httpsServer.Serve(tlsListener)
 }
 
 func TestSimpleHttps(t *testing.T) {
@@ -375,8 +374,8 @@ func TestUpdateValidations(t *testing.T) {
 	va.UpdateValidations(authz, 0)
 	took := time.Since(started)
 
-	// Check that the call to va.UpdateValidations didn't block for 5 seconds
-	test.Assert(t, (took < (time.Second * 5)), "UpdateValidations blocked")
+	// Check that the call to va.UpdateValidations didn't block for 3 seconds
+	test.Assert(t, (took < (time.Second * 3)), "UpdateValidations blocked")
 }
 
 type MockRegistrationAuthority struct {
