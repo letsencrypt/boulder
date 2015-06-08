@@ -159,7 +159,6 @@ function parseLink(link) {
 function getNonce(url, callback) {
   var req = request.head({
     url: url,
-    strictSSL: false
   }, function(error, response, body) {
     if ("replay-nonce" in response.headers) {
       console.log("Storing nonce: " + response.headers["replay-nonce"]);
@@ -195,7 +194,6 @@ function post(url, body, callback) {
   var req = request.post({
     url: url,
     encoding: null, // Return body as buffer, needed for certificate response
-    strictSSL: false,
   }, function(error, response, body) {
     Object.keys(response.headers).forEach(function(key) {
       var value = response.headers[key];
