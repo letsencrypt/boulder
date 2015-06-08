@@ -45,7 +45,7 @@ def run_test():
         die()
 
     issue = subprocess.Popen('''
-        node test.js --email foo@bar.com --agree true \
+        node test.js --email foo@letsencrypt.org --agree true \
           --domains foo.com --new-reg http://localhost:4300/acme/new-reg \
           --certKey %s/key.pem --cert %s/cert.der
         ''' % (tempdir, tempdir), shell=True)

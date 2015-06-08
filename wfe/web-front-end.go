@@ -217,7 +217,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		wfe.log.Debug("JWS has no anti-replay nonce")
 		return nil, nil, reg, errors.New("JWS has no anti-replay nonce")
 	} else if !wfe.replayNonces[protected.Nonce] {
-		wfe.log.Debug(fmt.Sprintf("JWS has invalid anti-replay nonce: %s"))
+		wfe.log.Debug(fmt.Sprintf("JWS has invalid anti-replay nonce: %s", protected.Nonce))
 		return nil, nil, reg, errors.New("JWS has invalid anti-replay nonce")
 	} else {
 		delete(wfe.replayNonces, protected.Nonce)
