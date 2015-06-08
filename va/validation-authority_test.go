@@ -67,7 +67,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 			fmt.Fprintf(w, "wrongtoken")
 		} else if strings.HasSuffix(r.URL.Path, "wait") {
 			t.Logf("SIMPLESRV: Got a wait req\n")
-			time.Sleep(time.Second * 5)
+			time.Sleep(time.Second * 3)
 			fmt.Fprintf(w, "%s", token)
 		} else if strings.HasSuffix(r.URL.Path, "wait-long") {
 			t.Logf("SIMPLESRV: Got a wait-long req\n")
@@ -375,8 +375,8 @@ func TestUpdateValidations(t *testing.T) {
 	va.UpdateValidations(authz, 0)
 	took := time.Since(started)
 
-	// Check that the call to va.UpdateValidations didn't block for 5 seconds
-	test.Assert(t, (took < (time.Second * 5)), "UpdateValidations blocked")
+	// Check that the call to va.UpdateValidations didn't block for 3 seconds
+	test.Assert(t, (took < (time.Second * 3)), "UpdateValidations blocked")
 }
 
 type MockRegistrationAuthority struct {
