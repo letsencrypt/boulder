@@ -184,11 +184,14 @@ func main() {
 		auditlogger.Info(app.VersionString())
 
 		// Calculate the cut-off timestamp
+		if c.OCSPUpdater.MinTimeToExpiry == "" {
+			panic("Config must specify a MinTimeToExpiry period.")
+		}
 		dur, err := time.ParseDuration(c.OCSPUpdater.MinTimeToExpiry)
 		cmd.FailOnError(err, "Could not parse MinTimeToExpiry from config.")
 
 		oldestLastUpdatedTime := time.Now().Add(-dur)
-		auditlogger.Info(fmt.Sprintf("Searching for OCSP reponses older than %s", oldestLastUpdatedTime))
+		auditlogger.Info(fmt.Sprintf("Searching for OCSP responses older than %s", oldestLastUpdatedTime))
 
 		count := int(math.Min(float64(ocspResponseLimit), float64(c.OCSPUpdater.ResponseLimit)))
 

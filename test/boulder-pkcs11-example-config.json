@@ -42,6 +42,7 @@
     "testMode": true,
     "_comment": "This should only be present in testMode. In prod use an HSM.",
     "expiry": "2160h",
+    "lifespanOCSP": "96h",
     "maxNames": 1000,
     "Key": {
       "PKCS11": {
