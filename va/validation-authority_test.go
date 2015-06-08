@@ -90,7 +90,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 	}()
 
 	waitChan <- true
-	t.Fatalf("%s", httpsServer.Serve(conn))
+	httpsServer.Serve(conn)
 }
 
 func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
@@ -145,7 +145,7 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 	}()
 
 	waitChan <- true
-	t.Fatalf("%s", httpsServer.Serve(tlsListener))
+	httpsServer.Serve(tlsListener)
 }
 
 func TestSimpleHttps(t *testing.T) {
