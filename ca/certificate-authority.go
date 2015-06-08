@@ -35,7 +35,10 @@ type Config struct {
 	DBName       string
 	SerialPrefix int
 	Key          KeyConfig
-	// How long issue certificates are valid for, should match expiry field
+	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
+	// than the minTimeToExpiry field for the OCSP Updater.
+	LifespanOCSP string
+	// How long issued certificates are valid for, should match expiry field
 	// in cfssl config.
 	Expiry string
 	// The maximum number of subjectAltNames in a single certificate
@@ -116,9 +119,17 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
+	if config.LifespanOCSP == "" {
+		return nil, errors.New("Config must specify an OCSP lifespan period.")
+	}
+	lifespanOCSP, err := time.ParseDuration(config.LifespanOCSP)
+	if err != nil {
+		return nil, err
+	}
+
 	// Set up our OCSP signer. Note this calls for both the issuer cert and the
 	// OCSP signing cert, which are the same in our case.
-	ocspSigner, err := ocsp.NewSigner(issuer, issuer, priv, time.Hour)
+	ocspSigner, err := ocsp.NewSigner(issuer, issuer, priv, lifespanOCSP)
 	if err != nil {
 		return nil, err
 	}
