@@ -68,7 +68,6 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 		} else if strings.HasSuffix(r.URL.Path, "wait") {
 			t.Logf("SIMPLESRV: Got a wait req\n")
 			time.Sleep(time.Second * 3)
-			fmt.Fprintf(w, "%s", token)
 		} else if strings.HasSuffix(r.URL.Path, "wait-long") {
 			t.Logf("SIMPLESRV: Got a wait-long req\n")
 			time.Sleep(time.Second * 10)
