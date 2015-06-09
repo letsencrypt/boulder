@@ -62,7 +62,7 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 
 	// Register of anti-replay nonces
-	replayNonces map[string]bool
+	nonceService core.NonceService
 }
 
 func statusCodeFromError(err interface{}) int {
@@ -81,9 +81,10 @@ func statusCodeFromError(err interface{}) int {
 func NewWebFrontEndImpl() WebFrontEndImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
+
 	return WebFrontEndImpl{
 		log:          logger,
-		replayNonces: map[string]bool{},
+		nonceService: core.NewNonceService(),
 	}
 }
 
@@ -153,16 +154,8 @@ const (
 	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
 )
 
-func (wfe *WebFrontEndImpl) sendNonce(response http.ResponseWriter) (err error) {
-	nonce := core.NewToken()
-	if wfe.replayNonces[nonce] {
-		wfe.log.Debug("Nonce collision detected")
-		return errors.New("Nonce collision detected")
-	}
-
-	wfe.replayNonces[nonce] = true
-	response.Header().Set("Replay-Nonce", nonce)
-	return
+func (wfe *WebFrontEndImpl) sendNonce(response http.ResponseWriter) {
+	response.Header().Set("Replay-Nonce", wfe.nonceService.Nonce())
 }
 
 func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, *jose.JsonWebKey, core.Registration, error) {
@@ -216,11 +209,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 	if err != nil || len(protected.Nonce) == 0 {
 		wfe.log.Debug("JWS has no anti-replay nonce")
 		return nil, nil, reg, errors.New("JWS has no anti-replay nonce")
-	} else if !wfe.replayNonces[protected.Nonce] {
+	} else if !wfe.nonceService.Valid(protected.Nonce) {
 		wfe.log.Debug(fmt.Sprintf("JWS has invalid anti-replay nonce: %s", protected.Nonce))
 		return nil, nil, reg, errors.New("JWS has invalid anti-replay nonce")
-	} else {
-		delete(wfe.replayNonces, protected.Nonce)
 	}
 
 	if regCheck {
@@ -278,10 +269,7 @@ func link(url, relation string) string {
 }
 
 func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "POST" {
 		wfe.sendError(response, "Method not allowed", "", http.StatusMethodNotAllowed)
@@ -342,10 +330,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 }
 
 func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "POST" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
@@ -404,10 +389,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 }
 
 func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "POST" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
@@ -484,10 +466,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 }
 
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "POST" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
@@ -560,10 +539,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 }
 
 func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
@@ -672,10 +648,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 }
 
 func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "POST" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
@@ -748,10 +721,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 }
 
 func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
@@ -801,10 +771,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
@@ -852,10 +819,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 }
 
 func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "GET" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
@@ -866,10 +830,7 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 }
 
 func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "GET" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
@@ -886,10 +847,7 @@ func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.R
 
 // BuildID tells the requestor what build we're running.
 func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.Request) {
-	err := wfe.sendNonce(response)
-	if err != nil {
-		wfe.sendError(response, "Anti-replay nonce collision", err, http.StatusInternalServerError)
-	}
+	wfe.sendNonce(response)
 
 	if request.Method != "GET" {
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
