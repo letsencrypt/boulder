@@ -19,5 +19,5 @@ type RPCClient interface {
 
 // RPCServer describes the functions an RPC Server performs
 type RPCServer interface {
-	Handle(string, func([]byte) []byte)
+	Handle(string, func([]byte) ([]byte, error))
 }
