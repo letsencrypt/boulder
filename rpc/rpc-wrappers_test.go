@@ -25,6 +25,8 @@ const JWK_1_JSON = `{
 type MockRPCClient struct {
 	LastMethod string
 	LastBody   []byte
+	NextResp   []byte
+	NextErr    error
 }
 
 func (rpc *MockRPCClient) SetTimeout(ttl time.Duration) {
@@ -42,7 +44,19 @@ func (rpc *MockRPCClient) Dispatch(method string, body []byte) chan []byte {
 func (rpc *MockRPCClient) DispatchSync(method string, body []byte) (response []byte, err error) {
 	rpc.LastMethod = method
 	rpc.LastBody = body
-	return body, nil
+	response = body
+
+	if rpc.NextResp != nil {
+		response = rpc.NextResp
+		rpc.NextResp = nil
+	}
+
+	if rpc.NextErr != nil {
+		err = rpc.NextErr
+		rpc.NextErr = nil
+	}
+
+	return
 }
 
 func (rpc *MockRPCClient) SyncDispatchWithTimeout(method string, body []byte, ttl time.Duration) (response []byte, err error) {
@@ -73,4 +87,20 @@ func TestRANewRegistration(t *testing.T) {
 
 	t.Logf("LastMethod: %v", mock.LastMethod)
 	t.Logf("LastBody: %v", mock.LastBody)
+}
+
+func TestGenerateOCSP(t *testing.T) {
+	mock := &MockRPCClient{}
+
+	client, err := NewCertificateAuthorityClient(mock)
+	test.AssertNotError(t, err, "Client construction")
+	test.AssertNotNil(t, client, "Client construction")
+
+	req := core.OCSPSigningRequest{
+	// nope
+	}
+
+	mock.NextResp = []byte{}
+	_, err = client.GenerateOCSP(req)
+	test.AssertError(t, err, "Should have failed at signer")
 }
