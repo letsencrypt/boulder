@@ -7,7 +7,6 @@ package rpc
 
 import (
 	"crypto/x509"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -100,8 +99,6 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 
 		reg, err := impl.NewRegistration(rr.Reg)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodNewRegistration, err, reg)
 			return
 		}
 
@@ -124,8 +121,6 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 
 		authz, err := impl.NewAuthorization(ar.Authz, ar.RegID)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodNewAuthorization, err, ar)
 			return
 		}
 
@@ -150,8 +145,6 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 
 		cert, err := impl.NewCertificate(cr.Req, cr.RegID)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodNewCertificate, err, cr)
 			return
 		}
 		log.Info(fmt.Sprintf(" [.] No problem issuing new cert"))
@@ -178,8 +171,6 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 
 		reg, err := impl.UpdateRegistration(request.Base, request.Update)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateRegistration, err, request)
 			return
 		}
 
@@ -207,8 +198,6 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 
 		newAuthz, err := impl.UpdateAuthorization(authz.Authz, authz.Index, authz.Response)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateAuthorization, err, authz)
 			return
 		}
 
@@ -230,10 +219,6 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 		}
 
 		err = impl.RevokeCertificate(*certs[0])
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodRevokeCertificate, err, certs)
-		}
 		return
 	})
 
@@ -245,10 +230,7 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 			return
 		}
 
-		if err = impl.OnValidationUpdate(authz); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodOnValidationUpdate, err, authz)
-		}
+		err = impl.OnValidationUpdate(authz)
 		return
 	})
 
@@ -385,10 +367,7 @@ func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) 
 			return
 		}
 
-		if err = impl.UpdateValidations(vaReq.Authz, vaReq.Index); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateValidations, err, vaReq)
-		}
+		err = impl.UpdateValidations(vaReq.Authz, vaReq.Index)
 		return
 	})
 
@@ -445,8 +424,6 @@ func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority
 
 		cert, err := impl.IssueCertificate(*csr, icReq.RegID, icReq.EarliestExpiry)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodIssueCertificate, err, csr)
 			return // XXX
 		}
 
@@ -472,11 +449,7 @@ func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority
 			return
 		}
 
-		if err := impl.RevokeCertificate(revokeReq.Serial, revokeReq.ReasonCode); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodRevokeCertificate, err, req)
-		}
-
+		err = impl.RevokeCertificate(revokeReq.Serial, revokeReq.ReasonCode)
 		return
 	})
 
@@ -491,8 +464,6 @@ func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority
 
 		response, err = impl.GenerateOCSP(xferObj)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGenerateOCSP, err, req)
 			return
 		}
 
@@ -580,11 +551,7 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 			return
 		}
 
-		if err = impl.UpdateRegistration(reg); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateRegistration, err, req)
-		}
-
+		err = impl.UpdateRegistration(reg)
 		return
 	})
 
@@ -601,8 +568,6 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 		reg, err := impl.GetRegistration(intReq.ID)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetRegistration, err, req)
 			return
 		}
 
@@ -625,8 +590,6 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 		reg, err := impl.GetRegistrationByKey(jwk)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetRegistrationByKey, err, jwk)
 			return
 		}
 
@@ -642,8 +605,6 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 	rpc.Handle(MethodGetAuthorization, func(req []byte) (response []byte, err error) {
 		authz, err := impl.GetAuthorization(string(req))
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetAuthorization, err, req)
 			return
 		}
 
@@ -670,8 +631,6 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 		id, err := impl.AddCertificate(icReq.Bytes, icReq.RegID)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodAddCertificate, err, req)
 			return
 		}
 		response = []byte(id)
@@ -689,8 +648,6 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 		output, err := impl.NewRegistration(registration)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodNewRegistration, err, registration)
 			return
 		}
 
@@ -713,8 +670,6 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 		output, err := impl.NewPendingAuthorization(authz)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodNewPendingAuthorization, err, req)
 			return
 		}
 
@@ -735,10 +690,7 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 			return
 		}
 
-		if err = impl.UpdatePendingAuthorization(authz); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdatePendingAuthorization, err, authz)
-		}
+		err = impl.UpdatePendingAuthorization(authz)
 		return
 	})
 
@@ -750,19 +702,13 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 			return
 		}
 
-		if err = impl.FinalizeAuthorization(authz); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodFinalizeAuthorization, err, authz)
-		}
+		err = impl.FinalizeAuthorization(authz)
 		return
 	})
 
 	rpc.Handle(MethodGetCertificate, func(req []byte) (response []byte, err error) {
 		cert, err := impl.GetCertificate(string(req))
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetCertificate, err, req)
-		} else {
+		if err == nil {
 			response = []byte(cert)
 		}
 		return
@@ -770,12 +716,7 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 	rpc.Handle(MethodGetCertificateByShortSerial, func(req []byte) (response []byte, err error) {
 		cert, err := impl.GetCertificateByShortSerial(string(req))
-		if err != nil {
-			if err != sql.ErrNoRows {
-				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-				errorCondition(MethodGetCertificateByShortSerial, err, req)
-			}
-		} else {
+		if err == nil {
 			response = []byte(cert)
 		}
 		return
@@ -784,8 +725,6 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 	rpc.Handle(MethodGetCertificateStatus, func(req []byte) (response []byte, err error) {
 		status, err := impl.GetCertificateStatus(string(req))
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetCertificateStatus, err, req)
 			return
 		}
 
@@ -812,10 +751,6 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		}
 
 		err = impl.MarkCertificateRevoked(revokeReq.Serial, revokeReq.OCSPResponse, revokeReq.ReasonCode)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodMarkCertificateRevoked, err, revokeReq)
-		}
 		return
 	})
 
@@ -833,8 +768,6 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 		exists, err := impl.AlreadyDeniedCSR(csrReq.Names)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodAlreadyDeniedCSR, err, csrReq)
 			return
 		}
 
