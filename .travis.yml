@@ -9,6 +9,8 @@ services:
 matrix:
   fast_finish: true
 
+sudo: false
+
 # Only build pushes to the master branch (and PRs)
 branches:
   only:
