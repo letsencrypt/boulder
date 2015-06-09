@@ -305,9 +305,10 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 		Key: KeyConfig{
 			File: caKeyFile,
 		},
-		TestMode: true,
-		Expiry:   "8760h",
-		MaxNames: 2,
+		TestMode:     true,
+		Expiry:       "8760h",
+		LifespanOCSP: "45m",
+		MaxNames:     2,
 		CFSSL: cfsslConfig.Config{
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{
