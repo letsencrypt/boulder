@@ -34,6 +34,12 @@ import (
 // and is used by GetBuildID
 var BuildID string
 
+// BuildHost is set by the compiler and is used by GetBuildHost
+var BuildHost string
+
+// BuildTime is set by the compiler and is used by GetBuildTime
+var BuildTime string
+
 // Errors
 
 type InternalServerError string
@@ -249,6 +255,24 @@ func StringToSerial(serial string) (*big.Int, error) {
 // GetBuildID identifies what build is running.
 func GetBuildID() (retID string) {
 	retID = BuildID
+	if retID == "" {
+		retID = "Unspecified"
+	}
+	return
+}
+
+// GetBuildTime identifies when this build was made
+func GetBuildTime() (retID string) {
+	retID = BuildTime
+	if retID == "" {
+		retID = "Unspecified"
+	}
+	return
+}
+
+// GetBuildHost identifies the building host
+func GetBuildHost() (retID string) {
+	retID = BuildHost
 	if retID == "" {
 		retID = "Unspecified"
 	}

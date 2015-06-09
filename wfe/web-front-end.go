@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -811,7 +812,8 @@ func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.
 
 	response.Header().Set("Content-Type", "text/plain")
 	response.WriteHeader(http.StatusOK)
-	if _, err := fmt.Fprintln(response, core.GetBuildID()); err != nil {
+	detailsString := fmt.Sprintf("Boulder=(%s %s) Golang=(%s) BuildHost=(%s)", core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+	if _, err := fmt.Fprintln(response, detailsString); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
