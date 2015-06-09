@@ -43,8 +43,6 @@ func TestSanityCheck(t *testing.T) {
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall = Challenge{Type: ChallengeTypeSimpleHTTPS, Path: "bad", Status: StatusPending}
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.Path = ""
-	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
 	chall.Token = ""
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall.Token = "notlongenough"
@@ -52,7 +50,22 @@ func TestSanityCheck(t *testing.T) {
 	chall.Token = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ+PCt92wr+o!"
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
+	chall.Path = ""
 	test.Assert(t, chall.IsSane(false), "IsSane should be true")
+
+	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
+	chall.Path = "../.."
+	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
+	chall.Path = "/asd"
+	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
+	chall.Path = "bad//test"
+	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
+	chall.Path = "bad/./test"
+	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
+	chall.Path = "good"
+	test.Assert(t, chall.IsSane(true), "IsSane should be true")
+	chall.Path = "good/test"
+	test.Assert(t, chall.IsSane(true), "IsSane should be true")
 
 	chall = Challenge{Type: ChallengeTypeDVSNI, Status: StatusPending}
 	chall.Path = "bad"
