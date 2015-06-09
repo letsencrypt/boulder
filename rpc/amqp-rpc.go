@@ -137,16 +137,15 @@ func (rpc *AmqpRPCServer) Handle(method string, handler func([]byte) ([]byte, er
 	rpc.dispatchTable[method] = handler
 }
 
+// A JSON wrapper for error as it cannot be un/marshalled
+// due to type interface{}.
 type RPCError struct {
 	Value string `json:"value"`
-	Type  string `json:"type"`
+	Type  string `json:"type,omitempty"`
 }
 
-type RPCResponse struct {
-	ReturnVal []byte   `json:"returnVal"`
-	Error     RPCError `json:"error"`
-}
-
+// Wraps a error in a RPCError so it can be marshalled to
+// JSON.
 func wrapError(err error) (rpcError RPCError) {
 	if err != nil {
 		rpcError.Value = err.Error()
@@ -172,28 +171,36 @@ func wrapError(err error) (rpcError RPCError) {
 	return
 }
 
-func (rpcError RPCError) unwrapError() (err error) {
-	switch rpcError.Type {
-	case "InternalServerError":
-		err = core.InternalServerError(rpcError.Value)
-	case "NotSupportedError":
-		err = core.NotSupportedError(rpcError.Value)
-	case "MalformedRequestError":
-		err = core.MalformedRequestError(rpcError.Value)
-	case "UnauthorizedError":
-		err = core.UnauthorizedError(rpcError.Value)
-	case "NotFoundError":
-		err = core.NotFoundError(rpcError.Value)
-	case "SyntaxError":
-		err = core.SyntaxError(rpcError.Value)
-	case "SignatureValidationError":
-		err = core.SignatureValidationError(rpcError.Value)
-	case "CertificateIssuanceError":
-		err = core.CertificateIssuanceError(rpcError.Value)
-	default:
-		err = errors.New(rpcError.Value)
+// Unwraps a RPCError and returns the correct error type.
+func unwrapError(rpcError RPCError) (err error) {
+	if rpcError.Value != "" {
+		switch rpcError.Type {
+		case "InternalServerError":
+			err = core.InternalServerError(rpcError.Value)
+		case "NotSupportedError":
+			err = core.NotSupportedError(rpcError.Value)
+		case "MalformedRequestError":
+			err = core.MalformedRequestError(rpcError.Value)
+		case "UnauthorizedError":
+			err = core.UnauthorizedError(rpcError.Value)
+		case "NotFoundError":
+			err = core.NotFoundError(rpcError.Value)
+		case "SyntaxError":
+			err = core.SyntaxError(rpcError.Value)
+		case "SignatureValidationError":
+			err = core.SignatureValidationError(rpcError.Value)
+		case "CertificateIssuanceError":
+			err = core.CertificateIssuanceError(rpcError.Value)
+		default:
+			err = errors.New(rpcError.Value)
+		}
 	}
 	return
+}
+
+type RPCResponse struct {
+	ReturnVal []byte   `json:"returnVal,omitempty"`
+	Error     RPCError `json:"error,omitempty"`
 }
 
 // Starts the AMQP-RPC server running in a separate thread.
@@ -346,8 +353,8 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 		if err != nil {
 			return
 		}
-		if rpcResponse.Error.Value != "" {
-			err = rpcResponse.Error.unwrapError()
+		err = unwrapError(rpcResponse.Error)
+		if err != nil {
 			return
 		}
 		response = rpcResponse.ReturnVal
