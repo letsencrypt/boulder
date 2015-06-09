@@ -211,7 +211,6 @@ func (ch Challenge) IsSane(completed bool) bool {
 			}
 			// Composed path should be a clean filepath (i.e. no double slashes, dot segments, etc)
 			vaUrl := fmt.Sprintf("/.well-known/acme-challenge/%s", ch.Path)
-			fmt.Println("WAT", vaUrl, filepath.Clean(vaUrl))
 			if vaUrl != filepath.Clean(vaUrl) {
 				return false
 			}
