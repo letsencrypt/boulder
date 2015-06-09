@@ -560,11 +560,14 @@ func (cac CertificateAuthorityClient) GenerateOCSP(signRequest core.OCSPSigningR
 	data, err := json.Marshal(signRequest)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		errorCondition(MethodGetRegistration, err, signRequest)
+		errorCondition(MethodGenerateOCSP, err, signRequest)
 		return
 	}
 
 	resp, err = cac.rpc.DispatchSync(MethodGenerateOCSP, data)
+	if err == nil && (resp == nil || len(resp) < 1) {
+		err = fmt.Errorf("Failure at Signer")
+	}
 	return
 }
 
