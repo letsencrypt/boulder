@@ -179,7 +179,7 @@ func (as *AppShell) Run() {
 
 // VersionString produces a friendly Application version string
 func (as *AppShell) VersionString() string {
-	return fmt.Sprintf("%s (build %s)", as.App.Name, core.GetBuildID())
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", as.App.Name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }
 
 // FailOnError exits and prints an error message if we encountered a problem
