@@ -202,15 +202,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 
 	// Check that the request has a known anti-replay nonce
 	// i.e., Nonce is in protected header and
-	var protected struct {
-		Nonce string `json:"nonce"`
-	}
-	err = json.Unmarshal(header, &protected)
-	if err != nil || len(protected.Nonce) == 0 {
+	if err != nil || len(header.Nonce) == 0 {
 		wfe.log.Debug("JWS has no anti-replay nonce")
 		return nil, nil, reg, errors.New("JWS has no anti-replay nonce")
-	} else if !wfe.nonceService.Valid(protected.Nonce) {
-		wfe.log.Debug(fmt.Sprintf("JWS has invalid anti-replay nonce: %s", protected.Nonce))
+	} else if !wfe.nonceService.Valid(header.Nonce) {
+		wfe.log.Debug(fmt.Sprintf("JWS has invalid anti-replay nonce: %s", header.Nonce))
 		return nil, nil, reg, errors.New("JWS has invalid anti-replay nonce")
 	}
 

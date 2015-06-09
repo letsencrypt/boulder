@@ -110,23 +110,25 @@ const (
 
 // rawHeader represents the JOSE header for JWE/JWS objects (used for parsing).
 type rawHeader struct {
-	Alg  string               `json:"alg,omitempty"`
-	Enc  ContentEncryption    `json:"enc,omitempty"`
-	Zip  CompressionAlgorithm `json:"zip,omitempty"`
-	Crit []string             `json:"crit,omitempty"`
-	Apu  *byteBuffer          `json:"apu,omitempty"`
-	Apv  *byteBuffer          `json:"apv,omitempty"`
-	Epk  *JsonWebKey          `json:"epk,omitempty"`
-	Iv   *byteBuffer          `json:"iv,omitempty"`
-	Tag  *byteBuffer          `json:"tag,omitempty"`
-	Jwk  *JsonWebKey          `json:"jwk,omitempty"`
-	Kid  string               `json:"kid,omitempty"`
+	Alg   string               `json:"alg,omitempty"`
+	Enc   ContentEncryption    `json:"enc,omitempty"`
+	Zip   CompressionAlgorithm `json:"zip,omitempty"`
+	Crit  []string             `json:"crit,omitempty"`
+	Apu   *byteBuffer          `json:"apu,omitempty"`
+	Apv   *byteBuffer          `json:"apv,omitempty"`
+	Epk   *JsonWebKey          `json:"epk,omitempty"`
+	Iv    *byteBuffer          `json:"iv,omitempty"`
+	Tag   *byteBuffer          `json:"tag,omitempty"`
+	Jwk   *JsonWebKey          `json:"jwk,omitempty"`
+	Kid   string               `json:"kid,omitempty"`
+	Nonce string               `json:"nonce,omitempty"`
 }
 
 // JoseHeader represents the read-only JOSE header for JWE/JWS objects.
 type JoseHeader struct {
 	KeyID      string
 	JsonWebKey *JsonWebKey
+	Nonce      string
 }
 
 // sanitized produces a cleaned-up header object from the raw JSON.
@@ -134,6 +136,7 @@ func (parsed rawHeader) sanitized() JoseHeader {
 	return JoseHeader{
 		KeyID:      parsed.Kid,
 		JsonWebKey: parsed.Jwk,
+		Nonce:      parsed.Nonce,
 	}
 }
 
@@ -178,5 +181,8 @@ func (dst *rawHeader) merge(src *rawHeader) {
 	}
 	if dst.Jwk == nil {
 		dst.Jwk = src.Jwk
+	}
+	if dst.Nonce == "" {
+		dst.Nonce = src.Nonce
 	}
 }
