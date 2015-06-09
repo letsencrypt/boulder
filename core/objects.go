@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -206,6 +207,12 @@ func (ch Challenge) IsSane(completed bool) bool {
 		// non-empty path provided. Otherwise there should be no default path.
 		if completed {
 			if ch.Path == "" {
+				return false
+			}
+			// Composed path should be a clean filepath (i.e. no double slashes, dot segments, etc)
+			vaUrl := fmt.Sprintf("/.well-known/acme-challenge/%s", ch.Path)
+			fmt.Println("WAT", vaUrl, filepath.Clean(vaUrl))
+			if vaUrl != filepath.Clean(vaUrl) {
 				return false
 			}
 		} else {
