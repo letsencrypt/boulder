@@ -399,9 +399,9 @@ func TestCAAChecking(t *testing.T) {
 		CAATest{"arrakis.tv", true, false},
 		CAATest{"mail2.bevenhall.se", true, false},
 		// Good (absent)
-		CAATest{"bracewel.net", false, true},
 		CAATest{"linux.org", false, true},
 		CAATest{"pir.org", false, true},
+		CAATest{"non-existent-domain-really.com", false, true},
 		// Good (present, none of my DNS providers support CAA currently)
 		// CAATest{"letsencrypt.org", true, true},
 	}
@@ -420,6 +420,11 @@ func TestCAAChecking(t *testing.T) {
 		test.AssertEquals(t, caaTest.Present, present)
 		test.AssertEquals(t, caaTest.Valid, valid)
 	}
+
+	present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "dnssec-failed.org"})
+	test.AssertError(t, err, "dnssec-failed.org")
+	test.Assert(t, !present, "Present should be false")
+	test.Assert(t, !valid, "Valid should be false")
 }
 
 type MockRegistrationAuthority struct {

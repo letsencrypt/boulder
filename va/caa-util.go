@@ -8,6 +8,7 @@ package va
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -111,6 +112,23 @@ func lookupCNAME(client *dns.Client, server, domain string) (string, error) {
 		return "", err
 	}
 
+	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
+		if r.Rcode == dns.RcodeServerFailure {
+			// Re-send query with +cd to see if SERVFAIL was caused by DNSSEC validation
+			// failure at the resolver
+			m.CheckingDisabled = true
+			r, _, err = client.Exchange(m, server)
+			if err != nil {
+				return "", err
+			}
+
+			if r.Rcode != dns.RcodeServerFailure {
+				return "", fmt.Errorf("DNSSEC validation failure")
+			}
+		}
+		return "", fmt.Errorf("Invalid response code: %d-%s", r.Rcode, dns.RcodeToString[r.Rcode])
+	}
+
 	for _, answer := range r.Answer {
 		if cname, ok := answer.(*dns.CNAME); ok {
 			return cname.Target, nil
@@ -139,6 +157,24 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 	r, _, err := client.Exchange(m, server)
 	if err != nil {
 		return nil, err
+	}
+
+	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
+		if r.Rcode == dns.RcodeServerFailure {
+			// Re-send query with +cd to see if SERVFAIL was caused by DNSSEC validation
+			// failure at the resolver
+			m.CheckingDisabled = true
+			r, _, err = client.Exchange(m, server)
+			if err != nil {
+				return nil, err
+			}
+
+			if r.Rcode != dns.RcodeServerFailure {
+				return nil, fmt.Errorf("DNSSEC validation failure")
+			}
+			fmt.Printf("%+v\n", r)
+		}
+		return nil, fmt.Errorf("Invalid response code: %d-%s", r.Rcode, dns.RcodeToString[r.Rcode])
 	}
 
 	var CAAs []*CAA
