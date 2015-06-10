@@ -8,7 +8,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"fmt"
 	"math/big"
 )
 
@@ -104,22 +103,18 @@ func (ns *NonceService) minUsed() int64 {
 func (ns *NonceService) Valid(nonce string) bool {
 	c, err := ns.decrypt(nonce)
 	if err != nil {
-		fmt.Printf(">>>>> Invalid nonce; bad decrypt")
 		return false
 	}
 
 	if c > ns.latest {
-		fmt.Printf(">>>>> Invalid nonce; too late")
 		return false
 	}
 
 	if c <= ns.earliest {
-		fmt.Printf(">>>>> Invalid nonce; too early")
 		return false
 	}
 
 	if ns.used[c] {
-		fmt.Printf(">>>>> Invalid nonce; already used")
 		return false
 	}
 
