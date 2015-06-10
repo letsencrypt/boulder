@@ -17,8 +17,8 @@
 package jose
 
 import (
-	"testing"
 	"fmt"
+	"testing"
 )
 
 func TestCompactParseJWS(t *testing.T) {
@@ -115,7 +115,7 @@ func TestVerifyFlattenedWithIncludedUnprotectedKey(t *testing.T) {
 	if sig.Header.JsonWebKey == nil {
 		t.Error("No JWK in signature header.")
 	}
-	payload, err := jws.Verify(sig.Header.JsonWebKey)
+	payload, _, err := jws.Verify(sig.Header.JsonWebKey)
 	if err != nil {
 		t.Error(fmt.Sprintf("Signature did not validate: %v", err))
 	}
@@ -141,7 +141,7 @@ func TestVerifyFlattenedWithPrivateProtected(t *testing.T) {
 	if sig.Header.JsonWebKey == nil {
 		t.Error("No JWK in signature header.")
 	}
-	payload, err := jws.Verify(sig.Header.JsonWebKey)
+	payload, _, err := jws.Verify(sig.Header.JsonWebKey)
 	if err != nil {
 		t.Error(fmt.Sprintf("Signature did not validate: %v", err))
 	}
@@ -179,7 +179,7 @@ func TestSampleNimbusJWSMessagesRSA(t *testing.T) {
 			t.Error("unable to parse message", msg, err)
 			continue
 		}
-		payload, err := obj.Verify(rsaPublicKey)
+		payload, _, err := obj.Verify(rsaPublicKey)
 		if err != nil {
 			t.Error("unable to verify message", msg, err)
 			continue
@@ -219,7 +219,7 @@ func TestSampleNimbusJWSMessagesEC(t *testing.T) {
 			t.Error("unable to parse message", msg, err)
 			continue
 		}
-		payload, err := obj.Verify(ecPublicKeys[i])
+		payload, _, err := obj.Verify(ecPublicKeys[i])
 		if err != nil {
 			t.Error("unable to verify message", msg, err)
 			continue
@@ -246,7 +246,7 @@ func TestSampleNimbusJWSMessagesHMAC(t *testing.T) {
 			t.Error("unable to parse message", msg, err)
 			continue
 		}
-		payload, err := obj.Verify(hmacTestKey)
+		payload, _, err := obj.Verify(hmacTestKey)
 		if err != nil {
 			t.Error("unable to verify message", msg, err)
 			continue

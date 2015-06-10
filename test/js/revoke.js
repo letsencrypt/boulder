@@ -29,19 +29,29 @@ function main() {
     certificate: certDERB64URL
   });
   console.log('Requesting revocation:', revokeMessage)
-  var jws = crypto.generateSignature(key, new Buffer(revokeMessage));
-  var req = request.post(revokeUrl, function(err, resp) {
-    if (err) {
-      console.log('Error: ', err);
+
+  request.head(revokeUrl, function(error, response) {
+    var nonce = response.headers["replay-nonce"];
+    if (!nonce) {
+      console.log("Server HEAD response did not include a replay nonce");
       process.exit(1);
     }
-    console.log(resp.statusCode);
-    console.log(resp.headers);
-    console.log(resp.body);
+
+    var jws = crypto.generateSignature(key, new Buffer(revokeMessage), nonce);
+    var payload = JSON.stringify(jws);
+    console.log(payload);
+
+    var req = request.post(revokeUrl, function(error, response) {
+      if (error) {
+        console.log('Error: ', error);
+        process.exit(1);
+      }
+      console.log(response.statusCode);
+      console.log(response.headers);
+      console.log(response.body);
+    });
+    req.write(payload);
+    req.end();
   });
-  var payload = JSON.stringify(jws);
-  console.log(payload);
-  req.write(payload);
-  req.end();
 }
 main();

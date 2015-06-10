@@ -27,14 +27,14 @@ import (
 	"testing"
 )
 
-func RoundtripJWS(sigAlg SignatureAlgorithm, serializer func(*JsonWebSignature) (string, error), corrupter func(*JsonWebSignature), signingKey interface{}, verificationKey interface{}) error {
+func RoundtripJWS(sigAlg SignatureAlgorithm, serializer func(*JsonWebSignature) (string, error), corrupter func(*JsonWebSignature), signingKey interface{}, verificationKey interface{}, nonce string) error {
 	signer, err := NewSigner(sigAlg, signingKey)
 	if err != nil {
 		return fmt.Errorf("error on new signer: %s", err)
 	}
 
 	input := []byte("Lorem ipsum dolor sit amet")
-	obj, err := signer.Sign(input)
+	obj, err := signer.Sign(input, nonce)
 	if err != nil {
 		return fmt.Errorf("error on sign: %s", err)
 	}
@@ -52,7 +52,7 @@ func RoundtripJWS(sigAlg SignatureAlgorithm, serializer func(*JsonWebSignature) 
 	// (Maybe) mangle the object
 	corrupter(obj)
 
-	output, err := obj.Verify(verificationKey)
+	output, header, err := obj.Verify(verificationKey)
 	if err != nil {
 		return fmt.Errorf("error on verify: %s", err)
 	}
@@ -60,11 +60,16 @@ func RoundtripJWS(sigAlg SignatureAlgorithm, serializer func(*JsonWebSignature) 
 	// Check that verify works with embedded keys (if present)
 	for i, sig := range obj.Signatures {
 		if sig.Header.JsonWebKey != nil {
-			_, err = obj.Verify(sig.Header.JsonWebKey)
+			_, _, err = obj.Verify(sig.Header.JsonWebKey)
 			if err != nil {
 				return fmt.Errorf("error on verify with embedded key %d: %s", i, err)
 			}
 		}
+	}
+
+	// Check that the nonce correctly round-tripped
+	if nonce != "" && header.Nonce != nonce {
+		return fmt.Errorf("Incorrect nonce returned: [%s]", header.Nonce)
 	}
 
 	if bytes.Compare(output, input) != 0 {
@@ -89,7 +94,7 @@ func TestRoundtripsJWS(t *testing.T) {
 		signingKey, verificationKey := GenerateSigningTestKey(alg)
 
 		for i, serializer := range serializers {
-			err := RoundtripJWS(alg, serializer, corrupter, signingKey, verificationKey)
+			err := RoundtripJWS(alg, serializer, corrupter, signingKey, verificationKey, "test_nonce")
 			if err != nil {
 				t.Error(err, alg, i)
 			}
@@ -123,7 +128,7 @@ func TestRoundtripsJWSCorruptSignature(t *testing.T) {
 
 		for i, serializer := range serializers {
 			for j, corrupter := range corrupters {
-				err := RoundtripJWS(alg, serializer, corrupter, signingKey, verificationKey)
+				err := RoundtripJWS(alg, serializer, corrupter, signingKey, verificationKey, "")
 				if err == nil {
 					t.Error("failed to detect corrupt signature", err, alg, i, j)
 				}
@@ -152,7 +157,7 @@ func TestSignerWithBrokenRand(t *testing.T) {
 		signingKey, verificationKey := GenerateSigningTestKey(alg)
 		for i, getReader := range readers {
 			randReader = getReader()
-			err := RoundtripJWS(alg, serializer, corrupter, signingKey, verificationKey)
+			err := RoundtripJWS(alg, serializer, corrupter, signingKey, verificationKey, "")
 			if err == nil {
 				t.Error("signer should fail if rand is broken", alg, i)
 			}
@@ -170,25 +175,25 @@ func TestJWSInvalidKey(t *testing.T) {
 	}
 
 	input := []byte("Lorem ipsum dolor sit amet")
-	obj, err := signer.Sign(input)
+	obj, err := signer.Sign(input, "")
 	if err != nil {
 		panic(err)
 	}
 
 	// Must work with correct key
-	_, err = obj.Verify(verificationKey0)
+	_, _, err = obj.Verify(verificationKey0)
 	if err != nil {
 		t.Error("error on verify", err)
 	}
 
 	// Must not work with incorrect key
-	_, err = obj.Verify(verificationKey1)
+	_, _, err = obj.Verify(verificationKey1)
 	if err == nil {
 		t.Error("verification should fail with incorrect key")
 	}
 
 	// Must not work with invalid key
-	_, err = obj.Verify("")
+	_, _, err = obj.Verify("")
 	if err == nil {
 		t.Error("verification should fail with incorrect key")
 	}
@@ -206,7 +211,7 @@ func TestMultiRecipientJWS(t *testing.T) {
 	signer.AddRecipient(HS384, sharedKey)
 
 	input := []byte("Lorem ipsum dolor sit amet")
-	obj, err := signer.Sign(input)
+	obj, err := signer.Sign(input, "")
 	if err != nil {
 		t.Error("error on sign: ", err)
 		return
@@ -225,7 +230,7 @@ func TestMultiRecipientJWS(t *testing.T) {
 		return
 	}
 
-	output, err := obj.Verify(&rsaTestKey.PublicKey)
+	output, _, err := obj.Verify(&rsaTestKey.PublicKey)
 	if err != nil {
 		t.Error("error on verify: ", err)
 		return
@@ -236,7 +241,7 @@ func TestMultiRecipientJWS(t *testing.T) {
 		return
 	}
 
-	output, err = obj.Verify(sharedKey)
+	output, _, err = obj.Verify(sharedKey)
 	if err != nil {
 		t.Error("error on verify: ", err)
 		return
@@ -293,12 +298,12 @@ func TestInvalidJWS(t *testing.T) {
 		panic(err)
 	}
 
-	obj, err := signer.Sign([]byte("Lorem ipsum dolor sit amet"))
+	obj, err := signer.Sign([]byte("Lorem ipsum dolor sit amet"), "")
 	obj.Signatures[0].header = &rawHeader{
 		Crit: []string{"TEST"},
 	}
 
-	_, err = obj.Verify(&rsaTestKey.PublicKey)
+	_, _, err = obj.Verify(&rsaTestKey.PublicKey)
 	if err == nil {
 		t.Error("should not verify message with unknown crit header")
 	}
@@ -307,7 +312,7 @@ func TestInvalidJWS(t *testing.T) {
 	obj.Signatures[0].protected = &rawHeader{}
 	obj.Signatures[0].header = &rawHeader{}
 
-	_, err = obj.Verify(&rsaTestKey.PublicKey)
+	_, _, err = obj.Verify(&rsaTestKey.PublicKey)
 	if err == nil {
 		t.Error("should not verify message with missing headers")
 	}
@@ -349,7 +354,7 @@ func TestSignerKid(t *testing.T) {
 	if err != nil {
 		t.Error("problem creating signer", err)
 	}
-	signed, err := signer.Sign(payload)
+	signed, err := signer.Sign(payload, "")
 
 	serialized := signed.FullSerialize()
 

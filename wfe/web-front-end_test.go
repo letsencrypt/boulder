@@ -267,14 +267,14 @@ func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
 
-func signRequest(t *testing.T, req string) string {
+func signRequest(t *testing.T, req string, nonceService *core.NonceService) string {
 	accountKeyJSON := []byte(`{"kty":"RSA","n":"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ","e":"AAEAAQ","d":"BhAmDbzBAbCeHbU0Xhzi_Ar4M0eTMOEQPnPXMSfW6bc0SRW938JO_-z1scEvFY8qsxV_C0Zr7XHVZsmHz4dc9BVmhiSan36XpuOS85jLWaY073e7dUVN9-l-ak53Ys9f6KZB_v-BmGB51rUKGB70ctWiMJ1C0EzHv0h6Moog-LCd_zo03uuZD5F5wtnPrAB3SEM3vRKeZHzm5eiGxNUsaCEzGDApMYgt6YkQuUlkJwD8Ky2CkAE6lLQSPwddAfPDhsCug-12SkSIKw1EepSHz86ZVfJEnvY-h9jHIdI57mR1v7NTCDcWqy6c6qIzxwh8n2X94QTbtWT3vGQ6HXM5AQ","p":"2uhvZwNS5i-PzeI9vGx89XbdsVmeNjVxjH08V3aRBVY0dzUzwVDYk3z7sqBIj6de53Lx6W1hjmhPIqAwqQgjIKH5Z3uUCinGguKkfGDL3KgLCzYL2UIvZMvTzr9NWLc0AHMZdee5utxWKCGnZBOqy1Rd4V-6QrqjEDBvanoqA60","q":"8odNkMEiriaDKmvwDv-vOOu3LaWbu03yB7VhABu-hK5Xx74bHcvDP2HuCwDGGJY2H-xKdMdUPs0HPwbfHMUicD2vIEUDj6uyrMMZHtbcZ3moh3-WESg3TaEaJ6vhwcWXWG7Wc46G-HbCChkuVenFYYkoi68BAAjloqEUl1JBT1E"}`)
 	var accountKey jose.JsonWebKey
 	err := json.Unmarshal(accountKeyJSON, &accountKey)
 	test.AssertNotError(t, err, "Failed to unmarshal key")
 	signer, err := jose.NewSigner("RS256", &accountKey)
 	test.AssertNotError(t, err, "Failed to make signer")
-	result, err := signer.Sign([]byte(req))
+	result, err := signer.Sign([]byte(req), nonceService.Nonce())
 	test.AssertNotError(t, err, "Failed to sign req")
 	ret := result.FullSerialize()
 	return ret
@@ -362,67 +362,17 @@ func TestIssueCertificate(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(`
-			{
-			    "header": {
-			        "alg": "RS256",
-			        "jwk": {
-			            "e": "AQAB",
-			            "kty": "RSA",
-			            "n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
-			        }
-			    },
-			    "payload": "Zm9vCg",
-			    "signature": "hRt2eYqBd_MyMRNIh8PEIACoFtmBi7BHTLBaAhpSU6zyDAFdEBaX7us4VB9Vo1afOL03Q8iuoRA0AT4akdV_mQTAQ_jhTcVOAeXPr0tB8b8Q11UPQ0tXJYmU4spAW2SapJIvO50ntUaqU05kZd0qw8-noH1Lja-aNnU-tQII4iYVvlTiRJ5g8_CADsvJqOk6FcHuo2mG643TRnhkAxUtazvHyIHeXMxydMMSrpwUwzMtln4ZJYBNx4QGEq6OhpAD_VSp-w8Lq5HOwGQoNs0bPxH1SGrArt67LFQBfjlVr94E1sn26p4vigXm83nJdNhWAMHHE9iV67xN-r29LT-FjA"
-			}
-		`),
+		Body:   makeBody(signRequest(t, "foo", &wfe.nonceService)),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error unmarshaling certificate request\"}")
 
-	// Same signed body, but payload modified by one byte, breaking signature.
-	// should fail JWS verification.
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(responseWriter, &http.Request{
-		Method: "POST",
-		Body: makeBody(`
-			{
-					"header": {
-							"alg": "RS256",
-							"jwk": {
-									"e": "AQAB",
-									"kty": "RSA",
-									"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw"
-							}
-					},
-					"payload": "xm9vCg",
-					"signature": "RjUQ679fxJgeAJlxqgvDP_sfGZnJ-1RgWF2qmcbnBWljs6h1qp63pLnJOl13u81bP_bCSjaWkelGG8Ymx_X-aQ"
-			}
-    `),
-	})
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
-
 	// Valid, signed JWS body, payload is '{}'
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(`
-			{
-					"header": {
-							"alg": "RS256",
-							"jwk": {
-									"e": "AQAB",
-									"kty": "RSA",
-									"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
-							}
-					},
-					"payload": "e30K",
-					"signature": "JXYA_pin91Bc5oz5I6dqCNNWDrBaYTB31EnWorrj4JEFRaidafC9mpLDLLA9jR9kX_Vy2bA5b6pPpXVKm0w146a0L551OdL8JrrLka9q6LypQdDLLQa76XD03hSBOFcC-Oo5FLPa3WRWS1fQ37hYAoLxtS3isWXMIq_4Onx5bq8bwKyu-3E3fRb_lzIZ8hTIWwcblCTOfufUe6AoK4m6MfBjz0NGhyyk4lEZZw6Sttm2VuZo3xmWoRTJEyJG5AOJ6fkNJ9iQQ1kVhMr0ZZ7NVCaOZAnxrwv2sCjY6R3f4HuEVe1yzT75Mq2IuXq-tadGyFujvUxF6BWHCulbEnss7g"
-			}
-		`),
+		Body:   makeBody(signRequest(t, "{}", &wfe.nonceService)),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -436,20 +386,10 @@ func TestIssueCertificate(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(`
-			{
-					"header": {
-							"alg": "RS256",
-							"jwk": {
-									"e": "AQAB",
-									"kty": "RSA",
-									"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
-							}
-					},
-					"payload": "ICAgIHsKICAgICAgImNzciI6ICJNSUlDVXpDQ0FUc0NBUUF3RGpFTU1Bb0dBMVVFQXd3RFptOXZNSUlCSWpBTkJna3Foa2lHOXcwQkFRRUZBQU9DQVE4QU1JSUJDZ0tDQVFFQTNVV2NlMlBZOXk4bjRCN2pPazNEWFpudTJwVWdMcXM3YTVEelJCeG5QcUw3YXhpczZ0aGpTQkkyRk83dzVDVWpPLW04WGpELUdZV2dmWGViWjNhUVZsQmlZcWR4WjNVRzZSRHdFYkJDZUtvN3Y4Vy1VVWZFU05OQ1hGODc0ZGRoSm1FdzBSRjBZV1NBRWN0QVlIRUdvUEZ6NjlnQ3FsNnhYRFBZMU9scE1BcmtJSWxxOUVaV3dUMDgxZWt5SnYwR1lSZlFpZ0NNSzRiMWdrRnZLc0hqYTktUTV1MWIwQVp5QS1tUFR1Nno1RVdrQjJvbmhBWHdXWFg5MHNmVWU4RFNldDlyOUd4TWxuM2xnWldUMXpoM1JNWklMcDBVaGgzTmJYbkE4SkludWtoYTNIUE84V2dtRGQ0SzZ1QnpXc28wQTZmcDVOcFgyOFpwS0F3TTVpUWx0UUlEQVFBQm9BQXdEUVlKS29aSWh2Y05BUUVMQlFBRGdnRUJBRkdKVjNPY2doSkVadk9faEd0SWRhUm5zdTZlWDNDZXFTMGJZY0VFemE4dml6bGo0eDA5bnRNSDNRb29xUE9qOHN1dWwwdkQ3NUhaVHB6NkZIRTdTeUxlTktRQkdOR3AxUE1XbVhzRnFENnhVUkN5TUh2Q1pvSHlucENyN0Q1SHR6SXZ1OWZBVjdYUks3cUJLWGZSeGJ2MjFxMHlzTVduZndrYlMyd3JzMXdBelBQZzRpR0pxOHVWSXRybGNGTDhidUpMenh2S2EzbHVfT2p4TlhqemRFdDNWVmtvLUFLUzFzd2tZRWhzR3dLZDhaek5icEYySVEtb2tYZ1JfWmVjeVc4dDgzcFYtdzMzR2hETDl3NlJMUk1nU001YW9qeThyaTdZSW9JdmMzLTlrbGJ3Mmt3WTVvTTJsbWhvSU9HVTEwVGtFeW4xOG15eV81R1VFR2hOelBBPSIsCiAgICAgICJhdXRob3JpemF0aW9ucyI6IFtdCiAgICB9Cg",
-					"signature": "PxtFtDXR74ZDgZUWsNaMFpFAhJrYtCYpl3-vr9SCwuWIxB9hZCnLWB5JFwNuC9CtTSYXqDJhzPs4-Bzh345HdwO-ifu1EIVxmc3bAszYS-cxA0lDzr8wJ0ldX0WvADshRWaeFYWJja7ggW03k5JZiNa9AigKIvkGBS2YWpEpCo954cdCEmIL3UOdVjN9aXRT7zzC9wczv4-hYDR-6uP_8J6ATUXJ-UJaTnMi3R0cwtHIcTBZgtgGspoCbtgv-3KaAGNkm5AY062xO5_GbefWwuD2hd8AjKyoTLdfQtwadu6Q3Zl6ZzW_eAfQVDnoblgSt19Gtm4HP4Rf_GosGjRMog"
-			}
-		`),
+		Body: makeBody(signRequest(t, `{
+      "csr": "MIICUzCCATsCAQAwDjEMMAoGA1UEAwwDZm9vMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3UWce2PY9y8n4B7jOk3DXZnu2pUgLqs7a5DzRBxnPqL7axis6thjSBI2FO7w5CUjO-m8XjD-GYWgfXebZ3aQVlBiYqdxZ3UG6RDwEbBCeKo7v8W-UUfESNNCXF874ddhJmEw0RF0YWSAEctAYHEGoPFz69gCql6xXDPY1OlpMArkIIlq9EZWwT081ekyJv0GYRfQigCMK4b1gkFvKsHja9-Q5u1b0AZyA-mPTu6z5EWkB2onhAXwWXX90sfUe8DSet9r9GxMln3lgZWT1zh3RMZILp0Uhh3NbXnA8JInukha3HPO8WgmDd4K6uBzWso0A6fp5NpX28ZpKAwM5iQltQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAFGJV3OcghJEZvO_hGtIdaRnsu6eX3CeqS0bYcEEza8vizlj4x09ntMH3QooqPOj8suul0vD75HZTpz6FHE7SyLeNKQBGNGp1PMWmXsFqD6xURCyMHvCZoHynpCr7D5HtzIvu9fAV7XRK7qBKXfRxbv21q0ysMWnfwkbS2wrs1wAzPPg4iGJq8uVItrlcFL8buJLzxvKa3lu_OjxNXjzdEt3VVko-AKS1swkYEhsGwKd8ZzNbpF2IQ-okXgR_ZecyW8t83pV-w33GhDL9w6RLRMgSM5aojy8ri7YIoIvc3-9klbw2kwY5oM2lmhoIOGU10TkEyn18myy_5GUEGhNzPA=",
+      "authorizations": []
+    }`, &wfe.nonceService)),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -459,13 +399,10 @@ func TestIssueCertificate(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(`
-			{
-				"payload":"eyJhdXRob3JpemF0aW9ucyI6W10sImNzciI6Ik1JSUJCVENCc2dJQkFEQk5NUW93Q0FZRFZRUUdFd0ZqTVFvd0NBWURWUVFLRXdGdk1Rc3dDUVlEVlFRTEV3SnZkVEVLTUFnR0ExVUVCeE1CYkRFS01BZ0dBMVVFQ0JNQmN6RU9NQXdHQTFVRUF4TUZUMmdnYUdrd1hEQU5CZ2txaGtpRzl3MEJBUUVGQUFOTEFEQklBa0VBc3I3NlprVTJSVHFpNDFlSGZtcEU1aHREdmtyMjAyeWpSUzh4Mk01eXpUNTJvb1QyV0VWdG5TdWltMFlmT0V3NmYtZkhtYnFzYXNxS21xbHNKZGd6MlFJREFRQUJvQUF3Q3dZSktvWklodmNOQVFFRkEwRUFIa0N2NGtWUEphNTNsdE9HcmhwZEgwbVQwNHFIVXFpVGxsSlBQanhYeG42aXdpVllMOG5RdWhzNFEyNzU4RU5vT0RCdU0yRjhnSDE5VElvWGxjbTNMUT09In0",
-				"protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoieU5XVmh0WUVLSlIyMXk5eHNIVi1QRF9iWXdiWFNlTnVGYWw0NnhZeFZmUkw1bXFoYTd2dHR2akJfdmM3WGcyUnZnQ3hIUENxb3hnTVBUekhyWlQ3NUxqQ3dJVzJLX2tsQllOOG9ZdlR3d21lU2tBejZ1dDdaeFB2LW5aYVQ1VEpoR2swTlQya2hfelNwZHJpRUpfM3ZXLW1xeFliYkJtcHZIcXNhMV96eDlmU3VIWWN0QVpKV3p4elVaWHlrYldNV1FacEVpRTBKNGFqajUxZkluRXpWbjdWeFYtbXpmTXlib1FqdWpQaDdhTkp4QVdTcTRvUUVKSkRnV3dTaDlsZXlvSm9QcE9OSHhoNW5FRTVBakUwMUZrR0lDU3hqcFpzRi13OGhPVEkzWFhvaFVkdTI5U2UyNmsyQjBQb2xEU3VqMEdJUVU2LVc5VGRMWFNqQmIyU3BRIiwiZSI6IkFBRUFBUSJ9fQ",
-				"signature":"LslpZp6wLYQo0LAgMl9_jyTFhKVnvFWcD455-v2b3q3wXJX5Ksvp4sxyczM63j2RGwTUc_Tfu3WEWa2xQ-D74H69XGMnWCikmChwVPDcWwaDwydOEFXff5cGY4Trkxl7xnsO2g3BslxuZ_7uud5IkHIy1-8xa4mHpNHb3XHTAhX5E3tXA1VqC4pVWzD5W74bg4GxuRd8IM2p3toMjgInbzp9vhY7dnPYogwnA8B1uYduF99azdKkb5VbHNBJi5SpTz7nyjvbvh7KTLhaJ1epkSFnd74a-fhyzo8t1Nju9UPT1nc8kF6G3CpOAyWYX27YyA9T0UyM3CVz_hFpvubZjg"
-			}
-		`),
+		Body: makeBody(signRequest(t, `{
+      "authorizations": [],
+      "csr": "MIIBBTCBsgIBADBNMQowCAYDVQQGEwFjMQowCAYDVQQKEwFvMQswCQYDVQQLEwJvdTEKMAgGA1UEBxMBbDEKMAgGA1UECBMBczEOMAwGA1UEAxMFT2ggaGkwXDANBgkqhkiG9w0BAQEFAANLADBIAkEAsr76ZkU2RTqi41eHfmpE5htDvkr202yjRS8x2M5yzT52ooT2WEVtnSuim0YfOEw6f-fHmbqsasqKmqlsJdgz2QIDAQABoAAwCwYJKoZIhvcNAQEFA0EAHkCv4kVPJa53ltOGrhpdH0mT04qHUqiTllJPPjxXxn6iwiVYL8nQuhs4Q2758ENoODBuM2F8gH19TIoXlcm3LQ=="
+    }`, &wfe.nonceService)),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -479,13 +416,10 @@ func TestIssueCertificate(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(`
-			{
-				"payload":"eyJhdXRob3JpemF0aW9ucyI6W10sImNzciI6Ik1JSUJLekNCMkFJQkFEQk5NUW93Q0FZRFZRUUdFd0ZqTVFvd0NBWURWUVFLRXdGdk1Rc3dDUVlEVlFRTEV3SnZkVEVLTUFnR0ExVUVCeE1CYkRFS01BZ0dBMVVFQ0JNQmN6RU9NQXdHQTFVRUF4TUZUMmdnYUdrd1hEQU5CZ2txaGtpRzl3MEJBUUVGQUFOTEFEQklBa0VBcXZGRUdCTnJqQW90UGJjZFRTeURweHNFU04wLWVZbDRUcVMwWkxZd0xUVi1GdVBIVFBqRmlxMm9IMUJFZ21SempiOFlpUFZYRk1uYU9lSEU3enV1WFFJREFRQUJvQ1l3SkFZSktvWklodmNOQVFrT01SY3dGVEFUQmdOVkhSRUVEREFLZ2dodFpXVndMbU52YlRBTEJna3Foa2lHOXcwQkFRVURRUUJTRWNFcS1sTVVuenYxRE84akswaEpSOFlLYzB5Vjh6dVdWZkFXTjBfZHNQZzVOeS1PSGh0SmNPVElyVXJMVGJfeENVN2NqaUt4VThpM2oxa2FULXJ0In0",
-				"protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoieU5XVmh0WUVLSlIyMXk5eHNIVi1QRF9iWXdiWFNlTnVGYWw0NnhZeFZmUkw1bXFoYTd2dHR2akJfdmM3WGcyUnZnQ3hIUENxb3hnTVBUekhyWlQ3NUxqQ3dJVzJLX2tsQllOOG9ZdlR3d21lU2tBejZ1dDdaeFB2LW5aYVQ1VEpoR2swTlQya2hfelNwZHJpRUpfM3ZXLW1xeFliYkJtcHZIcXNhMV96eDlmU3VIWWN0QVpKV3p4elVaWHlrYldNV1FacEVpRTBKNGFqajUxZkluRXpWbjdWeFYtbXpmTXlib1FqdWpQaDdhTkp4QVdTcTRvUUVKSkRnV3dTaDlsZXlvSm9QcE9OSHhoNW5FRTVBakUwMUZrR0lDU3hqcFpzRi13OGhPVEkzWFhvaFVkdTI5U2UyNmsyQjBQb2xEU3VqMEdJUVU2LVc5VGRMWFNqQmIyU3BRIiwiZSI6IkFBRUFBUSJ9fQ",
-				"signature":"kdu5tXk-Jz9umbi6RH-BACBj5ObJlVPA4qGsLsdbqPfn9W9CDw66Q9E1QQxt9Fxpe-fqdSDiVSfmuXhO7u068xdYptgFxWNDJXM1MH3iCs0EJz5KQ9SfGiJXrhkji_FbOdYwcxSvbThOF_qyztFmBCgZPfKKHbcGJKV3nvFDLHb6P7hIr6iqMutsFykTToYBUv3czzc87iYFpR_ukAnISLJ0hQucbMBqlinvq8TOmzi47o_uv2Fy8MF0V_C9ZYJmhZGjihhVvVlr00OaFE5bNM2uLMfr_02oG83HTjNJOGaxsqi-tuu41m3Dr5M8Ubh2oPA0OrKIuMisMMZ3aCzRtA"
-			}
-		`),
+		Body: makeBody(signRequest(t, `{
+      "authorizations": [],
+      "csr": "MIIBKzCB2AIBADBNMQowCAYDVQQGEwFjMQowCAYDVQQKEwFvMQswCQYDVQQLEwJvdTEKMAgGA1UEBxMBbDEKMAgGA1UECBMBczEOMAwGA1UEAxMFT2ggaGkwXDANBgkqhkiG9w0BAQEFAANLADBIAkEAqvFEGBNrjAotPbcdTSyDpxsESN0-eYl4TqS0ZLYwLTV-FuPHTPjFiq2oH1BEgmRzjb8YiPVXFMnaOeHE7zuuXQIDAQABoCYwJAYJKoZIhvcNAQkOMRcwFTATBgNVHREEDDAKgghtZWVwLmNvbTALBgkqhkiG9w0BAQUDQQBSEcEq-lMUnzv1DO8jK0hJR8YKc0yV8zuWVfAWN0_dsPg5Ny-OHhtJcOTIrUrLTb_xCU7cjiKxU8i3j1kaT-rt"
+    }`, &wfe.nonceService)),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -494,13 +428,10 @@ func TestIssueCertificate(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(`
-			{
-				"payload":"eyJjc3IiOiJNSUgxTUlHaUFnRUFNQTB4Q3pBSkJnTlZCQVlUQWxWVE1Gd3dEUVlKS29aSWh2Y05BUUVCQlFBRFN3QXdTQUpCQU9YUnpCOWhEU0NSUFlqbHU2SHpKOU1rVVBwbERHLW8wSVMzRU5pRDh6Y2dDTS1YdkVFc3NlMDZDeWhSYjZnNUJ6OUFzR0g5dGhheHN6R0IwbzJScGFrQ0F3RUFBYUF3TUM0R0NTcUdTSWIzRFFFSkRqRWhNQjh3SFFZRFZSMFJCQll3RklJU2JtOTBMV0Z1TFdWNFlXMXdiR1V1WTI5dE1Bc0dDU3FHU0liM0RRRUJDd05CQUZweVVSRnFqVm4tN3p4NzNHS2FCdlBGXzJSaEJzZGVocVNqYUowQnB2UEttenBvSUZBRGp0dE56S2tXYVJSRHJUZVQtR0dNVjJHa3k4Uy1FX2R6b21zPSIsImF1dGhvcml6YXRpb25zIjpbInZhbGlkIl19",
-				"protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoieU5XVmh0WUVLSlIyMXk5eHNIVi1QRF9iWXdiWFNlTnVGYWw0NnhZeFZmUkw1bXFoYTd2dHR2akJfdmM3WGcyUnZnQ3hIUENxb3hnTVBUekhyWlQ3NUxqQ3dJVzJLX2tsQllOOG9ZdlR3d21lU2tBejZ1dDdaeFB2LW5aYVQ1VEpoR2swTlQya2hfelNwZHJpRUpfM3ZXLW1xeFliYkJtcHZIcXNhMV96eDlmU3VIWWN0QVpKV3p4elVaWHlrYldNV1FacEVpRTBKNGFqajUxZkluRXpWbjdWeFYtbXpmTXlib1FqdWpQaDdhTkp4QVdTcTRvUUVKSkRnV3dTaDlsZXlvSm9QcE9OSHhoNW5FRTVBakUwMUZrR0lDU3hqcFpzRi13OGhPVEkzWFhvaFVkdTI5U2UyNmsyQjBQb2xEU3VqMEdJUVU2LVc5VGRMWFNqQmIyU3BRIiwiZSI6IkFBRUFBUSJ9fQ",
-				"signature":"PTch808Bq4SpPQ1iPg9EoFhz7ZuXijGjo3WgswDCXFoQdE7km5QIvbeanRjd_gWkVEUJGslBV4flbszbDtK34LzA6OR8Of7qIN6nIA0p0RlNUs1XxpnP5JScdIevtPahS_MYOtabw0_2bgXq7pP1GvljoMmCXhDbbwBJ9kgQrss7J51poddv_LlvTO5HptC5wt3daWmtRdsellTAg_6mxLJOace59J2IiU9urouZS4abYtcf9HDK5DX7Ip7D-gPQwmObXIf9kWoKv00yPG1dkH9wzQIXQcIJoc_DcJPfUCUrfbS5eUjWXfI-306jGlAlZLZ0ulRA6fpxFSqfLvKuFA"
-			}
-		`),
+		Body: makeBody(signRequest(t, `{
+      "csr": "MIH1MIGiAgEAMA0xCzAJBgNVBAYTAlVTMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAOXRzB9hDSCRPYjlu6HzJ9MkUPplDG-o0IS3ENiD8zcgCM-XvEEsse06CyhRb6g5Bz9AsGH9thaxszGB0o2RpakCAwEAAaAwMC4GCSqGSIb3DQEJDjEhMB8wHQYDVR0RBBYwFIISbm90LWFuLWV4YW1wbGUuY29tMAsGCSqGSIb3DQEBCwNBAFpyURFqjVn-7zx73GKaBvPF_2RhBsdehqSjaJ0BpvPKmzpoIFADjttNzKkWaRRDrTeT-GGMV2Gky8S-E_dzoms=",
+      "authorizations": ["valid"]
+    }`, &wfe.nonceService)),
 	})
 	randomCertDer, _ := hex.DecodeString(GoodTestCert)
 	test.AssertEquals(t,
@@ -553,20 +484,7 @@ func TestChallenge(t *testing.T) {
 	wfe.Challenge(authz, responseWriter, &http.Request{
 		Method: "POST",
 		URL:    challengeURL,
-		Body: makeBody(`
-			{
-					"header": {
-							"alg": "RS256",
-							"jwk": {
-									"e": "AQAB",
-									"kty": "RSA",
-									"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
-							}
-					},
-					"payload": "e30K",
-					"signature": "JXYA_pin91Bc5oz5I6dqCNNWDrBaYTB31EnWorrj4JEFRaidafC9mpLDLLA9jR9kX_Vy2bA5b6pPpXVKm0w146a0L551OdL8JrrLka9q6LypQdDLLQa76XD03hSBOFcC-Oo5FLPa3WRWS1fQ37hYAoLxtS3isWXMIq_4Onx5bq8bwKyu-3E3fRb_lzIZ8hTIWwcblCTOfufUe6AoK4m6MfBjz0NGhyyk4lEZZw6Sttm2VuZo3xmWoRTJEyJG5AOJ6fkNJ9iQQ1kVhMr0ZZ7NVCaOZAnxrwv2sCjY6R3f4HuEVe1yzT75Mq2IuXq-tadGyFujvUxF6BWHCulbEnss7g"
-			}
-		`),
+		Body:   makeBody(signRequest(t, "{}", &wfe.nonceService)),
 	})
 
 	test.AssertEquals(
@@ -619,7 +537,7 @@ func TestNewRegistration(t *testing.T) {
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
-	result, err := signer.Sign([]byte("foo"))
+	result, err := signer.Sign([]byte("foo"), wfe.nonceService.Nonce())
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
 		Body:   makeBody(result.FullSerialize()),
@@ -653,7 +571,9 @@ func TestNewRegistration(t *testing.T) {
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
 
 	responseWriter.Body.Reset()
-	result, err = signer.Sign([]byte("{\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/im-bad\"}"))
+	result, err = signer.Sign(
+		[]byte("{\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/im-bad\"}"),
+		wfe.nonceService.Nonce())
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
 		Body:   makeBody(result.FullSerialize()),
@@ -663,7 +583,8 @@ func TestNewRegistration(t *testing.T) {
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL ["+agreementURL+"]\"}")
 
 	responseWriter.Body.Reset()
-	result, err = signer.Sign([]byte("{\"contact\":[\"tel:123456789\"],\"agreement\":\"" + agreementURL + "\"}"))
+	result, err = signer.Sign([]byte("{\"contact\":[\"tel:123456789\"],\"agreement\":\""+agreementURL+"\"}"),
+		wfe.nonceService.Nonce())
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
 		Body:   makeBody(result.FullSerialize()),
@@ -673,6 +594,7 @@ func TestNewRegistration(t *testing.T) {
 	var reg core.Registration
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
+	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
 	uu := url.URL(reg.Contact[0])
 	test.AssertEquals(t, uu.String(), "tel:123456789")
 
@@ -692,7 +614,7 @@ func TestNewRegistration(t *testing.T) {
 
 	// POST, Valid JSON, Key already in use
 	responseWriter.Body.Reset()
-	result, err = signer.Sign([]byte("{\"contact\":[\"tel:123456789\"],\"agreement\":\"" + agreementURL + "\"}"))
+	result, err = signer.Sign([]byte("{\"contact\":[\"tel:123456789\"],\"agreement\":\""+agreementURL+"\"}"), wfe.nonceService.Nonce())
 
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
@@ -736,20 +658,7 @@ func TestAuthorization(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(responseWriter, &http.Request{
 		Method: "POST",
-		Body: makeBody(`
-			{
-				"header": {
-					"alg": "RS256",
-					"jwk": {
-						"e": "AQAB",
-						"kty": "RSA",
-						"n": "tSwgy3ORGvc7YJI9B2qqkelZRUC6F1S5NwXFvM4w5-M0TsxbFsH5UH6adigV0jzsDJ5imAechcSoOhAh9POceCbPN1sTNwLpNbOLiQQ7RD5mY_pSUHWXNmS9R4NZ3t2fQAzPeW7jOfF0LKuJRGkekx6tXP1uSnNibgpJULNc4208dgBaCHo3mvaE2HV2GmVl1yxwWX5QZZkGQGjNDZYnjFfa2DKVvFs0QbAk21ROm594kAxlRlMMrvqlf24Eq4ERO0ptzpZgm_3j_e4hGRD39gJS7kAzK-j2cacFQ5Qi2Y6wZI2p-FCq_wiYsfEAIkATPBiLKl_6d_Jfcvs_impcXQ"
-					}
-				},
-				"payload": "Zm9vCg",
-				"signature": "hRt2eYqBd_MyMRNIh8PEIACoFtmBi7BHTLBaAhpSU6zyDAFdEBaX7us4VB9Vo1afOL03Q8iuoRA0AT4akdV_mQTAQ_jhTcVOAeXPr0tB8b8Q11UPQ0tXJYmU4spAW2SapJIvO50ntUaqU05kZd0qw8-noH1Lja-aNnU-tQII4iYVvlTiRJ5g8_CADsvJqOk6FcHuo2mG643TRnhkAxUtazvHyIHeXMxydMMSrpwUwzMtln4ZJYBNx4QGEq6OhpAD_VSp-w8Lq5HOwGQoNs0bPxH1SGrArt67LFQBfjlVr94E1sn26p4vigXm83nJdNhWAMHHE9iV67xN-r29LT-FjA"
-			}
-		`),
+		Body:   makeBody(signRequest(t, "foo", &wfe.nonceService)),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -782,7 +691,7 @@ func TestAuthorization(t *testing.T) {
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(responseWriter, &http.Request{
 		Method: "POST",
-		Body:   makeBody(signRequest(t, "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}")),
+		Body:   makeBody(signRequest(t, "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}", &wfe.nonceService)),
 	})
 
 	test.AssertEquals(
@@ -851,7 +760,7 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	// Test POST valid JSON but key is not registered
-	result, err := signer.Sign([]byte("{\"agreement\":\"" + agreementURL + "\"}"))
+	result, err := signer.Sign([]byte("{\"agreement\":\""+agreementURL+"\"}"), wfe.nonceService.Nonce())
 	path, _ = url.Parse("/2")
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
@@ -873,7 +782,7 @@ func TestRegistration(t *testing.T) {
 	path, _ = url.Parse("/2")
 
 	// Test POST valid JSON with registration up in the mock (with incorrect agreement URL)
-	result, err = signer.Sign([]byte("{\"agreement\":\"https://letsencrypt.org/im-bad\"}"))
+	result, err = signer.Sign([]byte("{\"agreement\":\"https://letsencrypt.org/im-bad\"}"), wfe.nonceService.Nonce())
 
 	// Test POST valid JSON with registration up in the mock
 	path, _ = url.Parse("/1")
@@ -888,7 +797,7 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with registration up in the mock (with correct agreement URL)
-	result, err = signer.Sign([]byte("{\"agreement\":\"" + agreementURL + "\"}"))
+	result, err = signer.Sign([]byte("{\"agreement\":\""+agreementURL+"\"}"), wfe.nonceService.Nonce())
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
 		Body:   makeBody(result.FullSerialize()),

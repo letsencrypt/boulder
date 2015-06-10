@@ -116,6 +116,9 @@ var state = {
   validatedDomains: [],
   validAuthorizationURLs: [],
 
+  // We will use this as a push/shift FIFO in post() and getNonce()
+  nonces: [],
+
   newAuthorizationURL: "",
   authorizationURL: "",
   responseURL: "",
@@ -153,9 +156,35 @@ function parseLink(link) {
   }
 }
 
+function getNonce(url, callback) {
+  var req = request.head({
+    url: url,
+  }, function(error, response, body) {
+    if ("replay-nonce" in response.headers) {
+      console.log("Storing nonce: " + response.headers["replay-nonce"]);
+      state.nonces.push(response.headers["replay-nonce"]);
+      callback();
+      return;
+    }
+
+    console.log("Failed to get nonce for request")
+  });
+}
+
 function post(url, body, callback) {
+  // Pre-flight with HEAD if we don't have a nonce
+  if (state.nonces.length == 0) {
+    getNonce(url, function() {
+      post(url, body, callback);
+    })
+    return;
+  }
+
+  console.log("Using nonce: " + state.nonces[0]);
   var payload = JSON.stringify(body, null, 2);
-  var jws = crypto.generateSignature(state.accountPrivateKey, new Buffer(payload));
+  var jws = crypto.generateSignature(state.accountPrivateKey,
+                                     new Buffer(payload),
+                                     state.nonces.shift());
   var signed = JSON.stringify(jws, null, 2);
 
   console.log('Posting to', url, ':');
@@ -165,7 +194,14 @@ function post(url, body, callback) {
   var req = request.post({
     url: url,
     encoding: null // Return body as buffer, needed for certificate response
-    }, function(error, response, body) {
+  }, function(error, response, body) {
+    Object.keys(response.headers).forEach(function(key) {
+      var value = response.headers[key];
+      var upcased = key.charAt(0).toUpperCase() + key.slice(1);
+      console.log((upcased + ": " + value).yellow)
+    });
+    console.log()
+
     // Don't print non-ASCII characters (like DER-encoded cert) to the terminal
     if (body && !body.toString().match(/[^\x00-\x7F]/)) {
       try {
@@ -175,15 +211,16 @@ function post(url, body, callback) {
         console.log(body.toString().cyan);
       }
     }
+
+    // Remember the nonce provided by the server
+    if ("replay-nonce" in response.headers) {
+      console.log("Storing nonce: " + response.headers["replay-nonce"]);
+      state.nonces.push(response.headers["replay-nonce"]);
+    }
+
     callback(error, response, body)
   });
   req.on('response', function(response) {
-    Object.keys(response.headers).forEach(function(key) {
-      var value = response.headers[key];
-      var upcased = key.charAt(0).toUpperCase() + key.slice(1);
-      console.log((upcased + ": " + value).yellow)
-    });
-    console.log()
   })
   req.write(signed)
   req.end();
