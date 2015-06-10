@@ -134,7 +134,7 @@ func (parsed *rawJsonWebSignature) sanitized() (*JsonWebSignature, error) {
 		// header struct only if those bytes are not available.
 		signature.original = &rawSignatureInfo{
 			Protected: parsed.Protected,
-			Header: parsed.Header,
+			Header:    parsed.Header,
 			Signature: parsed.Signature,
 		}
 

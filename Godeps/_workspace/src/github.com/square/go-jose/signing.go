@@ -24,12 +24,12 @@ import (
 
 // Signer represents a signer which takes a payload and produces a signed JWS object.
 type Signer interface {
-	Sign(payload []byte) (*JsonWebSignature, error)
+	Sign(payload []byte, nonce string) (*JsonWebSignature, error)
 }
 
 // MultiSigner represents a signer which supports multiple recipients.
 type MultiSigner interface {
-	Sign(payload []byte) (*JsonWebSignature, error)
+	Sign(payload []byte, nonce string) (*JsonWebSignature, error)
 	AddRecipient(alg SignatureAlgorithm, signingKey interface{}) error
 }
 
@@ -123,7 +123,7 @@ func makeRecipient(alg SignatureAlgorithm, signingKey interface{}) (recipientSig
 	}
 }
 
-func (ctx *genericSigner) Sign(payload []byte) (*JsonWebSignature, error) {
+func (ctx *genericSigner) Sign(payload []byte, nonce string) (*JsonWebSignature, error) {
 	obj := &JsonWebSignature{}
 	obj.payload = payload
 	obj.Signatures = make([]Signature, len(ctx.recipients))
@@ -136,6 +136,10 @@ func (ctx *genericSigner) Sign(payload []byte) (*JsonWebSignature, error) {
 		if recipient.publicKey != nil {
 			protected.Jwk = recipient.publicKey
 			protected.Kid = recipient.publicKey.KeyID
+		}
+
+		if nonce != "" {
+			protected.Nonce = nonce
 		}
 
 		serializedProtected := mustSerializeJSON(protected)
@@ -157,10 +161,10 @@ func (ctx *genericSigner) Sign(payload []byte) (*JsonWebSignature, error) {
 }
 
 // Verify validates the signature on the object and returns the payload.
-func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, error) {
+func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, JoseHeader, error) {
 	verifier, err := newVerifier(verificationKey)
 	if err != nil {
-		return nil, err
+		return nil, JoseHeader{}, err
 	}
 
 	for _, signature := range obj.Signatures {
@@ -169,14 +173,13 @@ func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, error) 
 			// Unsupported crit header
 			continue
 		}
-
 		input := obj.computeAuthData(&signature)
 		alg := SignatureAlgorithm(headers.Alg)
 		err := verifier.verifyPayload(input, signature.signature, alg)
 		if err == nil {
-			return obj.payload, nil
+			return obj.payload, headers.sanitized(), nil
 		}
 	}
 
-	return nil, ErrCryptoFailure
+	return nil, JoseHeader{}, ErrCryptoFailure
 }
