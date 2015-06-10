@@ -78,6 +78,10 @@ type certificateRequest struct {
 	RegID int64
 }
 
+type caaRequest struct {
+	Ident core.AcmeIdentifier
+}
+
 func improperMessage(method string, err error, obj interface{}) {
 	log := blog.GetAuditLogger()
 	log.Audit(fmt.Sprintf("Improper message. method: %s err: %s data: %+v", method, err, obj))
@@ -369,9 +373,7 @@ func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) 
 	})
 
 	rpc.Handle(MethodCheckCAARecords, func(req []byte) (response []byte, err error) {
-		var caaReq struct {
-			Ident core.AcmeIdentifier
-		}
+		var caaReq caaRequest
 		if err = json.Unmarshal(req, &caaReq); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodCheckCAARecords, err, req)
@@ -429,9 +431,7 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 }
 
 func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) (present bool, valid bool, err error) {
-	var caaReq struct {
-		Ident core.AcmeIdentifier
-	}
+	var caaReq caaRequest
 	caaReq.Ident = ident
 	data, err := json.Marshal(caaReq)
 	if err != nil {

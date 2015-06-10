@@ -233,12 +233,14 @@ func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, ch
 	return nil
 }
 
-// CheckCAA verifies that the indicated subscriber domain has a CAA record
-// authorizing the specified CA domain to issue a certificate.
+// CheckCAA verifies that, if the indicated subscriber domain has any CAA
+// records, they authorize the configured CA domain to issue a certificate
 func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	domain := strings.ToLower(identifier.Value)
 	caaSet, err := getCaaSet(domain, va.DNSResolver, va.DNSTimeout)
-
+	if err != nil {
+		return
+	}
 	if caaSet == nil {
 		// No CAA records found, can issue
 		present = false
@@ -252,7 +254,7 @@ func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifie
 		present = true
 		var checkSet []*CAA
 		if strings.SplitN(domain, ".", 2)[0] == "*" {
-			checkSet = append(caaSet.issuewild, caaSet.issue...)
+			checkSet = caaSet.issuewild
 		} else {
 			checkSet = caaSet.issue
 		}

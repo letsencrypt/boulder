@@ -68,7 +68,7 @@ type CAASet struct {
 func (caaSet CAASet) criticalUnknown() bool {
 	if len(caaSet.unknown) > 0 {
 		for _, caaRecord := range caaSet.unknown {
-			// Critical flag is 1, but acording to RFC 6844 any flag other than
+			// Critical flag is 1, but according to RFC 6844 any flag other than
 			// 0 should currently be interpreted as critical.
 			if caaRecord.flag > 0 {
 				return true
@@ -104,6 +104,7 @@ func newCAASet(CAAs []*CAA) *CAASet {
 func lookupCNAME(client *dns.Client, server, domain string) (string, error) {
 	m := new(dns.Msg)
 	m.SetQuestion(domain, dns.TypeCNAME)
+	// Set DNSSEC OK bit
 	m.SetEdns0(4096, true)
 	r, _, err := client.Exchange(m, server)
 	if err != nil {
@@ -133,6 +134,7 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeCAA)
+	// Set DNSSEC OK bit
 	m.SetEdns0(4096, true)
 	r, _, err := client.Exchange(m, server)
 	if err != nil {
@@ -142,12 +144,16 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 	var CAAs []*CAA
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeCAA {
-			caaLenStr := strings.Fields(answer.String())[5]
-			caaLen, err := strconv.Atoi(caaLenStr)
+			recordFields := strings.Fields(answer.String())
+			if len(recordFields) < 7 {
+				err = errors.New("Badly formatted CAA record")
+				return nil, err
+			}
+			caaLen, err := strconv.Atoi(recordFields[5])
 			if err != nil {
 				return nil, err
 			}
-			caaData, err := hex.DecodeString(answer.String()[len(answer.String())-int(answer.Header().Rdlength*2):])
+			caaData, err := hex.DecodeString(strings.Join(recordFields[6:], ""))
 			if err != nil {
 				return nil, err
 			}
@@ -165,9 +171,8 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 
 func getCaaSet(domain string, server string, timeout time.Duration) (*CAASet, error) {
 	dnsClient := new(dns.Client)
+	// Set timeout for underlying net.Conn
 	dnsClient.DialTimeout = timeout
-	dnsClient.ReadTimeout = timeout
-	dnsClient.WriteTimeout = timeout
 
 	domain = strings.TrimRight(domain, ".")
 	splitDomain := strings.Split(domain, ".")
