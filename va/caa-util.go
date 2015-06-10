@@ -117,12 +117,12 @@ func lookupCNAME(client *dns.Client, server, domain string) (string, error) {
 			// Re-send query with +cd to see if SERVFAIL was caused by DNSSEC validation
 			// failure at the resolver
 			m.CheckingDisabled = true
-			r, _, err = client.Exchange(m, server)
+			checkR, _, err := client.Exchange(m, server)
 			if err != nil {
 				return "", err
 			}
 
-			if r.Rcode != dns.RcodeServerFailure {
+			if checkR.Rcode != dns.RcodeServerFailure {
 				return "", fmt.Errorf("DNSSEC validation failure")
 			}
 		}
@@ -164,12 +164,12 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 			// Re-send query with +cd to see if SERVFAIL was caused by DNSSEC validation
 			// failure at the resolver
 			m.CheckingDisabled = true
-			r, _, err = client.Exchange(m, server)
+			checkR, _, err := client.Exchange(m, server)
 			if err != nil {
 				return nil, err
 			}
 
-			if r.Rcode != dns.RcodeServerFailure {
+			if checkR.Rcode != dns.RcodeServerFailure {
 				return nil, fmt.Errorf("DNSSEC validation failure")
 			}
 			fmt.Printf("%+v\n", r)
