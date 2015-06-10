@@ -31,22 +31,60 @@
   },
 
   "wfe": {
-    "baseURL": "http://localhost:4000",
-    "listenAddress": "0.0.0.0:4000"
+    "listenAddress": "127.0.0.1:4000"
   },
 
   "ca": {
-    "server": "localhost:9000",
-    "authKey": "79999d86250c367a2b517a1ae7d409c1",
     "serialPrefix": 255,
     "profile": "ee",
     "dbDriver": "sqlite3",
     "dbName": ":memory:",
     "testMode": true,
-    "issuerCert": "test/test-ca.pem",
     "_comment": "This should only be present in testMode. In prod use an HSM.",
-    "issuerKey": "test/test-ca.key",
-    "expiry": "8760h"
+    "Key": {
+      "File": "test/test-ca.key"
+    },
+    "expiry": "2160h",
+    "lifespanOCSP": "96h",
+    "maxNames": 1000,
+    "cfssl": {
+      "signing": {
+        "profiles": {
+          "ee": {
+            "usages": [
+              "digital signature",
+              "key encipherment",
+              "server auth",
+              "client auth"
+            ],
+            "backdate": "1h",
+            "is_ca": false,
+            "issuer_urls": [
+              "http://int-x1.letsencrypt.org/cert"
+            ],
+            "ocsp_url": "http://int-x1.letsencrypt.org/ocsp",
+            "crl_url": "http://int-x1.letsencrypt.org/crl",
+            "policies": [
+              "1.3.6.1.4.1.44947.1.1.1",
+              "2.23.140.1.2.1"
+            ],
+            "expiry": "8760h",
+            "CSRWhitelist": {
+              "PublicKeyAlgorithm": true,
+              "PublicKey": true,
+              "SignatureAlgorithm": true
+            },
+            "UseSerialSeq": true
+          }
+        },
+        "default": {
+          "usages": [
+            "digital signature"
+          ],
+          "expiry": "8760h"
+        }
+      }
+    }
   },
 
   "sa": {
@@ -61,7 +99,7 @@
 
   "sql": {
     "SQLDebug": true,
-    "CreateTables": false
+    "CreateTables": true
   },
 
   "revoker": {
@@ -69,7 +107,14 @@
     "dbName": ":memory:"
   },
 
-  "ocsp": {
+  "ocspResponder": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:",
+    "path": "/",
+    "listenAddress": "localhost:4001"
+  },
+
+  "ocspUpdater": {
     "dbDriver": "sqlite3",
     "dbName": ":memory:",
     "minTimeToExpiry": "72h"
@@ -80,6 +125,12 @@
     "port": "25",
     "username": "cert-master@example.com",
     "password": "password"
+  },
+
+  "common": {
+    "baseURL": "http://localhost:4000",
+    "issuerCert": "test/test-ca.pem",
+    "maxKeySize": 4096
   },
 
   "subscriberAgreementURL": "https://letsencrypt.org/be-good"

@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -80,8 +81,8 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 	httpRequest.Host = hostName
 	tr := &http.Transport{
 		// We are talking to a client that does not yet have a certificate,
-		// so we accept a temporary, invalid one. TODO: We may want to change this
-		// to just be over HTTP.
+		// so we accept a temporary, invalid one.
+		// XXX: We may want to change this to just be over HTTP.
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		// We don't expect to make multiple requests to a client, so close
 		// connection immediately.
@@ -155,7 +156,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	}
 	va.log.Notice(fmt.Sprintf("Attempting to validate DVSNI for %s %s %s",
 		identifier, hostPort, zName))
-	conn, err := tls.Dial("tcp", hostPort, &tls.Config{
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", hostPort, &tls.Config{
 		ServerName:         nonceName,
 		InsecureSkipVerify: true,
 	})

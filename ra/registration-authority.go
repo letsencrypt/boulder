@@ -10,9 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
+	"net/mail"
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -29,7 +32,8 @@ type RegistrationAuthorityImpl struct {
 	PA  core.PolicyAuthority
 	log *blog.AuditLogger
 
-	AuthzBase string
+	AuthzBase  string
+	MaxKeySize int
 }
 
 func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
@@ -45,6 +49,27 @@ var allButLastPathSegment = regexp.MustCompile("^.*/")
 
 func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
+}
+
+func validateEmail(address string) (err error) {
+	_, err = mail.ParseAddress(address)
+	if err != nil {
+		err = core.MalformedRequestError(err.Error())
+		return
+	}
+	splitEmail := strings.SplitN(address, "@", -1)
+	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
+	var mx []*net.MX
+	mx, err = net.LookupMX(domain)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		return
+	}
+	if len(mx) == 0 {
+		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
+		return
+	}
+	return
 }
 
 type certificateRequestEvent struct {
@@ -64,20 +89,42 @@ type certificateRequestEvent struct {
 }
 
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
+	if err = core.GoodKey(init.Key.Key, ra.MaxKeySize); err != nil {
+		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
+	}
 	reg = core.Registration{
 		RecoveryToken: core.NewToken(),
 		Key:           init.Key,
 	}
 	reg.MergeUpdate(init)
 
+	for _, contact := range reg.Contact {
+		switch contact.Scheme {
+		case "tel":
+			continue
+		case "mailto":
+			err = validateEmail(contact.Opaque)
+			if err != nil {
+				return
+			}
+		default:
+			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
+			return
+		}
+	}
+
 	// Store the authorization object, then return it
 	reg, err = ra.SA.NewRegistration(reg)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+	}
+
 	return
 }
 
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
 	if regID <= 0 {
-		err = fmt.Errorf("Invalid registration ID")
+		err = core.InternalServerError("Invalid registration ID")
 		return authz, err
 	}
 
@@ -85,6 +132,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Check that the identifier is present and appropriate
 	if err = ra.PA.WillingToIssue(identifier); err != nil {
+		err = core.UnauthorizedError(err.Error())
 		return authz, err
 	}
 
@@ -114,6 +162,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Get a pending Auth first so we can get our ID back, then update with challenges
 	authz, err = ra.SA.NewPendingAuthorization(authz)
 	if err != nil {
+		err = core.InternalServerError(err.Error())
 		return authz, err
 	}
 
@@ -124,7 +173,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		challenges[i].URI = core.AcmeURL(*challengeURI)
 
 		if !challenges[i].IsSane(false) {
-			err = fmt.Errorf("Challenge didn't pass sanity check: %+v", challenges[i])
+			err = core.InternalServerError(fmt.Sprintf("Challenge didn't pass sanity check: %+v", challenges[i]))
 			return authz, err
 		}
 	}
@@ -134,12 +183,14 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Store the authorization object, then return it
 	err = ra.SA.UpdatePendingAuthorization(authz)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+	}
 	return authz, err
 }
 
-func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	emptyCert := core.Certificate{}
-	var err error
 	var logEventResult string
 
 	// Assume the worst
@@ -160,12 +211,17 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}()
 
 	if regID <= 0 {
-		err = fmt.Errorf("Invalid registration ID")
+		err = core.InternalServerError("Invalid registration ID")
+		return emptyCert, err
+	}
+
+	registration, err := ra.SA.GetRegistration(regID)
+	if err != nil {
+		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
 	// Verify the CSR
-	// TODO: Verify that other aspects of the CSR are appropriate
 	csr := req.CSR
 	if err = core.VerifyCSR(csr); err != nil {
 		logEvent.Error = err.Error()
@@ -176,19 +232,26 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.CommonName = csr.Subject.CommonName
 	logEvent.Names = csr.DNSNames
 
-	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
+	// Validate that authorization key is authorized for all domains
+	names := make([]string, len(csr.DNSNames))
+	copy(names, csr.DNSNames)
+	if len(csr.Subject.CommonName) > 0 {
+		names = append(names, csr.Subject.CommonName)
+	}
+
+	if len(names) == 0 {
+		err = core.UnauthorizedError("CSR has no names in it")
+		logEvent.Error = err.Error()
+		return emptyCert, err
+	}
+
+	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(names)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 	if csrPreviousDenied {
 		err = core.UnauthorizedError("CSR has already been revoked/denied")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
-	registration, err := ra.SA.GetRegistration(regID)
-	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
@@ -201,12 +264,13 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	// Gather authorized domains from the referenced authorizations
 	authorizedDomains := map[string]bool{}
 	verificationMethodSet := map[string]bool{}
+	earliestExpiry := time.Date(2100, 01, 01, 0, 0, 0, 0, time.UTC)
 	now := time.Now()
 	for _, url := range req.Authorizations {
 		id := lastPathSegment(url)
 		authz, err := ra.SA.GetAuthorization(id)
 		if err != nil || // Couldn't find authorization
-			authz.RegistrationID != registration.ID ||
+			authz.RegistrationID != registration.ID || // Not for this account
 			authz.Status != core.StatusValid || // Not finalized or not successful
 			authz.Expires.Before(now) || // Expired
 			authz.Identifier.Type != core.IdentifierDNS {
@@ -214,6 +278,10 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 			//      However, it seems like this treatment is more in the spirit of Postel's
 			//      law, and it hides information from attackers.
 			continue
+		}
+
+		if authz.Expires.Before(earliestExpiry) {
+			earliestExpiry = authz.Expires
 		}
 
 		for _, challenge := range authz.Challenges {
@@ -230,12 +298,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}
 	logEvent.VerificationMethods = verificationMethods
 
-	// Validate that authorization key is authorized for all domains
-	names := csr.DNSNames
-	if len(csr.Subject.CommonName) > 0 {
-		names = append(names, csr.Subject.CommonName)
-	}
-
 	// Validate all domains
 	for _, name := range names {
 		if !authorizedDomains[name] {
@@ -249,14 +311,21 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	var cert core.Certificate
-	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
+	if cert, err = ra.CA.IssueCertificate(*csr, regID, earliestExpiry); err != nil {
+		err = core.InternalServerError(err.Error())
 		logEvent.Error = err.Error()
-		return emptyCert, nil
+		return emptyCert, err
+	}
+
+	err = cert.MatchesCSR(csr, earliestExpiry)
+	if err != nil {
+		logEvent.Error = err.Error()
+		return emptyCert, err
 	}
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
+		err = core.InternalServerError(err.Error())
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
@@ -275,6 +344,9 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 	base.MergeUpdate(update)
 	reg = base
 	err = ra.SA.UpdateRegistration(base)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+	}
 	return
 }
 
@@ -289,6 +361,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 
 	// Store the updated version
 	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
+		err = core.InternalServerError(err.Error())
 		return
 	}
 
@@ -298,27 +371,39 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) error {
+func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.CA.RevokeCertificate(serialString, 0)
+	err = ra.CA.RevokeCertificate(serialString, 0)
 
 	// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
 	if err != nil {
 		ra.log.Audit(fmt.Sprintf("Revocation error - %s - %s", serialString, err))
-	} else {
-		ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
+		return err
 	}
 
+	ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
 	return err
 }
 
 func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) error {
-	// Check to see whether the updated validations are sufficient
-	// Current policy is to accept if any validation succeeded
-	for _, val := range authz.Challenges {
-		if val.Status == core.StatusValid {
+	// Consider validation successful if any of the combinations
+	// specified in the authorization has been fulfilled
+	validated := map[int]bool{}
+	for i, ch := range authz.Challenges {
+		if ch.Status == core.StatusValid {
+			validated[i] = true
+		}
+	}
+	for _, combo := range authz.Combinations {
+		comboValid := true
+		for _, i := range combo {
+			if !validated[i] {
+				comboValid = false
+				break
+			}
+		}
+		if comboValid {
 			authz.Status = core.StatusValid
-			break
 		}
 	}
 

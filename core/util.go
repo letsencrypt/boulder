@@ -34,8 +34,15 @@ import (
 // and is used by GetBuildID
 var BuildID string
 
+// BuildHost is set by the compiler and is used by GetBuildHost
+var BuildHost string
+
+// BuildTime is set by the compiler and is used by GetBuildTime
+var BuildTime string
+
 // Errors
 
+type InternalServerError string
 type NotSupportedError string
 type MalformedRequestError string
 type UnauthorizedError string
@@ -44,6 +51,7 @@ type SyntaxError string
 type SignatureValidationError string
 type CertificateIssuanceError string
 
+func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
 func (e MalformedRequestError) Error() string    { return string(e) }
 func (e UnauthorizedError) Error() string        { return string(e) }
@@ -133,6 +141,11 @@ func KeyDigestEquals(j, k crypto.PublicKey) bool {
 
 // URLs that automatically marshal/unmarshal to JSON strings
 type AcmeURL url.URL
+
+func (u AcmeURL) String() string {
+	url := url.URL(u)
+	return url.String()
+}
 
 func (u AcmeURL) PathSegments() (segments []string) {
 	segments = strings.Split(u.Path, "/")
@@ -244,6 +257,37 @@ func GetBuildID() (retID string) {
 	retID = BuildID
 	if retID == "" {
 		retID = "Unspecified"
+	}
+	return
+}
+
+// GetBuildTime identifies when this build was made
+func GetBuildTime() (retID string) {
+	retID = BuildTime
+	if retID == "" {
+		retID = "Unspecified"
+	}
+	return
+}
+
+// GetBuildHost identifies the building host
+func GetBuildHost() (retID string) {
+	retID = BuildHost
+	if retID == "" {
+		retID = "Unspecified"
+	}
+	return
+}
+
+func UniqueNames(names []string) (unique []string) {
+	nameMap := make(map[string]int, len(names))
+	for _, name := range names {
+		nameMap[name] = 1
+	}
+
+	unique = make([]string, 0, len(nameMap))
+	for name := range nameMap {
+		unique = append(unique, name)
 	}
 	return
 }

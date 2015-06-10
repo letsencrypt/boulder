@@ -1,5 +1,5 @@
 // Package bundler implements certificate bundling functionality for
-// CF-SSL.
+// CFSSL.
 package bundler
 
 import (
@@ -47,12 +47,11 @@ const (
 )
 
 const (
-	sha2Warning              = "The bundle contains certs signed with advanced hash functions such as SHA2,  which are problematic at certain operating systems, e.g. Windows XP SP2."
-	ecdsaWarning             = "The bundle contains ECDSA signatures, which are problematic at certain operating systems, e.g. Windows XP SP2, Android 2.2 and Android 2.3."
-	expiringWarningStub      = "The bundle is expiring within 30 days. "
-	untrustedWarningStub     = "The bundle may not be trusted by the following platform(s):"
-	ubiquityWarning          = "The bundle trust ubiquity is not guaranteed: No platform metadata found."
-	deprecateSHA1WarningStub = "Due to SHA-1 deprecation, the bundle may not be trusted by the following platform(s):"
+	sha2Warning          = "The bundle contains certificates signed with advanced hash functions such as SHA2, which are problematic for certain operating systems, e.g. Windows XP SP2."
+	ecdsaWarning         = "The bundle contains ECDSA signatures, which are problematic for certain operating systems, e.g. Windows XP SP2, Android 2.2 and Android 2.3."
+	expiringWarningStub  = "The bundle is expiring within 30 days."
+	untrustedWarningStub = "The bundle may not be trusted by the following platform(s):"
+	ubiquityWarning      = "Unable to measure bundle ubiquity: No platform metadata present."
 )
 
 // A Bundler contains the certificate pools for producing certificate
@@ -69,14 +68,14 @@ type Bundler struct {
 // of valid intermediate certificates, respectively.
 func NewBundler(caBundleFile, intBundleFile string) (*Bundler, error) {
 	log.Debug("Loading CA bundle: ", caBundleFile)
-	caBundlePEM, err := ioutil.ReadFile(caBundleFile)
+	caBundle, err := ioutil.ReadFile(caBundleFile)
 	if err != nil {
 		log.Errorf("root bundle failed to load: %v", err)
 		return nil, errors.Wrap(errors.RootError, errors.ReadFailed, err)
 	}
 
 	log.Debug("Loading Intermediate bundle: ", intBundleFile)
-	intBundlePEM, err := ioutil.ReadFile(intBundleFile)
+	intBundle, err := ioutil.ReadFile(intBundleFile)
 	if err != nil {
 		log.Errorf("intermediate bundle failed to load: %v", err)
 		return nil, errors.Wrap(errors.IntermediatesError, errors.ReadFailed, err)
@@ -92,7 +91,8 @@ func NewBundler(caBundleFile, intBundleFile string) (*Bundler, error) {
 		}
 		log.Infof("intermediate stash directory %s created", IntermediateStash)
 	}
-	return NewBundlerFromPEM(caBundlePEM, intBundlePEM)
+	return NewBundlerFromPEM(caBundle, intBundle)
+
 }
 
 // NewBundlerFromPEM creates a new Bundler from PEM-encoded root certificates and
@@ -150,9 +150,9 @@ func (b *Bundler) VerifyOptions() x509.VerifyOptions {
 // BundleFromFile takes a set of files containing the PEM-encoded leaf certificate
 // (optionally along with some intermediate certs), the PEM-encoded private key
 // and returns the bundle built from that key and the certificate(s).
-func (b *Bundler) BundleFromFile(bundleFile, keyFile string, flavor BundleFlavor) (*Bundle, error) {
+func (b *Bundler) BundleFromFile(bundleFile, keyFile string, flavor BundleFlavor, password string) (*Bundle, error) {
 	log.Debug("Loading Certificate: ", bundleFile)
-	certsPEM, err := ioutil.ReadFile(bundleFile)
+	certsRaw, err := ioutil.ReadFile(bundleFile)
 	if err != nil {
 		return nil, errors.Wrap(errors.CertificateError, errors.ReadFailed, err)
 	}
@@ -172,12 +172,12 @@ func (b *Bundler) BundleFromFile(bundleFile, keyFile string, flavor BundleFlavor
 		}
 	}
 
-	return b.BundleFromPEM(certsPEM, keyPEM, flavor)
+	return b.BundleFromPEMorDER(certsRaw, keyPEM, flavor, password)
 }
 
-// BundleFromPEM builds a certificate bundle from the set of byte
-// slices containing the PEM-encoded certificate(s), private key.
-func (b *Bundler) BundleFromPEM(certsPEM, keyPEM []byte, flavor BundleFlavor) (*Bundle, error) {
+// BundleFromPEMorDER builds a certificate bundle from the set of byte
+// slices containing the PEM or DER-encoded certificate(s), private key.
+func (b *Bundler) BundleFromPEMorDER(certsRaw, keyPEM []byte, flavor BundleFlavor, password string) (*Bundle, error) {
 	log.Debug("bundling from PEM files")
 	var key crypto.Signer
 	var err error
@@ -189,11 +189,24 @@ func (b *Bundler) BundleFromPEM(certsPEM, keyPEM []byte, flavor BundleFlavor) (*
 		}
 	}
 
-	certs, err := helpers.ParseCertificatesPEM(certsPEM)
+	certs, err := helpers.ParseCertificatesPEM(certsRaw)
 	if err != nil {
-		log.Debugf("failed to parse certificates: %v", err)
-		return nil, err
-	} else if len(certs) == 0 {
+		// If PEM doesn't work try DER
+		var keyDER crypto.Signer
+		var errDER error
+		certs, keyDER, errDER = helpers.ParseCertificatesDER(certsRaw, password)
+		// Only use DER key if no key read from file
+		if key == nil && keyDER != nil {
+			key = keyDER
+		}
+		if errDER != nil {
+			log.Debugf("failed to parse certificates: %v", err)
+			// If neither parser works pass along PEM error
+			return nil, err
+		}
+
+	}
+	if len(certs) == 0 {
 		log.Debugf("no certificates found")
 		return nil, errors.New(errors.CertificateError, errors.DecodeFailed)
 	}
@@ -642,11 +655,11 @@ func (b *Bundler) Bundle(certs []*x509.Certificate, key crypto.Signer, flavor Bu
 		messages = append(messages, untrustedMsg)
 	}
 	// Check if there is any platform that rejects the chain because of SHA1 deprecation.
-	deprecated := ubiquity.DeprecatedSHA1Platforms(matchingChains[0])
-	if len(deprecated) > 0 {
+	sha1Msgs := ubiquity.SHA1DeprecationMessages(matchingChains[0])
+	if len(sha1Msgs) > 0 {
 		log.Debug("Populate SHA1 deprecation warning.")
 		statusCode |= errors.BundleNotUbiquitousBit
-		messages = append(messages, deprecateSHA1Warning(deprecated))
+		messages = append(messages, sha1Msgs...)
 	}
 
 	bundle.Status = &BundleStatus{ExpiringSKIs: getSKIs(bundle.Chain, expiringCerts), Code: statusCode, Messages: messages, Untrusted: untrusted}
@@ -706,22 +719,6 @@ func untrustedPlatformsWarning(platforms []string) string {
 	}
 
 	msg := untrustedWarningStub
-	for i, platform := range platforms {
-		if i > 0 {
-			msg += ","
-		}
-		msg += " " + platform
-	}
-	msg += "."
-	return msg
-}
-
-// deprecateSHA1Warning generates a warning message with platform names which deprecates SHA1.
-func deprecateSHA1Warning(platforms []string) string {
-	if len(platforms) == 0 {
-		return ""
-	}
-	msg := deprecateSHA1WarningStub
 	for i, platform := range platforms {
 		if i > 0 {
 			msg += ","

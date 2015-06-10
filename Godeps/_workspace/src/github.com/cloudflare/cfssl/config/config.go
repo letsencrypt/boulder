@@ -1,4 +1,4 @@
-// Package config contains the configuration logic for CF-SSL.
+// Package config contains the configuration logic for CFSSL.
 package config
 
 import (
@@ -16,6 +16,7 @@ import (
 	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
+	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
 )
 
 // A CSRWhitelist stores booleans for fields in the CSR. If a CSRWhitelist is
@@ -297,6 +298,7 @@ type Signing struct {
 // Config stores configuration information for the CA.
 type Config struct {
 	Signing  *Signing           `json:"signing"`
+	OCSP     *ocspConfig.Config `json:"ocsp"`
 	AuthKeys map[string]AuthKey `json:"auth_keys,omitempty"`
 	Remotes  map[string]string  `json:"remotes,omitempty"`
 }

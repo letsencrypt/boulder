@@ -15,7 +15,8 @@
         "usages": [
           "digital signature",
           "key encipherment",
-          "server auth"
+          "server auth",
+          "client auth"
         ],
         "backdate": "1h",
         "is_ca": false,

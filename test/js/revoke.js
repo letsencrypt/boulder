@@ -33,6 +33,7 @@ function main() {
   var req = request.post(revokeUrl, function(err, resp) {
     if (err) {
       console.log('Error: ', err);
+      process.exit(1);
     }
     console.log(resp.statusCode);
     console.log(resp.headers);

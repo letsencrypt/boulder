@@ -104,12 +104,25 @@ type Config struct {
 		Password string
 	}
 
-	OCSP struct {
+	OCSPResponder struct {
+		DBDriver      string
+		DBName        string
+		Path          string
+		ListenAddress string
+	}
+
+	OCSPUpdater struct {
 		DBDriver        string
 		DBName          string
-		Path            string
 		MinTimeToExpiry string
 		ResponseLimit   int
+	}
+
+	Common struct {
+		BaseURL string
+		// Path to a PEM-encoded copy of the issuer certificate.
+		IssuerCert string
+		MaxKeySize int
 	}
 
 	SubscriberAgreementURL string
@@ -132,7 +145,7 @@ func NewAppShell(name string) (shell *AppShell) {
 	app := cli.NewApp()
 
 	app.Name = name
-	app.Version = "0.0.0"
+	app.Version = fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -171,7 +184,7 @@ func (as *AppShell) Run() {
 
 // VersionString produces a friendly Application version string
 func (as *AppShell) VersionString() string {
-	return fmt.Sprintf("%s (version %s, build %s)", as.App.Name, as.App.Version, core.GetBuildID())
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", as.App.Name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }
 
 // FailOnError exits and prints an error message if we encountered a problem

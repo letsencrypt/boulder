@@ -62,6 +62,13 @@ var questions = {
     }
   }],
 
+  anotherDomain: [{
+    type: "confirm",
+    name: "anotherDomain",
+    message: "Any more domains to validate?",
+    default: true,
+  }],
+
   readyToValidate: [{
     type: "input",
     name: "noop",
@@ -90,7 +97,7 @@ var cliOptions = cli.parse({
   certFile:  ["cert", "Path to output certificate (DER format)", "path", "cert.pem"],
   email:  ["email", "Email address", "string", null],
   agreeTerms:  ["agree", "Agree to terms of service", "boolean", null],
-  domain:  ["domain", "Domain name for which to request a certificate", "string", null],
+  domains:  ["domains", "Domain name(s) for which to request a certificate (comma-separated)", "string", null],
 });
 
 var state = {
@@ -104,7 +111,10 @@ var state = {
   termsAgreed: null,
   termsURL: null,
 
-  domain: cliOptions.domain,
+  haveCLIDomains: !!(cliOptions.domains),
+  domains: cliOptions.domains && cliOptions.domains.replace(/\s/g, "").split(/[^\w.-]+/),
+  validatedDomains: [],
+  validAuthorizationURLs: [],
 
   newAuthorizationURL: "",
   authorizationURL: "",
@@ -325,10 +335,10 @@ function sendAgreement(answers) {
         console.log("Couldn't POST agreement back to server, aborting.");
         process.exit(1);
       } else {
-        if (!state.domain) {
+        if (!state.domains || state.domains.length == 0) {
           inquirer.prompt(questions.domain, getChallenges);
         } else {
-          getChallenges({domain: state.domain});
+          getChallenges({domain: state.domains.pop()});
         }
       }
     });
@@ -392,14 +402,14 @@ function getReadyToValidate(err, resp, body) {
     }
   }
   if (/localhost/.test(state.newRegistrationURL)) {
-    var httpServer = http.createServer(httpResponder)
-    httpServer.listen(5001)
+    state.httpServer = http.createServer(httpResponder)
+    state.httpServer.listen(5001)
   } else {
-    var httpServer = https.createServer({
+    state.httpServer = https.createServer({
       cert: fs.readFileSync("temp-cert.pem"),
-      key: fs.readFileSync(state.keyFile) 
+      key: fs.readFileSync(state.keyFile)
     }, httpResponder)
-    httpServer.listen(443)
+    state.httpServer.listen(443)
   }
 
   cli.spinner("Validating domain");
@@ -417,6 +427,10 @@ function ensureValidation(err, resp, body) {
 
   var authz = JSON.parse(body);
 
+  if (authz.status != "pending") {
+    state.httpServer.close();
+  }
+
   if (authz.status == "pending") {
     setTimeout(function() {
       request.get(state.authorizationURL, {}, ensureValidation);
@@ -424,7 +438,27 @@ function ensureValidation(err, resp, body) {
   } else if (authz.status == "valid") {
     cli.spinner("Validating domain ... done", true);
     console.log();
-    getCertificate();
+    state.validatedDomains.push(state.domain);
+    state.validAuthorizationURLs.push(state.authorizationURL);
+
+    if (state.haveCLIDomains) {
+      console.log("have CLI domains: ");
+      console.log(state.domains);
+      if (state.haveCLIDomains && state.domains.length > 0) {
+        getChallenges({domain: state.domains.pop()});
+        return;
+      } else {
+        getCertificate();
+      }
+    } else {
+      inquirer.prompt(questions.anotherDomain, function(answers) {
+        if (answers.anotherDomain) {
+          inquirer.prompt(questions.domain, getChallenges);
+        } else {
+          getCertificate();
+        }
+      });
+    }
   } else if (authz.status == "invalid") {
     console.log("The CA was unable to validate the file you provisioned:"  + body);
     process.exit(1);
@@ -437,18 +471,20 @@ function ensureValidation(err, resp, body) {
 
 function getCertificate() {
   cli.spinner("Requesting certificate");
-  var csr = crypto.generateCSR(state.certPrivateKey, state.domain);
+  var csr = crypto.generateCSR(state.certPrivateKey, state.validatedDomains);
   post(state.newCertificateURL, {
     csr: csr,
-    authorizations: [ state.authorizationURL ]
+    authorizations: state.validAuthorizationURLs
   }, downloadCertificate);
 }
 
 function downloadCertificate(err, resp, body) {
   if (err || Math.floor(resp.statusCode / 100) != 2) {
     // Non-2XX response
-    console.log("Certificate request failed with code " + resp.statusCode);
-    console.log(body.toString());
+    console.log("Certificate request failed with error ", err);
+    if (body) {
+      console.log(body.toString());
+    }
     process.exit(1);
   }
 

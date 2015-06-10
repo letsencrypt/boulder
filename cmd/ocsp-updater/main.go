@@ -12,10 +12,6 @@ import (
 	"math"
 	"time"
 
-	// Load both drivers to allow configuring either
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
-
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
@@ -34,7 +30,10 @@ func setupClients(c cmd.Config) (rpc.CertificateAuthorityClient, chan *amqp.Erro
 	ch := cmd.AmqpChannel(c.AMQP.Server)
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-	cac, err := rpc.NewCertificateAuthorityClient("OCSP->CA", c.AMQP.CA.Server, ch)
+	caRPC, err := rpc.NewAmqpRPCCLient("OCSP->CA", c.AMQP.CA.Server, ch)
+	cmd.FailOnError(err, "Unable to create RPC client")
+
+	cac, err := rpc.NewCertificateAuthorityClient(caRPC)
 	cmd.FailOnError(err, "Unable to create CA client")
 
 	return cac, closeChan
@@ -79,7 +78,7 @@ func processResponse(cac rpc.CertificateAuthorityClient, tx *gorp.Transaction, s
 	timeStamp := time.Now()
 
 	// Record the response.
-	ocspResp := &core.OcspResponse{Serial: serial, CreatedAt: timeStamp, Response: ocspResponse}
+	ocspResp := &core.OCSPResponse{Serial: serial, CreatedAt: timeStamp, Response: ocspResponse}
 	err = tx.Insert(ocspResp)
 	if err != nil {
 		return err
@@ -101,8 +100,8 @@ func findStaleResponses(cac rpc.CertificateAuthorityClient, dbMap *gorp.DbMap, o
 
 	var certificateStatus []core.CertificateStatus
 	_, err := dbMap.Select(&certificateStatus,
-		`SELECT cs.* FROM certificateStatus AS cs
-		 WHERE cs.ocspLastUpdated < ?
+		`SELECT cs.* FROM certificateStatus AS cs JOIN certificates AS cert ON cs.serial = cert.serial
+		 WHERE cs.ocspLastUpdated < ? AND cert.expires > now()
 		 ORDER BY cs.ocspLastUpdated ASC
 		 LIMIT ?`, oldestLastUpdatedTime, responseLimit)
 
@@ -149,7 +148,7 @@ func main() {
 	})
 
 	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
-		config.OCSP.ResponseLimit = c.GlobalInt("limit")
+		config.OCSPUpdater.ResponseLimit = c.GlobalInt("limit")
 		return config
 	}
 
@@ -167,7 +166,7 @@ func main() {
 		blog.SetAuditLogger(auditlogger)
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.OCSP.DBDriver, c.OCSP.DBName)
+		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBDriver, c.OCSPUpdater.DBName)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		cac, closeChan := setupClients(c)
@@ -185,13 +184,16 @@ func main() {
 		auditlogger.Info(app.VersionString())
 
 		// Calculate the cut-off timestamp
-		dur, err := time.ParseDuration(c.OCSP.MinTimeToExpiry)
+		if c.OCSPUpdater.MinTimeToExpiry == "" {
+			panic("Config must specify a MinTimeToExpiry period.")
+		}
+		dur, err := time.ParseDuration(c.OCSPUpdater.MinTimeToExpiry)
 		cmd.FailOnError(err, "Could not parse MinTimeToExpiry from config.")
 
 		oldestLastUpdatedTime := time.Now().Add(-dur)
-		auditlogger.Info(fmt.Sprintf("Searching for OCSP reponses older than %s", oldestLastUpdatedTime))
+		auditlogger.Info(fmt.Sprintf("Searching for OCSP responses older than %s", oldestLastUpdatedTime))
 
-		count := int(math.Min(float64(ocspResponseLimit), float64(c.OCSP.ResponseLimit)))
+		count := int(math.Min(float64(ocspResponseLimit), float64(c.OCSPUpdater.ResponseLimit)))
 
 		err = findStaleResponses(cac, dbMap, oldestLastUpdatedTime, count)
 		if err != nil {

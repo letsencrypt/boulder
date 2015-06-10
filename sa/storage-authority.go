@@ -47,16 +47,6 @@ type authzModel struct {
 	Sequence int64 `db:"sequence"`
 }
 
-// SQLLogger adapts the AuditLogger to a format GORP can use.
-type SQLLogger struct {
-	log *blog.AuditLogger
-}
-
-// Printf adapts the AuditLogger to GORP's interface
-func (log *SQLLogger) Printf(format string, v ...interface{}) {
-	log.log.Debug(fmt.Sprintf(format, v))
-}
-
 // NewSQLStorageAuthority provides persistence using a SQL backend for Boulder.
 func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthority, err error) {
 	logger := blog.GetAuditLogger()
@@ -78,12 +68,7 @@ func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthorit
 
 // SetSQLDebug enables/disables GORP SQL-level Debugging
 func (ssa *SQLStorageAuthority) SetSQLDebug(state bool) {
-	ssa.dbMap.TraceOff()
-
-	if state {
-		// Enable logging
-		ssa.dbMap.TraceOn("SQL: ", &SQLLogger{blog.GetAuditLogger()})
-	}
+	SetSQLDebug(ssa.dbMap, state)
 }
 
 // CreateTablesIfNotExists instructs the ORM to create any missing tables.
@@ -157,7 +142,7 @@ func (ssa *SQLStorageAuthority) DumpTables() error {
 	}
 
 	fmt.Printf("\n----- ocspResponses -----\n")
-	var ocspResponses []core.OcspResponse
+	var ocspResponses []core.OCSPResponse
 	_, err = tx.Select(&ocspResponses, "SELECT * FROM ocspResponses")
 	if err != nil {
 		tx.Rollback()
@@ -168,7 +153,7 @@ func (ssa *SQLStorageAuthority) DumpTables() error {
 	}
 
 	fmt.Printf("\n----- crls -----\n")
-	var crls []core.Crl
+	var crls []core.CRL
 	_, err = tx.Select(&crls, "SELECT * FROM crls")
 	if err != nil {
 		tx.Rollback()
@@ -178,14 +163,14 @@ func (ssa *SQLStorageAuthority) DumpTables() error {
 		fmt.Printf("%+v\n", c)
 	}
 
-	fmt.Printf("\n----- deniedCsrs -----\n")
-	var dCsrs []core.DeniedCsr
-	_, err = tx.Select(&dCsrs, "SELECT * FROM deniedCsrs")
+	fmt.Printf("\n----- deniedCSRs -----\n")
+	var dCSRs []core.DeniedCSR
+	_, err = tx.Select(&dCSRs, "SELECT * FROM deniedCSRs")
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
-	for _, c := range dCsrs {
+	for _, c := range dCSRs {
 		fmt.Printf("%+v\n", c)
 	}
 
@@ -282,8 +267,6 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 // serial number and returns the first certificate whose full serial number is
 // lexically greater than that id. This allows clients to query on the known
 // sequential half of our serial numbers to enumerate all certificates.
-// TODO: Implement error when there are multiple certificates with the same
-// sequential half.
 func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert []byte, err error) {
 	if len(shortSerial) != 16 {
 		err = errors.New("Invalid certificate short serial " + shortSerial)
@@ -368,8 +351,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 		return
 	}
 
-	// TODO: Also update crls.
-	ocspResp := &core.OcspResponse{Serial: serial, CreatedAt: time.Now(), Response: ocspResponse}
+	ocspResp := &core.OCSPResponse{Serial: serial, CreatedAt: time.Now(), Response: ocspResponse}
 	err = tx.Insert(ocspResp)
 	if err != nil {
 		tx.Rollback()
@@ -558,6 +540,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		Digest:         digest,
 		DER:            certDER,
 		Issued:         time.Now(),
+		Expires:        parsedCertificate.NotAfter,
 	}
 	certStatus := &core.CertificateStatus{
 		SubscriberApproved: false,
@@ -574,6 +557,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		return
 	}
 
+	// TODO Verify that the serial number doesn't yet exist
 	err = tx.Insert(cert)
 	if err != nil {
 		tx.Rollback()
@@ -596,7 +580,7 @@ func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, 
 	var denied int64
 	err = ssa.dbMap.SelectOne(
 		&denied,
-		"SELECT count(*) FROM deniedCsrs WHERE names = :names",
+		"SELECT count(*) FROM deniedCSRs WHERE names = :names",
 		map[string]interface{}{"names": strings.ToLower(strings.Join(names, ","))},
 	)
 	if err != nil {

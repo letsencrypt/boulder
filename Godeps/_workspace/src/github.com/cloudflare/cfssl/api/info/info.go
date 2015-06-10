@@ -1,15 +1,14 @@
+// Package info implements the HTTP handler for the info command.
 package info
 
 import (
 	"encoding/json"
-	"encoding/pem"
 	"io/ioutil"
 	"net/http"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api/client"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/bundler"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 )
@@ -27,14 +26,14 @@ func NewHandler(s signer.Signer) (http.Handler, error) {
 		Handler: &Handler{
 			sign: s,
 		},
-		Method: "POST",
+		Methods: []string{"POST"},
 	}, nil
 }
 
 // Handle listens for incoming requests for CA information, and returns
 // a list containing information on each root certificate.
 func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) error {
-	req := new(client.InfoReq)
+	req := new(info.Req)
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Warningf("failed to read request body: %v", err)
@@ -46,12 +45,9 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) error {
 		return errors.NewBadRequest(err)
 	}
 
-	cert, err := h.sign.Certificate(req.Label, req.Profile)
+	resp, err := h.sign.Info(*req)
 	if err != nil {
 		return err
-	}
-	resp := client.InfoResp{
-		Certificate: bundler.PemBlockToString(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}),
 	}
 
 	response := api.NewSuccessResponse(resp)
@@ -77,7 +73,7 @@ func NewMultiHandler(signers map[string]signer.Signer, defaultLabel string) (htt
 			signers:      signers,
 			defaultLabel: defaultLabel,
 		},
-		Method: "POST",
+		Methods: []string{"POST"},
 	}, nil
 }
 
@@ -85,7 +81,7 @@ func NewMultiHandler(signers map[string]signer.Signer, defaultLabel string) (htt
 // look up the signer whose public certificate should be retrieved. If
 // the label is empty, the default label is used.
 func (h *MultiHandler) Handle(w http.ResponseWriter, r *http.Request) error {
-	req := new(client.InfoReq)
+	req := new(info.Req)
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Warningf("failed to read request body: %v", err)
@@ -107,15 +103,11 @@ func (h *MultiHandler) Handle(w http.ResponseWriter, r *http.Request) error {
 		return errors.NewBadRequestString("bad label")
 	}
 
-	log.Debug("getting cert")
-	cert, err := h.signers[req.Label].Certificate("", req.Profile)
+	log.Debug("getting info")
+	resp, err := h.signers[req.Label].Info(*req)
 	if err != nil {
 		log.Infof("error getting certificate: %v", err)
 		return err
-	}
-
-	resp := client.InfoResp{
-		Certificate: bundler.PemBlockToString(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}),
 	}
 
 	response := api.NewSuccessResponse(resp)

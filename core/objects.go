@@ -10,7 +10,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -44,6 +47,36 @@ const (
 const (
 	IdentifierDNS = IdentifierType("dns")
 )
+
+func cmpStrSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	sort.Strings(a)
+	sort.Strings(b)
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func cmpExtKeyUsageSlice(a, b []x509.ExtKeyUsage) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	testMap := make(map[int]bool, len(a))
+	for i := range a {
+		testMap[int(a[i])] = true
+	}
+	for i := range b {
+		if !testMap[int(b[i])] {
+			return false
+		}
+	}
+	return true
+}
 
 // An AcmeIdentifier encodes an identifier that can
 // be validated by ACME.  The protocol allows for different
@@ -114,8 +147,6 @@ type Registration struct {
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty" db:"agreement"`
 
-	Thumbprint string `json:"thumbprint" db:"thumbprint"`
-
 	LockCol int64 `json:"-"`
 }
 
@@ -178,6 +209,11 @@ func (ch Challenge) IsSane(completed bool) bool {
 			if ch.Path == "" {
 				return false
 			}
+			// Composed path should be a clean filepath (i.e. no double slashes, dot segments, etc)
+			vaUrl := fmt.Sprintf("/.well-known/acme-challenge/%s", ch.Path)
+			if vaUrl != filepath.Clean(vaUrl) {
+				return false
+			}
 		} else {
 			if ch.Path != "" {
 				return false
@@ -232,7 +268,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 }
 
 // Merge a client-provide response to a challenge with the issued challenge
-// TODO: Remove return type from this method
+// Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	// Only override fields that are supposed to be client-provided
 	if len(ch.Path) == 0 {
@@ -279,10 +315,6 @@ type Authorization struct {
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
 	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
-
-	// The client may provide contact URIs to allow the server
-	// to push information to it.
-	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 }
 
 // Fields of this type get encoded and decoded JOSE-style, in base64url encoding
@@ -326,10 +358,79 @@ type Certificate struct {
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`
 
-	Serial string    `db:"serial"`
-	Digest string    `db:"digest"`
-	DER    []byte    `db:"der"`
-	Issued time.Time `db:"issued"`
+	Serial  string    `db:"serial"`
+	Digest  string    `db:"digest"`
+	DER     []byte    `db:"der"`
+	Issued  time.Time `db:"issued"`
+	Expires time.Time `db:"expires"`
+}
+
+// Certificate.MatchesCSR tests the contents of a generated certificate to
+// make sure that the PublicKey, CommonName, and DNSNames match those provided
+// in the CSR that was used to generate the certificate. It also checks the
+// following fields for:
+//		* notAfter is after earliestExpiry
+//		* notBefore is not more than 24 hours ago
+//		* BasicConstraintsValid is true
+//		* IsCA is false
+//		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
+//		* Subject only contains CommonName & Names
+func (cert Certificate) MatchesCSR(csr *x509.CertificateRequest, earliestExpiry time.Time) (err error) {
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	if err != nil {
+		return
+	}
+
+	// Check issued certificate matches what was expected from the CSR
+	hostNames := make([]string, len(csr.DNSNames))
+	copy(hostNames, csr.DNSNames)
+	if len(csr.Subject.CommonName) > 0 {
+		hostNames = append(hostNames, csr.Subject.CommonName)
+	}
+	hostNames = UniqueNames(hostNames)
+
+	if !KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
+		err = InternalServerError("Generated certificate public key doesn't match CSR public key")
+		return
+	}
+	if len(csr.Subject.CommonName) > 0 && parsedCertificate.Subject.CommonName != csr.Subject.CommonName {
+		err = InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
+		return
+	}
+	if !cmpStrSlice(parsedCertificate.DNSNames, hostNames) {
+		err = InternalServerError("Generated certificate DNSNames don't match CSR DNSNames")
+		return
+	}
+	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
+		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
+		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
+		len(parsedCertificate.Subject.PostalCode) > 0 || len(parsedCertificate.Subject.SerialNumber) > 0 {
+		err = InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
+		return
+	}
+	if parsedCertificate.NotAfter.After(earliestExpiry) {
+		err = InternalServerError("Generated certificate expires before earliest expiration")
+		return
+	}
+	now := time.Now()
+	if now.Sub(parsedCertificate.NotBefore) > time.Hour*24 {
+		err = InternalServerError(fmt.Sprintf("Generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore)))
+		return
+	}
+	if !parsedCertificate.BasicConstraintsValid {
+		err = InternalServerError("Generated certificate doesn't have basic constraints set")
+		return
+	}
+	if parsedCertificate.IsCA {
+		err = InternalServerError("Generated certificate can sign other certificates")
+		return
+	}
+	if !cmpExtKeyUsageSlice(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+		err = InternalServerError("Generated certificate doesn't have correct key usage extensions")
+		return
+	}
+
+	return
 }
 
 // CertificateStatus structs are internal to the server. They represent the
@@ -366,7 +467,7 @@ type CertificateStatus struct {
 // A large table of OCSP responses. This contains all historical OCSP
 // responses we've signed, is append-only, and is likely to get quite
 // large. We'll probably want administratively truncate it at some point.
-type OcspResponse struct {
+type OCSPResponse struct {
 	ID int `db:"id"`
 
 	// serial: Same as certificate serial.
@@ -381,7 +482,7 @@ type OcspResponse struct {
 
 // A large table of signed CRLs. This contains all historical CRLs
 // we've signed, is append-only, and is likely to get quite large.
-type Crl struct {
+type CRL struct {
 	// serial: Same as certificate serial.
 	Serial string `db:"serial"`
 
@@ -389,10 +490,10 @@ type Crl struct {
 	CreatedAt time.Time `db:"createdAt"`
 
 	// crl: The encoded and signed CRL.
-	Crl string `db:"crl"`
+	CRL string `db:"crl"`
 }
 
-type DeniedCsr struct {
+type DeniedCSR struct {
 	ID int `db:"id"`
 
 	Names string `db:"names"`

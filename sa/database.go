@@ -8,6 +8,11 @@ package sa
 import (
 	"database/sql"
 	"fmt"
+
+	// Load both drivers to allow configuring either
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
@@ -53,12 +58,32 @@ func NewDbMap(driver string, name string) (*gorp.DbMap, error) {
 	return dbmap, err
 }
 
+// SetSQLDebug enables/disables GORP SQL-level Debugging
+func SetSQLDebug(dbMap *gorp.DbMap, state bool) {
+	dbMap.TraceOff()
+
+	if state {
+		// Enable logging
+		dbMap.TraceOn("SQL: ", &SQLLogger{blog.GetAuditLogger()})
+	}
+}
+
+// SQLLogger adapts the AuditLogger to a format GORP can use.
+type SQLLogger struct {
+	log *blog.AuditLogger
+}
+
+// Printf adapts the AuditLogger to GORP's interface
+func (log *SQLLogger) Printf(format string, v ...interface{}) {
+	log.log.Debug(fmt.Sprintf(format, v))
+}
+
 // initTables constructs the table map for the ORM. If you want to also create
 // the tables, call CreateTablesIfNotExists on the DbMap.
 func initTables(dbMap *gorp.DbMap) {
 	regTable := dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "ID")
 	regTable.SetVersionCol("LockCol")
-	regTable.ColMap("Key").SetMaxSize(1024).SetNotNull(true)
+	regTable.ColMap("Key").SetMaxSize(1024).SetNotNull(true).SetUnique(true)
 
 	pendingAuthzTable := dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
 	pendingAuthzTable.SetVersionCol("LockCol")
@@ -69,7 +94,7 @@ func initTables(dbMap *gorp.DbMap) {
 
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
-	dbMap.AddTableWithName(core.OcspResponse{}, "ocspResponses").SetKeys(true, "ID")
-	dbMap.AddTableWithName(core.Crl{}, "crls").SetKeys(false, "Serial")
-	dbMap.AddTableWithName(core.DeniedCsr{}, "deniedCsrs").SetKeys(true, "ID")
+	dbMap.AddTableWithName(core.OCSPResponse{}, "ocspResponses").SetKeys(true, "ID")
+	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "Serial")
+	dbMap.AddTableWithName(core.DeniedCSR{}, "deniedCSRs").SetKeys(true, "ID")
 }

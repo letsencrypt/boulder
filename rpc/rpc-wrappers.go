@@ -10,9 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -55,7 +55,6 @@ const (
 	MethodUpdatePendingAuthorization  = "UpdatePendingAuthorization"  // SA
 	MethodFinalizeAuthorization       = "FinalizeAuthorization"       // SA
 	MethodAddCertificate              = "AddCertificate"              // SA
-	MethodAddDeniedCSR                = "AddDeniedCSR"                // SA
 	MethodAlreadyDeniedCSR            = "AlreadyDeniedCSR"            // SA
 )
 
@@ -88,187 +87,163 @@ func errorCondition(method string, err error, obj interface{}) {
 	log.Audit(fmt.Sprintf("Error condition. method: %s err: %s data: %+v", method, err, obj))
 }
 
-func NewRegistrationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.RegistrationAuthority) (*AmqpRPCServer, error) {
+func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthority) error {
 	log := blog.GetAuditLogger()
-	rpc := NewAmqpRPCServer(serverQueue, channel)
 
-	rpc.Handle(MethodNewRegistration, func(req []byte) (response []byte) {
+	rpc.Handle(MethodNewRegistration, func(req []byte) (response []byte, err error) {
 		var rr registrationRequest
-		if err := json.Unmarshal(req, &rr); err != nil {
+		if err = json.Unmarshal(req, &rr); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodNewRegistration, err, req)
-			return nil
+			return
 		}
 
 		reg, err := impl.NewRegistration(rr.Reg)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodNewRegistration, err, reg)
-			return nil
+			return
 		}
 
 		response, err = json.Marshal(reg)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodNewRegistration, err, req)
-			return nil
+			return
 		}
-		return response
+		return
 	})
 
-	rpc.Handle(MethodNewAuthorization, func(req []byte) (response []byte) {
+	rpc.Handle(MethodNewAuthorization, func(req []byte) (response []byte, err error) {
 		var ar authorizationRequest
-		if err := json.Unmarshal(req, &ar); err != nil {
+		if err = json.Unmarshal(req, &ar); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodNewAuthorization, err, req)
-			return nil
+			return
 		}
 
 		authz, err := impl.NewAuthorization(ar.Authz, ar.RegID)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodNewAuthorization, err, ar)
-			return nil
+			return
 		}
 
 		response, err = json.Marshal(authz)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodNewAuthorization, err, req)
-			return nil
+			return
 		}
-		return response
+		return
 	})
 
-	rpc.Handle(MethodNewCertificate, func(req []byte) []byte {
+	rpc.Handle(MethodNewCertificate, func(req []byte) (response []byte, err error) {
 		log.Info(fmt.Sprintf(" [.] Entering MethodNewCertificate"))
 		var cr certificateRequest
-		if err := json.Unmarshal(req, &cr); err != nil {
+		if err = json.Unmarshal(req, &cr); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodNewCertificate, err, req)
-			return nil
+			return
 		}
 		log.Info(fmt.Sprintf(" [.] No problem unmarshaling request"))
 
 		cert, err := impl.NewCertificate(cr.Req, cr.RegID)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodNewCertificate, err, cr)
-			return nil
+			return
 		}
 		log.Info(fmt.Sprintf(" [.] No problem issuing new cert"))
 
-		response, err := json.Marshal(cert)
+		response, err = json.Marshal(cert)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodNewCertificate, err, req)
-			return nil
+			return
 		}
-		return response
+		return
 	})
 
-	rpc.Handle(MethodUpdateRegistration, func(req []byte) (response []byte) {
+	rpc.Handle(MethodUpdateRegistration, func(req []byte) (response []byte, err error) {
 		var request struct {
 			Base, Update core.Registration
 		}
-		err := json.Unmarshal(req, &request)
+		err = json.Unmarshal(req, &request)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodUpdateRegistration, err, req)
-			return nil
+			return
 		}
 
 		reg, err := impl.UpdateRegistration(request.Base, request.Update)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateRegistration, err, request)
-			return nil
+			return
 		}
 
 		response, err = json.Marshal(reg)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodUpdateRegistration, err, req)
-			return nil
+			return
 		}
-		return response
+		return
 	})
 
-	rpc.Handle(MethodUpdateAuthorization, func(req []byte) (response []byte) {
+	rpc.Handle(MethodUpdateAuthorization, func(req []byte) (response []byte, err error) {
 		var authz struct {
 			Authz    core.Authorization
 			Index    int
 			Response core.Challenge
 		}
-		err := json.Unmarshal(req, &authz)
+		err = json.Unmarshal(req, &authz)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodUpdateAuthorization, err, req)
-			return nil
+			return
 		}
 
 		newAuthz, err := impl.UpdateAuthorization(authz.Authz, authz.Index, authz.Response)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateAuthorization, err, authz)
-			return nil
+			return
 		}
 
 		response, err = json.Marshal(newAuthz)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodUpdateAuthorization, err, req)
-			return nil
+			return
 		}
-		return response
+		return
 	})
 
-	rpc.Handle(MethodRevokeCertificate, func(req []byte) []byte {
+	rpc.Handle(MethodRevokeCertificate, func(req []byte) (response []byte, err error) {
 		certs, err := x509.ParseCertificates(req)
 		if err != nil || len(certs) == 0 {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodRevokeCertificate, err, req)
-			return nil
+			return
 		}
 
-		// Error explicitly ignored since response is nil anyway
 		err = impl.RevokeCertificate(*certs[0])
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodRevokeCertificate, err, certs)
-		}
-		return nil
+		return
 	})
 
-	rpc.Handle(MethodOnValidationUpdate, func(req []byte) []byte {
+	rpc.Handle(MethodOnValidationUpdate, func(req []byte) (response []byte, err error) {
 		var authz core.Authorization
-		if err := json.Unmarshal(req, &authz); err != nil {
+		if err = json.Unmarshal(req, &authz); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodOnValidationUpdate, err, req)
-			return nil
+			return
 		}
 
-		if err := impl.OnValidationUpdate(authz); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodOnValidationUpdate, err, authz)
-		}
-		return nil
+		err = impl.OnValidationUpdate(authz)
+		return
 	})
 
-	return rpc, nil
+	return nil
 }
 
 type RegistrationAuthorityClient struct {
-	rpc *AmqpRPCCLient
+	rpc RPCClient
 }
 
-func NewRegistrationAuthorityClient(clientQueue, serverQueue string, channel *amqp.Channel) (rac RegistrationAuthorityClient, err error) {
-	rpc, err := NewAmqpRPCCLient(clientQueue, serverQueue, channel)
-	if err != nil {
-		return
-	}
-
-	rac = RegistrationAuthorityClient{rpc: rpc}
+func NewRegistrationAuthorityClient(client RPCClient) (rac RegistrationAuthorityClient, err error) {
+	rac = RegistrationAuthorityClient{rpc: client}
 	return
 }
 
@@ -279,7 +254,7 @@ func (rac RegistrationAuthorityClient) NewRegistration(reg core.Registration) (n
 	}
 
 	newRegData, err := rac.rpc.DispatchSync(MethodNewRegistration, data)
-	if err != nil || len(newRegData) == 0 {
+	if err != nil {
 		return
 	}
 
@@ -294,7 +269,7 @@ func (rac RegistrationAuthorityClient) NewAuthorization(authz core.Authorization
 	}
 
 	newAuthzData, err := rac.rpc.DispatchSync(MethodNewAuthorization, data)
-	if err != nil || len(newAuthzData) == 0 {
+	if err != nil {
 		return
 	}
 
@@ -309,7 +284,7 @@ func (rac RegistrationAuthorityClient) NewCertificate(cr core.CertificateRequest
 	}
 
 	certData, err := rac.rpc.DispatchSync(MethodNewCertificate, data)
-	if err != nil || len(certData) == 0 {
+	if err != nil {
 		return
 	}
 
@@ -328,7 +303,7 @@ func (rac RegistrationAuthorityClient) UpdateRegistration(base core.Registration
 	}
 
 	newRegData, err := rac.rpc.DispatchSync(MethodUpdateRegistration, data)
-	if err != nil || len(newRegData) == 0 {
+	if err != nil {
 		return
 	}
 
@@ -352,7 +327,7 @@ func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorizat
 	}
 
 	newAuthzData, err := rac.rpc.DispatchSync(MethodUpdateAuthorization, data)
-	if err != nil || len(newAuthzData) == 0 {
+	if err != nil {
 		return
 	}
 
@@ -361,7 +336,7 @@ func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorizat
 }
 
 func (rac RegistrationAuthorityClient) RevokeCertificate(cert x509.Certificate) (err error) {
-	rac.rpc.Dispatch(MethodRevokeCertificate, cert.Raw)
+	_, err = rac.rpc.DispatchSync(MethodRevokeCertificate, cert.Raw)
 	return
 }
 
@@ -371,48 +346,41 @@ func (rac RegistrationAuthorityClient) OnValidationUpdate(authz core.Authorizati
 		return
 	}
 
-	rac.rpc.Dispatch(MethodOnValidationUpdate, data)
+	_, err = rac.rpc.DispatchSync(MethodOnValidationUpdate, data)
 	return
 }
 
 // ValidationAuthorityClient / Server
 //  -> UpdateValidations
-func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.ValidationAuthority) (rpc *AmqpRPCServer, err error) {
-	rpc = NewAmqpRPCServer(serverQueue, channel)
-
-	rpc.Handle(MethodUpdateValidations, func(req []byte) []byte {
+func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) (err error) {
+	rpc.Handle(MethodUpdateValidations, func(req []byte) (response []byte, err error) {
 		var vaReq struct {
 			Authz core.Authorization
 			Index int
 		}
-		if err := json.Unmarshal(req, &vaReq); err != nil {
+		if err = json.Unmarshal(req, &vaReq); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodUpdateValidations, err, req)
-			return nil
+			return
 		}
 
-		if err := impl.UpdateValidations(vaReq.Authz, vaReq.Index); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateValidations, err, vaReq)
-		}
-		return nil
+		err = impl.UpdateValidations(vaReq.Authz, vaReq.Index)
+		return
 	})
 
-	rpc.Handle(MethodCheckCAARecords, func(req []byte) []byte {
+	rpc.Handle(MethodCheckCAARecords, func(req []byte) (response []byte, err error) {
 		var caaReq struct {
 			Ident core.AcmeIdentifier
 		}
-		if err := json.Unmarshal(req, &caaReq); err != nil {
+		if err = json.Unmarshal(req, &caaReq); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodCheckCAARecords, err, req)
-			return nil
+			return
 		}
 
 		present, valid, err := impl.CheckCAARecords(caaReq.Ident)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodCheckCAARecords, err, caaReq)
-			return nil
+			return
 		}
 
 		var caaResp struct {
@@ -423,29 +391,24 @@ func NewValidationAuthorityServer(serverQueue string, channel *amqp.Channel, imp
 		caaResp.Present = present
 		caaResp.Valid = valid
 		caaResp.Err = err
-		response, err := json.Marshal(caaResp)
+		response, err = json.Marshal(caaResp)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodCheckCAARecords, err, caaReq)
-			return nil
+			return
 		}
-		return response
+		return
 	})
 
-	return rpc, nil
+	return nil
 }
 
 type ValidationAuthorityClient struct {
-	rpc *AmqpRPCCLient
+	rpc RPCClient
 }
 
-func NewValidationAuthorityClient(clientQueue, serverQueue string, channel *amqp.Channel) (vac ValidationAuthorityClient, err error) {
-	rpc, err := NewAmqpRPCCLient(clientQueue, serverQueue, channel)
-	if err != nil {
-		return
-	}
-
-	vac = ValidationAuthorityClient{rpc: rpc}
+func NewValidationAuthorityClient(client RPCClient) (vac ValidationAuthorityClient, err error) {
+	vac = ValidationAuthorityClient{rpc: client}
 	return
 }
 
@@ -461,7 +424,7 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 		return err
 	}
 
-	vac.rpc.Dispatch(MethodUpdateValidations, data)
+	_, err = vac.rpc.DispatchSync(MethodUpdateValidations, data)
 	return nil
 }
 
@@ -497,105 +460,92 @@ func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) 
 
 // CertificateAuthorityClient / Server
 //  -> IssueCertificate
-func NewCertificateAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.CertificateAuthority) (rpc *AmqpRPCServer, err error) {
-	rpc = NewAmqpRPCServer(serverQueue, channel)
-
-	rpc.Handle(MethodIssueCertificate, func(req []byte) []byte {
+func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority) (err error) {
+	rpc.Handle(MethodIssueCertificate, func(req []byte) (response []byte, err error) {
 		var icReq struct {
-			Bytes []byte
-			RegID int64
+			Bytes          []byte
+			RegID          int64
+			EarliestExpiry time.Time
 		}
-		err := json.Unmarshal(req, &icReq)
+		err = json.Unmarshal(req, &icReq)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodIssueCertificate, err, req)
-			return nil
+			return
 		}
 
 		csr, err := x509.ParseCertificateRequest(icReq.Bytes)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodIssueCertificate, err, req)
-			return nil // XXX
+			return
 		}
 
-		cert, err := impl.IssueCertificate(*csr, icReq.RegID)
+		cert, err := impl.IssueCertificate(*csr, icReq.RegID, icReq.EarliestExpiry)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodIssueCertificate, err, csr)
-			return nil // XXX
+			return
 		}
 
-		serialized, err := json.Marshal(cert)
+		response, err = json.Marshal(cert)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetRegistration, err, req)
-			return nil // XXX
+			return
 		}
 
-		return serialized
+		return
 	})
 
-	rpc.Handle(MethodRevokeCertificate, func(req []byte) []byte {
+	rpc.Handle(MethodRevokeCertificate, func(req []byte) (response []byte, err error) {
 		var revokeReq struct {
 			Serial     string
 			ReasonCode int
 		}
-		err := json.Unmarshal(req, &revokeReq)
+		err = json.Unmarshal(req, &revokeReq)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodRevokeCertificate, err, req)
-			return nil
+			return
 		}
 
-		if err := impl.RevokeCertificate(revokeReq.Serial, revokeReq.ReasonCode); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodRevokeCertificate, err, req)
-		}
-
-		return nil
+		err = impl.RevokeCertificate(revokeReq.Serial, revokeReq.ReasonCode)
+		return
 	})
 
-	rpc.Handle(MethodGenerateOCSP, func(req []byte) []byte {
+	rpc.Handle(MethodGenerateOCSP, func(req []byte) (response []byte, err error) {
 		var xferObj core.OCSPSigningRequest
-		err := json.Unmarshal(req, &xferObj)
+		err = json.Unmarshal(req, &xferObj)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGenerateOCSP, err, req)
-			return nil
+			return
 		}
 
-		data, err := impl.GenerateOCSP(xferObj)
+		response, err = impl.GenerateOCSP(xferObj)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGenerateOCSP, err, req)
-			return nil
+			return
 		}
 
-		return data
+		return
 	})
 
-	return
+	return nil
 }
 
 type CertificateAuthorityClient struct {
-	rpc *AmqpRPCCLient
+	rpc RPCClient
 }
 
-func NewCertificateAuthorityClient(clientQueue, serverQueue string, channel *amqp.Channel) (cac CertificateAuthorityClient, err error) {
-	rpc, err := NewAmqpRPCCLient(clientQueue, serverQueue, channel)
-	if err != nil {
-		return
-	}
-
-	cac = CertificateAuthorityClient{rpc: rpc}
+func NewCertificateAuthorityClient(client RPCClient) (cac CertificateAuthorityClient, err error) {
+	cac = CertificateAuthorityClient{rpc: client}
 	return
 }
 
-func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
+func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (cert core.Certificate, err error) {
 	var icReq struct {
-		Bytes []byte
-		RegID int64
+		Bytes          []byte
+		RegID          int64
+		EarliestExpiry time.Time
 	}
 	icReq.Bytes = csr.Raw
 	icReq.RegID = regID
@@ -605,8 +555,7 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	}
 
 	jsonResponse, err := cac.rpc.DispatchSync(MethodIssueCertificate, data)
-	if len(jsonResponse) == 0 {
-		// TODO: Better error handling
+	if err != nil {
 		return
 	}
 
@@ -637,302 +586,267 @@ func (cac CertificateAuthorityClient) GenerateOCSP(signRequest core.OCSPSigningR
 	data, err := json.Marshal(signRequest)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		errorCondition(MethodGetRegistration, err, signRequest)
+		errorCondition(MethodGenerateOCSP, err, signRequest)
 		return
 	}
 
 	resp, err = cac.rpc.DispatchSync(MethodGenerateOCSP, data)
+	if err != nil {
+		return
+	}
+	if len(resp) < 1 {
+		err = fmt.Errorf("Failure at Signer")
+		return
+	}
 	return
 }
 
-func NewStorageAuthorityServer(serverQueue string, channel *amqp.Channel, impl core.StorageAuthority) *AmqpRPCServer {
-	rpc := NewAmqpRPCServer(serverQueue, channel)
-
-	rpc.Handle(MethodUpdateRegistration, func(req []byte) (response []byte) {
+func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error {
+	rpc.Handle(MethodUpdateRegistration, func(req []byte) (response []byte, err error) {
 		var reg core.Registration
-		if err := json.Unmarshal(req, &reg); err != nil {
+		if err = json.Unmarshal(req, &reg); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodUpdateRegistration, err, req)
-			return nil
+			return
 		}
 
-		if err := impl.UpdateRegistration(reg); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdateRegistration, err, req)
-		}
-
-		return nil
+		err = impl.UpdateRegistration(reg)
+		return
 	})
 
-	rpc.Handle(MethodGetRegistration, func(req []byte) (response []byte) {
+	rpc.Handle(MethodGetRegistration, func(req []byte) (response []byte, err error) {
 		var intReq struct {
 			ID int64
 		}
-		err := json.Unmarshal(req, &intReq)
+		err = json.Unmarshal(req, &intReq)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodGetRegistration, err, req)
-			return nil
+			return
 		}
 
 		reg, err := impl.GetRegistration(intReq.ID)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetRegistration, err, req)
-			return nil
+			return
 		}
 
 		response, err = json.Marshal(reg)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetRegistration, err, req)
-			return nil
+			return
 		}
-		return response
+		return
 	})
 
-	rpc.Handle(MethodGetRegistrationByKey, func(req []byte) (response []byte) {
+	rpc.Handle(MethodGetRegistrationByKey, func(req []byte) (response []byte, err error) {
 		var jwk jose.JsonWebKey
-		if err := json.Unmarshal(req, &jwk); err != nil {
+		if err = json.Unmarshal(req, &jwk); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodGetRegistrationByKey, err, req)
-			return nil
+			return
 		}
 
 		reg, err := impl.GetRegistrationByKey(jwk)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetRegistrationByKey, err, jwk)
-			return nil
+			return
 		}
 
 		response, err = json.Marshal(reg)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetRegistrationByKey, err, req)
-			return nil
+			return
 		}
-		return response
+		return
 	})
 
-	rpc.Handle(MethodGetAuthorization, func(req []byte) []byte {
+	rpc.Handle(MethodGetAuthorization, func(req []byte) (response []byte, err error) {
 		authz, err := impl.GetAuthorization(string(req))
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetAuthorization, err, req)
-			return nil
+			return
 		}
 
-		jsonAuthz, err := json.Marshal(authz)
+		response, err = json.Marshal(authz)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetAuthorization, err, req)
-			return nil
+			return
 		}
-		return jsonAuthz
+		return
 	})
 
-	rpc.Handle(MethodAddCertificate, func(req []byte) []byte {
+	rpc.Handle(MethodAddCertificate, func(req []byte) (response []byte, err error) {
 		var icReq struct {
 			Bytes []byte
 			RegID int64
 		}
-		err := json.Unmarshal(req, &icReq)
+		err = json.Unmarshal(req, &icReq)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodAddCertificate, err, req)
-			return nil
+			return
 		}
 
 		id, err := impl.AddCertificate(icReq.Bytes, icReq.RegID)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodAddCertificate, err, req)
-			return nil
+			return
 		}
-		return []byte(id)
+		response = []byte(id)
+		return
 	})
 
-	rpc.Handle(MethodNewRegistration, func(req []byte) []byte {
+	rpc.Handle(MethodNewRegistration, func(req []byte) (response []byte, err error) {
 		var registration core.Registration
-		err := json.Unmarshal(req, &registration)
+		err = json.Unmarshal(req, &registration)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodNewRegistration, err, req)
-			return nil
+			return
 		}
 
 		output, err := impl.NewRegistration(registration)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodNewRegistration, err, registration)
-			return nil
+			return
 		}
 
-		jsonOutput, err := json.Marshal(output)
+		response, err = json.Marshal(output)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodNewRegistration, err, req)
-			return nil
+			return
 		}
-		return []byte(jsonOutput)
+		return
 	})
 
-	rpc.Handle(MethodNewPendingAuthorization, func(req []byte) []byte {
+	rpc.Handle(MethodNewPendingAuthorization, func(req []byte) (response []byte, err error) {
 		var authz core.Authorization
-		if err := json.Unmarshal(req, &authz); err != nil {
+		if err = json.Unmarshal(req, &authz); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodNewPendingAuthorization, err, req)
-			return nil
+			return
 		}
 
 		output, err := impl.NewPendingAuthorization(authz)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodNewPendingAuthorization, err, req)
-			return nil
+			return
 		}
 
-		jsonOutput, err := json.Marshal(output)
+		response, err = json.Marshal(output)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodNewPendingAuthorization, err, req)
-			return nil
+			return
 		}
-		return []byte(jsonOutput)
+		return
 	})
 
-	rpc.Handle(MethodUpdatePendingAuthorization, func(req []byte) []byte {
+	rpc.Handle(MethodUpdatePendingAuthorization, func(req []byte) (response []byte, err error) {
 		var authz core.Authorization
-		if err := json.Unmarshal(req, &authz); err != nil {
+		if err = json.Unmarshal(req, &authz); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodUpdatePendingAuthorization, err, req)
-			return nil
+			return
 		}
 
-		if err := impl.UpdatePendingAuthorization(authz); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodUpdatePendingAuthorization, err, authz)
-		}
-		return nil
+		err = impl.UpdatePendingAuthorization(authz)
+		return
 	})
 
-	rpc.Handle(MethodFinalizeAuthorization, func(req []byte) []byte {
+	rpc.Handle(MethodFinalizeAuthorization, func(req []byte) (response []byte, err error) {
 		var authz core.Authorization
-		if err := json.Unmarshal(req, &authz); err != nil {
+		if err = json.Unmarshal(req, &authz); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodFinalizeAuthorization, err, req)
-			return nil
+			return
 		}
 
-		if err := impl.FinalizeAuthorization(authz); err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodFinalizeAuthorization, err, authz)
-		}
-		return nil
+		err = impl.FinalizeAuthorization(authz)
+		return
 	})
 
-	rpc.Handle(MethodGetCertificate, func(req []byte) (response []byte) {
+	rpc.Handle(MethodGetCertificate, func(req []byte) (response []byte, err error) {
 		cert, err := impl.GetCertificate(string(req))
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetCertificate, err, req)
-		} else {
+		if err == nil {
 			response = []byte(cert)
 		}
-		return response
+		return
 	})
 
-	rpc.Handle(MethodGetCertificateByShortSerial, func(req []byte) (response []byte) {
+	rpc.Handle(MethodGetCertificateByShortSerial, func(req []byte) (response []byte, err error) {
 		cert, err := impl.GetCertificateByShortSerial(string(req))
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetCertificateByShortSerial, err, req)
-		} else {
+		if err == nil {
 			response = []byte(cert)
 		}
-		return response
+		return
 	})
 
-	rpc.Handle(MethodGetCertificateStatus, func(req []byte) (response []byte) {
+	rpc.Handle(MethodGetCertificateStatus, func(req []byte) (response []byte, err error) {
 		status, err := impl.GetCertificateStatus(string(req))
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetCertificateStatus, err, req)
-			return nil
+			return
 		}
 
-		jsonStatus, err := json.Marshal(status)
+		response, err = json.Marshal(status)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetCertificateStatus, err, req)
-			return nil
+			return
 		}
-		return jsonStatus
+		return
 	})
 
-	rpc.Handle(MethodMarkCertificateRevoked, func(req []byte) (response []byte) {
+	rpc.Handle(MethodMarkCertificateRevoked, func(req []byte) (response []byte, err error) {
 		var revokeReq struct {
 			Serial       string
-			OcspResponse []byte
+			OCSPResponse []byte
 			ReasonCode   int
 		}
 
-		if err := json.Unmarshal(req, &revokeReq); err != nil {
+		if err = json.Unmarshal(req, &revokeReq); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodMarkCertificateRevoked, err, req)
-			return nil
+			return
 		}
 
-		// Error explicitly ignored since response is nil anyway
-		err := impl.MarkCertificateRevoked(revokeReq.Serial, revokeReq.OcspResponse, revokeReq.ReasonCode)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodMarkCertificateRevoked, err, revokeReq)
-		}
-		return nil
+		err = impl.MarkCertificateRevoked(revokeReq.Serial, revokeReq.OCSPResponse, revokeReq.ReasonCode)
+		return
 	})
 
-	rpc.Handle(MethodAlreadyDeniedCSR, func(req []byte) []byte {
+	rpc.Handle(MethodAlreadyDeniedCSR, func(req []byte) (response []byte, err error) {
 		var csrReq struct {
 			Names []string
 		}
 
-		err := json.Unmarshal(req, &csrReq)
+		err = json.Unmarshal(req, &csrReq)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodAlreadyDeniedCSR, err, req)
-			return nil
+			return
 		}
 
 		exists, err := impl.AlreadyDeniedCSR(csrReq.Names)
 		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodAlreadyDeniedCSR, err, csrReq)
-			return nil
+			return
 		}
 
 		if exists {
-			return []byte{1}
+			response = []byte{1}
 		} else {
-			return []byte{0}
+			response = []byte{0}
 		}
+		return
 	})
 
-	return rpc
+	return nil
 }
 
 type StorageAuthorityClient struct {
-	rpc *AmqpRPCCLient
+	rpc RPCClient
 }
 
-func NewStorageAuthorityClient(clientQueue, serverQueue string, channel *amqp.Channel) (sac StorageAuthorityClient, err error) {
-	rpc, err := NewAmqpRPCCLient(clientQueue, serverQueue, channel)
-	if err != nil {
-		return
-	}
-
-	sac = StorageAuthorityClient{rpc: rpc}
+func NewStorageAuthorityClient(client RPCClient) (sac StorageAuthorityClient, err error) {
+	sac = StorageAuthorityClient{rpc: client}
 	return
 }
 
@@ -1004,12 +918,12 @@ func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.C
 func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
 	var revokeReq struct {
 		Serial       string
-		OcspResponse []byte
+		OCSPResponse []byte
 		ReasonCode   int
 	}
 
 	revokeReq.Serial = serial
-	revokeReq.OcspResponse = ocspResponse
+	revokeReq.OCSPResponse = ocspResponse
 	revokeReq.ReasonCode = reasonCode
 
 	data, err := json.Marshal(revokeReq)
@@ -1027,7 +941,6 @@ func (cac StorageAuthorityClient) UpdateRegistration(reg core.Registration) (err
 		return
 	}
 
-	// XXX: Is this catching all the errors?
 	_, err = cac.rpc.DispatchSync(MethodUpdateRegistration, jsonReg)
 	return
 }
@@ -1039,8 +952,7 @@ func (cac StorageAuthorityClient) NewRegistration(reg core.Registration) (output
 		return
 	}
 	response, err := cac.rpc.DispatchSync(MethodNewRegistration, jsonReg)
-	if err != nil || len(response) == 0 {
-		err = errors.New("NewRegistration RPC failed") // XXX
+	if err != nil {
 		return
 	}
 	err = json.Unmarshal(response, &output)
@@ -1057,8 +969,7 @@ func (cac StorageAuthorityClient) NewPendingAuthorization(authz core.Authorizati
 		return
 	}
 	response, err := cac.rpc.DispatchSync(MethodNewPendingAuthorization, jsonAuthz)
-	if err != nil || len(response) == 0 {
-		err = errors.New("NewPendingAuthorization RPC failed") // XXX
+	if err != nil {
 		return
 	}
 	err = json.Unmarshal(response, &output)
@@ -1075,7 +986,6 @@ func (cac StorageAuthorityClient) UpdatePendingAuthorization(authz core.Authoriz
 		return
 	}
 
-	// XXX: Is this catching all the errors?
 	_, err = cac.rpc.DispatchSync(MethodUpdatePendingAuthorization, jsonAuthz)
 	return
 }
@@ -1086,7 +996,6 @@ func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization
 		return
 	}
 
-	// XXX: Is this catching all the errors?
 	_, err = cac.rpc.DispatchSync(MethodFinalizeAuthorization, jsonAuthz)
 	return
 }
@@ -1104,8 +1013,7 @@ func (cac StorageAuthorityClient) AddCertificate(cert []byte, regID int64) (id s
 	}
 
 	response, err := cac.rpc.DispatchSync(MethodAddCertificate, data)
-	if err != nil || len(response) == 0 {
-		err = errors.New("AddCertificate RPC failed") // XXX
+	if err != nil {
 		return
 	}
 	id = string(response)
@@ -1124,8 +1032,7 @@ func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool,
 	}
 
 	response, err := cac.rpc.DispatchSync(MethodAlreadyDeniedCSR, data)
-	if err != nil || len(response) == 0 {
-		err = errors.New("AlreadyDeniedCSR RPC failed") // XXX
+	if err != nil {
 		return
 	}
 

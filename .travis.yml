@@ -3,6 +3,9 @@ language: go
 go:
   - 1.4.1
 
+services:
+  - rabbitmq
+
 matrix:
   fast_finish: true
 

@@ -2,114 +2,182 @@ package bundler
 
 // This test file contains tests on checking Bundle.Status with SHA-1 deprecation warning.
 import (
+	"crypto/x509"
+	"io/ioutil"
 	"testing"
+	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ubiquity"
 )
 
 const (
-	sha1CA                = "testdata/ca.pem"
-	testChromeMetadata    = "testdata/ca.pem.metadata"
-	sha1Intermediate      = "testdata/inter-L1-sha1.pem"
-	sha2Intermediate      = "testdata/inter-L1.pem"
-	sha2LeafExp2015Jun2nd = "testdata/inter-L2-1.pem"
-	sha2LeafExp2016Jan2nd = "testdata/inter-L2-2.pem"
-	sha2LeafExp2016Jun2nd = "testdata/inter-L2-3.pem"
-	sha2LeafExp2017Jan2nd = "testdata/inter-L2-4.pem"
+	sha1CA           = "testdata/ca.pem"
+	sha1CAKey        = "testdata/ca.key"
+	sha1Intermediate = "testdata/inter-L1-sha1.pem"
+	sha2Intermediate = "testdata/inter-L1.pem"
+	intermediateKey  = "testdata/inter-L1.key"
+	intermediateCSR  = "testdata/inter-L1.csr"
+	leafCSR          = "testdata/cfssl-leaf-ecdsa256.csr"
 )
 
 func TestChromeWarning(t *testing.T) {
 	b := newCustomizedBundlerFromFile(t, sha1CA, sha1Intermediate, "")
-	// The metadata contains Chrome M39, M40 and M41. The effective date for their SHA1 deprecation
-	// is pushed to 2014-09-01 to enable unit testing.
-	ubiquity.Platforms = nil
-	ubiquity.LoadPlatforms(testChromeMetadata)
 
-	// Bundle a leaf cert with expiration on 2015-06-02.
-	// Expect no SHA-1 deprecation warnings but a SHA2 warning.
-	bundle, err := b.BundleFromFile(sha2LeafExp2015Jun2nd, "", Ubiquitous)
+	s, err := local.NewSignerFromFile(sha1Intermediate, intermediateKey, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	csrBytes, err := ioutil.ReadFile(leafCSR)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signingRequest := signer.SignRequest{Request: string(csrBytes)}
+
+	certBytes, err := s.Sign(signingRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Bundle a leaf cert with default 1 year expiration
+	bundle, err := b.BundleFromPEMorDER(certBytes, nil, Ubiquitous, "")
 	if err != nil {
 		t.Fatal("bundling failed: ", err)
 	}
-	if bundle.Status.Code|errors.BundleNotUbiquitousBit != errors.BundleNotUbiquitousBit {
-		t.Fatal("Incorrect bundle status code. Bundle status:", bundle.Status)
+
+	// should be not ubiquitous due to SHA2 and ECDSA support issues in legacy platforms
+	if bundle.Status.Code&errors.BundleNotUbiquitousBit != errors.BundleNotUbiquitousBit {
+		t.Fatal("Incorrect bundle status code. Bundle status code:", bundle.Status.Code)
 	}
 
-	if len(bundle.Status.Messages) != 2 ||
-		bundle.Status.Messages[0] != sha2Warning ||
-		bundle.Status.Messages[1] != ecdsaWarning {
-		t.Fatal("Incorrect bundle status messages. Bundle status messages:", bundle.Status.Messages)
+	fullChain := append(bundle.Chain, bundle.Root)
+	sha1Msgs := ubiquity.SHA1DeprecationMessages(fullChain)
+	// Since the new SHA-1 cert is expired after 2015, it definitely trigger Chrome's deprecation policies.
+	if len(sha1Msgs) == 0 {
+		t.Fatal("SHA1 Deprecation Message should not be empty")
+	}
+	// check SHA1 deprecation warnings
+	var sha1MsgNotFound bool
+	for _, sha1Msg := range sha1Msgs {
+		foundMsg := false
+		for _, message := range bundle.Status.Messages {
+			if message == sha1Msg {
+				foundMsg = true
+			}
+		}
+		if !foundMsg {
+			sha1MsgNotFound = true
+			break
+		}
+	}
+	if sha1MsgNotFound {
+		t.Fatalf("Incorrect bundle status messages. Bundle status messages:%v, expected to contain: %v\n", bundle.Status.Messages, sha1Msgs)
 	}
 
-	// Bundle a leaf cert with expiration on 2016-01-02.
-	// Expect one SHA-1 deprecation warning from Chrome M41 and a SHA2 warning.
-	bundle, err = b.BundleFromFile(sha2LeafExp2016Jan2nd, "", Ubiquitous)
-	if err != nil {
-		t.Fatal("bundling failed: ", err)
-	}
-	if bundle.Status.Code|errors.BundleNotUbiquitousBit != errors.BundleNotUbiquitousBit {
-		t.Fatal("Incorrect bundle status code. Bundle status:", bundle.Status)
-	}
-
-	if len(bundle.Status.Messages) != 3 ||
-		bundle.Status.Messages[0] != sha2Warning ||
-		bundle.Status.Messages[1] != ecdsaWarning ||
-		bundle.Status.Messages[2] != deprecateSHA1WarningStub+" Chrome Browser M41." {
-		t.Fatal("Incorrect bundle status messages. Bundle status messages:", bundle.Status.Messages)
-	}
-
-	// Bundle a leaf cert with expiration on 2016-06-02.
-	// Expect SHA-1 deprecation warnings from Chrome M40, M41 and a SHA2 warning.
-	bundle, err = b.BundleFromFile(sha2LeafExp2016Jun2nd, "", Ubiquitous)
-	if err != nil {
-		t.Fatal("bundling failed: ", err)
-	}
-	if bundle.Status.Code|errors.BundleNotUbiquitousBit != errors.BundleNotUbiquitousBit {
-		t.Fatal("Incorrect bundle status code. Bundle status:", bundle.Status)
-	}
-
-	if len(bundle.Status.Messages) != 3 ||
-		bundle.Status.Messages[0] != sha2Warning ||
-		bundle.Status.Messages[1] != ecdsaWarning ||
-		bundle.Status.Messages[2] != deprecateSHA1WarningStub+" Chrome Browser M40, Chrome Browser M41." {
-		t.Fatal("Incorrect bundle status messages. Bundle status messages:", bundle.Status.Messages)
-	}
-
-	// Bundle a leaf cert with expiration on 2017-01-02.
-	// Expect SHA-1 deprecation warnings from Chrome M39, M40, M41 and a SHA2 warning.
-	bundle, err = b.BundleFromFile(sha2LeafExp2017Jan2nd, "", Ubiquitous)
-	if err != nil {
-		t.Fatal("bundling failed: ", err)
-	}
-	if bundle.Status.Code|errors.BundleNotUbiquitousBit != errors.BundleNotUbiquitousBit {
-		t.Fatal("Incorrect bundle status code. Bundle status:", bundle.Status)
-	}
-
-	if len(bundle.Status.Messages) != 3 ||
-		bundle.Status.Messages[0] != sha2Warning ||
-		bundle.Status.Messages[1] != ecdsaWarning ||
-		bundle.Status.Messages[2] != deprecateSHA1WarningStub+" Chrome Browser M39, Chrome Browser M40, Chrome Browser M41." {
-		t.Fatal("Incorrect bundle status messages. Bundle status messages:", bundle.Status.Messages)
-	}
 }
 
-func TestUbiquitySHA2Preference(t *testing.T) {
-	// Add a SHA-2 L1 cert to the intermediate pool.
-	b := newCustomizedBundlerFromFile(t, sha1CA, sha1Intermediate, sha2Intermediate)
-	ubiquity.Platforms = nil
-	ubiquity.LoadPlatforms(testChromeMetadata)
+func TestSHA2Preferences(t *testing.T) {
+	// create a CA signer and signs a new intermediate with SHA-1
+	sha1CASigner := makeCASignerFromFile(sha1CA, sha1CAKey, x509.SHA1WithRSA, t)
+	// create a CA signer and signs a new intermediate with SHA-2
+	sha2CASigner := makeCASignerFromFile(sha1CA, sha1CAKey, x509.SHA256WithRSA, t)
 
-	bundle, err := b.BundleFromFile(sha2LeafExp2017Jan2nd, "", Ubiquitous)
+	// sign two different intermediates
+	sha1InterBytes := signCSRFile(sha1CASigner, intermediateCSR, t)
+	sha2InterBytes := signCSRFile(sha2CASigner, intermediateCSR, t)
+
+	interKeyBytes, err := ioutil.ReadFile(intermediateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a intermediate signer from SHA-1 intermediate cert/key
+	sha2InterSigner := makeCASigner(sha1InterBytes, interKeyBytes, x509.SHA256WithRSA, t)
+	// sign a leaf cert
+	leafBytes := signCSRFile(sha2InterSigner, leafCSR, t)
+
+	// create a bundler with SHA-1 and SHA-2 intermediate certs of same key.
+	b := newCustomizedBundlerFromFile(t, sha1CA, sha1Intermediate, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha1Inter, _ := helpers.ParseCertificatePEM(sha1InterBytes)
+	sha2Inter, _ := helpers.ParseCertificatePEM(sha2InterBytes)
+	b.IntermediatePool.AddCert(sha1Inter)
+	b.IntermediatePool.AddCert(sha2Inter)
+
+	bundle, err := b.BundleFromPEMorDER(leafBytes, nil, Ubiquitous, "")
 	if err != nil {
 		t.Fatal("bundling failed: ", err)
 	}
 
-	// With same ubiquity score, the chain with SHA2 L1 will be chosen. And so there is no Chrome warning.
-	if len(bundle.Status.Messages) != 2 ||
-		bundle.Status.Messages[0] != sha2Warning ||
-		bundle.Status.Messages[1] != ecdsaWarning {
-		t.Fatal("Incorrect bundle status messages. Bundle status messages:", bundle.Status.Messages)
+	if bundle.Chain[1].SignatureAlgorithm != x509.SHA256WithRSA {
+		t.Fatal("ubiquity selection by SHA-2 homogenity failed.")
 	}
 
+}
+
+func makeCASignerFromFile(certFile, keyFile string, sigAlgo x509.SignatureAlgorithm, t *testing.T) signer.Signer {
+	certBytes, err := ioutil.ReadFile(certFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	keyBytes, err := ioutil.ReadFile(keyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return makeCASigner(certBytes, keyBytes, sigAlgo, t)
+
+}
+
+func makeCASigner(certBytes, keyBytes []byte, sigAlgo x509.SignatureAlgorithm, t *testing.T) signer.Signer {
+	cert, err := helpers.ParseCertificatePEM(certBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key, err := helpers.ParsePrivateKeyPEM(keyBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defaultProfile := &config.SigningProfile{
+		Usage:        []string{"cert sign"},
+		CA:           true,
+		Expiry:       time.Hour,
+		ExpiryString: "1h",
+	}
+	policy := &config.Signing{
+		Profiles: map[string]*config.SigningProfile{},
+		Default:  defaultProfile,
+	}
+	s, err := local.NewSigner(key, cert, sigAlgo, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return s
+}
+
+func signCSRFile(s signer.Signer, csrFile string, t *testing.T) []byte {
+	csrBytes, err := ioutil.ReadFile(csrFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signingRequest := signer.SignRequest{Request: string(csrBytes)}
+	certBytes, err := s.Sign(signingRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return certBytes
 }

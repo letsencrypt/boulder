@@ -8,9 +8,6 @@ package main
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	// Load both drivers to allow configuring either
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
@@ -41,7 +38,8 @@ func main() {
 			cmd.FailOnError(err, "Failed to create CA tables")
 		}
 
-		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA)
+		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert)
+		cai.MaxKeySize = c.Common.MaxKeySize
 		cmd.FailOnError(err, "Failed to create CA impl")
 
 		go cmd.ProfileCmd("CA", stats)
@@ -50,12 +48,17 @@ func main() {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-			sac, err := rpc.NewStorageAuthorityClient("CA->SA", c.AMQP.SA.Server, ch)
+			saRPC, err := rpc.NewAmqpRPCCLient("CA->SA", c.AMQP.SA.Server, ch)
+			cmd.FailOnError(err, "Unable to create RPC client")
+
+			sac, err := rpc.NewStorageAuthorityClient(saRPC)
 			cmd.FailOnError(err, "Failed to create SA client")
 
 			cai.SA = &sac
 
-			cas, err := rpc.NewCertificateAuthorityServer(c.AMQP.CA.Server, ch, cai)
+			cas := rpc.NewAmqpRPCServer(c.AMQP.CA.Server, ch)
+
+			err = rpc.NewCertificateAuthorityServer(cas, cai)
 			cmd.FailOnError(err, "Unable to create CA server")
 
 			auditlogger.Info(app.VersionString())

@@ -7,20 +7,21 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"crypto/x509"
-	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"golang.org/x/crypto/ocsp"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/sa"
 )
 
 type timedHandler struct {
@@ -68,37 +69,47 @@ serialNumber field, since we will always query on it.
 
 */
 type DBSource struct {
-	db        *sql.DB
+	dbMap     *gorp.DbMap
 	caKeyHash []byte
 }
 
-func NewSourceFromDatabase(db *sql.DB, caKeyHash []byte) (src *DBSource, err error) {
-	src = &DBSource{db: db, caKeyHash: caKeyHash}
+func NewSourceFromDatabase(dbMap *gorp.DbMap, caKeyHash []byte) (src *DBSource, err error) {
+	src = &DBSource{dbMap: dbMap, caKeyHash: caKeyHash}
 	return
 }
 
 const responseQuery = "SELECT resposne FROM ocsp_responses WHERE serialNumber"
 
 func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool) {
+	log := blog.GetAuditLogger()
+
 	// Check that this request is for the proper CA
 	if bytes.Compare(req.IssuerKeyHash, src.caKeyHash) != 0 {
+		log.Debug(fmt.Sprintf("Request intended for CA Cert ID: %s", hex.EncodeToString(req.IssuerKeyHash)))
 		present = false
 		return
 	}
 
-	// SELECT resposne FROM ocsp_responses WHERE serialNumber
-	err := src.db.QueryRow(responseQuery).Scan(&response)
+	serialString := core.SerialToString(req.SerialNumber)
+	log.Debug(fmt.Sprintf("Searching for OCSP issued by us for serial %s", serialString))
+
+	var ocspResponse core.OCSPResponse
+	err := src.dbMap.SelectOne(&ocspResponse, "SELECT * from ocspResponses WHERE serial = :serial  ORDER BY createdAt DESC LIMIT 1;",
+		map[string]interface{}{"serial": serialString})
 	if err != nil {
 		present = false
 		return
 	}
 
+	log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
+
+	response = ocspResponse.Response
 	present = true
 	return
 }
 
 func main() {
-	app := cmd.NewAppShell("boulder-ocsp")
+	app := cmd.NewAppShell("boulder-ocsp-responder")
 	app.Action = func(c cmd.Config) {
 		// Set up logging
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
@@ -114,31 +125,30 @@ func main() {
 
 		go cmd.ProfileCmd("OCSP", stats)
 
-		// Connect to the DB
-		db, err := sql.Open(c.OCSP.DBDriver, c.OCSP.DBName)
-		cmd.FailOnError(err, "Could not connect to database")
-		defer db.Close()
+		auditlogger.Info(app.VersionString())
 
-		// Load the CA's key and hash it
-		caCertDER, err := cmd.LoadCert(c.CA.IssuerCert)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.CA.IssuerCert))
+		// Configure DB
+		dbMap, err := sa.NewDbMap(c.OCSPResponder.DBDriver, c.OCSPResponder.DBName)
+		cmd.FailOnError(err, "Could not connect to database")
+		sa.SetSQLDebug(dbMap, c.SQL.SQLDebug)
+
+		// Load the CA's key so we can store its AuthorityKeyId in the DB
+		caCertDER, err := cmd.LoadCert(c.Common.IssuerCert)
+		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 		caCert, err := x509.ParseCertificate(caCertDER)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't parse cert read from [%s]", c.CA.IssuerCert))
-		h := sha1.New()
-		h.Write(caCert.RawSubjectPublicKeyInfo)
-		caKeyHash := h.Sum(nil)
+		cmd.FailOnError(err, fmt.Sprintf("Couldn't parse cert read from [%s]", c.Common.IssuerCert))
 
 		// Construct source from DB
-		src, err := NewSourceFromDatabase(db, caKeyHash)
+		auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert ID: %s", hex.EncodeToString(caCert.AuthorityKeyId)))
+		src, err := NewSourceFromDatabase(dbMap, caCert.AuthorityKeyId)
 		cmd.FailOnError(err, "Could not connect to OCSP database")
 
 		// Configure HTTP
-		http.Handle(c.OCSP.Path, cfocsp.Responder{Source: src})
-
-		auditlogger.Info(app.VersionString())
+		http.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
-		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
+		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.OCSPResponder.ListenAddress))
+		err = http.ListenAndServe(c.OCSPResponder.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

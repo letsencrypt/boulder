@@ -1,0 +1,136 @@
+{
+  "syslog": {
+    "network": "",
+    "server": "",
+    "tag": "boulder"
+  },
+
+  "amqp": {
+    "server": "amqp://guest:guest@localhost:5672",
+    "RA": {
+      "client": "RA.client",
+      "server": "RA.server"
+    },
+    "VA": {
+      "client": "VA.client",
+      "server": "VA.server"
+    },
+    "SA": {
+      "client": "SA.client",
+      "server": "SA.server"
+    },
+    "CA": {
+      "client": "CA.client",
+      "server": "CA.server"
+    }
+  },
+
+  "statsd": {
+      "server": "localhost:8125",
+      "prefix": "Boulder"
+  },
+
+  "wfe": {
+    "listenAddress": "127.0.0.1:4000"
+  },
+
+  "ca": {
+    "serialPrefix": 255,
+    "profile": "ee",
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:",
+    "testMode": true,
+    "_comment": "This should only be present in testMode. In prod use an HSM.",
+    "expiry": "2160h",
+    "lifespanOCSP": "96h",
+    "maxNames": 1000,
+    "Key": {
+      "PKCS11": {
+        "_comment": "On OS X, the module will likely be /Library/OpenSC/lib/opensc-pkcs11.so",
+        "Module": "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so",
+        "Token": "Yubico Yubikey NEO OTP+CCID 00 00",
+        "Label": "SIGN key",
+        "PIN": "1234"
+      }
+    },
+    "cfssl": {
+      "signing": {
+        "profiles": {
+          "ee": {
+            "usages": [
+              "digital signature",
+              "key encipherment",
+              "server auth"
+            ],
+            "backdate": "1h",
+            "is_ca": false,
+            "issuer_urls": [
+              "http://int-x1.letsencrypt.org/cert"
+            ],
+            "ocsp_url": "http://int-x1.letsencrypt.org/ocsp",
+            "crl_url": "http://int-x1.letsencrypt.org/crl",
+            "policies": [
+              "1.3.6.1.4.1.44947.1.1.1",
+              "2.23.140.1.2.1"
+            ],
+            "expiry": "8760h",
+            "CSRWhitelist": {
+              "PublicKeyAlgorithm": true,
+              "PublicKey": true,
+              "SignatureAlgorithm": true
+            },
+            "UseSerialSeq": true
+          }
+        },
+        "default": {
+          "usages": [
+            "digital signature"
+          ],
+          "expiry": "8760h"
+        }
+      }
+    }
+  },
+
+  "sa": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:"
+  },
+
+  "sql": {
+    "SQLDebug": true,
+    "CreateTables": true
+  },
+
+  "revoker": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:"
+  },
+
+  "ocspResponder": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:",
+    "path": "/",
+    "listenAddress": "localhost:4001"
+  },
+
+  "ocspUpdater": {
+    "dbDriver": "sqlite3",
+    "dbName": ":memory:",
+    "minTimeToExpiry": "72h"
+  },
+
+  "mail": {
+    "server": "mail.example.com",
+    "port": "25",
+    "username": "cert-master@example.com",
+    "password": "password"
+  },
+
+  "common": {
+    "baseURL": "http://localhost:4000",
+    "issuerCert": "/home/jsha/yubi-ca.pem"
+  },
+
+  "subscriberAgreementURL": "http://localhost:4000/terms"
+}

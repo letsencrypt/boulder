@@ -32,7 +32,8 @@ func main() {
 		blog.SetAuditLogger(auditlogger)
 
 		rai := ra.NewRegistrationAuthorityImpl()
-		rai.AuthzBase = c.WFE.BaseURL + wfe.AuthzPath
+		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
+		rai.MaxKeySize = c.Common.MaxKeySize
 
 		go cmd.ProfileCmd("RA", stats)
 
@@ -40,20 +41,31 @@ func main() {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-			vac, err := rpc.NewValidationAuthorityClient("RA->VA", c.AMQP.VA.Server, ch)
+			vaRPC, err := rpc.NewAmqpRPCCLient("RA->VA", c.AMQP.VA.Server, ch)
+			cmd.FailOnError(err, "Unable to create RPC client")
+
+			caRPC, err := rpc.NewAmqpRPCCLient("RA->CA", c.AMQP.CA.Server, ch)
+			cmd.FailOnError(err, "Unable to create RPC client")
+
+			saRPC, err := rpc.NewAmqpRPCCLient("RA->SA", c.AMQP.SA.Server, ch)
+			cmd.FailOnError(err, "Unable to create RPC client")
+
+			vac, err := rpc.NewValidationAuthorityClient(vaRPC)
 			cmd.FailOnError(err, "Unable to create VA client")
 
-			cac, err := rpc.NewCertificateAuthorityClient("RA->CA", c.AMQP.CA.Server, ch)
+			cac, err := rpc.NewCertificateAuthorityClient(caRPC)
 			cmd.FailOnError(err, "Unable to create CA client")
 
-			sac, err := rpc.NewStorageAuthorityClient("RA->SA", c.AMQP.SA.Server, ch)
+			sac, err := rpc.NewStorageAuthorityClient(saRPC)
 			cmd.FailOnError(err, "Unable to create SA client")
 
 			rai.VA = &vac
 			rai.CA = &cac
 			rai.SA = &sac
 
-			ras, err := rpc.NewRegistrationAuthorityServer(c.AMQP.RA.Server, ch, &rai)
+			ras := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, ch)
+
+			err = rpc.NewRegistrationAuthorityServer(ras, &rai)
 			cmd.FailOnError(err, "Unable to create RA server")
 
 			auditlogger.Info(app.VersionString())

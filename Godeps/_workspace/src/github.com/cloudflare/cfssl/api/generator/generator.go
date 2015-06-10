@@ -1,3 +1,4 @@
+// Package generator implements the HTTP handlers for certificate generation.
 package generator
 
 import (
@@ -51,7 +52,7 @@ func NewHandler(validator Validator) (http.Handler, error) {
 		Handler: &Handler{
 			generator: &csr.Generator{Validator: validator},
 		},
-		Method: "POST",
+		Methods: []string{"POST"},
 	}, nil
 }
 
@@ -176,7 +177,7 @@ func NewCertGeneratorHandler(validator Validator, caFile, caKeyFile string, poli
 
 	cg.generator = &csr.Generator{Validator: validator}
 
-	return api.HTTPHandler{Handler: cg, Method: "POST"}, nil
+	return api.HTTPHandler{Handler: cg, Methods: []string{"POST"}}, nil
 }
 
 // NewCertGeneratorHandlerFromSigner returns a handler directly from
@@ -187,7 +188,7 @@ func NewCertGeneratorHandlerFromSigner(validator Validator, signer signer.Signer
 			generator: &csr.Generator{Validator: validator},
 			signer:    signer,
 		},
-		Method: "POST",
+		Methods: []string{"POST"},
 	}
 }
 
@@ -234,18 +235,6 @@ func (cg *CertGeneratorHandler) Handle(w http.ResponseWriter, r *http.Request) e
 		return err
 	}
 
-	var certPEM []byte
-
-	var profile *config.SigningProfile
-	policy := cg.signer.Policy()
-	if policy != nil && policy.Profiles != nil && req.Profile != "" {
-		profile = policy.Profiles[req.Profile]
-	}
-
-	if profile == nil && policy != nil {
-		profile = policy.Default
-	}
-
 	// This API does not override the subject because it was already added to the CSR
 	signReq := signer.SignRequest{
 		Hosts:   signer.SplitHosts(req.Hostname),
@@ -273,7 +262,7 @@ func (cg *CertGeneratorHandler) Handle(w http.ResponseWriter, r *http.Request) e
 	result := map[string]interface{}{
 		"private_key":         string(key),
 		"certificate_request": string(csr),
-		"certificate":         string(certPEM),
+		"certificate":         string(certBytes),
 		"sums": map[string]Sum{
 			"certificate_request": reqSum,
 			"certificate":         certSum,

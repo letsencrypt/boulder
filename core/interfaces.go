@@ -7,8 +7,11 @@ package core
 
 import (
 	"crypto/x509"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"net/http"
+	"time"
+
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -79,7 +82,7 @@ type ValidationAuthority interface {
 
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
+	IssueCertificate(x509.CertificateRequest, int64, time.Time) (Certificate, error)
 	RevokeCertificate(string, int) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
@@ -122,8 +125,6 @@ type StorageAuthority interface {
 // CertificateAuthorityDatabase represents an atomic sequence source
 type CertificateAuthorityDatabase interface {
 	CreateTablesIfNotExists() error
-	Begin() error
-	Commit() error
-	Rollback() error
-	IncrementAndGetSerial() (int, error)
+	IncrementAndGetSerial(*gorp.Transaction) (int64, error)
+	Begin() (*gorp.Transaction, error)
 }

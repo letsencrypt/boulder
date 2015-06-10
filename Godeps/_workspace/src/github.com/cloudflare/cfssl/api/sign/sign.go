@@ -1,3 +1,4 @@
+// Package sign implements the HTTP handler for the certificate signing command.
 package sign
 
 import (
@@ -70,7 +71,7 @@ func NewHandlerFromSigner(signer signer.Signer) (h *api.HTTPHandler, err error) 
 		Handler: &Handler{
 			signer: signer,
 		},
-		Method: "POST",
+		Methods: []string{"POST"},
 	}, nil
 }
 
@@ -139,24 +140,15 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	signReq := jsonReqToTrue(req)
-	if signReq.Hosts == nil {
-		return errors.NewBadRequestString("missing parameter 'hostname' or 'hosts'")
-	}
 
 	if req.Request == "" {
 		return errors.NewBadRequestString("missing parameter 'certificate_request'")
 	}
 
 	var cert []byte
-	var profile *config.SigningProfile
-
-	policy := h.signer.Policy()
-	if policy != nil && policy.Profiles != nil && req.Profile != "" {
-		profile = policy.Profiles[req.Profile]
-	}
-
-	if profile == nil && policy != nil {
-		profile = policy.Default
+	profile, err := signer.Profile(h.signer, req.Profile)
+	if err != nil {
+		return err
 	}
 
 	if profile.Provider != nil {
@@ -231,7 +223,7 @@ func NewAuthHandlerFromSigner(signer signer.Signer) (http.Handler, error) {
 		Handler: &AuthHandler{
 			signer: signer,
 		},
-		Method: "POST",
+		Methods: []string{"POST"},
 	}, nil
 }
 
@@ -267,15 +259,10 @@ func (h *AuthHandler) Handle(w http.ResponseWriter, r *http.Request) error {
 		log.Critical("signer was initialised without a signing policy")
 		return errors.NewBadRequestString("invalid policy")
 	}
-	profile := policy.Default
 
-	if policy.Profiles != nil && req.Profile != "" {
-		profile = policy.Profiles[req.Profile]
-	}
-
-	if profile == nil {
-		log.Critical("signer was initialised without any valid profiles")
-		return errors.NewBadRequestString("invalid profile")
+	profile, err := signer.Profile(h.signer, req.Profile)
+	if err != nil {
+		return err
 	}
 
 	if profile.Provider == nil {
@@ -289,9 +276,6 @@ func (h *AuthHandler) Handle(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	signReq := jsonReqToTrue(req)
-	if signReq.Hosts == nil {
-		return errors.NewBadRequestString("missing parameter 'hostname' or 'hosts'")
-	}
 
 	if signReq.Request == "" {
 		return errors.NewBadRequestString("missing parameter 'certificate_request'")

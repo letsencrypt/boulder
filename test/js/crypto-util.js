@@ -223,14 +223,24 @@ module.exports = {
 
   ///// CSR GENERATION / VERIFICATION
 
-  generateCSR: function(keyPair, identifier) {
+  generateCSR: function(keyPair, names) {
     var privateKey = importPrivateKey(keyPair.privateKey);
     var publicKey = importPublicKey(keyPair.publicKey);
 
     // Create and sign the CSR
     var csr = forge.pki.createCertificationRequest();
     csr.publicKey = publicKey;
-    csr.setSubject([{ name: 'commonName', value: identifier }]);
+    csr.setSubject([{ name: 'commonName', value: names[0] }]);
+
+    var sans = [];
+    for (i in names) {
+      sans.push({ type: 2, value: names[i] });
+    }
+    csr.setAttributes([{
+      name: 'extensionRequest',
+      extensions: [{name: 'subjectAltName', altNames: sans}]
+    }]);
+
     csr.sign(privateKey);
 
     // Convert CSR -> DER -> Base64

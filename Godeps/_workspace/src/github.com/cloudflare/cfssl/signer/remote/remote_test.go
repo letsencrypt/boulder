@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api/client"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api/info"
+	apiinfo "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api/info"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
@@ -83,8 +83,8 @@ func TestRemoteInfo(t *testing.T) {
 	// override with test server address, ignore url prefix "http://"
 	remoteConfig.Signing.OverrideRemotes(remoteServer.URL[7:])
 	s := newRemoteSigner(t, remoteConfig.Signing)
-	req := client.InfoReq{}
-	certBytes, err := s.Info(req)
+	req := info.Req{}
+	resp, err := s.Info(req)
 	if err != nil {
 		t.Fatal("remote info failed:", err)
 	}
@@ -95,8 +95,8 @@ func TestRemoteInfo(t *testing.T) {
 		t.Fatal("fail to read test CA cert:", err)
 	}
 
-	if bytes.Compare(caBytes, certBytes) != 0 {
-		t.Fatal("Get a different CA cert through info api.", len(certBytes), len(caBytes))
+	if bytes.Compare(caBytes, []byte(resp.Certificate)) != 0 {
+		t.Fatal("Get a different CA cert through info api.", len(resp.Certificate), len(caBytes))
 	}
 }
 
@@ -305,7 +305,7 @@ func newHandler(t *testing.T, caFile, caKeyFile, op string) (http.Handler, error
 	if op == "sign" {
 		return NewSignHandlerFromSigner(s)
 	} else if op == "info" {
-		return info.NewHandler(s)
+		return apiinfo.NewHandler(s)
 	}
 
 	t.Fatal("Bad op code")
@@ -340,7 +340,7 @@ func NewSignHandlerFromSigner(s signer.Signer) (h http.Handler, err error) {
 		Handler: &SignHandler{
 			signer: s,
 		},
-		Method: "POST",
+		Methods: []string{"POST"},
 	}, nil
 }
 

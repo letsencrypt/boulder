@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -62,6 +63,18 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 }
 
+func statusCodeFromError(err interface{}) int {
+	// Populate these as needed.  We probably should trim the error list in util.go
+	switch err.(type) {
+	case core.MalformedRequestError:
+		return http.StatusBadRequest
+	case core.UnauthorizedError:
+		return http.StatusForbidden
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl() WebFrontEndImpl {
 	logger := blog.GetAuditLogger()
@@ -105,11 +118,9 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 
 	tmpl := template.Must(template.New("body").Parse(`<html>
   <body>
-    <a href="https://letsencrypt.org/">Let's Encrypt</a> Certificate Authority
-    running <a href="https://github.com/letsencrypt/boulder">Boulder</a>,
-    a reference <a href="https://letsencrypt.github.io/acme-spec/">ACME</a>
-    server implementation. New registration is available at
-    <a href="{{.NewReg}}">{{.NewReg}}</a>.
+    This is an <a href="https://github.com/letsencrypt/acme-spec/">ACME</a>
+    Certificate Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>,
+    New registration is available at <a href="{{.NewReg}}">{{.NewReg}}</a>.
   </body>
 </html>
 `))
@@ -173,8 +184,6 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		wfe.log.Debug(fmt.Sprintf("POST not signed: %v", parsedJws))
 		return nil, nil, reg, errors.New("POST not signed")
 	}
-	// TODO: Look up key in registrations.
-	// https://github.com/letsencrypt/boulder/issues/187
 	key := parsedJws.Signatures[0].Header.JsonWebKey
 	payload, err := parsedJws.Verify(key)
 	if err != nil {
@@ -191,7 +200,6 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		}
 	}
 
-	// TODO Return JWS body
 	return []byte(payload), key, reg, nil
 }
 
@@ -201,6 +209,8 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 	switch code {
 	case http.StatusForbidden:
 		problem.Type = UnauthorizedProblem
+	case http.StatusConflict:
+		fallthrough
 	case http.StatusMethodNotAllowed:
 		fallthrough
 	case http.StatusNotFound:
@@ -218,16 +228,11 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
-	switch problem.Type {
-	case ServerInternalProblem:
+	// Only audit log internal errors so users cannot purposefully cause
+	// auditable events.
+	if problem.Type == ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", details, debug))
-	case MalformedProblem:
-		// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-		wfe.log.Audit(fmt.Sprintf("Improper HTTP request - %s - %s", details, debug))
-	case UnauthorizedProblem:
-		// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-		wfe.log.Audit(fmt.Sprintf("Unauthorized HTTP request - %s - %s", details, debug))
 	}
 
 	// Paraphrased from
@@ -253,22 +258,26 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 
-	var init, unmarshalled core.Registration
-	err = json.Unmarshal(body, &unmarshalled)
+	if _, err = wfe.SA.GetRegistrationByKey(*key); err == nil {
+		wfe.sendError(response, "Registration key is already in use", nil, http.StatusConflict)
+		return
+	}
+
+	var init core.Registration
+	err = json.Unmarshal(body, &init)
 	if err != nil {
 		wfe.sendError(response, "Error unmarshaling JSON", err, http.StatusBadRequest)
 		return
 	}
-	if len(unmarshalled.Agreement) > 0 && unmarshalled.Agreement != wfe.SubscriberAgreementURL {
-		wfe.sendError(response, fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", unmarshalled.Agreement, wfe.SubscriberAgreementURL), nil, http.StatusBadRequest)
+	if len(init.Agreement) > 0 && init.Agreement != wfe.SubscriberAgreementURL {
+		wfe.sendError(response, fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", init.Agreement, wfe.SubscriberAgreementURL), nil, http.StatusBadRequest)
 		return
 	}
-	init.MergeUpdate(unmarshalled)
 	init.Key = *key
 
 	reg, err := wfe.RA.NewRegistration(init)
 	if err != nil {
-		wfe.sendError(response, "Error creating new registration", err, http.StatusInternalServerError)
+		wfe.sendError(response, "Error creating new registration", err, statusCodeFromError(err))
 		return
 	}
 
@@ -311,6 +320,9 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		}
 		return
 	}
+	// Any version of the agreement is acceptable here. Version match is enforced in
+	// wfe.Registration when agreeing the first time. Agreement updates happen
+	// by mailing subscribers and don't require a registration update.
 	if currReg.Agreement == "" {
 		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 		return
@@ -325,9 +337,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	// Create new authz and return
 	authz, err := wfe.RA.NewAuthorization(init, currReg.ID)
 	if err != nil {
-		wfe.sendError(response,
-			"Error creating new authz", err,
-			http.StatusInternalServerError)
+		wfe.sendError(response, "Error creating new authz", err, statusCodeFromError(err))
 		return
 	}
 
@@ -418,10 +428,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 
 	err = wfe.RA.RevokeCertificate(*parsedCertificate)
 	if err != nil {
-		wfe.sendError(response,
-			"Failed to revoke certificate",
-			err,
-			http.StatusInternalServerError)
+		wfe.sendError(response, "Failed to revoke certificate", err, statusCodeFromError(err))
 	} else {
 		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
 		// incr revoked cert stat
@@ -445,6 +452,9 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		}
 		return
 	}
+	// Any version of the agreement is acceptable here. Version match is enforced in
+	// wfe.Registration when agreeing the first time. Agreement updates happen
+	// by mailing subscribers and don't require a registration update.
 	if reg.Agreement == "" {
 		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
 		return
@@ -468,9 +478,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// RA for secondary validation.
 	cert, err := wfe.RA.NewCertificate(init, reg.ID)
 	if err != nil {
-		wfe.sendError(response,
-			"Error creating new cert", err,
-			http.StatusBadRequest)
+		wfe.sendError(response, "Error creating new cert", err, statusCodeFromError(err))
 		return
 	}
 
@@ -488,8 +496,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	serial := parsedCertificate.SerialNumber
 	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, serial.Rsh(serial, 64))
 
-	// TODO The spec says a client should send an Accept: application/pkix-cert
-	// header; either explicitly insist or tolerate
+	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
 	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
@@ -502,6 +509,11 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 }
 
 func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" && request.Method != "POST" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
 	// Check that the requested challenge exists within the authorization
 	found := false
 	var challengeIndex int
@@ -524,6 +536,24 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		wfe.sendError(response, "Method not allowed", "", http.StatusMethodNotAllowed)
 		return
 
+	case "GET":
+		challenge := authz.Challenges[challengeIndex]
+		jsonReply, err := json.Marshal(challenge)
+		if err != nil {
+			wfe.sendError(response, "Failed to marshal challenge", err, http.StatusInternalServerError)
+			return
+		}
+
+		authzURL := wfe.AuthzBase + string(authz.ID)
+		challengeURL := url.URL(challenge.URI)
+		response.Header().Add("Location", challengeURL.String())
+		response.Header().Set("Content-Type", "application/json")
+		response.Header().Add("Link", link(authzURL, "up"))
+		response.WriteHeader(http.StatusAccepted)
+		if _, err := response.Write(jsonReply); err != nil {
+			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		}
+
 	case "POST":
 		body, _, currReg, err := wfe.verifyPOST(request, true)
 		if err != nil {
@@ -534,14 +564,11 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			}
 			return
 		}
+		// Any version of the agreement is acceptable here. Version match is enforced in
+		// wfe.Registration when agreeing the first time. Agreement updates happen
+		// by mailing subscribers and don't require a registration update.
 		if currReg.Agreement == "" {
 			wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
-			return
-		}
-
-		var challengeResponse core.Challenge
-		if err = json.Unmarshal(body, &challengeResponse); err != nil {
-			wfe.sendError(response, "Error unmarshaling challenge response", err, http.StatusBadRequest)
 			return
 		}
 
@@ -554,10 +581,16 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 			return
 		}
 
+		var challengeResponse core.Challenge
+		if err = json.Unmarshal(body, &challengeResponse); err != nil {
+			wfe.sendError(response, "Error unmarshaling challenge response", err, http.StatusBadRequest)
+			return
+		}
+
 		// Ask the RA to update this authorization
 		updatedAuthz, err := wfe.RA.UpdateAuthorization(authz, challengeIndex, challengeResponse)
 		if err != nil {
-			wfe.sendError(response, "Unable to update authorization", err, http.StatusInternalServerError)
+			wfe.sendError(response, "Unable to update authorization", err, statusCodeFromError(err))
 			return
 		}
 
@@ -630,15 +663,16 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		return
 	}
 
-	// MergeUpdate copies over only the fields that a client is allowed to modify.
-	// Note: The RA will also use MergeUpdate to filter out non-updateable fields,
-	// but we do it here too, so that/ input filtering happens as early in the
-	// request processing as possible.
-	currReg.MergeUpdate(update)
+	// Registration objects contain a JWK object, which must be non-nil. We know
+	// the key of the updated registration object is going to be the same as the
+	// key of the current one, so we set it here. This ensures we can cleanly
+	// serialize the update as JSON to send via AMQP to the RA.
+	update.Key = currReg.Key
+
 	// Ask the RA to update this authorization.
-	updatedReg, err := wfe.RA.UpdateRegistration(currReg, currReg)
+	updatedReg, err := wfe.RA.UpdateRegistration(currReg, update)
 	if err != nil {
-		wfe.sendError(response, "Unable to update registration", err, http.StatusInternalServerError)
+		wfe.sendError(response, "Unable to update registration", err, statusCodeFromError(err))
 		return
 	}
 
@@ -653,6 +687,11 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 }
 
 func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" && request.Method != "POST" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
 	// Requests to this handler should have a path that leads to a known authz
 	id := parseIDFromPath(request.URL.Path)
 	authz, err := wfe.SA.GetAuthorization(id)
@@ -684,6 +723,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
 			return
 		}
+		response.Header().Add("Link", link(wfe.NewCert, "next"))
 		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(jsonReply); err != nil {
@@ -695,6 +735,11 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" && request.Method != "POST" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
 	path := request.URL.Path
 	switch request.Method {
 	default:
@@ -725,7 +770,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 			return
 		}
 
-		// TODO: Content negotiation
+		// TODO Content negotiation
 		response.Header().Set("Content-Type", "application/pkix-cert")
 		response.Header().Add("Link", link(IssuerPath, "up"))
 		response.WriteHeader(http.StatusOK)
@@ -735,23 +780,40 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	}
 }
 
-func (wfe *WebFrontEndImpl) Terms(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "You agree to do the right thing")
+func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
+	fmt.Fprintf(response, "TODO: Add terms of use here")
 }
 
-func (wfe *WebFrontEndImpl) Issuer(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/pkix-cert")
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(wfe.IssuerCert); err != nil {
+func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// TODO Content negotiation
+	response.Header().Set("Content-Type", "application/pkix-cert")
+	response.WriteHeader(http.StatusOK)
+	if _, err := response.Write(wfe.IssuerCert); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
 
 // BuildID tells the requestor what build we're running.
-func (wfe *WebFrontEndImpl) BuildID(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	if _, err := fmt.Fprintln(w, core.GetBuildID()); err != nil {
+func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.Request) {
+	if request.Method != "GET" {
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
+	}
+
+	response.Header().Set("Content-Type", "text/plain")
+	response.WriteHeader(http.StatusOK)
+	detailsString := fmt.Sprintf("Boulder=(%s %s) Golang=(%s) BuildHost=(%s)", core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+	if _, err := fmt.Fprintln(response, detailsString); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }

@@ -65,6 +65,12 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 		} else if strings.HasSuffix(r.URL.Path, pathWrongToken) {
 			t.Logf("SIMPLESRV: Got a wrongtoken req\n")
 			fmt.Fprintf(w, "wrongtoken")
+		} else if strings.HasSuffix(r.URL.Path, "wait") {
+			t.Logf("SIMPLESRV: Got a wait req\n")
+			time.Sleep(time.Second * 3)
+		} else if strings.HasSuffix(r.URL.Path, "wait-long") {
+			t.Logf("SIMPLESRV: Got a wait-long req\n")
+			time.Sleep(time.Second * 10)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
 			fmt.Fprintf(w, "%s", token)
@@ -84,7 +90,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 	}()
 
 	waitChan <- true
-	t.Fatalf("%s", httpsServer.Serve(conn))
+	httpsServer.Serve(conn)
 }
 
 func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
@@ -116,7 +122,10 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 		Certificates: []tls.Certificate{*cert},
 		ClientAuth:   tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			fmt.Println(clientHello)
+			if clientHello.ServerName == "wait-long.acme.invalid" {
+				time.Sleep(time.Second * 10)
+				return nil, nil
+			}
 			return cert, nil
 		},
 		NextProtos: []string{"http/1.1"},
@@ -136,7 +145,7 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 	}()
 
 	waitChan <- true
-	t.Fatalf("%s", httpsServer.Serve(tlsListener))
+	httpsServer.Serve(tlsListener)
 }
 
 func TestSimpleHttps(t *testing.T) {
@@ -177,6 +186,16 @@ func TestSimpleHttps(t *testing.T) {
 	invalidChall, err = va.validateSimpleHTTPS(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
+
+	chall.Path = "wait-long"
+	started := time.Now()
+	invalidChall, err = va.validateSimpleHTTPS(ident, chall)
+	took := time.Since(started)
+	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
+	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
+	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Connection should've timed out")
 }
 
 func TestDvsni(t *testing.T) {
@@ -214,6 +233,17 @@ func TestDvsni(t *testing.T) {
 	invalidChall, err = va.validateDvsni(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "S Should be illegal Base64")
+
+	chall.S = ba
+	chall.Nonce = "wait-long"
+	started := time.Now()
+	invalidChall, err = va.validateDvsni(ident, chall)
+	took := time.Since(started)
+	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
+	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
+	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Connection should've timed out")
 }
 
 func TestValidateHTTPS(t *testing.T) {
@@ -318,16 +348,34 @@ func TestUpdateValidations(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
+	challHTTPS := core.SimpleHTTPSChallenge()
+	challHTTPS.Path = "wait"
+
+	stopChanHTTPS := make(chan bool, 1)
+	waitChanHTTPS := make(chan bool, 1)
+	go simpleSrv(t, challHTTPS.Token, stopChanHTTPS, waitChanHTTPS)
+
+	// Let them start
+	<-waitChanHTTPS
+
+	// shutdown cleanly
+	defer func() {
+		stopChanHTTPS <- true
+	}()
+
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{core.DvsniChallenge()},
+		Challenges:     []core.Challenge{challHTTPS},
 	}
 
+	started := time.Now()
 	va.UpdateValidations(authz, 0)
+	took := time.Since(started)
 
-	// Nothing to assert.
+	// Check that the call to va.UpdateValidations didn't block for 3 seconds
+	test.Assert(t, (took < (time.Second * 3)), "UpdateValidations blocked")
 }
 
 func TestCAAChecking(t *testing.T) {

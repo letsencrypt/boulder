@@ -6,7 +6,6 @@ This is an initial implementation of an ACME-based CA. The [ACME protocol](https
 
 [![Build Status](https://travis-ci.org/letsencrypt/boulder.svg)](https://travis-ci.org/letsencrypt/boulder)
 [![Coverage Status](https://coveralls.io/repos/letsencrypt/boulder/badge.svg)](https://coveralls.io/r/letsencrypt/boulder)
-[![Docker Repository on Quay.io](https://quay.io/repository/letsencrypt/boulder/status "Docker Repository on Quay.io")](https://quay.io/repository/letsencrypt/boulder)
 
 Docker
 ------
@@ -15,36 +14,56 @@ Boulder is available as a [Docker image from Quay.io](https://quay.io/repository
 
 (Note: You can override the `config.json` location by specifying a different BOULDER_CONFIG environment variable, such as with `-e BOULDER_CONFIG=mypath/myfile.config`.)
 
-The default command is the monolithic "boulder" executable, which does not require an AMQP service.
+There are no default commands; you must choose one of the executables from the `cmd` path.
+
+There are several tags available:
+ - `stable` is maintained by the Let's Encrypt team as a fairly stable copy of Boulder.
+ - `latest` is a more recent build of Boulder. It may lag behind the `master` ref, as automated builds are being reworked.
+ - Tags for individual short-format git refs, representing those builds.
+
 
 A quick-start method for running a Boulder instance is to use one of the example configurations:
 
 ```
 > mkdir .boulder-config
-> cp test/example-config.json .boulder-config/config.json
+> cp test/boulder-config.json .boulder-config/config.json
 > docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro -p 4000:4000 quay.io/letsencrypt/boulder:latest boulder
 ```
 
 To run a single module, specifying the AMQP server, you might use something more like:
 
 ```
-> docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:latest boulder-ra
+> docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:stable boulder-ra
 ```
-
-The submodules are under the `cmd/` directory.
 
 
 Quickstart
 ----------
 
+Install RabbitMQ from https://rabbitmq.com/download.html. It's required to run
+tests.
+
+Install libtool-ltdl dev libraries, which are required for Boulder's PKCS11
+support.
+
+Ubuntu:
+`sudo apt-get install libltdl3-dev`
+
+CentOS:
+`sudo yum install libtool-ltdl-devel`
+
+OS X:
+`sudo port install libtool`
+
 ```
 > go get github.com/letsencrypt/boulder # Ignore errors about no buildable files
 > cd $GOPATH/src/github.com/letsencrypt/boulder
-# This starts both Boulder and cfssl with test configs. Ctrl-C kills both.
-> ./start.sh
+# This starts each Boulder component with test configs. Ctrl-C kills all.
+> python ./start.py
 > cd test/js
 > npm install
 > nodejs test.js
+> ./test.sh
 ```
 
 You can also check out the official client from
@@ -78,38 +97,41 @@ In Boulder, these components are represented by Go interfaces.  This allows us t
 
 Internally, the logic of the system is based around two types of objects, authorizations and certificates, mapping directly to the resources of the same name in ACME.
 
-Requests from ACME clients result in new objects and changes objects.  The Storage Authority maintains persistent copies of the current set of objects.
+Requests from ACME clients result in new objects and changes to objects.  The Storage Authority maintains persistent copies of the current set of objects.
 
 Objects are also passed from one component to another on change events.  For example, when a client provides a successful response to a validation challenge, it results in a change to the corresponding validation object.  The Validation Authority forward the new validation object to the Storage Authority for storage, and to the Registration Authority for any updates to a related Authorization object.
 
 Boulder supports distributed operation using AMQP as a message bus (e.g., via RabbitMQ).  For components that you want to be remote, it is necessary to instantiate a "client" and "server" for that component.  The client implements the component's Go interface, while the server has the actual logic for the component.  More details in `amqp-rpc.go`.
 
-Files
------
+The full details of how the various ACME operations happen in Boulder are laid out in [DESIGN.md](https://github.com/letsencrypt/boulder/blob/master/DESIGN.md)
 
-* `interfaces.go` - Interfaces to the components, implemented in:
-  * `web-front-end.go`
-  * `registration-authority.go`
-  * `validation-authority.go`
-  * `certificate-authority.go`
-  * `storage-authority.go`
-* `amqp-rpc.go` - A lightweight RPC framework overlaid on AMQP
-  * `rpc-wrappers.go` - RPC wrappers for the various component type
-* `objects.go` - Objects that are passed between components
-* `util.go` - Miscellaneous utility methods
-* `boulder_test.go` - Unit tests
 
-Dependencies:
+Dependencies
+------------
 
 All dependencies are vendorized under the Godeps directory,
 both to [make dependency management
 easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8)
 and to [avoid insecure fallback in go
-get](https://github.com/golang/go/issues/9637). To update dependencies:
+get](https://github.com/golang/go/issues/9637).
+
+We need to use the build tag 'pkcs11' to really pull in all our dependencies.
+To do this, you'll need to pull and install this godep branch, which supports
+build tags: https://github.com/tools/godep/pull/117/files. NOTE: If you skip
+this step, godep will delete some of the vendorized depdendencies.
+
+To update dependencies:
 
 ```
 # Disable insecure fallback by blocking port 80.
 sudo /sbin/iptables -A OUTPUT -p tcp --dport 80 -j DROP
+# Fetch godep
+go get https://github.com/tools/godep.git
+# Pull in the tags branch and install
+cd $GOPATH/src/github.com/tools/godep
+git pull https://github.com/jnfeinstein/godep.git jnfeinstein
+go install
+
 # Update to the latest version of a dependency. Alternately you can cd to the
 # directory under GOPATH and check out a specific revision.
 go get -u github.com/cloudflare/cfssl/...
@@ -117,80 +139,15 @@ go get -u github.com/cloudflare/cfssl/...
 godep update github.com/cloudflare/cfssl/...
 # Save the dependencies, rewriting any internal or external dependencies that
 # may have been added.
-godep save -r ./...
+godep save -r -tags pkcs11 ./...
 git add Godeps
 git commit
 # Assuming you had no other iptables rules, re-enable port 80.
 sudo iptables -D OUTPUT 1
 ```
 
-ACME Processing
----------------
-
-```
-Client -> WebFE:  challengeRequest
-WebFE -> RA:      NewAuthorization(AuthorizationRequest)
-RA -> RA:         [ select challenges ]
-RA -> RA:         [ create Validations with challenges ]
-RA -> RA:         [ create Authorization with Validations ]
-RA -> SA:         Update(Authorization.ID, Authorization)
-RA -> WebFE:      Authorization
-WebFE -> WebFE:   [ create challenge from Authorization ]
-WebFE -> WebFE:   [ generate nonce and add ]
-WebFE -> Client:  challenge
-
-----------
-
-Client -> WebFE:  authorizationRequest
-WebFE -> WebFE:   [ look up authorization based on nonce ]
-WebFE -> WebFE:   [ verify authorization signature ]
-WebFE -> RA:      UpdateAuthorization(Authorization)
-RA -> RA:         [ add responses to authorization ]
-RA -> SA:         Update(Authorization.ID, Authorization)
-RA -> VA:         UpdateValidations(Authorization)
-WebFE -> Client:  defer(authorizationID)
-
-VA -> SA:         Update(Authorization.ID, Authorization)
-VA -> RA:         OnValidationUpdate(Authorization)
-RA -> RA:         [ check that validation sufficient ]
-RA -> RA:         [ finalize authorization ]
-RA -> SA:         Update(Authorization.ID, Authorization)
-RA -> WebFE:      OnAuthorizationUpdate(Authorization)
-Client -> WebFE:  statusRequest
-WebFE -> Client:  error / authorization
-
-----------
-
-Client -> WebFE:  certificateRequest
-WebFE -> WebFE:   [ verify authorization signature ]
-WebFE -> RA:      NewCertificate(CertificateRequest)
-RA -> RA:         [ verify CSR signature ]
-RA -> RA:         [ verify authorization to issue ]
-RA -> RA:         [ select CA based on issuer ]
-RA -> CA:         IssueCertificate(CertificateRequest)
-CA -> RA:         Certificate
-RA -> CA:         [ look up ancillary data ]
-RA -> WebFE:      AcmeCertificate
-WebFE -> Client:  certificate
-
-----------
-
-Client -> WebFE:  revocationRequest
-WebFE -> WebFE:   [ verify authorization signature ]
-WebFE -> RA:      RevokeCertificate(RevocationRequest)
-RA -> RA:         [ verify authorization ]
-RA -> CA:         RevokeCertificate(Certificate)
-CA -> RA:         RevocationResult
-RA -> WebFE:      RevocationResult
-WebFE -> Client:  revocation
-```
-
 
 TODO
 ----
 
-* Ensure that distributed mode works with multiple processes
-* Add message signing and verification to the AMQP message layer
-* Add monitoring / syslog
-* Factor out policy layer (e.g., selection of challenges)
-* Add persistent storage
+See [the issues list](https://github.com/letsencrypt/boulder/issues)
