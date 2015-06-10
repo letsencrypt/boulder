@@ -6,6 +6,7 @@
 package rpc
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -116,7 +117,7 @@ type AmqpRPCServer struct {
 	serverQueue   string
 	channel       *amqp.Channel
 	log           *blog.AuditLogger
-	dispatchTable map[string]func([]byte) []byte
+	dispatchTable map[string]func([]byte) ([]byte, error)
 }
 
 // Create a new AMQP-RPC server on the given queue and channel.
@@ -128,12 +129,78 @@ func NewAmqpRPCServer(serverQueue string, channel *amqp.Channel) *AmqpRPCServer 
 		serverQueue:   serverQueue,
 		channel:       channel,
 		log:           log,
-		dispatchTable: make(map[string]func([]byte) []byte),
+		dispatchTable: make(map[string]func([]byte) ([]byte, error)),
 	}
 }
 
-func (rpc *AmqpRPCServer) Handle(method string, handler func([]byte) []byte) {
+func (rpc *AmqpRPCServer) Handle(method string, handler func([]byte) ([]byte, error)) {
 	rpc.dispatchTable[method] = handler
+}
+
+// A JSON wrapper for error as it cannot be un/marshalled
+// due to type interface{}.
+type RPCError struct {
+	Value string `json:"value"`
+	Type  string `json:"type,omitempty"`
+}
+
+// Wraps a error in a RPCError so it can be marshalled to
+// JSON.
+func wrapError(err error) (rpcError RPCError) {
+	if err != nil {
+		rpcError.Value = err.Error()
+		switch err.(type) {
+		case core.InternalServerError:
+			rpcError.Type = "InternalServerError"
+		case core.NotSupportedError:
+			rpcError.Type = "NotSupportedError"
+		case core.MalformedRequestError:
+			rpcError.Type = "MalformedRequestError"
+		case core.UnauthorizedError:
+			rpcError.Type = "UnauthorizedError"
+		case core.NotFoundError:
+			rpcError.Type = "NotFoundError"
+		case core.SyntaxError:
+			rpcError.Type = "SyntaxError"
+		case core.SignatureValidationError:
+			rpcError.Type = "SignatureValidationError"
+		case core.CertificateIssuanceError:
+			rpcError.Type = "CertificateIssuanceError"
+		}
+	}
+	return
+}
+
+// Unwraps a RPCError and returns the correct error type.
+func unwrapError(rpcError RPCError) (err error) {
+	if rpcError.Value != "" {
+		switch rpcError.Type {
+		case "InternalServerError":
+			err = core.InternalServerError(rpcError.Value)
+		case "NotSupportedError":
+			err = core.NotSupportedError(rpcError.Value)
+		case "MalformedRequestError":
+			err = core.MalformedRequestError(rpcError.Value)
+		case "UnauthorizedError":
+			err = core.UnauthorizedError(rpcError.Value)
+		case "NotFoundError":
+			err = core.NotFoundError(rpcError.Value)
+		case "SyntaxError":
+			err = core.SyntaxError(rpcError.Value)
+		case "SignatureValidationError":
+			err = core.SignatureValidationError(rpcError.Value)
+		case "CertificateIssuanceError":
+			err = core.CertificateIssuanceError(rpcError.Value)
+		default:
+			err = errors.New(rpcError.Value)
+		}
+	}
+	return
+}
+
+type RPCResponse struct {
+	ReturnVal []byte   `json:"returnVal,omitempty"`
+	Error     RPCError `json:"error,omitempty"`
 }
 
 // Starts the AMQP-RPC server running in a separate thread.
@@ -154,8 +221,16 @@ func (rpc *AmqpRPCServer) Start() (err error) {
 				rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
 				continue
 			}
-			response := cb(msg.Body)
-			rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(response), msg.CorrelationId))
+			var response RPCResponse
+			response.ReturnVal, err = cb(msg.Body)
+			response.Error = wrapError(err)
+			jsonResponse, err := json.Marshal(response)
+			if err != nil {
+				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+				rpc.log.Audit(fmt.Sprintf(" [s>][%s][%s] Error condition marshalling RPC response %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
+				continue
+			}
+			rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(jsonResponse), msg.CorrelationId))
 			rpc.channel.Publish(
 				AmqpExchange,
 				msg.ReplyTo,
@@ -164,7 +239,7 @@ func (rpc *AmqpRPCServer) Start() (err error) {
 				amqp.Publishing{
 					CorrelationId: msg.CorrelationId,
 					Type:          msg.Type,
-					Body:          response, // XXX-JWS: jws.Sign(privKey, body)
+					Body:          jsonResponse, // XXX-JWS: jws.Sign(privKey, body)
 				})
 		}
 	}()
@@ -272,7 +347,17 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 
 func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []byte, err error) {
 	select {
-	case response = <-rpc.Dispatch(method, body):
+	case jsonResponse := <-rpc.Dispatch(method, body):
+		var rpcResponse RPCResponse
+		err = json.Unmarshal(jsonResponse, &rpcResponse)
+		if err != nil {
+			return
+		}
+		err = unwrapError(rpcResponse.Error)
+		if err != nil {
+			return
+		}
+		response = rpcResponse.ReturnVal
 		return
 	case <-time.After(rpc.timeout):
 		rpc.log.Warning(fmt.Sprintf(" [c!][%s] AMQP-RPC timeout [%s]", rpc.clientQueue, method))
