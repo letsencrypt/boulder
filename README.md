@@ -53,7 +53,7 @@ CentOS:
 `sudo yum install libtool-ltdl-devel`
 
 OS X:
-`sudo port install libtool`
+`sudo port install libtool` or `brew install libtool`
 
 ```
 > go get github.com/letsencrypt/boulder # Ignore errors about no buildable files
