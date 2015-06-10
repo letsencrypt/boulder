@@ -227,7 +227,7 @@ func (rpc *AmqpRPCServer) Start() (err error) {
 			jsonResponse, err := json.Marshal(response)
 			if err != nil {
 				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-				rpc.log.Audit(fmt.Sprintf(" [s>][%s][%s] Error condition marshalling RPC response %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, "", msg.CorrelationId))
+				rpc.log.Audit(fmt.Sprintf(" [s>][%s][%s] Error condition marshalling RPC response %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
 				continue
 			}
 			rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(jsonResponse), msg.CorrelationId))

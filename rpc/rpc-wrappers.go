@@ -253,7 +253,7 @@ func (rac RegistrationAuthorityClient) NewRegistration(reg core.Registration) (n
 	}
 
 	newRegData, err := rac.rpc.DispatchSync(MethodNewRegistration, data)
-	if err != nil || len(newRegData) == 0 {
+	if err != nil {
 		return
 	}
 
@@ -268,7 +268,7 @@ func (rac RegistrationAuthorityClient) NewAuthorization(authz core.Authorization
 	}
 
 	newAuthzData, err := rac.rpc.DispatchSync(MethodNewAuthorization, data)
-	if err != nil || len(newAuthzData) == 0 {
+	if err != nil {
 		return
 	}
 
@@ -284,10 +284,6 @@ func (rac RegistrationAuthorityClient) NewCertificate(cr core.CertificateRequest
 
 	certData, err := rac.rpc.DispatchSync(MethodNewCertificate, data)
 	if err != nil {
-		return
-	}
-	if len(certData) == 0 {
-		err = errors.New("NewCertificate RPC to RA failed.")
 		return
 	}
 
@@ -306,7 +302,7 @@ func (rac RegistrationAuthorityClient) UpdateRegistration(base core.Registration
 	}
 
 	newRegData, err := rac.rpc.DispatchSync(MethodUpdateRegistration, data)
-	if err != nil || len(newRegData) == 0 {
+	if err != nil {
 		return
 	}
 
@@ -330,7 +326,7 @@ func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorizat
 	}
 
 	newAuthzData, err := rac.rpc.DispatchSync(MethodUpdateAuthorization, data)
-	if err != nil || len(newAuthzData) == 0 {
+	if err != nil {
 		return
 	}
 
@@ -419,19 +415,19 @@ func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodIssueCertificate, err, req)
-			return // XXX
+			return
 		}
 
 		cert, err := impl.IssueCertificate(*csr, icReq.RegID, icReq.EarliestExpiry)
 		if err != nil {
-			return // XXX
+			return
 		}
 
 		response, err = json.Marshal(cert)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetRegistration, err, req)
-			return // XXX
+			return
 		}
 
 		return
@@ -499,10 +495,6 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	if err != nil {
 		return
 	}
-	if len(jsonResponse) == 0 {
-		err = errors.New("IssueCertificate RPC to CA failed.")
-		return
-	}
 
 	err = json.Unmarshal(jsonResponse, &cert)
 	return
@@ -536,8 +528,12 @@ func (cac CertificateAuthorityClient) GenerateOCSP(signRequest core.OCSPSigningR
 	}
 
 	resp, err = cac.rpc.DispatchSync(MethodGenerateOCSP, data)
-	if err == nil && (resp == nil || len(resp) < 1) {
+	if err != nil {
+		return
+	}
+	if len(resp) < 1 {
 		err = fmt.Errorf("Failure at Signer")
+		return
 	}
 	return
 }
@@ -882,7 +878,6 @@ func (cac StorageAuthorityClient) UpdateRegistration(reg core.Registration) (err
 		return
 	}
 
-	// XXX: Is this catching all the errors?
 	_, err = cac.rpc.DispatchSync(MethodUpdateRegistration, jsonReg)
 	return
 }
@@ -894,8 +889,7 @@ func (cac StorageAuthorityClient) NewRegistration(reg core.Registration) (output
 		return
 	}
 	response, err := cac.rpc.DispatchSync(MethodNewRegistration, jsonReg)
-	if err != nil || len(response) == 0 {
-		err = errors.New("NewRegistration RPC failed") // XXX
+	if err != nil {
 		return
 	}
 	err = json.Unmarshal(response, &output)
@@ -912,8 +906,7 @@ func (cac StorageAuthorityClient) NewPendingAuthorization(authz core.Authorizati
 		return
 	}
 	response, err := cac.rpc.DispatchSync(MethodNewPendingAuthorization, jsonAuthz)
-	if err != nil || len(response) == 0 {
-		err = errors.New("NewPendingAuthorization RPC failed") // XXX
+	if err != nil {
 		return
 	}
 	err = json.Unmarshal(response, &output)
@@ -930,7 +923,6 @@ func (cac StorageAuthorityClient) UpdatePendingAuthorization(authz core.Authoriz
 		return
 	}
 
-	// XXX: Is this catching all the errors?
 	_, err = cac.rpc.DispatchSync(MethodUpdatePendingAuthorization, jsonAuthz)
 	return
 }
@@ -941,7 +933,6 @@ func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization
 		return
 	}
 
-	// XXX: Is this catching all the errors?
 	_, err = cac.rpc.DispatchSync(MethodFinalizeAuthorization, jsonAuthz)
 	return
 }
@@ -959,8 +950,7 @@ func (cac StorageAuthorityClient) AddCertificate(cert []byte, regID int64) (id s
 	}
 
 	response, err := cac.rpc.DispatchSync(MethodAddCertificate, data)
-	if err != nil || len(response) == 0 {
-		err = errors.New("AddCertificate RPC failed") // XXX
+	if err != nil {
 		return
 	}
 	id = string(response)
@@ -979,8 +969,7 @@ func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool,
 	}
 
 	response, err := cac.rpc.DispatchSync(MethodAlreadyDeniedCSR, data)
-	if err != nil || len(response) == 0 {
-		err = errors.New("AlreadyDeniedCSR RPC failed") // XXX
+	if err != nil {
 		return
 	}
 
