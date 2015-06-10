@@ -172,7 +172,6 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 			if checkR.Rcode != dns.RcodeServerFailure {
 				return nil, fmt.Errorf("DNSSEC validation failure")
 			}
-			fmt.Printf("%+v\n", r)
 		}
 		return nil, fmt.Errorf("Invalid response code: %d-%s", r.Rcode, dns.RcodeToString[r.Rcode])
 	}
