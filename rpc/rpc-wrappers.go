@@ -123,6 +123,11 @@ type alreadyDeniedCSRReq struct {
 	Names []string
 }
 
+type updateOCSPRequest struct {
+	Serial       string
+	OCSPResponse []byte
+}
+
 // Response structs
 type caaResponse struct {
 	Present bool
@@ -815,10 +820,7 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 	})
 
 	rpc.Handle(MethodUpdateOCSP, func(req []byte) (response []byte, err error) {
-		var updateOCSPReq struct {
-			Serial       string
-			OCSPResponse []byte
-		}
+		var updateOCSPReq updateOCSPRequest
 
 		if err = json.Unmarshal(req, &updateOCSPReq); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
@@ -945,10 +947,7 @@ func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResp
 }
 
 func (cac StorageAuthorityClient) UpdateOCSP(serial string, ocspResponse []byte) (err error) {
-	var updateOCSPReq struct {
-		Serial       string
-		OCSPResponse []byte
-	}
+	var updateOCSPReq updateOCSPRequest
 
 	updateOCSPReq.Serial = serial
 	updateOCSPReq.OCSPResponse = ocspResponse
