@@ -59,17 +59,12 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			if !ok {
 				return errors.New("FromDb: Unable to convert *string")
 			}
+			if *s == "" {
+				return errors.New("FromDb: Empty JWK field.")
+			}
 			b := []byte(*s)
 			k := target.(*jose.JsonWebKey)
-			if *s != "" {
-				return k.UnmarshalJSON(b)
-			} else {
-				// HACK: Sometimes we can have an empty string the in the DB where a
-				// key should be. We should fix that (see HACK above). In the meantime,
-				// return the default JsonWebKey in such situations.
-				// https://github.com/letsencrypt/boulder/issues/181
-				return nil
-			}
+			return k.UnmarshalJSON(b)
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *core.AcmeStatus:
