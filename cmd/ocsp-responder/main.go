@@ -78,8 +78,6 @@ func NewSourceFromDatabase(dbMap *gorp.DbMap, caKeyHash []byte) (src *DBSource, 
 	return
 }
 
-const responseQuery = "SELECT resposne FROM ocsp_responses WHERE serialNumber"
-
 func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool) {
 	log := blog.GetAuditLogger()
 
