@@ -198,6 +198,10 @@ func (sa *MockSA) MarkCertificateRevoked(serial string, ocspResponse []byte, rea
 	return
 }
 
+func (sa *MockSA) UpdateOCSP(serial string, ocspResponse []byte) (err error) {
+	return
+}
+
 func (sa *MockSA) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
 	return
 }

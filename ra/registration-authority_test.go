@@ -18,6 +18,7 @@ import (
 	"time"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
@@ -170,10 +171,12 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 		},
 	}
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
+	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
 	pa := policy.NewPolicyAuthorityImpl()
 	cadb, _ := test.NewMockCertificateAuthorityDatabase()
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
+		OCSPSigner:     ocspSigner,
 		SA:             sa,
 		PA:             pa,
 		DB:             cadb,
