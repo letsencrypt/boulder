@@ -6,6 +6,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
@@ -33,6 +35,10 @@ func main() {
 		go cmd.ProfileCmd("VA", stats)
 
 		vai := va.NewValidationAuthorityImpl(c.CA.TestMode)
+		vai.DNSResolver = c.VA.DNSResolver
+		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
+		cmd.FailOnError(err, "Couldn't parse DNS timeout")
+		vai.DNSTimeout = dnsTimeout
 
 		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)

@@ -80,6 +80,10 @@ func main() {
 		ra := ra.NewRegistrationAuthorityImpl()
 
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
+		va.DNSResolver = c.VA.DNSResolver
+		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
+		cmd.FailOnError(err, "Couldn't parse DNS timeout")
+		va.DNSTimeout = dnsTimeout
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")

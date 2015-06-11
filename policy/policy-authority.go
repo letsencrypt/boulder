@@ -29,7 +29,7 @@ func NewPolicyAuthorityImpl() *PolicyAuthorityImpl {
 	pa := PolicyAuthorityImpl{log: logger}
 
 	// TODO: Add configurability
-	pa.PublicSuffixList = publicSuffixList
+	pa.PublicSuffixList = PublicSuffixList
 	pa.Blacklist = blacklist
 
 	return &pa

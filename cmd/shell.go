@@ -71,6 +71,11 @@ type Config struct {
 		DBName   string
 	}
 
+	VA struct {
+		DNSResolver string
+		DNSTimeout  string
+	}
+
 	SQL struct {
 		CreateTables bool
 		SQLDebug     bool
