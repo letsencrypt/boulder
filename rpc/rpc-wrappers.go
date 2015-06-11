@@ -51,6 +51,7 @@ const (
 	MethodGetCertificateByShortSerial = "GetCertificateByShortSerial" // SA
 	MethodGetCertificateStatus        = "GetCertificateStatus"        // SA
 	MethodMarkCertificateRevoked      = "MarkCertificateRevoked"      // SA
+	MethodUpdateOCSP                  = "UpdateOCSP"                  // SA
 	MethodNewPendingAuthorization     = "NewPendingAuthorization"     // SA
 	MethodUpdatePendingAuthorization  = "UpdatePendingAuthorization"  // SA
 	MethodFinalizeAuthorization       = "FinalizeAuthorization"       // SA
@@ -813,6 +814,22 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		return
 	})
 
+	rpc.Handle(MethodUpdateOCSP, func(req []byte) (response []byte, err error) {
+		var updateOCSPReq struct {
+			Serial       string
+			OCSPResponse []byte
+		}
+
+		if err = json.Unmarshal(req, &updateOCSPReq); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodUpdateOCSP, err, req)
+			return
+		}
+
+		err = impl.UpdateOCSP(updateOCSPReq.Serial, updateOCSPReq.OCSPResponse)
+		return
+	})
+
 	rpc.Handle(MethodAlreadyDeniedCSR, func(req []byte) (response []byte, err error) {
 		var adcReq alreadyDeniedCSRReq
 
@@ -924,6 +941,24 @@ func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResp
 	}
 
 	_, err = cac.rpc.DispatchSync(MethodMarkCertificateRevoked, data)
+	return
+}
+
+func (cac StorageAuthorityClient) UpdateOCSP(serial string, ocspResponse []byte) (err error) {
+	var updateOCSPReq struct {
+		Serial       string
+		OCSPResponse []byte
+	}
+
+	updateOCSPReq.Serial = serial
+	updateOCSPReq.OCSPResponse = ocspResponse
+
+	data, err := json.Marshal(updateOCSPReq)
+	if err != nil {
+		return
+	}
+
+	_, err = cac.rpc.DispatchSync(MethodUpdateOCSP, data)
 	return
 }
 
