@@ -333,6 +333,41 @@ func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (core.Reg
 	return reg, err
 }
 
+// UpdateOCSP stores an updated OCSP response.
+func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (err error) {
+	status, err := ssa.GetCertificateStatus(serial)
+	if err != nil {
+		return errors.New(fmt.Sprintf(
+			"Unable to update OCSP for certificate %s: cert status not found.", serial))
+	}
+
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return
+	}
+
+	timeStamp := time.Now()
+
+	// Record the response.
+	ocspResp := &core.OCSPResponse{Serial: serial, CreatedAt: timeStamp, Response: ocspResponse}
+	err = tx.Insert(ocspResp)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Reset the update clock
+	status.OCSPLastUpdated = timeStamp
+	_, err = tx.Update(status)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	err = tx.Commit()
+	return
+}
+
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
 // with a timestamp and a reason.
 func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
