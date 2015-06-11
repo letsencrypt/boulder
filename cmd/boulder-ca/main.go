@@ -39,8 +39,8 @@ func main() {
 		}
 
 		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert)
-		cai.MaxKeySize = c.Common.MaxKeySize
 		cmd.FailOnError(err, "Failed to create CA impl")
+		cai.MaxKeySize = c.Common.MaxKeySize
 
 		go cmd.ProfileCmd("CA", stats)
 
