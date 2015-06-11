@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+
+	"github.com/letsencrypt/boulder/policy"
 )
 
 // CAA Holds decoded CAA record.
@@ -57,7 +59,7 @@ func newCAA(encodedRDATA []byte) *CAA {
 	return &CAA{flag: flag, tag: tag, valueBuf: valueBuf, value: value}
 }
 
-// contains returned CAA records filtered by tag.
+// Filtered CAA records
 type CAASet struct {
 	issue     []*CAA
 	issuewild []*CAA
@@ -80,6 +82,7 @@ func (caaSet CAASet) criticalUnknown() bool {
 	return false
 }
 
+// Filter CAA records by property
 func newCAASet(CAAs []*CAA) *CAASet {
 	var issueSet []*CAA
 	var issuewildSet []*CAA
@@ -102,6 +105,7 @@ func newCAASet(CAAs []*CAA) *CAASet {
 	return &CAASet{issue: issueSet, issuewild: issuewildSet, iodef: iodefSet, unknown: unknownSet}
 }
 
+// Looks up CNAME records for domain and returns either the target or ""
 func lookupCNAME(client *dns.Client, server, domain string) (string, error) {
 	m := new(dns.Msg)
 	m.SetQuestion(domain, dns.TypeCNAME)
@@ -126,6 +130,8 @@ func lookupCNAME(client *dns.Client, server, domain string) (string, error) {
 				return "", fmt.Errorf("DNSSEC validation failure")
 			}
 		}
+
+		// Return response code of original message
 		return "", fmt.Errorf("Invalid response code: %d-%s", r.Rcode, dns.RcodeToString[r.Rcode])
 	}
 
@@ -140,6 +146,7 @@ func lookupCNAME(client *dns.Client, server, domain string) (string, error) {
 
 func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CAA, error) {
 	if alias {
+		// Check if there is a CNAME record for domain
 		canonName, err := lookupCNAME(client, server, dns.Fqdn(domain))
 		if err != nil {
 			return nil, err
@@ -181,17 +188,22 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 		if answer.Header().Rrtype == dns.TypeCAA {
 			recordFields := strings.Fields(answer.String())
 			if len(recordFields) < 7 {
-				err = errors.New("Badly formatted CAA record")
+				// Malformed record
+				err = errors.New("DNS response contains badly formatted CAA record")
 				return nil, err
 			}
+
 			caaLen, err := strconv.Atoi(recordFields[5])
 			if err != nil {
 				return nil, err
 			}
+
+			// Decode hex encoded RDATA field
 			caaData, err := hex.DecodeString(strings.Join(recordFields[6:], ""))
 			if err != nil {
 				return nil, err
 			}
+
 			if caaLen != len(caaData) {
 				// Malformed record
 				err = errors.New("RDATA length field doesn't match RDATA length")
@@ -212,19 +224,26 @@ func getCaaSet(domain string, server string, timeout time.Duration) (*CAASet, er
 	domain = strings.TrimRight(domain, ".")
 	splitDomain := strings.Split(domain, ".")
 	// RFC 6844 CAA set query sequence, 'x.y.z.com' => ['x.y.z.com', 'y.z.com', 'z.com']
-	for i := range splitDomain[0 : len(splitDomain)-1] {
+	for i := range splitDomain {
 		queryDomain := strings.Join(splitDomain[i:], ".")
+		// Don't query a public suffix
+		if _, present := policy.PublicSuffixList[queryDomain]; present {
+			break
+		}
+
+		// Query CAA records for domain and its alias if it has a CNAME
 		for _, alias := range []bool{false, true} {
 			CAAs, err := getCaa(dnsClient, server, queryDomain, alias)
 			if err != nil {
 				return nil, err
 			}
+
 			if len(CAAs) > 0 {
 				return newCAASet(CAAs), nil
 			}
 		}
 	}
 
-	// no CAA records found, good times
+	// no CAA records found
 	return nil, nil
 }

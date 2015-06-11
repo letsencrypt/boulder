@@ -7,7 +7,7 @@ package policy
 
 // wget https://publicsuffix.org/list/effective_tld_names.dat
 // cat effective_tld_names.dat | grep "^[a-zA-Z0-9.*]\+$" | sed -e 's/^\*\.//; s/^\(.*\)$/  "\1": true,/' | sort | pbcopy
-var publicSuffixList = map[string]bool{
+var PublicSuffixList = map[string]bool{
 	"0.bg":                 true,
 	"1.bg":                 true,
 	"1kapp.com":            true,

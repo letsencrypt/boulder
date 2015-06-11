@@ -388,6 +388,7 @@ func TestCAAChecking(t *testing.T) {
 		// Reserved
 		CAATest{"google.com", true, false},
 		CAATest{"mail.google.com", true, false},
+		CAATest{"*.google.com", true, false},
 		CAATest{"comodo.com", true, false},
 		CAATest{"0day.net", true, false},
 		CAATest{"darktangent.org", true, false},
@@ -400,6 +401,7 @@ func TestCAAChecking(t *testing.T) {
 		CAATest{"mail2.bevenhall.se", true, false},
 		// Good (absent)
 		CAATest{"linux.org", false, true},
+		CAATest{"*.linux.org", false, true},
 		CAATest{"pir.org", false, true},
 		CAATest{"non-existent-domain-really.com", false, true},
 		// Good (present, none of my DNS providers support CAA currently)
