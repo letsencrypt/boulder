@@ -57,7 +57,7 @@ def run_test():
         print("\nIssuing failed")
         die()
     if subprocess.Popen('''
-        node revoke.js %s/cert.der %s/key.pem http://localhost:4300/acme/revoke-cert/
+        node revoke.js %s/cert.der %s/key.pem http://localhost:4300/acme/revoke-cert
         ''' % (tempdir, tempdir), shell=True).wait() != 0:
         print("\nRevoking failed")
         die()

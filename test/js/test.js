@@ -160,14 +160,19 @@ function getNonce(url, callback) {
   var req = request.head({
     url: url,
   }, function(error, response, body) {
-    if ("replay-nonce" in response.headers) {
+    if (error) {
+      console.log(error);
+      process.exit(1);
+    }
+    if (response && "replay-nonce" in response.headers) {
       console.log("Storing nonce: " + response.headers["replay-nonce"]);
       state.nonces.push(response.headers["replay-nonce"]);
       callback();
       return;
     }
 
-    console.log("Failed to get nonce for request")
+    console.log("Failed to get nonce for request");
+    process.exit(1);
   });
 }
 
