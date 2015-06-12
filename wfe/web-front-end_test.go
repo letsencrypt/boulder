@@ -298,7 +298,7 @@ func setupWFE() WebFrontEndImpl {
 	return wfe
 }
 
-func TestMethodNotAllowed(t *testing.T) {
+func TestStandardHeaders(t *testing.T) {
 	wfe := setupWFE()
 
 	cases := []struct {
@@ -323,9 +323,11 @@ func TestMethodNotAllowed(t *testing.T) {
 			Method: "BOGUS",
 			URL:    url,
 		})
+		acao := responseWriter.Header().Get("Access-Control-Allow-Origin")
 		nonce := responseWriter.Header().Get("Replay-Nonce")
 		allow := responseWriter.Header().Get("Allow")
 		test.Assert(t, responseWriter.Code == http.StatusMethodNotAllowed, "Bogus method allowed")
+		test.Assert(t, acao == "*", "Bad CORS header")
 		test.Assert(t, len(nonce) > 0, "Bad Replay-Nonce header")
 		test.Assert(t, len(allow) > 0 && allow == strings.Join(c.allowed, ", "), "Bad Allow header")
 	}

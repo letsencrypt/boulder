@@ -113,7 +113,7 @@ func (wfe *WebFrontEndImpl) HandlePaths() {
 // Method implementations
 
 func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	// http://golang.org/pkg/net/http/#example_ServeMux_Handle
 	// The "/" pattern matches everything, so we need to check
@@ -167,8 +167,9 @@ func sendAllow(response http.ResponseWriter, methods ...string) {
 	response.Header().Set("Allow", strings.Join(methods, ", "))
 }
 
-func (wfe *WebFrontEndImpl) sendNonce(response http.ResponseWriter) {
+func (wfe *WebFrontEndImpl) sendStandardHeaders(response http.ResponseWriter) {
 	response.Header().Set("Replay-Nonce", wfe.nonceService.Nonce())
+	response.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
 func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, *jose.JsonWebKey, core.Registration, error) {
@@ -278,7 +279,7 @@ func link(url, relation string) string {
 }
 
 func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "POST" {
 		sendAllow(response, "POST")
@@ -340,7 +341,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 }
 
 func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "POST" {
 		sendAllow(response, "POST")
@@ -400,7 +401,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 }
 
 func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "POST" {
 		sendAllow(response, "POST")
@@ -478,7 +479,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 }
 
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "POST" {
 		sendAllow(response, "POST")
@@ -552,7 +553,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 }
 
 func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
 		sendAllow(response, "GET", "POST")
@@ -663,7 +664,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 }
 
 func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "POST" {
 		sendAllow(response, "POST")
@@ -737,7 +738,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 }
 
 func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
 		sendAllow(response, "GET", "POST")
@@ -789,7 +790,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
 		sendAllow(response, "GET", "POST")
@@ -839,7 +840,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 }
 
 func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" {
 		sendAllow(response, "GET")
@@ -851,7 +852,7 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 }
 
 func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" {
 		sendAllow(response, "GET")
@@ -869,7 +870,7 @@ func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.R
 
 // BuildID tells the requestor what build we're running.
 func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.Request) {
-	wfe.sendNonce(response)
+	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" {
 		sendAllow(response, "GET")
