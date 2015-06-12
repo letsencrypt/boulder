@@ -411,13 +411,13 @@ function getReadyToValidate(err, resp, body) {
 
   var authz = JSON.parse(body);
 
-  var simpleHttps = authz.challenges.filter(function(x) { return x.type == "simpleHttps"; });
-  if (simpleHttps.length == 0) {
+  var simpleHttp = authz.challenges.filter(function(x) { return x.type == "simpleHttp"; });
+  if (simpleHttp.length == 0) {
     console.log("The server didn't offer any challenges we can handle.");
     process.exit(1);
   }
 
-  var challenge = simpleHttps[0];
+  var challenge = simpleHttp[0];
   var path = crypto.randomString(8) + ".txt";
   var challengePath = ".well-known/acme-challenge/" + path;
   state.responseURL = challenge["uri"];

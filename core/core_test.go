@@ -18,12 +18,12 @@ import (
 // challenges.go
 
 func TestChallenges(t *testing.T) {
-	simpleHTTPS := SimpleHTTPSChallenge()
-	if simpleHTTPS.Status != StatusPending {
-		t.Errorf("Incorrect status for challenge: %v", simpleHTTPS.Status)
+	simpleHTTP := SimpleHTTPChallenge()
+	if simpleHTTP.Status != StatusPending {
+		t.Errorf("Incorrect status for challenge: %v", simpleHTTP.Status)
 	}
-	if len(simpleHTTPS.Token) != 43 {
-		t.Errorf("Incorrect length for simpleHTTPS token: %v", simpleHTTPS.Token)
+	if len(simpleHTTP.Token) != 43 {
+		t.Errorf("Incorrect length for simpleHTTP token: %v", simpleHTTP.Token)
 	}
 
 	dvsni := DvsniChallenge()

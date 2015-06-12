@@ -38,7 +38,7 @@ const (
 )
 
 const (
-	ChallengeTypeSimpleHTTPS   = "simpleHttps"
+	ChallengeTypeSimpleHTTP    = "simpleHttp"
 	ChallengeTypeDVSNI         = "dvsni"
 	ChallengeTypeDNS           = "dns"
 	ChallengeTypeRecoveryToken = "recoveryToken"
@@ -177,10 +177,10 @@ type Challenge struct {
 	// A URI to which a response can be POSTed
 	URI AcmeURL `json:"uri"`
 
-	// Used by simpleHTTPS, recoveryToken, and dns challenges
+	// Used by simpleHTTP, recoveryToken, and dns challenges
 	Token string `json:"token,omitempty"`
 
-	// Used by simpleHTTPS challenges
+	// Used by simpleHTTP challenges
 	Path string `json:"path,omitempty"`
 	TLS  *bool  `json:"tls,omitempty"`
 
@@ -198,7 +198,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 	}
 
 	switch ch.Type {
-	case ChallengeTypeSimpleHTTPS:
+	case ChallengeTypeSimpleHTTP:
 		// check extra fields aren't used
 		if ch.R != "" || ch.S != "" || ch.Nonce != "" {
 			return false

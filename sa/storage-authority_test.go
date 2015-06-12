@@ -114,7 +114,7 @@ func TestAddAuthorization(t *testing.T) {
 	uu, err := url.Parse("test.com")
 	u := core.AcmeURL(*uu)
 
-	chall := core.Challenge{Type: "simpleHttps", Status: core.StatusPending, URI: u, Token: "THISWOULDNTBEAGOODTOKEN", Path: "test-me"}
+	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusPending, URI: u, Token: "THISWOULDNTBEAGOODTOKEN", Path: "test-me"}
 
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}
