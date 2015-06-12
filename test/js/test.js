@@ -451,7 +451,8 @@ function getReadyToValidate(err, resp, body) {
 
   cli.spinner("Validating domain");
   post(state.responseURL, {
-    path: state.path
+    path: state.path,
+    tls: false
   }, ensureValidation);
 }
 

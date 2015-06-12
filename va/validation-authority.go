@@ -62,7 +62,12 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		return challenge, err
 	}
 	hostName := identifier.Value
-	protocol := "https"
+	var protocol string
+	if input.TLS {
+		protocol = "https"
+	} else {
+		protocol = "http"
+	}
 	if va.TestMode {
 		hostName = "localhost:5001"
 		protocol = "http"
@@ -71,7 +76,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", protocol, hostName, challenge.Path)
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.Audit(fmt.Sprintf("Attempting to validate SimpleHTTPS for %s", url))
+	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(protocol), url))
 	httpRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		challenge.Status = core.StatusInvalid
@@ -82,7 +87,6 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 	tr := &http.Transport{
 		// We are talking to a client that does not yet have a certificate,
 		// so we accept a temporary, invalid one.
-		// XXX: We may want to change this to just be over HTTP.
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		// We don't expect to make multiple requests to a client, so close
 		// connection immediately.
@@ -105,7 +109,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
 			challenge.Status = core.StatusValid
 		} else {
-			err = fmt.Errorf("Incorrect token validating SimpleHTTPS for %s", url)
+			err = fmt.Errorf("Incorrect token validating Simple%s for %s", strings.ToUpper(protocol), url)
 			challenge.Status = core.StatusInvalid
 		}
 	} else if err != nil {

@@ -51,6 +51,8 @@ func TestSanityCheck(t *testing.T) {
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
 	chall.Path = ""
+	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+	chall.TLS = true
 	test.Assert(t, chall.IsSane(false), "IsSane should be true")
 
 	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
@@ -70,6 +72,7 @@ func TestSanityCheck(t *testing.T) {
 	chall = Challenge{Type: ChallengeTypeDVSNI, Status: StatusPending}
 	chall.Path = "bad"
 	chall.Token = "bad"
+	chall.TLS = true
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall = Challenge{Type: ChallengeTypeDVSNI, Status: StatusPending}
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")

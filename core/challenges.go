@@ -16,6 +16,7 @@ func SimpleHTTPSChallenge() Challenge {
 		Type:   ChallengeTypeSimpleHTTPS,
 		Status: StatusPending,
 		Token:  NewToken(),
+		TLS:    true,
 	}
 }
 
