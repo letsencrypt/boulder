@@ -33,6 +33,7 @@ func TestRegistrationUupdate(t *testing.T) {
 }
 
 func TestSanityCheck(t *testing.T) {
+	tls := true
 	chall := Challenge{Type: ChallengeTypeSimpleHTTPS, Status: StatusValid}
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall.Status = StatusPending
@@ -52,7 +53,7 @@ func TestSanityCheck(t *testing.T) {
 	chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
 	chall.Path = ""
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.TLS = true
+	chall.TLS = &tls
 	test.Assert(t, chall.IsSane(false), "IsSane should be true")
 
 	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
@@ -72,7 +73,7 @@ func TestSanityCheck(t *testing.T) {
 	chall = Challenge{Type: ChallengeTypeDVSNI, Status: StatusPending}
 	chall.Path = "bad"
 	chall.Token = "bad"
-	chall.TLS = true
+	chall.TLS = &tls
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	chall = Challenge{Type: ChallengeTypeDVSNI, Status: StatusPending}
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")

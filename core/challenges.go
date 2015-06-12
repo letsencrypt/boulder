@@ -12,11 +12,12 @@ import (
 )
 
 func SimpleHTTPSChallenge() Challenge {
+	tls := true
 	return Challenge{
 		Type:   ChallengeTypeSimpleHTTPS,
 		Status: StatusPending,
 		Token:  NewToken(),
-		TLS:    true,
+		TLS:    &tls,
 	}
 }
 

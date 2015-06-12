@@ -182,7 +182,7 @@ type Challenge struct {
 
 	// Used by simpleHTTPS challenges
 	Path string `json:"path,omitempty"`
-	TLS  bool   `json:"tls,omitempty"`
+	TLS  *bool  `json:"tls,omitempty"`
 
 	// Used by dvsni challenges
 	R     string `json:"r,omitempty"`
@@ -220,7 +220,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 				return false
 			}
 			// TLS should set set to true by default
-			if !ch.TLS {
+			if ch.TLS == nil || !*ch.TLS {
 				return false
 			}
 		}
@@ -234,7 +234,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 		}
 	case ChallengeTypeDVSNI:
 		// check extra fields aren't used
-		if ch.Path != "" || ch.Token != "" || ch.TLS {
+		if ch.Path != "" || ch.Token != "" || ch.TLS != nil {
 			return false
 		}
 
@@ -284,8 +284,8 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 		ch.S = resp.S
 	}
 
-	if !resp.TLS {
-		ch.TLS = false
+	if resp.TLS != nil {
+		ch.TLS = resp.TLS
 	}
 
 	return ch

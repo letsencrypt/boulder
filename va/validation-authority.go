@@ -63,7 +63,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTPS(identifier core.AcmeIdenti
 	}
 	hostName := identifier.Value
 	var protocol string
-	if input.TLS {
+	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
 		protocol = "https"
 	} else {
 		protocol = "http"

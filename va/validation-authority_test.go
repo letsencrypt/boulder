@@ -167,12 +167,14 @@ func TestSimpleHttps(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
 
-	chall.TLS = false
+	tls := false
+	chall.TLS = &tls
 	finChall, err = va.validateSimpleHTTPS(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
 
-	chall.TLS = true
+	tls = true
+	chall.TLS = &tls
 	chall.Path = path404
 	invalidChall, err = va.validateSimpleHTTPS(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
