@@ -34,7 +34,7 @@ const (
 	AuthzPath      = "/acme/authz/"
 	NewCertPath    = "/acme/new-cert"
 	CertPath       = "/acme/cert/"
-	RevokeCertPath = "/acme/revoke-cert/"
+	RevokeCertPath = "/acme/revoke-cert"
 	TermsPath      = "/terms"
 	IssuerPath     = "/acme/issuer-cert"
 	BuildIDPath    = "/build"

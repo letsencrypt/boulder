@@ -52,7 +52,7 @@ def run_test():
     if issue.wait() != 0:
         die()
     revoke = subprocess.Popen('''
-        node revoke.js %s/cert.der %s/key.pem http://localhost:4300/acme/revoke-cert/
+        node revoke.js %s/cert.der %s/key.pem http://localhost:4300/acme/revoke-cert
         ''' % (tempdir, tempdir), shell=True)
     if revoke.wait() != 0:
         die()

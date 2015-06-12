@@ -30,7 +30,14 @@ function main() {
   });
   console.log('Requesting revocation:', revokeMessage)
 
-  request.head(revokeUrl, function(error, response) {
+  request.head(revokeUrl, function(error, response, body) {
+    if (error) {
+      console.log(error);
+      process.exit(1);
+    } else if (response.statusCode != 200) {
+      console.log("Got non-200 response: ", response.statusCode);
+    }
+    console.log(response.headers);
     var nonce = response.headers["replay-nonce"];
     if (!nonce) {
       console.log("Server HEAD response did not include a replay nonce");

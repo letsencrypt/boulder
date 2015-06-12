@@ -193,8 +193,16 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if certObj == nil {
+		ssa.log.Debug(fmt.Sprintf("Nil cert for %s", serial))
+		return nil, fmt.Errorf("Certificate does not exist for %s", serial)
+	}
 
-	cert := certObj.(*core.Certificate)
+	cert, ok := certObj.(*core.Certificate)
+	if !ok {
+		ssa.log.Debug("Failed to convert cert")
+		return nil, fmt.Errorf("Error converting certificate response for %s", serial)
+	}
 	return cert.DER, err
 }
 
