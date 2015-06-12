@@ -42,6 +42,12 @@ var BuildTime string
 
 // Errors
 
+// InternalServerError indicates that something has gone wrong unrelated to the
+// user's input, and will be considered by the Load Balancer as an indication
+// that this Boulder instance may be malfunctioning. Minimally, returning this
+// will cause an error page to be generated at the CDN/LB for the client.
+// Consequently, you should only use this error when Boulder's internal
+// constraints have been violated.
 type InternalServerError string
 type NotSupportedError string
 type MalformedRequestError string

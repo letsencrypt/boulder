@@ -521,7 +521,7 @@ func TestChallenge(t *testing.T) {
 		RegistrationID: 1,
 	}
 
-	wfe.Challenge(authz, responseWriter, &http.Request{
+	wfe.challenge(authz, responseWriter, &http.Request{
 		Method: "POST",
 		URL:    challengeURL,
 		Body:   makeBody(signRequest(t, "{}", &wfe.nonceService)),

@@ -62,7 +62,7 @@ func validateEmail(address string) (err error) {
 	var mx []*net.MX
 	mx, err = net.LookupMX(domain)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = core.MalformedRequestError(fmt.Sprintf("Supplied email domain %s could not be resolved.", domain))
 		return
 	}
 	if len(mx) == 0 {
@@ -116,7 +116,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	// Store the authorization object, then return it
 	reg, err = ra.SA.NewRegistration(reg)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = core.MalformedRequestError(err.Error())
 	}
 
 	return
@@ -124,7 +124,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
 	if regID <= 0 {
-		err = core.InternalServerError("Invalid registration ID")
+		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", regID))
 		return authz, err
 	}
 
@@ -162,7 +162,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Get a pending Auth first so we can get our ID back, then update with challenges
 	authz, err = ra.SA.NewPendingAuthorization(authz)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = core.MalformedRequestError(fmt.Sprintf("Invalid authorization request: %s", err))
 		return authz, err
 	}
 
@@ -173,6 +173,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		challenges[i].URI = core.AcmeURL(*challengeURI)
 
 		if !challenges[i].IsSane(false) {
+			// InternalServerError because we generated these challenges, they should
+			// be OK.
 			err = core.InternalServerError(fmt.Sprintf("Challenge didn't pass sanity check: %+v", challenges[i]))
 			return authz, err
 		}
@@ -184,6 +186,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Store the authorization object, then return it
 	err = ra.SA.UpdatePendingAuthorization(authz)
 	if err != nil {
+		// InternalServerError because we created the authorization just above,
+		// and adding Sane challenges should not break it.
 		err = core.InternalServerError(err.Error())
 	}
 	return authz, err
@@ -211,7 +215,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}()
 
 	if regID <= 0 {
-		err = core.InternalServerError("Invalid registration ID")
+		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", regID))
 		return emptyCert, err
 	}
 
@@ -312,7 +316,10 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Create the certificate and log the result
 	if cert, err = ra.CA.IssueCertificate(*csr, regID, earliestExpiry); err != nil {
-		err = core.InternalServerError(err.Error())
+		// While this could be InternalServerError for certain conditions, most
+		// of the failure reasons (such as GoodKey failing) are caused by malformed
+		// requests.
+		err = core.MalformedRequestError(err.Error())
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
@@ -325,6 +332,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
+		// InternalServerError because the certificate from the CA should be
+		// parseable.
 		err = core.InternalServerError(err.Error())
 		logEvent.Error = err.Error()
 		return emptyCert, err
@@ -345,7 +354,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 	reg = base
 	err = ra.SA.UpdateRegistration(base)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
+		err = core.MalformedRequestError(fmt.Sprintf("Could not update registration: %s", err))
 	}
 	return
 }
@@ -354,14 +363,16 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	// Copy information over that the client is allowed to supply
 	authz = base
 	if challengeIndex >= len(authz.Challenges) {
-		err = core.MalformedRequestError("Invalid challenge index")
+		err = core.MalformedRequestError(fmt.Sprintf("Invalid challenge index: %d", challengeIndex))
 		return
 	}
 	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
 
 	// Store the updated version
 	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
-		err = core.InternalServerError(err.Error())
+		// This can pretty much only happen when the client corrupts the Challenge
+		// data.
+		err = core.MalformedRequestError(err.Error())
 		return
 	}
 
