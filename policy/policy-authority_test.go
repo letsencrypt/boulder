@@ -134,7 +134,7 @@ func TestChallengesFor(t *testing.T) {
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 
-	if len(challenges) != 2 || challenges[0].Type != core.ChallengeTypeSimpleHTTPS ||
+	if len(challenges) != 2 || challenges[0].Type != core.ChallengeTypeSimpleHTTP ||
 		challenges[1].Type != core.ChallengeTypeDVSNI {
 		t.Error("Incorrect challenges returned")
 	}

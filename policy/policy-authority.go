@@ -140,10 +140,10 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	return nil
 }
 
-// For now, we just issue DVSNI and SimpleHTTPS challenges for everything
+// For now, we just issue DVSNI and SimpleHTTP challenges for everything
 func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
 	challenges = []core.Challenge{
-		core.SimpleHTTPSChallenge(),
+		core.SimpleHTTPChallenge(),
 		core.DvsniChallenge(),
 	}
 	combinations = [][]int{

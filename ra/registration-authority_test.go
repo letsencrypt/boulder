@@ -114,7 +114,7 @@ var (
 		Status:         "pending",
 		Challenges: []core.Challenge{
 			core.Challenge{
-				Type:   "simpleHttps",
+				Type:   "simpleHttp",
 				Status: "pending",
 				URI:    core.AcmeURL(*url0),
 				Token:  "pDX9vBFJ043_gEc9Wyp8of-SqZMN2H3-fvj5iUgP7mg",
@@ -305,7 +305,7 @@ func TestNewAuthorization(t *testing.T) {
 
 	// TODO Verify that challenges are correct
 	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
-	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTPS, "Challenge 0 not SimpleHTTPS")
+	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
 	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
 
 	t.Log("DONE TestNewAuthorization")
@@ -330,8 +330,8 @@ func TestUpdateAuthorization(t *testing.T) {
 
 	// Verify that the responses are reflected
 	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
-	simpleHttps := va.Argument.Challenges[0]
-	test.Assert(t, simpleHttps.Path == Response.Path, "simpleHttps changed")
+	simpleHttp := va.Argument.Challenges[0]
+	test.Assert(t, simpleHttp.Path == Response.Path, "simpleHttp changed")
 
 	t.Log("DONE TestUpdateAuthorization")
 }
@@ -341,7 +341,7 @@ func TestOnValidationUpdate(t *testing.T) {
 	AuthzUpdated, _ = sa.NewPendingAuthorization(AuthzUpdated)
 	sa.UpdatePendingAuthorization(AuthzUpdated)
 
-	// Simulate a successful simpleHTTPS challenge
+	// Simulate a successful simpleHTTP challenge
 	authzFromVA := AuthzUpdated
 	authzFromVA.Challenges[0].Status = core.StatusValid
 

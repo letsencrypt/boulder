@@ -11,11 +11,13 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-func SimpleHTTPSChallenge() Challenge {
+func SimpleHTTPChallenge() Challenge {
+	tls := true
 	return Challenge{
-		Type:   ChallengeTypeSimpleHTTPS,
+		Type:   ChallengeTypeSimpleHTTP,
 		Status: StatusPending,
 		Token:  NewToken(),
+		TLS:    &tls,
 	}
 }
 
