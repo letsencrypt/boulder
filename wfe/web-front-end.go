@@ -113,12 +113,19 @@ func (wfe *WebFrontEndImpl) HandlePaths() {
 // Method implementations
 
 func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Request) {
+	wfe.sendNonce(response)
+
 	// http://golang.org/pkg/net/http/#example_ServeMux_Handle
 	// The "/" pattern matches everything, so we need to check
 	// that we're at the root here.
 	if request.URL.Path != "/" {
 		http.NotFound(response, request)
 		return
+	}
+
+	if request.Method != "GET" {
+		sendAllow(response, "GET")
+		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 	}
 
 	tmpl := template.Must(template.New("body").Parse(`<html>
@@ -154,6 +161,10 @@ const (
 	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
 	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
 )
+
+func sendAllow(response http.ResponseWriter, methods ...string) {
+	response.Header().Set("Allow", strings.Join(methods, ", "))
+}
 
 func (wfe *WebFrontEndImpl) sendNonce(response http.ResponseWriter) {
 	response.Header().Set("Replay-Nonce", wfe.nonceService.Nonce())
@@ -269,6 +280,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	wfe.sendNonce(response)
 
 	if request.Method != "POST" {
+		sendAllow(response, "POST")
 		wfe.sendError(response, "Method not allowed", "", http.StatusMethodNotAllowed)
 		return
 	}
@@ -330,6 +342,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	wfe.sendNonce(response)
 
 	if request.Method != "POST" {
+		sendAllow(response, "POST")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
@@ -389,6 +402,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	wfe.sendNonce(response)
 
 	if request.Method != "POST" {
+		sendAllow(response, "POST")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
@@ -466,6 +480,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	wfe.sendNonce(response)
 
 	if request.Method != "POST" {
+		sendAllow(response, "POST")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
@@ -539,6 +554,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 	wfe.sendNonce(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
+		sendAllow(response, "GET", "POST")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
@@ -562,6 +578,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 
 	switch request.Method {
 	default:
+		sendAllow(response, "GET", "POST")
 		wfe.sendError(response, "Method not allowed", "", http.StatusMethodNotAllowed)
 		return
 
@@ -648,6 +665,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	wfe.sendNonce(response)
 
 	if request.Method != "POST" {
+		sendAllow(response, "POST")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
@@ -721,6 +739,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 	wfe.sendNonce(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
+		sendAllow(response, "GET", "POST")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
@@ -743,6 +762,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 
 	switch request.Method {
 	default:
+		sendAllow(response, "GET", "POST")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 
@@ -771,6 +791,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	wfe.sendNonce(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
+		sendAllow(response, "GET", "POST")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
@@ -778,6 +799,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	path := request.URL.Path
 	switch request.Method {
 	default:
+		sendAllow(response, "GET", "POST")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 
@@ -819,6 +841,7 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 	wfe.sendNonce(response)
 
 	if request.Method != "GET" {
+		sendAllow(response, "GET")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
@@ -830,6 +853,7 @@ func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.R
 	wfe.sendNonce(response)
 
 	if request.Method != "GET" {
+		sendAllow(response, "GET")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
@@ -847,6 +871,7 @@ func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.
 	wfe.sendNonce(response)
 
 	if request.Method != "GET" {
+		sendAllow(response, "GET")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
