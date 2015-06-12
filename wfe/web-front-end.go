@@ -126,6 +126,7 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 	if request.Method != "GET" {
 		sendAllow(response, "GET")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		return
 	}
 
 	tmpl := template.Must(template.New("body").Parse(`<html>
