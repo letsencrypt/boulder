@@ -224,11 +224,16 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		return nil, nil, reg, errors.New("JWS has invalid anti-replay nonce")
 	}
 
-	if regCheck {
-		// Check that the key is assosiated with an actual account
-		reg, err = wfe.SA.GetRegistrationByKey(*key)
-		if err != nil {
+	reg, err = wfe.SA.GetRegistrationByKey(*key)
+	if err != nil {
+		// If we are requiring a valid registration, any failure to look up the
+		// registration is an overall failure to verify.
+		if regCheck {
 			return nil, nil, reg, err
+		} else {
+			// Otherwise we just return an empty registration. The caller is expected
+			// to use the returned key instead.
+			reg = core.Registration{}
 		}
 	}
 
@@ -411,7 +416,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 
 	// We don't ask verifyPOST to verify there is a correponding registration,
 	// because anyone with the right private key can revoke a certificate.
-	body, requestKey, _, err := wfe.verifyPOST(request, false)
+	body, requestKey, registration, err := wfe.verifyPOST(request, false)
 	if err != nil {
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 		return
@@ -434,12 +439,12 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 
 	serial := core.SerialToString(providedCert.SerialNumber)
-	certDER, err := wfe.SA.GetCertificate(serial)
-	if err != nil || !bytes.Equal(certDER, revokeRequest.CertificateDER) {
+	cert, err := wfe.SA.GetCertificate(serial)
+	if err != nil || !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
 		wfe.sendError(response, "No such certificate", err, http.StatusNotFound)
 		return
 	}
-	parsedCertificate, err := x509.ParseCertificate(certDER)
+	parsedCertificate, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
 		wfe.sendError(response, "Invalid certificate", err, http.StatusInternalServerError)
 		return
@@ -447,7 +452,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 
 	certStatus, err := wfe.SA.GetCertificateStatus(serial)
 	if err != nil {
-		wfe.sendError(response, "No such certificate", err, http.StatusNotFound)
+		wfe.sendError(response, "Certificate status not yet available", err, http.StatusNotFound)
 		return
 	}
 
@@ -456,9 +461,9 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 		return
 	}
 
-	// TODO: Implement other methods of validating revocation, e.g. through
-	// authorizations on account.
-	if !core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) {
+	// TODO: Implement method of revocation by authorizations on account.
+	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) ||
+		registration.ID == cert.RegistrationID) {
 		wfe.log.Debug("Key mismatch for revoke")
 		wfe.sendError(response,
 			"Revocation request must be signed by private key of cert to be revoked",
@@ -833,7 +838,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		response.Header().Set("Content-Type", "application/pkix-cert")
 		response.Header().Add("Link", link(IssuerPath, "up"))
 		response.WriteHeader(http.StatusOK)
-		if _, err = response.Write(cert); err != nil {
+		if _, err = response.Write(cert.DER); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 		}
 	}

@@ -143,13 +143,13 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
 	// Example cert serial is 0x21bd4, so a prefix of all zeroes should fetch it.
-	retrievedDER, err := sa.GetCertificateByShortSerial("0000000000000000")
+	retrievedCert, err := sa.GetCertificateByShortSerial("0000000000000000")
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by short serial")
-	test.AssertByteEquals(t, certDER, retrievedDER)
+	test.AssertByteEquals(t, certDER, retrievedCert.DER)
 
-	retrievedDER, err = sa.GetCertificate("00000000000000000000000000021bd4")
+	retrievedCert, err = sa.GetCertificate("00000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
-	test.AssertByteEquals(t, certDER, retrievedDER)
+	test.AssertByteEquals(t, certDER, retrievedCert.DER)
 
 	certificateStatus, err := sa.GetCertificateStatus("00000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get status for www.eff.org.der")
@@ -166,13 +166,13 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertEquals(t, digest2, "CMVYqWzyqUW7pfBF2CxL0Uk6I0Upsk7p4EWSnd_vYx4")
 
 	// Example cert serial is 0x21bd4, so a prefix of all zeroes should fetch it.
-	retrievedDER2, err := sa.GetCertificateByShortSerial("ff00000000000002")
+	retrievedCert2, err := sa.GetCertificateByShortSerial("ff00000000000002")
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
-	test.AssertByteEquals(t, certDER2, retrievedDER2)
+	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
 
-	retrievedDER2, err = sa.GetCertificate("ff00000000000002238054509817da5a")
+	retrievedCert2, err = sa.GetCertificate("ff00000000000002238054509817da5a")
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
-	test.AssertByteEquals(t, certDER2, retrievedDER2)
+	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
 
 	certificateStatus2, err := sa.GetCertificateStatus("ff00000000000002238054509817da5a")
 	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
