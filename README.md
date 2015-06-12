@@ -118,7 +118,7 @@ get](https://github.com/golang/go/issues/9637).
 We need to use the build tag 'pkcs11' to really pull in all our dependencies.
 To do this, you'll need to pull and install this godep branch, which supports
 build tags: https://github.com/tools/godep/pull/117/files. NOTE: If you skip
-this step, godep will delete some of the vendorized depdendencies.
+this step, godep will delete some of the vendorized dependencies.
 
 To update dependencies:
 
