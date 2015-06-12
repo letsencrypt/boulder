@@ -298,6 +298,39 @@ func setupWFE() WebFrontEndImpl {
 	return wfe
 }
 
+func TestMethodNotAllowed(t *testing.T) {
+	wfe := setupWFE()
+
+	cases := []struct {
+		path    string
+		handler func(http.ResponseWriter, *http.Request)
+		allowed []string
+	}{
+		{"/", wfe.Index, []string{"GET"}},
+		{wfe.NewReg, wfe.NewRegistration, []string{"POST"}},
+		{wfe.RegBase, wfe.Registration, []string{"POST"}},
+		{wfe.NewAuthz, wfe.NewAuthorization, []string{"POST"}},
+		{wfe.AuthzBase, wfe.Authorization, []string{"GET", "POST"}},
+		{wfe.NewCert, wfe.NewCertificate, []string{"POST"}},
+		{wfe.CertBase, wfe.Certificate, []string{"GET", "POST"}},
+		{wfe.SubscriberAgreementURL, wfe.Terms, []string{"GET"}},
+	}
+
+	for _, c := range cases {
+		responseWriter := httptest.NewRecorder()
+		url, _ := url.Parse(c.path)
+		c.handler(responseWriter, &http.Request{
+			Method: "BOGUS",
+			URL:    url,
+		})
+		nonce := responseWriter.Header().Get("Replay-Nonce")
+		allow := responseWriter.Header().Get("Allow")
+		test.Assert(t, responseWriter.Code == http.StatusMethodNotAllowed, "Bogus method allowed")
+		test.Assert(t, len(nonce) > 0, "Bad Replay-Nonce header")
+		test.Assert(t, len(allow) > 0 && allow == strings.Join(c.allowed, ", "), "Bad Allow header")
+	}
+}
+
 func TestIndex(t *testing.T) {
 	wfe := setupWFE()
 
@@ -305,7 +338,8 @@ func TestIndex(t *testing.T) {
 
 	url, _ := url.Parse("/")
 	wfe.Index(responseWriter, &http.Request{
-		URL: url,
+		Method: "GET",
+		URL:    url,
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertNotEquals(t, responseWriter.Body.String(), "404 page not found\n")
