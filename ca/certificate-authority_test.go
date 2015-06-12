@@ -319,8 +319,10 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 						OCSP:      "http://not-example.com/ocsp",
 						CRL:       "http://not-example.com/crl",
 
-						Policies: []asn1.ObjectIdentifier{
-							asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1},
+						Policies: []cfsslConfig.CertificatePolicy{
+							cfsslConfig.CertificatePolicy{
+								ID: cfsslConfig.OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}),
+							},
 						},
 						ExpiryString: "8760h",
 						Backdate:     time.Hour,

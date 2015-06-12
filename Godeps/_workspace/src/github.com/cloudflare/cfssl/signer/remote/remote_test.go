@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api"
-	apiinfo "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/api/info"
+	"github.com/cloudflare/cfssl/api"
+	apiinfo "github.com/cloudflare/cfssl/api/info"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
