@@ -265,6 +265,20 @@ func (ch Challenge) IsSane(completed bool) bool {
 				return false
 			}
 		}
+	case ChallengeTypeDNS:
+		// check extra fields aren't used
+		if ch.R != "" || ch.S != "" || ch.Nonce != "" || ch.TLS != nil {
+			return false
+		}
+
+		// check token is present, corrent length, and contains b64 encoded string
+		if ch.Token == "" || len(ch.Token) != 43 {
+			return false
+		}
+		if _, err := B64dec(ch.Token); err != nil {
+			return false
+		}
+
 	default:
 		return false
 	}

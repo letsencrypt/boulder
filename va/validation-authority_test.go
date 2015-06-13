@@ -437,6 +437,10 @@ func TestCAAChecking(t *testing.T) {
 	test.Assert(t, !valid, "Valid should be false")
 }
 
+func TestDNSValidation(t *testing.T) {
+	t.Skip("DNS not yet implemented.")
+}
+
 type MockRegistrationAuthority struct {
 	lastAuthz *core.Authorization
 }

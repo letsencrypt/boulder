@@ -191,6 +191,38 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	return challenge, err
 }
 
+func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+	challenge := input
+
+	if identifier.Type != core.IdentifierDNS {
+		challenge.Status = core.StatusInvalid
+		err := fmt.Errorf("Identifier type for DNS was not itself DNS")
+		return challenge, err
+	}
+
+	const DNSPrefix = "_acme-challenge"
+
+	challengeSubdomain := fmt.Sprintf("%s.%s", DNSPrefix, identifier.Value)
+	txts, err := net.LookupTXT(challengeSubdomain)
+
+	if err != nil {
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+
+	byteToken := []byte(challenge.Token)
+	for _, element := range txts {
+		if subtle.ConstantTimeCompare([]byte(element), byteToken) == 1 {
+			challenge.Status = core.StatusValid
+			return challenge, nil
+		}
+	}
+
+	err = fmt.Errorf("Correct value not found for DNS challenge")
+	challenge.Status = core.StatusInvalid
+	return challenge, err
+}
+
 // Overall validation process
 
 func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int) {
@@ -215,6 +247,9 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 			break
 		case core.ChallengeTypeDVSNI:
 			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
+			break
+		case core.ChallengeTypeDNS:
+			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex])
 			break
 		}
 
