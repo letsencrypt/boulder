@@ -116,7 +116,9 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	// Store the authorization object, then return it
 	reg, err = ra.SA.NewRegistration(reg)
 	if err != nil {
-		err = core.MalformedRequestError(err.Error())
+		// InternalServerError since the user-data was validated before being
+		// passed to the SA.
+		err = core.InternalServerError(err.Error())
 	}
 
 	return
@@ -162,7 +164,9 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Get a pending Auth first so we can get our ID back, then update with challenges
 	authz, err = ra.SA.NewPendingAuthorization(authz)
 	if err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("Invalid authorization request: %s", err))
+		// InternalServerError since the user-data was validated before being
+		// passed to the SA.
+		err = core.InternalServerError(fmt.Sprintf("Invalid authorization request: %s", err))
 		return authz, err
 	}
 
@@ -351,10 +355,28 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
+
+	for _, contact := range base.Contact {
+		switch contact.Scheme {
+		case "tel":
+			continue
+		case "mailto":
+			err = validateEmail(contact.Opaque)
+			if err != nil {
+				return
+			}
+		default:
+			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
+			return
+		}
+	}
+
 	reg = base
 	err = ra.SA.UpdateRegistration(base)
 	if err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("Could not update registration: %s", err))
+		// InternalServerError since the user-data was validated before being
+		// passed to the SA.
+		err = core.InternalServerError(fmt.Sprintf("Could not update registration: %s", err))
 	}
 	return
 }
