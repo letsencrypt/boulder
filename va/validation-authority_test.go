@@ -48,7 +48,7 @@ var TheKey rsa.PrivateKey = rsa.PrivateKey{
 	Primes:    []*big.Int{p, q},
 }
 
-var ident core.AcmeIdentifier = core.AcmeIdentifier{Type: core.IdentifierType("dns"), Value: "localhost"}
+var ident core.AcmeIdentifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
 
 const expectedToken = "THETOKEN"
 const pathWrongToken = "wrongtoken"
@@ -437,8 +437,139 @@ func TestCAAChecking(t *testing.T) {
 	test.Assert(t, !valid, "Valid should be false")
 }
 
-func TestDNSValidation(t *testing.T) {
-	t.Skip("DNS not yet implemented.")
+func TestDNSValidationFailure(t *testing.T) {
+	va := NewValidationAuthorityImpl(true)
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	chalDNS := core.DNSChallenge()
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     ident,
+		Challenges:     []core.Challenge{chalDNS},
+	}
+	va.validate(authz, 0)
+
+	t.Logf("Resulting Authz: %+v", authz)
+	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
+	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
+}
+
+func TestDNSValidationInvalid(t *testing.T) {
+	var notDNS = core.AcmeIdentifier{
+		Type:  core.IdentifierType("iris"),
+		Value: "790DB180-A274-47A4-855F-31C428CB1072",
+	}
+
+	chalDNS := core.DNSChallenge()
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     notDNS,
+		Challenges:     []core.Challenge{chalDNS},
+	}
+
+	va := NewValidationAuthorityImpl(true)
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	va.validate(authz, 0)
+
+	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
+	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
+}
+
+func TestDNSValidationNotSane(t *testing.T) {
+	va := NewValidationAuthorityImpl(true)
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	chal0 := core.DNSChallenge()
+	chal0.Token = ""
+
+	chal1 := core.DNSChallenge()
+	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
+
+	chal2 := core.DNSChallenge()
+	chal2.R = "1"
+
+	chal3 := core.DNSChallenge()
+	chal3.S = "2"
+
+	chal4 := core.DNSChallenge()
+	chal4.Nonce = "2"
+
+	chal5 := core.DNSChallenge()
+	var tls = true
+	chal5.TLS = &tls
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     ident,
+		Challenges:     []core.Challenge{chal0, chal1, chal2, chal3, chal4, chal5},
+	}
+
+	for i := 0; i < 6; i++ {
+		va.validate(authz, i)
+		test.AssertEquals(t, authz.Challenges[i].Status, core.StatusInvalid)
+	}
+}
+
+// TestDNSValidationLive is an integration test, depending on
+// the existance of some Internet resources. Because of that,
+// it asserts nothing; it is intended for coverage.
+func TestDNSValidationLive(t *testing.T) {
+	va := NewValidationAuthorityImpl(false)
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	goodChalDNS := core.DNSChallenge()
+	// This token is set at _acme-challenge.good.bin.coffee
+	goodChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
+
+	var goodIdent = core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "good.bin.coffee",
+	}
+
+	var badIdent core.AcmeIdentifier = core.AcmeIdentifier{
+		Type:  core.IdentifierType("dns"),
+		Value: "bad.bin.coffee",
+	}
+
+	var authzGood = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     goodIdent,
+		Challenges:     []core.Challenge{goodChalDNS},
+	}
+
+	va.validate(authzGood, 0)
+
+	if authzGood.Challenges[0].Status != core.StatusValid {
+		t.Logf("TestDNSValidationLive on Good did not succeed.")
+	}
+
+	badChalDNS := core.DNSChallenge()
+	// This token is NOT set at _acme-challenge.bad.bin.coffee
+	badChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
+
+	var authzBad = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     badIdent,
+		Challenges:     []core.Challenge{badChalDNS},
+	}
+
+	va.validate(authzBad, 0)
+	if authzBad.Challenges[0].Status != core.StatusInvalid {
+		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
+	}
+
 }
 
 type MockRegistrationAuthority struct {
