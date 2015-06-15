@@ -61,14 +61,29 @@ func validateEmail(address string) (err error) {
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	var mx []*net.MX
 	mx, err = net.LookupMX(domain)
-	if err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("Supplied email domain %s could not be resolved.", domain))
-		return
-	}
-	if len(mx) == 0 {
+	if err != nil || len(mx) == 0 {
 		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
 		return
 	}
+	return
+}
+
+func validateContacts(contacts []core.AcmeURL) (err error) {
+	for _, contact := range contacts {
+		switch contact.Scheme {
+		case "tel":
+			continue
+		case "mailto":
+			err = validateEmail(contact.Opaque)
+			if err != nil {
+				return
+			}
+		default:
+			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
+			return
+		}
+	}
+
 	return
 }
 
@@ -98,19 +113,9 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	}
 	reg.MergeUpdate(init)
 
-	for _, contact := range reg.Contact {
-		switch contact.Scheme {
-		case "tel":
-			continue
-		case "mailto":
-			err = validateEmail(contact.Opaque)
-			if err != nil {
-				return
-			}
-		default:
-			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
-			return
-		}
+	err = validateContacts(reg.Contact)
+	if err != nil {
+		return
 	}
 
 	// Store the authorization object, then return it
@@ -356,19 +361,9 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	for _, contact := range base.Contact {
-		switch contact.Scheme {
-		case "tel":
-			continue
-		case "mailto":
-			err = validateEmail(contact.Opaque)
-			if err != nil {
-				return
-			}
-		default:
-			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
-			return
-		}
+	err = validateContacts(base.Contact)
+	if err != nil {
+		return
 	}
 
 	reg = base
