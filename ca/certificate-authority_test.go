@@ -405,14 +405,14 @@ func TestIssueCertificate(t *testing.T) {
 		csr, _ := x509.ParseCertificateRequest(csrDER)
 
 		// Sign CSR
-		certObj, err := ca.IssueCertificate(*csr, 1, FarFuture)
+		issuedCert, err := ca.IssueCertificate(*csr, 1, FarFuture)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 		if err != nil {
 			continue
 		}
 
 		// Verify cert contents
-		cert, err := x509.ParseCertificate(certObj.DER)
+		cert, err := x509.ParseCertificate(issuedCert.DER)
 		test.AssertNotError(t, err, "Certificate failed to parse")
 
 		test.AssertEquals(t, cert.Subject.CommonName, "not-example.com")
@@ -446,10 +446,10 @@ func TestIssueCertificate(t *testing.T) {
 
 		// Verify that the cert got stored in the DB
 		serialString := core.SerialToString(cert.SerialNumber)
-		certBytes, err := storageAuthority.GetCertificate(serialString)
+		storedCert, err := storageAuthority.GetCertificate(serialString)
 		test.AssertNotError(t, err,
 			fmt.Sprintf("Certificate %s not found in database", serialString))
-		test.Assert(t, bytes.Equal(certBytes, certObj.DER), "Retrieved cert not equal to issued cert.")
+		test.Assert(t, bytes.Equal(issuedCert.DER, storedCert.DER), "Retrieved cert not equal to issued cert.")
 
 		certStatus, err := storageAuthority.GetCertificateStatus(serialString)
 		test.AssertNotError(t, err,

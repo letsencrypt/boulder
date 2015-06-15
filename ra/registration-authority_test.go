@@ -455,7 +455,7 @@ func TestNewCertificate(t *testing.T) {
 	if err != nil {
 		return
 	}
-	test.Assert(t, bytes.Compare(cert.DER, dbCert) == 0, "Certificates differ")
+	test.Assert(t, bytes.Compare(cert.DER, dbCert.DER) == 0, "Certificates differ")
 
 	t.Log("DONE TestOnValidationUpdate")
 }

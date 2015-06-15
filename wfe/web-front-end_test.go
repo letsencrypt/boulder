@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -170,16 +171,44 @@ func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
 	return core.Authorization{}, nil
 }
 
-func (sa *MockSA) GetCertificate(string) ([]byte, error) {
-	return []byte{}, nil
+func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
+	// Serial ee == 238.crt
+	if serial == "000000000000000000000000000000ee" {
+		certPemBytes, _ := ioutil.ReadFile("test/238.crt")
+		certBlock, _ := pem.Decode(certPemBytes)
+		return core.Certificate{
+			RegistrationID: 1,
+			DER:            certBlock.Bytes,
+		}, nil
+	} else if serial == "000000000000000000000000000000b2" {
+		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+		certBlock, _ := pem.Decode(certPemBytes)
+		return core.Certificate{
+			RegistrationID: 1,
+			DER:            certBlock.Bytes,
+		}, nil
+	} else {
+		return core.Certificate{}, errors.New("No cert")
+	}
 }
 
-func (sa *MockSA) GetCertificateByShortSerial(string) ([]byte, error) {
-	return []byte{}, nil
+func (sa *MockSA) GetCertificateByShortSerial(string) (core.Certificate, error) {
+	return core.Certificate{}, nil
 }
 
-func (sa *MockSA) GetCertificateStatus(string) (core.CertificateStatus, error) {
-	return core.CertificateStatus{}, nil
+func (sa *MockSA) GetCertificateStatus(serial string) (core.CertificateStatus, error) {
+	// Serial ee == 238.crt
+	if serial == "000000000000000000000000000000ee" {
+		return core.CertificateStatus{
+			Status: core.OCSPStatusGood,
+		}, nil
+	} else if serial == "000000000000000000000000000000b2" {
+		return core.CertificateStatus{
+			Status: core.OCSPStatusRevoked,
+		}, nil
+	} else {
+		return core.CertificateStatus{}, errors.New("No cert status")
+	}
 }
 
 func (sa *MockSA) AlreadyDeniedCSR([]string) (bool, error) {
@@ -663,6 +692,104 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Registration key is already in use\"}")
+}
+
+// Valid revocation request for existing, non-revoked cert
+func TestRevokeCertificate(t *testing.T) {
+	keyPemBytes, err := ioutil.ReadFile("test/238.key")
+	test.AssertNotError(t, err, "Failed to load key")
+	key, err := jose.LoadPrivateKey(keyPemBytes)
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+
+	certPemBytes, err := ioutil.ReadFile("test/238.crt")
+	test.AssertNotError(t, err, "Failed to load cert")
+	certBlock, _ := pem.Decode(certPemBytes)
+	test.Assert(t, certBlock != nil, "Failed to decode PEM")
+	var revokeRequest struct {
+		CertificateDER core.JsonBuffer `json:"certificate"`
+	}
+	revokeRequest.CertificateDER = certBlock.Bytes
+	revokeRequestJSON, err := json.Marshal(revokeRequest)
+	test.AssertNotError(t, err, "Failed to marshal request")
+
+	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
+	wfe := setupWFE()
+
+	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
+	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.SubscriberAgreementURL = agreementURL
+	responseWriter := httptest.NewRecorder()
+	responseWriter.Body.Reset()
+	result, _ := signer.Sign(revokeRequestJSON, wfe.nonceService.Nonce())
+	wfe.RevokeCertificate(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody(result.FullSerialize()),
+	})
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+
+	// Try the revoke request again, signed by account key associated with cert.
+	// Should also succeed.
+	responseWriter.Body.Reset()
+	test1JWK, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	test1Key, ok := test1JWK.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	accountKeySigner, err := jose.NewSigner("RS256", test1Key)
+	test.AssertNotError(t, err, "Failed to make signer")
+	result, _ = accountKeySigner.Sign(revokeRequestJSON, wfe.nonceService.Nonce())
+	wfe.RevokeCertificate(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody(result.FullSerialize()),
+	})
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+}
+
+// Valid revocation request for already-revoked cert
+func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
+	keyPemBytes, err := ioutil.ReadFile("test/178.key")
+	test.AssertNotError(t, err, "Failed to load key")
+	key, err := jose.LoadPrivateKey(keyPemBytes)
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+
+	certPemBytes, err := ioutil.ReadFile("test/178.crt")
+	test.AssertNotError(t, err, "Failed to load cert")
+	certBlock, _ := pem.Decode(certPemBytes)
+	test.Assert(t, certBlock != nil, "Failed to decode PEM")
+	var revokeRequest struct {
+		CertificateDER core.JsonBuffer `json:"certificate"`
+	}
+	revokeRequest.CertificateDER = certBlock.Bytes
+	revokeRequestJSON, err := json.Marshal(revokeRequest)
+	test.AssertNotError(t, err, "Failed to marshal request")
+
+	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
+	wfe := setupWFE()
+
+	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
+	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.SubscriberAgreementURL = agreementURL
+	responseWriter := httptest.NewRecorder()
+	responseWriter.Body.Reset()
+	result, _ := signer.Sign(revokeRequestJSON, wfe.nonceService.Nonce())
+	wfe.RevokeCertificate(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody(result.FullSerialize()),
+	})
+	test.AssertEquals(t, responseWriter.Code, 409)
+	test.AssertEquals(t, responseWriter.Body.String(),
+		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Certificate already revoked\"}")
 }
 
 func TestAuthorization(t *testing.T) {
