@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
@@ -53,7 +55,7 @@ type verificationRequestEvent struct {
 
 // Validation methods
 
-func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
 	challenge := input
 
 	if len(challenge.Path) == 0 {
@@ -138,50 +140,119 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 	httpResponse, err := client.Do(httpRequest)
 
-	if err == nil && httpResponse.StatusCode == 200 {
-		// Read body & test
-		body, readErr := ioutil.ReadAll(httpResponse.Body)
-		if readErr != nil {
-			challenge.Error = &core.ProblemDetails{
-				Type: core.ServerInternalProblem,
-			}
-			va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] Read failure: %s", identifier, readErr))
-			challenge.Status = core.StatusInvalid
-			return challenge, readErr
-		}
-
-		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
-			challenge.Status = core.StatusValid
-		} else {
-			challenge.Status = core.StatusInvalid
-			challenge.Error = &core.ProblemDetails{
-				Type: core.UnauthorizedProblem,
-				Detail: fmt.Sprintf("Incorrect token validating Simple%s for %s",
-					strings.ToUpper(scheme), url),
-			}
-			err = challenge.Error
-		}
-	} else if err != nil {
+	if err != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type:   parseHTTPConnError(err),
 			Detail: fmt.Sprintf("Could not connect to %s", url),
 		}
 		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
-	} else {
+	}
+
+	if httpResponse.StatusCode != 200 {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type: core.UnauthorizedProblem,
 			Detail: fmt.Sprintf("Invalid response from %s: %d",
 				url, httpResponse.StatusCode),
 		}
-		err = challenge.Error
+		err = challenge.Error	
 	}
 
-	return challenge, err
+	// Read body & test
+	body, readErr := ioutil.ReadAll(httpResponse.Body)
+	if readErr != nil {
+		challenge.Status = core.StatusInvalid
+		return challenge, readErr
+	}
+
+	// Parse and verify JWS
+	parsedJws, err := jose.ParseSigned(string(body))
+	if err != nil {
+		err = fmt.Errorf("Validation response failed to parse as JWS: %s", err.Error())
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+
+	if len(parsedJws.Signatures) > 1 {
+		err = fmt.Errorf("Too many signatures on validation JWS")
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+	if len(parsedJws.Signatures) == 0 {
+		err = fmt.Errorf("Validation JWS not signed")
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+
+	key := parsedJws.Signatures[0].Header.JsonWebKey
+	if !core.KeyDigestEquals(key, accountKey) {
+		err = fmt.Errorf("Response JWS signed with improper key: %s", err.Error())
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+
+	payload, _, err := parsedJws.Verify(key)
+	if err != nil {
+		err = fmt.Errorf("Validation response failed to verify: %s", err.Error())
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+
+	// Check that JWS body is as expected
+	// * "type" == "simpleHttp"
+	// * "token" == challenge.token
+	// * "path" == challenge.path
+	// * "tls" == challenge.tls
+	var parsedResponse map[string]interface{}
+	err = json.Unmarshal(payload, &parsedResponse)
+	if err != nil {
+		err = fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+	if len(parsedResponse) != 4 {
+		err = fmt.Errorf("Validation payload did not have all fields")
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+	typePassed := false
+	tokenPassed := false
+	pathPassed := false
+	tlsPassed := false
+	for key, value := range parsedResponse {
+		switch key {
+		case "type":
+			castValue, ok := value.(string)
+			typePassed = ok && castValue == core.ChallengeTypeSimpleHTTP
+		case "token":
+			castValue, ok := value.(string)
+			tokenPassed = ok && castValue == challenge.Token
+		case "path":
+			castValue, ok := value.(string)
+			pathPassed = ok && castValue == challenge.Path
+		case "tls":
+			castValue, ok := value.(bool)
+			tlsValue := challenge.TLS != nil && *challenge.TLS
+			tlsPassed = ok && castValue == tlsValue
+		default:
+			err = fmt.Errorf("Validation payload did not have all fields")
+			challenge.Status = core.StatusInvalid
+			return challenge, err
+		}
+	}
+	if !typePassed || !tokenPassed || !pathPassed || !tlsPassed {
+		err = fmt.Errorf("Validation contents were not correct: type=%s token=%s path=%s tls=%s",
+			typePassed, tokenPassed, pathPassed, tlsPassed)
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+
+	challenge.Status = core.StatusValid
+	return challenge, nil
 }
 
-func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != "dns" {
@@ -364,7 +435,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 
 // Overall validation process
 
-func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int) {
+func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int, accountKey jose.JsonWebKey) {
 
 	// Select the first supported validation method
 	// XXX: Remove the "break" lines to process all supported validations
@@ -385,10 +456,10 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 
 		switch authz.Challenges[challengeIndex].Type {
 		case core.ChallengeTypeSimpleHTTP:
-			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
+			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
 			break
 		case core.ChallengeTypeDVSNI:
-			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
+			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
 			break
 		case core.ChallengeTypeDNS:
 			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex])
@@ -409,9 +480,8 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 	va.RA.OnValidationUpdate(authz)
 }
 
-// UpdateValidations runs the validate() method asynchronously using goroutines.
-func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
-	go va.validate(authz, challengeIndex)
+func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int, accountKey jose.JsonWebKey) error {
+	go va.validate(authz, challengeIndex, accountKey)
 	return nil
 }
 
