@@ -124,17 +124,20 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	parsedJws, err := jose.ParseSigned(string(body))
 	if err != nil {
 		err = fmt.Errorf("Validation response failed to parse as JWS: %s", err.Error())
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
 
 	if len(parsedJws.Signatures) > 1 {
 		err = fmt.Errorf("Too many signatures on validation JWS")
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
 	if len(parsedJws.Signatures) == 0 {
 		err = fmt.Errorf("Validation JWS not signed")
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
@@ -142,6 +145,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	key := parsedJws.Signatures[0].Header.JsonWebKey
 	if !core.KeyDigestEquals(key, accountKey) {
 		err = fmt.Errorf("Response JWS signed with improper key: %s", err.Error())
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
@@ -149,6 +153,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	payload, _, err := parsedJws.Verify(key)
 	if err != nil {
 		err = fmt.Errorf("Validation response failed to verify: %s", err.Error())
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
@@ -158,15 +163,18 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	// * "token" == challenge.token
 	// * "path" == challenge.path
 	// * "tls" == challenge.tls
+	va.log.Debug(fmt.Sprintf("Validation response payload: %s", string(payload)))
 	var parsedResponse map[string]interface{}
 	err = json.Unmarshal(payload, &parsedResponse)
 	if err != nil {
 		err = fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
 	if len(parsedResponse) != 4 {
 		err = fmt.Errorf("Validation payload did not have all fields")
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
@@ -198,6 +206,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	if !typePassed || !tokenPassed || !pathPassed || !tlsPassed {
 		err = fmt.Errorf("Validation contents were not correct: type=%s token=%s path=%s tls=%s",
 			typePassed, tokenPassed, pathPassed, tlsPassed)
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}

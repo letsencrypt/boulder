@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net"
@@ -20,6 +21,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
@@ -48,15 +51,27 @@ var TheKey rsa.PrivateKey = rsa.PrivateKey{
 	Primes:    []*big.Int{p, q},
 }
 
+var AccountKey = jose.JsonWebKey{Key: TheKey.Public()}
+
 var ident core.AcmeIdentifier = core.AcmeIdentifier{Type: core.IdentifierType("dns"), Value: "localhost"}
 
 const expectedToken = "THETOKEN"
 const pathWrongToken = "wrongtoken"
 const path404 = "404"
 
-func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
+func simpleSrv(t *testing.T, token, path string, stopChan, waitChan chan bool) {
 	// Reset any existing handlers
 	http.DefaultServeMux = http.NewServeMux()
+
+	payload, _ := json.Marshal(map[string]interface{}{
+		"type":  "simpleHttp",
+		"token": token,
+		"path":  path,
+		"tls":   false,
+	})
+	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
+	obj, _ := signer.Sign(payload, "")
+	response := obj.FullSerialize()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, path404) {
@@ -73,7 +88,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 			time.Sleep(time.Second * 10)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
-			fmt.Fprintf(w, "%s", token)
+			fmt.Fprintf(w, "%s", response)
 		}
 	})
 
@@ -153,51 +168,51 @@ func TestSimpleHttp(t *testing.T) {
 
 	chall := core.Challenge{Path: "test", Token: expectedToken}
 
-	invalidChall, err := va.validateSimpleHTTP(ident, chall)
+	invalidChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
-	go simpleSrv(t, expectedToken, stopChan, waitChan)
+	go simpleSrv(t, expectedToken, "test", stopChan, waitChan)
 	defer func() { stopChan <- true }()
 	<-waitChan
 
-	finChall, err := va.validateSimpleHTTP(ident, chall)
+	finChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
 
 	tls := false
 	chall.TLS = &tls
-	finChall, err = va.validateSimpleHTTP(ident, chall)
+	finChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
 
 	tls = true
 	chall.TLS = &tls
 	chall.Path = path404
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Should have found a 404 for the challenge.")
 
 	chall.Path = pathWrongToken
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "The path should have given us the wrong token.")
 
 	chall.Path = ""
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Empty paths shouldn't work either.")
 
 	chall.Path = "validish"
-	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
+	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
 
 	chall.Path = "wait-long"
 	started := time.Now()
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	took := time.Since(started)
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
@@ -213,7 +228,7 @@ func TestDvsni(t *testing.T) {
 	ba := core.B64enc(a)
 	chall := core.Challenge{R: ba, S: ba}
 
-	invalidChall, err := va.validateDvsni(ident, chall)
+	invalidChall, err := va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
 
@@ -223,29 +238,29 @@ func TestDvsni(t *testing.T) {
 	defer func() { stopChan <- true }()
 	<-waitChan
 
-	finChall, err := va.validateDvsni(ident, chall)
+	finChall, err := va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "")
 
 	chall.R = ba[5:]
-	invalidChall, err = va.validateDvsni(ident, chall)
+	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "R Should be illegal Base64")
 
-	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
+	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Forgot path; that should be an error.")
 
 	chall.R = ba
 	chall.S = "!@#"
-	invalidChall, err = va.validateDvsni(ident, chall)
+	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "S Should be illegal Base64")
 
 	chall.S = ba
 	chall.Nonce = "wait-long"
 	started := time.Now()
-	invalidChall, err = va.validateDvsni(ident, chall)
+	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
 	took := time.Since(started)
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
@@ -260,11 +275,12 @@ func TestValidateHTTP(t *testing.T) {
 	va.RA = mockRA
 
 	challHTTP := core.SimpleHTTPChallenge()
+	*challHTTP.TLS = false
 	challHTTP.Path = "test"
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
-	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP)
+	go simpleSrv(t, challHTTP.Token, "test", stopChanHTTP, waitChanHTTP)
 
 	// Let them start
 	<-waitChanHTTP
@@ -280,7 +296,7 @@ func TestValidateHTTP(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{challHTTP},
 	}
-	va.validate(authz, 0)
+	va.validate(authz, 0, AccountKey)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -313,7 +329,7 @@ func TestValidateDvsni(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{challDvsni},
 	}
-	va.validate(authz, 0)
+	va.validate(authz, 0, AccountKey)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -346,7 +362,7 @@ func TestValidateDvsniNotSane(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{challDvsni},
 	}
-	va.validate(authz, 0)
+	va.validate(authz, 0, AccountKey)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -361,7 +377,7 @@ func TestUpdateValidations(t *testing.T) {
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
-	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP)
+	go simpleSrv(t, challHTTP.Token, "", stopChanHTTP, waitChanHTTP)
 
 	// Let them start
 	<-waitChanHTTP
@@ -379,7 +395,7 @@ func TestUpdateValidations(t *testing.T) {
 	}
 
 	started := time.Now()
-	va.UpdateValidations(authz, 0)
+	va.UpdateValidations(authz, 0, AccountKey)
 	took := time.Since(started)
 
 	// Check that the call to va.UpdateValidations didn't block for 3 seconds
