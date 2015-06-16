@@ -23,8 +23,7 @@ import (
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
-	DNSResolver  string
-	DNSTimeout   time.Duration
+	DNSResolver  *core.DNSResolver
 	IssuerDomain string
 	TestMode     bool
 }
@@ -203,7 +202,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 	const DNSPrefix = "_acme-challenge"
 
 	challengeSubdomain := fmt.Sprintf("%s.%s", DNSPrefix, identifier.Value)
-	txts, err := net.LookupTXT(challengeSubdomain)
+	txts, _, err := va.DNSResolver.LookupTXT(challengeSubdomain)
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
@@ -276,7 +275,7 @@ func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, ch
 // records, they authorize the configured CA domain to issue a certificate
 func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	domain := strings.ToLower(identifier.Value)
-	caaSet, err := getCaaSet(domain, va.DNSResolver, va.DNSTimeout)
+	caaSet, err := getCaaSet(domain, va.DNSResolver)
 	if err != nil {
 		return
 	}

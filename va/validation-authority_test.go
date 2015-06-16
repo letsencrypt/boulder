@@ -150,6 +150,7 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 
 func TestSimpleHttp(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 
 	chall := core.Challenge{Path: "test", Token: expectedToken}
 
@@ -208,6 +209,7 @@ func TestSimpleHttp(t *testing.T) {
 
 func TestDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 
 	a := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
 	ba := core.B64enc(a)
@@ -256,6 +258,7 @@ func TestDvsni(t *testing.T) {
 
 func TestValidateHTTP(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -287,6 +290,7 @@ func TestValidateHTTP(t *testing.T) {
 
 func TestValidateDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -320,6 +324,7 @@ func TestValidateDvsni(t *testing.T) {
 
 func TestValidateDvsniNotSane(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -353,6 +358,7 @@ func TestValidateDvsniNotSane(t *testing.T) {
 
 func TestUpdateValidations(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -417,8 +423,7 @@ func TestCAAChecking(t *testing.T) {
 	}
 
 	va := NewValidationAuthorityImpl(true)
-	va.DNSResolver = "8.8.8.8:53"
-	va.DNSTimeout = time.Second * 5
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	for _, caaTest := range tests {
 		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		// Ignore tests if DNS req has timed out
@@ -439,6 +444,7 @@ func TestCAAChecking(t *testing.T) {
 
 func TestDNSValidationFailure(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -473,6 +479,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	}
 
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -484,6 +491,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 
 func TestDNSValidationNotSane(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -524,6 +532,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 // it asserts nothing; it is intended for coverage.
 func TestDNSValidationLive(t *testing.T) {
 	va := NewValidationAuthorityImpl(false)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 

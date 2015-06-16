@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/va"
@@ -35,10 +36,9 @@ func main() {
 		go cmd.ProfileCmd("VA", stats)
 
 		vai := va.NewValidationAuthorityImpl(c.CA.TestMode)
-		vai.DNSResolver = c.VA.DNSResolver
 		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
-		vai.DNSTimeout = dnsTimeout
+		vai.DNSResolver = core.NewDNSResolver(dnsTimeout, []string{c.VA.DNSResolver})
 
 		for {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
