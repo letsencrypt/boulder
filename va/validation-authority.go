@@ -250,7 +250,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		}
 	}
 	if !typePassed || !tokenPassed || !pathPassed || !tlsPassed {
-		err = fmt.Errorf("Validation contents were not correct: type=%s token=%s path=%s tls=%s",
+		err = fmt.Errorf("Validation contents were not correct: type=%v token=%v path=%v tls=%v",
 			typePassed, tokenPassed, pathPassed, tlsPassed)
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
