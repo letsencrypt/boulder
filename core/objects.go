@@ -20,6 +20,7 @@ import (
 
 type IdentifierType string
 type AcmeStatus string
+type AcmeResource string
 type OCSPStatus string
 type Buffer []byte
 
@@ -30,6 +31,17 @@ const (
 	StatusValid      = AcmeStatus("valid")      // Validation succeeded
 	StatusInvalid    = AcmeStatus("invalid")    // Validation failed
 	StatusRevoked    = AcmeStatus("revoked")    // Object no longer valid
+)
+
+const (
+	ResourceNewReg        = AcmeResource("new-reg")
+	ResourceNewAuthz      = AcmeResource("new-authz")
+	ResourceNewCert       = AcmeResource("new-cert")
+	ResourceRevokeCert    = AcmeResource("revoke-cert")
+	ResourceRegistration  = AcmeResource("reg")
+	ResourceAuthorization = AcmeResource("authz")
+	ResourceChallenge     = AcmeResource("challenge")
+	ResourceCertificate   = AcmeResource("cert")
 )
 
 const (

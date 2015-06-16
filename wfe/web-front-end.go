@@ -182,7 +182,7 @@ func (wfe *WebFrontEndImpl) sendStandardHeaders(response http.ResponseWriter) {
 	response.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
-func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, *jose.JsonWebKey, core.Registration, error) {
+func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
 	var reg core.Registration
 
 	// Read body
@@ -247,6 +247,18 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		}
 	}
 
+	var parsedRequest map[string]interface{}
+	err = json.Unmarshal([]byte(payload), &parsedRequest)
+	parsedResource, present := parsedRequest["resource"]
+	requestedResource, valid := parsedResource.(string)
+	if !present {
+		wfe.log.Debug("Request payload does not specify a resource")
+		return nil, nil, reg, errors.New("Request payload does not specify a resource")
+	} else if !valid || resource != core.AcmeResource(requestedResource) {
+		wfe.log.Debug(fmt.Sprintf("Request payload has invalid resource: %s != %s", requestedResource, resource))
+		return nil, nil, reg, errors.New("Request payload has invalid resource")
+	}
+
 	return []byte(payload), key, reg, nil
 }
 
@@ -302,7 +314,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 
-	body, key, _, err := wfe.verifyPOST(request, false)
+	body, key, _, err := wfe.verifyPOST(request, false, core.ResourceNewReg)
 	if err != nil {
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 		return
@@ -365,7 +377,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		return
 	}
 
-	body, _, currReg, err := wfe.verifyPOST(request, true)
+	body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceNewAuthz)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			wfe.sendError(response, "No registration exists matching provided key", err, http.StatusForbidden)
@@ -428,7 +440,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 
 	// We don't ask verifyPOST to verify there is a correponding registration,
 	// because anyone with the right private key can revoke a certificate.
-	body, requestKey, registration, err := wfe.verifyPOST(request, false)
+	body, requestKey, registration, err := wfe.verifyPOST(request, false, core.ResourceRevokeCert)
 	if err != nil {
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 		return
@@ -505,7 +517,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 
-	body, key, reg, err := wfe.verifyPOST(request, true)
+	body, key, reg, err := wfe.verifyPOST(request, true, core.ResourceNewCert)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			wfe.sendError(response, "No registration exists matching provided key", err, http.StatusForbidden)
@@ -623,7 +635,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		}
 
 	case "POST":
-		body, _, currReg, err := wfe.verifyPOST(request, true)
+		body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceChallenge)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				wfe.sendError(response, "No registration exists matching provided key", err, http.StatusForbidden)
@@ -693,7 +705,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		return
 	}
 
-	body, _, currReg, err := wfe.verifyPOST(request, true)
+	body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceRegistration)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			wfe.sendError(response,
@@ -786,7 +798,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 
 	switch request.Method {
 	default:
-		sendAllow(response, "GET", "POST")
+		sendAllow(response, "GET")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 
