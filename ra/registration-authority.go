@@ -111,8 +111,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	reg = core.Registration{
-		RecoveryToken: core.NewToken(),
-		Key:           init.Key,
+		Key: init.Key,
 	}
 	reg.MergeUpdate(init)
 

@@ -90,10 +90,9 @@ const (
 
 // These types are the available challenges
 const (
-	ChallengeTypeSimpleHTTP    = "simpleHttp"
-	ChallengeTypeDVSNI         = "dvsni"
-	ChallengeTypeDNS           = "dns"
-	ChallengeTypeRecoveryToken = "recoveryToken"
+	ChallengeTypeSimpleHTTP = "simpleHttp"
+	ChallengeTypeDVSNI      = "dvsni"
+	ChallengeTypeDNS        = "dns"
 )
 
 func (pd *ProblemDetails) Error() string {
@@ -208,9 +207,6 @@ type Registration struct {
 	// Account key to which the details are attached
 	Key jose.JsonWebKey `json:"key" db:"jwk"`
 
-	// Recovery Token is used to prove connection to an earlier transaction
-	RecoveryToken string `json:"recoveryToken" db:"recoveryToken"`
-
 	// Contact URIs
 	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 
@@ -254,7 +250,7 @@ type Challenge struct {
 	// A URI to which a response can be POSTed
 	URI AcmeURL `json:"uri"`
 
-	// Used by simpleHTTP, recoveryToken, and dns challenges
+	// Used by simpleHTTP and dns challenges
 	Token string `json:"token,omitempty"`
 
 	// Used by simpleHTTP challenges

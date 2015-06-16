@@ -278,7 +278,6 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, mailto.String() == result.Contact[0].String(),
 		"Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
-	test.Assert(t, result.RecoveryToken != "", "Recovery token not filled")
 
 	reg, err := sa.GetRegistration(result.ID)
 	test.AssertNotError(t, err, "Failed to retrieve registration")
@@ -289,11 +288,10 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, _, ra := initAuthorities(t)
 	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		ID:            23,
-		Key:           AccountKeyC,
-		RecoveryToken: "RecoverMe",
-		Contact:       []core.AcmeURL{core.AcmeURL(*mailto)},
-		Agreement:     "I agreed",
+		ID:        23,
+		Key:       AccountKeyC,
+		Contact:   []core.AcmeURL{core.AcmeURL(*mailto)},
+		Agreement: "I agreed",
 	}
 
 	result, err := ra.NewRegistration(input)
@@ -302,17 +300,14 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	test.Assert(t, result.ID != 23, "ID shouldn't be set by user")
 	// TODO: Enable this test case once we validate terms agreement.
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
-	test.Assert(t, result.RecoveryToken != "RecoverMe", "Recovery token shouldn't be set by user")
 
 	result2, err := ra.UpdateRegistration(result, core.Registration{
-		ID:            33,
-		Key:           ShortKey,
-		RecoveryToken: "RecoverMe2",
+		ID:  33,
+		Key: ShortKey,
 	})
 	test.AssertNotError(t, err, "Could not update registration")
 	test.Assert(t, result2.ID != 33, "ID shouldn't be overwritten.")
 	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
-	test.Assert(t, result2.RecoveryToken != "RecoverMe2", "Recovery token shouldn't be overwritten by user")
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
