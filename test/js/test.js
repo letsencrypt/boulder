@@ -423,10 +423,23 @@ function getReadyToValidate(err, resp, body) {
   }
 
   var challenge = simpleHttp[0];
-  var path = crypto.randomString(8) + ".txt";
+  var path = crypto.randomString(8);
   var challengePath = ".well-known/acme-challenge/" + path;
   state.responseURL = challenge["uri"];
   state.path = path;
+
+  // Prepare the validation response
+  var isTLS = !(/localhost/.test(state.newRegistrationURL))
+  var validationPayload = JSON.stringify({
+    "type": "simpleHttp",
+    "token": challenge.token,
+    "path": path,
+    "tls": isTLS
+  }, null, 2);
+  var validationJWS = crypto.generateSignature(state.accountPrivateKey,
+                                               new Buffer(validationPayload));
+  var validationResponse = JSON.stringify(validationJWS, null, 2);
+  // XXX var validationResponse = challenge.token;
 
   // For local, test-mode validation
   function httpResponder(req, response) {
@@ -435,15 +448,15 @@ function getReadyToValidate(err, resp, body) {
     if ((host === state.domain || /localhost/.test(state.newRegistrationURL)) &&
         req.method === "GET" &&
         req.url == "/" + challengePath) {
-      response.writeHead(200, {"Content-Type": "text/plain"});
-      response.end(challenge.token);
+      response.writeHead(200, {"Content-Type": "application/jose+json"});
+      response.end(validationResponse);
     } else {
       console.log("Got invalid request for", req.method, host, req.url);
-      response.writeHead(404, {"Content-Type": "text/plain"});
+      response.writeHead(404, {"Content-Type": "application/jose+json"});
       response.end("");
     }
   }
-  if (/localhost/.test(state.newRegistrationURL)) {
+  if (!isTLS) {
     state.httpServer = http.createServer(httpResponder)
     state.httpServer.listen(5001)
   } else {
@@ -457,7 +470,7 @@ function getReadyToValidate(err, resp, body) {
   cli.spinner("Validating domain");
   post(state.responseURL, {
     path: state.path,
-    tls: false
+    tls: isTLS
   }, ensureValidation);
 }
 

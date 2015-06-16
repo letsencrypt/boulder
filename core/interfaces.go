@@ -76,7 +76,7 @@ type RegistrationAuthority interface {
 
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
-	UpdateValidations(Authorization, int) error
+	UpdateValidations(Authorization, int, jose.JsonWebKey) error
 	CheckCAARecords(AcmeIdentifier) (bool, bool, error)
 }
 
