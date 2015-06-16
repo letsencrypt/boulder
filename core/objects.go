@@ -18,10 +18,18 @@ import (
 	"time"
 )
 
-type IdentifierType string
 type AcmeStatus string
-type OCSPStatus string
 type Buffer []byte
+type IdentifierType string
+type OCSPStatus string
+type ProblemType string
+
+// ProblemDetails objects represent problem documents
+// https://tools.ietf.org/html/draft-ietf-appsawg-http-problem-00
+type ProblemDetails struct {
+	Type   ProblemType `json:"type,omitempty"`
+	Detail string      `json:"detail,omitempty"`
+}
 
 const (
 	StatusUnknown    = AcmeStatus("unknown")    // Unknown status; the default
@@ -33,8 +41,20 @@ const (
 )
 
 const (
+	IdentifierDNS = IdentifierType("dns")
+)
+
+const (
 	OCSPStatusGood    = OCSPStatus("good")
 	OCSPStatusRevoked = OCSPStatus("revoked")
+)
+
+const (
+	BadChallResponseProblem = ProblemType("urn:acme:error:badChallResponse")
+	MalformedProblem        = ProblemType("urn:acme:error:malformed")
+	NoChallResponseProblem  = ProblemType("urn:acme:error:noChallResponse")
+	ServerInternalProblem   = ProblemType("urn:acme:error:serverInternal")
+	UnauthorizedProblem     = ProblemType("urn:acme:error:unauthorized")
 )
 
 const (
@@ -44,9 +64,9 @@ const (
 	ChallengeTypeRecoveryToken = "recoveryToken"
 )
 
-const (
-	IdentifierDNS = IdentifierType("dns")
-)
+func (pd *ProblemDetails) Error() string {
+	return fmt.Sprintf("%v :: %v", pd.Type, pd.Detail)
+}
 
 func cmpStrSlice(a, b []string) bool {
 	if len(a) != len(b) {
@@ -169,6 +189,9 @@ type Challenge struct {
 
 	// The status of this challenge
 	Status AcmeStatus `json:"status,omitempty"`
+
+	// Contains the error that occured during challenge validation, if any
+	Error *ProblemDetails `json:"error,omitempty"`
 
 	// If successful, the time at which this challenge
 	// was completed by the server.

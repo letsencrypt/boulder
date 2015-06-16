@@ -195,6 +195,11 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
 
+    chall.Path = "%"
+	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+    test.AssertError(t, err, "Path doesn't consist of URL-safe characters.")
+
 	chall.Path = "wait-long"
 	started := time.Now()
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
@@ -226,6 +231,10 @@ func TestDvsni(t *testing.T) {
 	finChall, err := va.validateDvsni(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "")
+
+	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
 
 	chall.R = ba[5:]
 	invalidChall, err = va.validateDvsni(ident, chall)
