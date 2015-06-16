@@ -219,6 +219,48 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	// Not testing: Challenges
 }
 
+func TestValidateContacts(t *testing.T) {
+	tel, _ := url.Parse("tel:")
+	ansible, _ := url.Parse("ansible:earth.sol.milkyway.laniakea/letsencrypt")
+	validEmail, _ := url.Parse("mailto:admin@email.com")
+	invalidEmail, _ := url.Parse("mailto:admin@example.com")
+	malformedEmail, _ := url.Parse("mailto:admin.com")
+
+	err := validateContacts([]core.AcmeURL{})
+	test.AssertNotError(t, err, "No Contacts")
+
+	err = validateContacts([]core.AcmeURL{core.AcmeURL(*tel)})
+	test.AssertNotError(t, err, "Simple Telephone")
+
+	err = validateContacts([]core.AcmeURL{core.AcmeURL(*validEmail)})
+	test.AssertNotError(t, err, "Valid Email")
+
+	err = validateContacts([]core.AcmeURL{core.AcmeURL(*invalidEmail)})
+	test.AssertError(t, err, "Invalid Email")
+
+	err = validateContacts([]core.AcmeURL{core.AcmeURL(*malformedEmail)})
+	test.AssertError(t, err, "Malformed Email")
+
+	err = validateContacts([]core.AcmeURL{core.AcmeURL(*ansible)})
+	test.AssertError(t, err, "Unknown scehme")
+}
+
+func TestValidateEmail(t *testing.T) {
+	err := validateEmail("an email`")
+	test.AssertError(t, err, "Malformed")
+
+	err = validateEmail("a@not.a.domain")
+	test.AssertError(t, err, "Cannot resolve")
+	t.Logf("No Resolve: %s", err)
+
+	err = validateEmail("a@example.com")
+	test.AssertError(t, err, "No MX Record")
+	t.Logf("No MX: %s", err)
+
+	err = validateEmail("a@email.com")
+	test.AssertNotError(t, err, "Valid")
+}
+
 func TestNewRegistration(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
 	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
@@ -455,7 +497,7 @@ func TestNewCertificate(t *testing.T) {
 	if err != nil {
 		return
 	}
-	test.Assert(t, bytes.Compare(cert.DER, dbCert) == 0, "Certificates differ")
+	test.Assert(t, bytes.Compare(cert.DER, dbCert.DER) == 0, "Certificates differ")
 
 	t.Log("DONE TestOnValidationUpdate")
 }

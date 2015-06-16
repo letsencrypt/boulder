@@ -21,7 +21,7 @@ import (
 // where ROLE covers:
 //  * RegistrationAuthority
 //  * ValidationAuthority
-//  * CertficateAuthority
+//  * CertificateAuthority
 //  * StorageAuthority
 //
 // For each one of these, the are ${ROLE}Client and ${ROLE}Server
@@ -777,18 +777,34 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 	rpc.Handle(MethodGetCertificate, func(req []byte) (response []byte, err error) {
 		cert, err := impl.GetCertificate(string(req))
-		if err == nil {
-			response = []byte(cert)
+		if err != nil {
+			return
 		}
-		return
+
+		jsonResponse, err := json.Marshal(cert)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetCertificate, err, req)
+			return
+		}
+
+		return jsonResponse, nil
 	})
 
 	rpc.Handle(MethodGetCertificateByShortSerial, func(req []byte) (response []byte, err error) {
 		cert, err := impl.GetCertificateByShortSerial(string(req))
-		if err == nil {
-			response = []byte(cert)
+		if err != nil {
+			return
 		}
-		return
+
+		jsonResponse, err := json.Marshal(cert)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetCertificateByShortSerial, err, req)
+			return
+		}
+
+		return jsonResponse, nil
 	})
 
 	rpc.Handle(MethodGetCertificateStatus, func(req []byte) (response []byte, err error) {
@@ -910,13 +926,23 @@ func (cac StorageAuthorityClient) GetAuthorization(id string) (authz core.Author
 	return
 }
 
-func (cac StorageAuthorityClient) GetCertificate(id string) (cert []byte, err error) {
-	cert, err = cac.rpc.DispatchSync(MethodGetCertificate, []byte(id))
+func (cac StorageAuthorityClient) GetCertificate(id string) (cert core.Certificate, err error) {
+	jsonCert, err := cac.rpc.DispatchSync(MethodGetCertificate, []byte(id))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonCert, &cert)
 	return
 }
 
-func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert []byte, err error) {
-	cert, err = cac.rpc.DispatchSync(MethodGetCertificateByShortSerial, []byte(id))
+func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert core.Certificate, err error) {
+	jsonCert, err := cac.rpc.DispatchSync(MethodGetCertificateByShortSerial, []byte(id))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonCert, &cert)
 	return
 }
 

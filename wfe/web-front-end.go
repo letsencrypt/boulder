@@ -71,8 +71,18 @@ func statusCodeFromError(err interface{}) int {
 	switch err.(type) {
 	case core.MalformedRequestError:
 		return http.StatusBadRequest
+	case core.NotSupportedError:
+		return http.StatusNotImplemented
+	case core.SyntaxError:
+		return http.StatusBadRequest
 	case core.UnauthorizedError:
 		return http.StatusForbidden
+	case core.NotFoundError:
+		return http.StatusNotFound
+	case core.SignatureValidationError:
+		return http.StatusPreconditionFailed
+	case core.InternalServerError:
+		return http.StatusInternalServerError
 	default:
 		return http.StatusInternalServerError
 	}
@@ -208,11 +218,16 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		return nil, nil, reg, errors.New("JWS has invalid anti-replay nonce")
 	}
 
-	if regCheck {
-		// Check that the key is assosiated with an actual account
-		reg, err = wfe.SA.GetRegistrationByKey(*key)
-		if err != nil {
+	reg, err = wfe.SA.GetRegistrationByKey(*key)
+	if err != nil {
+		// If we are requiring a valid registration, any failure to look up the
+		// registration is an overall failure to verify.
+		if regCheck {
 			return nil, nil, reg, err
+		} else {
+			// Otherwise we just return an empty registration. The caller is expected
+			// to use the returned key instead.
+			reg = core.Registration{}
 		}
 	}
 
@@ -306,6 +321,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	regURL := fmt.Sprintf("%s%d", wfe.RegBase, id)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
+		// StatusInternalServerError because we just created this registration, it should be OK.
 		wfe.sendError(response, "Error marshaling registration", err, http.StatusInternalServerError)
 		return
 	}
@@ -369,6 +385,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	authz.RegistrationID = 0
 	responseBody, err := json.Marshal(authz)
 	if err != nil {
+		// StatusInternalServerError because we generated the authz, it should be OK
 		wfe.sendError(response, "Error marshaling authz", err, http.StatusInternalServerError)
 		return
 	}
@@ -395,7 +412,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 
 	// We don't ask verifyPOST to verify there is a correponding registration,
 	// because anyone with the right private key can revoke a certificate.
-	body, requestKey, _, err := wfe.verifyPOST(request, false)
+	body, requestKey, registration, err := wfe.verifyPOST(request, false)
 	if err != nil {
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 		return
@@ -418,20 +435,21 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 
 	serial := core.SerialToString(providedCert.SerialNumber)
-	certDER, err := wfe.SA.GetCertificate(serial)
-	if err != nil || !bytes.Equal(certDER, revokeRequest.CertificateDER) {
+	cert, err := wfe.SA.GetCertificate(serial)
+	if err != nil || !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
 		wfe.sendError(response, "No such certificate", err, http.StatusNotFound)
 		return
 	}
-	parsedCertificate, err := x509.ParseCertificate(certDER)
+	parsedCertificate, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
+		// InternalServerError because this is a failure to decode from our DB.
 		wfe.sendError(response, "Invalid certificate", err, http.StatusInternalServerError)
 		return
 	}
 
 	certStatus, err := wfe.SA.GetCertificateStatus(serial)
 	if err != nil {
-		wfe.sendError(response, "No such certificate", err, http.StatusNotFound)
+		wfe.sendError(response, "Certificate status not yet available", err, http.StatusNotFound)
 		return
 	}
 
@@ -440,9 +458,9 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 		return
 	}
 
-	// TODO: Implement other methods of validating revocation, e.g. through
-	// authorizations on account.
-	if !core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) {
+	// TODO: Implement method of revocation by authorizations on account.
+	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) ||
+		registration.ID == cert.RegistrationID) {
 		wfe.log.Debug("Key mismatch for revoke")
 		wfe.sendError(response,
 			"Revocation request must be signed by private key of cert to be revoked",
@@ -536,7 +554,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	wfe.Stats.Inc("Certificates", 1, 1.0)
 }
 
-func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
@@ -572,6 +590,8 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		challenge := authz.Challenges[challengeIndex]
 		jsonReply, err := json.Marshal(challenge)
 		if err != nil {
+			// InternalServerError because this is a failure to decode data passed in
+			// by the caller, which got it from the DB.
 			wfe.sendError(response, "Failed to marshal challenge", err, http.StatusInternalServerError)
 			return
 		}
@@ -630,6 +650,7 @@ func (wfe *WebFrontEndImpl) Challenge(authz core.Authorization, response http.Re
 		// assumption: UpdateAuthorization does not modify order of challenges
 		jsonReply, err := json.Marshal(challenge)
 		if err != nil {
+			// StatusInternalServerError because we made the challenges, they should be OK
 			wfe.sendError(response, "Failed to marshal challenge", err, http.StatusInternalServerError)
 			return
 		}
@@ -713,6 +734,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 
 	jsonReply, err := json.Marshal(updatedReg)
 	if err != nil {
+		// StatusInternalServerError because we just generated the reg, it should be OK
 		wfe.sendError(response, "Failed to marshal registration", err, http.StatusInternalServerError)
 		return
 	}
@@ -742,7 +764,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 
 	// If there is a fragment, then this is actually a request to a challenge URI
 	if len(request.URL.RawQuery) != 0 {
-		wfe.Challenge(authz, response, request)
+		wfe.challenge(authz, response, request)
 		return
 	}
 
@@ -759,6 +781,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 
 		jsonReply, err := json.Marshal(authz)
 		if err != nil {
+			// InternalServerError because this is a failure to decode from our DB.
 			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
 			return
 		}
@@ -806,7 +829,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		cert, err := wfe.SA.GetCertificateByShortSerial(serial)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
-				wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusInternalServerError)
+				wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
 			} else {
 				wfe.sendError(response, "Not found", err, http.StatusNotFound)
 			}
@@ -817,7 +840,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		response.Header().Set("Content-Type", "application/pkix-cert")
 		response.Header().Add("Link", link(IssuerPath, "up"))
 		response.WriteHeader(http.StatusOK)
-		if _, err = response.Write(cert); err != nil {
+		if _, err = response.Write(cert.DER); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 		}
 	}

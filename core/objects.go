@@ -390,11 +390,11 @@ type Certificate struct {
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`
 
-	Serial  string    `db:"serial"`
-	Digest  string    `db:"digest"`
-	DER     []byte    `db:"der"`
-	Issued  time.Time `db:"issued"`
-	Expires time.Time `db:"expires"`
+	Serial  string     `db:"serial"`
+	Digest  string     `db:"digest"`
+	DER     JsonBuffer `db:"der"`
+	Issued  time.Time  `db:"issued"`
+	Expires time.Time  `db:"expires"`
 }
 
 // Certificate.MatchesCSR tests the contents of a generated certificate to

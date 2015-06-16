@@ -166,44 +166,40 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 // serial number and returns the first certificate whose full serial number is
 // lexically greater than that id. This allows clients to query on the known
 // sequential half of our serial numbers to enumerate all certificates.
-func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert []byte, err error) {
+func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert core.Certificate, err error) {
 	if len(shortSerial) != 16 {
 		err = errors.New("Invalid certificate short serial " + shortSerial)
 		return
 	}
 
-	var certificate core.Certificate
-	err = ssa.dbMap.SelectOne(&certificate, "SELECT * FROM certificates WHERE serial LIKE :shortSerial",
+	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE serial LIKE :shortSerial",
 		map[string]interface{}{"shortSerial": shortSerial + "%"})
-	if err != nil {
-		return
-	}
-	return certificate.DER, nil
+	return
 }
 
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
-func (ssa *SQLStorageAuthority) GetCertificate(serial string) ([]byte, error) {
+func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate, error) {
 	if len(serial) != 32 {
 		err := fmt.Errorf("Invalid certificate serial %s", serial)
-		return nil, err
+		return core.Certificate{}, err
 	}
 
 	certObj, err := ssa.dbMap.Get(core.Certificate{}, serial)
 	if err != nil {
-		return nil, err
+		return core.Certificate{}, err
 	}
 	if certObj == nil {
 		ssa.log.Debug(fmt.Sprintf("Nil cert for %s", serial))
-		return nil, fmt.Errorf("Certificate does not exist for %s", serial)
+		return core.Certificate{}, fmt.Errorf("Certificate does not exist for %s", serial)
 	}
 
-	cert, ok := certObj.(*core.Certificate)
+	certPtr, ok := certObj.(*core.Certificate)
 	if !ok {
 		ssa.log.Debug("Failed to convert cert")
-		return nil, fmt.Errorf("Error converting certificate response for %s", serial)
+		return core.Certificate{}, fmt.Errorf("Error converting certificate response for %s", serial)
 	}
-	return cert.DER, err
+	return *certPtr, err
 }
 
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
