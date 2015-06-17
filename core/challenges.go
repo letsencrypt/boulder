@@ -38,3 +38,11 @@ func DvsniChallenge() Challenge {
 		Nonce:  hex.EncodeToString(nonce),
 	}
 }
+
+func DNSChallenge() Challenge {
+	return Challenge{
+		Type:   ChallengeTypeDNS,
+		Status: StatusPending,
+		Token:  NewToken(),
+	}
+}

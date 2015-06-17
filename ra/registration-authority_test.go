@@ -346,9 +346,10 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
+	test.Assert(t, len(authz.Challenges) == 3, "Incorrect number of challenges returned")
 	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
 	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
+	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeDNS, "Challenge 2 not DNS")
 
 	t.Log("DONE TestNewAuthorization")
 }

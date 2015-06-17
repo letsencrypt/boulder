@@ -145,10 +145,12 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (cha
 	challenges = []core.Challenge{
 		core.SimpleHTTPChallenge(),
 		core.DvsniChallenge(),
+		core.DNSChallenge(),
 	}
 	combinations = [][]int{
 		[]int{0},
 		[]int{1},
+		[]int{2},
 	}
 	return
 }

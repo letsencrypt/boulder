@@ -23,8 +23,7 @@ import (
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
-	DNSResolver  string
-	DNSTimeout   time.Duration
+	DNSResolver  *core.DNSResolver
 	IssuerDomain string
 	TestMode     bool
 }
@@ -191,6 +190,38 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	return challenge, err
 }
 
+func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+	challenge := input
+
+	if identifier.Type != core.IdentifierDNS {
+		challenge.Status = core.StatusInvalid
+		err := fmt.Errorf("Identifier type for DNS was not itself DNS")
+		return challenge, err
+	}
+
+	const DNSPrefix = "_acme-challenge"
+
+	challengeSubdomain := fmt.Sprintf("%s.%s", DNSPrefix, identifier.Value)
+	txts, _, err := va.DNSResolver.LookupTXT(challengeSubdomain)
+
+	if err != nil {
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+
+	byteToken := []byte(challenge.Token)
+	for _, element := range txts {
+		if subtle.ConstantTimeCompare([]byte(element), byteToken) == 1 {
+			challenge.Status = core.StatusValid
+			return challenge, nil
+		}
+	}
+
+	err = fmt.Errorf("Correct value not found for DNS challenge")
+	challenge.Status = core.StatusInvalid
+	return challenge, err
+}
+
 // Overall validation process
 
 func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int) {
@@ -215,6 +246,9 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 			break
 		case core.ChallengeTypeDVSNI:
 			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
+			break
+		case core.ChallengeTypeDNS:
+			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex])
 			break
 		}
 
@@ -241,7 +275,7 @@ func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, ch
 // records, they authorize the configured CA domain to issue a certificate
 func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	domain := strings.ToLower(identifier.Value)
-	caaSet, err := getCaaSet(domain, va.DNSResolver, va.DNSTimeout)
+	caaSet, err := getCaaSet(domain, va.DNSResolver)
 	if err != nil {
 		return
 	}
