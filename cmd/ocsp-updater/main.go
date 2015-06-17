@@ -30,7 +30,7 @@ func setupClients(c cmd.Config) (rpc.CertificateAuthorityClient, chan *amqp.Erro
 	ch := cmd.AmqpChannel(c.AMQP.Server)
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-	caRPC, err := rpc.NewAmqpRPCCLient("OCSP->CA", c.AMQP.CA.Server, ch)
+	caRPC, err := rpc.NewAmqpRPCClient("OCSP->CA", c.AMQP.CA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	cac, err := rpc.NewCertificateAuthorityClient(caRPC)
@@ -127,10 +127,10 @@ func findStaleResponses(cac rpc.CertificateAuthorityClient, dbMap *gorp.DbMap, o
 				log.Err(fmt.Sprintf("Could not process OCSP Response for %s: %s", status.Serial, err))
 				tx.Rollback()
 				return err
-			} else {
-				log.Info(fmt.Sprintf("OCSP %d: %s OK", i, status.Serial))
-				tx.Commit()
 			}
+
+			log.Info(fmt.Sprintf("OCSP %d: %s OK", i, status.Serial))
+			tx.Commit()
 		}
 	}
 

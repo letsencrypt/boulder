@@ -107,7 +107,7 @@ func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (msgs <
 	return
 }
 
-// An AMQP-RPC Server listens on a specified queue within an AMQP channel.
+// AmqpRPCServer listens on a specified queue within an AMQP channel.
 // When messages arrive on that queue, it dispatches them based on type,
 // and returns the response to the ReplyTo queue.
 //
@@ -120,7 +120,7 @@ type AmqpRPCServer struct {
 	dispatchTable map[string]func([]byte) ([]byte, error)
 }
 
-// Create a new AMQP-RPC server on the given queue and channel.
+// NewAmqpRPCServer creates a new RPC server on the given queue and channel.
 // Note that you must call Start() to actually start the server
 // listening for requests.
 func NewAmqpRPCServer(serverQueue string, channel *amqp.Channel) *AmqpRPCServer {
@@ -133,11 +133,12 @@ func NewAmqpRPCServer(serverQueue string, channel *amqp.Channel) *AmqpRPCServer 
 	}
 }
 
+// Handle registers a function to handle a particular method.
 func (rpc *AmqpRPCServer) Handle(method string, handler func([]byte) ([]byte, error)) {
 	rpc.dispatchTable[method] = handler
 }
 
-// A JSON wrapper for error as it cannot be un/marshalled
+// RPCError is a JSON wrapper for error as it cannot be un/marshalled
 // due to type interface{}.
 type RPCError struct {
 	Value string `json:"value"`
@@ -198,12 +199,14 @@ func unwrapError(rpcError RPCError) (err error) {
 	return
 }
 
+// RPCResponse is a stuct for wire-representation of response messages
+// used by DispatchSync
 type RPCResponse struct {
 	ReturnVal []byte   `json:"returnVal,omitempty"`
 	Error     RPCError `json:"error,omitempty"`
 }
 
-// Starts the AMQP-RPC server running in a separate thread.
+// Start starts the AMQP-RPC server running in a separate thread.
 // There is currently no Stop() method.
 func (rpc *AmqpRPCServer) Start() (err error) {
 	msgs, err := amqpSubscribe(rpc.channel, rpc.serverQueue, rpc.log)
@@ -246,8 +249,8 @@ func (rpc *AmqpRPCServer) Start() (err error) {
 	return
 }
 
-// An AMQP-RPC client sends requests to a specific server queue,
-// and uses a dedicated response queue for responses.
+// AmqpRPCCLient is an AMQP-RPC client that sends requests to a specific server
+// queue, and uses a dedicated response queue for responses.
 //
 // To implement specific functionality, using code uses the Dispatch()
 // method to send a method name and body, and get back a response. So
@@ -273,7 +276,8 @@ type AmqpRPCCLient struct {
 	log         *blog.AuditLogger
 }
 
-func NewAmqpRPCCLient(clientQueuePrefix, serverQueue string, channel *amqp.Channel) (rpc *AmqpRPCCLient, err error) {
+// NewAmqpRPCClient constructs an RPC client using AMQP
+func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Channel) (rpc *AmqpRPCCLient, err error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -316,10 +320,15 @@ func NewAmqpRPCCLient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 	return rpc, err
 }
 
+// SetTimeout configures the maximum time DispatchSync will wait for a response
+// before returning an error.
 func (rpc *AmqpRPCCLient) SetTimeout(ttl time.Duration) {
 	rpc.timeout = ttl
 }
 
+// Dispatch sends a body to the destination, and returns a response channel
+// that can be used to monitor for responses, or discarded for one-shot
+// actions.
 func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 	// Create a channel on which to direct the response
 	// At least in some cases, it's important that this channel
@@ -345,6 +354,7 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 	return responseChan
 }
 
+// DispatchSync sends a body to the destination, and blocks waiting on a response.
 func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []byte, err error) {
 	select {
 	case jsonResponse := <-rpc.Dispatch(method, body):
@@ -364,9 +374,4 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 		err = errors.New("AMQP-RPC timeout")
 		return
 	}
-}
-
-func (rpc *AmqpRPCCLient) SyncDispatchWithTimeout(method string, body []byte, ttl time.Duration) (response []byte, err error) {
-	err = errors.New("Not Implemented")
-	return
 }

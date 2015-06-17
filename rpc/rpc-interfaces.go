@@ -14,7 +14,6 @@ type RPCClient interface {
 	SetTimeout(time.Duration)
 	Dispatch(string, []byte) chan []byte
 	DispatchSync(string, []byte) ([]byte, error)
-	SyncDispatchWithTimeout(string, []byte, time.Duration) ([]byte, error)
 }
 
 // RPCServer describes the functions an RPC Server performs

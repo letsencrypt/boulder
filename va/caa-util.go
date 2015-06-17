@@ -58,7 +58,7 @@ func newCAA(encodedRDATA []byte) *CAA {
 	return &CAA{flag: flag, tag: tag, valueBuf: valueBuf, value: value}
 }
 
-// Filtered CAA records
+// CAASet consists of filtered CAA records
 type CAASet struct {
 	issue     []*CAA
 	issuewild []*CAA

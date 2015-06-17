@@ -23,6 +23,7 @@ var pin = flag.String("pkcs11-pin", "", "PKCS#11 password")
 var token = flag.String("pkcs11-token", "", "PKCS#11 token name")
 var label = flag.String("pkcs11-label", "", "PKCS#11 key label")
 
+// Config defines the configuration loaded from configFile.
 type Config struct {
 	Name struct {
 		C  string

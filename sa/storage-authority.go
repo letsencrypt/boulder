@@ -22,6 +22,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
 	dbMap  *gorp.DbMap
 	bucket map[string]interface{} // XXX included only for backward compat
@@ -99,6 +100,7 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	return count > 0
 }
 
+// GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(id int64) (reg core.Registration, err error) {
 	regObj, err := ssa.dbMap.Get(core.Registration{}, id)
 	if err != nil {
@@ -117,16 +119,18 @@ func (ssa *SQLStorageAuthority) GetRegistration(id int64) (reg core.Registration
 	return
 }
 
+// GetRegistrationByKey obtains a Registration by JWK
 func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (reg core.Registration, err error) {
-	keyJson, err := json.Marshal(key)
+	keyJSON, err := json.Marshal(key)
 	if err != nil {
 		return
 	}
 
-	err = ssa.dbMap.SelectOne(&reg, "SELECT * FROM registrations WHERE jwk = :key", map[string]interface{}{"key": string(keyJson)})
+	err = ssa.dbMap.SelectOne(&reg, "SELECT * FROM registrations WHERE jwk = :key", map[string]interface{}{"key": string(keyJSON)})
 	return
 }
 
+// GetAuthorization obtains an Authorization by ID
 func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authorization, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -220,6 +224,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 	return
 }
 
+// NewRegistration stores a new Registration
 func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -240,8 +245,8 @@ func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (core.Reg
 func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (err error) {
 	status, err := ssa.GetCertificateStatus(serial)
 	if err != nil {
-		return errors.New(fmt.Sprintf(
-			"Unable to update OCSP for certificate %s: cert status not found.", serial))
+		return fmt.Errorf(
+			"Unable to update OCSP for certificate %s: cert status not found.", serial)
 	}
 
 	tx, err := ssa.dbMap.Begin()
@@ -275,13 +280,13 @@ func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (
 // with a timestamp and a reason.
 func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
 	if _, err = ssa.GetCertificate(serial); err != nil {
-		return errors.New(fmt.Sprintf(
-			"Unable to mark certificate %s revoked: cert not found.", serial))
+		return fmt.Errorf(
+			"Unable to mark certificate %s revoked: cert not found.", serial)
 	}
 
 	if _, err = ssa.GetCertificateStatus(serial); err != nil {
-		return errors.New(fmt.Sprintf(
-			"Unable to mark certificate %s revoked: cert status not found.", serial))
+		return fmt.Errorf(
+			"Unable to mark certificate %s revoked: cert status not found.", serial)
 	}
 
 	tx, err := ssa.dbMap.Begin()
@@ -321,6 +326,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 	return
 }
 
+// UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -343,6 +349,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err e
 	return
 }
 
+// NewPendingAuthorization stores a new Pending Authorization
 func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -356,18 +363,19 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 	}
 
 	// Insert a stub row in pending
-	pending_authz := pendingauthzModel{Authorization: authz}
-	err = tx.Insert(&pending_authz)
+	pendingAuthz := pendingauthzModel{Authorization: authz}
+	err = tx.Insert(&pendingAuthz)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
 	err = tx.Commit()
-	output = pending_authz.Authorization
+	output = pendingAuthz.Authorization
 	return
 }
 
+// UpdatePendingAuthorization updates a Pending Authorization
 func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorization) (err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -409,6 +417,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 	return
 }
 
+// FinalizeAuthorization converts a Pending Authorization to a final one
 func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) (err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -463,6 +472,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
+// AddCertificate stores an issued certificate.
 func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
 	var parsedCertificate *x509.Certificate
 	parsedCertificate, err = x509.ParseCertificate(certDER)
@@ -512,6 +522,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 	return
 }
 
+// AlreadyDeniedCSR queries to find if the name list has already been denied.
 func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, err error) {
 	sort.Strings(names)
 

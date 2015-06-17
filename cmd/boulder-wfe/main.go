@@ -23,10 +23,10 @@ func setupWFE(c cmd.Config) (rpc.RegistrationAuthorityClient, rpc.StorageAuthori
 	ch := cmd.AmqpChannel(c.AMQP.Server)
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-	raRPC, err := rpc.NewAmqpRPCCLient("WFE->RA", c.AMQP.RA.Server, ch)
+	raRPC, err := rpc.NewAmqpRPCClient("WFE->RA", c.AMQP.RA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
-	saRPC, err := rpc.NewAmqpRPCCLient("WFE->SA", c.AMQP.SA.Server, ch)
+	saRPC, err := rpc.NewAmqpRPCClient("WFE->SA", c.AMQP.SA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
@@ -43,17 +43,18 @@ type timedHandler struct {
 	stats statsd.Statter
 }
 
-var openConnections int64 = 0
+var openConnections int64
 
+// HandlerTimer monitors HTTP performance and sends the details to StatsD.
 func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cStart := time.Now()
-		openConnections += 1
+		openConnections++
 		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
 
 		handler.ServeHTTP(w, r)
 
-		openConnections -= 1
+		openConnections--
 		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
 
 		// (FIX: this doesn't seem to really work at catching errors...)

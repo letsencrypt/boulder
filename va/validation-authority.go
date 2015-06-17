@@ -20,6 +20,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
@@ -28,6 +29,8 @@ type ValidationAuthorityImpl struct {
 	TestMode     bool
 }
 
+// NewValidationAuthorityImpl constructs a new VA, and may place it
+// into Test Mode (tm)
 func NewValidationAuthorityImpl(tm bool) ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
@@ -131,8 +134,8 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		return challenge, err
 	}
 
-	const DVSNI_SUFFIX = ".acme.invalid"
-	nonceName := challenge.Nonce + DVSNI_SUFFIX
+	const DVSNIsuffix = ".acme.invalid"
+	nonceName := challenge.Nonce + DVSNIsuffix
 
 	R, err := core.B64dec(challenge.R)
 	if err != nil {
@@ -266,12 +269,13 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 	va.RA.OnValidationUpdate(authz)
 }
 
+// UpdateValidations runs the validate() method asynchronously using goroutines.
 func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
 	go va.validate(authz, challengeIndex)
 	return nil
 }
 
-// CheckCAA verifies that, if the indicated subscriber domain has any CAA
+// CheckCAARecords verifies that, if the indicated subscriber domain has any CAA
 // records, they authorize the configured CA domain to issue a certificate
 func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	domain := strings.ToLower(identifier.Value)

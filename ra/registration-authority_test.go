@@ -154,9 +154,9 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	va := &DummyValidationAuthority{}
 
 	// PEM files in certificate-authority_test.go
-	caKeyPEM, _ := pem.Decode([]byte(CA_KEY_PEM))
+	caKeyPEM, _ := pem.Decode([]byte(CAkeyPEM))
 	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
-	caCertPEM, _ := pem.Decode([]byte(CA_CERT_PEM))
+	caCertPEM, _ := pem.Decode([]byte(CAcertPEM))
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
 	basicPolicy := &cfsslConfig.Signing{
 		Default: &cfsslConfig.SigningProfile{
@@ -184,7 +184,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 		NotAfter:       time.Now().Add(time.Hour * 8761),
 		MaxKeySize:     4096,
 	}
-	csrDER, _ := hex.DecodeString(CSR_HEX)
+	csrDER, _ := hex.DecodeString(CSRhex)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 
 	// This registration implicitly gets ID = 1
@@ -373,8 +373,8 @@ func TestUpdateAuthorization(t *testing.T) {
 
 	// Verify that the responses are reflected
 	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
-	simpleHttp := va.Argument.Challenges[0]
-	test.Assert(t, simpleHttp.Path == Response.Path, "simpleHttp changed")
+	simpleHTTP := va.Argument.Challenges[0]
+	test.Assert(t, simpleHTTP.Path == Response.Path, "simpleHTTP changed")
 
 	t.Log("DONE TestUpdateAuthorization")
 }
@@ -503,7 +503,7 @@ func TestNewCertificate(t *testing.T) {
 	t.Log("DONE TestOnValidationUpdate")
 }
 
-var CA_KEY_PEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
+var CAkeyPEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
 	"MIIJKQIBAAKCAgEAqmM0dEf/J9MCk2ItzevL0dKJ84lVUtf/vQ7AXFi492vFXc3b\n" +
 	"PrJz2ybtjO08oVkhRrFGGgLufL2JeOBn5pUZQrp6TqyCLoQ4f/yrmu9tCeG8CtDg\n" +
 	"xi6Ye9LjvlchEHhUKhAHc8uL+ablHzWxHTeuhnuThrsLFUcJQWb10U27LiXp3XCW\n" +
@@ -555,7 +555,7 @@ var CA_KEY_PEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
 	"huu1W6p9RdxJHgphzmGAvTrOmrDAZeKtubsMS69VZVFjQFa1ZD/VMzWK1X2o\n" +
 	"-----END RSA PRIVATE KEY-----"
 
-var CA_CERT_PEM = "-----BEGIN CERTIFICATE-----\n" +
+var CAcertPEM = "-----BEGIN CERTIFICATE-----\n" +
 	"MIIFxDCCA6ygAwIBAgIJALe2d/gZHJqAMA0GCSqGSIb3DQEBCwUAMDExCzAJBgNV\n" +
 	"BAYTAlVTMRAwDgYDVQQKDAdUZXN0IENBMRAwDgYDVQQDDAdUZXN0IENBMB4XDTE1\n" +
 	"MDIxMzAwMzI0NFoXDTI1MDIxMDAwMzI0NFowMTELMAkGA1UEBhMCVVMxEDAOBgNV\n" +
@@ -594,7 +594,7 @@ var CA_CERT_PEM = "-----BEGIN CERTIFICATE-----\n" +
 // * CN = not-example.com
 // * DNSNames = not-example.com, www.not-example.com
 /*
-var CSR_HEX = "3082028c30820174020100301a311830160603550403130f" +
+var CSRhex = "3082028c30820174020100301a311830160603550403130f" +
 	"6e6f742d6578616d706c652e636f6d30820122300d06092a" +
 	"864886f70d01010105000382010f003082010a0282010100" +
 	"aac67dd1e11fae980048b0ac91be005f21d9df8bb38461cc" +
@@ -624,7 +624,7 @@ var CSR_HEX = "3082028c30820174020100301a311830160603550403130f" +
 	"f277b6d23fa24f9b"
 */
 
-var CSR_HEX = "308202ae308201960201003027310b300906035504061302" +
+var CSRhex = "308202ae308201960201003027310b300906035504061302" +
 	"5553311830160603550403130f6e6f742d6578616d706c65" +
 	"2e636f6d30820122300d06092a864886f70d010101050003" +
 	"82010f003082010a0282010100a4f507b52ca2766e2cea7b" +

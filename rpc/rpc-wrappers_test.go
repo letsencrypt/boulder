@@ -16,7 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-const JWK_1_JSON = `{
+const JWK1JSON = `{
   "kty": "RSA",
   "n": "vuc785P8lBj3fUxyZchF_uZw6WtbxcorqgTyq-qapF5lrO1U82Tp93rpXlmctj6fyFHBVVB5aXnUHJ7LZeVPod7Wnfl8p5OyhlHQHC8BnzdzCqCMKmWZNX5DtETDId0qzU7dPzh0LP0idt5buU7L9QNaabChw3nnaL47iu_1Di5Wp264p2TwACeedv2hfRDjDlJmaQXuS8Rtv9GnRWyC9JBu7XmGvGDziumnJH7Hyzh3VNu-kSPQD3vuAFgMZS6uUzOztCkT0fpOalZI6hqxtWLvXUMj-crXrn-Maavz8qRhpAyp5kcYk3jiHGgQIi7QSK2JIdRJ8APyX9HlmTN5AQ",
   "e": "AAEAAQ"
@@ -59,12 +59,6 @@ func (rpc *MockRPCClient) DispatchSync(method string, body []byte) (response []b
 	return
 }
 
-func (rpc *MockRPCClient) SyncDispatchWithTimeout(method string, body []byte, ttl time.Duration) (response []byte, err error) {
-	rpc.LastMethod = method
-	rpc.LastBody = body
-	return body, nil
-}
-
 func TestRANewRegistration(t *testing.T) {
 	mock := &MockRPCClient{}
 	client, err := NewRegistrationAuthorityClient(mock)
@@ -72,7 +66,7 @@ func TestRANewRegistration(t *testing.T) {
 	test.AssertNotNil(t, client, "Client construction")
 
 	var jwk jose.JsonWebKey
-	json.Unmarshal([]byte(JWK_1_JSON), &jwk)
+	json.Unmarshal([]byte(JWK1JSON), &jwk)
 
 	reg := core.Registration{
 		ID:            1,

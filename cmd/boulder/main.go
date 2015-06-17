@@ -28,17 +28,18 @@ type timedHandler struct {
 	stats statsd.Statter
 }
 
-var openConnections int64 = 0
+var openConnections int64
 
+// HandlerTimer monitors HTTP performance and sends the details to StatsD.
 func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cStart := time.Now()
-		openConnections += 1
+		openConnections++
 		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
 
 		handler.ServeHTTP(w, r)
 
-		openConnections -= 1
+		openConnections--
 		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
 
 		// (FIX: this doesn't seem to really work at catching errors...)

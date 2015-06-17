@@ -64,7 +64,7 @@ func (cadb *CertificateAuthorityDatabaseImpl) CreateTablesIfNotExists() (err err
 	return
 }
 
-// GetDbMap gets a pointer to the CA DB's GORP map object.
+// Begin starts a transaction at the GORP wrapper.
 func (cadb *CertificateAuthorityDatabaseImpl) Begin() (*gorp.Transaction, error) {
 	return cadb.dbMap.Begin()
 }

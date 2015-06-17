@@ -19,7 +19,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-var dialectMap map[string]interface{} = map[string]interface{}{
+var dialectMap = map[string]interface{}{
 	"sqlite3":  gorp.SqliteDialect{},
 	"mysql":    gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"},
 	"postgres": gorp.PostgresDialect{},
