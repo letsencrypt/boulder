@@ -14,10 +14,10 @@ import (
 )
 
 func TestProblemDetails(t *testing.T) {
-    pd := &ProblemDetails{
-        Type: MalformedProblem,
-        Detail: "Wat? o.O"}
-    test.AssertEquals(t, pd.Error(), "urn:acme:error:malformed :: Wat? o.O")
+	pd := &ProblemDetails{
+		Type:   MalformedProblem,
+		Detail: "Wat? o.O"}
+	test.AssertEquals(t, pd.Error(), "urn:acme:error:malformed :: Wat? o.O")
 }
 
 func TestRegistrationUupdate(t *testing.T) {

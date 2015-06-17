@@ -50,11 +50,11 @@ const (
 )
 
 const (
-	BadChallResponseProblem = ProblemType("urn:acme:error:badChallResponse")
-	MalformedProblem        = ProblemType("urn:acme:error:malformed")
-	NoChallResponseProblem  = ProblemType("urn:acme:error:noChallResponse")
-	ServerInternalProblem   = ProblemType("urn:acme:error:serverInternal")
-	UnauthorizedProblem     = ProblemType("urn:acme:error:unauthorized")
+	BadConnectionProblem  = ProblemType("urn:acme:error:badConnection")
+	BadResponseProblem    = ProblemType("urn:acme:error:badResponse")
+	MalformedProblem      = ProblemType("urn:acme:error:malformed")
+	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
+	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
 )
 
 const (
