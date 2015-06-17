@@ -51,6 +51,7 @@ type WebFrontEnd interface {
 	Cert(response http.ResponseWriter, request *http.Request)
 }
 
+// RegistrationAuthority defines the public interface for the Boulder RA
 type RegistrationAuthority interface {
 	// [WebFrontEnd]
 	NewRegistration(Registration) (Registration, error)
@@ -74,12 +75,14 @@ type RegistrationAuthority interface {
 	OnValidationUpdate(Authorization) error
 }
 
+// ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
 	UpdateValidations(Authorization, int) error
 	CheckCAARecords(AcmeIdentifier) (bool, bool, error)
 }
 
+// CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest, int64, time.Time) (Certificate, error)
@@ -87,11 +90,13 @@ type CertificateAuthority interface {
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
 
+// PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
 	WillingToIssue(AcmeIdentifier) error
 	ChallengesFor(AcmeIdentifier) ([]Challenge, [][]int)
 }
 
+// StorageGetter are the Boulder SA's read-only methods
 type StorageGetter interface {
 	GetRegistration(int64) (Registration, error)
 	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
@@ -102,6 +107,7 @@ type StorageGetter interface {
 	AlreadyDeniedCSR([]string) (bool, error)
 }
 
+// StorageAdder are the Boulder SA's write/update methods
 type StorageAdder interface {
 	NewRegistration(Registration) (Registration, error)
 	UpdateRegistration(Registration) error

@@ -46,11 +46,14 @@ type Config struct {
 	CFSSL    cfsslConfig.Config
 }
 
+// KeyConfig should contain either a File path to a PEM-format private key,
+// or a PKCS11Config defining how to load a module for an HSM.
 type KeyConfig struct {
 	File   string
 	PKCS11 PKCS11Config
 }
 
+// PKCS11Config defines how to load a module for an HSM.
 type PKCS11Config struct {
 	Module string
 	Token  string
@@ -170,12 +173,12 @@ func loadKey(keyConfig KeyConfig) (priv crypto.Signer, err error) {
 
 		priv, err = helpers.ParsePrivateKeyPEM(keyBytes)
 		return
-	} else {
-		pkcs11Config := keyConfig.PKCS11
-		priv, err = pkcs11key.New(pkcs11Config.Module,
-			pkcs11Config.Token, pkcs11Config.PIN, pkcs11Config.Label)
-		return
 	}
+
+	pkcs11Config := keyConfig.PKCS11
+	priv, err = pkcs11key.New(pkcs11Config.Module,
+		pkcs11Config.Token, pkcs11Config.PIN, pkcs11Config.Label)
+	return
 }
 
 func loadIssuer(filename string) (issuerCert *x509.Certificate, err error) {

@@ -26,42 +26,50 @@ func caller() string {
 	return fmt.Sprintf("%s:%d:", filename, line)
 }
 
+// Assert a boolean
 func Assert(t *testing.T, result bool, message string) {
 	if !result {
 		t.Error(caller(), message)
 	}
 }
 
+// AssertNotNil checks an object to be non-nil
 func AssertNotNil(t *testing.T, obj interface{}, message string) {
 	if obj == nil {
 		t.Error(caller(), message)
 	}
 }
 
+// AssertNotError checks that err is nil
 func AssertNotError(t *testing.T, err error, message string) {
 	if err != nil {
 		t.Error(caller(), message, ":", err)
 	}
 }
 
+// AssertError checks that err is non-nil
 func AssertError(t *testing.T, err error, message string) {
 	if err == nil {
 		t.Error(caller(), message, ":", err)
 	}
 }
 
+// AssertEquals uses the equality operator (=) to measure one and two
 func AssertEquals(t *testing.T, one interface{}, two interface{}) {
 	if one != two {
 		t.Errorf("%s [%v] != [%v]", caller(), one, two)
 	}
 }
 
+// AssertDeepEquals uses the reflect.DeepEqual method to measure one and two
 func AssertDeepEquals(t *testing.T, one interface{}, two interface{}) {
 	if !reflect.DeepEqual(one, two) {
 		t.Errorf("%s [%+v] !(deep)= [%+v]", caller(), one, two)
 	}
 }
 
+// AssertMarshaledEquals marshals one and two to JSON, and then uses
+// the equality operator to measure them
 func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
 	oneJSON, err := json.Marshal(one)
 	AssertNotError(t, err, "Could not marshal 1st argument")
@@ -73,12 +81,15 @@ func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
 	}
 }
 
+// AssertNotEquals uses the equality operator to measure that one and two
+// are different
 func AssertNotEquals(t *testing.T, one interface{}, two interface{}) {
 	if one == two {
 		t.Errorf("%s [%v] == [%v]", caller(), one, two)
 	}
 }
 
+// AssertByteEquals uses bytes.Equal to measure one and two for equality.
 func AssertByteEquals(t *testing.T, one []byte, two []byte) {
 	if !bytes.Equal(one, two) {
 		t.Errorf("%s Byte [%s] != [%s]",
@@ -88,30 +99,36 @@ func AssertByteEquals(t *testing.T, one []byte, two []byte) {
 	}
 }
 
+// AssertIntEquals uses the equality operator to measure one and two.
 func AssertIntEquals(t *testing.T, one int, two int) {
 	if one != two {
 		t.Errorf("%s Int [%d] != [%d]", caller(), one, two)
 	}
 }
 
+// AssertBigIntEquals uses the big.Int.cmp() method to measure whether
+// one and two are equal
 func AssertBigIntEquals(t *testing.T, one *big.Int, two *big.Int) {
 	if one.Cmp(two) != 0 {
 		t.Errorf("%s Int [%d] != [%d]", caller(), one, two)
 	}
 }
 
+// AssertContains determines whether needle can be found in haystack
 func AssertContains(t *testing.T, haystack string, needle string) {
 	if !strings.Contains(haystack, needle) {
 		t.Errorf("%s String [%s] does not contain [%s]", caller(), haystack, needle)
 	}
 }
 
+// AssertNotContains determines if needle is not found in haystack
 func AssertNotContains(t *testing.T, haystack string, needle string) {
 	if strings.Contains(haystack, needle) {
 		t.Errorf("%s String [%s] contains [%s]", caller(), haystack, needle)
 	}
 }
 
+// AssertSeverity determines if a string matches the Severity formatting
 func AssertSeverity(t *testing.T, data string, severity int) {
 	expected := fmt.Sprintf("\"severity\":%d", severity)
 	AssertContains(t, data, expected)

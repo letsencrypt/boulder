@@ -29,17 +29,18 @@ type timedHandler struct {
 	stats statsd.Statter
 }
 
-var openConnections int64 = 0
+var openConnections int64
 
+// HandlerTimer monitors HTTP performance and sends the details to StatsD.
 func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cStart := time.Now()
-		openConnections += 1
+		openConnections++
 		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
 
 		handler.ServeHTTP(w, r)
 
-		openConnections -= 1
+		openConnections--
 		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
 
 		// (FIX: this doesn't seem to really work at catching errors...)
@@ -56,6 +57,8 @@ func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 }
 
 /*
+DBSource maps a given Database schema to a CA Key Hash, so we can pick
+from among them when presented with OCSP requests for different certs.
 
 We assume that OCSP responses are stored in a very simple database table,
 with two columns: serialNumber and response
@@ -73,11 +76,14 @@ type DBSource struct {
 	caKeyHash []byte
 }
 
+// NewSourceFromDatabase produces a DBSource representing the binding of a
+// given DB schema to a CA key.
 func NewSourceFromDatabase(dbMap *gorp.DbMap, caKeyHash []byte) (src *DBSource, err error) {
 	src = &DBSource{dbMap: dbMap, caKeyHash: caKeyHash}
 	return
 }
 
+// Response is called by the HTTP server to handle a new OCSP request.
 func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool) {
 	log := blog.GetAuditLogger()
 

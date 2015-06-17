@@ -2,6 +2,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 package core
 
 import (
@@ -11,8 +12,11 @@ import (
 	"math/big"
 )
 
+// MaxUsed defines the maximum number of Nonces we're willing to hold in
+// memory.
 const MaxUsed = 65536
 
+// NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
 	latest   int64
 	earliest int64
@@ -21,6 +25,7 @@ type NonceService struct {
 	maxUsed  int
 }
 
+// NewNonceService constructs a NonceService with defaults
 func NewNonceService() NonceService {
 	// XXX ignoring possible error due to entropy starvation
 	key := make([]byte, 16)
@@ -44,7 +49,7 @@ func (ns NonceService) encrypt(counter int64) string {
 	// Generate a nonce with upper 4 bytes zero
 	// XXX ignoring possible error due to entropy starvation
 	nonce := make([]byte, 12)
-	for i := 0; i < 4; i += 1 {
+	for i := 0; i < 4; i++ {
 		nonce[i] = 0
 	}
 	rand.Read(nonce[4:])
@@ -70,7 +75,7 @@ func (ns NonceService) decrypt(nonce string) (int64, error) {
 	}
 
 	n := make([]byte, 12)
-	for i := 0; i < 4; i += 1 {
+	for i := 0; i < 4; i++ {
 		n[i] = 0
 	}
 	copy(n[4:], decoded[:8])
@@ -85,8 +90,9 @@ func (ns NonceService) decrypt(nonce string) (int64, error) {
 	return ctr.Int64(), nil
 }
 
+// Nonce provides a new Nonce.
 func (ns *NonceService) Nonce() string {
-	ns.latest += 1
+	ns.latest++
 	return ns.encrypt(ns.latest)
 }
 
@@ -100,6 +106,8 @@ func (ns *NonceService) minUsed() int64 {
 	return min
 }
 
+// Valid determines whether the provided Nonce string is valid, returning
+// true if so.
 func (ns *NonceService) Valid(nonce string) bool {
 	c, err := ns.decrypt(nonce)
 	if err != nil {

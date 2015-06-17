@@ -25,7 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var CA_KEY_PEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
+var CAkeyPEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
 	"MIIJKQIBAAKCAgEAqmM0dEf/J9MCk2ItzevL0dKJ84lVUtf/vQ7AXFi492vFXc3b\n" +
 	"PrJz2ybtjO08oVkhRrFGGgLufL2JeOBn5pUZQrp6TqyCLoQ4f/yrmu9tCeG8CtDg\n" +
 	"xi6Ye9LjvlchEHhUKhAHc8uL+ablHzWxHTeuhnuThrsLFUcJQWb10U27LiXp3XCW\n" +
@@ -77,7 +77,7 @@ var CA_KEY_PEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
 	"huu1W6p9RdxJHgphzmGAvTrOmrDAZeKtubsMS69VZVFjQFa1ZD/VMzWK1X2o\n" +
 	"-----END RSA PRIVATE KEY-----"
 
-var CA_CERT_PEM = "-----BEGIN CERTIFICATE-----\n" +
+var CAcertPEM = "-----BEGIN CERTIFICATE-----\n" +
 	"MIIFxDCCA6ygAwIBAgIJALe2d/gZHJqAMA0GCSqGSIb3DQEBCwUAMDExCzAJBgNV\n" +
 	"BAYTAlVTMRAwDgYDVQQKDAdUZXN0IENBMRAwDgYDVQQDDAdUZXN0IENBMB4XDTE1\n" +
 	"MDIxMzAwMzI0NFoXDTI1MDIxMDAwMzI0NFowMTELMAkGA1UEBhMCVVMxEDAOBgNV\n" +
@@ -115,7 +115,7 @@ var CA_CERT_PEM = "-----BEGIN CERTIFICATE-----\n" +
 // * Random public key
 // * CN = not-example.com
 // * DNSNames = not-example.com, www.not-example.com
-var CN_AND_SAN_CSR_HEX = "308202a130820189020100301a311830160603550403130f6e6f742d6578" +
+var CNandSANCSRhex = "308202a130820189020100301a311830160603550403130f6e6f742d6578" +
 	"616d706c652e636f6d30820122300d06092a864886f70d01010105000382" +
 	"010f003082010a0282010100e56ccbe37003c150202e6f543f9eb1d0e590" +
 	"76ac7f1f62654fa82fe131a23c66bd53a2f62ff7852015c84a394e36836d" +
@@ -143,7 +143,7 @@ var CN_AND_SAN_CSR_HEX = "308202a130820189020100301a311830160603550403130f6e6f74
 // * Random public key
 // * CN = not-example.com
 // * DNSNames = [none]
-var NO_SAN_CSR_HEX = "3082025f30820147020100301a311830160603550403130f6e6f742d6578" +
+var NoSANCSRhex = "3082025f30820147020100301a311830160603550403130f6e6f742d6578" +
 	"616d706c652e636f6d30820122300d06092a864886f70d01010105000382" +
 	"010f003082010a0282010100aa6e56ff24906f93b855e7871dc8411a3cf7" +
 	"678d9563627e8ca37ab17dfe814ef7f828d6aa92b717f0da9df56990b953" +
@@ -170,7 +170,7 @@ var NO_SAN_CSR_HEX = "3082025f30820147020100301a311830160603550403130f6e6f742d65
 // * C = US
 // * CN = [none]
 // * DNSNames = not-example.com
-var NO_CN_CSR_HEX = "3082027f30820167020100300d310b300906035504061302555330820122" +
+var NoCNCSRhex = "3082027f30820167020100300d310b300906035504061302555330820122" +
 	"300d06092a864886f70d01010105000382010f003082010a0282010100d8" +
 	"b3c11610ce17614f6d78de3f079db430e479c38978da8cd625b7c70dd445" +
 	"57fd99b9831693e6b9b09fb7c74a82058a1f1a4e1e087f04f93aa73bc35a" +
@@ -198,7 +198,7 @@ var NO_CN_CSR_HEX = "3082027f30820167020100300d310b30090603550406130255533082012
 // * C = US
 // * CN = [none]
 // * DNSNames = [none]
-var NO_NAME_CSR_HEX = "308202523082013a020100300d310b300906035504061302555330820122" +
+var NoNameCSRhex = "308202523082013a020100300d310b300906035504061302555330820122" +
 	"300d06092a864886f70d01010105000382010f003082010a0282010100bc" +
 	"fae49f68f02c42500b2faf251628ee19e8ef048a35fef311c9c419c80606" +
 	"ab37340ad6e25cf4cc63c0283994b4ba705d86950ad5298094e0b9684647" +
@@ -223,7 +223,7 @@ var NO_NAME_CSR_HEX = "308202523082013a020100300d310b300906035504061302555330820
 // * Random public key
 // * CN = [none]
 // * DNSNames = a.example.com, a.example.com
-var DUPE_NAME_CSR_HEX = "308202943082017c020100300d310b300906035504061302555330820122" +
+var DupeNameCSRhex = "308202943082017c020100300d310b300906035504061302555330820122" +
 	"300d06092a864886f70d01010105000382010f003082010a0282010100ee" +
 	"7d298c2a8237dd84e75e71dcfbbf8e1124327b103b01f3a99bc76b29be64" +
 	"55329dc523ad1372ed12853dc74a775f2c79d1e4e28ae2a3ce69b78ec161" +
@@ -251,7 +251,7 @@ var DUPE_NAME_CSR_HEX = "308202943082017c020100300d310b3009060355040613025553308
 // * Random pulic key
 // * CN = [none]
 // * DNSNames = not-example.com, www.not-example.com, mail.example.com
-var TOO_MANY_NAME_CSR_HEX = "308202aa30820192020100300d310b300906035504061302555330820122" +
+var TooManyNameCSRhex = "308202aa30820192020100300d310b300906035504061302555330820122" +
 	"300d06092a864886f70d01010105000382010f003082010a0282010100a7" +
 	"75d8f833651d9a4cfa1fa0e134912b772366c7d070ca3183d3c79ffc99bb" +
 	"c706d328c2389b360b99f60e9a447023a019931d410b4cea0eafb7869a6d" +
@@ -364,7 +364,7 @@ func TestRevoke(t *testing.T) {
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
 
-	csrDER, _ := hex.DecodeString(CN_AND_SAN_CSR_HEX)
+	csrDER, _ := hex.DecodeString(CNandSANCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
 	certObj, err := ca.IssueCertificate(*csr, 1, FarFuture)
 	test.AssertNotError(t, err, "Failed to sign certificate")
@@ -401,7 +401,7 @@ func TestIssueCertificate(t *testing.T) {
 			}
 	*/
 
-	csrs := []string{CN_AND_SAN_CSR_HEX, NO_SAN_CSR_HEX, NO_CN_CSR_HEX}
+	csrs := []string{CNandSANCSRhex, NoSANCSRhex, NoCNCSRhex}
 	for _, csrHEX := range csrs {
 		csrDER, _ := hex.DecodeString(csrHEX)
 		csr, _ := x509.ParseCertificateRequest(csrDER)
@@ -469,7 +469,7 @@ func TestRejectNoName(t *testing.T) {
 	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs with no names
-	csrDER, _ := hex.DecodeString(NO_NAME_CSR_HEX)
+	csrDER, _ := hex.DecodeString(NoNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
 	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
 	if err == nil {
@@ -484,7 +484,7 @@ func TestRejectTooManyNames(t *testing.T) {
 	ca.SA = storageAuthority
 
 	// Test that the CA rejects a CSR with too many names
-	csrDER, _ := hex.DecodeString(TOO_MANY_NAME_CSR_HEX)
+	csrDER, _ := hex.DecodeString(TooManyNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
 	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
 	test.Assert(t, err != nil, "Issued certificate with too many names")
@@ -498,7 +498,7 @@ func TestDeduplication(t *testing.T) {
 	ca.MaxKeySize = 4096
 
 	// Test that the CA collapses duplicate names
-	csrDER, _ := hex.DecodeString(DUPE_NAME_CSR_HEX)
+	csrDER, _ := hex.DecodeString(DupeNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
 	cert, err := ca.IssueCertificate(*csr, 1, FarFuture)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with duplicate names")
@@ -527,13 +527,13 @@ func TestRejectValidityTooLong(t *testing.T) {
 	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	csrDER, _ := hex.DecodeString(NO_CN_CSR_HEX)
+	csrDER, _ := hex.DecodeString(NoCNCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
 	_, err = ca.IssueCertificate(*csr, 1, FarPast)
 	test.Assert(t, err == nil, "Can issue a certificate that expires after the underlying authorization.")
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	csrDER, _ = hex.DecodeString(NO_CN_CSR_HEX)
+	csrDER, _ = hex.DecodeString(NoCNCSRhex)
 	csr, _ = x509.ParseCertificateRequest(csrDER)
 	ca.NotAfter = time.Now()
 	_, err = ca.IssueCertificate(*csr, 1, FarFuture)

@@ -44,7 +44,7 @@ func main() {
 			ch := cmd.AmqpChannel(c.AMQP.Server)
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-			raRPC, err := rpc.NewAmqpRPCCLient("VA->RA", c.AMQP.RA.Server, ch)
+			raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, ch)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
 			rac, err := rpc.NewRegistrationAuthorityClient(raRPC)

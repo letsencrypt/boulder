@@ -13,7 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestRegistrationUupdate(t *testing.T) {
+func TestRegistrationUpdate(t *testing.T) {
 	oldURL, _ := url.Parse("http://old.invalid")
 	newURL, _ := url.Parse("http://new.invalid")
 
@@ -102,9 +102,9 @@ func TestSanityCheck(t *testing.T) {
 	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
 }
 
-func TestJsonBufferUnmarshal(t *testing.T) {
+func TestJSONBufferUnmarshal(t *testing.T) {
 	testStruct := struct {
-		Buffer JsonBuffer
+		Buffer JSONBuffer
 	}{}
 
 	notValidBase64 := []byte(`{"Buffer":"!!!!"}`)

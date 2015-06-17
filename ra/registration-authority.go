@@ -23,7 +23,9 @@ import (
 	"github.com/letsencrypt/boulder/policy"
 )
 
-// All of the fields in RegistrationAuthorityImpl need to be
+// RegistrationAuthorityImpl defines an RA.
+//
+// NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
 	CA  core.CertificateAuthority
@@ -36,6 +38,7 @@ type RegistrationAuthorityImpl struct {
 	MaxKeySize int
 }
 
+// NewRegistrationAuthorityImpl constructs a new RA object.
 func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Registration Authority Starting")
@@ -103,6 +106,7 @@ type certificateRequestEvent struct {
 	Error               string    `json:",omitempty"`
 }
 
+// NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
 	if err = core.GoodKey(init.Key.Key, ra.MaxKeySize); err != nil {
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
@@ -129,6 +133,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	return
 }
 
+// NewAuthorization constuct a new Authz from a request.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
 	if regID <= 0 {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", regID))
@@ -202,6 +207,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	return authz, err
 }
 
+// NewCertificate requests the issuance of a certificate.
 func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	emptyCert := core.Certificate{}
 	var logEventResult string
@@ -306,7 +312,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		authorizedDomains[authz.Identifier.Value] = true
 	}
 	verificationMethods := []string{}
-	for method, _ := range verificationMethodSet {
+	for method := range verificationMethodSet {
 		verificationMethods = append(verificationMethods, method)
 	}
 	logEvent.VerificationMethods = verificationMethods
@@ -358,6 +364,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	return cert, nil
 }
 
+// UpdateRegistration updates an existing Registration with new values.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
@@ -376,6 +383,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 	return
 }
 
+// UpdateAuthorization updates an authorization with new values.
 func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization, challengeIndex int, response core.Challenge) (authz core.Authorization, err error) {
 	// Copy information over that the client is allowed to supply
 	authz = base
@@ -399,6 +407,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	return
 }
 
+// RevokeCertificate terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
 	err = ra.CA.RevokeCertificate(serialString, 0)
@@ -413,6 +422,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) (e
 	return err
 }
 
+// OnValidationUpdate is called when a given Authorization is updated by the VA.
 func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) error {
 	// Consider validation successful if any of the combinations
 	// specified in the authorization has been fulfilled

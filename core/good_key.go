@@ -60,6 +60,7 @@ func GoodKey(key crypto.PublicKey, maxKeySize int) error {
 	}
 }
 
+// GoodKeyECDSA determines if an ECDSA pubkey meets our requirements
 func GoodKeyECDSA(key ecdsa.PublicKey, maxKeySize int) (err error) {
 	log := blog.GetAuditLogger()
 	err = fmt.Errorf("ECDSA keys not yet supported")
@@ -67,6 +68,7 @@ func GoodKeyECDSA(key ecdsa.PublicKey, maxKeySize int) (err error) {
 	return
 }
 
+// GoodKeyRSA determines if a RSA pubkey meets our requirements
 func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) (err error) {
 	log := blog.GetAuditLogger()
 	// Baseline Requirements Appendix A

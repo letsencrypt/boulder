@@ -41,16 +41,16 @@ func NewDNSResolver(dialTimeout time.Duration, servers []string) *DNSResolver {
 
 // ExchangeOne performs a single DNS exchange with a randomly chosen server
 // out of the server list, returning the response, time, and error (if any)
-func (r *DNSResolver) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.Duration, err error) {
-	if len(r.Servers) < 1 {
+func (dnsResolver *DNSResolver) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.Duration, err error) {
+	if len(dnsResolver.Servers) < 1 {
 		err = fmt.Errorf("Not configured with at least one DNS Server")
 		return
 	}
 
 	// Randomly pick a server
-	chosenServer := r.Servers[rand.Intn(len(r.Servers))]
+	chosenServer := dnsResolver.Servers[rand.Intn(len(dnsResolver.Servers))]
 
-	return r.DNSClient.Exchange(m, chosenServer)
+	return dnsResolver.DNSClient.Exchange(m, chosenServer)
 }
 
 // LookupDNSSEC sends the provided DNS message to a randomly chosen server (see
