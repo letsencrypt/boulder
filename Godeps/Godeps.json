@@ -11,92 +11,52 @@
 			"Rev": "ea76b313ca75d0a41a3fd02af88326a9ce225b60"
 		},
 		{
-			"ImportPath": "github.com/cloudflare/cf-tls/tls",
-			"Rev": "9b22c194563b88ed8040c1e82d41aa2801826007"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/api",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
-		},
-		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/bundler",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/cli",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/cmd/cfssl",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/config",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs11key",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs12",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs7",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/csr",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/errors",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/info",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/initca",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/log",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/revoke",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/scan",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/selfsign",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/ubiquity",
-			"Rev": "39ec5f93190f042ddf337955d4df679b0305c9df"
+			"Rev": "6f428f654df58d23d1321bcbe3598f6b8a02167a"
 		},
 		{
 			"ImportPath": "github.com/codegangsta/cli",

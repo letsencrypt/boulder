@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -20,15 +21,17 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
-	DNSResolver  string
-	DNSTimeout   time.Duration
+	DNSResolver  *core.DNSResolver
 	IssuerDomain string
 	TestMode     bool
 }
 
+// NewValidationAuthorityImpl constructs a new VA, and may place it
+// into Test Mode (tm)
 func NewValidationAuthorityImpl(tm bool) ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
@@ -124,7 +127,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		} else {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = &core.ProblemDetails{
-				Type: core.BadResponseProblem,
+				Type: core.InvalidProblem,
 				Detail: fmt.Sprintf("Incorrect token validating Simple%s for %s",
 					strings.ToUpper(scheme), url),
 			}
@@ -133,14 +136,14 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	} else if err != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
-			Type:   core.BadConnectionProblem,
+			Type:   parseHTTPConnError(err),
 			Detail: fmt.Sprintf("Could not connect to %s", url),
 		}
-		va.log.Debug(strings.Join([]string{challenge.Error.Detail, err.Error()}, ": "))
+		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
 	} else {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
-			Type: core.BadResponseProblem,
+			Type: core.InvalidProblem,
 			Detail: fmt.Sprintf("Invalid response from %s: %d",
 				url, httpResponse.StatusCode),
 		}
@@ -162,8 +165,8 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		return challenge, challenge.Error
 	}
 
-	const DVSNI_SUFFIX = ".acme.invalid"
-	nonceName := challenge.Nonce + DVSNI_SUFFIX
+	const DVSNIsuffix = ".acme.invalid"
+	nonceName := challenge.Nonce + DVSNIsuffix
 
 	R, err := core.B64dec(challenge.R)
 	if err != nil {
@@ -206,7 +209,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
-			Type:   core.BadConnectionProblem,
+			Type:   parseHTTPConnError(err),
 			Detail: "Failed to connect to host for DVSNI challenge",
 		}
 		va.log.Debug(challenge.Error.Detail)
@@ -218,7 +221,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		challenge.Error = &core.ProblemDetails{
-			Type:   core.BadResponseProblem,
+			Type:   core.InvalidProblem,
 			Detail: "No certs presented for DVSNI challenge",
 		}
 		challenge.Status = core.StatusInvalid
@@ -232,8 +235,69 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	}
 
 	challenge.Error = &core.ProblemDetails{
-		Type:   core.BadResponseProblem,
+		Type:   core.InvalidProblem,
 		Detail: "Correct zName not found for DVSNI challenge",
+	}
+	challenge.Status = core.StatusInvalid
+	return challenge, challenge.Error
+}
+
+// parseHTTPConnError returns the ACME ProblemType corresponding to an error
+// that occurred during domain validation.
+func parseHTTPConnError(err error) core.ProblemType {
+	if urlErr, ok := err.(*url.Error); ok {
+		err = urlErr.Err
+	}
+
+	if netErr, ok := err.(*net.OpError); ok {
+		dnsErr, ok := netErr.Err.(*net.DNSError)
+		if ok && !dnsErr.Timeout() && !dnsErr.Temporary() {
+			return core.UnknownHostProblem
+		} else if fmt.Sprintf("%T", netErr.Err) == "tls.alert" {
+			return core.TLSProblem
+		}
+	}
+
+	return core.ConnectionProblem
+}
+
+func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+	challenge := input
+
+	if identifier.Type != core.IdentifierDNS {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.MalformedProblem,
+			Detail: "Identifier type for DNS was not itself DNS",
+		}
+		challenge.Status = core.StatusInvalid
+		return challenge, challenge.Error
+	}
+
+	const DNSPrefix = "_acme-challenge"
+
+	challengeSubdomain := fmt.Sprintf("%s.%s", DNSPrefix, identifier.Value)
+	txts, _, err := va.DNSResolver.LookupTXT(challengeSubdomain)
+
+	if err != nil {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.ServerInternalProblem,
+			Detail: "Unable to communicate with DNS server",
+		}
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
+
+	byteToken := []byte(challenge.Token)
+	for _, element := range txts {
+		if subtle.ConstantTimeCompare([]byte(element), byteToken) == 1 {
+			challenge.Status = core.StatusValid
+			return challenge, nil
+		}
+	}
+
+	challenge.Error = &core.ProblemDetails{
+		Type:   core.InvalidProblem,
+		Detail: "Correct value not found for DNS challenge",
 	}
 	challenge.Status = core.StatusInvalid
 	return challenge, challenge.Error
@@ -267,6 +331,9 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 		case core.ChallengeTypeDVSNI:
 			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
 			break
+		case core.ChallengeTypeDNS:
+			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex])
+			break
 		}
 
 		logEvent.Challenge = authz.Challenges[challengeIndex]
@@ -284,16 +351,17 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 	va.RA.OnValidationUpdate(authz)
 }
 
+// UpdateValidations runs the validate() method asynchronously using goroutines.
 func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
 	go va.validate(authz, challengeIndex)
 	return nil
 }
 
-// CheckCAA verifies that, if the indicated subscriber domain has any CAA
+// CheckCAARecords verifies that, if the indicated subscriber domain has any CAA
 // records, they authorize the configured CA domain to issue a certificate
 func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	domain := strings.ToLower(identifier.Value)
-	caaSet, err := getCaaSet(domain, va.DNSResolver, va.DNSTimeout)
+	caaSet, err := getCaaSet(domain, va.DNSResolver)
 	if err != nil {
 		return
 	}

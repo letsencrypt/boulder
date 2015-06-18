@@ -25,7 +25,7 @@ type MockAck struct {
 	// json.Marshall cannot represent a chan, so this will break
 	// the json.Marshal attempt in ProcessMessage and let us get
 	// coverage there.
-	JsonBreaker chan bool
+	JSONBreaker chan bool
 }
 
 func (m *MockAck) Ack(tag uint64, multiple bool) error {

@@ -32,6 +32,7 @@ import (
 // The WebFrontEnd role does not expose any functionality over RPC,
 // so it doesn't need wrappers.
 
+// These strings are used by the RPC layer to identify function points.
 const (
 	MethodNewRegistration             = "NewRegistration"             // RA, SA
 	MethodNewAuthorization            = "NewAuthorization"            // RA
@@ -144,6 +145,7 @@ func errorCondition(method string, err error, obj interface{}) {
 	log.Audit(fmt.Sprintf("Error condition. method: %s err: %s data: %+v", method, err, obj))
 }
 
+// NewRegistrationAuthorityServer constructs an RPC server
 func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthority) error {
 	log := blog.GetAuditLogger()
 
@@ -289,15 +291,18 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 	return nil
 }
 
+// RegistrationAuthorityClient represents an RA RPC client
 type RegistrationAuthorityClient struct {
 	rpc RPCClient
 }
 
+// NewRegistrationAuthorityClient constructs an RPC client
 func NewRegistrationAuthorityClient(client RPCClient) (rac RegistrationAuthorityClient, err error) {
 	rac = RegistrationAuthorityClient{rpc: client}
 	return
 }
 
+// NewRegistration sends a New Registration request
 func (rac RegistrationAuthorityClient) NewRegistration(reg core.Registration) (newReg core.Registration, err error) {
 	data, err := json.Marshal(registrationRequest{reg})
 	if err != nil {
@@ -313,6 +318,7 @@ func (rac RegistrationAuthorityClient) NewRegistration(reg core.Registration) (n
 	return
 }
 
+// NewAuthorization sends a New Authorization request
 func (rac RegistrationAuthorityClient) NewAuthorization(authz core.Authorization, regID int64) (newAuthz core.Authorization, err error) {
 	data, err := json.Marshal(authorizationRequest{authz, regID})
 	if err != nil {
@@ -328,6 +334,7 @@ func (rac RegistrationAuthorityClient) NewAuthorization(authz core.Authorization
 	return
 }
 
+// NewCertificate sends a New Certificate request
 func (rac RegistrationAuthorityClient) NewCertificate(cr core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	data, err := json.Marshal(certificateRequest{cr, regID})
 	if err != nil {
@@ -343,6 +350,7 @@ func (rac RegistrationAuthorityClient) NewCertificate(cr core.CertificateRequest
 	return
 }
 
+// UpdateRegistration sends an Update Registration request
 func (rac RegistrationAuthorityClient) UpdateRegistration(base core.Registration, update core.Registration) (newReg core.Registration, err error) {
 	var urReq updateRegistrationRequest
 	urReq.Base = base
@@ -362,6 +370,7 @@ func (rac RegistrationAuthorityClient) UpdateRegistration(base core.Registration
 	return
 }
 
+// UpdateAuthorization sends an Update Authorization request
 func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorization, index int, response core.Challenge) (newAuthz core.Authorization, err error) {
 	var uaReq updateAuthorizationRequest
 	uaReq.Authz = authz
@@ -382,11 +391,13 @@ func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorizat
 	return
 }
 
+// RevokeCertificate sends a Revoke Certificate request
 func (rac RegistrationAuthorityClient) RevokeCertificate(cert x509.Certificate) (err error) {
 	_, err = rac.rpc.DispatchSync(MethodRevokeCertificate, cert.Raw)
 	return
 }
 
+// OnValidationUpdate senda a notice that a validation has updated
 func (rac RegistrationAuthorityClient) OnValidationUpdate(authz core.Authorization) (err error) {
 	data, err := json.Marshal(authz)
 	if err != nil {
@@ -397,6 +408,8 @@ func (rac RegistrationAuthorityClient) OnValidationUpdate(authz core.Authorizati
 	return
 }
 
+// NewValidationAuthorityServer constructs an RPC server
+//
 // ValidationAuthorityClient / Server
 //  -> UpdateValidations
 func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) (err error) {
@@ -441,15 +454,18 @@ func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) 
 	return nil
 }
 
+// ValidationAuthorityClient represents an RPC client for the VA
 type ValidationAuthorityClient struct {
 	rpc RPCClient
 }
 
+// NewValidationAuthorityClient constructs an RPC client
 func NewValidationAuthorityClient(client RPCClient) (vac ValidationAuthorityClient, err error) {
 	vac = ValidationAuthorityClient{rpc: client}
 	return
 }
 
+// UpdateValidations sends an Update Validations request
 func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization, index int) error {
 	var vaReq validationRequest
 	vaReq.Authz = authz
@@ -463,6 +479,7 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 	return nil
 }
 
+// CheckCAARecords sends a request to check CAA records
 func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) (present bool, valid bool, err error) {
 	var caaReq caaRequest
 	caaReq.Ident = ident
@@ -487,6 +504,8 @@ func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) 
 	return
 }
 
+// NewCertificateAuthorityServer constructs an RPC server
+//
 // CertificateAuthorityClient / Server
 //  -> IssueCertificate
 func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority) (err error) {
@@ -554,15 +573,18 @@ func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority
 	return nil
 }
 
+// CertificateAuthorityClient is a client to communicate with the CA.
 type CertificateAuthorityClient struct {
 	rpc RPCClient
 }
 
+// NewCertificateAuthorityClient constructs an RPC client
 func NewCertificateAuthorityClient(client RPCClient) (cac CertificateAuthorityClient, err error) {
 	cac = CertificateAuthorityClient{rpc: client}
 	return
 }
 
+// IssueCertificate sends a request to issue a certificate
 func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (cert core.Certificate, err error) {
 	var icReq issueCertificateRequest
 	icReq.Bytes = csr.Raw
@@ -581,6 +603,7 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	return
 }
 
+// RevokeCertificate sends a request to revoke a certificate
 func (cac CertificateAuthorityClient) RevokeCertificate(serial string, reasonCode int) (err error) {
 	var revokeReq revokeCertificateRequest
 	revokeReq.Serial = serial
@@ -597,6 +620,7 @@ func (cac CertificateAuthorityClient) RevokeCertificate(serial string, reasonCod
 	return
 }
 
+// GenerateOCSP sends a request to generate an OCSP response
 func (cac CertificateAuthorityClient) GenerateOCSP(signRequest core.OCSPSigningRequest) (resp []byte, err error) {
 	data, err := json.Marshal(signRequest)
 	if err != nil {
@@ -616,6 +640,7 @@ func (cac CertificateAuthorityClient) GenerateOCSP(signRequest core.OCSPSigningR
 	return
 }
 
+// NewStorageAuthorityServer constructs an RPC server
 func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error {
 	rpc.Handle(MethodUpdateRegistration, func(req []byte) (response []byte, err error) {
 		var reg core.Registration
@@ -874,15 +899,18 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 	return nil
 }
 
+// StorageAuthorityClient is a client to communicate with the Storage Authority
 type StorageAuthorityClient struct {
 	rpc RPCClient
 }
 
+// NewStorageAuthorityClient constructs an RPC client
 func NewStorageAuthorityClient(client RPCClient) (sac StorageAuthorityClient, err error) {
 	sac = StorageAuthorityClient{rpc: client}
 	return
 }
 
+// GetRegistration sends a request to get a registration by ID
 func (cac StorageAuthorityClient) GetRegistration(id int64) (reg core.Registration, err error) {
 	var grReq getRegistrationRequest
 	grReq.ID = id
@@ -901,6 +929,7 @@ func (cac StorageAuthorityClient) GetRegistration(id int64) (reg core.Registrati
 	return
 }
 
+// GetRegistrationByKey sends a request to get a registration by JWK
 func (cac StorageAuthorityClient) GetRegistrationByKey(key jose.JsonWebKey) (reg core.Registration, err error) {
 	jsonKey, err := key.MarshalJSON()
 	if err != nil {
@@ -916,6 +945,7 @@ func (cac StorageAuthorityClient) GetRegistrationByKey(key jose.JsonWebKey) (reg
 	return
 }
 
+// GetAuthorization sends a request to get an Authorization by ID
 func (cac StorageAuthorityClient) GetAuthorization(id string) (authz core.Authorization, err error) {
 	jsonAuthz, err := cac.rpc.DispatchSync(MethodGetAuthorization, []byte(id))
 	if err != nil {
@@ -926,6 +956,7 @@ func (cac StorageAuthorityClient) GetAuthorization(id string) (authz core.Author
 	return
 }
 
+// GetCertificate sends a request to get a Certificate by ID
 func (cac StorageAuthorityClient) GetCertificate(id string) (cert core.Certificate, err error) {
 	jsonCert, err := cac.rpc.DispatchSync(MethodGetCertificate, []byte(id))
 	if err != nil {
@@ -936,6 +967,8 @@ func (cac StorageAuthorityClient) GetCertificate(id string) (cert core.Certifica
 	return
 }
 
+// GetCertificateByShortSerial sends a request to search for a certificate by
+// the predictable portion of its serial number.
 func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert core.Certificate, err error) {
 	jsonCert, err := cac.rpc.DispatchSync(MethodGetCertificateByShortSerial, []byte(id))
 	if err != nil {
@@ -946,6 +979,8 @@ func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert c
 	return
 }
 
+// GetCertificateStatus sends a request to obtain the current status of a
+// certificate by ID
 func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.CertificateStatus, err error) {
 	jsonStatus, err := cac.rpc.DispatchSync(MethodGetCertificateStatus, []byte(id))
 	if err != nil {
@@ -956,6 +991,7 @@ func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.C
 	return
 }
 
+// MarkCertificateRevoked sends a request to mark a certificate as revoked
 func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
 	var mcrReq markCertificateRevokedRequest
 
@@ -972,6 +1008,7 @@ func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResp
 	return
 }
 
+// UpdateOCSP sends a request to store an updated OCSP response
 func (cac StorageAuthorityClient) UpdateOCSP(serial string, ocspResponse []byte) (err error) {
 	var updateOCSPReq updateOCSPRequest
 
@@ -987,6 +1024,7 @@ func (cac StorageAuthorityClient) UpdateOCSP(serial string, ocspResponse []byte)
 	return
 }
 
+// UpdateRegistration sends a request to store an updated registration
 func (cac StorageAuthorityClient) UpdateRegistration(reg core.Registration) (err error) {
 	jsonReg, err := json.Marshal(reg)
 	if err != nil {
@@ -997,6 +1035,7 @@ func (cac StorageAuthorityClient) UpdateRegistration(reg core.Registration) (err
 	return
 }
 
+// NewRegistration sends a request to store a new registration
 func (cac StorageAuthorityClient) NewRegistration(reg core.Registration) (output core.Registration, err error) {
 	jsonReg, err := json.Marshal(reg)
 	if err != nil {
@@ -1015,6 +1054,7 @@ func (cac StorageAuthorityClient) NewRegistration(reg core.Registration) (output
 	return output, nil
 }
 
+// NewPendingAuthorization sends a request to store a pending authorization
 func (cac StorageAuthorityClient) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
 	jsonAuthz, err := json.Marshal(authz)
 	if err != nil {
@@ -1032,6 +1072,8 @@ func (cac StorageAuthorityClient) NewPendingAuthorization(authz core.Authorizati
 	return
 }
 
+// UpdatePendingAuthorization sends a request to update the data in a pending
+// authorization
 func (cac StorageAuthorityClient) UpdatePendingAuthorization(authz core.Authorization) (err error) {
 	jsonAuthz, err := json.Marshal(authz)
 	if err != nil {
@@ -1042,6 +1084,8 @@ func (cac StorageAuthorityClient) UpdatePendingAuthorization(authz core.Authoriz
 	return
 }
 
+// FinalizeAuthorization sends a request to finalize an authorization (convert
+// from pending)
 func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization) (err error) {
 	jsonAuthz, err := json.Marshal(authz)
 	if err != nil {
@@ -1052,6 +1096,7 @@ func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization
 	return
 }
 
+// AddCertificate sends a request to record the issuance of a certificate
 func (cac StorageAuthorityClient) AddCertificate(cert []byte, regID int64) (id string, err error) {
 	var acReq addCertificateRequest
 	acReq.Bytes = cert
@@ -1069,6 +1114,7 @@ func (cac StorageAuthorityClient) AddCertificate(cert []byte, regID int64) (id s
 	return
 }
 
+// AlreadyDeniedCSR sends a request to search for denied names
 func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool, err error) {
 	var adcReq alreadyDeniedCSRReq
 	adcReq.Names = names

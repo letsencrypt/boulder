@@ -11,6 +11,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// SimpleHTTPChallenge constructs a random HTTP challenge
 func SimpleHTTPChallenge() Challenge {
 	tls := true
 	return Challenge{
@@ -21,6 +22,7 @@ func SimpleHTTPChallenge() Challenge {
 	}
 }
 
+// DvsniChallenge constructs a random DVSNI challenge
 func DvsniChallenge() Challenge {
 	nonce := make([]byte, 16)
 	_, err := rand.Read(nonce)
@@ -36,5 +38,14 @@ func DvsniChallenge() Challenge {
 		Status: StatusPending,
 		R:      RandomString(32),
 		Nonce:  hex.EncodeToString(nonce),
+	}
+}
+
+// DNSChallenge constructs a random DNS challenge
+func DNSChallenge() Challenge {
+	return Challenge{
+		Type:   ChallengeTypeDNS,
+		Status: StatusPending,
+		Token:  NewToken(),
 	}
 }

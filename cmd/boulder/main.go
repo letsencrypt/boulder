@@ -15,6 +15,7 @@ import (
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/sa"
@@ -27,17 +28,18 @@ type timedHandler struct {
 	stats statsd.Statter
 }
 
-var openConnections int64 = 0
+var openConnections int64
 
+// HandlerTimer monitors HTTP performance and sends the details to StatsD.
 func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cStart := time.Now()
-		openConnections += 1
+		openConnections++
 		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
 
 		handler.ServeHTTP(w, r)
 
-		openConnections -= 1
+		openConnections--
 		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
 
 		// (FIX: this doesn't seem to really work at catching errors...)
@@ -80,10 +82,9 @@ func main() {
 		ra := ra.NewRegistrationAuthorityImpl()
 
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
-		va.DNSResolver = c.VA.DNSResolver
 		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
-		va.DNSTimeout = dnsTimeout
+		va.DNSResolver = core.NewDNSResolver(dnsTimeout, []string{c.VA.DNSResolver})
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")

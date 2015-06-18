@@ -18,10 +18,19 @@ import (
 	"time"
 )
 
+// AcmeStatus defines the state of a given authorization
 type AcmeStatus string
+
+// Buffer is a variable-length collection of bytes
 type Buffer []byte
+
+// IdentifierType defines the available identification mechanisms for domains
 type IdentifierType string
+
+// OCSPStatus defines the state of OCSP for a domain
 type OCSPStatus string
+
+// ProblemType defines the error types in the ACME protocol
 type ProblemType string
 
 // ProblemDetails objects represent problem documents
@@ -31,6 +40,7 @@ type ProblemDetails struct {
 	Detail string      `json:"detail,omitempty"`
 }
 
+// These statuses are the states of authorizations
 const (
 	StatusUnknown    = AcmeStatus("unknown")    // Unknown status; the default
 	StatusPending    = AcmeStatus("pending")    // In process; client has next action
@@ -40,23 +50,30 @@ const (
 	StatusRevoked    = AcmeStatus("revoked")    // Object no longer valid
 )
 
+// These types are the available identification mechanisms
 const (
 	IdentifierDNS = IdentifierType("dns")
 )
 
+// These status are the states of OCSP
 const (
 	OCSPStatusGood    = OCSPStatus("good")
 	OCSPStatusRevoked = OCSPStatus("revoked")
 )
 
+// Error types that can be used in ACME payloads
 const (
-	BadConnectionProblem  = ProblemType("urn:acme:error:badConnection")
-	BadResponseProblem    = ProblemType("urn:acme:error:badResponse")
+	ConnectionProblem     = ProblemType("urn:acme:error:connection")
+    DNSSECProblem         = ProblemType("urn:acme:error:dnssec")
+	InvalidProblem        = ProblemType("urn:acme:error:invalid")
 	MalformedProblem      = ProblemType("urn:acme:error:malformed")
 	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
+	TLSProblem            = ProblemType("urn:acme:error:tls")
 	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
+	UnknownHostProblem    = ProblemType("urn:acme:error:unknownHost")
 )
 
+// These types are the available challenges
 const (
 	ChallengeTypeSimpleHTTP    = "simpleHttp"
 	ChallengeTypeDVSNI         = "dvsni"
@@ -108,7 +125,7 @@ type AcmeIdentifier struct {
 	Value string         `json:"value"` // The identifier itself
 }
 
-// An ACME certificate request is just a CSR together with
+// CertificateRequest is just a CSR together with
 // URIs pointing to authorizations that should collectively
 // authorize the certificate being requsted.
 //
@@ -122,10 +139,11 @@ type CertificateRequest struct {
 }
 
 type rawCertificateRequest struct {
-	CSR            JsonBuffer `json:"csr"`            // The encoded CSR
+	CSR            JSONBuffer `json:"csr"`            // The encoded CSR
 	Authorizations []AcmeURL  `json:"authorizations"` // Authorizations
 }
 
+// UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
 func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 	var raw rawCertificateRequest
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -142,6 +160,7 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// MarshalJSON provides an implementation for encoding CertificateRequest objects.
 func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rawCertificateRequest{
 		CSR:            cr.CSR.Raw,
@@ -170,6 +189,8 @@ type Registration struct {
 	LockCol int64 `json:"-"`
 }
 
+// MergeUpdate copies a subset of information from the input Registration
+// into this one.
 func (r *Registration) MergeUpdate(input Registration) {
 	if len(input.Contact) > 0 {
 		r.Contact = input.Contact
@@ -180,6 +201,8 @@ func (r *Registration) MergeUpdate(input Registration) {
 	}
 }
 
+// Challenge is an aggregate of all data needed for any challenges.
+//
 // Rather than define individual types for different types of
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
@@ -213,8 +236,8 @@ type Challenge struct {
 	Nonce string `json:"nonce,omitempty"`
 }
 
-// Check the sanity of a challenge object before issued to the client (completed = false)
-// and before validation (completed = true).
+// IsSane checks the sanity of a challenge object before issued to the client
+// (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
 	if ch.Status != StatusPending {
 		return false
@@ -234,8 +257,8 @@ func (ch Challenge) IsSane(completed bool) bool {
 				return false
 			}
 			// Composed path should be a clean filepath (i.e. no double slashes, dot segments, etc)
-			vaUrl := fmt.Sprintf("/.well-known/acme-challenge/%s", ch.Path)
-			if vaUrl != filepath.Clean(vaUrl) {
+			vaURL := fmt.Sprintf("/.well-known/acme-challenge/%s", ch.Path)
+			if vaURL != filepath.Clean(vaURL) {
 				return false
 			}
 		} else {
@@ -288,6 +311,20 @@ func (ch Challenge) IsSane(completed bool) bool {
 				return false
 			}
 		}
+	case ChallengeTypeDNS:
+		// check extra fields aren't used
+		if ch.R != "" || ch.S != "" || ch.Nonce != "" || ch.TLS != nil {
+			return false
+		}
+
+		// check token is present, corrent length, and contains b64 encoded string
+		if ch.Token == "" || len(ch.Token) != 43 {
+			return false
+		}
+		if _, err := B64dec(ch.Token); err != nil {
+			return false
+		}
+
 	default:
 		return false
 	}
@@ -295,7 +332,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 	return true
 }
 
-// Merge a client-provide response to a challenge with the issued challenge
+// MergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	// Only override fields that are supposed to be client-provided
@@ -314,11 +351,10 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	return ch
 }
 
-// An ACME authorization object represents the authorization
-// of an account key holder to act on behalf of a domain.  This
-// struct is intended to be used both internally and for JSON
-// marshaling on the wire.  Any fields that should be suppressed
-// on the wire (e.g., ID, regID) must be made empty before marshaling.
+// Authorization represents the authorization of an account key holder
+// to act on behalf of a domain.  This struct is intended to be used both
+// internally and for JSON marshaling on the wire.  Any fields that should be
+// suppressed on the wire (e.g., ID, regID) must be made empty before marshaling.
 type Authorization struct {
 	// An identifier for this authorization, unique across
 	// authorizations and certificates within this instance.
@@ -349,28 +385,30 @@ type Authorization struct {
 	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
 }
 
-// Fields of this type get encoded and decoded JOSE-style, in base64url encoding
+// JSONBuffer fields get encoded and decoded JOSE-style, in base64url encoding
 // with stripped padding.
-type JsonBuffer []byte
+type JSONBuffer []byte
 
-// Url-safe base64 encode that strips padding
+// URL-safe base64 encode that strips padding
 func base64URLEncode(data []byte) string {
 	var result = base64.URLEncoding.EncodeToString(data)
 	return strings.TrimRight(result, "=")
 }
 
-// Url-safe base64 decoder that adds padding
+// URL-safe base64 decoder that adds padding
 func base64URLDecode(data string) ([]byte, error) {
 	var missing = (4 - len(data)%4) % 4
 	data += strings.Repeat("=", missing)
 	return base64.URLEncoding.DecodeString(data)
 }
 
-func (jb JsonBuffer) MarshalJSON() (result []byte, err error) {
+// MarshalJSON encodes a JSONBuffer for transmission.
+func (jb JSONBuffer) MarshalJSON() (result []byte, err error) {
 	return json.Marshal(base64URLEncode(jb))
 }
 
-func (jb *JsonBuffer) UnmarshalJSON(data []byte) (err error) {
+// UnmarshalJSON decodes a JSONBuffer to an object.
+func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 	var str string
 	err = json.Unmarshal(data, &str)
 	if err != nil {
@@ -392,14 +430,14 @@ type Certificate struct {
 
 	Serial  string     `db:"serial"`
 	Digest  string     `db:"digest"`
-	DER     JsonBuffer `db:"der"`
+	DER     JSONBuffer `db:"der"`
 	Issued  time.Time  `db:"issued"`
 	Expires time.Time  `db:"expires"`
 }
 
-// Certificate.MatchesCSR tests the contents of a generated certificate to
-// make sure that the PublicKey, CommonName, and DNSNames match those provided
-// in the CSR that was used to generate the certificate. It also checks the
+// MatchesCSR tests the contents of a generated certificate to make sure
+// that the PublicKey, CommonName, and DNSNames match those provided in
+// the CSR that was used to generate the certificate. It also checks the
 // following fields for:
 //		* notAfter is after earliestExpiry
 //		* notBefore is not more than 24 hours ago
@@ -496,9 +534,10 @@ type CertificateStatus struct {
 	LockCol int64 `json:"-"`
 }
 
-// A large table of OCSP responses. This contains all historical OCSP
-// responses we've signed, is append-only, and is likely to get quite
-// large. We'll probably want administratively truncate it at some point.
+// OCSPResponse is a (large) table of OCSP responses. This contains all
+// historical OCSP responses we've signed, is append-only, and is likely to get
+// quite large.
+// It must be administratively truncated outside of Boulder.
 type OCSPResponse struct {
 	ID int `db:"id"`
 
@@ -512,8 +551,9 @@ type OCSPResponse struct {
 	Response []byte `db:"response"`
 }
 
-// A large table of signed CRLs. This contains all historical CRLs
+// CRL is a large table of signed CRLs. This contains all historical CRLs
 // we've signed, is append-only, and is likely to get quite large.
+// It must be administratively truncated outside of Boulder.
 type CRL struct {
 	// serial: Same as certificate serial.
 	Serial string `db:"serial"`
@@ -525,6 +565,7 @@ type CRL struct {
 	CRL string `db:"crl"`
 }
 
+// DeniedCSR is a list of names we deny issuing.
 type DeniedCSR struct {
 	ID int `db:"id"`
 

@@ -32,9 +32,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	// A dummy reference to the cfssl command line so it gets picked up by
-	// `godep save -r ./...`
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/cmd/cfssl"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/ca"
@@ -227,6 +224,7 @@ func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, close
 	logger.Warning("Reconnecting to AMQP...")
 }
 
+// ProfileCmd runs forever, sending Go statistics to StatsD.
 func ProfileCmd(profileName string, stats statsd.Statter) {
 	for {
 		var memoryStats runtime.MemStats
@@ -248,6 +246,8 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 	}
 }
 
+// LoadCert loads a PEM-formatted certificate from the provided path, returning
+// it as a byte array, or an error if it couldn't be decoded.
 func LoadCert(path string) (cert []byte, err error) {
 	if path == "" {
 		err = errors.New("Issuer certificate was not provided in config.")

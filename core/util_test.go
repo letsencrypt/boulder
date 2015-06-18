@@ -51,13 +51,13 @@ func TestBuildID(t *testing.T) {
 	test.AssertEquals(t, "Unspecified", GetBuildID())
 }
 
-const JWK_1_JSON = `{
+const JWK1JSON = `{
   "kty": "RSA",
   "n": "vuc785P8lBj3fUxyZchF_uZw6WtbxcorqgTyq-qapF5lrO1U82Tp93rpXlmctj6fyFHBVVB5aXnUHJ7LZeVPod7Wnfl8p5OyhlHQHC8BnzdzCqCMKmWZNX5DtETDId0qzU7dPzh0LP0idt5buU7L9QNaabChw3nnaL47iu_1Di5Wp264p2TwACeedv2hfRDjDlJmaQXuS8Rtv9GnRWyC9JBu7XmGvGDziumnJH7Hyzh3VNu-kSPQD3vuAFgMZS6uUzOztCkT0fpOalZI6hqxtWLvXUMj-crXrn-Maavz8qRhpAyp5kcYk3jiHGgQIi7QSK2JIdRJ8APyX9HlmTN5AQ",
   "e": "AAEAAQ"
 }`
-const JWK_1_DIGEST = `ul04Iq07ulKnnrebv2hv3yxCGgVvoHs8hjq2tVKx3mc=`
-const JWK_2_JSON = `{
+const JWK1Digest = `ul04Iq07ulKnnrebv2hv3yxCGgVvoHs8hjq2tVKx3mc=`
+const JWK2JSON = `{
   "kty":"RSA",
   "n":"yTsLkI8n4lg9UuSKNRC0UPHsVjNdCYk8rGXIqeb_rRYaEev3D9-kxXY8HrYfGkVt5CiIVJ-n2t50BKT8oBEMuilmypSQqJw0pCgtUm-e6Z0Eg3Ly6DMXFlycyikegiZ0b-rVX7i5OCEZRDkENAYwFNX4G7NNCwEZcH7HUMUmty9dchAqDS9YWzPh_dde1A9oy9JMH07nRGDcOzIh1rCPwc71nwfPPYeeS4tTvkjanjeigOYBFkBLQuv7iBB4LPozsGF1XdoKiIIi-8ye44McdhOTPDcQp3xKxj89aO02pQhBECv61rmbPinvjMG9DYxJmZvjsKF4bN2oy0DxdC1jDw",
   "e":"AAEAAQ"
@@ -66,13 +66,13 @@ const JWK_2_JSON = `{
 func TestKeyDigest(t *testing.T) {
 	// Test with JWK (value, reference, and direct)
 	var jwk jose.JsonWebKey
-	json.Unmarshal([]byte(JWK_1_JSON), &jwk)
+	json.Unmarshal([]byte(JWK1JSON), &jwk)
 	digest, err := KeyDigest(jwk)
-	test.Assert(t, err == nil && digest == JWK_1_DIGEST, "Failed to digest JWK by value")
+	test.Assert(t, err == nil && digest == JWK1Digest, "Failed to digest JWK by value")
 	digest, err = KeyDigest(&jwk)
-	test.Assert(t, err == nil && digest == JWK_1_DIGEST, "Failed to digest JWK by reference")
+	test.Assert(t, err == nil && digest == JWK1Digest, "Failed to digest JWK by reference")
 	digest, err = KeyDigest(jwk.Key)
-	test.Assert(t, err == nil && digest == JWK_1_DIGEST, "Failed to digest bare key")
+	test.Assert(t, err == nil && digest == JWK1Digest, "Failed to digest bare key")
 
 	// Test with unknown key type
 	digest, err = KeyDigest(struct{}{})
@@ -81,8 +81,8 @@ func TestKeyDigest(t *testing.T) {
 
 func TestKeyDigestEquals(t *testing.T) {
 	var jwk1, jwk2 jose.JsonWebKey
-	json.Unmarshal([]byte(JWK_1_JSON), &jwk1)
-	json.Unmarshal([]byte(JWK_2_JSON), &jwk2)
+	json.Unmarshal([]byte(JWK1JSON), &jwk1)
+	json.Unmarshal([]byte(JWK2JSON), &jwk2)
 
 	test.Assert(t, KeyDigestEquals(jwk1, jwk1), "Key digests for same key should match")
 	test.Assert(t, !KeyDigestEquals(jwk1, jwk2), "Key digests for different keys should not match")

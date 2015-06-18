@@ -36,19 +36,19 @@ func intFromB64(b64 string) int {
 	return int(bigIntFromB64(b64).Int64())
 }
 
-var n *big.Int = bigIntFromB64("n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw==")
-var e int = intFromB64("AQAB")
-var d *big.Int = bigIntFromB64("bWUC9B-EFRIo8kpGfh0ZuyGPvMNKvYWNtB_ikiH9k20eT-O1q_I78eiZkpXxXQ0UTEs2LsNRS-8uJbvQ-A1irkwMSMkK1J3XTGgdrhCku9gRldY7sNA_AKZGh-Q661_42rINLRCe8W-nZ34ui_qOfkLnK9QWDDqpaIsA-bMwWWSDFu2MUBYwkHTMEzLYGqOe04noqeq1hExBTHBOBdkMXiuFhUq1BU6l-DqEiWxqg82sXt2h-LMnT3046AOYJoRioz75tSUQfGCshWTBnP5uDjd18kKhyv07lhfSJdrPdM5Plyl21hsFf4L_mHCuoFau7gdsPfHPxxjVOcOpBrQzwQ==")
-var p *big.Int = bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
-var q *big.Int = bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
+var n = bigIntFromB64("n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw==")
+var e = intFromB64("AQAB")
+var d = bigIntFromB64("bWUC9B-EFRIo8kpGfh0ZuyGPvMNKvYWNtB_ikiH9k20eT-O1q_I78eiZkpXxXQ0UTEs2LsNRS-8uJbvQ-A1irkwMSMkK1J3XTGgdrhCku9gRldY7sNA_AKZGh-Q661_42rINLRCe8W-nZ34ui_qOfkLnK9QWDDqpaIsA-bMwWWSDFu2MUBYwkHTMEzLYGqOe04noqeq1hExBTHBOBdkMXiuFhUq1BU6l-DqEiWxqg82sXt2h-LMnT3046AOYJoRioz75tSUQfGCshWTBnP5uDjd18kKhyv07lhfSJdrPdM5Plyl21hsFf4L_mHCuoFau7gdsPfHPxxjVOcOpBrQzwQ==")
+var p = bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
+var q = bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 
-var TheKey rsa.PrivateKey = rsa.PrivateKey{
+var TheKey = rsa.PrivateKey{
 	PublicKey: rsa.PublicKey{N: n, E: e},
 	D:         d,
 	Primes:    []*big.Int{p, q},
 }
 
-var ident core.AcmeIdentifier = core.AcmeIdentifier{Type: core.IdentifierType("dns"), Value: "localhost"}
+var ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
 
 const expectedToken = "THETOKEN"
 const pathWrongToken = "wrongtoken"
@@ -150,12 +150,14 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 
 func TestSimpleHttp(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 
 	chall := core.Challenge{Path: "test", Token: expectedToken}
 
 	invalidChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
+	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
@@ -179,26 +181,39 @@ func TestSimpleHttp(t *testing.T) {
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Should have found a 404 for the challenge.")
+    test.AssertEquals(t, invalidChall.Error.Type, core.InvalidProblem)
 
 	chall.Path = pathWrongToken
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "The path should have given us the wrong token.")
+    test.AssertEquals(t, invalidChall.Error.Type, core.InvalidProblem)
 
 	chall.Path = ""
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Empty paths shouldn't work either.")
+    test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	chall.Path = "validish"
 	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
+    test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
+
+    va.TestMode = false
+	chall.Path = "alsoValidish"
+	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Domain name is invalid.")
+    test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
+    va.TestMode = true
 
 	chall.Path = "%"
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Path doesn't consist of URL-safe characters.")
+    test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	chall.Path = "wait-long"
 	started := time.Now()
@@ -209,10 +224,12 @@ func TestSimpleHttp(t *testing.T) {
 	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Connection should've timed out")
+    test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 }
 
 func TestDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 
 	a := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
 	ba := core.B64enc(a)
@@ -221,6 +238,7 @@ func TestDvsni(t *testing.T) {
 	invalidChall, err := va.validateDvsni(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
+	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 
 	waitChan := make(chan bool, 1)
 	stopChan := make(chan bool, 1)
@@ -235,17 +253,27 @@ func TestDvsni(t *testing.T) {
 	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
+    test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
+
+    va.TestMode = false
+	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Domain name is invalid.")
+    test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
+    va.TestMode = true
 
 	chall.R = ba[5:]
 	invalidChall, err = va.validateDvsni(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "R Should be illegal Base64")
+    test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	chall.R = ba
 	chall.S = "!@#"
 	invalidChall, err = va.validateDvsni(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "S Should be illegal Base64")
+    test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	chall.S = ba
 	chall.Nonce = "wait-long"
@@ -257,10 +285,12 @@ func TestDvsni(t *testing.T) {
 	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Connection should've timed out")
+	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 }
 
 func TestValidateHTTP(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -292,6 +322,7 @@ func TestValidateHTTP(t *testing.T) {
 
 func TestValidateDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -325,6 +356,7 @@ func TestValidateDvsni(t *testing.T) {
 
 func TestValidateDvsniNotSane(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -358,6 +390,7 @@ func TestValidateDvsniNotSane(t *testing.T) {
 
 func TestUpdateValidations(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -422,8 +455,7 @@ func TestCAAChecking(t *testing.T) {
 	}
 
 	va := NewValidationAuthorityImpl(true)
-	va.DNSResolver = "8.8.8.8:53"
-	va.DNSTimeout = time.Second * 5
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 	for _, caaTest := range tests {
 		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		// Ignore tests if DNS req has timed out
@@ -440,6 +472,145 @@ func TestCAAChecking(t *testing.T) {
 	test.AssertError(t, err, "dnssec-failed.org")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
+}
+
+func TestDNSValidationFailure(t *testing.T) {
+	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	chalDNS := core.DNSChallenge()
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     ident,
+		Challenges:     []core.Challenge{chalDNS},
+	}
+	va.validate(authz, 0)
+
+	t.Logf("Resulting Authz: %+v", authz)
+	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
+	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
+}
+
+func TestDNSValidationInvalid(t *testing.T) {
+	var notDNS = core.AcmeIdentifier{
+		Type:  core.IdentifierType("iris"),
+		Value: "790DB180-A274-47A4-855F-31C428CB1072",
+	}
+
+	chalDNS := core.DNSChallenge()
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     notDNS,
+		Challenges:     []core.Challenge{chalDNS},
+	}
+
+	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	va.validate(authz, 0)
+
+	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
+	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
+}
+
+func TestDNSValidationNotSane(t *testing.T) {
+	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	chal0 := core.DNSChallenge()
+	chal0.Token = ""
+
+	chal1 := core.DNSChallenge()
+	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
+
+	chal2 := core.DNSChallenge()
+	chal2.R = "1"
+
+	chal3 := core.DNSChallenge()
+	chal3.S = "2"
+
+	chal4 := core.DNSChallenge()
+	chal4.Nonce = "2"
+
+	chal5 := core.DNSChallenge()
+	var tls = true
+	chal5.TLS = &tls
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     ident,
+		Challenges:     []core.Challenge{chal0, chal1, chal2, chal3, chal4, chal5},
+	}
+
+	for i := 0; i < 6; i++ {
+		va.validate(authz, i)
+		test.AssertEquals(t, authz.Challenges[i].Status, core.StatusInvalid)
+	}
+}
+
+// TestDNSValidationLive is an integration test, depending on
+// the existance of some Internet resources. Because of that,
+// it asserts nothing; it is intended for coverage.
+func TestDNSValidationLive(t *testing.T) {
+	va := NewValidationAuthorityImpl(false)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	goodChalDNS := core.DNSChallenge()
+	// This token is set at _acme-challenge.good.bin.coffee
+	goodChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
+
+	var goodIdent = core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "good.bin.coffee",
+	}
+
+	var badIdent = core.AcmeIdentifier{
+		Type:  core.IdentifierType("dns"),
+		Value: "bad.bin.coffee",
+	}
+
+	var authzGood = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     goodIdent,
+		Challenges:     []core.Challenge{goodChalDNS},
+	}
+
+	va.validate(authzGood, 0)
+
+	if authzGood.Challenges[0].Status != core.StatusValid {
+		t.Logf("TestDNSValidationLive on Good did not succeed.")
+	}
+
+	badChalDNS := core.DNSChallenge()
+	// This token is NOT set at _acme-challenge.bad.bin.coffee
+	badChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
+
+	var authzBad = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     badIdent,
+		Challenges:     []core.Challenge{badChalDNS},
+	}
+
+	va.validate(authzBad, 0)
+	if authzBad.Challenges[0].Status != core.StatusInvalid {
+		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
+	}
+
 }
 
 type MockRegistrationAuthority struct {

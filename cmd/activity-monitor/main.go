@@ -22,6 +22,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// Constants for AMQP
 const (
 	QueueName        = "Monitor"
 	AmqpExchange     = "boulder"
@@ -37,17 +38,17 @@ const (
 	AmqpImmediate    = false
 )
 
-var openCalls int64 = 0
+var openCalls int64
 
 func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[string]time.Time) {
 	// If d is a call add to deliveryTimings and increment openCalls, if it is a
 	// response then get time.Since original call from deliveryTiming, send timing metric, and
 	// decrement openCalls, in both cases send the gauges RpcCallsOpen and RpcBodySize
 	if d.ReplyTo != "" {
-		openCalls += 1
+		openCalls++
 		deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
 	} else {
-		openCalls -= 1
+		openCalls--
 		rpcSent := deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey)]
 		if rpcSent != *new(time.Time) {
 			respTime := time.Since(rpcSent)

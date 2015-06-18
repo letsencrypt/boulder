@@ -31,7 +31,7 @@ import (
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
-var reasons map[int]string = map[int]string{
+var reasons = map[int]string{
 	0: "unspecified",
 	1: "keyCompromise",
 	2: "cACompromise",
@@ -69,7 +69,7 @@ func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.A
 
 	ch := cmd.AmqpChannel(c.AMQP.Server)
 
-	caRPC, err := rpc.NewAmqpRPCCLient("revoker->CA", c.AMQP.CA.Server, ch)
+	caRPC, err := rpc.NewAmqpRPCClient("revoker->CA", c.AMQP.CA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	cac, err := rpc.NewCertificateAuthorityClient(caRPC)
@@ -147,7 +147,7 @@ func revokeByReg(regID int, reasonCode int, deny bool, cac rpc.CertificateAuthor
 	return
 }
 
-var version string = "0.0.1"
+var version = "0.0.1"
 
 func main() {
 	app := cli.NewApp()
@@ -231,7 +231,7 @@ func main() {
 			Usage: "List all revocation reason codes",
 			Action: func(c *cli.Context) {
 				var codes []int
-				for k, _ := range reasons {
+				for k := range reasons {
 					codes = append(codes, k)
 				}
 				sort.Ints(codes)

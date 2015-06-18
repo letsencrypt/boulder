@@ -27,6 +27,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// Paths are the ACME-spec identified URL path-segments for various methods
 const (
 	NewRegPath     = "/acme/new-reg"
 	RegPath        = "/acme/reg/"
@@ -99,6 +100,8 @@ func NewWebFrontEndImpl() WebFrontEndImpl {
 	}
 }
 
+// HandlePaths configures the HTTP engine to use various functions
+// as methods for various ACME-specified paths.
 func (wfe *WebFrontEndImpl) HandlePaths() {
 	wfe.NewReg = wfe.BaseURL + NewRegPath
 	wfe.RegBase = wfe.BaseURL + RegPath
@@ -122,6 +125,7 @@ func (wfe *WebFrontEndImpl) HandlePaths() {
 
 // Method implementations
 
+// Index serves a simple identification page. It is not part of the ACME spec.
 func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 
@@ -224,11 +228,10 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		// registration is an overall failure to verify.
 		if regCheck {
 			return nil, nil, reg, err
-		} else {
-			// Otherwise we just return an empty registration. The caller is expected
-			// to use the returned key instead.
-			reg = core.Registration{}
 		}
+		// Otherwise we just return an empty registration. The caller is expected
+		// to use the returned key instead.
+		reg = core.Registration{}
 	}
 
 	return []byte(payload), key, reg, nil
@@ -277,6 +280,7 @@ func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
+// NewRegistration is used by clients to submit a new registration/account
 func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 
@@ -340,6 +344,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	wfe.Stats.Inc("Registrations", 1, 1.0)
 }
 
+// NewAuthorization is used by clients to submit a new ID Authorization
 func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 
@@ -401,6 +406,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	wfe.Stats.Inc("PendingAuthorizations", 1, 1.0)
 }
 
+// RevokeCertificate is used by clients to request the revocation of a cert.
 func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 
@@ -419,7 +425,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 
 	type RevokeRequest struct {
-		CertificateDER core.JsonBuffer `json:"certificate"`
+		CertificateDER core.JSONBuffer `json:"certificate"`
 	}
 	var revokeRequest RevokeRequest
 	if err = json.Unmarshal(body, &revokeRequest); err != nil {
@@ -480,6 +486,8 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 }
 
+// NewCertificate is used by clients to request the issuance of a cert for an
+// authorized identifier.
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 
@@ -668,6 +676,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 	}
 }
 
+// Registration is used by a client to submit an update to their registration.
 func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 
@@ -743,6 +752,8 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	response.Write(jsonReply)
 }
 
+// Authorization is used by clients to submit an update to one of their
+// authorizations.
 func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 
@@ -796,6 +807,8 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 
 var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
+// Certificate is used by clients to request a copy of their current certificate, or to
+// request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 
@@ -843,9 +856,15 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		if _, err = response.Write(cert.DER); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 		}
+		return
+	case "POST":
+		wfe.sendError(response, "Not yet supported", "", http.StatusNotFound)
+		return
 	}
 }
 
+// Terms is used by the client to obtain the current Terms of Service /
+// Subscriber Agreement to which the subscriber must agree.
 func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 
@@ -858,6 +877,7 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 	fmt.Fprintf(response, "TODO: Add terms of use here")
 }
 
+// Issuer obtains the issuer certificate used by this instance of Boulder.
 func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.Request) {
 	wfe.sendStandardHeaders(response)
 

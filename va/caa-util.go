@@ -8,13 +8,12 @@ package va
 import (
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/policy"
 )
 
@@ -59,7 +58,7 @@ func newCAA(encodedRDATA []byte) *CAA {
 	return &CAA{flag: flag, tag: tag, valueBuf: valueBuf, value: value}
 }
 
-// Filtered CAA records
+// CAASet consists of filtered CAA records
 type CAASet struct {
 	issue     []*CAA
 	issuewild []*CAA
@@ -106,33 +105,13 @@ func newCAASet(CAAs []*CAA) *CAASet {
 }
 
 // Looks up CNAME records for domain and returns either the target or ""
-func lookupCNAME(client *dns.Client, server, domain string) (string, error) {
+func lookupCNAME(dnsResolver *core.DNSResolver, domain string) (string, error) {
 	m := new(dns.Msg)
 	m.SetQuestion(domain, dns.TypeCNAME)
-	// Set DNSSEC OK bit
-	m.SetEdns0(4096, true)
-	r, _, err := client.Exchange(m, server)
+
+	r, _, err := dnsResolver.LookupDNSSEC(m)
 	if err != nil {
 		return "", err
-	}
-
-	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
-		if r.Rcode == dns.RcodeServerFailure {
-			// Re-send query with +cd to see if SERVFAIL was caused by DNSSEC validation
-			// failure at the resolver
-			m.CheckingDisabled = true
-			checkR, _, err := client.Exchange(m, server)
-			if err != nil {
-				return "", err
-			}
-
-			if checkR.Rcode != dns.RcodeServerFailure {
-				return "", fmt.Errorf("DNSSEC validation failure")
-			}
-		}
-
-		// Return response code of original message
-		return "", fmt.Errorf("Invalid response code: %d-%s", r.Rcode, dns.RcodeToString[r.Rcode])
 	}
 
 	for _, answer := range r.Answer {
@@ -144,10 +123,10 @@ func lookupCNAME(client *dns.Client, server, domain string) (string, error) {
 	return "", nil
 }
 
-func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CAA, error) {
+func getCaa(dnsResolver *core.DNSResolver, domain string, alias bool) ([]*CAA, error) {
 	if alias {
 		// Check if there is a CNAME record for domain
-		canonName, err := lookupCNAME(client, server, dns.Fqdn(domain))
+		canonName, err := lookupCNAME(dnsResolver, dns.Fqdn(domain))
 		if err != nil {
 			return nil, err
 		}
@@ -159,28 +138,10 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeCAA)
-	// Set DNSSEC OK bit
-	m.SetEdns0(4096, true)
-	r, _, err := client.Exchange(m, server)
+
+	r, _, err := dnsResolver.LookupDNSSEC(m)
 	if err != nil {
 		return nil, err
-	}
-
-	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
-		if r.Rcode == dns.RcodeServerFailure {
-			// Re-send query with +cd to see if SERVFAIL was caused by DNSSEC validation
-			// failure at the resolver
-			m.CheckingDisabled = true
-			checkR, _, err := client.Exchange(m, server)
-			if err != nil {
-				return nil, err
-			}
-
-			if checkR.Rcode != dns.RcodeServerFailure {
-				return nil, fmt.Errorf("DNSSEC validation failure")
-			}
-		}
-		return nil, fmt.Errorf("Invalid response code: %d-%s", r.Rcode, dns.RcodeToString[r.Rcode])
 	}
 
 	var CAAs []*CAA
@@ -216,11 +177,7 @@ func getCaa(client *dns.Client, server string, domain string, alias bool) ([]*CA
 	return CAAs, nil
 }
 
-func getCaaSet(domain string, server string, timeout time.Duration) (*CAASet, error) {
-	dnsClient := new(dns.Client)
-	// Set timeout for underlying net.Conn
-	dnsClient.DialTimeout = timeout
-
+func getCaaSet(domain string, dnsResolver *core.DNSResolver) (*CAASet, error) {
 	domain = strings.TrimRight(domain, ".")
 	splitDomain := strings.Split(domain, ".")
 	// RFC 6844 CAA set query sequence, 'x.y.z.com' => ['x.y.z.com', 'y.z.com', 'z.com']
@@ -233,7 +190,7 @@ func getCaaSet(domain string, server string, timeout time.Duration) (*CAASet, er
 
 		// Query CAA records for domain and its alias if it has a CNAME
 		for _, alias := range []bool{false, true} {
-			CAAs, err := getCaa(dnsClient, server, queryDomain, alias)
+			CAAs, err := getCaa(dnsResolver, queryDomain, alias)
 			if err != nil {
 				return nil, err
 			}

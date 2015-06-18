@@ -16,16 +16,17 @@ import (
 // This file analyzes messages obtained from the Message Broker to determine
 // whether the system as a whole is functioning correctly.
 
-// Interface all Analysis Engines share
+// AnalysisEngine is the interface all Analysis Engines share
 type AnalysisEngine interface {
 	ProcessMessage(amqp.Delivery) (err error)
 }
 
-// An Analysis Engine that just logs to the JSON Logger.
+// LoggingAnalysisEngine is an Analysis Engine that just logs to the Logger.
 type LoggingAnalysisEngine struct {
 	log *blog.AuditLogger
 }
 
+// ProcessMessage logs the marshaled contents of the AMQP message.
 func (eng *LoggingAnalysisEngine) ProcessMessage(delivery amqp.Delivery) (err error) {
 	// Send the entire message contents to the syslog server for debugging.
 	encoded, err := json.Marshal(delivery)
@@ -38,7 +39,7 @@ func (eng *LoggingAnalysisEngine) ProcessMessage(delivery amqp.Delivery) (err er
 	return
 }
 
-// Construct a new Analysis Engine.
+// NewLoggingAnalysisEngine constructs a new Analysis Engine.
 func NewLoggingAnalysisEngine() AnalysisEngine {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Analysis Engine Starting")
