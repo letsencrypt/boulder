@@ -300,7 +300,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		}
 
 		if authz.Expires.Before(earliestExpiry) {
-			earliestExpiry = authz.Expires
+			earliestExpiry = *authz.Expires
 		}
 
 		for _, challenge := range authz.Challenges {
@@ -451,7 +451,8 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 		authz.Status = core.StatusInvalid
 	} else {
 		// TODO: Enable configuration of expiry time
-		authz.Expires = time.Now().Add(365 * 24 * time.Hour)
+		exp := time.Now().Add(365 * 24 * time.Hour)
+		authz.Expires = &exp
 	}
 
 	// Finalize the authorization (error ignored)
