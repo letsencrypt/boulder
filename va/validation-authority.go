@@ -348,7 +348,6 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 
 		logEvent.Challenge = authz.Challenges[challengeIndex]
 		if err != nil {
-			fmt.Println(nil, err, err == nil)
 			logEvent.Error = err.Error()
 		}
 	}
