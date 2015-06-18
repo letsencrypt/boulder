@@ -27,7 +27,9 @@ import (
 const ocspResponseLimit int = 128
 
 func setupClients(c cmd.Config) (rpc.CertificateAuthorityClient, chan *amqp.Error) {
-	ch := cmd.AmqpChannel(c.AMQP.Server)
+	ch, err := cmd.AmqpChannel(c)
+	cmd.FailOnError(err, "Could not connect to AMQP")
+
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
 	caRPC, err := rpc.NewAmqpRPCClient("OCSP->CA", c.AMQP.CA.Server, ch)

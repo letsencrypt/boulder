@@ -67,7 +67,8 @@ func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.A
 	cmd.FailOnError(err, "Could not connect to Syslog")
 	blog.SetAuditLogger(auditlogger)
 
-	ch := cmd.AmqpChannel(c.AMQP.Server)
+	ch, err := cmd.AmqpChannel(c)
+	cmd.FailOnError(err, "Could not connect to AMQP")
 
 	caRPC, err := rpc.NewAmqpRPCClient("revoker->CA", c.AMQP.CA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RPC client")

@@ -7,6 +7,11 @@
 
   "amqp": {
     "server": "amqp://guest:guest@localhost:5672",
+    "-uncomment_for_AMQPS-ssl": {
+      "cacertfile": "/etc/boulder/rabbitmq-cacert.pem",
+      "certfile": "/etc/boulder/rabbitmq-cert.pem",
+      "keyfile": "/etc/boulder/rabbitmq-key.pem"
+    },
     "RA": {
       "client": "RA.client",
       "server": "RA.server"
