@@ -209,6 +209,7 @@ module.exports = {
     // Compute message digest
     var md;
     switch (jws.header.alg) {
+      case "RS1":   md = forge.md.sha1.create(); break;
       case "RS256": md = forge.md.sha256.create(); break;
       case "RS384": md = forge.md.sha384.create(); break;
       case "RS512": md = forge.md.sha512.create(); break;
