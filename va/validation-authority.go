@@ -127,7 +127,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		} else {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = &core.ProblemDetails{
-				Type: core.InvalidProblem,
+				Type: core.UnauthorizedProblem,
 				Detail: fmt.Sprintf("Incorrect token validating Simple%s for %s",
 					strings.ToUpper(scheme), url),
 			}
@@ -143,7 +143,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	} else {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
-			Type: core.InvalidProblem,
+			Type: core.UnauthorizedProblem,
 			Detail: fmt.Sprintf("Invalid response from %s: %d",
 				url, httpResponse.StatusCode),
 		}
@@ -221,7 +221,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		challenge.Error = &core.ProblemDetails{
-			Type:   core.InvalidProblem,
+			Type:   core.UnauthorizedProblem,
 			Detail: "No certs presented for DVSNI challenge",
 		}
 		challenge.Status = core.StatusInvalid
@@ -235,7 +235,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	}
 
 	challenge.Error = &core.ProblemDetails{
-		Type:   core.InvalidProblem,
+		Type:   core.UnauthorizedProblem,
 		Detail: "Correct zName not found for DVSNI challenge",
 	}
 	challenge.Status = core.StatusInvalid
@@ -249,6 +249,9 @@ func parseHTTPConnError(err error) core.ProblemType {
 		err = urlErr.Err
 	}
 
+	// XXX: On all of the resolvers I tested that validate DNSSEC, there is
+	// no differentation between a DNSSEC failure and an unknown host. If we
+	// do not verify DNSSEC ourselves, this function should be modified.
 	if netErr, ok := err.(*net.OpError); ok {
 		dnsErr, ok := netErr.Err.(*net.DNSError)
 		if ok && !dnsErr.Timeout() && !dnsErr.Temporary() {
@@ -279,9 +282,16 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 	txts, _, err := va.DNSResolver.LookupTXT(challengeSubdomain)
 
 	if err != nil {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.ServerInternalProblem,
-			Detail: "Unable to communicate with DNS server",
+		if dnssecErr, ok := err.(core.DNSSECError); ok {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.DNSSECProblem,
+				Detail: dnssecErr.Error(),
+			}
+		} else {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.ServerInternalProblem,
+				Detail: "Unable to communicate with DNS server",
+			}
 		}
 		challenge.Status = core.StatusInvalid
 		return challenge, err
@@ -296,7 +306,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 	}
 
 	challenge.Error = &core.ProblemDetails{
-		Type:   core.InvalidProblem,
+		Type:   core.UnauthorizedProblem,
 		Detail: "Correct value not found for DNS challenge",
 	}
 	challenge.Status = core.StatusInvalid

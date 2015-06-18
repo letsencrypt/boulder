@@ -55,7 +55,7 @@ func TestDNSLookupTXT(t *testing.T) {
 func TestDNSLookupTXTNoServer(t *testing.T) {
 	obj := NewDNSResolver(time.Second*10, []string{})
 
-    _, _, err := obj.LookupTXT("letsencrypt.org")
+	_, _, err := obj.LookupTXT("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 }
 

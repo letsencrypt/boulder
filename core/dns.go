@@ -97,9 +97,9 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(hostname), dns.TypeTXT)
 	r, rtt, err := dnsResolver.LookupDNSSEC(m)
-    if err != nil {
-        return txt, rtt, err
-    }
+	if err != nil {
+		return txt, rtt, err
+	}
 
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeTXT {
