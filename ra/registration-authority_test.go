@@ -205,7 +205,8 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 
 	AuthzFinal = AuthzUpdated
 	AuthzFinal.Status = "valid"
-	AuthzFinal.Expires = time.Now().Add(365 * 24 * time.Hour)
+	exp := time.Now().Add(365 * 24 * time.Hour)
+	AuthzFinal.Expires = &exp
 	AuthzFinal.Challenges[0].Status = "valid"
 
 	return &ca, va, sa, &ra

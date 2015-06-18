@@ -370,7 +370,7 @@ type Authorization struct {
 
 	// The date after which this authorization will be no
 	// longer be considered valid
-	Expires time.Time `json:"expires,omitempty" db:"expires"`
+	Expires *time.Time `json:"expires,omitempty" db:"expires"`
 
 	// An array of challenges objects used to validate the
 	// applicant's control of the identifier.  For authorizations

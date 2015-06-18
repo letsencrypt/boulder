@@ -166,7 +166,8 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 
 func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
 	if id == "valid" {
-		return core.Authorization{Status: core.StatusValid, RegistrationID: 1, Expires: time.Now().AddDate(100, 0, 0), Identifier: core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"}}, nil
+		exp := time.Now().AddDate(100, 0, 0)
+		return core.Authorization{Status: core.StatusValid, RegistrationID: 1, Expires: &exp, Identifier: core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"}}, nil
 	}
 	return core.Authorization{}, nil
 }
@@ -868,7 +869,7 @@ func TestAuthorization(t *testing.T) {
 		t, responseWriter.Header().Get("Link"),
 		"</acme/new-cert>;rel=\"next\"")
 
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"},\"expires\":\"0001-01-01T00:00:00Z\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}")
 
 	var authz core.Authorization
 	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
