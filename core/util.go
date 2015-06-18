@@ -10,7 +10,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
@@ -213,11 +212,6 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 	var hashID crypto.Hash
 	var hash hash.Hash
 	switch csr.SignatureAlgorithm {
-	case x509.SHA1WithRSA:
-		fallthrough
-	case x509.ECDSAWithSHA1:
-		hashID = crypto.SHA1
-		hash = sha1.New()
 	case x509.SHA256WithRSA:
 		fallthrough
 	case x509.ECDSAWithSHA256:
@@ -241,8 +235,6 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 
 	// Verify the signature using the public key in the CSR
 	switch csr.SignatureAlgorithm {
-	case x509.SHA1WithRSA:
-		fallthrough
 	case x509.SHA256WithRSA:
 		fallthrough
 	case x509.SHA384WithRSA:
@@ -250,8 +242,6 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 	case x509.SHA512WithRSA:
 		rsaKey := csr.PublicKey.(*rsa.PublicKey)
 		return rsa.VerifyPKCS1v15(rsaKey, hashID, inputHash, csr.Signature)
-	case x509.ECDSAWithSHA1:
-		fallthrough
 	case x509.ECDSAWithSHA256:
 		fallthrough
 	case x509.ECDSAWithSHA384:

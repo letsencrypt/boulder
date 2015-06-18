@@ -209,7 +209,6 @@ module.exports = {
     // Compute message digest
     var md;
     switch (jws.header.alg) {
-      case "RS1":   md = forge.md.sha1.create(); break;
       case "RS256": md = forge.md.sha256.create(); break;
       case "RS384": md = forge.md.sha384.create(); break;
       case "RS512": md = forge.md.sha512.create(); break;
@@ -244,7 +243,7 @@ module.exports = {
       extensions: [{name: 'subjectAltName', altNames: sans}]
     }]);
 
-    csr.sign(privateKey);
+    csr.sign(privateKey, forge.md.sha256.create());
 
     // Convert CSR -> DER -> Base64
     var der = forge.asn1.toDer(forge.pki.certificationRequestToAsn1(csr));
