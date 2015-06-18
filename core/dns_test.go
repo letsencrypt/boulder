@@ -52,6 +52,13 @@ func TestDNSLookupTXT(t *testing.T) {
 	test.AssertNotError(t, err, "No message")
 }
 
+func TestDNSLookupTXTNoServer(t *testing.T) {
+	obj := NewDNSResolver(time.Second*10, []string{})
+
+	_, _, err := obj.LookupTXT("letsencrypt.org")
+	test.AssertError(t, err, "No servers")
+}
+
 func TestDNSSEC(t *testing.T) {
 	goodServer := NewDNSResolver(time.Second*10, []string{"8.8.8.8:53"})
 

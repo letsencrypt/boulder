@@ -161,23 +161,6 @@ func parseIDFromPath(path string) string {
 	return re.ReplaceAllString(path, "")
 }
 
-// ProblemType objects represent problem documents, which are
-// returned with HTTP error responses
-// https://tools.ietf.org/html/draft-ietf-appsawg-http-problem-00
-type ProblemType string
-
-type problem struct {
-	Type   ProblemType `json:"type,omitempty"`
-	Detail string      `json:"detail,omitempty"`
-}
-
-// These are defined problems
-const (
-	MalformedProblem      = ProblemType("urn:acme:error:malformed")
-	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
-	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
-)
-
 func sendAllow(response http.ResponseWriter, methods ...string) {
 	response.Header().Set("Allow", strings.Join(methods, ", "))
 }
@@ -256,10 +239,10 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 
 // Notify the client of an error condition and log it for audit purposes.
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details string, debug interface{}, code int) {
-	problem := problem{Detail: details}
+	problem := core.ProblemDetails{Detail: details}
 	switch code {
 	case http.StatusForbidden:
-		problem.Type = UnauthorizedProblem
+		problem.Type = core.UnauthorizedProblem
 	case http.StatusConflict:
 		fallthrough
 	case http.StatusMethodNotAllowed:
@@ -267,9 +250,9 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 	case http.StatusNotFound:
 		fallthrough
 	case http.StatusBadRequest:
-		problem.Type = MalformedProblem
+		problem.Type = core.MalformedProblem
 	case http.StatusInternalServerError:
-		problem.Type = ServerInternalProblem
+		problem.Type = core.ServerInternalProblem
 	}
 
 	problemDoc, err := json.Marshal(problem)
@@ -281,7 +264,7 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 
 	// Only audit log internal errors so users cannot purposefully cause
 	// auditable events.
-	if problem.Type == ServerInternalProblem {
+	if problem.Type == core.ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", details, debug))
 	}

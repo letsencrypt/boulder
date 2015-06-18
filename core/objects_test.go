@@ -13,6 +13,13 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestProblemDetails(t *testing.T) {
+	pd := &ProblemDetails{
+		Type:   MalformedProblem,
+		Detail: "Wat? o.O"}
+	test.AssertEquals(t, pd.Error(), "urn:acme:error:malformed :: Wat? o.O")
+}
+
 func TestRegistrationUpdate(t *testing.T) {
 	oldURL, _ := url.Parse("http://old.invalid")
 	newURL, _ := url.Parse("http://new.invalid")
