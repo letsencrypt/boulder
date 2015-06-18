@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"net"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -108,6 +109,22 @@ func cmpExtKeyUsageSlice(a, b []x509.ExtKeyUsage) bool {
 	}
 	for i := range b {
 		if !testMap[int(b[i])] {
+			return false
+		}
+	}
+	return true
+}
+
+func cmpIPSlice(a, b []net.IP) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	testMap := make(map[string]bool, len(a))
+	for i := range a {
+		testMap[a[i].String()] = true
+	}
+	for i := range b {
+		if !testMap[b[i].String()] {
 			return false
 		}
 	}
@@ -468,6 +485,14 @@ func (cert Certificate) MatchesCSR(csr *x509.CertificateRequest, earliestExpiry 
 	}
 	if !cmpStrSlice(parsedCertificate.DNSNames, hostNames) {
 		err = InternalServerError("Generated certificate DNSNames don't match CSR DNSNames")
+		return
+	}
+	if !cmpIPSlice(parsedCertificate.IPAddresses, csr.IPAddresses) {
+		err = InternalServerError("Generated certificate IPAddresses don't match CSR IPAddresses")
+		return
+	}
+	if !cmpStrSlice(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
+		err = InternalServerError("Generated certificate EmailAddresses don't match CSR EmailAddresses")
 		return
 	}
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
