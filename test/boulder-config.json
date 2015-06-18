@@ -95,7 +95,7 @@
 
   "sa": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:"
+    "dbName": "boulder.sqlite"
   },
 
   "va": {
