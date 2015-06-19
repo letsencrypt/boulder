@@ -15,7 +15,7 @@ OBJECTS = activity-monitor \
 	ocsp-responder
 
 # Build environment variables (referencing core/util.go)
-BUILD_ID = $(shell git symbolic-ref --short HEAD) +$(shell git rev-parse --short HEAD)
+BUILD_ID = $(shell git symbolic-ref --short HEAD 2>/dev/null) +$(shell git rev-parse --short HEAD)
 BUILD_ID_VAR = github.com/letsencrypt/boulder/core.BuildID
 
 BUILD_HOST = $(shell whoami)@$(shell hostname)
