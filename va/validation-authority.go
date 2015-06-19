@@ -74,6 +74,21 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		return challenge, challenge.Error
 	}
 	hostName := identifier.Value
+
+	// Check for DNSSEC failures for A/AAAA records
+	_, _, err := va.DNSResolver.LookupHost(hostName)
+	if dnssecErr, ok := err.(core.DNSSECError); ok {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.DNSSECProblem,
+			Detail: dnssecErr.Error(),
+		}
+	} else {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.ServerInternalProblem,
+			Detail: "Unable to communicate with DNS server",
+		}
+	}
+
 	var scheme string
 	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
 		scheme = "https"
@@ -196,8 +211,21 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	z := sha256.Sum256(RS)
 	zName := fmt.Sprintf("%064x.acme.invalid", z)
 
-	// Make a connection with SNI = nonceName
+	// Check for DNSSEC failures for A/AAAA records
+	_, _, err = va.DNSResolver.LookupHost(identifier.Value)
+	if dnssecErr, ok := err.(core.DNSSECError); ok {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.DNSSECProblem,
+			Detail: dnssecErr.Error(),
+		}
+	} else {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.ServerInternalProblem,
+			Detail: "Unable to communicate with DNS server",
+		}
+	}
 
+	// Make a connection with SNI = nonceName
 	hostPort := identifier.Value + ":443"
 	if va.TestMode {
 		hostPort = "localhost:5001"

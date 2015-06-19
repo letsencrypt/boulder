@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"math/big"
 	"net"
 	"net/mail"
 	"net/url"
@@ -93,7 +92,7 @@ func validateContacts(contacts []core.AcmeURL) (err error) {
 type certificateRequestEvent struct {
 	ID                  string    `json:",omitempty"`
 	Requester           int64     `json:",omitempty"`
-	SerialNumber        *big.Int  `json:",omitempty"`
+	SerialNumber        string    `json:",omitempty"`
 	RequestMethod       string    `json:",omitempty"`
 	VerificationMethods []string  `json:",omitempty"`
 	VerifiedFields      []string  `json:",omitempty"`
@@ -354,7 +353,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	logEvent.SerialNumber = parsedCertificate.SerialNumber
+	logEvent.SerialNumber = core.SerialToString(parsedCertificate.SerialNumber)
 	logEvent.CommonName = parsedCertificate.Subject.CommonName
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
