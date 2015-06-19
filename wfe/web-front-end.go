@@ -258,11 +258,11 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, safeDetails 
 	}
 
 	// If not an internal error and problem is a custom error type
-    if problemDetails.Type == core.ServerInternalProblem && statusCodeFromError(problem) != http.StatusInternalServerError {
-        problemDetails.Detail = fmt.Sprint(problem)
-    } else {
-        problemDetails.Detail = safeDetails
-    }
+	if problemDetails.Type != core.ServerInternalProblem && statusCodeFromError(problem) != http.StatusInternalServerError {
+		problemDetails.Detail = fmt.Sprint(problem)
+	} else {
+		problemDetails.Detail = safeDetails
+	}
 
 	problemDoc, err := json.Marshal(problemDetails)
 	if err != nil {
@@ -271,12 +271,12 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, safeDetails 
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
-    // Only audit log internal errors so users cannot purposefully cause
-    // auditable events.
-    if problemDetails.Type == core.ServerInternalProblem {
+	// Only audit log internal errors so users cannot purposefully cause
+	// auditable events.
+	if problemDetails.Type == core.ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", safeDetails, problem))
-    }
+	}
 
 	// Paraphrased from
 	// https://golang.org/src/net/http/server.go#L1272

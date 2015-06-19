@@ -463,7 +463,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert\"}")
+		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Invalid signature on CSR\"}")
 
 	// Valid, signed JWS body, payload has a CSR with no DNS names
 	responseWriter.Body.Reset()
@@ -476,7 +476,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert\"}")
+		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Key not authorized for name Oh hi\"}")
 
 	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
 	// {
@@ -493,7 +493,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert\"}")
+		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Key not authorized for name meep.com\"}")
 
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
