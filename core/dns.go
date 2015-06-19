@@ -6,6 +6,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -133,7 +134,7 @@ func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Dura
 	m.SetQuestion(dns.Fqdn(hostname), dns.TypeAAAA)
 	r, aaaaRtt, err := dnsResolver.LookupDNSSEC(m)
 	if err != nil {
-		return addrs, aRtt+aaaaRtt, err
+		return addrs, aRtt + aaaaRtt, err
 	}
 	answers = append(answers, r.Answer...)
 
@@ -147,5 +148,65 @@ func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Dura
 		}
 	}
 
-	return addrs, aRtt+aaaaRtt, nil
+	return addrs, aRtt + aaaaRtt, nil
+}
+
+// LookupCNAME uses a DNSSEC-enabled query to  records for domain and returns either
+// the target, "", or a if the query fails due to DNSSEC, error will be set to
+// ErrorDNSSEC.
+func (dnsResolver *DNSResolver) LookupCNAME(domain string) (string, error) {
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(domain), dns.TypeCNAME)
+
+	r, _, err := dnsResolver.LookupDNSSEC(m)
+	if err != nil {
+		return "", err
+	}
+
+	for _, answer := range r.Answer {
+		if cname, ok := answer.(*dns.CNAME); ok {
+			return cname.Target, nil
+		}
+	}
+
+	return "", nil
+}
+
+// LookupCAA uses a DNSSEC-enabled query to find all CAA records associated with
+// the provided hostname. If the query fails due to DNSSEC, error will be
+// set to ErrorDNSSEC.
+func (dnsResolver *DNSResolver) LookupCAA(domain string, alias bool) ([]*dns.CAA, error) {
+	if alias {
+		// Check if there is a CNAME record for domain
+		canonName, err := dnsResolver.LookupCNAME(domain)
+		if err != nil {
+			return nil, err
+		}
+		if canonName == "" || canonName == domain {
+			return []*dns.CAA{}, nil
+		}
+		domain = canonName
+	}
+
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(domain), dns.TypeCAA)
+
+	r, _, err := dnsResolver.LookupDNSSEC(m)
+	if err != nil {
+		return nil, err
+	}
+
+	var CAAs []*dns.CAA
+	for _, answer := range r.Answer {
+		if answer.Header().Rrtype == dns.TypeCAA {
+			caaR, ok := answer.(*dns.CAA)
+			if !ok {
+				err = errors.New("Badly formatted record")
+				return nil, err
+			}
+			CAAs = append(CAAs, caaR)
+		}
+	}
+
+	return CAAs, nil
 }
