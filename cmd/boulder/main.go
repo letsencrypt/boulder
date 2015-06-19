@@ -75,11 +75,14 @@ func main() {
 
 		// Create the components
 		wfei := wfe.NewWebFrontEndImpl()
+		wfei.AccountKeyRateLimit.Resize(cmd.RateLimitWidth, c.WFE.AccountKeyRequestsPerSecond, time.Second)
+
 		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Unable to create SA")
 		sa.SetSQLDebug(c.SQL.SQLDebug)
 
 		ra := ra.NewRegistrationAuthorityImpl()
+		ra.DomainRateLimit.Resize(cmd.RateLimitWidth, c.RA.DomainRequestsPerSecond, time.Second)
 
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
 		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
