@@ -555,7 +555,7 @@ func TestChallenge(t *testing.T) {
 		Method: "POST",
 		URL:    challengeURL,
 		Body:   makeBody(signRequest(t, "{}", &wfe.nonceService)),
-	})
+	}, requestEvent{})
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
