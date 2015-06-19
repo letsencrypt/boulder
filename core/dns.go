@@ -115,7 +115,9 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 	return txt, rtt, err
 }
 
-// Looks up CNAME records for domain and returns either the target or ""
+// LookupCNAME uses a DNSSEC-enabled query to  records for domain and returns either
+// the target, "", or a if the query fails due to DNSSEC, error will be set to
+// ErrorDNSSEC.
 func (dnsResolver *DNSResolver) LookupCNAME(domain string) (string, error) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeCNAME)
@@ -134,6 +136,9 @@ func (dnsResolver *DNSResolver) LookupCNAME(domain string) (string, error) {
 	return "", nil
 }
 
+// LookupCAA uses a DNSSEC-enabled query to find all CAA records associated with
+// the provided hostname. If the query fails due to DNSSEC, error will be
+// set to ErrorDNSSEC.
 func (dnsResolver *DNSResolver) LookupCAA(domain string, alias bool) ([]*dns.CAA, error) {
 	if alias {
 		// Check if there is a CNAME record for domain
