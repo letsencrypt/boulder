@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -383,17 +385,20 @@ func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifie
 		present = true
 		valid = false
 		return
-	} else if len(caaSet.issue) > 0 || len(caaSet.issuewild) > 0 {
+	} else if len(caaSet.Issue) > 0 || len(caaSet.Issuewild) > 0 {
 		present = true
-		var checkSet []*CAA
+		var checkSet []*dns.CAA
 		if strings.SplitN(domain, ".", 2)[0] == "*" {
-			checkSet = caaSet.issuewild
+			checkSet = caaSet.Issuewild
 		} else {
-			checkSet = caaSet.issue
+			checkSet = caaSet.Issue
 		}
 		for _, caa := range checkSet {
-			if caa.value == va.IssuerDomain {
+			if caa.Value == va.IssuerDomain {
 				valid = true
+				return
+			} else if caa.Flag > 0 {
+				valid = false
 				return
 			}
 		}

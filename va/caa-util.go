@@ -6,9 +6,7 @@
 package va
 
 import (
-	"encoding/hex"
 	"errors"
-	"strconv"
 	"strings"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -25,54 +23,21 @@ type CAA struct {
 	valueBuf []byte
 }
 
-// RFC 6844 based CAA record decoder
-func newCAA(encodedRDATA []byte) *CAA {
-	if len(encodedRDATA) < 2 {
-		// *very* badly formatted record, discard
-		return nil
-	}
-
-	// first octet is uint8 flags
-	flag := uint8(encodedRDATA[0])
-
-	// second octet is uint8 length of tag
-	tagLen := uint8(encodedRDATA[1])
-
-	if uint8(len(encodedRDATA)) < 2+tagLen {
-		// badly formatted record, discard
-		return nil
-	}
-	tag := string(encodedRDATA[2 : 2+tagLen])
-
-	// Only decode tags we understand, value/valuebuf can be empty
-	// (that would be weird though...)
-	var valueBuf []byte
-	var value string
-	if tag == "issue" || tag == "issuewild" || tag == "iodef" {
-		value = string(encodedRDATA[2+tagLen:])
-	} else {
-		// unknown tag value may not be string, so store in buf
-		valueBuf = encodedRDATA[2+tagLen:]
-	}
-
-	return &CAA{flag: flag, tag: tag, valueBuf: valueBuf, value: value}
-}
-
 // CAASet consists of filtered CAA records
 type CAASet struct {
-	issue     []*CAA
-	issuewild []*CAA
-	iodef     []*CAA
-	unknown   []*CAA
+	Issue     []*dns.CAA
+	Issuewild []*dns.CAA
+	Iodef     []*dns.CAA
+	Unknown   []*dns.CAA
 }
 
 // returns true if any CAA records have unknown tag properties and are flagged critical.
 func (caaSet CAASet) criticalUnknown() bool {
-	if len(caaSet.unknown) > 0 {
-		for _, caaRecord := range caaSet.unknown {
+	if len(caaSet.Unknown) > 0 {
+		for _, caaRecord := range caaSet.Unknown {
 			// Critical flag is 1, but according to RFC 6844 any flag other than
 			// 0 should currently be interpreted as critical.
-			if caaRecord.flag > 0 {
+			if caaRecord.Flag > 0 {
 				return true
 			}
 		}
@@ -82,26 +47,23 @@ func (caaSet CAASet) criticalUnknown() bool {
 }
 
 // Filter CAA records by property
-func newCAASet(CAAs []*CAA) *CAASet {
-	var issueSet []*CAA
-	var issuewildSet []*CAA
-	var iodefSet []*CAA
-	var unknownSet []*CAA
+func newCAASet(CAAs []*dns.CAA) *CAASet {
+	var filtered CAASet
 
 	for _, caaRecord := range CAAs {
-		switch caaRecord.tag {
+		switch caaRecord.Tag {
 		case "issue":
-			issueSet = append(issueSet, caaRecord)
+			filtered.Issue = append(filtered.Issue, caaRecord)
 		case "issuewild":
-			issuewildSet = append(issuewildSet, caaRecord)
+			filtered.Issuewild = append(filtered.Issuewild, caaRecord)
 		case "iodef":
-			iodefSet = append(iodefSet, caaRecord)
+			filtered.Iodef = append(filtered.Iodef, caaRecord)
 		default:
-			unknownSet = append(unknownSet, caaRecord)
+			filtered.Unknown = append(filtered.Unknown, caaRecord)
 		}
 	}
 
-	return &CAASet{issue: issueSet, issuewild: issuewildSet, iodef: iodefSet, unknown: unknownSet}
+	return &filtered
 }
 
 // Looks up CNAME records for domain and returns either the target or ""
@@ -123,7 +85,7 @@ func lookupCNAME(dnsResolver *core.DNSResolver, domain string) (string, error) {
 	return "", nil
 }
 
-func getCaa(dnsResolver *core.DNSResolver, domain string, alias bool) ([]*CAA, error) {
+func getCaa(dnsResolver *core.DNSResolver, domain string, alias bool) ([]*dns.CAA, error) {
 	if alias {
 		// Check if there is a CNAME record for domain
 		canonName, err := lookupCNAME(dnsResolver, dns.Fqdn(domain))
@@ -131,7 +93,7 @@ func getCaa(dnsResolver *core.DNSResolver, domain string, alias bool) ([]*CAA, e
 			return nil, err
 		}
 		if canonName == "" || canonName == domain {
-			return []*CAA{}, nil
+			return []*dns.CAA{}, nil
 		}
 		domain = canonName
 	}
@@ -144,33 +106,15 @@ func getCaa(dnsResolver *core.DNSResolver, domain string, alias bool) ([]*CAA, e
 		return nil, err
 	}
 
-	var CAAs []*CAA
+	var CAAs []*dns.CAA
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeCAA {
-			recordFields := strings.Fields(answer.String())
-			if len(recordFields) < 7 {
-				// Malformed record
-				err = errors.New("DNS response contains badly formatted CAA record")
+			caaR, ok := answer.(*dns.CAA)
+			if !ok {
+				err = errors.New("Badly formatted record")
 				return nil, err
 			}
-
-			caaLen, err := strconv.Atoi(recordFields[5])
-			if err != nil {
-				return nil, err
-			}
-
-			// Decode hex encoded RDATA field
-			caaData, err := hex.DecodeString(strings.Join(recordFields[6:], ""))
-			if err != nil {
-				return nil, err
-			}
-
-			if caaLen != len(caaData) {
-				// Malformed record
-				err = errors.New("RDATA length field doesn't match RDATA length")
-				return nil, err
-			}
-			CAAs = append(CAAs, newCAA([]byte(caaData)))
+			CAAs = append(CAAs, caaR)
 		}
 	}
 
