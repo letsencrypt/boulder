@@ -238,13 +238,13 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 }
 
 // Notify the client of an error condition and log it for audit purposes.
-func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, safeDetails string, problem interface{}, code int) {
-	var problemDetails core.ProblemDetails
+func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, detail interface{}, code int) {
+	problem := core.ProblemDetails{Detail: msg}
 	switch code {
 	case http.StatusPreconditionFailed:
 		fallthrough
 	case http.StatusForbidden:
-		problemDetails.Type = core.UnauthorizedProblem
+		problem.Type = core.UnauthorizedProblem
 	case http.StatusConflict:
 		fallthrough
 	case http.StatusMethodNotAllowed:
@@ -252,30 +252,26 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, safeDetails 
 	case http.StatusNotFound:
 		fallthrough
 	case http.StatusBadRequest:
-		problemDetails.Type = core.MalformedProblem
+		problem.Type = core.MalformedProblem
 	default: // Either http.StatusInternalServerError or an unexpected code
-		problemDetails.Type = core.ServerInternalProblem
-	}
-
-	// If not an internal error and problem is a custom error type
-	if problemDetails.Type != core.ServerInternalProblem && statusCodeFromError(problem) != http.StatusInternalServerError {
-		problemDetails.Detail = fmt.Sprint(problem)
-	} else {
-		problemDetails.Detail = safeDetails
-	}
-
-	problemDoc, err := json.Marshal(problemDetails)
-	if err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		wfe.log.Audit(fmt.Sprintf("Could not marshal error message: %s - %+v", err, problemDetails))
-		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
+		problem.Type = core.ServerInternalProblem
 	}
 
 	// Only audit log internal errors so users cannot purposefully cause
 	// auditable events.
-	if problemDetails.Type == core.ServerInternalProblem {
+	if problem.Type == core.ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", safeDetails, problem))
+		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", msg, detail))
+	} else if statusCodeFromError(detail) != http.StatusInternalServerError {
+		// If not an internal error and problem is a custom error type
+		problem.Detail += fmt.Sprintf(" :: %s", detail)
+	}
+
+	problemDoc, err := json.Marshal(problem)
+	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		wfe.log.Audit(fmt.Sprintf("Could not marshal error message: %s - %+v", err, problem))
+		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
 	// Paraphrased from
