@@ -82,11 +82,13 @@ if [ -z "$LETSENCRYPT_VENV" ]; then
   echo "--- Recommend setting \$LETSENCRYPT_VENV to  -------"
   echo "--- an already-initialized client virtualenv -------"
   echo "----------------------------------------------------"
-  run git clone https://www.github.com/letsencrypt/lets-encrypt-preview.git $DEFAULT_LETSENCRYPT_PATH
+  run git clone \
+    https://www.github.com/letsencrypt/lets-encrypt-preview.git \
+    $DEFAULT_LETSENCRYPT_PATH || exit 1
 
   cd $DEFAULT_LETSENCRYPT_PATH
   run virtualenv --no-site-packages -p python2 ./venv && \
-    ./venv/bin/pip install -r requirements.txt -e .
+    ./venv/bin/pip install -r requirements.txt -e . || exit 1
   cd -
 fi
 
