@@ -369,14 +369,6 @@ func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, ch
 	return nil
 }
 
-// CAA Holds decoded CAA record.
-type CAA struct {
-	flag     uint8
-	tag      string
-	value    string
-	valueBuf []byte
-}
-
 // CAASet consists of filtered CAA records
 type CAASet struct {
 	Issue     []*dns.CAA
