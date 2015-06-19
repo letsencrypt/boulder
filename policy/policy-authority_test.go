@@ -150,3 +150,16 @@ func TestChallengesFor(t *testing.T) {
 		t.Error("Incorrect combinations returned")
 	}
 }
+
+func TestPSLPlusOne(t *testing.T) {
+	pa := NewPolicyAuthorityImpl()
+
+	domain := "this.gets.deleted.www.example.co.uk"
+	p1, err := pa.PSLPlusOne(domain)
+	if err != nil {
+		t.Errorf("PSLPlusOne incorrectly returned an error: %v", err)
+	}
+	if p1 != "example.co.uk" {
+		t.Errorf("PSLPlusOne produced incorrect value: %v", p1)
+	}
+}

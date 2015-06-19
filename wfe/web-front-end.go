@@ -90,6 +90,8 @@ func statusCodeFromError(err interface{}) int {
 		return http.StatusPreconditionFailed
 	case core.InternalServerError:
 		return http.StatusInternalServerError
+	case core.RateLimitedError:
+		return statusTooManyRequests
 	default:
 		return http.StatusInternalServerError
 	}
