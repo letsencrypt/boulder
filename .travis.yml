@@ -23,7 +23,7 @@ before_install:
   # someone forks the repo, Travis won't pass on their own repo. To fix that,
   # we add a symlink.
   - mkdir -p $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt
-  - test ! -d $GOPATH/src/github.com/letsencrypt/boulder && ln -s $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt/boulder
+  - test ! -d $GOPATH/src/github.com/letsencrypt/boulder && ln -s $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt/boulder || true
 
 script:
   - make -j4 # Travis has 2 cores per build instance
