@@ -22,6 +22,8 @@
 package cmd
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -29,6 +31,7 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -54,6 +57,7 @@ type Config struct {
 		SA     Queue
 		CA     Queue
 		OCSP   Queue
+		SSL    *SSLConfig
 	}
 
 	WFE struct {
@@ -125,6 +129,13 @@ type Config struct {
 	SubscriberAgreementURL string
 }
 
+// SSLConfig reprents certificates and a key for authenticated TLS.
+type SSLConfig struct {
+	CertFile   string
+	KeyFile    string
+	CACertFile *string // Optional
+}
+
 // Queue describes a queue name
 type Queue struct {
 	Server string
@@ -188,19 +199,57 @@ func (as *AppShell) VersionString() string {
 func FailOnError(err error, msg string) {
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		panic(fmt.Sprintf("%s: %s", msg, err))
+		fmt.Fprintf(os.Stderr, "%s: %s", msg, err)
+		os.Exit(1)
 	}
 }
 
 // AmqpChannel is the same as amqpConnect in boulder, but with even
 // more aggressive error dropping
-func AmqpChannel(url string) (ch *amqp.Channel) {
-	conn, err := amqp.Dial(url)
-	FailOnError(err, "Unable to connect to AMQP server")
+func AmqpChannel(conf Config) (*amqp.Channel, error) {
+	var conn *amqp.Connection
 
-	ch, err = conn.Channel()
-	FailOnError(err, "Unable to establish channel to AMQP server")
-	return
+	if conf.AMQP.SSL != nil {
+		if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
+			err := fmt.Errorf("SSL configuration provided, but not using an AMQPS URL")
+			return nil, err
+		}
+
+		cfg := new(tls.Config)
+
+		cert, err := tls.LoadX509KeyPair(conf.AMQP.SSL.CertFile, conf.AMQP.SSL.KeyFile)
+		if err != nil {
+			err = fmt.Errorf("Could not load Client Certificates: %s", err)
+			return nil, err
+		}
+		cfg.Certificates = append(cfg.Certificates, cert)
+
+		if conf.AMQP.SSL.CACertFile != nil {
+			cfg.RootCAs = x509.NewCertPool()
+
+			ca, err := ioutil.ReadFile(*conf.AMQP.SSL.CACertFile)
+			if err != nil {
+				err = fmt.Errorf("Could not load CA Certificate: %s", err)
+				return nil, err
+			}
+			cfg.RootCAs.AppendCertsFromPEM(ca)
+		}
+
+		conn, err = amqp.DialTLS(conf.AMQP.Server, cfg)
+		if err != nil {
+			return nil, err
+		}
+
+		return conn.Channel()
+	}
+
+	// Configuration did not specify SSL options
+	conn, err := amqp.Dial(conf.AMQP.Server)
+	if err != nil {
+		return nil, err
+	}
+
+	return conn.Channel()
 }
 
 // RunForever starts the server and wait around

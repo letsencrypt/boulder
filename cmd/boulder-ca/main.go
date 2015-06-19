@@ -45,7 +45,9 @@ func main() {
 		go cmd.ProfileCmd("CA", stats)
 
 		for {
-			ch := cmd.AmqpChannel(c.AMQP.Server)
+			ch, err := cmd.AmqpChannel(c)
+			cmd.FailOnError(err, "Could not connect to AMQP")
+
 			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
 			saRPC, err := rpc.NewAmqpRPCClient("CA->SA", c.AMQP.SA.Server, ch)

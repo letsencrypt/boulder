@@ -20,7 +20,9 @@ import (
 )
 
 func setupWFE(c cmd.Config) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
-	ch := cmd.AmqpChannel(c.AMQP.Server)
+	ch, err := cmd.AmqpChannel(c)
+	cmd.FailOnError(err, "Could not connect to AMQP")
+
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
 	raRPC, err := rpc.NewAmqpRPCClient("WFE->RA", c.AMQP.RA.Server, ch)
