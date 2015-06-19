@@ -238,9 +238,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 }
 
 // Notify the client of an error condition and log it for audit purposes.
-func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details string, debug interface{}, code int) {
-	problem := core.ProblemDetails{Detail: details}
+func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, detail interface{}, code int) {
+	problem := core.ProblemDetails{Detail: msg}
 	switch code {
+	case http.StatusPreconditionFailed:
+		fallthrough
 	case http.StatusForbidden:
 		problem.Type = core.UnauthorizedProblem
 	case http.StatusConflict:
@@ -251,22 +253,25 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 		fallthrough
 	case http.StatusBadRequest:
 		problem.Type = core.MalformedProblem
-	case http.StatusInternalServerError:
+	default: // Either http.StatusInternalServerError or an unexpected code
 		problem.Type = core.ServerInternalProblem
-	}
-
-	problemDoc, err := json.Marshal(problem)
-	if err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		wfe.log.Audit(fmt.Sprintf("Could not marshal error message: %s - %+v", err.Error(), problem))
-		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
 	// Only audit log internal errors so users cannot purposefully cause
 	// auditable events.
 	if problem.Type == core.ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", details, debug))
+		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", msg, detail))
+	} else if statusCodeFromError(detail) != http.StatusInternalServerError {
+		// If not an internal error and problem is a custom error type
+		problem.Detail += fmt.Sprintf(" :: %s", detail)
+	}
+
+	problemDoc, err := json.Marshal(problem)
+	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		wfe.log.Audit(fmt.Sprintf("Could not marshal error message: %s - %+v", err, problem))
+		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
 	// Paraphrased from
