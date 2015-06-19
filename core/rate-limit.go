@@ -6,8 +6,10 @@
 package core
 
 import (
-	"crypto/sha1"     // For StringToID
-	"encoding/binary" // For StringToID
+	"crypto"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/binary"
 	"time"
 )
 
@@ -159,6 +161,12 @@ func (rl *RateLimit) Trim() {
 }
 
 func (rl *RateLimit) AcceptableNow(id int64) bool {
+	// Always allow in degenerate cases
+	if rl.numQueues == 0 || rl.queueSize == 0 || rl.window == 0 {
+		return true
+	}
+
+	// Age off old events
 	rl.Trim()
 
 	now := time.Now().Unix()
@@ -193,9 +201,21 @@ func (rl *RateLimit) Clear() {
 
 // This function maps a string to the high-order 64 bits of its
 // SHA-1 digest value
-func StringToID(value string) int64 {
-	h := sha1.New()
+func StringToRateLimitID(value string) int64 {
+	h := sha256.New()
 	h.Write([]byte(value))
 	d := h.Sum(nil)
+	return int64(binary.BigEndian.Uint64(d[:8]))
+}
+
+func KeyToRateLimitID(key crypto.PublicKey) int64 {
+	d64, err := KeyDigest(key)
+	if err != nil {
+		// XXX Map bad keys to 0
+		return 0
+	}
+
+	// Ignoring error because we're just undoing what KeyDigest does
+	d, _ := base64.StdEncoding.DecodeString(d64)
 	return int64(binary.BigEndian.Uint64(d[:8]))
 }

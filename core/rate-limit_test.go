@@ -13,6 +13,11 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestEmptyRateLimit(t *testing.T) {
+	rl := RateLimit{}
+	test.Assert(t, rl.AcceptableNow(104563), "Empty rate limit rejected a request")
+}
+
 func TestLimitRequests(t *testing.T) {
 	rl := NewRateLimit(1, 5, 5*time.Hour)
 	test.Assert(t, rl.AcceptableNow(1), "Rate limit rejected valid request")
