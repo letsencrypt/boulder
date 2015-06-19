@@ -6,6 +6,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"time"
@@ -112,4 +113,59 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 	}
 
 	return txt, rtt, err
+}
+
+// Looks up CNAME records for domain and returns either the target or ""
+func (dnsResolver *DNSResolver) LookupCNAME(domain string) (string, error) {
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(domain), dns.TypeCNAME)
+
+	r, _, err := dnsResolver.LookupDNSSEC(m)
+	if err != nil {
+		return "", err
+	}
+
+	for _, answer := range r.Answer {
+		if cname, ok := answer.(*dns.CNAME); ok {
+			return cname.Target, nil
+		}
+	}
+
+	return "", nil
+}
+
+func (dnsResolver *DNSResolver) LookupCAA(domain string, alias bool) ([]*dns.CAA, error) {
+	if alias {
+		// Check if there is a CNAME record for domain
+		canonName, err := dnsResolver.LookupCNAME(domain)
+		if err != nil {
+			return nil, err
+		}
+		if canonName == "" || canonName == domain {
+			return []*dns.CAA{}, nil
+		}
+		domain = canonName
+	}
+
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(domain), dns.TypeCAA)
+
+	r, _, err := dnsResolver.LookupDNSSEC(m)
+	if err != nil {
+		return nil, err
+	}
+
+	var CAAs []*dns.CAA
+	for _, answer := range r.Answer {
+		if answer.Header().Rrtype == dns.TypeCAA {
+			caaR, ok := answer.(*dns.CAA)
+			if !ok {
+				err = errors.New("Badly formatted record")
+				return nil, err
+			}
+			CAAs = append(CAAs, caaR)
+		}
+	}
+
+	return CAAs, nil
 }
