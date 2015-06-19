@@ -122,6 +122,10 @@ wk6Oiadty3eQqSBJv0HnpmiEdQVffIK5Pg4M8Dd+aOBnEkbopAJOuA==
 		"d616e2d6578616d706c652e636f6d300b06092a864886f70d01010b0341008cf8" +
 		"f349efa6d2fadbaf8ed9ba67e5a9b98c3d5a13c06297c4cf36dc76f494e8887e3" +
 		"5dd9c885526136d810fc7640f5ba56281e2b75fa3ff7c91a7d23bab7fd4"
+
+	accountKeyJSON = `{"kty":"RSA","n":"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ","e":"AAEAAQ","d":"BhAmDbzBAbCeHbU0Xhzi_Ar4M0eTMOEQPnPXMSfW6bc0SRW938JO_-z1scEvFY8qsxV_C0Zr7XHVZsmHz4dc9BVmhiSan36XpuOS85jLWaY073e7dUVN9-l-ak53Ys9f6KZB_v-BmGB51rUKGB70ctWiMJ1C0EzHv0h6Moog-LCd_zo03uuZD5F5wtnPrAB3SEM3vRKeZHzm5eiGxNUsaCEzGDApMYgt6YkQuUlkJwD8Ky2CkAE6lLQSPwddAfPDhsCug-12SkSIKw1EepSHz86ZVfJEnvY-h9jHIdI57mR1v7NTCDcWqy6c6qIzxwh8n2X94QTbtWT3vGQ6HXM5AQ","p":"2uhvZwNS5i-PzeI9vGx89XbdsVmeNjVxjH08V3aRBVY0dzUzwVDYk3z7sqBIj6de53Lx6W1hjmhPIqAwqQgjIKH5Z3uUCinGguKkfGDL3KgLCzYL2UIvZMvTzr9NWLc0AHMZdee5utxWKCGnZBOqy1Rd4V-6QrqjEDBvanoqA60","q":"8odNkMEiriaDKmvwDv-vOOu3LaWbu03yB7VhABu-hK5Xx74bHcvDP2HuCwDGGJY2H-xKdMdUPs0HPwbfHMUicD2vIEUDj6uyrMMZHtbcZ3moh3-WESg3TaEaJ6vhwcWXWG7Wc46G-HbCChkuVenFYYkoi68BAAjloqEUl1JBT1E"}`
+
+	accountKeyPublicJSON = `{"kty":"RSA","n":"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ","e":"AAEAAQ"}`
 )
 
 type MockSA struct {
@@ -148,16 +152,18 @@ func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
 func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
 	var test1KeyPublic jose.JsonWebKey
 	var test2KeyPublic jose.JsonWebKey
+	var accountKeyPublic jose.JsonWebKey
 	test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
 	test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
+	accountKeyPublic.UnmarshalJSON([]byte(accountKeyPublicJSON))
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
 		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL}, nil
-	}
-
-	if core.KeyDigestEquals(jwk, test2KeyPublic) {
+	} else if core.KeyDigestEquals(jwk, accountKeyPublic) {
+		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL}, nil
+	} else if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
-		return core.Registration{ID: 2}, sql.ErrNoRows
+		return core.Registration{}, sql.ErrNoRows
 	}
 
 	// Return a fake registration
@@ -302,9 +308,8 @@ func makeBody(s string) io.ReadCloser {
 }
 
 func signRequest(t *testing.T, req string, nonceService *core.NonceService) string {
-	accountKeyJSON := []byte(`{"kty":"RSA","n":"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ","e":"AAEAAQ","d":"BhAmDbzBAbCeHbU0Xhzi_Ar4M0eTMOEQPnPXMSfW6bc0SRW938JO_-z1scEvFY8qsxV_C0Zr7XHVZsmHz4dc9BVmhiSan36XpuOS85jLWaY073e7dUVN9-l-ak53Ys9f6KZB_v-BmGB51rUKGB70ctWiMJ1C0EzHv0h6Moog-LCd_zo03uuZD5F5wtnPrAB3SEM3vRKeZHzm5eiGxNUsaCEzGDApMYgt6YkQuUlkJwD8Ky2CkAE6lLQSPwddAfPDhsCug-12SkSIKw1EepSHz86ZVfJEnvY-h9jHIdI57mR1v7NTCDcWqy6c6qIzxwh8n2X94QTbtWT3vGQ6HXM5AQ","p":"2uhvZwNS5i-PzeI9vGx89XbdsVmeNjVxjH08V3aRBVY0dzUzwVDYk3z7sqBIj6de53Lx6W1hjmhPIqAwqQgjIKH5Z3uUCinGguKkfGDL3KgLCzYL2UIvZMvTzr9NWLc0AHMZdee5utxWKCGnZBOqy1Rd4V-6QrqjEDBvanoqA60","q":"8odNkMEiriaDKmvwDv-vOOu3LaWbu03yB7VhABu-hK5Xx74bHcvDP2HuCwDGGJY2H-xKdMdUPs0HPwbfHMUicD2vIEUDj6uyrMMZHtbcZ3moh3-WESg3TaEaJ6vhwcWXWG7Wc46G-HbCChkuVenFYYkoi68BAAjloqEUl1JBT1E"}`)
 	var accountKey jose.JsonWebKey
-	err := json.Unmarshal(accountKeyJSON, &accountKey)
+	err := json.Unmarshal([]byte(accountKeyJSON), &accountKey)
 	test.AssertNotError(t, err, "Failed to unmarshal key")
 	signer, err := jose.NewSigner("RS256", &accountKey)
 	test.AssertNotError(t, err, "Failed to make signer")
@@ -973,4 +978,37 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
 	responseWriter.Body.Reset()
+}
+
+func TestRateLimits(t *testing.T) {
+	wfe := setupWFE()
+
+	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
+	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.SubscriberAgreementURL = agreementURL
+	responseWriter := httptest.NewRecorder()
+
+	// Only accept one request from one key
+	wfe.AccountKeyRateLimit.Resize(1, 1, time.Hour)
+
+	// Send a registration update and verify that it was accepted
+	responseWriter.Body.Reset()
+	path, _ := url.Parse("/1")
+	wfe.Registration(responseWriter, &http.Request{
+		URL:    path,
+		Method: "POST",
+		Body:   makeBody(signRequest(t, "{\"resource\":\"reg\"}", &wfe.nonceService)),
+	})
+	test.AssertEquals(t, responseWriter.Code, 202)
+
+	// Send a registration update and verify that it is rate-limited
+	responseWriter = httptest.NewRecorder()
+	path, _ = url.Parse("/1")
+	wfe.Registration(responseWriter, &http.Request{
+		URL:    path,
+		Method: "POST",
+		Body:   makeBody(signRequest(t, "{\"resource\":\"reg\"}", &wfe.nonceService)),
+	})
+	test.AssertEquals(t, responseWriter.Code, 429)
 }

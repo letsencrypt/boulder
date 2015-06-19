@@ -84,10 +84,10 @@ func (q *queue) Clear() {
 // by the following parameters:
 // * numQueues - the number of queues it will maintain
 // * queueSize - the number of attempts remembered for each ID
-// * window - how long each entry remains in the queue
+// * Window - how long each entry remains in the queue
 //
 // In effect, the each of `numQueues` IDs is limited to no
-// more than queueSize attempts within the window.
+// more than queueSize attempts within the Window.
 //
 // Each time an attempt is made for an ID:
 // * If the ID has a queue and there is space in it, the attempt
@@ -112,7 +112,7 @@ func (q *queue) Clear() {
 type RateLimit struct {
 	numQueues int
 	queueSize int
-	window    time.Duration
+	Window    time.Duration
 
 	labels map[int64]int // id -> queue index
 	used   map[int]int64 // queue index -> id
@@ -130,7 +130,7 @@ func (rl *RateLimit) Resize(numQueues, queueSize int, window time.Duration) {
 	// Reset all the state variables
 	rl.numQueues = numQueues
 	rl.queueSize = queueSize
-	rl.window = window
+	rl.Window = window
 
 	rl.labels = map[int64]int{}
 	rl.used = map[int]int64{}
@@ -147,7 +147,7 @@ func (rl *RateLimit) Resize(numQueues, queueSize int, window time.Duration) {
 func (rl *RateLimit) Trim() {
 	now := time.Now()
 	for i := range rl.queues {
-		for rl.queues[i].Length() > 0 && now.Sub(time.Unix(rl.queues[i].Head(), 0)) > rl.window {
+		for rl.queues[i].Length() > 0 && now.Sub(time.Unix(rl.queues[i].Head(), 0)) > rl.Window {
 			rl.queues[i].Pop()
 		}
 
@@ -162,7 +162,7 @@ func (rl *RateLimit) Trim() {
 
 func (rl *RateLimit) AcceptableNow(id int64) bool {
 	// Always allow in degenerate cases
-	if rl.numQueues == 0 || rl.queueSize == 0 || rl.window == 0 {
+	if rl.numQueues == 0 || rl.queueSize == 0 || rl.Window == 0 {
 		return true
 	}
 

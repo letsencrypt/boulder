@@ -7,6 +7,7 @@ package wfe
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
@@ -63,6 +64,10 @@ type WebFrontEndImpl struct {
 
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
+
+	// Rate limits for various things are initialized to always allow
+	// Use RateLimit.Resize() to impose rate limits
+	AccountKeyRateLimit core.RateLimit
 
 	// Register of anti-replay nonces
 	nonceService core.NonceService
@@ -258,10 +263,20 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 	return []byte(payload), key, reg, nil
 }
 
+func (wfe WebFrontEndImpl) verifyRateLimits(key crypto.PublicKey) (error, time.Duration) {
+	if !wfe.AccountKeyRateLimit.AcceptableNow(core.KeyToRateLimitID(key)) {
+		return fmt.Errorf("Account key is rate limited"), rateLimitExpansionFactor * wfe.AccountKeyRateLimit.Window
+	}
+
+	return nil, 0
+}
+
 // Notify the client of an error condition and log it for audit purposes.
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, detail interface{}, code int) {
 	problem := core.ProblemDetails{Detail: msg}
 	switch code {
+	case statusTooManyRequests:
+		fallthrough
 	case http.StatusPreconditionFailed:
 		fallthrough
 	case http.StatusForbidden:
@@ -302,6 +317,12 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, 
 	response.Write(problemDoc)
 }
 
+// Notify the client that it has been rate-limited
+func (wfe *WebFrontEndImpl) sendRateLimitedError(response http.ResponseWriter, backoff time.Duration) {
+	response.Header().Set("Retry-After", fmt.Sprintf("%d", int64(backoff)))
+	wfe.sendError(response, "Rate limit exceeded", nil, statusTooManyRequests)
+}
+
 func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
@@ -324,6 +345,12 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
+		return
+	}
+
+	err, backoff := wfe.verifyRateLimits(key)
+	if err != nil {
+		wfe.sendRateLimitedError(response, backoff)
 		return
 	}
 
@@ -396,7 +423,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		return
 	}
 
-	body, _, currReg, err := wfe.verifyPOST(request, true)
+	body, key, currReg, err := wfe.verifyPOST(request, true)
 	if err != nil {
 		logEvent.Error = err.Error()
 		if err == sql.ErrNoRows {
@@ -406,8 +433,13 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		}
 		return
 	}
-	logEvent.Requester = currReg.ID
-	logEvent.Contacts = currReg.Contact
+
+	err, backoff := wfe.verifyRateLimits(key)
+	if err != nil {
+		wfe.sendRateLimitedError(response, backoff)
+		return
+	}
+
 	// Any version of the agreement is acceptable here. Version match is enforced in
 	// wfe.Registration when agreeing the first time. Agreement updates happen
 	// by mailing subscribers and don't require a registration update.
@@ -482,6 +514,12 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 	logEvent.Requester = registration.ID
 	logEvent.Contacts = registration.Contact
+
+	err, backoff := wfe.verifyRateLimits(requestKey)
+	if err != nil {
+		wfe.sendRateLimitedError(response, backoff)
+		return
+	}
 
 	type RevokeRequest struct {
 		CertificateDER core.JSONBuffer `json:"certificate"`
@@ -585,6 +623,13 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	}
 	logEvent.Requester = reg.ID
 	logEvent.Contacts = reg.Contact
+
+	err, backoff := wfe.verifyRateLimits(key)
+	if err != nil {
+		wfe.sendRateLimitedError(response, backoff)
+		return
+	}
+
 	// Any version of the agreement is acceptable here. Version match is enforced in
 	// wfe.Registration when agreeing the first time. Agreement updates happen
 	// by mailing subscribers and don't require a registration update.
@@ -708,7 +753,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		}
 
 	case "POST":
-		body, _, currReg, err := wfe.verifyPOST(request, true)
+		body, key, currReg, err := wfe.verifyPOST(request, true)
 		if err != nil {
 			logEvent.Error = err.Error()
 			if err == sql.ErrNoRows {
@@ -720,6 +765,13 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		}
 		logEvent.Requester = currReg.ID
 		logEvent.Contacts = currReg.Contact
+
+		err, backoff := wfe.verifyRateLimits(key)
+		if err != nil {
+			wfe.sendRateLimitedError(response, backoff)
+			return
+		}
+
 		// Any version of the agreement is acceptable here. Version match is enforced in
 		// wfe.Registration when agreeing the first time. Agreement updates happen
 		// by mailing subscribers and don't require a registration update.
@@ -794,7 +846,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		return
 	}
 
-	body, _, currReg, err := wfe.verifyPOST(request, true)
+	body, key, currReg, err := wfe.verifyPOST(request, true)
 	if err != nil {
 		logEvent.Error = err.Error()
 		if err == sql.ErrNoRows {
@@ -809,6 +861,12 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	}
 	logEvent.Requester = currReg.ID
 	logEvent.Contacts = currReg.Contact
+
+	err, backoff := wfe.verifyRateLimits(key)
+	if err != nil {
+		wfe.sendRateLimitedError(response, backoff)
+		return
+	}
 
 	// Requests to this handler should have a path that leads to a known
 	// registration
@@ -907,7 +965,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 	switch request.Method {
 	default:
 		logEvent.Error = "Method not allowed"
-		sendAllow(response, "GET", "POST")
+		sendAllow(response, "GET")
 		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 		return
 
