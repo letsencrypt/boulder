@@ -54,7 +54,7 @@ func GoodKey(key crypto.PublicKey, maxKeySize int) error {
 	case *ecdsa.PublicKey:
 		return GoodKeyECDSA(*t, maxKeySize)
 	default:
-		err := fmt.Errorf("Unknown key type %s", reflect.TypeOf(key))
+		err := MalformedRequestError(fmt.Sprintf("Unknown key type %s", reflect.TypeOf(key)))
 		log.Debug(err.Error())
 		return err
 	}
@@ -63,7 +63,7 @@ func GoodKey(key crypto.PublicKey, maxKeySize int) error {
 // GoodKeyECDSA determines if an ECDSA pubkey meets our requirements
 func GoodKeyECDSA(key ecdsa.PublicKey, maxKeySize int) (err error) {
 	log := blog.GetAuditLogger()
-	err = fmt.Errorf("ECDSA keys not yet supported")
+	err = NotSupportedError("ECDSA keys not yet supported")
 	log.Debug(err.Error())
 	return
 }
@@ -76,12 +76,12 @@ func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) (err error) {
 	modulus := key.N
 	modulusBitLen := modulus.BitLen()
 	if modulusBitLen < 2048 {
-		err = fmt.Errorf("Key too small: %d", modulusBitLen)
+		err = MalformedRequestError(fmt.Sprintf("Key too small: %d", modulusBitLen))
 		log.Debug(err.Error())
 		return err
 	}
 	if modulusBitLen > maxKeySize {
-		err = fmt.Errorf("Key too large: %d > %d", modulusBitLen, maxKeySize)
+		err = MalformedRequestError(fmt.Sprintf("Key too large: %d > %d", modulusBitLen, maxKeySize))
 		log.Debug(err.Error())
 		return err
 	}
@@ -92,7 +92,7 @@ func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) (err error) {
 	// 2^32 - 1 or 2^64 - 1, because it stores E as an integer. So we
 	// don't need to check the upper bound.
 	if (key.E%2) == 0 || key.E < ((1<<16)+1) {
-		err = fmt.Errorf("Key exponent should be odd and >2^16: %d", key.E)
+		err = MalformedRequestError(fmt.Sprintf("Key exponent should be odd and >2^16: %d", key.E))
 		log.Debug(err.Error())
 		return err
 	}
@@ -108,7 +108,7 @@ func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) (err error) {
 		var result big.Int
 		result.Mod(modulus, prime)
 		if result.Sign() == 0 {
-			err = fmt.Errorf("Key divisible by small prime: %d", prime)
+			err = MalformedRequestError(fmt.Sprintf("Key divisible by small prime: %d", prime))
 			log.Debug(err.Error())
 			return err
 		}

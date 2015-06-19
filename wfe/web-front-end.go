@@ -238,11 +238,13 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 }
 
 // Notify the client of an error condition and log it for audit purposes.
-func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details string, debug interface{}, code int) {
-	problem := core.ProblemDetails{Detail: details}
+func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, safeDetails string, problem interface{}, code int) {
+	var problemDetails core.ProblemDetails
 	switch code {
+	case http.StatusPreconditionFailed:
+		fallthrough
 	case http.StatusForbidden:
-		problem.Type = core.UnauthorizedProblem
+		problemDetails.Type = core.UnauthorizedProblem
 	case http.StatusConflict:
 		fallthrough
 	case http.StatusMethodNotAllowed:
@@ -250,24 +252,31 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, details stri
 	case http.StatusNotFound:
 		fallthrough
 	case http.StatusBadRequest:
-		problem.Type = core.MalformedProblem
-	case http.StatusInternalServerError:
-		problem.Type = core.ServerInternalProblem
+		problemDetails.Type = core.MalformedProblem
+	default: // Either http.StatusInternalServerError or an unexpected code
+		problemDetails.Type = core.ServerInternalProblem
 	}
 
-	problemDoc, err := json.Marshal(problem)
+	// If not an internal error and problem is a custom error type
+    if problemDetails.Type == core.ServerInternalProblem && statusCodeFromError(problem) != http.StatusInternalServerError {
+        problemDetails.Detail = fmt.Sprint(problem)
+    } else {
+        problemDetails.Detail = safeDetails
+    }
+
+	problemDoc, err := json.Marshal(problemDetails)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		wfe.log.Audit(fmt.Sprintf("Could not marshal error message: %s - %+v", err.Error(), problem))
+		wfe.log.Audit(fmt.Sprintf("Could not marshal error message: %s - %+v", err, problemDetails))
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
-	// Only audit log internal errors so users cannot purposefully cause
-	// auditable events.
-	if problem.Type == core.ServerInternalProblem {
+    // Only audit log internal errors so users cannot purposefully cause
+    // auditable events.
+    if problemDetails.Type == core.ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", details, debug))
-	}
+		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", safeDetails, problem))
+    }
 
 	// Paraphrased from
 	// https://golang.org/src/net/http/server.go#L1272
