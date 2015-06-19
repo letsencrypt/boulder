@@ -8,6 +8,7 @@ package core
 import (
 	"fmt"
 	"math/rand"
+	"net"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -112,4 +113,39 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 	}
 
 	return txt, rtt, err
+}
+
+// LookupTXT uses a DNSSEC-enabled query to find all A/AAAA records associated with
+// the provided hostname. If the query fails due to DNSSEC, error will be
+// set to ErrorDNSSEC.
+func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
+	var addrs []net.IP
+	var answers []dns.RR
+
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
+	r, aRtt, err := dnsResolver.LookupDNSSEC(m)
+	if err != nil {
+		return addrs, aRtt, err
+	}
+	answers = append(answers, r.Answer...)
+
+	m.SetQuestion(dns.Fqdn(hostname), dns.TypeAAAA)
+	r, aaaaRtt, err := dnsResolver.LookupDNSSEC(m)
+	if err != nil {
+		return addrs, aRtt+aaaaRtt, err
+	}
+	answers = append(answers, r.Answer...)
+
+	for _, answer := range answers {
+		if answer.Header().Rrtype == dns.TypeA {
+			a := answer.(*dns.A)
+			addrs = append(addrs, a.A)
+		} else if answer.Header().Rrtype == dns.TypeAAAA {
+			aaaa := answer.(*dns.AAAA)
+			addrs = append(addrs, aaaa.AAAA)
+		}
+	}
+
+	return addrs, aRtt+aaaaRtt, nil
 }
