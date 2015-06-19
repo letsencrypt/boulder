@@ -68,10 +68,20 @@ else
   run go test -tags pkcs11 ${dirlist}
 fi
 
+# If the unittests failed, exit before trying to run the integration test.
+if [ ${FAILURE} != 0 ]; then
+  exit ${FAILURE}
+fi
+
 if [ -z "$LETSENCRYPT_VENV" ]; then
-  DEFAULT_LETSENCRYPT_PATH="/tmp/letsencrypt"
+  DEFAULT_LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
   LETSENCRYPT_VENV="$DEFAULT_LETSENCRYPT_PATH/venv"
 
+  echo "----------------------------------------------------"
+  echo "--- Checking out letsencrypt client is slow  -------"
+  echo "--- Recommend setting \$LETSENCRYPT_VENV to  -------"
+  echo "--- an already-initialized client virtualenv -------"
+  echo "----------------------------------------------------"
   run git clone https://www.github.com/letsencrypt/lets-encrypt-preview.git $DEFAULT_LETSENCRYPT_PATH
 
   cd $DEFAULT_LETSENCRYPT_PATH
@@ -82,7 +92,7 @@ fi
 
 export LETSENCRYPT_VENV
 
-[ ${FAILURE} == 0 ] && run python test/amqp-integration-test.py
+run python test/amqp-integration-test.py
 
 unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1  gofmt -l)
 if [ "x${unformatted}" != "x" ] ; then
