@@ -115,7 +115,7 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 	return txt, rtt, err
 }
 
-// LookupTXT uses a DNSSEC-enabled query to find all A/AAAA records associated with
+// LookupHost uses a DNSSEC-enabled query to find all A/AAAA records associated with
 // the provided hostname. If the query fails due to DNSSEC, error will be
 // set to ErrorDNSSEC.
 func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
