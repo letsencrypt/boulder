@@ -23,7 +23,12 @@ TESTDIRS="analysis \
 
 run() {
   echo "$*"
-  $* || FAILURE=1
+  if $*; then
+    echo "success: $*"
+  else
+    FAILURE=1
+    echo "failure: $*"
+  fi
 }
 
 
@@ -62,6 +67,20 @@ else
 
   run go test -tags pkcs11 ${dirlist}
 fi
+
+if [ -z "$LETSENCRYPT_VENV" ]; then
+  DEFAULT_LETSENCRYPT_PATH="/tmp/letsencrypt"
+  LETSENCRYPT_VENV="$DEFAULT_LETSENCRYPT_PATH/venv"
+
+  run git clone https://www.github.com/letsencrypt/lets-encrypt-preview.git $DEFAULT_LETSENCRYPT_PATH
+
+  cd $DEFAULT_LETSENCRYPT_PATH
+  run virtualenv --no-site-packages -p python2 ./venv && \
+    ./venv/bin/pip install -r requirements.txt -e .
+  cd -
+fi
+
+export LETSENCRYPT_VENV
 
 [ ${FAILURE} == 0 ] && run python test/amqp-integration-test.py
 
