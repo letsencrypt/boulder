@@ -86,7 +86,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			Detail: dnssecErr.Error(),
 		}
 		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] DNSSEC failure: %s", identifier, err))
-	} else {
+	} else if err != nil {
 		challenge.Error = &core.ProblemDetails{
 			Type:   core.ServerInternalProblem,
 			Detail: "Unable to communicate with DNS server",
@@ -227,7 +227,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 			Detail: dnssecErr.Error(),
 		}
 		va.log.Debug(fmt.Sprintf("DVSNI [%s] DNSSEC failure: %s", identifier, err))
-	} else {
+	} else if err != nil {
 		challenge.Error = &core.ProblemDetails{
 			Type:   core.ServerInternalProblem,
 			Detail: "Unable to communicate with DNS server",
@@ -330,7 +330,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 				Detail: dnssecErr.Error(),
 			}
 			va.log.Debug(fmt.Sprintf("DNS [%s] DNSSEC failure: %s", identifier, err))
-		} else {
+		} else if err != nil {
 			challenge.Error = &core.ProblemDetails{
 				Type:   core.ServerInternalProblem,
 				Detail: "Unable to communicate with DNS server",
