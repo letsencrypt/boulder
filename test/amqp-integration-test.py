@@ -36,7 +36,7 @@ def start():
     run('./cmd/boulder-ca')
     run('./cmd/boulder-va')
 
-def run_test():
+def run_node_test():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         s.connect(('localhost', 4300))
@@ -64,9 +64,53 @@ def run_test():
 
     return 0
 
+def run_client_tests():
+    letsencrypt_bin = os.path.join(os.environ.get("LETSENCRYPT_VENV"), 'bin', 'letsencrypt')
+
+    tempconfig = os.path.join(tempdir, "conf")
+    os.mkdir(tempconfig, 0755)
+
+    tempwork = os.path.join(tempdir, "work")
+    os.mkdir(tempwork, 0755)
+
+    tempkey = os.path.join(tempdir, "key")
+    os.mkdir(tempkey, 0700)
+
+    # For now, the client renewer can only be configured by file, not command
+    # line, so we create a config file.
+    renewer_config_filename = os.path.join(tempdir, "renewer.conf")
+    with open(renewer_config_filename, "w") as r:
+        r.write('''
+            renewal_configs_dir = %s/renewal_configs
+            archive_dir = %s/archive
+            live_dir = %s/live
+            ''' % (tempconfig, tempwork, tempwork))
+
+    base_cmd = '''
+        %s \
+        -a standalone \
+        --server http://localhost:4300/acme/new-reg \
+        --dvsni-port 5001 \
+        --config-dir %s \
+        --work-dir %s \
+        --key-dir %s \
+        --cert-dir %s \
+        --text \
+        --agree-tos \
+        --email "" \
+        --renewer-config-file %s \
+        ''' % (letsencrypt_bin, tempconfig, tempwork, tempkey, tempwork, renewer_config_filename)
+
+    client_run(base_cmd, '--domains foo.com auth')
+
+def client_run(base_cmd, cmd):
+    if subprocess.Popen(base_cmd + cmd, shell=True).wait() != 0:
+        die()
+
 try:
     start()
-    run_test()
+    run_node_test()
+    run_client_tests()
 except Exception as e:
     exit_status = 1
     print e
