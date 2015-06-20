@@ -295,7 +295,7 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 	}
 
 	// Subscribe to the response queue and dispatch
-	msgs, err := amqpSubscribe(rpc.channel, clientQueue, nil)
+	msgs, err := amqpSubscribe(rpc.channel, clientQueue, rpc.log)
 	if err != nil {
 		return nil, err
 	}
