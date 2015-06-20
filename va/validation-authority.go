@@ -62,6 +62,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			Type:   core.MalformedProblem,
 			Detail: "No path provided for SimpleHTTP challenge.",
 		}
+		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] path empty: %s", identifier, challenge))
 		return challenge, challenge.Error
 	}
 
@@ -71,22 +72,29 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			Type:   core.MalformedProblem,
 			Detail: "Identifier type for SimpleHTTP was not DNS",
 		}
+
+		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] Identifier failure", identifier))
 		return challenge, challenge.Error
 	}
 	hostName := identifier.Value
 
 	// Check for DNSSEC failures for A/AAAA records
 	_, _, err := va.DNSResolver.LookupHost(hostName)
-	if dnssecErr, ok := err.(core.DNSSECError); ok {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.DNSSECProblem,
-			Detail: dnssecErr.Error(),
+	if err != nil {
+		if dnssecErr, ok := err.(core.DNSSECError); ok {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.DNSSECProblem,
+				Detail: dnssecErr.Error(),
+			}
+		} else {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.ServerInternalProblem,
+				Detail: "Unable to communicate with DNS server",
+			}
 		}
-	} else {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.ServerInternalProblem,
-			Detail: "Unable to communicate with DNS server",
-		}
+		challenge.Status = core.StatusInvalid
+		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] DNS failure: %s", identifier, err))
+		return challenge, challenge.Error
 	}
 
 	var scheme string
@@ -110,6 +118,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			Type:   core.MalformedProblem,
 			Detail: "URL provided for SimpleHTTP was invalid",
 		}
+		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] HTTP failure: %s", identifier, err))
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
@@ -136,6 +145,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			challenge.Error = &core.ProblemDetails{
 				Type: core.ServerInternalProblem,
 			}
+			va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] Read failure: %s", identifier, readErr))
 			challenge.Status = core.StatusInvalid
 			return challenge, readErr
 		}
@@ -180,6 +190,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 			Detail: "Identifier type for DVSNI was not DNS",
 		}
 		challenge.Status = core.StatusInvalid
+		va.log.Debug(fmt.Sprintf("DVSNI [%s] Identifier failure", identifier))
 		return challenge, challenge.Error
 	}
 
@@ -193,7 +204,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 			Type:   core.MalformedProblem,
 			Detail: "Failed to decode R value from DVSNI challenge",
 		}
-		va.log.Debug(challenge.Error.Detail)
+		va.log.Debug(fmt.Sprintf("DVSNI [%s] R Decode failure: %s", identifier, err))
 		return challenge, err
 	}
 	S, err := core.B64dec(challenge.S)
@@ -203,7 +214,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 			Type:   core.MalformedProblem,
 			Detail: "Failed to decode S value from DVSNI challenge",
 		}
-		va.log.Debug(challenge.Error.Detail)
+		va.log.Debug(fmt.Sprintf("DVSNI [%s] S Decode failure: %s", identifier, err))
 		return challenge, err
 	}
 	RS := append(R, S...)
@@ -213,16 +224,21 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	// Check for DNSSEC failures for A/AAAA records
 	_, _, err = va.DNSResolver.LookupHost(identifier.Value)
-	if dnssecErr, ok := err.(core.DNSSECError); ok {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.DNSSECProblem,
-			Detail: dnssecErr.Error(),
+	if err != nil {
+		if dnssecErr, ok := err.(core.DNSSECError); ok {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.DNSSECProblem,
+				Detail: dnssecErr.Error(),
+			}
+		} else {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.ServerInternalProblem,
+				Detail: "Unable to communicate with DNS server",
+			}
 		}
-	} else {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.ServerInternalProblem,
-			Detail: "Unable to communicate with DNS server",
-		}
+		challenge.Status = core.StatusInvalid
+		va.log.Debug(fmt.Sprintf("DVSNI [%s] DNS failure: %s", identifier, err))
+		return challenge, challenge.Error
 	}
 
 	// Make a connection with SNI = nonceName
@@ -230,7 +246,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	if va.TestMode {
 		hostPort = "localhost:5001"
 	}
-	va.log.Notice(fmt.Sprintf("Attempting to validate DVSNI for %s %s %s",
+	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
 		identifier, hostPort, zName))
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", hostPort, &tls.Config{
 		ServerName:         nonceName,
@@ -243,7 +259,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 			Type:   parseHTTPConnError(err),
 			Detail: "Failed to connect to host for DVSNI challenge",
 		}
-		va.log.Debug(challenge.Error.Detail)
+		va.log.Debug(fmt.Sprintf("DVSNI [%s] TLS Connection failure: %s", identifier, err))
 		return challenge, err
 	}
 	defer conn.Close()
@@ -303,6 +319,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 			Type:   core.MalformedProblem,
 			Detail: "Identifier type for DNS was not itself DNS",
 		}
+		va.log.Debug(fmt.Sprintf("DNS [%s] Identifier failure", identifier))
 		challenge.Status = core.StatusInvalid
 		return challenge, challenge.Error
 	}
@@ -325,7 +342,8 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 			}
 		}
 		challenge.Status = core.StatusInvalid
-		return challenge, err
+		va.log.Debug(fmt.Sprintf("DNS [%s] DNS failure: %s", identifier, err))
+		return challenge, challenge.Error
 	}
 
 	byteToken := []byte(challenge.Token)

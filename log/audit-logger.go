@@ -169,7 +169,14 @@ func caller(level int) string {
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *AuditLogger) AuditPanic() {
 	if err := recover(); err != nil {
-		log.Audit(fmt.Sprintf("Panic: %s %v", caller(4), err))
+		buf := make([]byte, 8192)
+		log.Audit(fmt.Sprintf("Panic caused by err: %v", err))
+
+		runtime.Stack(buf, false)
+		log.Audit(fmt.Sprintf("Stack Trace (Current frame) %s", buf))
+
+		runtime.Stack(buf, true)
+		log.Warning(fmt.Sprintf("Stack Trace (All frames): %s", buf))
 	}
 }
 
