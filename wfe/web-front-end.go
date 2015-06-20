@@ -91,17 +91,18 @@ func statusCodeFromError(err interface{}) int {
 }
 
 type requestEvent struct {
-	ID           string                `json:",omitempty"`
-	Endpoint     string                `json:",omitempty"`
-	Method       string                `json:",omitempty"`
-	Requester    int64                 `json:",omitempty"`
-	Error        string                `json:",omitempty"`
-	Contacts     []core.AcmeURL        `json:",omitempty"`
-	Domains      []core.AcmeIdentifier `json:",omitempty"`
-	RequestTime  *time.Time            `json:",omitempty"`
-	ResponseTime *time.Time            `json:",omitempty"`
-	RealIP       string                `json:",omitempty"`
-	ForwardedFor string                `json:",omitempty"`
+	ID           string         `json:",omitempty"`
+	RealIP       string         `json:",omitempty"`
+	ForwardedFor string         `json:",omitempty"`
+	Endpoint     string         `json:",omitempty"`
+	Method       string         `json:",omitempty"`
+	RequestTime  *time.Time     `json:",omitempty"`
+	ResponseTime *time.Time     `json:",omitempty"`
+	Error        string         `json:",omitempty"`
+	Requester    int64          `json:",omitempty"`
+	Contacts     []core.AcmeURL `json:",omitempty"`
+
+	Extra map[string]interface{} `json:",omitempty"`
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -370,6 +371,8 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		wfe.sendError(response, "Error creating new registration", err, statusCodeFromError(err))
 		return
 	}
+	logEvent.Requester = reg.ID
+	logEvent.Contacts = reg.Contact
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
@@ -379,8 +382,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	if err != nil {
 		terminatedEarly = true
 		logEvent.Error = err.Error()
-		logEvent.Requester = id
-		logEvent.Contacts = reg.Contact
 		// StatusInternalServerError because we just created this registration, it should be OK.
 		wfe.sendError(response, "Error marshaling registration", err, http.StatusInternalServerError)
 		return
@@ -450,7 +451,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		wfe.sendError(response, "Error unmarshaling JSON", err, http.StatusBadRequest)
 		return
 	}
-	logEvent.Domains = append(logEvent.Domains, init.Identifier)
+	logEvent.Extra["Identifier"] = init.Identifier
 
 	// Create new authz and return
 	authz, err := wfe.RA.NewAuthorization(init, currReg.ID)
@@ -460,6 +461,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		wfe.sendError(response, "Error creating new authz", err, statusCodeFromError(err))
 		return
 	}
+	logEvent.Extra["AuthzID"] = authz.ID
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
 	authzURL := wfe.AuthzBase + string(authz.ID)
@@ -540,6 +542,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 
 	serial := core.SerialToString(providedCert.SerialNumber)
+	logEvent.Extra["ProvidedCertificateSerial"] = serial
 	cert, err := wfe.SA.GetCertificate(serial)
 	if err != nil || !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
 		wfe.sendError(response, "No such certificate", err, http.StatusNotFound)
@@ -553,6 +556,10 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 		wfe.sendError(response, "Invalid certificate", err, http.StatusInternalServerError)
 		return
 	}
+	logEvent.Extra["RetrievedCertificateSerial"] = core.SerialToString(parsedCertificate.SerialNumber)
+	logEvent.Extra["RetrievedCertificateDNSNames"] = parsedCertificate.DNSNames
+	logEvent.Extra["RetrievedCertificateEmailAddresses"] = parsedCertificate.EmailAddresses
+	logEvent.Extra["RetrievedCertificateIPAddresses"] = parsedCertificate.IPAddresses
 
 	certStatus, err := wfe.SA.GetCertificateStatus(serial)
 	if err != nil {
@@ -561,6 +568,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 		wfe.sendError(response, "Certificate status not yet available", err, http.StatusNotFound)
 		return
 	}
+	logEvent.Extra["CertificateStatus"] = certStatus.Status
 
 	if certStatus.Status == core.OCSPStatusRevoked {
 		terminatedEarly = true
@@ -646,6 +654,10 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
+	logEvent.Extra["Authorizations"] = init.Authorizations
+	logEvent.Extra["CSRDNSNames"] = init.CSR.DNSNames
+	logEvent.Extra["CSREmailAddresses"] = init.CSR.EmailAddresses
+	logEvent.Extra["CSRIPAddresses"] = init.CSR.IPAddresses
 
 	wfe.log.Notice(fmt.Sprintf("Client requested new certificate: %v %v %v",
 		request.RemoteAddr, init, key))
@@ -726,7 +738,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 	default:
 		logEvent.Error = "Method not allowed"
 		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, "Method not allowed", "", http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent.Error, "", http.StatusMethodNotAllowed)
 		return true, logEvent
 
 	case "GET":
@@ -748,6 +760,8 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		response.WriteHeader(http.StatusAccepted)
 		if _, err := response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+			logEvent.Error = err.Error()
+			return true, logEvent
 		}
 
 	case "POST":
@@ -955,6 +969,11 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 			http.StatusNotFound)
 		return
 	}
+	logEvent.Extra["AuthorizationID"] = authz.ID
+	logEvent.Extra["AuthorizationRegistrationID"] = authz.RegistrationID
+	logEvent.Extra["AuthorizationIdentifier"] = authz.Identifier
+	logEvent.Extra["AuthorizationStatus"] = authz.Status
+	logEvent.Extra["AuthorizationExpires"] = authz.Expires
 
 	// If there is a fragment, then this is actually a request to a challenge URI
 	if len(request.URL.RawQuery) != 0 {
@@ -1035,6 +1054,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 			return
 		}
 		wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
+		logEvent.Extra["RequestedSerial"] = serial
 
 		cert, err := wfe.SA.GetCertificateByShortSerial(serial)
 		if err != nil {
@@ -1163,6 +1183,7 @@ func (wfe *WebFrontEndImpl) logIncomingRequest(request *http.Request) (logEvent 
 		RealIP:       request.Header.Get("X-Real-IP"),
 		ForwardedFor: request.Header.Get("X-Forwarded-For"),
 		Method:       request.Method,
+		Extra:        make(map[string]interface{}, 0),
 	}
 	if request.URL != nil {
 		logEvent.Endpoint = request.URL.String()
