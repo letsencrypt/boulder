@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"math/big"
 	"net"
 	"net/mail"
 	"net/url"
@@ -57,7 +56,7 @@ func lastPathSegment(url core.AcmeURL) string {
 func validateEmail(address string) (err error) {
 	_, err = mail.ParseAddress(address)
 	if err != nil {
-		err = core.MalformedRequestError(err.Error())
+		err = core.MalformedRequestError(fmt.Sprintf("%s is not a valid e-mail address", address))
 		return
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
@@ -93,7 +92,7 @@ func validateContacts(contacts []core.AcmeURL) (err error) {
 type certificateRequestEvent struct {
 	ID                  string    `json:",omitempty"`
 	Requester           int64     `json:",omitempty"`
-	SerialNumber        *big.Int  `json:",omitempty"`
+	SerialNumber        string    `json:",omitempty"`
 	RequestMethod       string    `json:",omitempty"`
 	VerificationMethods []string  `json:",omitempty"`
 	VerifiedFields      []string  `json:",omitempty"`
@@ -334,8 +333,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		// While this could be InternalServerError for certain conditions, most
 		// of the failure reasons (such as GoodKey failing) are caused by malformed
 		// requests.
-		err = core.MalformedRequestError(err.Error())
 		logEvent.Error = err.Error()
+		err = core.MalformedRequestError("Certificate request was invalid")
 		return emptyCert, err
 	}
 
@@ -354,7 +353,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	logEvent.SerialNumber = parsedCertificate.SerialNumber
+	logEvent.SerialNumber = core.SerialToString(parsedCertificate.SerialNumber)
 	logEvent.CommonName = parsedCertificate.Subject.CommonName
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
@@ -397,7 +396,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
 		// This can pretty much only happen when the client corrupts the Challenge
 		// data.
-		err = core.MalformedRequestError(err.Error())
+		err = core.MalformedRequestError("Challenge data was corrupted")
 		return
 	}
 
