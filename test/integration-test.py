@@ -38,8 +38,7 @@ def run_test():
             s.connect(('localhost', 4300))
             break
         except socket.error, e:
-            pass
-        time.sleep(1)
+            time.sleep(1)
 
     if subprocess.Popen('npm install', shell=True).wait() != 0:
         die()

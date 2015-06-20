@@ -11,6 +11,13 @@ sudo: required
 matrix:
   fast_finish: true
 
+# Only build pushes to the master branch (and PRs)
+branches:
+  only:
+    - master
+
+sudo: required
+
 before_install:
   - go get golang.org/x/tools/cmd/vet
   - go get golang.org/x/tools/cmd/cover
@@ -24,6 +31,15 @@ before_install:
   # we add a symlink.
   - mkdir -p $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt
   - test ! -d $GOPATH/src/github.com/letsencrypt/boulder && ln -s $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt/boulder || true
+  - git clone https://www.github.com/letsencrypt/lets-encrypt-preview.git /tmp/letsencrypt
+  - cd /tmp/letsencrypt
+  - sudo ./bootstrap/debian.sh
+  - virtualenv --no-site-packages -p python2 ./venv
+  - travis_retry ./venv/bin/pip install -r requirements.txt -e .
+  - "cd -"
+
+env:
+  - LETSENCRYPT_VENV=/tmp/letsencrypt/venv
 
 script:
   - make -j4 # Travis has 2 cores per build instance
