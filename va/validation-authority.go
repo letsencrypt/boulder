@@ -80,18 +80,21 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 
 	// Check for DNSSEC failures for A/AAAA records
 	_, _, err := va.DNSResolver.LookupHost(hostName)
-	if dnssecErr, ok := err.(core.DNSSECError); ok {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.DNSSECProblem,
-			Detail: dnssecErr.Error(),
+	if err != nil {
+		if dnssecErr, ok := err.(core.DNSSECError); ok {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.DNSSECProblem,
+				Detail: dnssecErr.Error(),
+			}
+		} else {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.ServerInternalProblem,
+				Detail: "Unable to communicate with DNS server",
+			}
 		}
-		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] DNSSEC failure: %s", identifier, err))
-	} else if err != nil {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.ServerInternalProblem,
-			Detail: "Unable to communicate with DNS server",
-		}
+		challenge.Status = core.StatusInvalid
 		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] DNS failure: %s", identifier, err))
+		return challenge, challenge.Error
 	}
 
 	var scheme string
@@ -221,18 +224,21 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	// Check for DNSSEC failures for A/AAAA records
 	_, _, err = va.DNSResolver.LookupHost(identifier.Value)
-	if dnssecErr, ok := err.(core.DNSSECError); ok {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.DNSSECProblem,
-			Detail: dnssecErr.Error(),
+	if err != nil {
+		if dnssecErr, ok := err.(core.DNSSECError); ok {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.DNSSECProblem,
+				Detail: dnssecErr.Error(),
+			}
+		} else {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.ServerInternalProblem,
+				Detail: "Unable to communicate with DNS server",
+			}
 		}
-		va.log.Debug(fmt.Sprintf("DVSNI [%s] DNSSEC failure: %s", identifier, err))
-	} else if err != nil {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.ServerInternalProblem,
-			Detail: "Unable to communicate with DNS server",
-		}
+		challenge.Status = core.StatusInvalid
 		va.log.Debug(fmt.Sprintf("DVSNI [%s] DNS failure: %s", identifier, err))
+		return challenge, challenge.Error
 	}
 
 	// Make a connection with SNI = nonceName
@@ -329,16 +335,15 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 				Type:   core.DNSSECProblem,
 				Detail: dnssecErr.Error(),
 			}
-			va.log.Debug(fmt.Sprintf("DNS [%s] DNSSEC failure: %s", identifier, err))
-		} else if err != nil {
+		} else {
 			challenge.Error = &core.ProblemDetails{
 				Type:   core.ServerInternalProblem,
 				Detail: "Unable to communicate with DNS server",
 			}
-			va.log.Debug(fmt.Sprintf("DNS [%s] DNS failure: %s", identifier, err))
 		}
 		challenge.Status = core.StatusInvalid
-		return challenge, err
+		va.log.Debug(fmt.Sprintf("DNS [%s] DNS failure: %s", identifier, err))
+		return challenge, challenge.Error
 	}
 
 	byteToken := []byte(challenge.Token)
