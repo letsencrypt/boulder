@@ -12,7 +12,6 @@
 CREATE TABLE `registrations` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `jwk` varchar(1024) NOT NULL,
-  `recoveryToken` varchar(255) DEFAULT NULL,
   `contact` varchar(255) DEFAULT NULL,
   `agreement` varchar(255) DEFAULT NULL,
   `LockCol` bigint(20) DEFAULT NULL,

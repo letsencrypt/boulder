@@ -22,6 +22,9 @@ import (
 // AcmeStatus defines the state of a given authorization
 type AcmeStatus string
 
+// AcmeResource values identify different types of ACME resources
+type AcmeResource string
+
 // Buffer is a variable-length collection of bytes
 type Buffer []byte
 
@@ -56,6 +59,18 @@ const (
 	IdentifierDNS = IdentifierType("dns")
 )
 
+// The types of ACME resources
+const (
+	ResourceNewReg        = AcmeResource("new-reg")
+	ResourceNewAuthz      = AcmeResource("new-authz")
+	ResourceNewCert       = AcmeResource("new-cert")
+	ResourceRevokeCert    = AcmeResource("revoke-cert")
+	ResourceRegistration  = AcmeResource("reg")
+	ResourceAuthorization = AcmeResource("authz")
+	ResourceChallenge     = AcmeResource("challenge")
+	ResourceCertificate   = AcmeResource("cert")
+)
+
 // These status are the states of OCSP
 const (
 	OCSPStatusGood    = OCSPStatus("good")
@@ -64,21 +79,16 @@ const (
 
 // Error types that can be used in ACME payloads
 const (
-	ConnectionProblem     = ProblemType("urn:acme:error:connection")
-	DNSSECProblem         = ProblemType("urn:acme:error:dnssec")
-	MalformedProblem      = ProblemType("urn:acme:error:malformed")
-	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
-	TLSProblem            = ProblemType("urn:acme:error:tls")
-	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
-	UnknownHostProblem    = ProblemType("urn:acme:error:unknownHost")
+	ChallengeTypeSimpleHTTP = "simpleHttp"
+	ChallengeTypeDVSNI      = "dvsni"
+	ChallengeTypeDNS        = "dns"
 )
 
 // These types are the available challenges
 const (
-	ChallengeTypeSimpleHTTP    = "simpleHttp"
-	ChallengeTypeDVSNI         = "dvsni"
-	ChallengeTypeDNS           = "dns"
-	ChallengeTypeRecoveryToken = "recoveryToken"
+	ChallengeTypeSimpleHTTP = "simpleHttp"
+	ChallengeTypeDVSNI      = "dvsni"
+	ChallengeTypeDNS        = "dns"
 )
 
 func (pd *ProblemDetails) Error() string {
@@ -193,9 +203,6 @@ type Registration struct {
 	// Account key to which the details are attached
 	Key jose.JsonWebKey `json:"key" db:"jwk"`
 
-	// Recovery Token is used to prove connection to an earlier transaction
-	RecoveryToken string `json:"recoveryToken" db:"recoveryToken"`
-
 	// Contact URIs
 	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 
@@ -239,7 +246,7 @@ type Challenge struct {
 	// A URI to which a response can be POSTed
 	URI AcmeURL `json:"uri"`
 
-	// Used by simpleHTTP, recoveryToken, and dns challenges
+	// Used by simpleHTTP and dns challenges
 	Token string `json:"token,omitempty"`
 
 	// Used by simpleHTTP challenges

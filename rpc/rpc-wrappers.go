@@ -116,8 +116,9 @@ type caaRequest struct {
 }
 
 type validationRequest struct {
-	Authz core.Authorization
-	Index int
+	Authz     core.Authorization
+	Index     int
+	PublicKey jose.JsonWebKey
 }
 
 type alreadyDeniedCSRReq struct {
@@ -421,7 +422,7 @@ func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) 
 			return
 		}
 
-		err = impl.UpdateValidations(vaReq.Authz, vaReq.Index)
+		err = impl.UpdateValidations(vaReq.Authz, vaReq.Index, vaReq.PublicKey)
 		return
 	})
 
@@ -466,10 +467,11 @@ func NewValidationAuthorityClient(client RPCClient) (vac ValidationAuthorityClie
 }
 
 // UpdateValidations sends an Update Validations request
-func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization, index int) error {
+func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization, index int, publicKey jose.JsonWebKey) error {
 	var vaReq validationRequest
 	vaReq.Authz = authz
 	vaReq.Index = index
+	vaReq.PublicKey = publicKey
 	data, err := json.Marshal(vaReq)
 	if err != nil {
 		return err
