@@ -392,6 +392,11 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
+	if !core.KeyDigestEquals(certs[0].PublicKey, accountKey) {
+		err = fmt.Errorf("DVSNI server presented improper public key")
+		challenge.Status = core.StatusInvalid
+		return challenge, err
+	}
 	for _, name := range certs[0].DNSNames {
 		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
 			challenge.Status = core.StatusValid

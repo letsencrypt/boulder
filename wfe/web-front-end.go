@@ -246,6 +246,18 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 		return nil, nil, reg, errors.New("Request payload has invalid resource")
 	}
 
+	var parsedRequest map[string]interface{}
+	err = json.Unmarshal([]byte(payload), &parsedRequest)
+	parsedResource, present := parsedRequest["resource"]
+	requestedResource, valid := parsedResource.(string)
+	if !present {
+		wfe.log.Debug("Request payload does not specify a resource")
+		return nil, nil, reg, errors.New("Request payload does not specify a resource")
+	} else if !valid || resource != core.AcmeResource(requestedResource) {
+		wfe.log.Debug(fmt.Sprintf("Request payload has invalid resource: %s != %s", requestedResource, resource))
+		return nil, nil, reg, errors.New("Request payload has invalid resource")
+	}
+
 	return []byte(payload), key, reg, nil
 }
 

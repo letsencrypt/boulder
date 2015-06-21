@@ -406,6 +406,13 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 
+	// Look up the account key for this authorization
+	reg, err := ra.SA.GetRegistration(authz.RegistrationID)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		return
+	}
+
 	// Dispatch to the VA for service
 	ra.VA.UpdateValidations(authz, challengeIndex, reg.Key)
 
