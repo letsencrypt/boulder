@@ -244,7 +244,7 @@ func (log *AuditLogger) AuditObject(msg string, obj interface{}) (err error) {
 	return log.auditAtLevel("Logging.Notice", fmt.Sprintf("%s - %s", msg, jsonLogEvent))
 }
 
-// Object sends a NOTICE-severity JSON-serialized object message.
+// Object sends a INFO-severity JSON-serialized object message.
 func (log *AuditLogger) InfoObject(msg string, obj interface{}) (err error) {
 	jsonLogEvent, logErr := json.Marshal(obj)
 	if logErr != nil {
