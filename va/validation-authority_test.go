@@ -283,13 +283,13 @@ func TestDvsni(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "")
 
-	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
+	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	va.TestMode = false
-	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Domain name is invalid.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
@@ -353,7 +353,7 @@ func TestValidateHTTP(t *testing.T) {
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
-	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP)
+	go simpleSrv(t, challHTTP.Token, challHTTP.Path, stopChanHTTP, waitChanHTTP)
 
 	// Let them start
 	<-waitChanHTTP
@@ -453,7 +453,7 @@ func TestUpdateValidations(t *testing.T) {
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
-	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP)
+	go simpleSrv(t, challHTTP.Token, challHTTP.Path, stopChanHTTP, waitChanHTTP)
 
 	// Let them start
 	<-waitChanHTTP

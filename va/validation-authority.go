@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -147,6 +147,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			Detail: fmt.Sprintf("Could not connect to %s", url),
 		}
 		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
+		return challenge, err
 	}
 
 	if httpResponse.StatusCode != 200 {
@@ -156,7 +157,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			Detail: fmt.Sprintf("Invalid response from %s: %d",
 				url, httpResponse.StatusCode),
 		}
-		err = challenge.Error	
+		err = challenge.Error
 	}
 
 	// Read body & test
@@ -172,6 +173,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		err = fmt.Errorf("Validation response failed to parse as JWS: %s", err.Error())
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
 		return challenge, err
 	}
 
@@ -179,20 +184,32 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		err = fmt.Errorf("Too many signatures on validation JWS")
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
 		return challenge, err
 	}
 	if len(parsedJws.Signatures) == 0 {
 		err = fmt.Errorf("Validation JWS not signed")
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
 		return challenge, err
 	}
 
 	key := parsedJws.Signatures[0].Header.JsonWebKey
 	if !core.KeyDigestEquals(key, accountKey) {
-		err = fmt.Errorf("Response JWS signed with improper key: %s", err.Error())
+		err = fmt.Errorf("Response JWS signed with improper key")
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
 		return challenge, err
 	}
 
@@ -201,6 +218,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		err = fmt.Errorf("Validation response failed to verify: %s", err.Error())
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
 		return challenge, err
 	}
 
@@ -216,12 +237,20 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		err = fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
 		return challenge, err
 	}
 	if len(parsedResponse) != 4 {
 		err = fmt.Errorf("Validation payload did not have all fields")
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
 		return challenge, err
 	}
 	typePassed := false
@@ -254,6 +283,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			typePassed, tokenPassed, pathPassed, tlsPassed)
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
 		return challenge, err
 	}
 

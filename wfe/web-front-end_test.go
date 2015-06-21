@@ -716,7 +716,7 @@ func TestRevokeCertificate(t *testing.T) {
 	test.Assert(t, certBlock != nil, "Failed to decode PEM")
 	revokeRequest := struct {
 		Resource       string          `json:"resource"`
-		CertificateDER core.JsonBuffer `json:"certificate"`
+		CertificateDER core.JSONBuffer `json:"certificate"`
 	}{
 		Resource:       "revoke-cert",
 		CertificateDER: certBlock.Bytes,
@@ -776,7 +776,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	test.Assert(t, certBlock != nil, "Failed to decode PEM")
 	revokeRequest := struct {
 		Resource       string          `json:"resource"`
-		CertificateDER core.JsonBuffer `json:"certificate"`
+		CertificateDER core.JSONBuffer `json:"certificate"`
 	}{
 		Resource:       "revoke-cert",
 		CertificateDER: certBlock.Bytes,
