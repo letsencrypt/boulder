@@ -73,6 +73,13 @@ type WebFrontEndImpl struct {
 	nonceService core.NonceService
 }
 
+// How much should we tell the client to back off? In units of
+// the window size of the underlying rate limit.
+const rateLimitExpansionFactor = 10
+
+// Status code missing from net/http
+const statusTooManyRequests = 429
+
 func statusCodeFromError(err interface{}) int {
 	// Populate these as needed.  We probably should trim the error list in util.go
 	switch err.(type) {
