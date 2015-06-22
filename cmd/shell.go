@@ -214,6 +214,10 @@ func AmqpChannel(conf Config) (*amqp.Channel, error) {
 			err := fmt.Errorf("SSL configuration provided, but not using an AMQPS URL")
 			return nil, err
 		}
+		if len(conf.AMQP.SSL.CertFile) == 0 || len(conf.AMQP.SSL.KeyFile) == 0 {
+			err := fmt.Errorf("Configuration values AMQP.SSL.KeyFile and AMQP.SSL.CertFile may not be nil.")
+			return nil, err
+		}
 
 		cfg := new(tls.Config)
 
