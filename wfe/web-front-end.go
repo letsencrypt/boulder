@@ -96,8 +96,8 @@ type requestEvent struct {
 	ForwardedFor string         `json:",omitempty"`
 	Endpoint     string         `json:",omitempty"`
 	Method       string         `json:",omitempty"`
-	RequestTime  *time.Time     `json:",omitempty"`
-	ResponseTime *time.Time     `json:",omitempty"`
+	RequestTime  time.Time      `json:",omitempty"`
+	ResponseTime time.Time      `json:",omitempty"`
 	Error        string         `json:",omitempty"`
 	Requester    int64          `json:",omitempty"`
 	Contacts     []core.AcmeURL `json:",omitempty"`
@@ -143,12 +143,8 @@ func (wfe *WebFrontEndImpl) HandlePaths() {
 
 // Index serves a simple identification page. It is not part of the ACME spec.
 func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -312,12 +308,8 @@ func link(url, relation string) string {
 
 // NewRegistration is used by clients to submit a new registration/account
 func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -392,12 +384,8 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 // NewAuthorization is used by clients to submit a new ID Authorization
 func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -472,12 +460,8 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 
 // RevokeCertificate is used by clients to request the revocation of a cert.
 func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -577,12 +561,8 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 // NewCertificate is used by clients to request the issuance of a cert for an
 // authorized identifier.
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -802,12 +782,8 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 
 // Registration is used by a client to submit an update to their registration.
 func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -895,12 +871,8 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
 func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -966,12 +938,8 @@ var allHex = regexp.MustCompile("^[0-9a-f]+$")
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -1030,12 +998,8 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 // Terms is used by the client to obtain the current Terms of Service /
 // Subscriber Agreement to which the subscriber must agree.
 func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -1051,12 +1015,8 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.
 func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -1078,12 +1038,8 @@ func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.R
 
 // BuildID tells the requestor what build we're running.
 func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.Request) {
-	logEvent := wfe.logIncomingRequest(request)
-	defer func() {
-		if logEvent.Error != "" {
-			wfe.logTerminatedRequest(logEvent)
-		}
-	}()
+	logEvent := wfe.populateRequestEvent(request)
+	defer func() { wfe.logRequestDetails(logEvent) }()
 
 	wfe.sendStandardHeaders(response)
 
@@ -1103,25 +1059,28 @@ func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.
 	}
 }
 
-func (wfe *WebFrontEndImpl) logTerminatedRequest(logEvent requestEvent) {
-	now := time.Now()
-	logEvent.ResponseTime = &now
-	wfe.log.InfoObject(fmt.Sprintf("Terminated request"), logEvent)
+func (wfe *WebFrontEndImpl) logRequestDetails(logEvent requestEvent) {
+	logEvent.ResponseTime = time.Now()
+	var msg string
+	if logEvent.Error != "" {
+		msg = "Terminated request"
+	} else {
+		msg = "Successful request"
+	}
+	wfe.log.InfoObject(msg, logEvent)
 }
 
-func (wfe *WebFrontEndImpl) logIncomingRequest(request *http.Request) (logEvent requestEvent) {
-	now := time.Now()
+func (wfe *WebFrontEndImpl) populateRequestEvent(request *http.Request) (logEvent requestEvent) {
 	logEvent = requestEvent{
 		ID:           core.NewToken(),
 		RealIP:       request.Header.Get("X-Real-IP"),
 		ForwardedFor: request.Header.Get("X-Forwarded-For"),
 		Method:       request.Method,
+		RequestTime:  time.Now(),
 		Extra:        make(map[string]interface{}, 0),
 	}
 	if request.URL != nil {
 		logEvent.Endpoint = request.URL.String()
 	}
-	wfe.log.InfoObject(fmt.Sprintf("Incoming request"), logEvent)
-	logEvent.RequestTime = &now
 	return
 }
