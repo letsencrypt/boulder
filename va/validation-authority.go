@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -54,14 +55,20 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 
 	if len(challenge.Path) == 0 {
 		challenge.Status = core.StatusInvalid
-		err := fmt.Errorf("No path provided for SimpleHTTP challenge.")
-		return challenge, err
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.MalformedProblem,
+			Detail: "No path provided for SimpleHTTP challenge.",
+		}
+		return challenge, challenge.Error
 	}
 
 	if identifier.Type != core.IdentifierDNS {
 		challenge.Status = core.StatusInvalid
-		err := fmt.Errorf("Identifier type for SimpleHTTP was not DNS")
-		return challenge, err
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.MalformedProblem,
+			Detail: "Identifier type for SimpleHTTP was not DNS",
+		}
+		return challenge, challenge.Error
 	}
 	hostName := identifier.Value
 	var scheme string
@@ -81,6 +88,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(scheme), url))
 	httpRequest, err := http.NewRequest("GET", url, nil)
 	if err != nil {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.MalformedProblem,
+			Detail: "URL provided for SimpleHTTP was invalid",
+		}
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
@@ -104,6 +115,9 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		// Read body & test
 		body, readErr := ioutil.ReadAll(httpResponse.Body)
 		if readErr != nil {
+			challenge.Error = &core.ProblemDetails{
+				Type: core.ServerInternalProblem,
+			}
 			challenge.Status = core.StatusInvalid
 			return challenge, readErr
 		}
@@ -111,15 +125,29 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
 			challenge.Status = core.StatusValid
 		} else {
-			err = fmt.Errorf("Incorrect token validating Simple%s for %s", strings.ToUpper(scheme), url)
 			challenge.Status = core.StatusInvalid
+			challenge.Error = &core.ProblemDetails{
+				Type: core.UnauthorizedProblem,
+				Detail: fmt.Sprintf("Incorrect token validating Simple%s for %s",
+					strings.ToUpper(scheme), url),
+			}
+			err = challenge.Error
 		}
 	} else if err != nil {
-		va.log.Debug(fmt.Sprintf("Could not connect to %s: %s", url, err.Error()))
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   parseHTTPConnError(err),
+			Detail: fmt.Sprintf("Could not connect to %s", url),
+		}
+		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
 	} else {
-		err = fmt.Errorf("Invalid response from %s: %d", url, httpResponse.StatusCode)
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type: core.UnauthorizedProblem,
+			Detail: fmt.Sprintf("Invalid response from %s: %d",
+				url, httpResponse.StatusCode),
+		}
+		err = challenge.Error
 	}
 
 	return challenge, err
@@ -129,9 +157,12 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	challenge := input
 
 	if identifier.Type != "dns" {
-		err := fmt.Errorf("Identifier type for DVSNI was not DNS")
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.MalformedProblem,
+			Detail: "Identifier type for DVSNI was not DNS",
+		}
 		challenge.Status = core.StatusInvalid
-		return challenge, err
+		return challenge, challenge.Error
 	}
 
 	const DVSNIsuffix = ".acme.invalid"
@@ -139,14 +170,22 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	R, err := core.B64dec(challenge.R)
 	if err != nil {
-		va.log.Debug("Failed to decode R value from DVSNI challenge")
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.MalformedProblem,
+			Detail: "Failed to decode R value from DVSNI challenge",
+		}
+		va.log.Debug(challenge.Error.Detail)
 		return challenge, err
 	}
 	S, err := core.B64dec(challenge.S)
 	if err != nil {
-		va.log.Debug("Failed to decode S value from DVSNI challenge")
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.MalformedProblem,
+			Detail: "Failed to decode S value from DVSNI challenge",
+		}
+		va.log.Debug(challenge.Error.Detail)
 		return challenge, err
 	}
 	RS := append(R, S...)
@@ -168,8 +207,12 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	})
 
 	if err != nil {
-		va.log.Debug("Failed to connect to host for DVSNI challenge")
 		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   parseHTTPConnError(err),
+			Detail: "Failed to connect to host for DVSNI challenge",
+		}
+		va.log.Debug(challenge.Error.Detail)
 		return challenge, err
 	}
 	defer conn.Close()
@@ -177,9 +220,12 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		err = fmt.Errorf("No certs presented for DVSNI challenge")
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: "No certs presented for DVSNI challenge",
+		}
 		challenge.Status = core.StatusInvalid
-		return challenge, err
+		return challenge, challenge.Error
 	}
 	for _, name := range certs[0].DNSNames {
 		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
@@ -188,18 +234,46 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		}
 	}
 
-	err = fmt.Errorf("Correct zName not found for DVSNI challenge")
+	challenge.Error = &core.ProblemDetails{
+		Type:   core.UnauthorizedProblem,
+		Detail: "Correct zName not found for DVSNI challenge",
+	}
 	challenge.Status = core.StatusInvalid
-	return challenge, err
+	return challenge, challenge.Error
+}
+
+// parseHTTPConnError returns the ACME ProblemType corresponding to an error
+// that occurred during domain validation.
+func parseHTTPConnError(err error) core.ProblemType {
+	if urlErr, ok := err.(*url.Error); ok {
+		err = urlErr.Err
+	}
+
+	// XXX: On all of the resolvers I tested that validate DNSSEC, there is
+	// no differentation between a DNSSEC failure and an unknown host. If we
+	// do not verify DNSSEC ourselves, this function should be modified.
+	if netErr, ok := err.(*net.OpError); ok {
+		dnsErr, ok := netErr.Err.(*net.DNSError)
+		if ok && !dnsErr.Timeout() && !dnsErr.Temporary() {
+			return core.UnknownHostProblem
+		} else if fmt.Sprintf("%T", netErr.Err) == "tls.alert" {
+			return core.TLSProblem
+		}
+	}
+
+	return core.ConnectionProblem
 }
 
 func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.MalformedProblem,
+			Detail: "Identifier type for DNS was not itself DNS",
+		}
 		challenge.Status = core.StatusInvalid
-		err := fmt.Errorf("Identifier type for DNS was not itself DNS")
-		return challenge, err
+		return challenge, challenge.Error
 	}
 
 	const DNSPrefix = "_acme-challenge"
@@ -208,6 +282,17 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 	txts, _, err := va.DNSResolver.LookupTXT(challengeSubdomain)
 
 	if err != nil {
+		if dnssecErr, ok := err.(core.DNSSECError); ok {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.DNSSECProblem,
+				Detail: dnssecErr.Error(),
+			}
+		} else {
+			challenge.Error = &core.ProblemDetails{
+				Type:   core.ServerInternalProblem,
+				Detail: "Unable to communicate with DNS server",
+			}
+		}
 		challenge.Status = core.StatusInvalid
 		return challenge, err
 	}
@@ -220,9 +305,12 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 		}
 	}
 
-	err = fmt.Errorf("Correct value not found for DNS challenge")
+	challenge.Error = &core.ProblemDetails{
+		Type:   core.UnauthorizedProblem,
+		Detail: "Correct value not found for DNS challenge",
+	}
 	challenge.Status = core.StatusInvalid
-	return challenge, err
+	return challenge, challenge.Error
 }
 
 // Overall validation process
@@ -237,9 +325,12 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 		RequestTime: time.Now(),
 	}
 	if !authz.Challenges[challengeIndex].IsSane(true) {
-		authz.Challenges[challengeIndex].Status = core.StatusInvalid
-		logEvent.Error = fmt.Sprintf("Challenge failed sanity check.")
-		logEvent.Challenge = authz.Challenges[challengeIndex]
+		chall := &authz.Challenges[challengeIndex]
+		chall.Status = core.StatusInvalid
+		chall.Error = &core.ProblemDetails{Type: core.MalformedProblem,
+			Detail: fmt.Sprintf("Challenge failed sanity check.")}
+		logEvent.Challenge = *chall
+		logEvent.Error = chall.Error.Detail
 	} else {
 		var err error
 

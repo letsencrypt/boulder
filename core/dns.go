@@ -98,6 +98,10 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 	m.SetQuestion(dns.Fqdn(hostname), dns.TypeTXT)
 	r, rtt, err := dnsResolver.LookupDNSSEC(m)
 
+	if err != nil {
+		return nil, 0, err
+	}
+
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeTXT {
 			txtRec := answer.(*dns.TXT)

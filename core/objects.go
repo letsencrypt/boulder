@@ -12,23 +12,34 @@ import (
 	"encoding/json"
 	"fmt"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"net"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 )
 
-// IdentifierType defines the available identification mechanisms for domains
-type IdentifierType string
-
 // AcmeStatus defines the state of a given authorization
 type AcmeStatus string
+
+// Buffer is a variable-length collection of bytes
+type Buffer []byte
+
+// IdentifierType defines the available identification mechanisms for domains
+type IdentifierType string
 
 // OCSPStatus defines the state of OCSP for a domain
 type OCSPStatus string
 
-// Buffer is a variable-length collection of bytes
-type Buffer []byte
+// ProblemType defines the error types in the ACME protocol
+type ProblemType string
+
+// ProblemDetails objects represent problem documents
+// https://tools.ietf.org/html/draft-ietf-appsawg-http-problem-00
+type ProblemDetails struct {
+	Type   ProblemType `json:"type,omitempty"`
+	Detail string      `json:"detail,omitempty"`
+}
 
 // These statuses are the states of authorizations
 const (
@@ -40,10 +51,26 @@ const (
 	StatusRevoked    = AcmeStatus("revoked")    // Object no longer valid
 )
 
+// These types are the available identification mechanisms
+const (
+	IdentifierDNS = IdentifierType("dns")
+)
+
 // These status are the states of OCSP
 const (
 	OCSPStatusGood    = OCSPStatus("good")
 	OCSPStatusRevoked = OCSPStatus("revoked")
+)
+
+// Error types that can be used in ACME payloads
+const (
+	ConnectionProblem     = ProblemType("urn:acme:error:connection")
+	DNSSECProblem         = ProblemType("urn:acme:error:dnssec")
+	MalformedProblem      = ProblemType("urn:acme:error:malformed")
+	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
+	TLSProblem            = ProblemType("urn:acme:error:tls")
+	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
+	UnknownHostProblem    = ProblemType("urn:acme:error:unknownHost")
 )
 
 // These types are the available challenges
@@ -54,10 +81,9 @@ const (
 	ChallengeTypeRecoveryToken = "recoveryToken"
 )
 
-// These types are the available identification mechanisms
-const (
-	IdentifierDNS = IdentifierType("dns")
-)
+func (pd *ProblemDetails) Error() string {
+	return fmt.Sprintf("%v :: %v", pd.Type, pd.Detail)
+}
 
 func cmpStrSlice(a, b []string) bool {
 	if len(a) != len(b) {
@@ -83,6 +109,22 @@ func cmpExtKeyUsageSlice(a, b []x509.ExtKeyUsage) bool {
 	}
 	for i := range b {
 		if !testMap[int(b[i])] {
+			return false
+		}
+	}
+	return true
+}
+
+func cmpIPSlice(a, b []net.IP) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	testMap := make(map[string]bool, len(a))
+	for i := range a {
+		testMap[a[i].String()] = true
+	}
+	for i := range b {
+		if !testMap[b[i].String()] {
 			return false
 		}
 	}
@@ -186,6 +228,9 @@ type Challenge struct {
 
 	// The status of this challenge
 	Status AcmeStatus `json:"status,omitempty"`
+
+	// Contains the error that occured during challenge validation, if any
+	Error *ProblemDetails `json:"error,omitempty"`
 
 	// If successful, the time at which this challenge
 	// was completed by the server.
@@ -342,7 +387,7 @@ type Authorization struct {
 
 	// The date after which this authorization will be no
 	// longer be considered valid
-	Expires time.Time `json:"expires,omitempty" db:"expires"`
+	Expires *time.Time `json:"expires,omitempty" db:"expires"`
 
 	// An array of challenges objects used to validate the
 	// applicant's control of the identifier.  For authorizations
@@ -464,6 +509,14 @@ func (cert Certificate) MatchesCSR(csr *x509.CertificateRequest, earliestExpiry 
 	}
 	if !cmpStrSlice(parsedCertificate.DNSNames, hostNames) {
 		err = InternalServerError("Generated certificate DNSNames don't match CSR DNSNames")
+		return
+	}
+	if !cmpIPSlice(parsedCertificate.IPAddresses, csr.IPAddresses) {
+		err = InternalServerError("Generated certificate IPAddresses don't match CSR IPAddresses")
+		return
+	}
+	if !cmpStrSlice(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
+		err = InternalServerError("Generated certificate EmailAddresses don't match CSR EmailAddresses")
 		return
 	}
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||

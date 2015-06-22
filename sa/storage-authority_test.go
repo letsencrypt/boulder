@@ -119,7 +119,8 @@ func TestAddAuthorization(t *testing.T) {
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}
 
-	newPa := core.Authorization{ID: PA.ID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, RegistrationID: 0, Status: core.StatusPending, Expires: time.Now().AddDate(0, 0, 1), Challenges: []core.Challenge{chall}, Combinations: combos}
+	exp := time.Now().AddDate(0, 0, 1)
+	newPa := core.Authorization{ID: PA.ID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, RegistrationID: 0, Status: core.StatusPending, Expires: &exp, Challenges: []core.Challenge{chall}, Combinations: combos}
 	err = sa.UpdatePendingAuthorization(newPa)
 	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 
