@@ -57,7 +57,7 @@ type Config struct {
 		SA     Queue
 		CA     Queue
 		OCSP   Queue
-		SSL    *SSLConfig
+		TLS    *TLSConfig
 	}
 
 	WFE struct {
@@ -129,8 +129,8 @@ type Config struct {
 	SubscriberAgreementURL string
 }
 
-// SSLConfig reprents certificates and a key for authenticated TLS.
-type SSLConfig struct {
+// TLSConfig reprents certificates and a key for authenticated TLS.
+type TLSConfig struct {
 	CertFile   string
 	KeyFile    string
 	CACertFile *string // Optional
@@ -209,7 +209,7 @@ func FailOnError(err error, msg string) {
 func AmqpChannel(conf Config) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 
-	if conf.AMQP.SSL == nil {
+	if conf.AMQP.TLS == nil {
 		// Configuration did not specify SSL options
 		conn, err := amqp.Dial(conf.AMQP.Server)
 		if err != nil {
@@ -220,29 +220,30 @@ func AmqpChannel(conf Config) (*amqp.Channel, error) {
 	}
 
 	// They provided SSL options, so let's load them.
+	blog.GetAuditLogger().Info("Loading SSL Options.")
 
 	if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
 		err := fmt.Errorf("SSL configuration provided, but not using an AMQPS URL")
 		return nil, err
 	}
-	if len(conf.AMQP.SSL.CertFile) == 0 || len(conf.AMQP.SSL.KeyFile) == 0 {
+	if len(conf.AMQP.TLS.CertFile) == 0 || len(conf.AMQP.TLS.KeyFile) == 0 {
 		err := fmt.Errorf("Configuration values AMQP.SSL.KeyFile and AMQP.SSL.CertFile may not be nil.")
 		return nil, err
 	}
 
 	cfg := new(tls.Config)
 
-	cert, err := tls.LoadX509KeyPair(conf.AMQP.SSL.CertFile, conf.AMQP.SSL.KeyFile)
+	cert, err := tls.LoadX509KeyPair(conf.AMQP.TLS.CertFile, conf.AMQP.TLS.KeyFile)
 	if err != nil {
 		err = fmt.Errorf("Could not load Client Certificate or Key: %s", err)
 		return nil, err
 	}
 	cfg.Certificates = append(cfg.Certificates, cert)
 
-	if conf.AMQP.SSL.CACertFile != nil {
+	if conf.AMQP.TLS.CACertFile != nil {
 		cfg.RootCAs = x509.NewCertPool()
 
-		ca, err := ioutil.ReadFile(*conf.AMQP.SSL.CACertFile)
+		ca, err := ioutil.ReadFile(*conf.AMQP.TLS.CACertFile)
 		if err != nil {
 			err = fmt.Errorf("Could not load CA Certificate: %s", err)
 			return nil, err
