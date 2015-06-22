@@ -62,7 +62,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			Type:   core.MalformedProblem,
 			Detail: "No path provided for SimpleHTTP challenge.",
 		}
-		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] path empty: %s", identifier, challenge))
+		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] path empty: %v", identifier, challenge))
 		return challenge, challenge.Error
 	}
 
