@@ -209,37 +209,9 @@ func FailOnError(err error, msg string) {
 func AmqpChannel(conf Config) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 
-	if conf.AMQP.SSL != nil {
-		if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
-			err := fmt.Errorf("SSL configuration provided, but not using an AMQPS URL")
-			return nil, err
-		}
-		if len(conf.AMQP.SSL.CertFile) == 0 || len(conf.AMQP.SSL.KeyFile) == 0 {
-			err := fmt.Errorf("Configuration values AMQP.SSL.KeyFile and AMQP.SSL.CertFile may not be nil.")
-			return nil, err
-		}
-
-		cfg := new(tls.Config)
-
-		cert, err := tls.LoadX509KeyPair(conf.AMQP.SSL.CertFile, conf.AMQP.SSL.KeyFile)
-		if err != nil {
-			err = fmt.Errorf("Could not load Client Certificates: %s", err)
-			return nil, err
-		}
-		cfg.Certificates = append(cfg.Certificates, cert)
-
-		if conf.AMQP.SSL.CACertFile != nil {
-			cfg.RootCAs = x509.NewCertPool()
-
-			ca, err := ioutil.ReadFile(*conf.AMQP.SSL.CACertFile)
-			if err != nil {
-				err = fmt.Errorf("Could not load CA Certificate: %s", err)
-				return nil, err
-			}
-			cfg.RootCAs.AppendCertsFromPEM(ca)
-		}
-
-		conn, err = amqp.DialTLS(conf.AMQP.Server, cfg)
+	if conf.AMQP.SSL == nil {
+		// Configuration did not specify SSL options
+		conn, err := amqp.Dial(conf.AMQP.Server)
 		if err != nil {
 			return nil, err
 		}
@@ -247,8 +219,38 @@ func AmqpChannel(conf Config) (*amqp.Channel, error) {
 		return conn.Channel()
 	}
 
-	// Configuration did not specify SSL options
-	conn, err := amqp.Dial(conf.AMQP.Server)
+	// They provided SSL options, so let's load them.
+
+	if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
+		err := fmt.Errorf("SSL configuration provided, but not using an AMQPS URL")
+		return nil, err
+	}
+	if len(conf.AMQP.SSL.CertFile) == 0 || len(conf.AMQP.SSL.KeyFile) == 0 {
+		err := fmt.Errorf("Configuration values AMQP.SSL.KeyFile and AMQP.SSL.CertFile may not be nil.")
+		return nil, err
+	}
+
+	cfg := new(tls.Config)
+
+	cert, err := tls.LoadX509KeyPair(conf.AMQP.SSL.CertFile, conf.AMQP.SSL.KeyFile)
+	if err != nil {
+		err = fmt.Errorf("Could not load Client Certificate or Key: %s", err)
+		return nil, err
+	}
+	cfg.Certificates = append(cfg.Certificates, cert)
+
+	if conf.AMQP.SSL.CACertFile != nil {
+		cfg.RootCAs = x509.NewCertPool()
+
+		ca, err := ioutil.ReadFile(*conf.AMQP.SSL.CACertFile)
+		if err != nil {
+			err = fmt.Errorf("Could not load CA Certificate: %s", err)
+			return nil, err
+		}
+		cfg.RootCAs.AppendCertsFromPEM(ca)
+	}
+
+	conn, err = amqp.DialTLS(conf.AMQP.Server, cfg)
 	if err != nil {
 		return nil, err
 	}
