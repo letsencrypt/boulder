@@ -30,10 +30,21 @@ type Config struct {
 // PolicyAuthorityImpl enforces CA policy decisions.
 type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
-	dbMap *gorp.DbMap
+	padb PADB
 
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
 	Blacklist        map[string]bool // A blacklist of denied names
+}
+
+type PADB interface {
+	externalCertDataForFQDN(fqdn string) ([]core.ExternalCert, error)
+}
+type PADBImpl struct {
+	dbMap *gorp.DbMap
+}
+
+func (padb PADBImpl) externalCertDataForFQDN(fqdn string) ([]core.ExternalCert, error) {
+	return []core.ExternalCert{}, nil
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
@@ -49,8 +60,10 @@ func NewPolicyAuthorityImpl(config Config) (*PolicyAuthorityImpl, error) {
 	}
 
 	dbMap.AddTableWithName(core.IdentifierData{}, "identifierData")
-	dbMap.AddTableWithName(core.ExternalCerts{}, "externalCerts")
-	pa.dbMap = dbMap
+	dbMap.AddTableWithName(core.ExternalCert{}, "externalCerts")
+	pa.padb = PADBImpl{
+		dbMap: dbMap,
+	}
 
 	// TODO: Add configurability
 	pa.PublicSuffixList = PublicSuffixList
@@ -185,6 +198,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
+// TODO: When parsing SPKI, check for key type.
 func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
 	challenges = []core.Challenge{
 		core.SimpleHTTPChallenge(),

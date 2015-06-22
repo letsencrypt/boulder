@@ -249,7 +249,16 @@ type Challenge struct {
 	// Used by dvsni challenges
 	R     string `json:"r,omitempty"`
 	S     string `json:"s,omitempty"`
+
+	// Used by dvsni and proofOfPosession challenges
 	Nonce string `json:"nonce,omitempty"`
+
+	// Used by proofOfPosession challenges
+	Alg string `json:"alg,omitempty"`
+	Hints struct {
+		CertFingerprints []string
+		Issuers []string
+	}
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
@@ -451,6 +460,11 @@ type Certificate struct {
 	Expires time.Time  `db:"expires"`
 }
 
+type IssuedCertIdentifierData struct {
+	ReversedName string
+	Serial       string
+}
+
 // IdentifierData holds information about what certificates are known for a
 // given identifier. This is used to present Proof of Posession challenges in
 // the case where a certificate already exists. The DB table holding
@@ -464,7 +478,7 @@ type IdentifierData struct {
 
 // ExternalCerts holds information about certificates issued by other CAs,
 // obtained through Certificate Transparency, the SSL Observatory, or scans.io.
-type ExternalCerts struct {
+type ExternalCert struct {
 	SHA1        string // The hex encoding of the SHA-1 hash of this cert
 	Issuer      string // The Issuer field of this cert
 	Subject     string // The Subject field of this cert
