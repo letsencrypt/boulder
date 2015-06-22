@@ -11,29 +11,52 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/sa"
+
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	blog "github.com/letsencrypt/boulder/log"
 )
+
+// The Policy Authority has a separate, read-only DB that contains information
+// about existing certificates issued by other CAs, used to restrict issuance
+// for the names in those certificates.
+// The Policy Authority code is embedded in both the RA and the CA, and so
+// its config is in the Common struct.
+type Config struct {
+	Driver string
+	Name   string
+}
 
 // PolicyAuthorityImpl enforces CA policy decisions.
 type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
+	dbMap *gorp.DbMap
 
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
 	Blacklist        map[string]bool // A blacklist of denied names
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl() *PolicyAuthorityImpl {
+func NewPolicyAuthorityImpl(config Config) (*PolicyAuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
 	pa := PolicyAuthorityImpl{log: logger}
 
+	dbMap, err := sa.NewDbMap(config.Driver, config.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	dbMap.AddTableWithName(core.IdentifierData{}, "identifierData")
+	dbMap.AddTableWithName(core.ExternalCerts{}, "externalCerts")
+	pa.dbMap = dbMap
+
 	// TODO: Add configurability
 	pa.PublicSuffixList = PublicSuffixList
 	pa.Blacklist = blacklist
 
-	return &pa
+	return &pa, nil
 }
 
 const maxLabels = 10

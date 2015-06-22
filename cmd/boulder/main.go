@@ -79,7 +79,8 @@ func main() {
 		cmd.FailOnError(err, "Unable to create SA")
 		sa.SetSQLDebug(c.SQL.SQLDebug)
 
-		ra := ra.NewRegistrationAuthorityImpl()
+		ra, err := ra.NewRegistrationAuthorityImpl(c.Common.PolicyDB)
+		cmd.FailOnError(err, "Could not create Registration Authority")
 
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
 		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
@@ -89,7 +90,7 @@ func main() {
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")
 
-		ca, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert)
+		ca, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert, c.Common.PolicyDB)
 		cmd.FailOnError(err, "Unable to create CA")
 
 		if c.SQL.CreateTables {

@@ -38,6 +38,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/ca"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
@@ -124,6 +125,7 @@ type Config struct {
 		// Path to a PEM-encoded copy of the issuer certificate.
 		IssuerCert string
 		MaxKeySize int
+		PolicyDB policy.Config
 	}
 
 	SubscriberAgreementURL string

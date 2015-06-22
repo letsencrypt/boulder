@@ -31,7 +31,9 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
-		rai := ra.NewRegistrationAuthorityImpl()
+		// Config object for the Policy DB.
+		rai, err := ra.NewRegistrationAuthorityImpl(c.Common.PolicyDB)
+		cmd.FailOnError(err, "Could not create Registration Authority")
 		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize
 
