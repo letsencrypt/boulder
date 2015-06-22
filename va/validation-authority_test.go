@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -169,6 +171,7 @@ func brokenTLSSrv(t *testing.T, stopChan, waitChan chan bool) {
 func TestSimpleHttp(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 
 	chall := core.Challenge{Path: "test", Token: expectedToken}
 
@@ -248,6 +251,7 @@ func TestSimpleHttp(t *testing.T) {
 func TestDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 
 	a := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
 	ba := core.B64enc(a)
@@ -309,6 +313,7 @@ func TestDvsni(t *testing.T) {
 func TestTLSError(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 
 	a := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
 	ba := core.B64enc(a)
@@ -329,6 +334,7 @@ func TestTLSError(t *testing.T) {
 func TestValidateHTTP(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -361,6 +367,7 @@ func TestValidateHTTP(t *testing.T) {
 func TestValidateDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -395,6 +402,7 @@ func TestValidateDvsni(t *testing.T) {
 func TestValidateDvsniNotSane(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -429,6 +437,7 @@ func TestValidateDvsniNotSane(t *testing.T) {
 func TestUpdateValidations(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -494,6 +503,7 @@ func TestCAAChecking(t *testing.T) {
 
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 	for _, caaTest := range tests {
 		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		// Ignore tests if DNS req has timed out
@@ -515,6 +525,7 @@ func TestCAAChecking(t *testing.T) {
 func TestDNSValidationFailure(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -551,6 +562,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -564,6 +576,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 func TestDNSValidationNotSane(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -603,6 +616,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 func TestDNSValidationBadDNSSEC(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -628,6 +642,7 @@ func TestDNSValidationBadDNSSEC(t *testing.T) {
 func TestDNSValidationNoServer(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{})
+	va.Stats, _ = statsd.NewNoopClient()
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -651,6 +666,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 func TestDNSValidationLive(t *testing.T) {
 	va := NewValidationAuthorityImpl(false)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.Stats, _ = statsd.NewNoopClient()
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 

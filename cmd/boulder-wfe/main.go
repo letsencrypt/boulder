@@ -40,38 +40,6 @@ func setupWFE(c cmd.Config) (rpc.RegistrationAuthorityClient, rpc.StorageAuthori
 	return rac, sac, closeChan
 }
 
-type timedHandler struct {
-	f     func(w http.ResponseWriter, r *http.Request)
-	stats statsd.Statter
-}
-
-var openConnections int64
-
-// HandlerTimer monitors HTTP performance and sends the details to StatsD.
-func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cStart := time.Now()
-		openConnections++
-		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
-
-		handler.ServeHTTP(w, r)
-
-		openConnections--
-		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
-
-		// (FIX: this doesn't seem to really work at catching errors...)
-		state := "Success"
-		for _, h := range w.Header()["Content-Type"] {
-			if h == "application/problem+json" {
-				state = "Error"
-				break
-			}
-		}
-		// set resp timing key based on success / failure
-		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.%s", r.URL, state), time.Since(cStart), 1.0)
-	})
-}
-
 func main() {
 	app := cmd.NewAppShell("boulder-wfe")
 	app.Action = func(c cmd.Config) {
@@ -123,7 +91,7 @@ func main() {
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
-		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
+		err = http.ListenAndServe(c.WFE.ListenAddress, cmd.HandlerTimer(http.DefaultServeMux, stats, "WFE"))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

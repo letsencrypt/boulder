@@ -43,7 +43,8 @@ var openCalls int64
 func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[string]time.Time) {
 	// If d is a call add to deliveryTimings and increment openCalls, if it is a
 	// response then get time.Since original call from deliveryTiming, send timing metric, and
-	// decrement openCalls, in both cases send the gauges RpcCallsOpen and RpcBodySize
+	// decrement openCalls, in both cases send the gauge RpcCallsWaiting and increment the counter
+	// RpcTraffic with the byte length of the RPC body.
 	if d.ReplyTo != "" {
 		openCalls++
 		deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
@@ -54,12 +55,13 @@ func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[str
 			respTime := time.Since(rpcSent)
 			delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
 
-			stats.TimingDuration(fmt.Sprintf("RpcCallTime.%s", d.Type), respTime, 1.0)
+			stats.TimingDuration(fmt.Sprintf("RpcResponseTime.%s", d.Type), respTime, 1.0)
 		}
 	}
 
-	stats.Gauge("RpcCallsOpen", openCalls, 1.0)
-	stats.Gauge("RpcBodySize", int64(len(d.Body)), 1.0)
+	stats.Inc("RpcCalls", 1, 1.0)
+	stats.Inc("RpcTraffic", int64(len(d.Body)), 1.0)
+	stats.Gauge("RpcCallsWaiting", openCalls, 1.0)
 }
 
 func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.Statter) {

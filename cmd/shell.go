@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"runtime"
 	"strings"
@@ -273,7 +274,7 @@ func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, close
 	logger.Warning("Reconnecting to AMQP...")
 }
 
-// ProfileCmd runs forever, sending Go statistics to StatsD.
+// ProfileCmd runs forever, sending Go runtime statistics to StatsD.
 func ProfileCmd(profileName string, stats statsd.Statter) {
 	for {
 		var memoryStats runtime.MemStats
@@ -315,4 +316,42 @@ func LoadCert(path string) (cert []byte, err error) {
 
 	cert = block.Bytes
 	return
+}
+
+var openConnections int64
+
+// HandlerTimer monitors HTTP performance and sends the details to StatsD.
+func HandlerTimer(handler http.Handler, stats statsd.Statter, prefix string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stats.Inc(fmt.Sprintf("%s.HttpRequests", prefix), 1, 1.0)
+		openConnections++
+		stats.Gauge(fmt.Sprintf("%s.HttpConnectionsOpen", prefix), openConnections, 1.0)
+
+		cOpened := time.Now()
+		handler.ServeHTTP(w, r)
+		cClosed := time.Since(cOpened)
+
+		openConnections--
+		stats.Gauge(fmt.Sprintf("%s.HttpConnectionsOpen", prefix), openConnections, 1.0)
+
+		// Check if request failed
+		state := "Success"
+		for _, h := range w.Header()["Content-Type"] {
+			if h == "application/problem+json" {
+				state = "Error"
+				break
+			}
+		}
+
+		// If r.URL has more than two segments throw the rest away to simplify metrics
+		var endpoint string
+		segments := strings.Split(r.URL.Path, "/")
+		if len(segments) > 3 {
+			endpoint = strings.Join(segments[:3], "/")
+		} else {
+			endpoint = r.URL.Path
+		}
+
+		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.%s", endpoint, state), cClosed, 1.0)
+	})
 }

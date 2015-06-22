@@ -279,6 +279,12 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, 
 	response.Header().Set("Content-Type", "application/problem+json")
 	response.WriteHeader(code)
 	response.Write(problemDoc)
+
+	wfe.Stats.Inc(fmt.Sprintf("HttpErrorCodes.%d", code), 1, 1.0)
+	problemSegments := strings.Split(string(problem.Type), ":")
+	if len(problemSegments) > 0 {
+		wfe.Stats.Inc(fmt.Sprintf("HttpProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1, 1.0)
+	}
 }
 
 func link(url, relation string) string {
@@ -344,9 +350,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	response.WriteHeader(http.StatusCreated)
 	response.Write(responseBody)
-
-	// incr reg stat
-	wfe.Stats.Inc("Registrations", 1, 1.0)
 }
 
 // NewAuthorization is used by clients to submit a new ID Authorization
@@ -407,8 +410,6 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	if _, err = response.Write(responseBody); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
-	// incr pending auth stat (?)
-	wfe.Stats.Inc("PendingAuthorizations", 1, 1.0)
 }
 
 // RevokeCertificate is used by clients to request the revocation of a cert.
@@ -485,8 +486,6 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 		wfe.sendError(response, "Failed to revoke certificate", err, statusCodeFromError(err))
 	} else {
 		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
-		// incr revoked cert stat
-		wfe.Stats.Inc("RevokedCertificates", 1, 1.0)
 		response.WriteHeader(http.StatusOK)
 	}
 }
@@ -563,8 +562,6 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	if _, err = response.Write(cert.DER); err != nil {
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
-	// incr cert stat
-	wfe.Stats.Inc("Certificates", 1, 1.0)
 }
 
 func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {

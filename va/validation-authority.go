@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
@@ -29,6 +30,7 @@ type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
 	DNSResolver  *core.DNSResolver
+	Stats        statsd.Statter
 	IssuerDomain string
 	TestMode     bool
 }
@@ -79,7 +81,8 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	hostName := identifier.Value
 
 	// Check for DNSSEC failures for A/AAAA records
-	_, _, err := va.DNSResolver.LookupHost(hostName)
+	_, rtt, err := va.DNSResolver.LookupHost(hostName)
+	va.Stats.TimingDuration("DnsRtt.LookupHost", rtt, 1.0)
 	if err != nil {
 		if dnssecErr, ok := err.(core.DNSSECError); ok {
 			challenge.Error = &core.ProblemDetails{
@@ -223,7 +226,8 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	zName := fmt.Sprintf("%064x.acme.invalid", z)
 
 	// Check for DNSSEC failures for A/AAAA records
-	_, _, err = va.DNSResolver.LookupHost(identifier.Value)
+	_, rtt, err := va.DNSResolver.LookupHost(identifier.Value)
+	va.Stats.TimingDuration("DnsRtt.LookupHost", rtt, 1.0)
 	if err != nil {
 		if dnssecErr, ok := err.(core.DNSSECError); ok {
 			challenge.Error = &core.ProblemDetails{
@@ -327,7 +331,8 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 	const DNSPrefix = "_acme-challenge"
 
 	challengeSubdomain := fmt.Sprintf("%s.%s", DNSPrefix, identifier.Value)
-	txts, _, err := va.DNSResolver.LookupTXT(challengeSubdomain)
+	txts, rtt, err := va.DNSResolver.LookupTXT(challengeSubdomain)
+	va.Stats.TimingDuration("DnsRtt.LookupTXT", rtt, 1.0)
 
 	if err != nil {
 		if dnssecErr, ok := err.(core.DNSSECError); ok {
@@ -383,6 +388,7 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 	} else {
 		var err error
 
+		vStart := time.Now()
 		switch authz.Challenges[challengeIndex].Type {
 		case core.ChallengeTypeSimpleHTTP:
 			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
@@ -394,6 +400,7 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex])
 			break
 		}
+		va.Stats.TimingDuration(fmt.Sprintf("Validations.%s.%s", authz.Challenges[challengeIndex].Type, authz.Challenges[challengeIndex].Status), time.Since(vStart), 1.0)
 
 		logEvent.Challenge = authz.Challenges[challengeIndex]
 		if err != nil {
@@ -458,7 +465,7 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 	return &filtered
 }
 
-func (va *ValidationAuthorityImpl) getCAASet(domain string, dnsResolver *core.DNSResolver) (*CAASet, error) {
+func (va *ValidationAuthorityImpl) getCAASet(domain string) (*CAASet, error) {
 	domain = strings.TrimRight(domain, ".")
 	splitDomain := strings.Split(domain, ".")
 	// RFC 6844 CAA set query sequence, 'x.y.z.com' => ['x.y.z.com', 'y.z.com', 'z.com']
@@ -471,7 +478,8 @@ func (va *ValidationAuthorityImpl) getCAASet(domain string, dnsResolver *core.DN
 
 		// Query CAA records for domain and its alias if it has a CNAME
 		for _, alias := range []bool{false, true} {
-			CAAs, err := va.DNSResolver.LookupCAA(queryDomain, alias)
+			CAAs, rtt, err := va.DNSResolver.LookupCAA(queryDomain, alias)
+			va.Stats.TimingDuration("DnsRtt.LookupCAA", rtt, 1.0)
 			if err != nil {
 				return nil, err
 			}
@@ -490,7 +498,7 @@ func (va *ValidationAuthorityImpl) getCAASet(domain string, dnsResolver *core.DN
 // records, they authorize the configured CA domain to issue a certificate
 func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	domain := strings.ToLower(identifier.Value)
-	caaSet, err := va.getCAASet(domain, va.DNSResolver)
+	caaSet, err := va.getCAASet(domain)
 	if err != nil {
 		return
 	}

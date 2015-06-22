@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
@@ -27,11 +29,12 @@ import (
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	CA  core.CertificateAuthority
-	VA  core.ValidationAuthority
-	SA  core.StorageAuthority
-	PA  core.PolicyAuthority
-	log *blog.AuditLogger
+	CA    core.CertificateAuthority
+	VA    core.ValidationAuthority
+	SA    core.StorageAuthority
+	PA    core.PolicyAuthority
+	Stats statsd.Statter
+	log   *blog.AuditLogger
 
 	AuthzBase  string
 	MaxKeySize int
@@ -129,6 +132,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 		err = core.InternalServerError(err.Error())
 	}
 
+	ra.Stats.Inc("NewRegistrations", 1, 1.0)
 	return
 }
 
@@ -203,6 +207,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		// and adding Sane challenges should not break it.
 		err = core.InternalServerError(err.Error())
 	}
+
+	ra.Stats.Inc("NewPendingAuthorizations", 1, 1.0)
 	return authz, err
 }
 
@@ -358,8 +364,9 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
 	logEvent.ResponseTime = time.Now()
-
 	logEventResult = "successful"
+
+	ra.Stats.Inc("NewCertificates", 1, 1.0)
 	return cert, nil
 }
 
@@ -379,6 +386,8 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 		// passed to the SA.
 		err = core.InternalServerError(fmt.Sprintf("Could not update registration: %s", err))
 	}
+
+	ra.Stats.Inc("UpdatedRegistrations", 1, 1.0)
 	return
 }
 
@@ -403,6 +412,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	// Dispatch to the VA for service
 	ra.VA.UpdateValidations(authz, challengeIndex)
 
+	ra.Stats.Inc("UpdatedPendingAuthorizations", 1, 1.0)
 	return
 }
 
@@ -418,6 +428,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) (e
 	}
 
 	ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
+	ra.Stats.Inc("RevokedCertificates", 1, 1.0)
 	return err
 }
 
@@ -454,6 +465,12 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 		authz.Expires = &exp
 	}
 
-	// Finalize the authorization (error ignored)
-	return ra.SA.FinalizeAuthorization(authz)
+	// Finalize the authorization
+	err := ra.SA.FinalizeAuthorization(authz)
+	if err != nil {
+		return err
+	}
+
+	ra.Stats.Inc("FinalizedAuthorizations", 1, 1.0)
+	return nil
 }

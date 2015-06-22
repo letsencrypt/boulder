@@ -34,6 +34,7 @@ func main() {
 		rai := ra.NewRegistrationAuthorityImpl()
 		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize
+		rai.Stats = stats
 
 		go cmd.ProfileCmd("RA", stats)
 
