@@ -6,7 +6,9 @@
 package policy
 
 import (
+	"fmt"
 	"testing"
+	"io/ioutil"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
@@ -144,25 +146,28 @@ func TestWillingToIssue(t *testing.T) {
 
 type PADBMock struct {}
 
-func (padb PADBMock) externalCertDataForFQDN(fqdn string) ([]core.ExternalCert,
-error) {
+func (padb PADBMock) externalCertDataForFQDN(fqdn string) ([]core.ExternalCert, error) {
+	spkiBytes, err := ioutil.ReadFile("test/external-cert-pubkey.der")
+	if err != nil {
+		return nil, err
+	}
 	if (fqdn == "mail.eff.org") {
 		return []core.ExternalCert{
 			core.ExternalCert{
 				SHA1: "fake fingerprint!",
 				Issuer: "Some Other CA",
-				CertSPKI: []byte(""),
+				SPKI: spkiBytes,
 				EV: false,
 			},
 		}, nil
 	} else if (fqdn == "ev.example.com") {
 		return []core.ExternalCert{
 			core.ExternalCert{
-				CertSPKI: []byte(""),
+				SPKI: spkiBytes,
 				EV: true,
 			},
 			core.ExternalCert{
-				CertSPKI: []byte(""),
+				SPKI: spkiBytes,
 				EV: false,
 			},
 		}, nil
@@ -202,6 +207,8 @@ func TestChallengesForExistingDVCert(t *testing.T) {
 		Type: core.IdentifierDNS,
 		Value: "mail.eff.org",
 	})
+	fmt.Println("XYZ", challenges)
+	fmt.Println("RTU", combinations)
 	test.Assert(t, len(challenges) == 4, "incorrect number of challenges")
 	if len(challenges) != 4 {
 		return
@@ -218,7 +225,8 @@ func TestChallengesForExistingDVCert(t *testing.T) {
 		}
 		test.Assert(t, containsPOP, "Challenge combinations did not contain POP challenge")
 	}
-	test.Assert(t, popChallenge.Type == "proofOfPossession", "incorrect challenge type")
+	test.Assert(t, popChallenge.Type == core.ChallengeTypeProofOfPosession, "incorrect challenge type")
+	test.Assert(t, popChallenge.Status == core.StatusPending, "challenge not pending")
 	test.Assert(t, popChallenge.Nonce != "", "empty nonce")
 	test.Assert(t, popChallenge.Alg == "RS256", "wrong algorithm")
 	test.Assert(t, len(popChallenge.Hints.CertFingerprints) == 1, "wrong number of certFingerprints")

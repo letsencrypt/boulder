@@ -75,10 +75,11 @@ const (
 
 // These types are the available challenges
 const (
-	ChallengeTypeSimpleHTTP    = "simpleHttp"
-	ChallengeTypeDVSNI         = "dvsni"
-	ChallengeTypeDNS           = "dns"
-	ChallengeTypeRecoveryToken = "recoveryToken"
+	ChallengeTypeSimpleHTTP       = "simpleHttp"
+	ChallengeTypeDVSNI            = "dvsni"
+	ChallengeTypeDNS              = "dns"
+	ChallengeTypeRecoveryToken    = "recoveryToken"
+	ChallengeTypeProofOfPosession = "proofOfPosession"
 )
 
 func (pd *ProblemDetails) Error() string {
@@ -255,10 +256,17 @@ type Challenge struct {
 
 	// Used by proofOfPosession challenges
 	Alg string `json:"alg,omitempty"`
-	Hints struct {
-		CertFingerprints []string
-		Issuers []string
-	}
+	Hints POPChallengeHints
+}
+
+// POPChallengeHints contains hints used to solve proofOfPosession challenges.
+type POPChallengeHints struct {
+	CertFingerprints []string
+	Issuers []string
+	// NOTE: This field is not just a hint, it will be used to validate the
+	// challenge.
+	// TODO: Updated the spec to indicate that there can be multiple JWKs.
+	JWKs []jose.JsonWebKey
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
@@ -483,7 +491,7 @@ type ExternalCert struct {
 	Issuer      string // The Issuer field of this cert
 	Subject     string // The Subject field of this cert
 	NotAfter    time.Time // Date after which this cert should be considered invalid
-	CertSPKI    []byte // The hex encoding of the certificate's SubjectPublicKeyInfo in DER form
+	SPKI        []byte // The hex encoding of the certificate's SubjectPublicKeyInfo in DER form
 	Valid       bool   // Whether this certificate was valid at LastUpdated time
 	EV          bool   // Whether this cert was EV valid
 	LastUpdated time.Time // Last time this cert's data was updated

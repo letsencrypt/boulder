@@ -6,6 +6,9 @@
 package policy
 
 import (
+	"fmt"
+	"crypto/x509"
+	"crypto/rsa"
 	"net"
 	"regexp"
 	"strings"
@@ -15,6 +18,7 @@ import (
 
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	blog "github.com/letsencrypt/boulder/log"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 )
 
 // The Policy Authority has a separate, read-only DB that contains information
@@ -200,6 +204,11 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 // Note: Current implementation is static, but future versions may not be.
 // TODO: When parsing SPKI, check for key type.
 func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
+	if identifier.Type != core.IdentifierDNS {
+		// TODO: Add error return type
+		pa.log.Debug("Invalid identifier type")
+		return nil, nil
+	}
 	challenges = []core.Challenge{
 		core.SimpleHTTPChallenge(),
 		core.DvsniChallenge(),
@@ -210,5 +219,52 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (cha
 		[]int{1},
 		[]int{2},
 	}
-	return
+	certs, err := pa.padb.externalCertDataForFQDN(identifier.Value)
+	if err != nil {
+		pa.log.Debug("Failure looking up external certs")
+		return nil, nil
+	}
+	if len(certs) == 0 {
+		pa.log.Debug(fmt.Sprintf("No external certs for %s", identifier.Value))
+		return challenges, combinations
+	}
+
+	var hints core.POPChallengeHints
+	// TODO: Double-check sanity of input data because it originally came from the Internet
+	// TODO: Maintain sets of each data type and de-duplicate them.
+	for _, cert := range certs {
+		hints.CertFingerprints = append(hints.CertFingerprints, cert.SHA1)
+		hints.Issuers = append(hints.Issuers, cert.Issuer)
+		pubKey, err := x509.ParsePKIXPublicKey(cert.SPKI)
+		if err != nil {
+			pa.log.Debug(fmt.Sprintf("Failure parsing pubkey: %s", err))
+			return nil, nil
+		}
+		switch pk := pubKey.(type) {
+			case *rsa.PublicKey:
+				hints.JWKs = append(hints.JWKs, jose.JsonWebKey{
+					Key: pk,
+					// TODO: core.ProofOfPosessionChallenge should check the algorithms on
+					// JWKs and propagate up to the Alg field on the challenge. Alternately,
+					// remove the Alg field from the challenge and depend on the JWKs.
+					Algorithm: "RS256",
+				})
+			default:
+				// If any of the returned certs has a non-RSA key, return error.
+				pa.log.Debug("ExternalCerts provided a cert with non-RSA key")
+				return nil, nil
+		}
+	}
+
+	// Create the proofOfPosession challenge, add it to the list of challenges,
+	// and add its index to each of the existing combinations (so proofOfPosession
+	// is required in combination with a DV challenge).
+	popChallenge := core.ProofOfPosessionChallenge(hints)
+	popChallengeIndex := len(challenges)
+	challenges = append(challenges, popChallenge)
+	for _, combo := range combinations {
+		combo = append(combo, popChallengeIndex)
+	}
+
+	return challenges, combinations
 }
