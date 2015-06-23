@@ -336,11 +336,8 @@ func HandlerTimer(handler http.Handler, stats statsd.Statter, prefix string) htt
 
 		// Check if request failed
 		state := "Success"
-		for _, h := range w.Header()["Content-Type"] {
-			if h == "application/problem+json" {
-				state = "Error"
-				break
-			}
+		if w.Header().Get("Content-Type") == "application/problem+json" {
+			state = "Error"
 		}
 
 		// If r.URL has more than two segments throw the rest away to simplify metrics
