@@ -125,7 +125,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	if va.UserAgent != "" {
-		httpRequest.Header["User-Agent"] = va.UserAgent
+		httpRequest.Header["User-Agent"] = []string{va.UserAgent}
 	}
 
 	httpRequest.Host = hostName
