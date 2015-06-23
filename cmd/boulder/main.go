@@ -85,6 +85,7 @@ func main() {
 		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		va.DNSResolver = core.NewDNSResolver(dnsTimeout, []string{c.VA.DNSResolver})
+		va.UserAgent = c.VA.UserAgent
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")
