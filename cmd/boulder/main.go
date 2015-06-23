@@ -74,7 +74,8 @@ func main() {
 		go cmd.ProfileCmd("Monolith", stats)
 
 		// Create the components
-		wfei := wfe.NewWebFrontEndImpl()
+		wfei, err := wfe.NewWebFrontEndImpl()
+		cmd.FailOnError(err, "Unable to create WFE")
 		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Unable to create SA")
 		sa.SetSQLDebug(c.SQL.SQLDebug)

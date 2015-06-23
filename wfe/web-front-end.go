@@ -106,14 +106,19 @@ type requestEvent struct {
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
-func NewWebFrontEndImpl() WebFrontEndImpl {
+func NewWebFrontEndImpl() (WebFrontEndImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 
+	nonceService, err := core.NewNonceService()
+	if err != nil {
+		return WebFrontEndImpl{}, err
+	}
+
 	return WebFrontEndImpl{
 		log:          logger,
-		nonceService: core.NewNonceService(),
-	}
+		nonceService: nonceService,
+	}, nil
 }
 
 // HandlePaths configures the HTTP engine to use various functions
@@ -187,7 +192,13 @@ func sendAllow(response http.ResponseWriter, methods ...string) {
 }
 
 func (wfe *WebFrontEndImpl) sendStandardHeaders(response http.ResponseWriter) {
-	response.Header().Set("Replay-Nonce", wfe.nonceService.Nonce())
+	// We do not propagate errors here, because (1) they should be
+	// transient, and (2) they fail closed.
+	nonce, err := wfe.nonceService.Nonce()
+	if err == nil {
+		response.Header().Set("Replay-Nonce", nonce)
+	}
+
 	response.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
