@@ -214,55 +214,51 @@ func AmqpChannel(conf Config) (*amqp.Channel, error) {
 	log := blog.GetAuditLogger()
 
 	if conf.AMQP.TLS == nil {
-		// Configuration did not specify TLS options, but Dial will
-		// use TLS anyway if the URL scheme is "amqps"
-		conn, err = amqp.Dial(conf.AMQP.Server)
+		return nil, fmt.Errorf("TLS configuration for AMQP must be provided")
+	}
 
-	} else {
-		// They provided TLS options, so let's load them.
-		log.Info("AMQPS: Loading TLS Options.")
+	log.Info("AMQPS: Loading TLS Options.")
 
-		if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
-			err = fmt.Errorf("AMQPS: TLS configuration provided, but not using an AMQPS URL")
+	if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
+		err = fmt.Errorf("AMQPS: TLS configuration provided, but not using an AMQPS URL")
+		return nil, err
+	}
+
+	cfg := new(tls.Config)
+
+	// If the configuration specified a certificate (or key), load them
+	if conf.AMQP.TLS.CertFile != nil || conf.AMQP.TLS.KeyFile != nil {
+		// But they have to give both.
+		if conf.AMQP.TLS.CertFile == nil || conf.AMQP.TLS.KeyFile == nil {
+			err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile.")
 			return nil, err
 		}
 
-		cfg := new(tls.Config)
-
-		// If the configuration specified a certificate (or key), load them
-		if conf.AMQP.TLS.CertFile != nil || conf.AMQP.TLS.KeyFile != nil {
-			// But they have to give both.
-			if conf.AMQP.TLS.CertFile == nil || conf.AMQP.TLS.KeyFile == nil {
-				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile.")
-				return nil, err
-			}
-
-			cert, err := tls.LoadX509KeyPair(*conf.AMQP.TLS.CertFile, *conf.AMQP.TLS.KeyFile)
-			if err != nil {
-				err = fmt.Errorf("AMQPS: Could not load Client Certificate or Key: %s", err)
-				return nil, err
-			}
-
-			log.Info("AMQPS: Configured client certificate for AMQPS.")
-			cfg.Certificates = append(cfg.Certificates, cert)
+		cert, err := tls.LoadX509KeyPair(*conf.AMQP.TLS.CertFile, *conf.AMQP.TLS.KeyFile)
+		if err != nil {
+			err = fmt.Errorf("AMQPS: Could not load Client Certificate or Key: %s", err)
+			return nil, err
 		}
 
-		// If the configuration specified a CA certificate, make it the only
-		// available root.
-		if conf.AMQP.TLS.CACertFile != nil {
-			cfg.RootCAs = x509.NewCertPool()
-
-			ca, err := ioutil.ReadFile(*conf.AMQP.TLS.CACertFile)
-			if err != nil {
-				err = fmt.Errorf("AMQPS: Could not load CA Certificate: %s", err)
-				return nil, err
-			}
-			cfg.RootCAs.AppendCertsFromPEM(ca)
-			log.Info("AMQPS: Configured CA certificate for AMQPS.")
-		}
-
-		conn, err = amqp.DialTLS(conf.AMQP.Server, cfg)
+		log.Info("AMQPS: Configured client certificate for AMQPS.")
+		cfg.Certificates = append(cfg.Certificates, cert)
 	}
+
+	// If the configuration specified a CA certificate, make it the only
+	// available root.
+	if conf.AMQP.TLS.CACertFile != nil {
+		cfg.RootCAs = x509.NewCertPool()
+
+		ca, err := ioutil.ReadFile(*conf.AMQP.TLS.CACertFile)
+		if err != nil {
+			err = fmt.Errorf("AMQPS: Could not load CA Certificate: %s", err)
+			return nil, err
+		}
+		cfg.RootCAs.AppendCertsFromPEM(ca)
+		log.Info("AMQPS: Configured CA certificate for AMQPS.")
+	}
+
+	conn, err = amqp.DialTLS(conf.AMQP.Server, cfg)
 
 	if err != nil {
 		return nil, err
