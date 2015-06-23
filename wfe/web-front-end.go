@@ -778,7 +778,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		err, backoff := wfe.verifyRateLimits(key)
 		if err != nil {
 			wfe.sendRateLimitedError(response, backoff)
-			return
+			return logEvent
 		}
 
 		// Any version of the agreement is acceptable here. Version match is enforced in
