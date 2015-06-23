@@ -75,6 +75,7 @@ type Config struct {
 	VA struct {
 		DNSResolver string
 		DNSTimeout  string
+		UserAgent   string
 	}
 
 	SQL struct {

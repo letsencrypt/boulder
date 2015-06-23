@@ -105,7 +105,8 @@
 
   "va": {
     "dnsResolver": "8.8.8.8:53",
-    "dnsTimeout": "10s"
+    "dnsTimeout": "10s",
+    "userAgent": "boulder"
   },
 
   "sql": {

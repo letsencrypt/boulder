@@ -31,6 +31,7 @@ type ValidationAuthorityImpl struct {
 	DNSResolver  *core.DNSResolver
 	IssuerDomain string
 	TestMode     bool
+	UserAgent    string
 }
 
 // NewValidationAuthorityImpl constructs a new VA, and may place it
@@ -121,6 +122,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] HTTP failure: %s", identifier, err))
 		challenge.Status = core.StatusInvalid
 		return challenge, err
+	}
+
+	if va.UserAgent != "" {
+		httpRequest.Header["User-Agent"] = va.UserAgent
 	}
 
 	httpRequest.Host = hostName
