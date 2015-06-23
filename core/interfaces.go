@@ -94,6 +94,7 @@ type CertificateAuthority interface {
 type PolicyAuthority interface {
 	WillingToIssue(AcmeIdentifier) error
 	ChallengesFor(AcmeIdentifier) ([]Challenge, [][]int)
+	PSLPlusOne(string) (string, error)
 }
 
 // StorageGetter are the Boulder SA's read-only methods

@@ -6,6 +6,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
@@ -34,6 +36,7 @@ func main() {
 		rai := ra.NewRegistrationAuthorityImpl()
 		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize
+		rai.DomainRateLimit.Resize(cmd.RateLimitWidth, c.RA.DomainRequestsPerSecond, time.Second)
 
 		go cmd.ProfileCmd("RA", stats)
 

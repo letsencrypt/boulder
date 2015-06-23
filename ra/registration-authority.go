@@ -33,8 +33,9 @@ type RegistrationAuthorityImpl struct {
 	PA  core.PolicyAuthority
 	log *blog.AuditLogger
 
-	AuthzBase  string
-	MaxKeySize int
+	AuthzBase       string
+	MaxKeySize      int
+	DomainRateLimit core.RateLimit
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -144,6 +145,17 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Check that the identifier is present and appropriate
 	if err = ra.PA.WillingToIssue(identifier); err != nil {
 		err = core.UnauthorizedError(err.Error())
+		return authz, err
+	}
+
+	// Check that the identifier is not rate-limited
+	psl1, err := ra.PA.PSLPlusOne(identifier.Value)
+	if err != nil {
+		err = core.UnauthorizedError(err.Error())
+		return authz, err
+	}
+	if !ra.DomainRateLimit.AcceptableNow(core.StringToRateLimitID(psl1)) {
+		err = core.RateLimitedError("Too many subdomains attempted")
 		return authz, err
 	}
 

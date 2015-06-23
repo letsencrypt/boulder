@@ -6,6 +6,7 @@
 package policy
 
 import (
+	"fmt"
 	"net"
 	"regexp"
 	"strings"
@@ -60,6 +61,28 @@ func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) 
 		}
 	}
 	return false
+}
+
+// Given a domain name, return a truncated name of the form <label>.PSL
+// This method does not verify that the putative domain name is actually
+// a domain name; that should be done elsewhere.
+func (pa PolicyAuthorityImpl) PSLPlusOne(domain string) (string, error) {
+	labels := strings.Split(domain, ".")
+	if len(labels) < 2 {
+		return "", fmt.Errorf("String has only one label")
+	} else if !suffixMatch(labels, pa.PublicSuffixList, true) {
+		return "", fmt.Errorf("String does not have a public suffix")
+	}
+
+	// Return the first set of labels that is a proper suffix match
+	for i := len(labels) - 2; i >= 0; i -= 1 {
+		fmt.Println("i =", i)
+		if suffixMatch(labels[i:], pa.PublicSuffixList, true) {
+			return strings.Join(labels[i:], "."), nil
+		}
+	}
+
+	return "", fmt.Errorf("Reached unreachable point in PSLPlusOne")
 }
 
 // InvalidIdentifierError indicates that we didn't understand the IdentifierType

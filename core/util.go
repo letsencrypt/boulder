@@ -73,6 +73,7 @@ type SignatureValidationError string
 // CertificateIssuanceError indicates the certificate failed to be issued
 // for some reason.
 type CertificateIssuanceError string
+type RateLimitedError string
 
 func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
@@ -82,6 +83,7 @@ func (e NotFoundError) Error() string            { return string(e) }
 func (e SyntaxError) Error() string              { return string(e) }
 func (e SignatureValidationError) Error() string { return string(e) }
 func (e CertificateIssuanceError) Error() string { return string(e) }
+func (e RateLimitedError) Error() string         { return string(e) }
 
 // Base64 functions
 

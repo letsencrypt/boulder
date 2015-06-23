@@ -88,6 +88,7 @@ func main() {
 		blog.SetAuditLogger(auditlogger)
 
 		wfe := wfe.NewWebFrontEndImpl()
+		wfe.AccountKeyRateLimit.Resize(cmd.RateLimitWidth, c.WFE.AccountKeyRequestsPerSecond, time.Second)
 		rac, sac, closeChan := setupWFE(c)
 		wfe.RA = &rac
 		wfe.SA = &sac

@@ -61,8 +61,13 @@ type Config struct {
 	}
 
 	WFE struct {
-		BaseURL       string
-		ListenAddress string
+		BaseURL                     string
+		ListenAddress               string
+		AccountKeyRequestsPerSecond int
+	}
+
+	RA struct {
+		DomainRequestsPerSecond int
 	}
 
 	CA ca.Config
@@ -128,6 +133,8 @@ type Config struct {
 
 	SubscriberAgreementURL string
 }
+
+const RateLimitWidth = 10000
 
 // TLSConfig reprents certificates and a key for authenticated TLS.
 type TLSConfig struct {

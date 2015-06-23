@@ -133,7 +133,7 @@ var (
 	AuthzFinal   = core.Authorization{}
 )
 
-func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
+func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -353,6 +353,26 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeDNS, "Challenge 2 not DNS")
 
 	t.Log("DONE TestNewAuthorization")
+}
+
+func TestNewAuthorizationRateLimit(t *testing.T) {
+	_, _, _, ra := initAuthorities(t)
+
+	ra.DomainRateLimit.Resize(1, 1, time.Hour)
+
+	// The first attempt should succeed
+	_, err := ra.NewAuthorization(AuthzRequest, 1)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	// The second should fail
+	_, err = ra.NewAuthorization(AuthzRequest, 1)
+	test.AssertEquals(t, err, core.RateLimitedError("Too many subdomains attempted"))
+
+	// Even if we try a sub-domain
+	req := AuthzRequest
+	req.Identifier.Value = "www." + req.Identifier.Value
+	_, err = ra.NewAuthorization(req, 1)
+	test.AssertEquals(t, err, core.RateLimitedError("Too many subdomains attempted"))
 }
 
 func TestUpdateAuthorization(t *testing.T) {
