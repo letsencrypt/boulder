@@ -26,10 +26,11 @@ type NonceService struct {
 }
 
 // NewNonceService constructs a NonceService with defaults
-func NewNonceService() NonceService {
-	// XXX ignoring possible error due to entropy starvation
+func NewNonceService() (NonceService, error) {
 	key := make([]byte, 16)
-	rand.Read(key)
+	if _, err := rand.Read(key); err != nil {
+		return NonceService{}, err
+	}
 
 	// It is safe to ignore these errors because they only happen
 	// on key size and block size mismatches.
@@ -42,17 +43,18 @@ func NewNonceService() NonceService {
 		used:     make(map[int64]bool, MaxUsed),
 		gcm:      gcm,
 		maxUsed:  MaxUsed,
-	}
+	}, nil
 }
 
-func (ns NonceService) encrypt(counter int64) string {
+func (ns NonceService) encrypt(counter int64) (string, error) {
 	// Generate a nonce with upper 4 bytes zero
-	// XXX ignoring possible error due to entropy starvation
 	nonce := make([]byte, 12)
 	for i := 0; i < 4; i++ {
 		nonce[i] = 0
 	}
-	rand.Read(nonce[4:])
+	if _, err := rand.Read(nonce[4:]); err != nil {
+		return "", err
+	}
 
 	// Encode counter to plaintext
 	pt := make([]byte, 8)
@@ -65,7 +67,7 @@ func (ns NonceService) encrypt(counter int64) string {
 	ct := ns.gcm.Seal(nil, nonce, pt, nil)
 	copy(ret, nonce[4:])
 	copy(ret[8:], ct)
-	return B64enc(ret)
+	return B64enc(ret), nil
 }
 
 func (ns NonceService) decrypt(nonce string) (int64, error) {
@@ -91,7 +93,7 @@ func (ns NonceService) decrypt(nonce string) (int64, error) {
 }
 
 // Nonce provides a new Nonce.
-func (ns *NonceService) Nonce() string {
+func (ns *NonceService) Nonce() (string, error) {
 	ns.latest++
 	return ns.encrypt(ns.latest)
 }
