@@ -244,7 +244,7 @@ module.exports = {
       extensions: [{name: 'subjectAltName', altNames: sans}]
     }]);
 
-    csr.sign(privateKey, forge.md.sha256);
+    csr.sign(privateKey, forge.md.sha256.create());
 
     // Convert CSR -> DER -> Base64
     var der = forge.asn1.toDer(forge.pki.certificationRequestToAsn1(csr));
