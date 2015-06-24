@@ -65,11 +65,13 @@ type PKCS11Config struct {
 // are no longer considered sufficiently strong.
 // * No MD2, MD5, or SHA-1
 // * No DSA
+//
+// SHA1WithRSA is allowed because there's still a fair bit of it
+// out there, but we should try to remove it soon.
 var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.UnknownSignatureAlgorithm: true,
 	x509.MD2WithRSA:                true,
 	x509.MD5WithRSA:                true,
-	x509.SHA1WithRSA:               true,
 	x509.DSAWithSHA1:               true,
 	x509.DSAWithSHA256:             true,
 	x509.ECDSAWithSHA1:             true,
