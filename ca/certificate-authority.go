@@ -61,6 +61,20 @@ type PKCS11Config struct {
 	Label  string
 }
 
+// This map is used to detect algorithms in crypto/x509 that
+// are no longer considered sufficiently strong.
+// * No MD2, MD5, or SHA-1
+// * No DSA
+var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
+	x509.UnknownSignatureAlgorithm: true,
+	x509.MD2WithRSA:                true,
+	x509.MD5WithRSA:                true,
+	x509.SHA1WithRSA:               true,
+	x509.DSAWithSHA1:               true,
+	x509.DSAWithSHA256:             true,
+	x509.ECDSAWithSHA1:             true,
+}
+
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
@@ -273,6 +287,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 	if err = core.GoodKey(key, ca.MaxKeySize); err != nil {
 		err = fmt.Errorf("Invalid public key in CSR: %s", err.Error())
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
+	}
+	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
+		err = fmt.Errorf("Invalid signature algorithm in CSR")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
