@@ -8,6 +8,7 @@ package sa
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
@@ -30,8 +31,15 @@ var dialectMap = map[string]interface{}{
 // It automatically maps the tables for the primary parts of Boulder around the
 // Storage Authority. This may require some further work when we use a disjoint
 // schema, like that for `certificate-authority-data.go`.
-func NewDbMap(driver string, name string) (*gorp.DbMap, error) {
+func NewDbMap(driver string, nameIn string) (*gorp.DbMap, error) {
 	logger := blog.GetAuditLogger()
+
+	// We require this parameter, so add it if not present
+	name := nameIn
+	parseTime := "?parseTime=true"
+	if !strings.HasSuffix(name, parseTime) {
+		name = name + parseTime
+	}
 
 	db, err := sql.Open(driver, name)
 	if err != nil {
