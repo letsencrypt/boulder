@@ -26,6 +26,13 @@ import (
 
 const ocspResponseLimit int = 128
 
+// OCSPUpdater contains the useful objects for the Updater
+type OCSPUpdater struct {
+	stats statsd.Statter
+	cac   rpc.CertificateAuthorityClient
+	dbMap *gorp.DbMap
+}
+
 func setupClients(c cmd.Config) (rpc.CertificateAuthorityClient, chan *amqp.Error) {
 	ch, err := cmd.AmqpChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
@@ -41,7 +48,7 @@ func setupClients(c cmd.Config) (rpc.CertificateAuthorityClient, chan *amqp.Erro
 	return cac, closeChan
 }
 
-func processResponse(cac rpc.CertificateAuthorityClient, tx *gorp.Transaction, serial string) error {
+func (updater *OCSPUpdater) processResponse(tx *gorp.Transaction, serial string) error {
 	certObj, err := tx.Get(core.Certificate{}, serial)
 	if err != nil {
 		return err
@@ -72,7 +79,7 @@ func processResponse(cac rpc.CertificateAuthorityClient, tx *gorp.Transaction, s
 		RevokedAt: status.RevokedDate,
 	}
 
-	ocspResponse, err := cac.GenerateOCSP(signRequest)
+	ocspResponse, err := updater.cac.GenerateOCSP(signRequest)
 	if err != nil {
 		return err
 	}
@@ -97,11 +104,11 @@ func processResponse(cac rpc.CertificateAuthorityClient, tx *gorp.Transaction, s
 	return nil
 }
 
-func findStaleResponses(cac rpc.CertificateAuthorityClient, dbMap *gorp.DbMap, oldestLastUpdatedTime time.Time, responseLimit int) error {
+func (updater *OCSPUpdater) findStaleResponses(oldestLastUpdatedTime time.Time, responseLimit int) error {
 	log := blog.GetAuditLogger()
 
 	var certificateStatus []core.CertificateStatus
-	_, err := dbMap.Select(&certificateStatus,
+	_, err := updater.dbMap.Select(&certificateStatus,
 		`SELECT cs.* FROM certificateStatus AS cs JOIN certificates AS cert ON cs.serial = cert.serial
 		 WHERE cs.ocspLastUpdated < ? AND cert.expires > now()
 		 ORDER BY cs.ocspLastUpdated ASC
@@ -113,27 +120,33 @@ func findStaleResponses(cac rpc.CertificateAuthorityClient, dbMap *gorp.DbMap, o
 		log.Err(fmt.Sprintf("Error loading certificate status: %s", err))
 	} else {
 		log.Info(fmt.Sprintf("Processing OCSP Responses...\n"))
+		outerStart := time.Now()
+
 		for i, status := range certificateStatus {
-			log.Info(fmt.Sprintf("OCSP %d: %s", i, status.Serial))
+			log.Debug(fmt.Sprintf("OCSP %s: #%d", status.Serial, i))
+			innerStart := time.Now()
 
 			// Each response gets a transaction. To speed this up, we can batch
 			// transactions.
-			tx, err := dbMap.Begin()
+			tx, err := updater.dbMap.Begin()
 			if err != nil {
-				log.Err(fmt.Sprintf("Error starting transaction, aborting: %s", err))
+				log.Err(fmt.Sprintf("OCSP %s: Error starting transaction, aborting: %s", status.Serial, err))
 				tx.Rollback()
 				return err
 			}
 
-			if err := processResponse(cac, tx, status.Serial); err != nil {
-				log.Err(fmt.Sprintf("Could not process OCSP Response for %s: %s", status.Serial, err))
-				tx.Rollback()
-				return err
+			if err := updater.processResponse(tx, status.Serial); err != nil {
+				log.Err(fmt.Sprintf("OCSP %s: Could not process OCSP Response: %s", status.Serial, err))
+				continue
 			}
 
-			log.Info(fmt.Sprintf("OCSP %d: %s OK", i, status.Serial))
+			log.Info(fmt.Sprintf("OCSP %s: OK", status.Serial))
 			tx.Commit()
+
+			updater.stats.TimingDuration("OCSP.UpdateSingle", time.Since(innerStart), 1.0)
+			updater.stats.Inc("OCSP.UpdatesProcessed", 1, 1.0)
 		}
+		updater.stats.TimingDuration("OCSP.UpdateAggregate", time.Since(outerStart), 1.0)
 	}
 
 	return err
@@ -185,6 +198,12 @@ func main() {
 
 		auditlogger.Info(app.VersionString())
 
+		updater := &OCSPUpdater{
+			cac:   cac,
+			dbMap: dbMap,
+			stats: stats,
+		}
+
 		// Calculate the cut-off timestamp
 		if c.OCSPUpdater.MinTimeToExpiry == "" {
 			panic("Config must specify a MinTimeToExpiry period.")
@@ -197,7 +216,7 @@ func main() {
 
 		count := int(math.Min(float64(ocspResponseLimit), float64(c.OCSPUpdater.ResponseLimit)))
 
-		err = findStaleResponses(cac, dbMap, oldestLastUpdatedTime, count)
+		err = updater.findStaleResponses(oldestLastUpdatedTime, count)
 		if err != nil {
 			auditlogger.WarningErr(err)
 		}
