@@ -164,7 +164,7 @@ func TestDNSLookupDNSSEC(t *testing.T) {
 	_, err = goodServer.LookupCNAME(badSig)
 	test.AssertError(t, err, "LookupCNAME didn't return an error")
 
-	// XXX: Make sure CAA lookup ignores validation failures
+	// XXX: CAA lookup ignores validation failures from the resolver for now
 	_, err = goodServer.LookupCAA(badSig, false)
 	test.AssertNotError(t, err, "LookupCAA returned an error")
 

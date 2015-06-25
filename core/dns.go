@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -43,7 +44,7 @@ func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolve
 // ExchangeOne performs a single DNS exchange with a randomly chosen server
 // out of the server list, returning the response, time, and error (if any)
 func (dnsResolver *DNSResolver) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.Duration, err error) {
-	// Set DNSSEC OK bit
+	// Set DNSSEC OK bit for resolver
 	m.SetEdns0(4096, true)
 
 	if len(dnsResolver.Servers) < 1 {
@@ -64,12 +65,11 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(hostname), dns.TypeTXT)
-	r, rtt, err := dnsResolver.ExchangeOne(m)
 
+	r, rtt, err := dnsResolver.ExchangeOne(m)
 	if err != nil {
 		return nil, 0, err
 	}
-
 	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
 		err = fmt.Errorf("Failure at resolver: %d-%s for TXT query", r.Rcode, dns.RcodeToString[r.Rcode])
 		return nil, 0, err
@@ -87,6 +87,51 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 	return txt, rtt, err
 }
 
+// LookupHost sends a DNS query to find all A/AAAA records associated with
+// the provided hostname.
+func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
+	var addrs []net.IP
+	var answers []dns.RR
+
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
+
+	r, aRtt, err := dnsResolver.ExchangeOne(m)
+	if err != nil {
+		return addrs, aRtt, err
+	}
+	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
+		err = fmt.Errorf("Failure at resolver: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
+		return nil, 0, err
+	}
+
+	answers = append(answers, r.Answer...)
+
+	m.SetQuestion(dns.Fqdn(hostname), dns.TypeAAAA)
+	r, aaaaRtt, err := dnsResolver.ExchangeOne(m)
+	if err != nil {
+		return addrs, aRtt + aaaaRtt, err
+	}
+	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
+		err = fmt.Errorf("Failure at resolver: %d-%s for AAAA query", r.Rcode, dns.RcodeToString[r.Rcode])
+		return nil, aRtt + aaaaRtt, err
+	}
+
+	answers = append(answers, r.Answer...)
+
+	for _, answer := range answers {
+		if answer.Header().Rrtype == dns.TypeA {
+			a := answer.(*dns.A)
+			addrs = append(addrs, a.A)
+		} else if answer.Header().Rrtype == dns.TypeAAAA {
+			aaaa := answer.(*dns.AAAA)
+			addrs = append(addrs, aaaa.AAAA)
+		}
+	}
+
+	return addrs, aRtt + aaaaRtt, nil
+}
+
 // LookupCNAME sends a DNS query to find a CNAME record associated domain and returns the
 // record target.
 func (dnsResolver *DNSResolver) LookupCNAME(domain string) (string, error) {
@@ -97,7 +142,6 @@ func (dnsResolver *DNSResolver) LookupCNAME(domain string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
 		err = fmt.Errorf("Failure at resolver: %d-%s for CNAME query", r.Rcode, dns.RcodeToString[r.Rcode])
 		return "", err

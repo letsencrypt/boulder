@@ -79,6 +79,18 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 	hostName := identifier.Value
 
+	// Check for resolver SERVFAIL for A/AAAA records
+	_, _, err := va.DNSResolver.LookupHost(hostName)
+	if err != nil {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.ServerInternalProblem,
+			Detail: "Server failure at resolver",
+		}
+		challenge.Status = core.StatusInvalid
+		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] DNS failure: %s", identifier, err))
+		return challenge, challenge.Error
+	}
+
 	var scheme string
 	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
 		scheme = "https"
@@ -206,6 +218,18 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	z := sha256.Sum256(RS)
 	zName := fmt.Sprintf("%064x.acme.invalid", z)
+
+	// Check for resolver SERVFAIL for A/AAAA records
+	_, _, err = va.DNSResolver.LookupHost(identifier.Value)
+	if err != nil {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.ServerInternalProblem,
+			Detail: "Server failure at resolver",
+		}
+		challenge.Status = core.StatusInvalid
+		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] DNS failure: %s", identifier, err))
+		return challenge, challenge.Error
+	}
 
 	// Make a connection with SNI = nonceName
 	hostPort := identifier.Value + ":443"
