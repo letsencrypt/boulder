@@ -96,7 +96,7 @@ def run_client_tests():
         --key-dir %s \
         --cert-dir %s \
         --text \
-        --agree-tos \
+        --agree-eula \
         --email "" \
         --renewer-config-file %s \
         ''' % (letsencrypt_bin, tempconfig, tempwork, tempkey, tempwork, renewer_config_filename)
