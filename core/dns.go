@@ -15,17 +15,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
 
-// DNSSECError indicates an error caused by DNSSEC failing.
-type DNSSECError struct {
-}
-
-// Error gives the DNSSEC failure notice.
-func (err DNSSECError) Error() string {
-	return "DNSSEC validation failure"
-}
-
-// DNSResolverImpl represents a resolver system
-type DNSResolverImpl struct {
+// DNSResolver represents a resolver system
+type DNSResolver struct {
 	DNSClient *dns.Client
 	Servers   []string
 }
