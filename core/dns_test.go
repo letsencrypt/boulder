@@ -156,19 +156,17 @@ func TestDNSLookupsNoServer(t *testing.T) {
 func TestDNSLookupDNSSEC(t *testing.T) {
 	goodServer := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn("sigfail.verteiltesysteme.net"), dns.TypeA)
+	badSig := "www.dnssec-failed.org"
 
-	_, _, err := goodServer.LookupDNSSEC(m)
-	test.AssertError(t, err, "DNSSEC failure")
-	_, ok := err.(DNSSECError)
-	fmt.Println(err)
-	test.Assert(t, ok, "Should have been a DNSSECError")
+	_, _, err := goodServer.LookupTXT(badSig)
+	test.AssertError(t, err, "LookupTXT didn't return an error")
 
-	m.SetQuestion(dns.Fqdn("sigok.verteiltesysteme.net"), dns.TypeA)
+	_, err = goodServer.LookupCNAME(badSig)
+	test.AssertError(t, err, "LookupCNAME didn't return an error")
 
-	_, _, err = goodServer.LookupDNSSEC(m)
-	test.AssertNotError(t, err, "DNSSEC should have worked")
+	// XXX: Make sure CAA lookup ignores validation failures
+	_, err = goodServer.LookupCAA(badSig, false)
+	test.AssertNotError(t, err, "LookupCAA returned an error")
 
 	badServer := NewDNSResolverImpl(time.Second*10, []string{"127.0.0.1:99"})
 
@@ -190,20 +188,24 @@ func TestDNSLookupTXT(t *testing.T) {
 func TestDNSLookupHost(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
-	ip, _, err := obj.LookupHost("sigfail.verteiltesysteme.net")
-	t.Logf("sigfail.verteiltesysteme.net - IP: %s, Err: %s", ip, err)
-	test.AssertError(t, err, "DNSSEC failure")
-	test.Assert(t, len(ip) == 0, "Should not have IPs")
+	goodSig := "sigok.verteiltesysteme.net"
 
-	ip, _, err = obj.LookupHost("nonexistent.letsencrypt.org")
-	t.Logf("nonexistent.letsencrypt.org - IP: %s, Err: %s", ip, err)
-	test.AssertNotError(t, err, "Not an error to not exist")
-	test.Assert(t, len(ip) == 0, "Should not have IPs")
+	_, _, err = goodServer.LookupTXT(goodSig)
+	test.AssertNotError(t, err, "LookupTXT returned an error")
 
-	ip, _, err = obj.LookupHost("cps.letsencrypt.org")
-	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
-	test.AssertNotError(t, err, "Not an error to be a CNAME")
-	test.Assert(t, len(ip) > 0, "Should have IPs")
+	_, err = goodServer.LookupCNAME(goodSig)
+	test.AssertNotError(t, err, "LookupCNAME returned an error")
+
+	badServer := NewDNSResolver(time.Second*10, []string{"127.0.0.1:99"})
+
+	_, _, err = badServer.LookupTXT(goodSig)
+	test.AssertError(t, err, "LookupTXT didn't return an error")
+
+	_, err = badServer.LookupCNAME(goodSig)
+	test.AssertError(t, err, "LookupCNAME didn't return an error")
+
+	_, err = badServer.LookupCAA(goodSig, false)
+	test.AssertError(t, err, "LookupCAA didn't return an error")
 }
 
 func TestDNSLookupCAA(t *testing.T) {

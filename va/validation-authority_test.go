@@ -653,7 +653,7 @@ func TestDNSValidationBadDNSSEC(t *testing.T) {
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
-	test.AssertEquals(t, authz.Challenges[0].Error.Type, core.DNSSECProblem)
+	test.AssertEquals(t, authz.Challenges[0].Error.Type, core.ServerInternalProblem)
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
