@@ -231,17 +231,36 @@ func (log *AuditLogger) Audit(msg string) (err error) {
 	return log.auditAtLevel("Logging.Notice", msg)
 }
 
+func (log *AuditLogger) formatObjectMessage(msg string, obj interface{}) (string, error) {
+	jsonObj, err := json.Marshal(obj)
+	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		log.auditAtLevel("Logging.Err", fmt.Sprintf("Object could not be serialized to JSON. Raw: %+v", obj))
+		return "", err
+	}
+
+	return fmt.Sprintf("%s JSON=%s", msg, jsonObj), nil
+}
+
 // AuditObject sends a NOTICE-severity JSON-serialized object message that is prefixed
 // with the audit tag, for special handling at the upstream system logger.
 func (log *AuditLogger) AuditObject(msg string, obj interface{}) (err error) {
-	jsonLogEvent, logErr := json.Marshal(obj)
+	formattedEvent, logErr := log.formatObjectMessage(msg, obj)
 	if logErr != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		log.auditAtLevel("Logging.Err", fmt.Sprintf("%s - logEvent could not be serialized. Raw: %+v", msg, obj))
 		return logErr
 	}
 
-	return log.auditAtLevel("Logging.Notice", fmt.Sprintf("%s - %s", msg, jsonLogEvent))
+	return log.auditAtLevel("Logging.Notice", formattedEvent)
+}
+
+// InfoObject sends a INFO-severity JSON-serialized object message.
+func (log *AuditLogger) InfoObject(msg string, obj interface{}) (err error) {
+	formattedEvent, logErr := log.formatObjectMessage(msg, obj)
+	if logErr != nil {
+		return logErr
+	}
+
+	return log.logAtLevel("Logging.Info", formattedEvent)
 }
 
 // AuditErr can format an error for auditing; it does so at ERR level.

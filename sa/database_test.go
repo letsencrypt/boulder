@@ -30,3 +30,8 @@ func TestForgottenDialect(t *testing.T) {
 	_, err := NewDbMap("sqlite3", ":memory:")
 	test.AssertError(t, err, "Shouldn't have found the dialect")
 }
+
+func TestParseTimeRequired(t *testing.T) {
+	_, err := NewDbMap("mysql", "invalid")
+	test.AssertError(t, err, "DB name must have parseTime=true")
+}

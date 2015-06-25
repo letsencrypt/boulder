@@ -42,7 +42,8 @@ func main() {
 		go cmd.ProfileCmd("Monolith", stats)
 
 		// Create the components
-		wfei := wfe.NewWebFrontEndImpl()
+		wfei, err := wfe.NewWebFrontEndImpl()
+		cmd.FailOnError(err, "Unable to create WFE")
 		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
 		cmd.FailOnError(err, "Unable to create SA")
 		sa.SetSQLDebug(c.SQL.SQLDebug)
@@ -53,6 +54,7 @@ func main() {
 		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		va.DNSResolver = core.NewDNSResolver(dnsTimeout, []string{c.VA.DNSResolver})
+		va.UserAgent = c.VA.UserAgent
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
 		cmd.FailOnError(err, "Failed to create CA database")

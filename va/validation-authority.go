@@ -33,6 +33,7 @@ type ValidationAuthorityImpl struct {
 	Stats        statsd.Statter
 	IssuerDomain string
 	TestMode     bool
+	UserAgent    string
 }
 
 // NewValidationAuthorityImpl constructs a new VA, and may place it
@@ -64,7 +65,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			Type:   core.MalformedProblem,
 			Detail: "No path provided for SimpleHTTP challenge.",
 		}
-		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] path empty: %s", identifier, challenge))
+		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] path empty: %v", identifier, challenge))
 		return challenge, challenge.Error
 	}
 
@@ -79,26 +80,6 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		return challenge, challenge.Error
 	}
 	hostName := identifier.Value
-
-	// Check for DNSSEC failures for A/AAAA records
-	_, rtt, err := va.DNSResolver.LookupHost(hostName)
-	va.Stats.TimingDuration("DnsRtt.LookupHost", rtt, 1.0)
-	if err != nil {
-		if dnssecErr, ok := err.(core.DNSSECError); ok {
-			challenge.Error = &core.ProblemDetails{
-				Type:   core.DNSSECProblem,
-				Detail: dnssecErr.Error(),
-			}
-		} else {
-			challenge.Error = &core.ProblemDetails{
-				Type:   core.ServerInternalProblem,
-				Detail: "Unable to communicate with DNS server",
-			}
-		}
-		challenge.Status = core.StatusInvalid
-		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] DNS failure: %s", identifier, err))
-		return challenge, challenge.Error
-	}
 
 	var scheme string
 	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
@@ -124,6 +105,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] HTTP failure: %s", identifier, err))
 		challenge.Status = core.StatusInvalid
 		return challenge, err
+	}
+
+	if va.UserAgent != "" {
+		httpRequest.Header["User-Agent"] = []string{va.UserAgent}
 	}
 
 	httpRequest.Host = hostName
@@ -224,26 +209,6 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	z := sha256.Sum256(RS)
 	zName := fmt.Sprintf("%064x.acme.invalid", z)
-
-	// Check for DNSSEC failures for A/AAAA records
-	_, rtt, err := va.DNSResolver.LookupHost(identifier.Value)
-	va.Stats.TimingDuration("DnsRtt.LookupHost", rtt, 1.0)
-	if err != nil {
-		if dnssecErr, ok := err.(core.DNSSECError); ok {
-			challenge.Error = &core.ProblemDetails{
-				Type:   core.DNSSECProblem,
-				Detail: dnssecErr.Error(),
-			}
-		} else {
-			challenge.Error = &core.ProblemDetails{
-				Type:   core.ServerInternalProblem,
-				Detail: "Unable to communicate with DNS server",
-			}
-		}
-		challenge.Status = core.StatusInvalid
-		va.log.Debug(fmt.Sprintf("DVSNI [%s] DNS failure: %s", identifier, err))
-		return challenge, challenge.Error
-	}
 
 	// Make a connection with SNI = nonceName
 	hostPort := identifier.Value + ":443"

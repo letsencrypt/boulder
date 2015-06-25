@@ -7,7 +7,7 @@
 
   "amqp": {
     "server": "amqp://guest:guest@localhost:5672",
-    "-uncomment_for_AMQPS-ssl": {
+    "-uncomment_for_AMQPS-tls": {
       "cacertfile": "/etc/boulder/rabbitmq-cacert.pem",
       "certfile": "/etc/boulder/rabbitmq-cert.pem",
       "keyfile": "/etc/boulder/rabbitmq-key.pem"
@@ -105,7 +105,8 @@
 
   "va": {
     "dnsResolver": "8.8.8.8:53",
-    "dnsTimeout": "10s"
+    "dnsTimeout": "10s",
+    "userAgent": "boulder"
   },
 
   "sql": {

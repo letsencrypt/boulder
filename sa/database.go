@@ -8,6 +8,7 @@ package sa
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
@@ -32,6 +33,11 @@ var dialectMap = map[string]interface{}{
 // schema, like that for `certificate-authority-data.go`.
 func NewDbMap(driver string, name string) (*gorp.DbMap, error) {
 	logger := blog.GetAuditLogger()
+
+	// We require this parameter for MySQL, so fail now if it is not present
+	if driver == "mysql" && !strings.Contains(name, "parseTime=true") {
+		return nil, fmt.Errorf("Database name must have parseTime=true")
+	}
 
 	db, err := sql.Open(driver, name)
 	if err != nil {

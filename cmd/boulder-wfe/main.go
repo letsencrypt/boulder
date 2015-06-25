@@ -55,7 +55,8 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
-		wfe := wfe.NewWebFrontEndImpl()
+		wfe, err := wfe.NewWebFrontEndImpl()
+		cmd.FailOnError(err, "Unable to create WFE")
 		rac, sac, closeChan := setupWFE(c)
 		wfe.RA = &rac
 		wfe.SA = &sac

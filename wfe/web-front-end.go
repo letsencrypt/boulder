@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
@@ -89,15 +90,35 @@ func statusCodeFromError(err interface{}) int {
 	}
 }
 
+type requestEvent struct {
+	ID           string         `json:",omitempty"`
+	RealIP       string         `json:",omitempty"`
+	ForwardedFor string         `json:",omitempty"`
+	Endpoint     string         `json:",omitempty"`
+	Method       string         `json:",omitempty"`
+	RequestTime  time.Time      `json:",omitempty"`
+	ResponseTime time.Time      `json:",omitempty"`
+	Error        string         `json:",omitempty"`
+	Requester    int64          `json:",omitempty"`
+	Contacts     []core.AcmeURL `json:",omitempty"`
+
+	Extra map[string]interface{} `json:",omitempty"`
+}
+
 // NewWebFrontEndImpl constructs a web service for Boulder
-func NewWebFrontEndImpl() WebFrontEndImpl {
+func NewWebFrontEndImpl() (WebFrontEndImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 
+	nonceService, err := core.NewNonceService()
+	if err != nil {
+		return WebFrontEndImpl{}, err
+	}
+
 	return WebFrontEndImpl{
 		log:          logger,
-		nonceService: core.NewNonceService(),
-	}
+		nonceService: nonceService,
+	}, nil
 }
 
 // HandlePaths configures the HTTP engine to use various functions
@@ -127,19 +148,24 @@ func (wfe *WebFrontEndImpl) HandlePaths() {
 
 // Index serves a simple identification page. It is not part of the ACME spec.
 func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	// http://golang.org/pkg/net/http/#example_ServeMux_Handle
 	// The "/" pattern matches everything, so we need to check
 	// that we're at the root here.
 	if request.URL.Path != "/" {
+		logEvent.Error = "Resource not found"
 		http.NotFound(response, request)
 		return
 	}
 
 	if request.Method != "GET" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "GET")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -166,7 +192,13 @@ func sendAllow(response http.ResponseWriter, methods ...string) {
 }
 
 func (wfe *WebFrontEndImpl) sendStandardHeaders(response http.ResponseWriter) {
-	response.Header().Set("Replay-Nonce", wfe.nonceService.Nonce())
+	// We do not propagate errors here, because (1) they should be
+	// transient, and (2) they fail closed.
+	nonce, err := wfe.nonceService.Nonce()
+	if err == nil {
+		response.Header().Set("Replay-Nonce", nonce)
+	}
+
 	response.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
@@ -293,42 +325,53 @@ func link(url, relation string) string {
 
 // NewRegistration is used by clients to submit a new registration/account
 func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "POST" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "POST")
-		wfe.sendError(response, "Method not allowed", "", http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent.Error, "", http.StatusMethodNotAllowed)
 		return
 	}
 
 	body, key, _, err := wfe.verifyPOST(request, false)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 		return
 	}
 
 	if _, err = wfe.SA.GetRegistrationByKey(*key); err == nil {
-		wfe.sendError(response, "Registration key is already in use", nil, http.StatusConflict)
+		logEvent.Error = "Registration key is already in use"
+		wfe.sendError(response, logEvent.Error, nil, http.StatusConflict)
 		return
 	}
 
 	var init core.Registration
 	err = json.Unmarshal(body, &init)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error unmarshaling JSON", err, http.StatusBadRequest)
 		return
 	}
 	if len(init.Agreement) > 0 && init.Agreement != wfe.SubscriberAgreementURL {
-		wfe.sendError(response, fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", init.Agreement, wfe.SubscriberAgreementURL), nil, http.StatusBadRequest)
+		logEvent.Error = fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", init.Agreement, wfe.SubscriberAgreementURL)
+		wfe.sendError(response, logEvent.Error, nil, http.StatusBadRequest)
 		return
 	}
 	init.Key = *key
 
 	reg, err := wfe.RA.NewRegistration(init)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error creating new registration", err, statusCodeFromError(err))
 		return
 	}
+	logEvent.Requester = reg.ID
+	logEvent.Contacts = reg.Contact
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
@@ -336,6 +379,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	regURL := fmt.Sprintf("%s%d", wfe.RegBase, id)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
+		logEvent.Error = err.Error()
 		// StatusInternalServerError because we just created this registration, it should be OK.
 		wfe.sendError(response, "Error marshaling registration", err, http.StatusInternalServerError)
 		return
@@ -354,16 +398,21 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 // NewAuthorization is used by clients to submit a new ID Authorization
 func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "POST" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "POST")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
 	body, _, currReg, err := wfe.verifyPOST(request, true)
 	if err != nil {
+		logEvent.Error = err.Error()
 		if err == sql.ErrNoRows {
 			wfe.sendError(response, "No registration exists matching provided key", err, http.StatusForbidden)
 		} else {
@@ -371,26 +420,33 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		}
 		return
 	}
+	logEvent.Requester = currReg.ID
+	logEvent.Contacts = currReg.Contact
 	// Any version of the agreement is acceptable here. Version match is enforced in
 	// wfe.Registration when agreeing the first time. Agreement updates happen
 	// by mailing subscribers and don't require a registration update.
 	if currReg.Agreement == "" {
-		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
+		logEvent.Error = "Must agree to subscriber agreement before any further actions"
+		wfe.sendError(response, logEvent.Error, nil, http.StatusForbidden)
 		return
 	}
 
 	var init core.Authorization
 	if err = json.Unmarshal(body, &init); err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error unmarshaling JSON", err, http.StatusBadRequest)
 		return
 	}
+	logEvent.Extra["Identifier"] = init.Identifier
 
 	// Create new authz and return
 	authz, err := wfe.RA.NewAuthorization(init, currReg.ID)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error creating new authz", err, statusCodeFromError(err))
 		return
 	}
+	logEvent.Extra["AuthzID"] = authz.ID
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
 	authzURL := wfe.AuthzBase + string(authz.ID)
@@ -398,6 +454,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	authz.RegistrationID = 0
 	responseBody, err := json.Marshal(authz)
 	if err != nil {
+		logEvent.Error = err.Error()
 		// StatusInternalServerError because we generated the authz, it should be OK
 		wfe.sendError(response, "Error marshaling authz", err, http.StatusInternalServerError)
 		return
@@ -408,17 +465,22 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(responseBody); err != nil {
+		logEvent.Error = err.Error()
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
 
 // RevokeCertificate is used by clients to request the revocation of a cert.
 func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "POST" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "POST")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -426,27 +488,33 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	// because anyone with the right private key can revoke a certificate.
 	body, requestKey, registration, err := wfe.verifyPOST(request, false)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 		return
 	}
+	logEvent.Requester = registration.ID
+	logEvent.Contacts = registration.Contact
 
 	type RevokeRequest struct {
 		CertificateDER core.JSONBuffer `json:"certificate"`
 	}
 	var revokeRequest RevokeRequest
 	if err = json.Unmarshal(body, &revokeRequest); err != nil {
+		logEvent.Error = err.Error()
 		wfe.log.Debug(fmt.Sprintf("Couldn't unmarshal in revoke request %s", string(body)))
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 		return
 	}
 	providedCert, err := x509.ParseCertificate(revokeRequest.CertificateDER)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.log.Debug("Couldn't parse cert in revoke request.")
 		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 		return
 	}
 
 	serial := core.SerialToString(providedCert.SerialNumber)
+	logEvent.Extra["ProvidedCertificateSerial"] = serial
 	cert, err := wfe.SA.GetCertificate(serial)
 	if err != nil || !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
 		wfe.sendError(response, "No such certificate", err, http.StatusNotFound)
@@ -454,28 +522,37 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 	parsedCertificate, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
+		logEvent.Error = err.Error()
 		// InternalServerError because this is a failure to decode from our DB.
 		wfe.sendError(response, "Invalid certificate", err, http.StatusInternalServerError)
 		return
 	}
+	logEvent.Extra["RetrievedCertificateSerial"] = core.SerialToString(parsedCertificate.SerialNumber)
+	logEvent.Extra["RetrievedCertificateDNSNames"] = parsedCertificate.DNSNames
+	logEvent.Extra["RetrievedCertificateEmailAddresses"] = parsedCertificate.EmailAddresses
+	logEvent.Extra["RetrievedCertificateIPAddresses"] = parsedCertificate.IPAddresses
 
 	certStatus, err := wfe.SA.GetCertificateStatus(serial)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Certificate status not yet available", err, http.StatusNotFound)
 		return
 	}
+	logEvent.Extra["CertificateStatus"] = certStatus.Status
 
 	if certStatus.Status == core.OCSPStatusRevoked {
-		wfe.sendError(response, "Certificate already revoked", "", http.StatusConflict)
+		logEvent.Error = "Certificate already revoked"
+		wfe.sendError(response, logEvent.Error, "", http.StatusConflict)
 		return
 	}
 
 	// TODO: Implement method of revocation by authorizations on account.
 	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) ||
 		registration.ID == cert.RegistrationID) {
+		logEvent.Error = "Revocation request must be signed by private key of cert to be revoked"
 		wfe.log.Debug("Key mismatch for revoke")
 		wfe.sendError(response,
-			"Revocation request must be signed by private key of cert to be revoked",
+			logEvent.Error,
 			requestKey,
 			http.StatusForbidden)
 		return
@@ -483,6 +560,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 
 	err = wfe.RA.RevokeCertificate(*parsedCertificate)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Failed to revoke certificate", err, statusCodeFromError(err))
 	} else {
 		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
@@ -493,16 +571,21 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 // NewCertificate is used by clients to request the issuance of a cert for an
 // authorized identifier.
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "POST" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "POST")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
 	body, key, reg, err := wfe.verifyPOST(request, true)
 	if err != nil {
+		logEvent.Error = err.Error()
 		if err == sql.ErrNoRows {
 			wfe.sendError(response, "No registration exists matching provided key", err, http.StatusForbidden)
 		} else {
@@ -510,20 +593,27 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		}
 		return
 	}
+	logEvent.Requester = reg.ID
+	logEvent.Contacts = reg.Contact
 	// Any version of the agreement is acceptable here. Version match is enforced in
 	// wfe.Registration when agreeing the first time. Agreement updates happen
 	// by mailing subscribers and don't require a registration update.
 	if reg.Agreement == "" {
-		wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
+		logEvent.Error = "Must agree to subscriber agreement before any further actions"
+		wfe.sendError(response, logEvent.Error, nil, http.StatusForbidden)
 		return
 	}
 
 	var init core.CertificateRequest
 	if err = json.Unmarshal(body, &init); err != nil {
-		fmt.Println(err)
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
+	logEvent.Extra["Authorizations"] = init.Authorizations
+	logEvent.Extra["CSRDNSNames"] = init.CSR.DNSNames
+	logEvent.Extra["CSREmailAddresses"] = init.CSR.EmailAddresses
+	logEvent.Extra["CSRIPAddresses"] = init.CSR.IPAddresses
 
 	wfe.log.Notice(fmt.Sprintf("Client requested new certificate: %v %v %v",
 		request.RemoteAddr, init, key))
@@ -536,6 +626,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// RA for secondary validation.
 	cert, err := wfe.RA.NewCertificate(init, reg.ID)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error creating new cert", err, statusCodeFromError(err))
 		return
 	}
@@ -546,6 +637,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// enumerate and mirror our certificates.
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response,
 			"Error creating new cert", err,
 			http.StatusBadRequest)
@@ -560,17 +652,19 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
+		logEvent.Error = err.Error()
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
 
-func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request, logEvent requestEvent) requestEvent {
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "GET", "POST")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
-		return
+		return logEvent
 	}
 
 	// Check that the requested challenge exists within the authorization
@@ -586,24 +680,27 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 	}
 
 	if !found {
-		wfe.sendError(response, "Unable to find challenge", request.URL.RawQuery, http.StatusNotFound)
-		return
+		logEvent.Error = "Unable to find challenge"
+		wfe.sendError(response, logEvent.Error, request.URL.RawQuery, http.StatusNotFound)
+		return logEvent
 	}
 
 	switch request.Method {
 	default:
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, "Method not allowed", "", http.StatusMethodNotAllowed)
-		return
+		wfe.sendError(response, logEvent.Error, "", http.StatusMethodNotAllowed)
+		return logEvent
 
 	case "GET":
 		challenge := authz.Challenges[challengeIndex]
 		jsonReply, err := json.Marshal(challenge)
 		if err != nil {
+			logEvent.Error = err.Error()
 			// InternalServerError because this is a failure to decode data passed in
 			// by the caller, which got it from the DB.
 			wfe.sendError(response, "Failed to marshal challenge", err, http.StatusInternalServerError)
-			return
+			return logEvent
 		}
 
 		authzURL := wfe.AuthzBase + string(authz.ID)
@@ -614,55 +711,65 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		response.WriteHeader(http.StatusAccepted)
 		if _, err := response.Write(jsonReply); err != nil {
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+			logEvent.Error = err.Error()
+			return logEvent
 		}
 
 	case "POST":
 		body, _, currReg, err := wfe.verifyPOST(request, true)
 		if err != nil {
+			logEvent.Error = err.Error()
 			if err == sql.ErrNoRows {
 				wfe.sendError(response, "No registration exists matching provided key", err, http.StatusForbidden)
 			} else {
 				wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
 			}
-			return
+			return logEvent
 		}
+		logEvent.Requester = currReg.ID
+		logEvent.Contacts = currReg.Contact
 		// Any version of the agreement is acceptable here. Version match is enforced in
 		// wfe.Registration when agreeing the first time. Agreement updates happen
 		// by mailing subscribers and don't require a registration update.
 		if currReg.Agreement == "" {
-			wfe.sendError(response, "Must agree to subscriber agreement before any further actions", nil, http.StatusForbidden)
-			return
+			logEvent.Error = "Must agree to subscriber agreement before any further actions"
+			wfe.sendError(response, logEvent.Error, nil, http.StatusForbidden)
+			return logEvent
 		}
 
 		// Check that the registration ID matching the key used matches
 		// the registration ID on the authz object
 		if currReg.ID != authz.RegistrationID {
+			logEvent.Error = fmt.Sprintf("User: %v != Authorization: %v", currReg.ID, authz.RegistrationID)
 			wfe.sendError(response, "User registration ID doesn't match registration ID in authorization",
-				fmt.Sprintf("User: %v != Authorization: %v", currReg.ID, authz.RegistrationID),
+				logEvent.Error,
 				http.StatusForbidden)
-			return
+			return logEvent
 		}
 
 		var challengeResponse core.Challenge
 		if err = json.Unmarshal(body, &challengeResponse); err != nil {
+			logEvent.Error = err.Error()
 			wfe.sendError(response, "Error unmarshaling challenge response", err, http.StatusBadRequest)
-			return
+			return logEvent
 		}
 
 		// Ask the RA to update this authorization
 		updatedAuthz, err := wfe.RA.UpdateAuthorization(authz, challengeIndex, challengeResponse)
 		if err != nil {
+			logEvent.Error = err.Error()
 			wfe.sendError(response, "Unable to update authorization", err, statusCodeFromError(err))
-			return
+			return logEvent
 		}
 
 		challenge := updatedAuthz.Challenges[challengeIndex]
 		// assumption: UpdateAuthorization does not modify order of challenges
 		jsonReply, err := json.Marshal(challenge)
 		if err != nil {
+			logEvent.Error = err.Error()
 			// StatusInternalServerError because we made the challenges, they should be OK
 			wfe.sendError(response, "Failed to marshal challenge", err, http.StatusInternalServerError)
-			return
+			return logEvent
 		}
 
 		authzURL := wfe.AuthzBase + string(authz.ID)
@@ -672,24 +779,32 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		response.Header().Add("Link", link(authzURL, "up"))
 		response.WriteHeader(http.StatusAccepted)
 		if _, err = response.Write(jsonReply); err != nil {
+			logEvent.Error = err.Error()
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+			return logEvent
 		}
 
 	}
+	return logEvent
 }
 
 // Registration is used by a client to submit an update to their registration.
 func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "POST" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "POST")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
 	body, _, currReg, err := wfe.verifyPOST(request, true)
 	if err != nil {
+		logEvent.Error = err.Error()
 		if err == sql.ErrNoRows {
 			wfe.sendError(response,
 				"No registration exists matching provided key",
@@ -700,33 +815,38 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		}
 		return
 	}
+	logEvent.Requester = currReg.ID
+	logEvent.Contacts = currReg.Contact
 
 	// Requests to this handler should have a path that leads to a known
 	// registration
 	idStr := parseIDFromPath(request.URL.Path)
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Registration ID must be an integer", err, http.StatusBadRequest)
 		return
 	} else if id <= 0 {
-		wfe.sendError(response, "Registration ID must be a positive non-zero integer", id, http.StatusBadRequest)
+		logEvent.Error = "Registration ID must be a positive non-zero integer"
+		wfe.sendError(response, logEvent.Error, id, http.StatusBadRequest)
 		return
 	} else if id != currReg.ID {
-		wfe.sendError(response, "Request signing key did not match registration key", "", http.StatusForbidden)
+		logEvent.Error = "Request signing key did not match registration key"
+		wfe.sendError(response, logEvent.Error, "", http.StatusForbidden)
 		return
 	}
 
 	var update core.Registration
 	err = json.Unmarshal(body, &update)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error unmarshaling registration", err, http.StatusBadRequest)
 		return
 	}
 
 	if len(update.Agreement) > 0 && update.Agreement != wfe.SubscriberAgreementURL {
-		wfe.sendError(response,
-			fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]",
-				update.Agreement, wfe.SubscriberAgreementURL), nil, http.StatusBadRequest)
+		logEvent.Error = fmt.Sprintf("Provided agreement URL [%s] does not match current agreement URL [%s]", update.Agreement, wfe.SubscriberAgreementURL)
+		wfe.sendError(response, logEvent.Error, nil, http.StatusBadRequest)
 		return
 	}
 
@@ -739,12 +859,14 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	// Ask the RA to update this authorization.
 	updatedReg, err := wfe.RA.UpdateRegistration(currReg, update)
 	if err != nil {
+		logEvent.Error = err.Error()
 		wfe.sendError(response, "Unable to update registration", err, statusCodeFromError(err))
 		return
 	}
 
 	jsonReply, err := json.Marshal(updatedReg)
 	if err != nil {
+		logEvent.Error = err.Error()
 		// StatusInternalServerError because we just generated the reg, it should be OK
 		wfe.sendError(response, "Failed to marshal registration", err, http.StatusInternalServerError)
 		return
@@ -757,11 +879,15 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
 func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -774,17 +900,23 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 			http.StatusNotFound)
 		return
 	}
+	logEvent.Extra["AuthorizationID"] = authz.ID
+	logEvent.Extra["AuthorizationRegistrationID"] = authz.RegistrationID
+	logEvent.Extra["AuthorizationIdentifier"] = authz.Identifier
+	logEvent.Extra["AuthorizationStatus"] = authz.Status
+	logEvent.Extra["AuthorizationExpires"] = authz.Expires
 
 	// If there is a fragment, then this is actually a request to a challenge URI
 	if len(request.URL.RawQuery) != 0 {
-		wfe.challenge(authz, response, request)
+		logEvent = wfe.challenge(authz, response, request, logEvent)
 		return
 	}
 
 	switch request.Method {
 	default:
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 		return
 
 	case "GET":
@@ -794,6 +926,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 
 		jsonReply, err := json.Marshal(authz)
 		if err != nil {
+			logEvent.Error = err.Error()
 			// InternalServerError because this is a failure to decode from our DB.
 			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
 			return
@@ -802,6 +935,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 		response.Header().Set("Content-Type", "application/json")
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(jsonReply); err != nil {
+			logEvent.Error = err.Error()
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 		}
 	}
@@ -812,37 +946,39 @@ var allHex = regexp.MustCompile("^[0-9a-f]+$")
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" && request.Method != "POST" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
-		return
+		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 	}
 
 	path := request.URL.Path
 	switch request.Method {
-	default:
-		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
-		return
-
 	case "GET":
 		// Certificate paths consist of the CertBase path, plus exactly sixteen hex
 		// digits.
 		if !strings.HasPrefix(path, CertPath) {
-			wfe.sendError(response, "Not found", path, http.StatusNotFound)
+			logEvent.Error = "Certificate not found"
+			wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
 			return
 		}
 		serial := path[len(CertPath):]
 		if len(serial) != 16 || !allHex.Match([]byte(serial)) {
-			wfe.sendError(response, "Not found", serial, http.StatusNotFound)
+			logEvent.Error = "Certificate not found"
+			wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
 			return
 		}
 		wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
+		logEvent.Extra["RequestedSerial"] = serial
 
 		cert, err := wfe.SA.GetCertificateByShortSerial(serial)
 		if err != nil {
+			logEvent.Error = err.Error()
 			if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 				wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
 			} else {
@@ -856,11 +992,13 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		response.Header().Add("Link", link(IssuerPath, "up"))
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(cert.DER); err != nil {
+			logEvent.Error = err.Error()
 			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 		}
 		return
 	case "POST":
-		wfe.sendError(response, "Not yet supported", "", http.StatusNotFound)
+		logEvent.Error = "Not yet supported"
+		wfe.sendError(response, logEvent.Error, "", http.StatusNotFound)
 		return
 	}
 }
@@ -868,11 +1006,15 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 // Terms is used by the client to obtain the current Terms of Service /
 // Subscriber Agreement to which the subscriber must agree.
 func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "GET")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
+		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -881,9 +1023,13 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.
 func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "GET")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
@@ -893,15 +1039,20 @@ func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.R
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
 	if _, err := response.Write(wfe.IssuerCert); err != nil {
+		logEvent.Error = err.Error()
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
 
 // BuildID tells the requestor what build we're running.
 func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
 	wfe.sendStandardHeaders(response)
 
 	if request.Method != "GET" {
+		logEvent.Error = "Method not allowed"
 		sendAllow(response, "GET")
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
@@ -911,6 +1062,33 @@ func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s) Golang=(%s) BuildHost=(%s)", core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
+		logEvent.Error = err.Error()
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
+}
+
+func (wfe *WebFrontEndImpl) logRequestDetails(logEvent *requestEvent) {
+	logEvent.ResponseTime = time.Now()
+	var msg string
+	if logEvent.Error != "" {
+		msg = "Terminated request"
+	} else {
+		msg = "Successful request"
+	}
+	wfe.log.InfoObject(msg, logEvent)
+}
+
+func (wfe *WebFrontEndImpl) populateRequestEvent(request *http.Request) (logEvent requestEvent) {
+	logEvent = requestEvent{
+		ID:           core.NewToken(),
+		RealIP:       request.Header.Get("X-Real-IP"),
+		ForwardedFor: request.Header.Get("X-Forwarded-For"),
+		Method:       request.Method,
+		RequestTime:  time.Now(),
+		Extra:        make(map[string]interface{}, 0),
+	}
+	if request.URL != nil {
+		logEvent.Endpoint = request.URL.String()
+	}
+	return
 }
