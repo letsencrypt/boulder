@@ -73,26 +73,26 @@ if [ ${FAILURE} != 0 ]; then
   exit ${FAILURE}
 fi
 
-if [ -z "$LETSENCRYPT_VENV" ]; then
-  DEFAULT_LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
-  LETSENCRYPT_VENV="$DEFAULT_LETSENCRYPT_PATH/venv"
+if [ -z "$LETSENCRYPT_PATH" ]; then
+  LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
 
-  echo "----------------------------------------------------"
-  echo "--- Checking out letsencrypt client is slow  -------"
-  echo "--- Recommend setting \$LETSENCRYPT_VENV to  -------"
-  echo "--- an already-initialized client virtualenv -------"
-  echo "----------------------------------------------------"
+  echo "------------------------------------------------"
+  echo "--- Checking out letsencrypt client is slow. ---"
+  echo "--- Recommend setting \$LETSENCRYPT_PATH to  ---"
+  echo "--- client repo with initialized virtualenv  ---"
+  echo "------------------------------------------------"
   run git clone \
     https://www.github.com/letsencrypt/lets-encrypt-preview.git \
-    $DEFAULT_LETSENCRYPT_PATH || exit 1
+    $LETSENCRYPT_PATH || exit 1
 
-  cd $DEFAULT_LETSENCRYPT_PATH
+  cd $LETSENCRYPT_PATH
   run virtualenv --no-site-packages -p python2 ./venv && \
     ./venv/bin/pip install -r requirements.txt -e . || exit 1
   cd -
 fi
 
-export LETSENCRYPT_VENV
+source $LETSENCRYPT_PATH/venv/bin/activate
+export LETSENCRYPT_PATH
 
 run python test/amqp-integration-test.py
 
