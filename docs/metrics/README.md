@@ -57,9 +57,11 @@ This list is split up into metric topics with the names of the clients that subm
 * DNS activity (`cmd/boulder-va` + `cmd/boulder`)
 
     ```
-	[timing]  Boulder.DnsRtt.LookupHost
-	[timing]  Boulder.DnsRtt.LookupTXT
-	[timing]  Boulder.DnsRtt.LookupCAA
+	[timing]  Boulder.DnsRtt.A
+	[timing]  Boulder.DnsRtt.AAAA
+	[timing]  Boulder.DnsRtt.TXT
+	[timing]  Boulder.DnsRtt.CAA
+	[timing]  Boulder.DnsRtt.CNAME
     ```
 
 * Validation attempts (`cmd/boulder-va` + `cmd/boulder`)

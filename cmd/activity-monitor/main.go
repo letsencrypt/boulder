@@ -10,6 +10,7 @@ package main
 // broker to look for anomalies.
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/rpc"
 )
 
 // Constants for AMQP
@@ -45,6 +47,9 @@ func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[str
 	// response then get time.Since original call from deliveryTiming, send timing metric, and
 	// decrement openCalls, in both cases send the gauge RpcCallsWaiting and increment the counter
 	// RpcTraffic with the byte length of the RPC body.
+	stats.Inc("RpcTraffic", int64(len(d.Body)), 1.0)
+	stats.Gauge("RpcCallsWaiting", openCalls, 1.0)
+
 	if d.ReplyTo != "" {
 		openCalls++
 		deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
@@ -54,14 +59,24 @@ func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[str
 		if rpcSent != *new(time.Time) {
 			respTime := time.Since(rpcSent)
 			delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
-
 			stats.TimingDuration(fmt.Sprintf("RpcResponseTime.%s", d.Type), respTime, 1.0)
+
+			// Check if the call failed
+			// XXX: This is somewhat slow, if we parse a partial json object
+			// instead of the full RPCResponse we might save a bit of time.
+			state := "Success"
+			var resp rpc.RPCResponse
+			err := json.Unmarshal(d.Body, &resp)
+			if err != nil {
+				return
+			}
+			if resp.Error.Value != "" {
+				state = "Error"
+			}
+			stats.Inc(fmt.Sprintf("RpcRate.%s", state), 1, 1.0)
 		}
 	}
 
-	stats.Inc("RpcCalls", 1, 1.0)
-	stats.Inc("RpcTraffic", int64(len(d.Body)), 1.0)
-	stats.Gauge("RpcCallsWaiting", openCalls, 1.0)
 }
 
 func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.Statter) {

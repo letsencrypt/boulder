@@ -297,7 +297,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 
 	challengeSubdomain := fmt.Sprintf("%s.%s", DNSPrefix, identifier.Value)
 	txts, rtt, err := va.DNSResolver.LookupTXT(challengeSubdomain)
-	va.Stats.TimingDuration("DnsRtt.LookupTXT", rtt, 1.0)
+	va.Stats.TimingDuration("DnsRtt.TXT", rtt, 1.0)
 
 	if err != nil {
 		if dnssecErr, ok := err.(core.DNSSECError); ok {
@@ -449,10 +449,10 @@ func (va *ValidationAuthorityImpl) getCAASet(domain string) (*CAASet, error) {
 					return nil, err
 				}
 				queryDomain = target
-				va.Stats.TimingDuration("DnsRtt.LookupCNAME", cnameRtt, 1.0)
+				va.Stats.TimingDuration("DnsRtt.CNAME", cnameRtt, 1.0)
 			}
 			CAAs, caaRtt, err := va.DNSResolver.LookupCAA(queryDomain)
-			va.Stats.TimingDuration("DnsRtt.LookupCAA", caaRtt, 1.0)
+			va.Stats.TimingDuration("DnsRtt.CAA", caaRtt, 1.0)
 			if err != nil {
 				return nil, err
 			}
