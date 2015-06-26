@@ -64,41 +64,14 @@ def run_node_test():
 
     return 0
 
+
 def run_client_tests():
-    letsencrypt_bin = os.path.join(os.environ.get("LETSENCRYPT_VENV"), 'bin', 'letsencrypt')
-
-    tempconfig = os.path.join(tempdir, "conf")
-    tempwork = os.path.join(tempdir, "work")
-    templogs = os.path.join(tempdir, "logs")
-
-    base_cmd = '''
-        %s \
-        --authenticator standalone \
-        --server http://localhost:4300/acme/new-reg \
-        --dvsni-port 5001 \
-        --config-dir %s \
-        --work-dir %s \
-        --logs-dir %s \
-        --text \
-        --agree-eula \
-        --email "" \
-        ''' % (letsencrypt_bin, tempconfig, tempwork, templogs)
-
-    client_run(base_cmd, '--domains foo.com auth')
-
-    # For now, the client renewer can only be configured by file, not
-    # command line, so we create a config file.
-    renewer_config_filename = os.path.join(tempconfig, "renewer.conf")
-    with open(renewer_config_filename, "w") as r:
-        r.write("""\
-renew_before_expiry = 10 years
-deploy_before_expiry = 10 years
-""")
-
-
-def client_run(base_cmd, cmd):
-    if subprocess.Popen(base_cmd + cmd, shell=True).wait() != 0:
+    assert "LETSENCRYPT_PATH" in os.environ
+    root = os.environ["LETSENCRYPT_PATH"]
+    test_script_path = os.path.join(root, 'tests', 'boulder-integration.sh')
+    if subprocess.Popen(test_script_path, shell=True, cwd=root).wait() != 0:
         die()
+
 
 try:
     start()
