@@ -87,17 +87,17 @@ func TestDNSSEC(t *testing.T) {
 func TestDNSLookupHost(t *testing.T) {
 	obj := NewDNSResolver(time.Second*10, []string{"8.8.8.8:53"})
 
-	ip, _, err := obj.LookupHost("sigfail.verteiltesysteme.net")
+	ip, _, _, err := obj.LookupHost("sigfail.verteiltesysteme.net")
 	t.Logf("sigfail.verteiltesysteme.net - IP: %s, Err: %s", ip, err)
 	test.AssertError(t, err, "DNSSEC failure")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
-	ip, _, err = obj.LookupHost("nonexistent.letsencrypt.org")
+	ip, _, _, err = obj.LookupHost("nonexistent.letsencrypt.org")
 	t.Logf("nonexistent.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to not exist")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
-	ip, _, err = obj.LookupHost("cps.letsencrypt.org")
+	ip, _, _, err = obj.LookupHost("cps.letsencrypt.org")
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to be a CNAME")
 	test.Assert(t, len(ip) > 0, "Should have IPs")

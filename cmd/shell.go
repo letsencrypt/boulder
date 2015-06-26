@@ -234,7 +234,7 @@ func AmqpChannel(conf Config) (*amqp.Channel, error) {
 		if conf.AMQP.TLS.CertFile != nil || conf.AMQP.TLS.KeyFile != nil {
 			// But they have to give both.
 			if conf.AMQP.TLS.CertFile == nil || conf.AMQP.TLS.KeyFile == nil {
-				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile.")
+				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile")
 				return nil, err
 			}
 
@@ -360,13 +360,11 @@ func HandlerTimer(handler http.Handler, stats statsd.Statter, prefix string) htt
 		}
 
 		// If r.URL has more than two segments throw the rest away to simplify metrics
-		var endpoint string
 		segments := strings.Split(r.URL.Path, "/")
 		if len(segments) > 3 {
-			endpoint = strings.Join(segments[:3], "/")
-		} else {
-			endpoint = r.URL.Path
+			segments = segments[:3]
 		}
+		endpoint := strings.Join(segments, "/")
 
 		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.%s", endpoint, state), cClosed, 1.0)
 	})

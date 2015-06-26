@@ -443,8 +443,16 @@ func (va *ValidationAuthorityImpl) getCAASet(domain string) (*CAASet, error) {
 
 		// Query CAA records for domain and its alias if it has a CNAME
 		for _, alias := range []bool{false, true} {
-			CAAs, rtt, err := va.DNSResolver.LookupCAA(queryDomain, alias)
-			va.Stats.TimingDuration("DnsRtt.LookupCAA", rtt, 1.0)
+			if alias {
+				target, cnameRtt, err := va.DNSResolver.LookupCNAME(queryDomain)
+				if err != nil {
+					return nil, err
+				}
+				queryDomain = target
+				va.Stats.TimingDuration("DnsRtt.LookupCNAME", cnameRtt, 1.0)
+			}
+			CAAs, caaRtt, err := va.DNSResolver.LookupCAA(queryDomain)
+			va.Stats.TimingDuration("DnsRtt.LookupCAA", caaRtt, 1.0)
 			if err != nil {
 				return nil, err
 			}

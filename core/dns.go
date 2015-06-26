@@ -119,7 +119,7 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 // LookupHost uses a DNSSEC-enabled query to find all A/AAAA records associated with
 // the provided hostname. If the query fails due to DNSSEC, error will be
 // set to ErrorDNSSEC.
-func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
+func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
 	var addrs []net.IP
 	var answers []dns.RR
 
@@ -127,14 +127,14 @@ func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Dura
 	m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
 	r, aRtt, err := dnsResolver.LookupDNSSEC(m)
 	if err != nil {
-		return addrs, 0, err
+		return addrs, 0, 0, err
 	}
 	answers = append(answers, r.Answer...)
 
 	m.SetQuestion(dns.Fqdn(hostname), dns.TypeAAAA)
 	r, aaaaRtt, err := dnsResolver.LookupDNSSEC(m)
 	if err != nil {
-		return addrs, aRtt, err
+		return addrs, 0, 0, err
 	}
 	answers = append(answers, r.Answer...)
 
@@ -148,7 +148,7 @@ func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Dura
 		}
 	}
 
-	return addrs, aRtt + aaaaRtt, nil
+	return addrs, aRtt, aaaaRtt, nil
 }
 
 // LookupCNAME uses a DNSSEC-enabled query to  records for domain and returns either
@@ -175,21 +175,7 @@ func (dnsResolver *DNSResolver) LookupCNAME(domain string) (string, time.Duratio
 // LookupCAA uses a DNSSEC-enabled query to find all CAA records associated with
 // the provided hostname. If the query fails due to DNSSEC, error will be
 // set to ErrorDNSSEC.
-func (dnsResolver *DNSResolver) LookupCAA(domain string, alias bool) ([]*dns.CAA, time.Duration, error) {
-	var totalRtt time.Duration
-	if alias {
-		// Check if there is a CNAME record for domain
-		canonName, cnameRtt, err := dnsResolver.LookupCNAME(domain)
-		if err != nil {
-			return nil, 0, err
-		}
-		totalRtt += cnameRtt
-		if canonName == "" || canonName == domain {
-			return []*dns.CAA{}, 0, nil
-		}
-		domain = canonName
-	}
-
+func (dnsResolver *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeCAA)
 
@@ -197,7 +183,6 @@ func (dnsResolver *DNSResolver) LookupCAA(domain string, alias bool) ([]*dns.CAA
 	if err != nil {
 		return nil, 0, err
 	}
-	totalRtt += rtt
 
 	var CAAs []*dns.CAA
 	for _, answer := range r.Answer {
@@ -205,11 +190,11 @@ func (dnsResolver *DNSResolver) LookupCAA(domain string, alias bool) ([]*dns.CAA
 			caaR, ok := answer.(*dns.CAA)
 			if !ok {
 				err = errors.New("Badly formatted record")
-				return nil, totalRtt, err
+				return nil, rtt, err
 			}
 			CAAs = append(CAAs, caaR)
 		}
 	}
 
-	return CAAs, totalRtt, nil
+	return CAAs, rtt, nil
 }
