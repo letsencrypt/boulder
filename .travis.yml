@@ -31,15 +31,15 @@ before_install:
   # we add a symlink.
   - mkdir -p $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt
   - test ! -d $GOPATH/src/github.com/letsencrypt/boulder && ln -s $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt/boulder || true
-  - git clone https://www.github.com/letsencrypt/lets-encrypt-preview.git /tmp/letsencrypt
-  - cd /tmp/letsencrypt
+  - git clone https://www.github.com/letsencrypt/lets-encrypt-preview.git "$LETSENCRYPT_PATH"
+  - cd "$LETSENCRYPT_PATH"
   - sudo ./bootstrap/debian.sh
   - virtualenv --no-site-packages -p python2 ./venv
   - travis_retry ./venv/bin/pip install -r requirements.txt -e .
   - "cd -"
 
 env:
-  - LETSENCRYPT_VENV=/tmp/letsencrypt/venv
+  - LETSENCRYPT_PATH=/tmp/letsencrypt
 
 script:
   - make -j4 # Travis has 2 cores per build instance
