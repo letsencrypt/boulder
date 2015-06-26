@@ -58,7 +58,7 @@ type verificationRequestEvent struct {
 // was an underlying net.OpError or an error caused by resolver returning SERVFAIL or other
 // invalid Rcodes.
 func (va ValidationAuthorityImpl) parseDNSError(err error, challenge core.Challenge) core.Challenge {
-	challenge.Error = &core.ProblemDetails{Type: core.ServerInternalProblem}
+	challenge.Error = &core.ProblemDetails{Type: core.ConnectionProblem}
 	if netErr, ok := err.(*net.OpError); ok {
 		if netErr.Timeout() {
 			challenge.Error.Detail = "DNS query timed out"

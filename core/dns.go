@@ -6,7 +6,6 @@
 package core
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -33,7 +32,9 @@ func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolve
 }
 
 // ExchangeOne performs a single DNS exchange with a randomly chosen server
-// out of the server list, returning the response, time, and error (if any)
+// out of the server list, returning the response, time, and error (if any).
+// This method sets the DNSSEC OK bit on the message to true before sending
+// it to the resolver in case validation isn't the resolvers default behaviour.
 func (dnsResolver *DNSResolver) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.Duration, err error) {
 	// Set DNSSEC OK bit for resolver
 	m.SetEdns0(4096, true)
@@ -68,9 +69,10 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeTXT {
-			txtRec := answer.(*dns.TXT)
-			for _, field := range txtRec.Txt {
-				txt = append(txt, field)
+			if txtRec, ok := answer.(*dns.TXT); ok {
+				for _, field := range txtRec.Txt {
+					txt = append(txt, field)
+				}
 			}
 		}
 	}
@@ -112,11 +114,13 @@ func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Dura
 
 	for _, answer := range answers {
 		if answer.Header().Rrtype == dns.TypeA {
-			a := answer.(*dns.A)
-			addrs = append(addrs, a.A)
+			if a, ok := answer.(*dns.A); ok {
+				addrs = append(addrs, a.A)
+			}
 		} else if answer.Header().Rrtype == dns.TypeAAAA {
-			aaaa := answer.(*dns.AAAA)
-			addrs = append(addrs, aaaa.AAAA)
+			if aaaa, ok := answer.(*dns.AAAA); ok {
+				addrs = append(addrs, aaaa.AAAA)
+			}
 		}
 	}
 
@@ -171,21 +175,19 @@ func (dnsResolver *DNSResolver) LookupCAA(domain string, alias bool) ([]*dns.CAA
 		return nil, err
 	}
 
+	// On resolver validation failure, or other server failures, return empty an
+	// set and no error.
 	var CAAs []*dns.CAA
-	// XXX: On resolver validation failure, or other server failures, return empty
-	//      set and no error.
-	if r.Rcode != dns.RcodeServerFailure {
-		for _, answer := range r.Answer {
-			if answer.Header().Rrtype == dns.TypeCAA {
-				caaR, ok := answer.(*dns.CAA)
-				if !ok {
-					err = errors.New("Badly formatted record")
-					return nil, err
-				}
+	if r.Rcode == dns.RcodeServerFailure {
+		return CAAs, nil
+	}
+
+	for _, answer := range r.Answer {
+		if answer.Header().Rrtype == dns.TypeCAA {
+			if caaR, ok := answer.(*dns.CAA); ok {
 				CAAs = append(CAAs, caaR)
 			}
 		}
 	}
-
 	return CAAs, nil
 }
