@@ -68,40 +68,33 @@ def run_client_tests():
     letsencrypt_bin = os.path.join(os.environ.get("LETSENCRYPT_VENV"), 'bin', 'letsencrypt')
 
     tempconfig = os.path.join(tempdir, "conf")
-    os.mkdir(tempconfig, 0755)
-
     tempwork = os.path.join(tempdir, "work")
-    os.mkdir(tempwork, 0755)
-
-    tempkey = os.path.join(tempdir, "key")
-    os.mkdir(tempkey, 0700)
-
-    # For now, the client renewer can only be configured by file, not command
-    # line, so we create a config file.
-    renewer_config_filename = os.path.join(tempdir, "renewer.conf")
-    with open(renewer_config_filename, "w") as r:
-        r.write('''
-            renewal_configs_dir = %s/renewal_configs
-            archive_dir = %s/archive
-            live_dir = %s/live
-            ''' % (tempconfig, tempwork, tempwork))
+    templogs = os.path.join(tempdir, "logs")
 
     base_cmd = '''
         %s \
-        -a standalone \
+        --authenticator standalone \
         --server http://localhost:4300/acme/new-reg \
         --dvsni-port 5001 \
         --config-dir %s \
         --work-dir %s \
-        --key-dir %s \
-        --cert-dir %s \
+        --logs-dir %s \
         --text \
         --agree-eula \
         --email "" \
-        --renewer-config-file %s \
-        ''' % (letsencrypt_bin, tempconfig, tempwork, tempkey, tempwork, renewer_config_filename)
+        ''' % (letsencrypt_bin, tempconfig, tempwork, templogs)
 
     client_run(base_cmd, '--domains foo.com auth')
+
+    # For now, the client renewer can only be configured by file, not
+    # command line, so we create a config file.
+    renewer_config_filename = os.path.join(tempconfig, "renewer.conf")
+    with open(renewer_config_filename, "w") as r:
+        r.write("""\
+renew_before_expiry = 10 years
+deploy_before_expiry = 10 years
+""")
+
 
 def client_run(base_cmd, cmd):
     if subprocess.Popen(base_cmd + cmd, shell=True).wait() != 0:
