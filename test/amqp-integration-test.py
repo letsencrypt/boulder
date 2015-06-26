@@ -64,14 +64,15 @@ def run_node_test():
 
     return 0
 
-
 def run_client_tests():
-    assert "LETSENCRYPT_PATH" in os.environ
-    root = os.environ["LETSENCRYPT_PATH"]
+    root = os.environ.get("LETSENCRYPT_PATH")
+    assert root is not None, (
+        "Please set LETSENCRYPT_PATH env variable to point at "
+        "initialized (virtualenv) client repo root")
+    os.environ['SERVER'] = 'http://localhost:4300/acme/new-reg'
     test_script_path = os.path.join(root, 'tests', 'boulder-integration.sh')
     if subprocess.Popen(test_script_path, shell=True, cwd=root).wait() != 0:
         die()
-
 
 try:
     start()
