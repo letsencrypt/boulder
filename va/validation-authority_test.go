@@ -200,7 +200,7 @@ func brokenTLSSrv(t *testing.T, stopChan, waitChan chan bool) {
 
 func TestSimpleHttpTLS(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
-	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.DNSResolver = core.MockDNS{}
 
 	chall := core.Challenge{Path: "test", Token: expectedToken}
 
