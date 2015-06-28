@@ -54,7 +54,7 @@ const expectedToken = "THETOKEN"
 const pathWrongToken = "wrongtoken"
 const path404 = "404"
 
-func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
+func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableTLS bool) {
 	// Reset any existing handlers
 	http.DefaultServeMux = http.NewServeMux()
 
@@ -77,11 +77,11 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 		}
 	})
 
-	httpsServer := &http.Server{Addr: "localhost:5001"}
-	conn, err := net.Listen("tcp", httpsServer.Addr)
+	server := &http.Server{Addr: "localhost:5001"}
+	conn, err := net.Listen("tcp", server.Addr)
 	if err != nil {
 		waitChan <- true
-		t.Fatalf("Couldn't listen on %s: %s", httpsServer.Addr, err)
+		t.Fatalf("Couldn't listen on %s: %s", server.Addr, err)
 	}
 
 	go func() {
@@ -90,7 +90,37 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool) {
 	}()
 
 	waitChan <- true
-	httpsServer.Serve(conn)
+	if enableTLS {
+		template := &x509.Certificate{
+			SerialNumber: big.NewInt(1337),
+			Subject: pkix.Name{
+				Organization: []string{"tests"},
+			},
+			NotBefore: time.Now(),
+			NotAfter:  time.Now().AddDate(0, 0, 1),
+
+			KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			BasicConstraintsValid: true,
+
+			DNSNames: []string{"example.com"},
+		}
+
+		certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+		cert := &tls.Certificate{
+			Certificate: [][]byte{certBytes},
+			PrivateKey:  &TheKey,
+		}
+
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{*cert},
+		}
+
+		tlsListener := tls.NewListener(conn, tlsConfig)
+		server.Serve(tlsListener)
+	} else {
+		server.Serve(conn)
+	}
 }
 
 func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
@@ -166,11 +196,29 @@ func brokenTLSSrv(t *testing.T, stopChan, waitChan chan bool) {
 	httpsServer.Serve(tlsListener)
 }
 
-func TestSimpleHttp(t *testing.T) {
+func TestSimpleHttpTLS(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
 
 	chall := core.Challenge{Path: "test", Token: expectedToken}
+
+	stopChan := make(chan bool, 1)
+	waitChan := make(chan bool, 1)
+	go simpleSrv(t, expectedToken, stopChan, waitChan, true)
+	defer func() { stopChan <- true }()
+	<-waitChan
+
+	finChall, err := va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, chall.Path)
+}
+
+func TestSimpleHttp(t *testing.T) {
+	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+
+	tls := false
+	chall := core.Challenge{Path: "test", Token: expectedToken, TLS: &tls}
 
 	invalidChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -179,7 +227,7 @@ func TestSimpleHttp(t *testing.T) {
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
-	go simpleSrv(t, expectedToken, stopChan, waitChan)
+	go simpleSrv(t, expectedToken, stopChan, waitChan, tls)
 	defer func() { stopChan <- true }()
 	<-waitChan
 
@@ -187,14 +235,6 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
 
-	tls := false
-	chall.TLS = &tls
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Path)
-
-	tls = true
-	chall.TLS = &tls
 	chall.Path = path404
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -332,12 +372,14 @@ func TestValidateHTTP(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
+	tls := false
 	challHTTP := core.SimpleHTTPChallenge()
 	challHTTP.Path = "test"
+	challHTTP.TLS = &tls
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
-	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP)
+	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP, tls)
 
 	// Let them start
 	<-waitChanHTTP
@@ -432,12 +474,14 @@ func TestUpdateValidations(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
+	tls := false
 	challHTTP := core.SimpleHTTPChallenge()
 	challHTTP.Path = "wait"
+	challHTTP.TLS = &tls
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
-	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP)
+	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP, tls)
 
 	// Let them start
 	<-waitChanHTTP
