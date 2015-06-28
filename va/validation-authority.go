@@ -87,7 +87,6 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 	if va.TestMode {
 		hostName = "localhost:5001"
-		scheme = "http"
 	}
 
 	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, hostName, challenge.Path)
