@@ -50,7 +50,10 @@ update_status() {
 
 run() {
   echo "$*"
-  if $*; then
+  $* 2>&1
+  local status=$?
+
+  if [ ${status} -eq 0 ]; then
     update_status --state success
     echo "success: $*"
   else
@@ -58,15 +61,22 @@ run() {
     update_status --state failure
     echo "failure: $*"
   fi
+
+  return ${status}
 }
 
 run_and_comment() {
   if [ "${TRAVIS_PULL_REQUEST}" == "false" ] ; then
     run $*
   else
-    run $* | node node_modules/github-pr-status/github-pr-comment.js \
-      --authfile "$(pwd)/test/github-secret.json" --pr ${TRAVIS_PULL_REQUEST} \
-      --user "letsencrypt" --repo "boulder"
+    result=$(run $*)
+    local status=$?
+    # Only send a comment if exit code > 0
+    if [ ${status} -ne 0 ] ; then
+      echo ${result} | node node_modules/github-pr-status/github-pr-comment.js \
+        --authfile "$(pwd)/test/github-secret.json" --pr ${TRAVIS_PULL_REQUEST} \
+        --user "letsencrypt" --repo "boulder"
+    fi
   fi
 }
 
