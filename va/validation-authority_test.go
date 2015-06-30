@@ -89,8 +89,10 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 		conn.Close()
 	}()
 
-	waitChan <- true
-	if enableTLS {
+	var listener net.Listener
+	if !enableTLS {
+		listener = conn
+	} else {
 		template := &x509.Certificate{
 			SerialNumber: big.NewInt(1337),
 			Subject: pkix.Name{
@@ -116,11 +118,11 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 			Certificates: []tls.Certificate{*cert},
 		}
 
-		tlsListener := tls.NewListener(conn, tlsConfig)
-		server.Serve(tlsListener)
-	} else {
-		server.Serve(conn)
+		listener = tls.NewListener(conn, tlsConfig)
 	}
+
+	waitChan <- true
+	server.Serve(listener)
 }
 
 func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
