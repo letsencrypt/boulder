@@ -21,25 +21,108 @@ TESTDIRS="analysis \
           # cmd
           # Godeps
 
+# We need to know, for github-pr-status, what the triggering commit is.
+# Assume first it's the travis commit (for builds of master), unless we're
+# a PR, when it's actually the first parent.
+TRIGGER_COMMIT=${TRAVIS_COMMIT}
+if [ "${TRAVIS_PULL_REQUEST}" != "false" ] ; then
+  revs=$(git rev-list --parents -n 1 HEAD)
+  # The trigger commit is the last ID in the space-delimited rev-list
+  TRIGGER_COMMIT=${revs##* }
+fi
+
+start_context() {
+  CONTEXT="$1"
+  echo "Starting [${CONTEXT}]"
+}
+
+end_context() {
+  CONTEXT=""
+}
+
+update_status() {
+  if [ "${TRAVIS}" == "true" ] && [ "x${CONTEXT}" != "x" ] ; then
+    node node_modules/github-pr-status/github-pr-status.js \
+      --authfile "$(pwd)/test/github-secret.json" --sha "${TRIGGER_COMMIT}" \
+      --user "letsencrypt" --repo "boulder" --context "${CONTEXT}" $*
+  fi
+}
+
 run() {
   echo "$*"
   if $*; then
+    update_status --state success
     echo "success: $*"
   else
     FAILURE=1
+    update_status --state failure
     echo "failure: $*"
   fi
 }
 
+run_and_comment() {
+  if [ "${TRAVIS_PULL_REQUEST}" == "false" ] ; then
+    run $*
+  else
+    run $* | node node_modules/github-pr-status/github-pr-comment.js \
+      --authfile "$(pwd)/test/github-secret.json" --pr ${TRAVIS_PULL_REQUEST} \
+      --user "letsencrypt" --repo "boulder"
+  fi
+}
 
 # Path for installed go package binaries. If yours is different, override with
 # GOBIN=/my/path/to/bin ./test.sh
 GOBIN=${GOBIN:-$HOME/gopath/bin}
 
-# Ask vet to check in on things
-run go vet -x ./...
+#
+# Run Go Vet, a static analysis tool
+#
 
-[ -e $GOBIN/golint ] && run $GOBIN/golint ./...
+start_context "test/vet"
+run_and_comment go vet ./...
+
+#
+# Run Go Lint, another static analysis tool
+#
+
+start_context "test/golint"
+[ -e $GOBIN/golint ] && run_and_comment $GOBIN/golint ./...
+
+#
+# Ensure all files are formatted per the `go fmt` tool
+#
+start_context "test/gofmt"
+unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1  gofmt -l)
+if [ "x${unformatted}" == "x" ] ; then
+  update_status --state success
+else
+
+  V="Unformatted files found.
+  Please run 'go fmt' on each of these files and amend your commit to continue."
+
+  for f in ${unformatted}; do
+    V=$(printf "%s\n - %s" "${V}" "${f}")
+  done
+
+  # Print to stdout
+  printf "%s\n\n" "${V}"
+  update_status --state failure --description "${V}"
+
+  # Post a comment with the unformatted list
+  if [ "${TRAVIS_PULL_REQUEST}" != "false" ] ; then
+    run_and_comment printf "%s\n\n" "${V}"
+  fi
+
+  [ "${TRAVIS}" == "true" ] || exit 1 # Stop here if running locally
+fi
+
+#
+# Unit Tests. These do not receive a context or status updates,
+# as they are reflected in our eventual exit code.
+#
+
+# Clear Status context
+end_context
 
 # Ensure SQLite is installed so we don't recompile it each time
 go install ./Godeps/_workspace/src/github.com/mattn/go-sqlite3
@@ -70,8 +153,20 @@ fi
 
 # If the unittests failed, exit before trying to run the integration test.
 if [ ${FAILURE} != 0 ]; then
+  echo "--------------------------------------------------"
+  echo "---          A unit test failed.               ---"
+  echo "--- Stopping before running integration tests. ---"
+  echo "--------------------------------------------------"
   exit ${FAILURE}
 fi
+
+#
+# Integration tests
+#
+
+# Set context to integration, and force a pending state
+start_context "test/integration"
+update_status --state pending --description "Integration Tests in progress"
 
 if [ -z "$LETSENCRYPT_PATH" ]; then
   LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
@@ -94,16 +189,23 @@ fi
 source $LETSENCRYPT_PATH/venv/bin/activate
 export LETSENCRYPT_PATH
 
-run python test/amqp-integration-test.py
-
-unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1  gofmt -l)
-if [ "x${unformatted}" != "x" ] ; then
-  echo "Unformatted files found; setting failure state."
-  echo "Please run 'go fmt' on each of these files and amend your commit to continue."
-  FAILURE=1
-  for f in ${unformatted}; do
-    echo "- ${f}"
-  done
-fi
+python test/amqp-integration-test.py
+case $? in
+  0) # Success
+    update_status --state success
+    ;;
+  1) # Python client failed, but Node client didn't, which does
+     # not constitute failure
+    update_status --state success --description "Python integration failed."
+    ;;
+  2) # Node client failed
+    update_status --state failure --description "NodeJS integration failed."
+    FAILURE=1
+    ;;
+  *) # Error occurred
+    update_status --state error --description "Error occurred."
+    FAILURE=1
+    ;;
+esac
 
 exit ${FAILURE}
