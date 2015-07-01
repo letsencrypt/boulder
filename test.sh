@@ -44,7 +44,7 @@ update_status() {
   if [ "${TRAVIS}" == "true" ] && [ "x${CONTEXT}" != "x" ] ; then
     node node_modules/github-pr-status/github-pr-status.js \
       --authfile "$(pwd)/test/github-secret.json" --sha "${TRIGGER_COMMIT}" \
-      --user "letsencrypt" --repo "boulder" --context "${CONTEXT}" $*
+      --owner "letsencrypt" --repo "boulder" --context "${CONTEXT}" $*
   fi
 }
 
@@ -75,7 +75,7 @@ run_and_comment() {
     if [ ${status} -ne 0 ] ; then
       echo ${result} | node node_modules/github-pr-status/github-pr-comment.js \
         --authfile "$(pwd)/test/github-secret.json" --pr ${TRAVIS_PULL_REQUEST} \
-        --user "letsencrypt" --repo "boulder"
+        --owner "letsencrypt" --repo "boulder"
     fi
   fi
 }
