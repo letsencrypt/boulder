@@ -42,9 +42,9 @@ end_context() {
 
 update_status() {
   if [ "${TRAVIS}" == "true" ] && [ "x${CONTEXT}" != "x" ] ; then
-    node node_modules/github-pr-status/github-pr-status.js \
-      --authfile "$(pwd)/test/github-secret.json" --sha "${TRIGGER_COMMIT}" \
-      --owner "letsencrypt" --repo "boulder" --context "${CONTEXT}" $*
+    github-pr-status --authfile "$(pwd)/test/github-secret.json" \
+      --owner "letsencrypt" --repo "boulder" \
+      status --sha "${TRIGGER_COMMIT}" --context "${CONTEXT}" $*
   fi
 }
 
@@ -66,16 +66,16 @@ run() {
 }
 
 run_and_comment() {
-  if [ "${TRAVIS_PULL_REQUEST}" == "false" ] ; then
+  if [ "x${TRAVIS}" = "x" ] || [ "${TRAVIS_PULL_REQUEST}" == "false" ] ; then
     run $*
   else
     result=$(run $*)
     local status=$?
     # Only send a comment if exit code > 0
     if [ ${status} -ne 0 ] ; then
-      echo ${result} | node node_modules/github-pr-status/github-pr-comment.js \
-        --authfile "$(pwd)/test/github-secret.json" --pr ${TRAVIS_PULL_REQUEST} \
-        --owner "letsencrypt" --repo "boulder"
+      echo ${result} | github-pr-status --authfile "$(pwd)/test/github-secret.json" \
+        --owner "letsencrypt" --repo "boulder" \
+        comment --pr ${TRAVIS_PULL_REQUEST}
     fi
   fi
 }
@@ -85,24 +85,24 @@ run_and_comment() {
 GOBIN=${GOBIN:-$HOME/gopath/bin}
 
 #
-# Run Go Vet, a static analysis tool
+# Run Go Vet, a correctness-focused static analysis tool
 #
 
 start_context "test/vet"
 run_and_comment go vet ./...
 
 #
-# Run Go Lint, another static analysis tool
+# Run Go Lint, a style-focused static analysis tool
 #
 
 start_context "test/golint"
-[ -e $GOBIN/golint ] && run_and_comment $GOBIN/golint ./...
+[ -x "$(which golint)" ] && run golint ./...
 
 #
 # Ensure all files are formatted per the `go fmt` tool
 #
 start_context "test/gofmt"
-unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1  gofmt -l)
+unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1 gofmt -l)
 if [ "x${unformatted}" == "x" ] ; then
   update_status --state success
 else
