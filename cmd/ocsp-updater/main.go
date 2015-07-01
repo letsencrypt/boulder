@@ -26,9 +26,15 @@ import (
 
 const ocspResponseLimit int = 128
 
+// FatalError indicates the updater should stop execution
+type FatalError string
+
+func (e FatalError) Error() string { return string(e) }
+
 // OCSPUpdater contains the useful objects for the Updater
 type OCSPUpdater struct {
 	stats statsd.Statter
+	log   *blog.AuditLogger
 	cac   rpc.CertificateAuthorityClient
 	dbMap *gorp.DbMap
 }
@@ -104,9 +110,50 @@ func (updater *OCSPUpdater) processResponse(tx *gorp.Transaction, serial string)
 	return nil
 }
 
-func (updater *OCSPUpdater) findStaleResponses(oldestLastUpdatedTime time.Time, responseLimit int) error {
-	log := blog.GetAuditLogger()
+// Produce one OCSP response for the given serial, returning err
+// if anything went wrong. This method will open and commit a transaction.
+func (updater *OCSPUpdater) updateOneSerial(serial string) error {
+	innerStart := time.Now()
+	// Each response gets a transaction. In the future we can increase
+	// performance by batching transactions.
+	// The key thing to think through is the cost of rollbacks, and whether
+	// we should rollback if CA/HSM fails to sign the response or only
+	// upon a partial DB insert.
+	tx, err := updater.dbMap.Begin()
+	if err != nil {
+		updater.log.Err(fmt.Sprintf("OCSP %s: Error starting transaction, aborting: %s", serial, err))
+		updater.stats.Inc("OCSP.UpdatesFailed", 1, 1.0)
+		tx.Rollback()
+		// Failure to begin transaction is a fatal error.
+		return FatalError(err.Error())
+	}
 
+	if err := updater.processResponse(tx, serial); err != nil {
+		updater.log.Err(fmt.Sprintf("OCSP %s: Could not process OCSP Response, skipping: %s", serial, err))
+		updater.stats.Inc("OCSP.UpdatesFailed", 1, 1.0)
+		tx.Rollback()
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		updater.log.Err(fmt.Sprintf("OCSP %s: Error committing transaction, skipping: %s", serial, err))
+		updater.stats.Inc("OCSP.UpdatesFailed", 1, 1.0)
+		tx.Rollback()
+		return err
+	}
+
+	updater.log.Info(fmt.Sprintf("OCSP %s: OK", serial))
+	updater.stats.Inc("OCSP.UpdatesProcessed", 1, 1.0)
+	updater.stats.TimingDuration("OCSP.UpdateTime", time.Since(innerStart), 1.0)
+	return nil
+}
+
+// findStaleResponses opens a transaction and processes up to responseLimit
+// responses in a single batch. The responseLimit should be relatively small,
+// so as to limit the chance of the transaction failing due to concurrent
+// updates.
+func (updater *OCSPUpdater) findStaleResponses(oldestLastUpdatedTime time.Time, responseLimit int) error {
 	var certificateStatus []core.CertificateStatus
 	_, err := updater.dbMap.Select(&certificateStatus,
 		`SELECT cs.* FROM certificateStatus AS cs JOIN certificates AS cert ON cs.serial = cert.serial
@@ -115,38 +162,25 @@ func (updater *OCSPUpdater) findStaleResponses(oldestLastUpdatedTime time.Time, 
 		 LIMIT ?`, oldestLastUpdatedTime, responseLimit)
 
 	if err == sql.ErrNoRows {
-		log.Info("All up to date. No OCSP responses needed.")
+		updater.log.Info("All up to date. No OCSP responses needed.")
 	} else if err != nil {
-		log.Err(fmt.Sprintf("Error loading certificate status: %s", err))
+		updater.log.Err(fmt.Sprintf("Error loading certificate status: %s", err))
 	} else {
-		log.Info(fmt.Sprintf("Processing OCSP Responses...\n"))
+		updater.log.Info(fmt.Sprintf("Processing OCSP Responses...\n"))
 		outerStart := time.Now()
 
 		for i, status := range certificateStatus {
-			log.Debug(fmt.Sprintf("OCSP %s: #%d", status.Serial, i))
-			innerStart := time.Now()
+			updater.log.Debug(fmt.Sprintf("OCSP %s: (%d/%d)", status.Serial, i, responseLimit))
 
-			// Each response gets a transaction. To speed this up, we can batch
-			// transactions.
-			tx, err := updater.dbMap.Begin()
-			if err != nil {
-				log.Err(fmt.Sprintf("OCSP %s: Error starting transaction, aborting: %s", status.Serial, err))
-				tx.Rollback()
+			err = updater.updateOneSerial(status.Serial)
+			// Abort if we recieve a fatal error
+			if _, ok := err.(FatalError); ok {
 				return err
 			}
-
-			if err := updater.processResponse(tx, status.Serial); err != nil {
-				log.Err(fmt.Sprintf("OCSP %s: Could not process OCSP Response: %s", status.Serial, err))
-				continue
-			}
-
-			log.Info(fmt.Sprintf("OCSP %s: OK", status.Serial))
-			tx.Commit()
-
-			updater.stats.TimingDuration("OCSP.UpdateSingle", time.Since(innerStart), 1.0)
-			updater.stats.Inc("OCSP.UpdatesProcessed", 1, 1.0)
 		}
-		updater.stats.TimingDuration("OCSP.UpdateAggregate", time.Since(outerStart), 1.0)
+
+		updater.stats.TimingDuration("OCSP.BatchTime", time.Since(outerStart), 1.0)
+		updater.stats.Inc("OCSP.BatchesProcessed", 1, 1.0)
 	}
 
 	return err
@@ -202,6 +236,7 @@ func main() {
 			cac:   cac,
 			dbMap: dbMap,
 			stats: stats,
+			log:   auditlogger,
 		}
 
 		// Calculate the cut-off timestamp
@@ -216,6 +251,9 @@ func main() {
 
 		count := int(math.Min(float64(ocspResponseLimit), float64(c.OCSPUpdater.ResponseLimit)))
 
+		// When we choose to batch responses, it may be best to restrict count here,
+		// change the transaction to survive the whole findStaleResponses, and to
+		// loop this method call however many times is appropriate.
 		err = updater.findStaleResponses(oldestLastUpdatedTime, count)
 		if err != nil {
 			auditlogger.WarningErr(err)
