@@ -73,7 +73,7 @@ run_and_comment() {
     local status=$?
     # Only send a comment if exit code > 0
     if [ ${status} -ne 0 ] ; then
-      echo ${result} | github-pr-status --authfile "$(pwd)/test/github-secret.json" \
+      echo $'```\n'${result}$'\n```' | github-pr-status --authfile "$(pwd)/test/github-secret.json" \
         --owner "letsencrypt" --repo "boulder" \
         comment --pr ${TRAVIS_PULL_REQUEST}
     fi
