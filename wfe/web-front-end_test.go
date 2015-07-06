@@ -1001,3 +1001,24 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
 	responseWriter.Body.Reset()
 }
+
+func TestTermsRedirect(t *testing.T) {
+	wfe := setupWFE(t)
+
+	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &MockSA{}
+	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.SubscriberAgreementURL = agreementURL
+
+	responseWriter := httptest.NewRecorder()
+
+	path, _ := url.Parse("/terms")
+	wfe.Terms(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    path,
+	})
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Location"),
+		agreementURL)
+	test.AssertEquals(t, responseWriter.Code, 302)
+}
