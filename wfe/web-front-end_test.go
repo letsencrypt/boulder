@@ -690,8 +690,9 @@ func TestNewRegistration(t *testing.T) {
 	signer, err = jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 
+	// Reset the body and status code
+	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
-	responseWriter.Body.Reset()
 	nonce, err = wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
 	result, err = signer.Sign([]byte("{\"contact\":[\"tel:123456789\"],\"agreement\":\""+agreementURL+"\"}"), nonce)
@@ -706,6 +707,7 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"/acme/reg/1")
+	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
 // Valid revocation request for existing, non-revoked cert
