@@ -43,17 +43,6 @@ const (
 	AmqpImmediate    = false
 )
 
-// A simplified way to get a channel for a given AMQP server
-func amqpConnect(url string) (ch *amqp.Channel, err error) {
-	conn, err := amqp.Dial(url)
-	if err != nil {
-		return
-	}
-
-	ch, err = conn.Channel()
-	return
-}
-
 // AMQPDeclareExchange attempts to declare the configured AMQP exchange,
 // returning silently if already declared, erroring if nonexistant and
 // unable to create.
