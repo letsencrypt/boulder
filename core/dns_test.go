@@ -17,6 +17,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
 
+const dnsLoopbackAddr = "127.0.0.1:4053"
+
 func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 	defer w.Close()
 	m := new(dns.Msg)
@@ -56,6 +58,16 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				w.WriteMsg(m)
 				return
 			}
+		case dns.TypeCAA:
+			record := new(dns.CAA)
+			record.Hdr = dns.RR_Header{Name: "bracewel.net.", Rrtype: dns.TypeCAA, Class: dns.ClassINET, Ttl: 0}
+			record.Tag = "issue"
+			record.Value = "letsencrypt.org"
+			record.Flag = 1
+
+			m.Answer = append(m.Answer, record)
+			w.WriteMsg(m)
+			return
 		}
 	}
 
@@ -65,7 +77,7 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 
 func serveLoopResolver(stopChan chan bool) chan bool {
 	dns.HandleFunc(".", mockDNSQuery)
-	server := &dns.Server{Addr: "127.0.0.1:4053", Net: "udp", ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}
+	server := &dns.Server{Addr: dnsLoopbackAddr, Net: "udp", ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}
 	waitChan := make(chan bool, 1)
 	go func() {
 		waitChan <- true
@@ -104,7 +116,7 @@ func TestDNSNoServers(t *testing.T) {
 }
 
 func TestDNSOneServer(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{"127.0.0.1:4053"})
+	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
 	m := new(dns.Msg)
 	m.SetQuestion("letsencrypt.org.", dns.TypeSOA)
@@ -114,7 +126,7 @@ func TestDNSOneServer(t *testing.T) {
 }
 
 func TestDNSDuplicateServers(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{"127.0.0.1:4053", "127.0.0.1:4053"})
+	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr, dnsLoopbackAddr})
 
 	m := new(dns.Msg)
 	m.SetQuestion("letsencrypt.org.", dns.TypeSOA)
@@ -123,24 +135,24 @@ func TestDNSDuplicateServers(t *testing.T) {
 	test.AssertNotError(t, err, "No message")
 }
 
-func TestDNSLookupTXT(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{"127.0.0.1:4053", "127.0.0.1:4053"})
-
-	a, rtt, err := obj.LookupTXT("letsencrypt.org")
-
-	t.Logf("A: %v RTT %s", a, rtt)
-	test.AssertNotError(t, err, "No message")
-}
-
-func TestDNSLookupTXTNoServer(t *testing.T) {
+func TestDNSLookupsNoServer(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{})
 
 	_, _, err := obj.LookupTXT("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
+
+	_, _, err = obj.LookupHost("letsencrypt.org")
+	test.AssertError(t, err, "No servers")
+
+	_, err = obj.LookupCNAME("letsencrypt.org")
+	test.AssertError(t, err, "No servers")
+
+	_, err = obj.LookupCAA("letsencrypt.org", false)
+	test.AssertError(t, err, "No servers")
 }
 
-func TestDNSSEC(t *testing.T) {
-	goodServer := NewDNSResolverImpl(time.Second*10, []string{"127.0.0.1:4053"})
+func TestDNSLookupDNSSEC(t *testing.T) {
+	goodServer := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn("sigfail.verteiltesysteme.net"), dns.TypeA)
@@ -164,8 +176,17 @@ func TestDNSSEC(t *testing.T) {
 	test.Assert(t, !ok, "Shouldn't have been a DNSSECError")
 }
 
+func TestDNSLookupTXT(t *testing.T) {
+	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+
+	a, rtt, err := obj.LookupTXT("letsencrypt.org")
+
+	t.Logf("A: %v RTT %s", a, rtt)
+	test.AssertNotError(t, err, "No message")
+}
+
 func TestDNSLookupHost(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{"127.0.0.1:4053"})
+	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
 	ip, _, err := obj.LookupHost("sigfail.verteiltesysteme.net")
 	t.Logf("sigfail.verteiltesysteme.net - IP: %s, Err: %s", ip, err)
@@ -181,4 +202,13 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to be a CNAME")
 	test.Assert(t, len(ip) > 0, "Should have IPs")
+}
+
+func TestDNSLookupCAA(t *testing.T) {
+	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+
+	caas, err := obj.LookupCAA("bracewel.net.", false)
+	test.AssertNotError(t, err, "CAA lookup failed")
+	test.Assert(t, len(caas) > 0, "Should have CAA records")
+	fmt.Println(caas)
 }
