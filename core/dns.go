@@ -24,26 +24,26 @@ func (err DNSSECError) Error() string {
 	return "DNSSEC validation failure"
 }
 
-// DNSResolver represents a resolver system
-type DNSResolver struct {
+// DNSResolverImpl represents a resolver system
+type DNSResolverImpl struct {
 	DNSClient *dns.Client
 	Servers   []string
 }
 
-// NewDNSResolver constructs a new DNS resolver object that utilizes the
+// NewDNSResolverImpl constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution.
-func NewDNSResolver(dialTimeout time.Duration, servers []string) *DNSResolver {
+func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolverImpl {
 	dnsClient := new(dns.Client)
 
 	// Set timeout for underlying net.Conn
 	dnsClient.DialTimeout = dialTimeout
 
-	return &DNSResolver{DNSClient: dnsClient, Servers: servers}
+	return &DNSResolverImpl{DNSClient: dnsClient, Servers: servers}
 }
 
 // ExchangeOne performs a single DNS exchange with a randomly chosen server
 // out of the server list, returning the response, time, and error (if any)
-func (dnsResolver *DNSResolver) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.Duration, err error) {
+func (dnsResolver *DNSResolverImpl) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.Duration, err error) {
 	if len(dnsResolver.Servers) < 1 {
 		err = fmt.Errorf("Not configured with at least one DNS Server")
 		return
@@ -59,7 +59,7 @@ func (dnsResolver *DNSResolver) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.
 // ExchangeOne) with DNSSEC enabled. If the lookup fails, this method sends a
 // clarification query to determine if it's because DNSSEC was invalid or just
 // a run-of-the-mill error. If it's because of DNSSEC, it returns ErrorDNSSEC.
-func (dnsResolver *DNSResolver) LookupDNSSEC(m *dns.Msg) (*dns.Msg, time.Duration, error) {
+func (dnsResolver *DNSResolverImpl) LookupDNSSEC(m *dns.Msg) (*dns.Msg, time.Duration, error) {
 	// Set DNSSEC OK bit
 	m.SetEdns0(4096, true)
 	r, rtt, err := dnsResolver.ExchangeOne(m)
@@ -93,7 +93,7 @@ func (dnsResolver *DNSResolver) LookupDNSSEC(m *dns.Msg) (*dns.Msg, time.Duratio
 // LookupTXT uses a DNSSEC-enabled query to find all TXT records associated with
 // the provided hostname. If the query fails due to DNSSEC, error will be
 // set to ErrorDNSSEC.
-func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Duration, error) {
+func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.Duration, error) {
 	var txt []string
 
 	m := new(dns.Msg)
@@ -119,7 +119,7 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 // LookupHost uses a DNSSEC-enabled query to find all A/AAAA records associated with
 // the provided hostname. If the query fails due to DNSSEC, error will be
 // set to ErrorDNSSEC.
-func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
+func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
 	var addrs []net.IP
 	var answers []dns.RR
 
@@ -154,7 +154,7 @@ func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Dura
 // LookupCNAME uses a DNSSEC-enabled query to  records for domain and returns either
 // the target, "", or a if the query fails due to DNSSEC, error will be set to
 // ErrorDNSSEC.
-func (dnsResolver *DNSResolver) LookupCNAME(domain string) (string, error) {
+func (dnsResolver *DNSResolverImpl) LookupCNAME(domain string) (string, error) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(domain), dns.TypeCNAME)
 
@@ -175,7 +175,7 @@ func (dnsResolver *DNSResolver) LookupCNAME(domain string) (string, error) {
 // LookupCAA uses a DNSSEC-enabled query to find all CAA records associated with
 // the provided hostname. If the query fails due to DNSSEC, error will be
 // set to ErrorDNSSEC.
-func (dnsResolver *DNSResolver) LookupCAA(domain string, alias bool) ([]*dns.CAA, error) {
+func (dnsResolver *DNSResolverImpl) LookupCAA(domain string, alias bool) ([]*dns.CAA, error) {
 	if alias {
 		// Check if there is a CNAME record for domain
 		canonName, err := dnsResolver.LookupCNAME(domain)

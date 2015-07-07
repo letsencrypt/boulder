@@ -38,7 +38,7 @@ func main() {
 		vai := va.NewValidationAuthorityImpl(c.CA.TestMode)
 		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
-		vai.DNSResolver = core.NewDNSResolver(dnsTimeout, []string{c.VA.DNSResolver})
+		vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.VA.DNSResolver})
 		vai.UserAgent = c.VA.UserAgent
 
 		for {

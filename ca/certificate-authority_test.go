@@ -18,6 +18,7 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+	"github.com/letsencrypt/boulder/mocks"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
@@ -348,7 +349,7 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 	ssa.CreateTablesIfNotExists()
 	storageAuthority = ssa
 
-	cadb, _ = test.NewMockCertificateAuthorityDatabase()
+	cadb, _ = mocks.NewMockCertificateAuthorityDatabase()
 
 	// Create a CA
 	caConfig = Config{
