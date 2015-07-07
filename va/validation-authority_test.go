@@ -218,7 +218,7 @@ func TestSimpleHttpTLS(t *testing.T) {
 
 func TestSimpleHttp(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
-	va.DNSResolver = core.NewDNSResolver(time.Second*5, []string{"8.8.8.8:53"})
+	va.DNSResolver = &mocks.MockDNS{}
 
 	tls := false
 	chall := core.Challenge{Path: "test", Token: expectedToken, TLS: &tls}
