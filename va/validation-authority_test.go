@@ -517,26 +517,10 @@ func TestCAAChecking(t *testing.T) {
 	}
 	tests := []CAATest{
 		// Reserved
-		// CAATest{"google.com", true, false},
-		// CAATest{"mail.google.com", true, false},
-		// CAATest{"*.google.com", true, false},
-		// CAATest{"comodo.com", true, false},
-		// CAATest{"0day.net", true, false},
-		// CAATest{"darktangent.org", true, false},
-		// CAATest{"instantssl.com", true, false},
-		// CAATest{"nails.eu.org", true, false},
 		CAATest{"reserved.com", true, false},
 		// Critical
-		// CAATest{"goop.org", true, false},
-		// CAATest{"nethemba.com", true, false},
-		// CAATest{"arrakis.tv", true, false},
-		// CAATest{"mail2.bevenhall.se", true, false},
 		CAATest{"critical.com", true, false},
 		// Good (absent)
-		// CAATest{"linux.org", false, true},
-		// CAATest{"*.linux.org", false, true},
-		// CAATest{"pir.org", false, true},
-		// CAATest{"non-existent-domain-really.com", false, true},
 		CAATest{"absent.com", false, true},
 		// Good (present)
 		CAATest{"present.com", true, true},
