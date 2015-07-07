@@ -54,9 +54,19 @@ func amqpConnect(url string) (ch *amqp.Channel, err error) {
 	return
 }
 
-// A simplified way to declare and subscribe to an AMQP queue
-func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan amqp.Delivery, error) {
+// AMQPDeclareExchange attempts to declare the configured AMQP exchange,
+// returning silently if already declared, erroring if nonexistant and
+// unable to create.
+func AMQPDeclareExchange(conn *amqp.Connection) error {
 	var err error
+	var ch *amqp.Channel
+	log := blog.GetAuditLogger()
+
+	ch, err = conn.Channel()
+	if err != nil {
+		log.Crit(fmt.Sprintf("Could not connect Channel: %s", err))
+		return err
+	}
 
 	err = ch.ExchangeDeclarePassive(
 		AmqpExchange,
@@ -69,6 +79,14 @@ func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan
 	if err != nil {
 		log.Info(fmt.Sprintf("Exchange %s does not exist on AMQP server, attempting to create. (err=%s)", AmqpExchange, err))
 
+		// Channel is invalid at this point, so recreate
+		ch.Close()
+		ch, err = conn.Channel()
+		if err != nil {
+			log.Crit(fmt.Sprintf("Could not connect Channel: %s", err))
+			return err
+		}
+
 		err = ch.ExchangeDeclare(
 			AmqpExchange,
 			AmqpExchangeType,
@@ -79,9 +97,18 @@ func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan
 			nil)
 		if err != nil {
 			log.Crit(fmt.Sprintf("Could not declare exchange: %s", err))
-			return nil, err
+			ch.Close()
+			return err
 		}
 	}
+
+	ch.Close()
+	return err
+}
+
+// A simplified way to declare and subscribe to an AMQP queue
+func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan amqp.Delivery, error) {
+	var err error
 
 	_, err = ch.QueueDeclare(
 		name,

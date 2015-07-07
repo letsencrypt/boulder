@@ -71,31 +71,6 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 		cmd.FailOnError(err, "Could not determine hostname")
 	}
 
-	err = rpcCh.ExchangeDeclarePassive(
-		AmqpExchange,
-		AmqpExchangeType,
-		AmqpDurable,
-		AmqpDeleteUnused,
-		AmqpInternal,
-		AmqpNoWait,
-		nil)
-	if err != nil {
-		logger.Info(fmt.Sprintf("Exchange %s does not exist on AMQP server, attempting to create.", AmqpExchange))
-
-		// Attempt to create the Exchange if not exists
-		err = rpcCh.ExchangeDeclare(
-			AmqpExchange,
-			AmqpExchangeType,
-			AmqpDurable,
-			AmqpDeleteUnused,
-			AmqpInternal,
-			AmqpNoWait,
-			nil)
-		if err != nil {
-			cmd.FailOnError(err, "Could not declare exchange")
-		}
-	}
-
 	_, err = rpcCh.QueueDeclarePassive(
 		QueueName,
 		AmqpDurable,
