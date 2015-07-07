@@ -138,6 +138,7 @@ type CertificateAuthorityDatabase interface {
 	Begin() (*gorp.Transaction, error)
 }
 
+// DNSResolver defines methods used for DNS resolution
 type DNSResolver interface {
 	ExchangeOne(*dns.Msg) (*dns.Msg, time.Duration, error)
 	LookupDNSSEC(*dns.Msg) (*dns.Msg, time.Duration, error)

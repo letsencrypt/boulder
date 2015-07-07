@@ -95,7 +95,7 @@ func (mock *MockDNS) LookupCAA(domain string, alias bool) ([]*dns.CAA, error) {
 		results = append(results, &record)
 	case "present.com":
 		record.Tag = "issue"
-		record.Value = "lets-encrypt.org"
+		record.Value = "letsencrypt.org"
 		results = append(results, &record)
 	case "dnssec-failed.org":
 		return results, core.DNSSECError{}

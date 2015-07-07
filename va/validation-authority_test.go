@@ -528,7 +528,7 @@ func TestCAAChecking(t *testing.T) {
 
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.IssuerDomain = "lets-encrypt.org"
+	va.IssuerDomain = "letsencrypt.org"
 	for _, caaTest := range tests {
 		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		test.AssertNotError(t, err, caaTest.Domain)

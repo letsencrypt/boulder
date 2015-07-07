@@ -29,9 +29,9 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 		switch q.Qtype {
 		case dns.TypeSOA:
 			record := new(dns.SOA)
-			record.Hdr = dns.RR_Header{Name: "lets-encrypt.org.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 0}
-			record.Ns = "ns.lets-encrypt.org."
-			record.Mbox = "master.lets-encrypt.org."
+			record.Hdr = dns.RR_Header{Name: "letsencrypt.org.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 0}
+			record.Ns = "ns.letsencrypt.org."
+			record.Mbox = "master.letsencrypt.org."
 			record.Serial = 1
 			record.Refresh = 1
 			record.Retry = 1
@@ -45,7 +45,7 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 			switch q.Name {
 			case "cps.letsencrypt.org.":
 				record := new(dns.A)
-				record.Hdr = dns.RR_Header{Name: "cps.lets-encrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
+				record.Hdr = dns.RR_Header{Name: "cps.letsencrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
 				record.A = net.ParseIP("127.0.0.1")
 
 				m.Answer = append(m.Answer, record)
@@ -59,15 +59,17 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				return
 			}
 		case dns.TypeCAA:
-			record := new(dns.CAA)
-			record.Hdr = dns.RR_Header{Name: "bracewel.net.", Rrtype: dns.TypeCAA, Class: dns.ClassINET, Ttl: 0}
-			record.Tag = "issue"
-			record.Value = "letsencrypt.org"
-			record.Flag = 1
+			if q.Name == "bracewel.net." {
+				record := new(dns.CAA)
+				record.Hdr = dns.RR_Header{Name: "bracewel.net.", Rrtype: dns.TypeCAA, Class: dns.ClassINET, Ttl: 0}
+				record.Tag = "issue"
+				record.Value = "letsencrypt.org"
+				record.Flag = 1
 
-			m.Answer = append(m.Answer, record)
-			w.WriteMsg(m)
-			return
+				m.Answer = append(m.Answer, record)
+				w.WriteMsg(m)
+				return
+			}
 		}
 	}
 
@@ -207,8 +209,11 @@ func TestDNSLookupHost(t *testing.T) {
 func TestDNSLookupCAA(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
-	caas, err := obj.LookupCAA("bracewel.net.", false)
+	caas, err := obj.LookupCAA("bracewel.net", false)
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should have CAA records")
-	fmt.Println(caas)
+
+	caas, err = obj.LookupCAA("nonexistent.letsencrypt.org", false)
+	test.AssertNotError(t, err, "CAA lookup failed")
+	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
 }
