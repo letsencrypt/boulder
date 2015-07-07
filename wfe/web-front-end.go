@@ -1022,7 +1022,7 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 		return
 	}
 
-	fmt.Fprintf(response, "TODO: Add terms of use here")
+	http.Redirect(response, request, wfe.SubscriberAgreementURL, http.StatusFound)
 }
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.
