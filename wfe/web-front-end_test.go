@@ -703,6 +703,9 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Registration key is already in use\"}")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Location"),
+		"/acme/reg/1")
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
