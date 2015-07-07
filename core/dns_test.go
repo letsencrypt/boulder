@@ -24,7 +24,6 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 	m.Compress = false
 
 	for _, q := range r.Question {
-		fmt.Println("QUESTION", q)
 		switch q.Qtype {
 		case dns.TypeSOA:
 			record := new(dns.SOA)
