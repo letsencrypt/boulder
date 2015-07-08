@@ -224,12 +224,9 @@ func TestSimpleHttp(t *testing.T) {
 	chall := core.Challenge{Path: "test", Token: expectedToken, TLS: &tls}
 
 	invalidChall, err := va.validateSimpleHTTP(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
-		test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
+	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
@@ -238,81 +235,57 @@ func TestSimpleHttp(t *testing.T) {
 	<-waitChan
 
 	finChall, err := va.validateSimpleHTTP(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, finChall.Status, core.StatusValid)
-		test.AssertNotError(t, err, chall.Path)
-	}
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, chall.Path)
 
 	chall.Path = path404
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "Should have found a 404 for the challenge.")
-		test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Should have found a 404 for the challenge.")
+	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
 
 	chall.Path = pathWrongToken
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "The path should have given us the wrong token.")
-		test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "The path should have given us the wrong token.")
+	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
 
 	chall.Path = ""
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "Empty paths shouldn't work either.")
-		test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Empty paths shouldn't work either.")
+	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	chall.Path = "validish"
 	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
-		test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
+	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	va.TestMode = false
 	chall.Path = "alsoValidish"
 	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "Domain name is invalid.")
-		test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
-		va.TestMode = true
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Domain name is invalid.")
+	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
+	va.TestMode = true
 
 	chall.Path = "%"
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "Path doesn't consist of URL-safe characters.")
-		test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Path doesn't consist of URL-safe characters.")
+	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	chall.Path = "wait-long"
 	started := time.Now()
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		took := time.Since(started)
-		// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
-		test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
-		test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "Connection should've timed out")
-		test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
-	}
+	took := time.Since(started)
+	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
+	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
+	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Connection should've timed out")
+	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 }
 
 func TestDvsni(t *testing.T) {
@@ -324,12 +297,9 @@ func TestDvsni(t *testing.T) {
 	chall := core.Challenge{R: ba, S: ba}
 
 	invalidChall, err := va.validateDvsni(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
-		test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
+	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 
 	waitChan := make(chan bool, 1)
 	stopChan := make(chan bool, 1)
@@ -338,63 +308,45 @@ func TestDvsni(t *testing.T) {
 	<-waitChan
 
 	finChall, err := va.validateDvsni(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, finChall.Status, core.StatusValid)
-		test.AssertNotError(t, err, "")
-	}
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, "")
 
 	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
-		test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
+	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	va.TestMode = false
 	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "Domain name is invalid.")
-		test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Domain name is invalid.")
+	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 
 	va.TestMode = true
 	chall.R = ba[5:]
 	invalidChall, err = va.validateDvsni(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "R Should be illegal Base64")
-		test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "R Should be illegal Base64")
+	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	chall.R = ba
 	chall.S = "!@#"
 	invalidChall, err = va.validateDvsni(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "S Should be illegal Base64")
-		test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "S Should be illegal Base64")
+	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	chall.S = ba
 	chall.Nonce = "wait-long"
 	started := time.Now()
 	invalidChall, err = va.validateDvsni(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		took := time.Since(started)
-		// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
-		test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
-		test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "Connection should've timed out")
-		test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
-	}
+	took := time.Since(started)
+	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
+	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
+	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Connection should've timed out")
+	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 }
 
 func TestTLSError(t *testing.T) {
@@ -412,12 +364,9 @@ func TestTLSError(t *testing.T) {
 	<-waitChan
 
 	invalidChall, err := va.validateDvsni(ident, chall)
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || (err != nil && !strings.HasSuffix(err.Error(), "DNS query timed out")) {
-		test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-		test.AssertError(t, err, "What cert was used?")
-		test.AssertEquals(t, invalidChall.Error.Type, core.TLSProblem)
-	}
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "What cert was used?")
+	test.AssertEquals(t, invalidChall.Error.Type, core.TLSProblem)
 }
 
 func TestValidateHTTP(t *testing.T) {
