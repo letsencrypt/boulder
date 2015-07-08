@@ -436,10 +436,7 @@ func TestValidateDvsni(t *testing.T) {
 	}
 	va.validate(authz, 0)
 
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if mockRA.lastAuthz.Challenges[0].Error == nil || (mockRA.lastAuthz.Challenges[0].Error != nil && !strings.HasSuffix(mockRA.lastAuthz.Challenges[0].Error.Detail, "DNS query timed out")) {
-		test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
-	}
+	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
 func TestValidateDvsniNotSane(t *testing.T) {
@@ -473,10 +470,7 @@ func TestValidateDvsniNotSane(t *testing.T) {
 	}
 	va.validate(authz, 0)
 
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if mockRA.lastAuthz.Challenges[0].Error == nil || (mockRA.lastAuthz.Challenges[0].Error != nil && !strings.HasSuffix(mockRA.lastAuthz.Challenges[0].Error.Detail, "DNS query timed out")) {
-		test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
-	}
+	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
 func TestUpdateValidations(t *testing.T) {
@@ -546,12 +540,9 @@ func TestCAAChecking(t *testing.T) {
 	}
 
 	present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "dnssec-failed.org"})
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || err != nil && err.Error() != "read udp 8.8.8.8:53: i/o timeout" {
-		test.AssertError(t, err, "dnssec-failed.org")
-		test.Assert(t, !present, "Present should be false")
-		test.Assert(t, !valid, "Valid should be false")
-	}
+	test.AssertError(t, err, "dnssec-failed.org")
+	test.Assert(t, !present, "Present should be false")
+	test.Assert(t, !valid, "Valid should be false")
 }
 
 func TestDNSValidationFailure(t *testing.T) {
@@ -570,13 +561,10 @@ func TestDNSValidationFailure(t *testing.T) {
 	}
 	va.validate(authz, 0)
 
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if mockRA.lastAuthz.Challenges[0].Error == nil || (mockRA.lastAuthz.Challenges[0].Error != nil && !strings.HasSuffix(mockRA.lastAuthz.Challenges[0].Error.Detail, "DNS query timed out")) {
-		t.Logf("Resulting Authz: %+v", authz)
-		test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
-		test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
-		test.AssertEquals(t, authz.Challenges[0].Error.Type, core.UnauthorizedProblem)
-	}
+	t.Logf("Resulting Authz: %+v", authz)
+	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
+	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
+	test.AssertEquals(t, authz.Challenges[0].Error.Type, core.UnauthorizedProblem)
 }
 
 func TestDNSValidationInvalid(t *testing.T) {
@@ -601,12 +589,9 @@ func TestDNSValidationInvalid(t *testing.T) {
 
 	va.validate(authz, 0)
 
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if mockRA.lastAuthz.Challenges[0].Error == nil || (mockRA.lastAuthz.Challenges[0].Error != nil && !strings.HasSuffix(mockRA.lastAuthz.Challenges[0].Error.Detail, "DNS query timed out")) {
-		test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
-		test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
-		test.AssertEquals(t, authz.Challenges[0].Error.Type, core.MalformedProblem)
-	}
+	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
+	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
+	test.AssertEquals(t, authz.Challenges[0].Error.Type, core.MalformedProblem)
 }
 
 func TestDNSValidationNotSane(t *testing.T) {
@@ -668,12 +653,9 @@ func TestDNSValidationBadDNSSEC(t *testing.T) {
 	}
 	va.validate(authz, 0)
 
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if mockRA.lastAuthz.Challenges[0].Error == nil || (mockRA.lastAuthz.Challenges[0].Error != nil && !strings.HasSuffix(mockRA.lastAuthz.Challenges[0].Error.Detail, "DNS query timed out")) {
-		test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
-		test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
-		test.AssertEquals(t, authz.Challenges[0].Error.Type, core.ConnectionProblem)
-	}
+	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
+	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
+	test.AssertEquals(t, authz.Challenges[0].Error.Type, core.ConnectionProblem)
 }
 
 func TestDNSValidationNoServer(t *testing.T) {

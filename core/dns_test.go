@@ -127,10 +127,7 @@ func TestDNSDuplicateServers(t *testing.T) {
 
 	_, _, err := obj.ExchangeOne("letsencrypt.org", dns.TypeSOA)
 
-	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
-	if err == nil || err != nil && err.Error() != "read udp 8.8.8.8:53: i/o timeout" {
-		test.AssertNotError(t, err, "No message")
-	}
+	test.AssertNotError(t, err, "No message")
 }
 
 func TestDNSLookupsNoServer(t *testing.T) {
