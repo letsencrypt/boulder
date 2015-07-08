@@ -347,7 +347,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	if existingReg, err := wfe.SA.GetRegistrationByKey(*key); err == nil {
 		logEvent.Error = "Registration key is already in use"
-		response.Header().Set("Location", fmt.Sprintf("%s%d", wfe.RegBase, existingReg.ID))
+		response.Header().Set("Location", fmt.Sprintf("%s%v", wfe.RegBase, existingReg.ID))
 		wfe.sendError(response, logEvent.Error, nil, http.StatusConflict)
 		return
 	}
