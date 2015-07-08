@@ -111,8 +111,7 @@ func TestMain(m *testing.M) {
 func TestDNSNoServers(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Hour, []string{})
 
-	m := new(dns.Msg)
-	_, _, err := obj.ExchangeOne(m)
+	_, _, err := obj.ExchangeOne("letsencrypt.org", dns.TypeA)
 
 	test.AssertError(t, err, "No servers")
 }
@@ -120,9 +119,7 @@ func TestDNSNoServers(t *testing.T) {
 func TestDNSOneServer(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
-	m := new(dns.Msg)
-	m.SetQuestion("letsencrypt.org.", dns.TypeSOA)
-	_, _, err := obj.ExchangeOne(m)
+	_, _, err := obj.ExchangeOne("letsencrypt.org", dns.TypeSOA)
 
 	test.AssertNotError(t, err, "No message")
 }
@@ -130,9 +127,7 @@ func TestDNSOneServer(t *testing.T) {
 func TestDNSDuplicateServers(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr, dnsLoopbackAddr})
 
-	m := new(dns.Msg)
-	m.SetQuestion("letsencrypt.org.", dns.TypeSOA)
-	_, _, err := obj.ExchangeOne(m)
+	_, _, err := obj.ExchangeOne("letsencrypt.org", dns.TypeSOA)
 
 	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
 	if err == nil || err != nil && err.Error() != "read udp 8.8.8.8:53: i/o timeout" {
@@ -167,7 +162,7 @@ func TestDNSLookupDNSSEC(t *testing.T) {
 		test.AssertError(t, err, "LookupTXT didn't return an error")
 	}
 
-	_, err = goodServer.LookupCNAME(badSig)
+	_, _, err = goodServer.LookupCNAME(badSig)
 	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
 	if err == nil || err != nil && err.Error() != "read udp 8.8.8.8:53: i/o timeout" {
 		test.AssertError(t, err, "LookupCNAME didn't return an error")
@@ -175,7 +170,7 @@ func TestDNSLookupDNSSEC(t *testing.T) {
 
 	// CAA lookup ignores validation failures from the resolver for now
 	// and returns an empty list of CAA records.
-	emptyCaa, err := goodServer.LookupCAA(badSig, false)
+	emptyCaa, _, err := goodServer.LookupCAA(badSig)
 	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
 	if err == nil || err != nil && err.Error() != "read udp 8.8.8.8:53: i/o timeout" {
 		test.Assert(t, len(emptyCaa) == 0, "Query returned non-empty list of CAA records")
@@ -210,7 +205,7 @@ func TestDNSLookupHost(t *testing.T) {
 		test.AssertNotError(t, err, "LookupTXT returned an error")
 	}
 
-	_, err = goodServer.LookupCNAME(goodSig)
+	_, _, err = goodServer.LookupCNAME(goodSig)
 	// TODO(Issue #401): Until #401 is resolved ignore DNS timeouts from non-local resolver
 	if err == nil || err != nil && err.Error() != "read udp 8.8.8.8:53: i/o timeout" {
 		test.AssertNotError(t, err, "LookupCNAME returned an error")
@@ -221,10 +216,10 @@ func TestDNSLookupHost(t *testing.T) {
 	_, _, err = badServer.LookupTXT(goodSig)
 	test.AssertError(t, err, "LookupTXT didn't return an error")
 
-	_, err = badServer.LookupCNAME(goodSig)
+	_, _, err = badServer.LookupCNAME(goodSig)
 	test.AssertError(t, err, "LookupCNAME didn't return an error")
 
-	_, err = badServer.LookupCAA(goodSig, false)
+	_, _, err = badServer.LookupCAA(goodSig)
 	test.AssertError(t, err, "LookupCAA didn't return an error")
 }
 

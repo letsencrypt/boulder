@@ -35,7 +35,10 @@ func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolve
 // out of the server list, returning the response, time, and error (if any).
 // This method sets the DNSSEC OK bit on the message to true before sending
 // it to the resolver in case validation isn't the resolvers default behaviour.
-func (dnsResolver *DNSResolver) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.Duration, err error) {
+func (dnsResolver *DNSResolver) ExchangeOne(hostname string, qtype uint16) (rsp *dns.Msg, rtt time.Duration, err error) {
+	m := new(dns.Msg)
+	// Set question type
+	m.SetQuestion(dns.Fqdn(hostname), qtype)
 	// Set DNSSEC OK bit for resolver
 	m.SetEdns0(4096, true)
 
@@ -54,11 +57,7 @@ func (dnsResolver *DNSResolver) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.
 // the provided hostname.
 func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Duration, error) {
 	var txt []string
-
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(hostname), dns.TypeTXT)
-
-	r, rtt, err := dnsResolver.ExchangeOne(m)
+	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeTXT)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -82,32 +81,28 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 
 // LookupHost sends a DNS query to find all A/AAAA records associated with
 // the provided hostname.
-func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
+func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
 	var addrs []net.IP
 	var answers []dns.RR
 
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
-
-	r, aRtt, err := dnsResolver.ExchangeOne(m)
+	r, aRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeA)
 	if err != nil {
-		return addrs, aRtt, err
+		return addrs, 0, 0, err
 	}
 	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
 		err = fmt.Errorf("Failure at resolver: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, 0, err
+		return nil, aRtt, 0, err
 	}
 
 	answers = append(answers, r.Answer...)
 
-	m.SetQuestion(dns.Fqdn(hostname), dns.TypeAAAA)
-	r, aaaaRtt, err := dnsResolver.ExchangeOne(m)
+	r, aaaaRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeAAAA)
 	if err != nil {
-		return addrs, aRtt + aaaaRtt, err
+		return addrs, aRtt, 0, err
 	}
 	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
 		err = fmt.Errorf("Failure at resolver: %d-%s for AAAA query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, aRtt + aaaaRtt, err
+		return nil, aRtt, aaaaRtt, err
 	}
 
 	answers = append(answers, r.Answer...)
@@ -124,62 +119,44 @@ func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Dura
 		}
 	}
 
-	return addrs, aRtt + aaaaRtt, nil
+	return addrs, aRtt, aaaaRtt, nil
 }
 
-// LookupCNAME sends a DNS query to find a CNAME record associated domain and returns the
+// LookupCNAME sends a DNS query to find a CNAME record associated hostname and returns the
 // record target.
-func (dnsResolver *DNSResolver) LookupCNAME(domain string) (string, error) {
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(domain), dns.TypeCNAME)
-
-	r, _, err := dnsResolver.ExchangeOne(m)
+func (dnsResolver *DNSResolver) LookupCNAME(hostname string) (string, time.Duration, error) {
+	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeCNAME)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
 		err = fmt.Errorf("Failure at resolver: %d-%s for CNAME query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return "", err
+		return "", rtt, err
 	}
 
 	for _, answer := range r.Answer {
 		if cname, ok := answer.(*dns.CNAME); ok {
-			return cname.Target, nil
+			return cname.Target, rtt, nil
 		}
 	}
 
-	return "", nil
+	return "", rtt, nil
 }
 
 // LookupCAA sends a DNS query to find all CAA records associated with
 // the provided hostname. If the response code from the resolver is SERVFAIL
 // an empty slice of CAA records is returned.
-func (dnsResolver *DNSResolver) LookupCAA(domain string, alias bool) ([]*dns.CAA, error) {
-	if alias {
-		// Check if there is a CNAME record for domain
-		canonName, err := dnsResolver.LookupCNAME(domain)
-		if err != nil {
-			return nil, err
-		}
-		if canonName == "" || canonName == domain {
-			return []*dns.CAA{}, nil
-		}
-		domain = canonName
-	}
-
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(domain), dns.TypeCAA)
-
-	r, _, err := dnsResolver.ExchangeOne(m)
+func (dnsResolver *DNSResolver) LookupCAA(hostname string) ([]*dns.CAA, time.Duration, error) {
+	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeCAA)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// On resolver validation failure, or other server failures, return empty an
 	// set and no error.
 	var CAAs []*dns.CAA
 	if r.Rcode == dns.RcodeServerFailure {
-		return CAAs, nil
+		return CAAs, rtt, nil
 	}
 
 	for _, answer := range r.Answer {
@@ -189,5 +166,5 @@ func (dnsResolver *DNSResolver) LookupCAA(domain string, alias bool) ([]*dns.CAA
 			}
 		}
 	}
-	return CAAs, nil
+	return CAAs, rtt, nil
 }

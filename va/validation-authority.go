@@ -54,24 +54,20 @@ type verificationRequestEvent struct {
 
 // Validation methods
 
-// parseDNSError checks the error returned from Lookup... methods and tests if the error
+// setChallengeErrorFromDNSError checks the error returned from Lookup... methods and tests if the error
 // was an underlying net.OpError or an error caused by resolver returning SERVFAIL or other
-// invalid Rcodes.
-func (va ValidationAuthorityImpl) parseDNSError(err error, challenge core.Challenge) core.Challenge {
+// invalid Rcodes and sets the challenge.Error field accordingly.
+func setChallengeErrorFromDNSError(err error, challenge *core.Challenge) {
 	challenge.Error = &core.ProblemDetails{Type: core.ConnectionProblem}
 	if netErr, ok := err.(*net.OpError); ok {
 		if netErr.Timeout() {
 			challenge.Error.Detail = "DNS query timed out"
-			return challenge
 		} else if netErr.Temporary() {
 			challenge.Error.Detail = "Temporary network connectivity error"
-			return challenge
 		}
 	} else {
 		challenge.Error.Detail = "Server failure at resolver"
 	}
-
-	return challenge
 }
 
 func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
@@ -100,10 +96,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	hostName := identifier.Value
 
 	// Check for resolver SERVFAIL for A/AAAA records
-	_, _, err := va.DNSResolver.LookupHost(hostName)
+	_, _, _, err := va.DNSResolver.LookupHost(hostName)
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		challenge = va.parseDNSError(err, challenge)
+		setChallengeErrorFromDNSError(err, &challenge)
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
 		return challenge, challenge.Error
 	}
@@ -237,10 +233,10 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	zName := fmt.Sprintf("%064x.acme.invalid", z)
 
 	// Check for resolver SERVFAIL for A/AAAA records
-	_, _, err = va.DNSResolver.LookupHost(identifier.Value)
+	_, _, _, err = va.DNSResolver.LookupHost(identifier.Value)
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		challenge = va.parseDNSError(err, challenge)
+		setChallengeErrorFromDNSError(err, &challenge)
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
 		return challenge, challenge.Error
 	}
@@ -335,7 +331,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		challenge = va.parseDNSError(err, challenge)
+		setChallengeErrorFromDNSError(err, &challenge)
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
 		return challenge, challenge.Error
 	}
