@@ -38,38 +38,46 @@ type CSRWhitelist struct {
 // JSON marshal / unmarshal.
 type OID asn1.ObjectIdentifier
 
-// CertificatePolicy is a flattening of the ASN.1 PolicyInformation structure from
+// CertificatePolicy represents the ASN.1 PolicyInformation structure from
 // https://tools.ietf.org/html/rfc3280.html#page-106.
 // Valid values of Type are "id-qt-unotice" and "id-qt-cps"
 type CertificatePolicy struct {
-	ID        OID
-	Type      string
-	Qualifier string
+	ID         OID
+	Qualifiers []CertificatePolicyQualifier
+}
+
+// CertificatePolicyQualifier represents a single qualifier from an ASN.1
+// PolicyInformation structure.
+type CertificatePolicyQualifier struct {
+	Type  string
+	Value string
 }
 
 // A SigningProfile stores information that the CA needs to store
 // signature policy.
 type SigningProfile struct {
-	Usage          []string  `json:"usages"`
-	IssuerURL      []string  `json:"issuer_urls"`
-	OCSP           string    `json:"ocsp_url"`
-	CRL            string    `json:"crl_url"`
-	CA             bool      `json:"is_ca"`
-	OCSPNoCheck    bool      `json:"ocsp_no_check"`
-	ExpiryString   string    `json:"expiry"`
-	BackdateString string    `json:"backdate"`
-	AuthKeyName    string    `json:"auth_key"`
-	RemoteName     string    `json:"remote"`
-	NotBefore      time.Time `json:"not_before"`
-	NotAfter       time.Time `json:"not_after"`
+	Usage               []string  `json:"usages"`
+	IssuerURL           []string  `json:"issuer_urls"`
+	OCSP                string    `json:"ocsp_url"`
+	CRL                 string    `json:"crl_url"`
+	CA                  bool      `json:"is_ca"`
+	OCSPNoCheck         bool      `json:"ocsp_no_check"`
+	ExpiryString        string    `json:"expiry"`
+	BackdateString      string    `json:"backdate"`
+	AuthKeyName         string    `json:"auth_key"`
+	RemoteName          string    `json:"remote"`
+	NotBefore           time.Time `json:"not_before"`
+	NotAfter            time.Time `json:"not_after"`
+	NameWhitelistString string    `json:"name_whitelist"`
 
-	Policies     []CertificatePolicy
-	Expiry       time.Duration
-	Backdate     time.Duration
-	Provider     auth.Provider
-	RemoteServer string
-	UseSerialSeq bool
-	CSRWhitelist *CSRWhitelist
+	Policies      []CertificatePolicy
+	Expiry        time.Duration
+	Backdate      time.Duration
+	Provider      auth.Provider
+	RemoteServer  string
+	UseSerialSeq  bool
+	CSRWhitelist  *CSRWhitelist
+	NameWhitelist *regexp.Regexp
 }
 
 // UnmarshalJSON unmarshals a JSON string into an OID.
@@ -162,8 +170,11 @@ func (p *SigningProfile) populate(cfg *Config) error {
 
 		if len(p.Policies) > 0 {
 			for _, policy := range p.Policies {
-				if policy.Type != "" && policy.Type != "id-qt-unotice" && policy.Type != "id-qt-cps" {
-					return cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy, err)
+				for _, qualifier := range policy.Qualifiers {
+					if qualifier.Type != "" && qualifier.Type != "id-qt-unotice" && qualifier.Type != "id-qt-cps" {
+						return cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy,
+							errors.New("invalid policy qualifier type"))
+					}
 				}
 			}
 		}
@@ -198,6 +209,16 @@ func (p *SigningProfile) populate(cfg *Config) error {
 			return cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy,
 				errors.New("failed to find auth_key in auth_keys section"))
 		}
+	}
+
+	if p.NameWhitelistString != "" {
+		log.Debug("compiling whitelist regular expression")
+		rule, err := regexp.Compile(p.NameWhitelistString)
+		if err != nil {
+			return cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy,
+				errors.New("failed to compile name whitelist section"))
+		}
+		p.NameWhitelist = rule
 	}
 
 	return nil

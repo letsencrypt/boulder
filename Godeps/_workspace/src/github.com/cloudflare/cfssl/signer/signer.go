@@ -27,19 +27,11 @@ import (
 // MaxPathLen is the default path length for a new CA certificate.
 var MaxPathLen = 2
 
-// A Whitelist marks which fields should be set. As a bool's default
-// value is false, a whitelist should only keep those fields marked
-// true.
-type Whitelist struct {
-	CN, C, ST, L, O, OU bool
-}
-
 // Subject contains the information that should be used to override the
 // subject information when signing a certificate.
 type Subject struct {
-	CN        string
-	Names     []csr.Name `json:"names"`
-	Whitelist *Whitelist `json:"whitelist,omitempty"`
+	CN    string
+	Names []csr.Name `json:"names"`
 }
 
 // SignRequest stores a signature request, which contains the hostname,
@@ -351,13 +343,26 @@ func FillTemplate(template *x509.Certificate, defaultProfile, profile *config.Si
 	return nil
 }
 
-type policyQualifier struct {
+type policyInformation struct {
+	PolicyIdentifier    asn1.ObjectIdentifier
+	Qualifiers          []interface{}
+	CPSPolicyQualifiers []cpsPolicyQualifier `asn1:"omitempty"`
+	// User Notice policy qualifiers have a slightly different ASN.1 structure
+	// from that used for CPS policy qualifiers.
+	UserNoticePolicyQualifiers []userNoticePolicyQualifier `asn1:"omitempty"`
+}
+
+type cpsPolicyQualifier struct {
 	PolicyQualifierID asn1.ObjectIdentifier
 	Qualifier         string `asn1:"tag:optional,ia5"`
 }
-type policyInformation struct {
-	PolicyIdentifier asn1.ObjectIdentifier
-	PolicyQualifiers []policyQualifier `asn1:"omitempty"`
+
+type userNotice struct {
+	ExplicitText string `asn1:"tag:optional,utf8"`
+}
+type userNoticePolicyQualifier struct {
+	PolicyQualifierID asn1.ObjectIdentifier
+	Qualifier         userNotice
 }
 
 var (
@@ -382,26 +387,25 @@ func addPolicies(template *x509.Certificate, policies []config.CertificatePolicy
 			// The PolicyIdentifier is an OID assigned to a given issuer.
 			PolicyIdentifier: asn1.ObjectIdentifier(policy.ID),
 		}
-		switch policy.Type {
-		case "id-qt-unotice":
-			pi.PolicyQualifiers = []policyQualifier{
-				policyQualifier{
-					PolicyQualifierID: iDQTUserNotice,
-					Qualifier:         policy.Qualifier,
-				},
+		for _, qualifier := range policy.Qualifiers {
+			switch qualifier.Type {
+			case "id-qt-unotice":
+				pi.Qualifiers = append(pi.Qualifiers,
+					userNoticePolicyQualifier{
+						PolicyQualifierID: iDQTUserNotice,
+						Qualifier: userNotice{
+							ExplicitText: qualifier.Value,
+						},
+					})
+			case "id-qt-cps":
+				pi.Qualifiers = append(pi.Qualifiers,
+					cpsPolicyQualifier{
+						PolicyQualifierID: iDQTCertificationPracticeStatement,
+						Qualifier:         qualifier.Value,
+					})
+			default:
+				return errors.New("Invalid qualifier type in Policies " + qualifier.Type)
 			}
-		case "id-qt-cps":
-			pi.PolicyQualifiers = []policyQualifier{
-				policyQualifier{
-					PolicyQualifierID: iDQTCertificationPracticeStatement,
-					Qualifier:         policy.Qualifier,
-				},
-			}
-		case "":
-			// Empty qualifier type is fine: Include this Certificate Policy, but
-			// don't include a Policy Qualifier.
-		default:
-			return errors.New("Invalid qualifier type in Policies " + policy.Type)
 		}
 		asn1PolicyList = append(asn1PolicyList, pi)
 	}
