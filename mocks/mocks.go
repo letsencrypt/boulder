@@ -7,6 +7,7 @@ package mocks
 
 import (
 	"database/sql"
+	"fmt"
 	"net"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-	"github.com/letsencrypt/boulder/core"
 )
 
 // MockCADatabase is a mock
@@ -52,14 +52,14 @@ type MockDNS struct {
 }
 
 // ExchangeOne is a mock
-func (mock *MockDNS) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.Duration, err error) {
-	return m, 0, nil
+func (mock *MockDNS) ExchangeOne(hostname string, qt uint16) (rsp *dns.Msg, rtt time.Duration, err error) {
+	return nil, 0, nil
 }
 
 // LookupTXT is a mock
 func (mock *MockDNS) LookupTXT(hostname string) ([]string, time.Duration, error) {
 	if hostname == "_acme-challenge.dnssec-failed.org" {
-		return nil, 0, core.DNSSECError{}
+		return nil, 0, fmt.Errorf("SERVFAIL")
 	}
 	return []string{"hostname"}, 0, nil
 }
@@ -70,17 +70,17 @@ func (mock *MockDNS) LookupDNSSEC(m *dns.Msg) (*dns.Msg, time.Duration, error) {
 }
 
 // LookupHost is a mock
-func (mock *MockDNS) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
-	return nil, 0, nil
+func (mock *MockDNS) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
+	return nil, 0, 0, nil
 }
 
 // LookupCNAME is a mock
-func (mock *MockDNS) LookupCNAME(domain string) (string, error) {
-	return "hostname", nil
+func (mock *MockDNS) LookupCNAME(domain string) (string, time.Duration, error) {
+	return "hostname", 0, nil
 }
 
 // LookupCAA is a mock
-func (mock *MockDNS) LookupCAA(domain string, alias bool) ([]*dns.CAA, error) {
+func (mock *MockDNS) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error) {
 	var results []*dns.CAA
 	var record dns.CAA
 	switch domain {
@@ -98,7 +98,7 @@ func (mock *MockDNS) LookupCAA(domain string, alias bool) ([]*dns.CAA, error) {
 		record.Value = "letsencrypt.org"
 		results = append(results, &record)
 	case "dnssec-failed.org":
-		return results, core.DNSSECError{}
+		return results, 0, fmt.Errorf("SERVFAIL")
 	}
-	return results, nil
+	return results, 0, nil
 }

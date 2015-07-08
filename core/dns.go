@@ -14,8 +14,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
 
-// DNSResolver represents a resolver system
-type DNSResolver struct {
+// DNSResolverImpl represents a resolver system
+type DNSResolverImpl struct {
 	DNSClient *dns.Client
 	Servers   []string
 }
@@ -35,7 +35,7 @@ func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolve
 // out of the server list, returning the response, time, and error (if any).
 // This method sets the DNSSEC OK bit on the message to true before sending
 // it to the resolver in case validation isn't the resolvers default behaviour.
-func (dnsResolver *DNSResolver) ExchangeOne(hostname string, qtype uint16) (rsp *dns.Msg, rtt time.Duration, err error) {
+func (dnsResolver *DNSResolverImpl) ExchangeOne(hostname string, qtype uint16) (rsp *dns.Msg, rtt time.Duration, err error) {
 	m := new(dns.Msg)
 	// Set question type
 	m.SetQuestion(dns.Fqdn(hostname), qtype)
@@ -55,7 +55,7 @@ func (dnsResolver *DNSResolver) ExchangeOne(hostname string, qtype uint16) (rsp 
 
 // LookupTXT sends a DNS query to find all TXT records associated with
 // the provided hostname.
-func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Duration, error) {
+func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.Duration, error) {
 	var txt []string
 	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeTXT)
 	if err != nil {
@@ -81,7 +81,7 @@ func (dnsResolver *DNSResolver) LookupTXT(hostname string) ([]string, time.Durat
 
 // LookupHost sends a DNS query to find all A/AAAA records associated with
 // the provided hostname.
-func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
+func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
 	var addrs []net.IP
 	var answers []dns.RR
 
@@ -124,7 +124,7 @@ func (dnsResolver *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Dura
 
 // LookupCNAME sends a DNS query to find a CNAME record associated hostname and returns the
 // record target.
-func (dnsResolver *DNSResolver) LookupCNAME(hostname string) (string, time.Duration, error) {
+func (dnsResolver *DNSResolverImpl) LookupCNAME(hostname string) (string, time.Duration, error) {
 	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeCNAME)
 	if err != nil {
 		return "", 0, err
@@ -146,7 +146,7 @@ func (dnsResolver *DNSResolver) LookupCNAME(hostname string) (string, time.Durat
 // LookupCAA sends a DNS query to find all CAA records associated with
 // the provided hostname. If the response code from the resolver is SERVFAIL
 // an empty slice of CAA records is returned.
-func (dnsResolver *DNSResolver) LookupCAA(hostname string) ([]*dns.CAA, time.Duration, error) {
+func (dnsResolver *DNSResolverImpl) LookupCAA(hostname string) ([]*dns.CAA, time.Duration, error) {
 	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeCAA)
 	if err != nil {
 		return nil, 0, err
