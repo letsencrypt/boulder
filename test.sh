@@ -33,10 +33,11 @@ fi
 
 start_context() {
   CONTEXT="$1"
-  echo "Starting [${CONTEXT}]"
+  printf "[%16s] Starting\n" ${CONTEXT}
 }
 
 end_context() {
+  printf "[%16s] Done\n" ${CONTEXT}
   CONTEXT=""
 }
 
@@ -55,11 +56,11 @@ run() {
 
   if [ ${status} -eq 0 ]; then
     update_status --state success
-    echo "success: $*"
+    echo "Success: $*"
   else
     FAILURE=1
     update_status --state failure
-    echo "failure: $*"
+    echo "[!] FAILURE: $*"
   fi
 
   return ${status}
@@ -90,6 +91,7 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 
 start_context "test/vet"
 run_and_comment go vet ./...
+end_context #test/vet
 
 #
 # Run Go Lint, a style-focused static analysis tool
@@ -97,6 +99,7 @@ run_and_comment go vet ./...
 
 start_context "test/golint"
 [ -x "$(which golint)" ] && run golint ./...
+end_context #test/golint
 
 #
 # Ensure all files are formatted per the `go fmt` tool
@@ -125,14 +128,12 @@ else
 
   [ "${TRAVIS}" == "true" ] || exit 1 # Stop here if running locally
 fi
+end_context #test/gofmt
 
 #
 # Unit Tests. These do not receive a context or status updates,
 # as they are reflected in our eventual exit code.
 #
-
-# Clear Status context
-end_context
 
 # Ensure SQLite is installed so we don't recompile it each time
 go install ./Godeps/_workspace/src/github.com/mattn/go-sqlite3
@@ -213,9 +214,10 @@ case $? in
     FAILURE=1
     ;;
   *) # Error occurred
-    update_status --state error --description "Error occurred."
+    update_status --state error --description "Unknown error occurred."
     FAILURE=1
     ;;
 esac
+end_context #test/integration
 
 exit ${FAILURE}
