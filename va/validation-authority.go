@@ -452,9 +452,9 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 	return &filtered
 }
 
-func (va *ValidationAuthorityImpl) getCAASet(domain string, dnsResolver core.DNSResolver) (*CAASet, error) {
-	domain = strings.TrimRight(domain, ".")
-	splitDomain := strings.Split(domain, ".")
+func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
+	hostname = strings.TrimRight(hostname, ".")
+	splitDomain := strings.Split(hostname, ".")
 	// RFC 6844 CAA set query sequence, 'x.y.z.com' => ['x.y.z.com', 'y.z.com', 'z.com']
 	for i := range splitDomain {
 		queryDomain := strings.Join(splitDomain[i:], ".")
@@ -465,7 +465,14 @@ func (va *ValidationAuthorityImpl) getCAASet(domain string, dnsResolver core.DNS
 
 		// Query CAA records for domain and its alias if it has a CNAME
 		for _, alias := range []bool{false, true} {
-			CAAs, err := va.DNSResolver.LookupCAA(queryDomain, alias)
+			if alias {
+				target, _, err := va.DNSResolver.LookupCNAME(queryDomain)
+				if err != nil {
+					return nil, err
+				}
+				queryDomain = target
+			}
+			CAAs, _, err := va.DNSResolver.LookupCAA(queryDomain)
 			if err != nil {
 				return nil, err
 			}
@@ -483,8 +490,8 @@ func (va *ValidationAuthorityImpl) getCAASet(domain string, dnsResolver core.DNS
 // CheckCAARecords verifies that, if the indicated subscriber domain has any CAA
 // records, they authorize the configured CA domain to issue a certificate
 func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
-	domain := strings.ToLower(identifier.Value)
-	caaSet, err := va.getCAASet(domain, va.DNSResolver)
+	hostname := strings.ToLower(identifier.Value)
+	caaSet, err := va.getCAASet(hostname)
 	if err != nil {
 		return
 	}
@@ -500,7 +507,7 @@ func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifie
 	} else if len(caaSet.Issue) > 0 || len(caaSet.Issuewild) > 0 {
 		present = true
 		var checkSet []*dns.CAA
-		if strings.SplitN(domain, ".", 2)[0] == "*" {
+		if strings.SplitN(hostname, ".", 2)[0] == "*" {
 			checkSet = caaSet.Issuewild
 		} else {
 			checkSet = caaSet.Issue
