@@ -400,9 +400,7 @@ func TestValidateHTTP(t *testing.T) {
 	}
 	va.validate(authz, 0)
 
-	if mockRA.lastAuthz.Challenges[0].Error == nil || (mockRA.lastAuthz.Challenges[0].Error != nil && !strings.HasSuffix(mockRA.lastAuthz.Challenges[0].Error.Detail, "DNS query timed out")) {
-		test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
-	}
+	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
 func TestValidateDvsni(t *testing.T) {
