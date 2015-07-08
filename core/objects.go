@@ -23,6 +23,9 @@ import (
 // AcmeStatus defines the state of a given authorization
 type AcmeStatus string
 
+// AcmeResource values identify different types of ACME resources
+type AcmeResource string
+
 // Buffer is a variable-length collection of bytes
 type Buffer []byte
 
@@ -55,6 +58,18 @@ const (
 // These types are the available identification mechanisms
 const (
 	IdentifierDNS = IdentifierType("dns")
+)
+
+// The types of ACME resources
+const (
+	ResourceNewReg        = AcmeResource("new-reg")
+	ResourceNewAuthz      = AcmeResource("new-authz")
+	ResourceNewCert       = AcmeResource("new-cert")
+	ResourceRevokeCert    = AcmeResource("revoke-cert")
+	ResourceRegistration  = AcmeResource("reg")
+	ResourceAuthorization = AcmeResource("authz")
+	ResourceChallenge     = AcmeResource("challenge")
+	ResourceCertificate   = AcmeResource("cert")
 )
 
 // These status are the states of OCSP

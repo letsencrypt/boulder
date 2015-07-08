@@ -280,7 +280,7 @@ const (
 	malformedJWS = "Unable to read/verify body"
 )
 
-func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, *jose.JsonWebKey, core.Registration, error) {
+func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
 	var reg core.Registration
 
 	// Read body
@@ -345,6 +345,19 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		reg = core.Registration{}
 	}
 
+	// Check that the "resource" field is present and has the correct value
+	var parsedRequest map[string]interface{}
+	err = json.Unmarshal([]byte(payload), &parsedRequest)
+	parsedResource, present := parsedRequest["resource"]
+	requestedResource, valid := parsedResource.(string)
+	if !present {
+		wfe.log.Debug("Request payload does not specify a resource")
+		return nil, nil, reg, errors.New("Request payload does not specify a resource")
+	} else if !valid || resource != core.AcmeResource(requestedResource) {
+		wfe.log.Debug(fmt.Sprintf("Request payload has invalid resource: %s != %s", requestedResource, resource))
+		return nil, nil, reg, errors.New("Request payload has invalid resource")
+	}
+
 	return []byte(payload), key, reg, nil
 }
 
@@ -401,7 +414,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, key, _, err := wfe.verifyPOST(request, false)
+	body, key, _, err := wfe.verifyPOST(request, false, core.ResourceNewReg)
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, malformedJWS, err, http.StatusBadRequest)
@@ -469,7 +482,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, _, currReg, err := wfe.verifyPOST(request, true)
+	body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceNewAuthz)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
@@ -540,7 +553,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 
 	// We don't ask verifyPOST to verify there is a correponding registration,
 	// because anyone with the right private key can revoke a certificate.
-	body, requestKey, registration, err := wfe.verifyPOST(request, false)
+	body, requestKey, registration, err := wfe.verifyPOST(request, false, core.ResourceRevokeCert)
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, malformedJWS, err, http.StatusBadRequest)
@@ -643,7 +656,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, _, reg, err := wfe.verifyPOST(request, true)
+	body, _, reg, err := wfe.verifyPOST(request, true, core.ResourceNewCert)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
@@ -763,7 +776,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		}
 
 	case "POST":
-		body, _, currReg, err := wfe.verifyPOST(request, true)
+		body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceChallenge)
 		if err != nil {
 			logEvent.Error = err.Error()
 			respMsg := malformedJWS
@@ -842,7 +855,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, _, currReg, err := wfe.verifyPOST(request, true)
+	body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceRegistration)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
