@@ -58,15 +58,10 @@ func (mock *MockDNS) ExchangeOne(hostname string, qt uint16) (rsp *dns.Msg, rtt 
 
 // LookupTXT is a mock
 func (mock *MockDNS) LookupTXT(hostname string) ([]string, time.Duration, error) {
-	if hostname == "_acme-challenge.dnssec-failed.org" {
+	if hostname == "_acme-challenge.servfail.com" {
 		return nil, 0, fmt.Errorf("SERVFAIL")
 	}
 	return []string{"hostname"}, 0, nil
-}
-
-// LookupDNSSEC is a mock
-func (mock *MockDNS) LookupDNSSEC(m *dns.Msg) (*dns.Msg, time.Duration, error) {
-	return m, 0, nil
 }
 
 // LookupHost is a mock
@@ -97,7 +92,7 @@ func (mock *MockDNS) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error)
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org"
 		results = append(results, &record)
-	case "dnssec-failed.org":
+	case "servfail.com":
 		return results, 0, fmt.Errorf("SERVFAIL")
 	}
 	return results, 0, nil

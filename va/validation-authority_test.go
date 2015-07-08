@@ -539,8 +539,8 @@ func TestCAAChecking(t *testing.T) {
 		test.AssertEquals(t, caaTest.Valid, valid)
 	}
 
-	present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "dnssec-failed.org"})
-	test.AssertError(t, err, "dnssec-failed.org")
+	present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 }
@@ -633,7 +633,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 }
 
-func TestDNSValidationBadDNSSEC(t *testing.T) {
+func TestDNSValidationServFail(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 	mockRA := &MockRegistrationAuthority{}
@@ -641,14 +641,14 @@ func TestDNSValidationBadDNSSEC(t *testing.T) {
 
 	chalDNS := core.DNSChallenge()
 
-	badDNSSEC := core.AcmeIdentifier{
+	badIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
-		Value: "dnssec-failed.org",
+		Value: "servfail.com",
 	}
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
-		Identifier:     badDNSSEC,
+		Identifier:     badIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
 	va.validate(authz, 0)
