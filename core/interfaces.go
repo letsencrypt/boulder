@@ -7,9 +7,11 @@ package core
 
 import (
 	"crypto/x509"
+	"net"
 	"net/http"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
@@ -134,4 +136,14 @@ type CertificateAuthorityDatabase interface {
 	CreateTablesIfNotExists() error
 	IncrementAndGetSerial(*gorp.Transaction) (int64, error)
 	Begin() (*gorp.Transaction, error)
+}
+
+// DNSResolver defines methods used for DNS resolution
+type DNSResolver interface {
+	ExchangeOne(*dns.Msg) (*dns.Msg, time.Duration, error)
+	LookupDNSSEC(*dns.Msg) (*dns.Msg, time.Duration, error)
+	LookupTXT(string) ([]string, time.Duration, error)
+	LookupHost(string) ([]net.IP, time.Duration, error)
+	LookupCNAME(string) (string, error)
+	LookupCAA(string, bool) ([]*dns.CAA, error)
 }

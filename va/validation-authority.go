@@ -28,7 +28,7 @@ import (
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
-	DNSResolver  *core.DNSResolver
+	DNSResolver  core.DNSResolver
 	IssuerDomain string
 	TestMode     bool
 	UserAgent    string
@@ -424,7 +424,7 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 	return &filtered
 }
 
-func (va *ValidationAuthorityImpl) getCAASet(domain string, dnsResolver *core.DNSResolver) (*CAASet, error) {
+func (va *ValidationAuthorityImpl) getCAASet(domain string, dnsResolver core.DNSResolver) (*CAASet, error) {
 	domain = strings.TrimRight(domain, ".")
 	splitDomain := strings.Split(domain, ".")
 	// RFC 6844 CAA set query sequence, 'x.y.z.com' => ['x.y.z.com', 'y.z.com', 'z.com']
