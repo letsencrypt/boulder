@@ -163,7 +163,7 @@ func main() {
 			Usage:  "Path to Boulder JSON configuration file",
 		},
 		cli.BoolFlag{
-			Name:  "deny-future",
+			Name:  "deny",
 			Usage: "Add certificate DNS names to the denied list",
 		},
 	}

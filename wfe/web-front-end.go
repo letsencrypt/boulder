@@ -202,6 +202,11 @@ func (wfe *WebFrontEndImpl) sendStandardHeaders(response http.ResponseWriter) {
 	response.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
+const (
+	unknownKey   = "No registration exists matching provided key"
+	malformedJWS = "Unable to read/verify body"
+)
+
 func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
 	var reg core.Registration
 
@@ -347,7 +352,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	body, key, _, err := wfe.verifyPOST(request, false, core.ResourceNewReg)
 	if err != nil {
 		logEvent.Error = err.Error()
-		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
+		wfe.sendError(response, malformedJWS, err, http.StatusBadRequest)
 		return
 	}
 
@@ -424,11 +429,13 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceNewAuthz)
 	if err != nil {
 		logEvent.Error = err.Error()
+		respMsg := malformedJWS
+		respCode := http.StatusBadRequest
 		if err == sql.ErrNoRows {
-			wfe.sendError(response, "No registration exists matching provided key", err, http.StatusForbidden)
-		} else {
-			wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
+			respMsg = unknownKey
+			respCode = http.StatusForbidden
 		}
+		wfe.sendError(response, respMsg, err, respCode)
 		return
 	}
 	logEvent.Requester = currReg.ID
@@ -502,7 +509,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	body, requestKey, registration, err := wfe.verifyPOST(request, false, core.ResourceRevokeCert)
 	if err != nil {
 		logEvent.Error = err.Error()
-		wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
+		wfe.sendError(response, malformedJWS, err, http.StatusBadRequest)
 		return
 	}
 	logEvent.Requester = registration.ID
@@ -601,11 +608,13 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	body, key, reg, err := wfe.verifyPOST(request, true, core.ResourceNewCert)
 	if err != nil {
 		logEvent.Error = err.Error()
+		respMsg := malformedJWS
+		respCode := http.StatusBadRequest
 		if err == sql.ErrNoRows {
-			wfe.sendError(response, "No registration exists matching provided key", err, http.StatusForbidden)
-		} else {
-			wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
+			respMsg = unknownKey
+			respCode = http.StatusForbidden
 		}
+		wfe.sendError(response, respMsg, err, respCode)
 		return
 	}
 	logEvent.Requester = reg.ID
@@ -736,11 +745,13 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceChallenge)
 		if err != nil {
 			logEvent.Error = err.Error()
+			respMsg := malformedJWS
+			respCode := http.StatusBadRequest
 			if err == sql.ErrNoRows {
-				wfe.sendError(response, "No registration exists matching provided key", err, http.StatusForbidden)
-			} else {
-				wfe.sendError(response, "Unable to read/verify body", err, http.StatusBadRequest)
+				respMsg = unknownKey
+				respCode = http.StatusForbidden
 			}
+			wfe.sendError(response, respMsg, err, respCode)
 			return logEvent
 		}
 		logEvent.Requester = currReg.ID
@@ -822,14 +833,13 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceRegistration)
 	if err != nil {
 		logEvent.Error = err.Error()
+		respMsg := malformedJWS
+		respCode := http.StatusBadRequest
 		if err == sql.ErrNoRows {
-			wfe.sendError(response,
-				"No registration exists matching provided key",
-				err, http.StatusForbidden)
-		} else {
-			wfe.sendError(response,
-				"Unable to read/verify body", err, http.StatusBadRequest)
+			respMsg = unknownKey
+			respCode = http.StatusForbidden
 		}
+		wfe.sendError(response, respMsg, err, respCode)
 		return
 	}
 	logEvent.Requester = currReg.ID
