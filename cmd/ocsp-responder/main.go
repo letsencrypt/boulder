@@ -132,7 +132,7 @@ func main() {
 		auditlogger.Info(app.VersionString())
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.OCSPResponder.DBDriver, c.OCSPResponder.DBName)
+		dbMap, err := sa.NewDbMap(c.OCSPResponder.DBDriver, c.OCSPResponder.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 		sa.SetSQLDebug(dbMap, c.SQL.SQLDebug)
 

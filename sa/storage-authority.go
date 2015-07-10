@@ -49,11 +49,11 @@ type authzModel struct {
 }
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for Boulder.
-func NewSQLStorageAuthority(driver string, name string) (ssa *SQLStorageAuthority, err error) {
+func NewSQLStorageAuthority(driver string, dbConnect string) (ssa *SQLStorageAuthority, err error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Storage Authority Starting")
 
-	dbMap, err := NewDbMap(driver, name)
+	dbMap, err := NewDbMap(driver, dbConnect)
 	if err != nil {
 		return
 	}

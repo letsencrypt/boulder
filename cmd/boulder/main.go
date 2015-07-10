@@ -76,7 +76,7 @@ func main() {
 		// Create the components
 		wfei, err := wfe.NewWebFrontEndImpl()
 		cmd.FailOnError(err, "Unable to create WFE")
-		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
+		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBConnect)
 		cmd.FailOnError(err, "Unable to create SA")
 		sa.SetSQLDebug(c.SQL.SQLDebug)
 

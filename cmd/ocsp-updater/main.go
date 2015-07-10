@@ -215,7 +215,7 @@ func main() {
 		blog.SetAuditLogger(auditlogger)
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBDriver, c.OCSPUpdater.DBName)
+		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBDriver, c.OCSPUpdater.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		cac, closeChan := setupClients(c)
