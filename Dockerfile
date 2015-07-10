@@ -40,7 +40,7 @@ RUN ./bootstrap/debian.sh && \
     /tmp/* \
     /var/tmp/*
 RUN virtualenv --no-site-packages -p python2 venv && \
-  ./venv/bin/pip install -r requirements.txt -e .[dev,docs,testing]
+  ./venv/bin/pip install -r requirements.txt -e acme -e .[dev,docs,testing] -e letsencrypt_apache -e letsencrypt_nginx
 
 # Copy in the Boulder sources
 COPY . /go/src/github.com/letsencrypt/boulder

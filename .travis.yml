@@ -40,7 +40,7 @@ before_install:
   - cd "$LETSENCRYPT_PATH"
   - sudo ./bootstrap/debian.sh
   - virtualenv --no-site-packages -p python2 ./venv
-  - travis_retry ./venv/bin/pip install -r requirements.txt -e .
+  - travis_retry ./venv/bin/pip install -r requirements.txt -e acme -e . -e letsencrypt_apache -e letsencrypt_nginx
   - "cd -"
 
 env:
