@@ -122,6 +122,102 @@ wk6Oiadty3eQqSBJv0HnpmiEdQVffIK5Pg4M8Dd+aOBnEkbopAJOuA==
 		"d616e2d6578616d706c652e636f6d300b06092a864886f70d01010b0341008cf8" +
 		"f349efa6d2fadbaf8ed9ba67e5a9b98c3d5a13c06297c4cf36dc76f494e8887e3" +
 		"5dd9c885526136d810fc7640f5ba56281e2b75fa3ff7c91a7d23bab7fd4"
+
+	Key238PEM = `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC8/3PVgUNrVYP2
+FUj1bcqVZCZQZ8tbfnHrGSAObyjc5NZHZCjGNetq1pwqGbZV69XbZCMIG8dd4fHd
+/FKnnD+ngIf5SXvrAKrf5YA+J07jZgI/tJl2phRHgYcpD+g7KKy1EAoRqaDho8Bs
+izuXUqdPlgcV1LMJal7oXb5x6iW68oSfq8VWWhcqCFp4TJMMqeckqzf/ThN21mNU
+zk45u9AIYWVCXKwMnFZqG1Uz3eDKUHxZiDKJ6QMDHUjeUJ3dW/SEX7HTjFPd/BVH
+OZoo3NPA37Odp7rjdB+DahJItXTrorZZh6mDOorC/chR2stt6zffUAyz4Vt3Edqc
+ys5TWL45AgMBAAECggEAc1PSJCt/r2R8ZNJyNclsQCLfulrL3aXX7+TiCczM+5Xs
+J543v1Oxtv0ESDBuchm54ulE8zK4QlKYm6PX8A1JTnYBAx5TLoC2xG8wBT1JRzu9
+DZCvwJXxc/zXNDhPtqHIWahS7Jo84NNinRmNIHbAP7FF241yPsGY7mQdzTdbFKrR
+JH0l7VPCY4OG+CjxUJqoNuwkfrNh0hRh02IHU/rFlgR2Q7JP0XBwuufW1M6j7fYM
+7PGZRA+6Ry72UcaCEVuOtGlz3wLrFq6CGTGWlUehQqch+nrTri0jMSH4Bd83mLz2
+8+X0y/EONQlirbHbJxXq+mLASHrp3KCtdpCiLKcX8QKBgQDr+TNqLa7PIOhlw29A
+RftunKwEdsi9uAg3jFSpHC/jLxR4/fUiz2XZrAfHNxn7mOK72V/9pj9zshLnxeSm
+jEelEB2bABX8RhD38SUxoHoiWmqpPVOtBSXvMSQEO0F/1hGlxndHwe9mE2Zyq3eV
+9MoJVeExkCP3Bxk9tjZfj4WC9QKBgQDNCab2WjLy7T9Bfmh2RmWXckzUMphYCLpX
+CGG2O5nH2zOPAOxUpyLFDq3/WkzPnCdWOveI/LlZmkcjdslWp3tizk5kE1zgaFbO
+s+7o/cYVrU5J3+kIq563ba7/xZ7wpfkg58milUWStpjQrB0H5tSlUEoC7fJ/GjHd
+5j1raKQrtQKBgF9elSgJlIgD/cj7JqBsaET5LxCSzWjX0wJYRfMfAD+qTHTl9sf9
+2GUUAQTDwU2NKb3QCdqi8SwaQUfJFDM3qNEOZVi6vSf7TWpX3Ldk61etAUSrE4Fu
+/jjgvHS1WjCHXRSJ1LV8rPutRY98u1Uw3OLPAbedUNvK06m8VddjUwttAoGAAmca
+jciA0Ff3Zc0VbE1m419zhwkQv/daN6rhekE4jB8Fe6eHHXbX8Xc6ksN8IvKxg1Et
+lW1gvqwQKVo7Acj0qTPBt2qCrB6M5d817YULzTU6taLqGC/qrDuc0WJ/elJ3mOse
+cclOB2ocYFWkAXOzCjzmoSIotVSZQQBxt9CCHAECgYEA01w8tKVCG2ucbC1GoCl0
+t2MRmLqiRqRrn53fJ6j56fDbdLmnRAaaD1slZ0jpLk7JoDKGmNG2Rl9UXuydPaNZ
+8h1Lu+CnhG50uOF3A/OIXsBiRsAgI2ez4/Jb+lNe3l3UcPV5gyGejAiymqRigbkn
+bcixOm4jdOWV5Bpfv65AivQ=
+-----END PRIVATE KEY-----`
+
+	Cert238PEM = `-----BEGIN CERTIFICATE-----
+MIIC6DCCAdCgAwIBAgICAO4wDQYJKoZIhvcNAQELBQAwDjEMMAoGA1UEAwwDMjM4
+MB4XDTE1MDYxMzAwMTU1NVoXDTE2MDYxMjAwMTU1NVowDjEMMAoGA1UEAwwDMjM4
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvP9z1YFDa1WD9hVI9W3K
+lWQmUGfLW35x6xkgDm8o3OTWR2QoxjXratacKhm2VevV22QjCBvHXeHx3fxSp5w/
+p4CH+Ul76wCq3+WAPidO42YCP7SZdqYUR4GHKQ/oOyistRAKEamg4aPAbIs7l1Kn
+T5YHFdSzCWpe6F2+ceoluvKEn6vFVloXKghaeEyTDKnnJKs3/04TdtZjVM5OObvQ
+CGFlQlysDJxWahtVM93gylB8WYgyiekDAx1I3lCd3Vv0hF+x04xT3fwVRzmaKNzT
+wN+znae643Qfg2oSSLV066K2WYepgzqKwv3IUdrLbes331AMs+FbdxHanMrOU1i+
+OQIDAQABo1AwTjAdBgNVHQ4EFgQUjog7s8eJhAvSKMvu6xHZxPnnjsgwHwYDVR0j
+BBgwFoAUjog7s8eJhAvSKMvu6xHZxPnnjsgwDAYDVR0TBAUwAwEB/zANBgkqhkiG
+9w0BAQsFAAOCAQEAIugSn0o0HQMLy02inFZDso4PiRfoqahsT60oIMmWhF3nY3Jq
+GZmkozKGnvyNDeKPlf6TV04VLq6dRg7+yQDL6LCiq2wcGZ+8feMLjyRFwZDSjAJe
+sAMhNq9OQdGNfUV1iZF0SUzqrT68BCT0JTtuDpwlMcmH1O+jFf2HCzROLLBdRC3w
+tJGiA6DH2TqVnucql6sMrnxPVEB+uVfFaKNc9YzwDCp8dSmBbCz7wRmLobGKcnbQ
+lByD5j4dxYkFvJ6n/YX1HKJzwqTWhLQaxvFW7YvnPWepEiXiB6BaIsRgyK7Qa8EW
+3jL5yiB1Dd8OQ7aV7+PNwBNXHd3J1Vie2k52KA==
+-----END CERTIFICATE-----`
+
+	Key178PEM = `-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCaqzue57mgXEoG
+TZZoVkkCZraebWgXI8irX2BgQB1A3iZa9onxGPMcWQMxhSuUisbEJi4UkMcVST12
+HX01rUwhj41UuBxJvI1w4wvdstssTAaa9c9tsQ5+UED2bFRL1MsyBdbmCF/+pu3i
++ZIYqWgiKbjVBe3nlAVbo77zizwp3Y4Tp1/TBOwTAuFkHePmkNT63uPm9My/hNzs
+Sm1o+Q519Cf7ry+JQmOVgz/jIgFVGFYJ17EV3KUIpUuDShuyCFATBQspgJSN2DoX
+RUlQjXXkNTj23OxxdT/cVLcLJjytyG6e5izME2R2aCkDBWIc1a4/sRJ0R396auPX
+G6KhJ7o/AgMBAAECggEAC7GkmVgVzc0Mf7uAArV7YaYYapQFCbLX6jUU2VIfpBbn
+uXroZQUo5FzKhAT4jYuMiaoFU+K6Wp6l+fcyz0sh9WugGOaupNiPrRhNfl6WeZvp
+5+9r1nRLjztMHhWErhMRpd+RJuU9NMi0NbP+2sR8LhEPe3OuUBL98LbJqio9y0Bp
+8+JxmATL7vTvORMMamt80bDRGLBzoGySWZ0lEWwTuv8RjiCqO85YmHd9BmnTpOUn
+siYfEDZ9t+EF6NgJaISMLmcbzxZI5+aPIvfc1TwzDA96LUccGwvAR4qZ/+eYsG2I
+Iwn1wMMSsvFWeq7AccKL/povPg1Iud0wzkLLZmMjGQKBgQDLRUtENxbVH/T4xw8W
+tdgfzddQWZmVPtQXHAt2/zmrgJ3DKu7HOUajCGGWdLnoiFrIO2LsQYpP1XUA4hG1
+vzLDBng6SHDqZdGfd8eFaHesafr/FG4zkk+GBIs+P8GzHs2/znpEiqLnPbWrrB3t
+2/zBIXluZSytGt1ysC+TZZFwhQKBgQDCymmryD0JRV0M1IgwXOZrO+2MWDdliujx
+uBfD6DdLCJ5wHrPiySjVvl0njPLDQcWigigJD8Jl0SRQ8JSbceFzEGjzEj3NR2oB
+aLn3Gf3nORo7tJdCZVQn7QcHT+HzAWffm6qjqKzPXjRAEFFcW48Bnw+BU/JuZNOe
+v7dTuyv88wKBgFROGAphwsF/8I0hmht0Lf/60ltL3gvtM++lvQeMkTGVNVlVvBS6
+p5ZEipzpKpXLv8MeBkgwYpn70PwdxvSXKQmD7GdX1iURN6CpAAJPspq6ldQneBFB
+lGPkDJAzxzVwCCuOCl3VFf1MNcXOq9cUDz9Wj9N+eMoOw1umwQSj8m81AoGAP/li
+gzycbzMMwG383IVmV8my1ukSKJNatiiUBY96uXX3MzOiONWAR9LhnV+5S0+KrTi6
+FV/LpMzvdHXPGM5qEPROw6Y2DflqY1QV34X10b77UqiZFQFahlJegJRHzRulFdd2
+T5HST7jMyE2TqxWW/h1TZlI/yOnsZrLobuOGKukCgYAGk/TRPSOWEkH3rL7cDJFp
+ql4d33iuW9b3dMvQgkDW8H2kj3QA5os9dtSFLA/fWubULXOPpOsA7Ny7okBxsUBW
+tn4ER+HjUHogGir5d5cBBpvi4xM2/B4KaZnX8IHYhFcT42eb1oYmpfz5GcRyqzTX
+OoetYnUS5t4QuAAMadjtig==
+-----END PRIVATE KEY-----`
+
+	Cert178PEM = `-----BEGIN CERTIFICATE-----
+MIIC6DCCAdCgAwIBAgICALIwDQYJKoZIhvcNAQELBQAwDjEMMAoGA1UEAwwDMTc4
+MB4XDTE1MDYxMzAwMTY1OFoXDTE2MDYxMjAwMTY1OFowDjEMMAoGA1UEAwwDMTc4
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJ
+Ama2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1M
+IY+NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf/qbt4vmSGKlo
+Iim41QXt55QFW6O+84s8Kd2OE6df0wTsEwLhZB3j5pDU+t7j5vTMv4Tc7EptaPkO
+dfQn+68viUJjlYM/4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI11
+5DU49tzscXU/3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd/emrj1xuioSe6
+PwIDAQABo1AwTjAdBgNVHQ4EFgQUEaQm2CFKX3v9tNF3LLRNqd5mGcMwHwYDVR0j
+BBgwFoAUEaQm2CFKX3v9tNF3LLRNqd5mGcMwDAYDVR0TBAUwAwEB/zANBgkqhkiG
+9w0BAQsFAAOCAQEAdTi8Mt6JwfXPJU6ILNIXlySl01s7pfNf8Qz43k7AaZSJeI2A
+blM6ilFwbXpWls64XKFQRYfsQ9+wPA044pF1zR05PSI8PJwzIVAjW34myJnbsywb
+Yc1eQXlz0Di7R+w9HRkpVHG2CgnIBGJFa1H7p0FG9tyI7SaJ/Qri5BRJhnu2gYjx
+B+JV3ol+0oYYMhVVaGXwHpyjelsEiWaIFoO3o0YxfW19NM90QQnJ3BGX7ibJSxAr
+Lwbh8DWnWi4X3MdIPG88BKoavcXlJ/pyW2PvarUe31xVBNbyDlcZvrTZ8PXVw7TA
+lumboAhMDLhYNBWrJTJe5LOiapEJaOBNN/ZMFQ==
+-----END CERTIFICATE-----`
 )
 
 type MockSA struct {
@@ -175,15 +271,13 @@ func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
 func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 	// Serial ee == 238.crt
 	if serial == "000000000000000000000000000000ee" {
-		certPemBytes, _ := ioutil.ReadFile("test/238.crt")
-		certBlock, _ := pem.Decode(certPemBytes)
+		certBlock, _ := pem.Decode([]byte(Cert238PEM))
 		return core.Certificate{
 			RegistrationID: 1,
 			DER:            certBlock.Bytes,
 		}, nil
 	} else if serial == "000000000000000000000000000000b2" {
-		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
-		certBlock, _ := pem.Decode(certPemBytes)
+		certBlock, _ := pem.Decode([]byte(Cert178PEM))
 		return core.Certificate{
 			RegistrationID: 1,
 			DER:            certBlock.Bytes,
@@ -711,18 +805,14 @@ func TestNewRegistration(t *testing.T) {
 
 // Valid revocation request for existing, non-revoked cert
 func TestRevokeCertificate(t *testing.T) {
-	keyPemBytes, err := ioutil.ReadFile("test/238.key")
-	test.AssertNotError(t, err, "Failed to load key")
-	key, err := jose.LoadPrivateKey(keyPemBytes)
+	key, err := jose.LoadPrivateKey([]byte(Key238PEM))
 	test.AssertNotError(t, err, "Failed to load key")
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 
-	certPemBytes, err := ioutil.ReadFile("test/238.crt")
-	test.AssertNotError(t, err, "Failed to load cert")
-	certBlock, _ := pem.Decode(certPemBytes)
+	certBlock, _ := pem.Decode([]byte(Cert238PEM))
 	test.Assert(t, certBlock != nil, "Failed to decode PEM")
 	var revokeRequest struct {
 		CertificateDER core.JSONBuffer `json:"certificate"`
@@ -772,18 +862,14 @@ func TestRevokeCertificate(t *testing.T) {
 
 // Valid revocation request for already-revoked cert
 func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
-	keyPemBytes, err := ioutil.ReadFile("test/178.key")
-	test.AssertNotError(t, err, "Failed to load key")
-	key, err := jose.LoadPrivateKey(keyPemBytes)
+	key, err := jose.LoadPrivateKey([]byte(Key178PEM))
 	test.AssertNotError(t, err, "Failed to load key")
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 
-	certPemBytes, err := ioutil.ReadFile("test/178.crt")
-	test.AssertNotError(t, err, "Failed to load cert")
-	certBlock, _ := pem.Decode(certPemBytes)
+	certBlock, _ := pem.Decode([]byte(Cert178PEM))
 	test.Assert(t, certBlock != nil, "Failed to decode PEM")
 	var revokeRequest struct {
 		CertificateDER core.JSONBuffer `json:"certificate"`
