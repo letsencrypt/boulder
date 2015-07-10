@@ -47,7 +47,8 @@ update_status() {
   if ([ "${TRAVIS}" == "true" ] && [ "x${CONTEXT}" != "x" ]) && [ -f "${GITHUB_SECRET_FILE}" ]; then
     github-pr-status --authfile $GITHUB_SECRET_FILE \
       --owner "letsencrypt" --repo "boulder" \
-      status --sha "${TRIGGER_COMMIT}" --context "${CONTEXT}" $*
+      status --sha "${TRIGGER_COMMIT}" --context "${CONTEXT}" \
+      --url "https://travis-ci.org/letsencrypt/boulder/builds/${TRAVIS_BUILD_ID}" $*
   fi
 }
 
