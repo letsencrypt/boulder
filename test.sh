@@ -195,7 +195,7 @@ if [ -z "$LETSENCRYPT_PATH" ]; then
 
   cd $LETSENCRYPT_PATH
   run virtualenv --no-site-packages -p python2 ./venv && \
-    ./venv/bin/pip install -r requirements.txt -e . || exit 1
+    ./venv/bin/pip install -r requirements.txt -e acme -e . -e letsencrypt_apache -e letsencrypt_nginx || exit 1
   cd -
 fi
 
