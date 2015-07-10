@@ -31,6 +31,8 @@ if [ "${TRAVIS_PULL_REQUEST}" != "false" ] ; then
   TRIGGER_COMMIT=${revs##* }
 fi
 
+GITHUB_SECRET_FILE="$(pwd)/test/github-secret.json"
+
 start_context() {
   CONTEXT="$1"
   printf "[%16s] Starting\n" ${CONTEXT}
@@ -42,8 +44,8 @@ end_context() {
 }
 
 update_status() {
-  if [ "${TRAVIS}" == "true" ] && [ "x${CONTEXT}" != "x" ] ; then
-    github-pr-status --authfile "$(pwd)/test/github-secret.json" \
+  if ([ "${TRAVIS}" == "true" ] && [ "x${CONTEXT}" != "x" ]) && [ -f "${GITHUB_SECRET_FILE}" ]; then
+    github-pr-status --authfile $GITHUB_SECRET_FILE \
       --owner "letsencrypt" --repo "boulder" \
       status --sha "${TRIGGER_COMMIT}" --context "${CONTEXT}" $*
   fi
@@ -67,14 +69,14 @@ run() {
 }
 
 run_and_comment() {
-  if [ "x${TRAVIS}" = "x" ] || [ "${TRAVIS_PULL_REQUEST}" == "false" ] ; then
+  if [ "x${TRAVIS}" = "x" ] || [ "${TRAVIS_PULL_REQUEST}" == "false" ] || [ ! -f "${GITHUB_SECRET_FILE}"] ; then
     run $*
   else
     result=$(run $*)
     local status=$?
     # Only send a comment if exit code > 0
     if [ ${status} -ne 0 ] ; then
-      echo $'```\n'${result}$'\n```' | github-pr-status --authfile "$(pwd)/test/github-secret.json" \
+      echo $'```\n'${result}$'\n```' | github-pr-status --authfile $GITHUB_SECRET_FILE \
         --owner "letsencrypt" --repo "boulder" \
         comment --pr ${TRAVIS_PULL_REQUEST}
     fi
