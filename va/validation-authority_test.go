@@ -56,10 +56,9 @@ const pathWrongToken = "wrongtoken"
 const path404 = "404"
 
 func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableTLS bool) {
-	// Reset any existing handlers
-	http.DefaultServeMux = http.NewServeMux()
+	m := http.NewServeMux()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, path404) {
 			t.Logf("SIMPLESRV: Got a 404 req\n")
 			http.NotFound(w, r)
@@ -78,7 +77,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 		}
 	})
 
-	server := &http.Server{Addr: "localhost:5001"}
+	server := &http.Server{Addr: "localhost:5001", Handler: m}
 	conn, err := net.Listen("tcp", server.Addr)
 	if err != nil {
 		waitChan <- true

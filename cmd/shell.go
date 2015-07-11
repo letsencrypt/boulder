@@ -29,6 +29,10 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
+	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"runtime"
 	"strings"
@@ -49,6 +53,11 @@ import (
 //
 // Note: NO DEFAULTS are provided.
 type Config struct {
+	ActivityMonitor struct {
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
+	}
+
 	// General
 	AMQP struct {
 		Server string
@@ -63,19 +72,33 @@ type Config struct {
 	WFE struct {
 		BaseURL       string
 		ListenAddress string
+
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
 	}
 
 	CA ca.Config
 
+	RA struct {
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
+	}
+
 	SA struct {
 		DBDriver  string
 		DBConnect string
+
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
 	}
 
 	VA struct {
 		DNSResolver string
 		DNSTimeout  string
 		UserAgent   string
+
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
 	}
 
 	SQL struct {
@@ -111,6 +134,9 @@ type Config struct {
 		DBConnect     string
 		Path          string
 		ListenAddress string
+
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
 	}
 
 	OCSPUpdater struct {
@@ -118,6 +144,9 @@ type Config struct {
 		DBConnect       string
 		MinTimeToExpiry string
 		ResponseLimit   int
+
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
 	}
 
 	Common struct {
@@ -334,4 +363,16 @@ func LoadCert(path string) (cert []byte, err error) {
 
 	cert = block.Bytes
 	return
+}
+
+func DebugServer(addr string) {
+	if addr == "" {
+		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("unable to boot debug server on %#v", addr)
+	}
+	log.Printf("booting debug server at %#v", addr)
+	log.Println(http.Serve(ln, nil))
 }

@@ -36,7 +36,8 @@
   },
 
   "wfe": {
-    "listenAddress": "127.0.0.1:4000"
+    "listenAddress": "127.0.0.1:4000",
+    "debugAddr": "localhost:8000"
   },
 
   "ca": {
@@ -44,6 +45,7 @@
     "profile": "ee",
     "dbDriver": "sqlite3",
     "dbConnect": ":memory:",
+    "debugAddr": "localhost:8001",
     "testMode": true,
     "_comment": "This should only be present in testMode. In prod use an HSM.",
     "Key": {
@@ -103,15 +105,21 @@
     }
   },
 
+  "ra": {
+    "debugAddr": "localhost:8002"
+  },
+
   "sa": {
     "dbDriver": "sqlite3",
-    "dbConnect": ":memory:"
+    "dbConnect": ":memory:",
+    "debugAddr": "localhost:8003"
   },
 
   "va": {
     "dnsResolver": "8.8.8.8:53",
     "dnsTimeout": "10s",
-    "userAgent": "boulder"
+    "userAgent": "boulder",
+    "debugAddr": "localhost:8004"
   },
 
   "sql": {
@@ -128,13 +136,15 @@
     "dbDriver": "sqlite3",
     "dbConnect": ":memory:",
     "path": "/",
-    "listenAddress": "localhost:4001"
+    "listenAddress": "localhost:4001",
+    "debugAddr": "localhost:8005"
   },
 
   "ocspUpdater": {
     "dbDriver": "sqlite3",
     "dbConnect": ":memory:",
-    "minTimeToExpiry": "72h"
+    "minTimeToExpiry": "72h",
+    "debugAddr": "localhost:8006"
   },
 
   "mail": {

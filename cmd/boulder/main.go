@@ -70,6 +70,8 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
+		go cmd.DebugServer("localhost:8080")
+
 		// Run StatsD profiling
 		go cmd.ProfileCmd("Monolith", stats)
 
@@ -120,7 +122,7 @@ func main() {
 		// Set up paths
 		ra.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		wfei.BaseURL = c.Common.BaseURL
-		wfei.HandlePaths()
+		h := wfei.Handler()
 
 		ra.MaxKeySize = c.Common.MaxKeySize
 		ca.MaxKeySize = c.Common.MaxKeySize
@@ -128,7 +130,7 @@ func main() {
 		auditlogger.Info(app.VersionString())
 
 		fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.WFE.ListenAddress)
-		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
+		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(h, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

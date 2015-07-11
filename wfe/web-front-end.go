@@ -123,7 +123,7 @@ func NewWebFrontEndImpl() (WebFrontEndImpl, error) {
 
 // HandlePaths configures the HTTP engine to use various functions
 // as methods for various ACME-specified paths.
-func (wfe *WebFrontEndImpl) HandlePaths() {
+func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.NewReg = wfe.BaseURL + NewRegPath
 	wfe.RegBase = wfe.BaseURL + RegPath
 	wfe.NewAuthz = wfe.BaseURL + NewAuthzPath
@@ -131,17 +131,19 @@ func (wfe *WebFrontEndImpl) HandlePaths() {
 	wfe.NewCert = wfe.BaseURL + NewCertPath
 	wfe.CertBase = wfe.BaseURL + CertPath
 
-	http.HandleFunc("/", wfe.Index)
-	http.HandleFunc(NewRegPath, wfe.NewRegistration)
-	http.HandleFunc(NewAuthzPath, wfe.NewAuthorization)
-	http.HandleFunc(NewCertPath, wfe.NewCertificate)
-	http.HandleFunc(RegPath, wfe.Registration)
-	http.HandleFunc(AuthzPath, wfe.Authorization)
-	http.HandleFunc(CertPath, wfe.Certificate)
-	http.HandleFunc(RevokeCertPath, wfe.RevokeCertificate)
-	http.HandleFunc(TermsPath, wfe.Terms)
-	http.HandleFunc(IssuerPath, wfe.Issuer)
-	http.HandleFunc(BuildIDPath, wfe.BuildID)
+	m := http.NewServeMux()
+	m.HandleFunc("/", wfe.Index)
+	m.HandleFunc(NewRegPath, wfe.NewRegistration)
+	m.HandleFunc(NewAuthzPath, wfe.NewAuthorization)
+	m.HandleFunc(NewCertPath, wfe.NewCertificate)
+	m.HandleFunc(RegPath, wfe.Registration)
+	m.HandleFunc(AuthzPath, wfe.Authorization)
+	m.HandleFunc(CertPath, wfe.Certificate)
+	m.HandleFunc(RevokeCertPath, wfe.RevokeCertificate)
+	m.HandleFunc(TermsPath, wfe.Terms)
+	m.HandleFunc(IssuerPath, wfe.Issuer)
+	m.HandleFunc(BuildIDPath, wfe.BuildID)
+	return m
 }
 
 // Method implementations

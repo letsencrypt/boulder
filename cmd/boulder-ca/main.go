@@ -30,7 +30,10 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
+		go cmd.DebugServer(c.CA.DebugAddr)
+
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBConnect)
+
 		cmd.FailOnError(err, "Failed to create CA database")
 
 		if c.SQL.CreateTables {

@@ -44,6 +44,9 @@ type Config struct {
 	// The maximum number of subjectAltNames in a single certificate
 	MaxNames int
 	CFSSL    cfsslConfig.Config
+
+	// DebugAddr is the address to run the /debug handlers on.
+	DebugAddr string
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,
