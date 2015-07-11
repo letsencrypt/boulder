@@ -32,7 +32,7 @@ type Config struct {
 	Profile      string
 	TestMode     bool
 	DBDriver     string
-	DBName       string
+	DBConnect    string
 	SerialPrefix int
 	Key          KeyConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
