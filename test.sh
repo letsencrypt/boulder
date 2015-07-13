@@ -84,6 +84,40 @@ run_and_comment() {
   fi
 }
 
+function die() {
+  if [ ! -z "$1" ]; then
+    echo $1 > /dev/stderr
+  fi
+  exit 1
+}
+
+function build_letsencrypt() {
+  # Test for python 2 installs with the usual names.
+  if hash python2 2>/dev/null; then
+    PY=python2
+  elif hash python2.7 2>/dev/null; then
+    PY=python2.7
+  else
+    die "unable to find a python2 or python2.7 binary in \$PATH"
+  fi
+
+  echo "------------------------------------------------"
+  echo "--- Checking out letsencrypt client is slow. ---"
+  echo "--- Recommend setting \$LETSENCRYPT_PATH to  ---"
+  echo "--- client repo with initialized virtualenv  ---"
+  echo "------------------------------------------------"
+  run git clone \
+    https://www.github.com/letsencrypt/lets-encrypt-preview.git \
+    $LETSENCRYPT_PATH || exit 1
+
+  cd $LETSENCRYPT_PATH
+
+  run virtualenv --no-site-packages -p $PY ./venv && \
+    ./venv/bin/pip install -r requirements.txt -e acme -e . -e letsencrypt_apache -e letsencrypt_nginx || exit 1
+
+  cd -
+}
+
 # Path for installed go package binaries. If yours is different, override with
 # GOBIN=/my/path/to/bin ./test.sh
 GOBIN=${GOBIN:-$HOME/gopath/bin}
@@ -184,23 +218,12 @@ update_status --state pending --description "Integration Tests in progress"
 
 if [ -z "$LETSENCRYPT_PATH" ]; then
   LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
-
-  echo "------------------------------------------------"
-  echo "--- Checking out letsencrypt client is slow. ---"
-  echo "--- Recommend setting \$LETSENCRYPT_PATH to  ---"
-  echo "--- client repo with initialized virtualenv  ---"
-  echo "------------------------------------------------"
-  run git clone \
-    https://www.github.com/letsencrypt/lets-encrypt-preview.git \
-    $LETSENCRYPT_PATH || exit 1
-
-  cd $LETSENCRYPT_PATH
-  run virtualenv --no-site-packages -p python2 ./venv && \
-    ./venv/bin/pip install -r requirements.txt -e acme -e . -e letsencrypt_apache -e letsencrypt_nginx || exit 1
-  cd -
+  build_letsencrypt
+elif [ ! -d "${LETSENCRYPT_PATH}" ]; then
+  build_letsencrypt
 fi
 
-source $LETSENCRYPT_PATH/venv/bin/activate
+source $LETSENCRYPT_PATH/venv/bin/activate || die "The LETSENCRYPT_PATH (${LETSENCRYPT_PATH}) does not have a venv/bin/activate and probably did not build correctly."
 export LETSENCRYPT_PATH
 
 python test/amqp-integration-test.py
