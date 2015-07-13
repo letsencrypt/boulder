@@ -90,7 +90,6 @@ func TestMergeChallenge(t *testing.T) {
 		Status:    StatusPending,
 		Validated: &t1,
 		Token:     "asdf",
-		Path:      "",
 		R:         "asdf",
 		S:         "",
 		Nonce:     "asdf",
@@ -99,7 +98,6 @@ func TestMergeChallenge(t *testing.T) {
 		Status:    StatusValid,
 		Validated: &t2,
 		Token:     "qwer",
-		Path:      "qwer",
 		R:         "qwer",
 		S:         "qwer",
 		Nonce:     "qwer",
@@ -108,7 +106,6 @@ func TestMergeChallenge(t *testing.T) {
 		Status:    StatusPending,
 		Validated: &t1,
 		Token:     "asdf",
-		Path:      "qwer",
 		R:         "asdf",
 		S:         "qwer",
 		Nonce:     "asdf",
@@ -124,14 +121,8 @@ func TestMergeChallenge(t *testing.T) {
 	if probe.Token != merged.Token {
 		t.Errorf("MergeChallenge allowed response to overwrite status")
 	}
-	if probe.Path != merged.Path {
-		t.Errorf("MergeChallenge failed to copy path from response")
-	}
 	if probe.R != merged.R {
 		t.Errorf("MergeChallenge allowed response to overwrite R")
-	}
-	if probe.Path != merged.Path {
-		t.Errorf("MergeChallenge failed to copy S from response")
 	}
 	if probe.Nonce != merged.Nonce {
 		t.Errorf("MergeChallenge allowed response to overwrite nonce")

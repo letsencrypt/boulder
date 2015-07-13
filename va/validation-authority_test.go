@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log/syslog"
 	"math/big"
@@ -21,6 +22,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
@@ -50,6 +53,8 @@ var TheKey = rsa.PrivateKey{
 	Primes:    []*big.Int{p, q},
 }
 
+var AccountKey = jose.JsonWebKey{Key: TheKey.Public()}
+
 var ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
 
 var log = mocks.UseMockLog()
@@ -64,6 +69,15 @@ const pathUnsafe302 = "302-to-unsafe"
 
 func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableTLS bool) {
 	m := http.NewServeMux()
+
+	payload, _ := json.Marshal(map[string]interface{}{
+		"type":  "simpleHttp",
+		"token": token,
+		"tls":   enableTLS,
+	})
+	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
+	obj, _ := signer.Sign(payload, "")
+	response := obj.FullSerialize()
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, path404) {
@@ -89,7 +103,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 			time.Sleep(time.Second * 10)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
-			fmt.Fprintf(w, "%s", token)
+			fmt.Fprintf(w, "%s", response)
 		}
 	})
 
@@ -218,7 +232,7 @@ func TestSimpleHttpTLS(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 
-	chall := core.Challenge{Path: "test", Token: expectedToken}
+	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken}
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
@@ -227,9 +241,9 @@ func TestSimpleHttpTLS(t *testing.T) {
 	<-waitChan
 
 	log.Clear()
-	finChall, err := va.validateSimpleHTTP(ident, chall)
+	finChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Path)
+	test.AssertNotError(t, err, "Error validating simpleHttp")
 	logs := log.GetAllMatching(`^\[AUDIT\] Attempting to validate SimpleHTTPS for `)
 	test.AssertEquals(t, len(logs), 1)
 	test.AssertEquals(t, logs[0].Priority, syslog.LOG_NOTICE)
@@ -240,9 +254,9 @@ func TestSimpleHttp(t *testing.T) {
 	va.DNSResolver = &mocks.MockDNS{}
 
 	tls := false
-	chall := core.Challenge{Path: "test", Token: expectedToken, TLS: &tls}
+	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, TLS: &tls}
 
-	invalidChall, err := va.validateSimpleHTTP(ident, chall)
+	invalidChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
@@ -254,75 +268,33 @@ func TestSimpleHttp(t *testing.T) {
 	<-waitChan
 
 	log.Clear()
-	finChall, err := va.validateSimpleHTTP(ident, chall)
+	finChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Path)
+	test.AssertNotError(t, err, "Error validating simpleHttp")
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
-	log.Clear()
-	chall.Path = pathMoved
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Path)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
-
-	log.Clear()
-	chall.Path = pathFound
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Path)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
-
-	log.Clear()
-	chall.Path = path404
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	chall.Token = "not-found"
+	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Should have found a 404 for the challenge.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
-	chall.Path = pathWrongToken
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "The path should have given us the wrong token.")
-	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
-
-	chall.Path = ""
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Empty paths shouldn't work either.")
-	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
-
-	chall.Path = "validish"
-	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
+	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
+	invalidChall, err = va.validateSimpleHTTP(ipIdentifier, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	va.TestMode = false
-	chall.Path = "alsoValidish"
-	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Domain name is invalid.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 	va.TestMode = true
 
-	chall.Path = pathUnsafe
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Path doesn't consist of URL-safe characters.")
-	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
-
-	chall.Path = pathUnsafe302
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Redirect should have failed.")
-	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
-
-	chall.Path = "wait-long"
 	started := time.Now()
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	took := time.Since(started)
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
@@ -340,7 +312,7 @@ func TestDvsni(t *testing.T) {
 	ba := core.B64enc(a)
 	chall := core.Challenge{R: ba, S: ba}
 
-	invalidChall, err := va.validateDvsni(ident, chall)
+	invalidChall, err := va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
@@ -351,31 +323,31 @@ func TestDvsni(t *testing.T) {
 	defer func() { stopChan <- true }()
 	<-waitChan
 
-	finChall, err := va.validateDvsni(ident, chall)
+	finChall, err := va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "")
 
-	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
+	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	va.TestMode = false
-	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Domain name is invalid.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 
 	va.TestMode = true
 	chall.R = ba[5:]
-	invalidChall, err = va.validateDvsni(ident, chall)
+	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "R Should be illegal Base64")
 	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
 	chall.R = ba
 	chall.S = "!@#"
-	invalidChall, err = va.validateDvsni(ident, chall)
+	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "S Should be illegal Base64")
 	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
@@ -383,7 +355,7 @@ func TestDvsni(t *testing.T) {
 	chall.S = ba
 	chall.Nonce = "wait-long"
 	started := time.Now()
-	invalidChall, err = va.validateDvsni(ident, chall)
+	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
 	took := time.Since(started)
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
@@ -407,7 +379,7 @@ func TestTLSError(t *testing.T) {
 	defer func() { stopChan <- true }()
 	<-waitChan
 
-	invalidChall, err := va.validateDvsni(ident, chall)
+	invalidChall, err := va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "What cert was used?")
 	test.AssertEquals(t, invalidChall.Error.Type, core.TLSProblem)
@@ -421,7 +393,6 @@ func TestValidateHTTP(t *testing.T) {
 
 	tls := false
 	challHTTP := core.SimpleHTTPChallenge()
-	challHTTP.Path = "test"
 	challHTTP.TLS = &tls
 
 	stopChanHTTP := make(chan bool, 1)
@@ -442,7 +413,7 @@ func TestValidateHTTP(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{challHTTP},
 	}
-	va.validate(authz, 0)
+	va.validate(authz, 0, AccountKey)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -476,7 +447,7 @@ func TestValidateDvsni(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{challDvsni},
 	}
-	va.validate(authz, 0)
+	va.validate(authz, 0, AccountKey)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -510,7 +481,7 @@ func TestValidateDvsniNotSane(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{challDvsni},
 	}
-	va.validate(authz, 0)
+	va.validate(authz, 0, AccountKey)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -523,7 +494,6 @@ func TestUpdateValidations(t *testing.T) {
 
 	tls := false
 	challHTTP := core.SimpleHTTPChallenge()
-	challHTTP.Path = "wait"
 	challHTTP.TLS = &tls
 
 	stopChanHTTP := make(chan bool, 1)
@@ -546,7 +516,7 @@ func TestUpdateValidations(t *testing.T) {
 	}
 
 	started := time.Now()
-	va.UpdateValidations(authz, 0)
+	va.UpdateValidations(authz, 0, AccountKey)
 	took := time.Since(started)
 
 	// Check that the call to va.UpdateValidations didn't block for 3 seconds
@@ -628,7 +598,7 @@ func TestDNSValidationFailure(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(authz, 0)
+	va.validate(authz, 0, AccountKey)
 
 	t.Logf("Resulting Authz: %+v", authz)
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
@@ -656,7 +626,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	va.validate(authz, 0)
+	va.validate(authz, 0, AccountKey)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -696,7 +666,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 
 	for i := 0; i < 6; i++ {
-		va.validate(authz, i)
+		va.validate(authz, i, AccountKey)
 		test.AssertEquals(t, authz.Challenges[i].Status, core.StatusInvalid)
 		test.AssertEquals(t, authz.Challenges[i].Error.Type, core.MalformedProblem)
 	}
@@ -720,7 +690,7 @@ func TestDNSValidationServFail(t *testing.T) {
 		Identifier:     badIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(authz, 0)
+	va.validate(authz, 0, AccountKey)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -740,7 +710,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(authz, 0)
+	va.validate(authz, 0, AccountKey)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -777,7 +747,7 @@ func TestDNSValidationLive(t *testing.T) {
 		Challenges:     []core.Challenge{goodChalDNS},
 	}
 
-	va.validate(authzGood, 0)
+	va.validate(authzGood, 0, AccountKey)
 
 	if authzGood.Challenges[0].Status != core.StatusValid {
 		t.Logf("TestDNSValidationLive on Good did not succeed.")
@@ -794,7 +764,7 @@ func TestDNSValidationLive(t *testing.T) {
 		Challenges:     []core.Challenge{badChalDNS},
 	}
 
-	va.validate(authzBad, 0)
+	va.validate(authzBad, 0, AccountKey)
 	if authzBad.Challenges[0].Status != core.StatusInvalid {
 		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
 	}
