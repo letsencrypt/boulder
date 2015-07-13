@@ -13,7 +13,6 @@ import (
 	"fmt"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"net"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -75,10 +74,9 @@ const (
 
 // These types are the available challenges
 const (
-	ChallengeTypeSimpleHTTP    = "simpleHttp"
-	ChallengeTypeDVSNI         = "dvsni"
-	ChallengeTypeDNS           = "dns"
-	ChallengeTypeRecoveryToken = "recoveryToken"
+	ChallengeTypeSimpleHTTP = "simpleHttp"
+	ChallengeTypeDVSNI      = "dvsni"
+	ChallengeTypeDNS        = "dns"
 )
 
 func (pd *ProblemDetails) Error() string {
@@ -193,9 +191,6 @@ type Registration struct {
 	// Account key to which the details are attached
 	Key jose.JsonWebKey `json:"key" db:"jwk"`
 
-	// Recovery Token is used to prove connection to an earlier transaction
-	RecoveryToken string `json:"recoveryToken" db:"recoveryToken"`
-
 	// Contact URIs
 	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
 
@@ -239,12 +234,11 @@ type Challenge struct {
 	// A URI to which a response can be POSTed
 	URI AcmeURL `json:"uri"`
 
-	// Used by simpleHTTP, recoveryToken, and dns challenges
+	// Used by simpleHttp, dvsni, and dns challenges
 	Token string `json:"token,omitempty"`
 
 	// Used by simpleHTTP challenges
-	Path string `json:"path,omitempty"`
-	TLS  *bool  `json:"tls,omitempty"`
+	TLS *bool `json:"tls,omitempty"`
 
 	// Used by dvsni challenges
 	R     string `json:"r,omitempty"`
@@ -268,19 +262,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 
 		// If the client has marked the challenge as completed, there should be a
 		// non-empty path provided. Otherwise there should be no default path.
-		if completed {
-			if ch.Path == "" {
-				return false
-			}
-			// Composed path should be a clean filepath (i.e. no double slashes, dot segments, etc)
-			vaURL := fmt.Sprintf("/.well-known/acme-challenge/%s", ch.Path)
-			if vaURL != filepath.Clean(vaURL) {
-				return false
-			}
-		} else {
-			if ch.Path != "" {
-				return false
-			}
+		if !completed {
 			// TLS should set set to true by default
 			if ch.TLS == nil || !*ch.TLS {
 				return false
@@ -296,7 +278,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 		}
 	case ChallengeTypeDVSNI:
 		// check extra fields aren't used
-		if ch.Path != "" || ch.Token != "" || ch.TLS != nil {
+		if ch.Token != "" || ch.TLS != nil {
 			return false
 		}
 
@@ -352,10 +334,6 @@ func (ch Challenge) IsSane(completed bool) bool {
 // Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	// Only override fields that are supposed to be client-provided
-	if len(ch.Path) == 0 {
-		ch.Path = resp.Path
-	}
-
 	if len(ch.S) == 0 {
 		ch.S = resp.S
 	}
