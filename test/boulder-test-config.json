@@ -139,5 +139,5 @@
     "dnsTimeout": "10s"
   },
 
-  "subscriberAgreementURL": "http://example.com/terms"
+  "subscriberAgreementURL": "http://localhost:4300/"
 }
