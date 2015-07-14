@@ -68,8 +68,8 @@ type Config struct {
 	CA ca.Config
 
 	SA struct {
-		DBDriver string
-		DBName   string
+		DBDriver  string
+		DBConnect string
 	}
 
 	VA struct {
@@ -95,8 +95,8 @@ type Config struct {
 	}
 
 	Revoker struct {
-		DBDriver string
-		DBName   string
+		DBDriver  string
+		DBConnect string
 	}
 
 	Mail struct {
@@ -108,14 +108,14 @@ type Config struct {
 
 	OCSPResponder struct {
 		DBDriver      string
-		DBName        string
+		DBConnect     string
 		Path          string
 		ListenAddress string
 	}
 
 	OCSPUpdater struct {
 		DBDriver        string
-		DBName          string
+		DBConnect       string
 		MinTimeToExpiry string
 		ResponseLimit   int
 	}

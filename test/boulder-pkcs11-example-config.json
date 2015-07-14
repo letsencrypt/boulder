@@ -38,7 +38,7 @@
     "serialPrefix": 255,
     "profile": "ee",
     "dbDriver": "sqlite3",
-    "dbName": ":memory:",
+    "dbConnect": ":memory:",
     "testMode": true,
     "_comment": "This should only be present in testMode. In prod use an HSM.",
     "expiry": "2160h",
@@ -96,7 +96,7 @@
 
   "sa": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:"
+    "dbConnect": ":memory:"
   },
 
   "sql": {
@@ -106,19 +106,19 @@
 
   "revoker": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:"
+    "dbConnect": ":memory:"
   },
 
   "ocspResponder": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:",
+    "dbConnect": ":memory:",
     "path": "/",
     "listenAddress": "localhost:4001"
   },
 
   "ocspUpdater": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:",
+    "dbConnect": ":memory:",
     "minTimeToExpiry": "72h"
   },
 
