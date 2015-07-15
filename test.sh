@@ -175,10 +175,10 @@ end_context #test/gofmt
 # Ensure SQLite is installed so we don't recompile it each time
 go install ./Godeps/_workspace/src/github.com/mattn/go-sqlite3
 
-if [ "${TRAVIS}" == "true" ] ; then
+if [ "${TRAVIS}" == "true" ] || [ "${SKIP_UNIT_TESTS}" != "1" ] ; then
   # Run each test by itself for Travis, so we can get coverage
   for dir in ${TESTDIRS}; do
-    run go test -tags pkcs11 -covermode=count -coverprofile=${dir}.coverprofile ./${dir}/
+    run go test -tags pkcs11 -race -covermode=count -coverprofile=${dir}.coverprofile ./${dir}/
   done
 
   # Gather all the coverprofiles
@@ -196,7 +196,11 @@ else
     dirlist="${dirlist} ./${dir}/"
   done
 
-  run go test -tags pkcs11 ${dirlist}
+  run go test $GOTESTFLAGS -tags pkcs11 ${dirlist}
+fi
+
+if [ "${SKIP_UNIT_TESTS}" = "1" ]; then
+  echo "Skipping unit tests."
 fi
 
 # If the unittests failed, exit before trying to run the integration test.
@@ -205,6 +209,11 @@ if [ ${FAILURE} != 0 ]; then
   echo "---          A unit test failed.               ---"
   echo "--- Stopping before running integration tests. ---"
   echo "--------------------------------------------------"
+  exit ${FAILURE}
+fi
+
+if [ "${SKIP_INTEGRATION_TESTS}" = "1" ]; then
+  echo "Skipping integration tests."
   exit ${FAILURE}
 fi
 
