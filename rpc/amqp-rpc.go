@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
@@ -271,9 +272,11 @@ type AmqpRPCCLient struct {
 	serverQueue string
 	clientQueue string
 	channel     *amqp.Channel
-	pending     map[string]chan []byte
 	timeout     time.Duration
 	log         *blog.AuditLogger
+
+	mu      sync.Mutex
+	pending map[string]chan []byte
 }
 
 // NewAmqpRPCClient constructs an RPC client using AMQP
@@ -304,7 +307,9 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 		for msg := range msgs {
 			// XXX-JWS: jws.Sign(privKey, body)
 			corrID := msg.CorrelationId
+			rpc.mu.Lock()
 			responseChan, present := rpc.pending[corrID]
+			rpc.mu.Unlock()
 
 			rpc.log.Debug(fmt.Sprintf(" [c<][%s] response %s(%s) [%s]", clientQueue, msg.Type, core.B64enc(msg.Body), corrID))
 			if !present {
@@ -313,7 +318,9 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 				continue
 			}
 			responseChan <- msg.Body
+			rpc.mu.Lock()
 			delete(rpc.pending, corrID)
+			rpc.mu.Unlock()
 		}
 	}()
 
@@ -335,7 +342,9 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 	// be buffered to avoid deadlock
 	responseChan := make(chan []byte, 1)
 	corrID := core.NewToken()
+	rpc.mu.Lock()
 	rpc.pending[corrID] = responseChan
+	rpc.mu.Unlock()
 
 	// Send the request
 	rpc.log.Debug(fmt.Sprintf(" [c>][%s] requesting %s(%s) [%s]", rpc.clientQueue, method, core.B64enc(body), corrID))
