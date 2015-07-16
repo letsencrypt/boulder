@@ -131,6 +131,10 @@
     "minTimeToExpiry": "72h"
   },
 
+  "activityMonitor": {
+    "debugAddr": "localhost:8006"
+  },
+
   "mail": {
     "server": "mail.example.com",
     "port": "25",
