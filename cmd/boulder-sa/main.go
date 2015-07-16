@@ -30,7 +30,10 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
+		go cmd.DebugServer(c.SA.DebugAddr)
+
 		sai, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBConnect)
+
 		cmd.FailOnError(err, "Failed to create SA impl")
 		sai.SetSQLDebug(c.SQL.SQLDebug)
 

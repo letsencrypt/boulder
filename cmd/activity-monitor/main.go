@@ -148,6 +148,8 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
+		go cmd.DebugServer(c.ActivityMonitor.DebugAddr)
+
 		ch, err := cmd.AmqpChannel(c)
 
 		cmd.FailOnError(err, "Could not connect to AMQP")

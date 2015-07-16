@@ -127,6 +127,8 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
+		go cmd.DebugServer(c.OCSPResponder.DebugAddr)
+
 		go cmd.ProfileCmd("OCSP", stats)
 
 		auditlogger.Info(app.VersionString())
@@ -148,11 +150,12 @@ func main() {
 		cmd.FailOnError(err, "Could not connect to OCSP database")
 
 		// Configure HTTP
-		http.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
+		m := http.NewServeMux()
+		m.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.OCSPResponder.ListenAddress))
-		err = http.ListenAndServe(c.OCSPResponder.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
+		err = http.ListenAndServe(c.OCSPResponder.ListenAddress, HandlerTimer(m, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 
