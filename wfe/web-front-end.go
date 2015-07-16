@@ -121,8 +121,8 @@ func NewWebFrontEndImpl() (WebFrontEndImpl, error) {
 	}, nil
 }
 
-// HandlePaths configures the HTTP engine to use various functions
-// as methods for various ACME-specified paths.
+// Handler configures the HTTP engine to use various functions as
+// methods for various ACME-specified paths.
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.NewReg = wfe.BaseURL + NewRegPath
 	wfe.RegBase = wfe.BaseURL + RegPath
