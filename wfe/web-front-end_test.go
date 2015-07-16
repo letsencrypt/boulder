@@ -9,7 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -112,16 +112,7 @@ wk6Oiadty3eQqSBJv0HnpmiEdQVffIK5Pg4M8Dd+aOBnEkbopAJOuA==
 	// * CN = lets-encrypt
 	// * DNSNames = not-an-example.com
 	// Used for NewCertificate tests
-	GoodTestCert = "3082013e3081eba003020102020100300b06092a864886f70d01010b300030221" +
-		"80f32303539313131303233303030305a180f3230353931313130323330303030" +
-		"5a3000305c300d06092a864886f70d0101010500034b003048024100e5d1cc1f6" +
-		"10d20913d88e5bba1f327d32450fa650c6fa8d084b710d883f3372008cf97bc41" +
-		"2cb1ed3a0b28516fa839073f40b061fdb616b1b33181d28d91a5a90203010001a" +
-		"34e304c301d0603551d250416301406082b0601050507030106082b0601050507" +
-		"0302300c0603551d130101ff04023000301d0603551d110416301482126e6f742" +
-		"d616e2d6578616d706c652e636f6d300b06092a864886f70d01010b0341008cf8" +
-		"f349efa6d2fadbaf8ed9ba67e5a9b98c3d5a13c06297c4cf36dc76f494e8887e3" +
-		"5dd9c885526136d810fc7640f5ba56281e2b75fa3ff7c91a7d23bab7fd4"
+	GoodTestCert = `MIIBmzCCAUegAwIBAgICBTkwCwYJKoZIhvcNAQELMB0xGzAZBgNVBAMTEm5vdC1hbi1leGFtcGxlLmNvbTAeFw0xNTA3MTYyMDM2NTNaFw0yNTA3MTMyMTM2NTNaMB0xGzAZBgNVBAMTEm5vdC1hbi1leGFtcGxlLmNvbTBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQCyjE8ZZXp7OzMMUtrH/7oDrVOLoIZrWimQEywt/xdJdIdlgpGR4E0bCtvuWtBnJVyj6mH3rKZNdaCPjxgVwJZ5AgMBAAGjczBxMA4GA1UdDwEB/wQEAwIAoDAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwDAYDVR0TAQH/BAIwADAdBgNVHREEFjAUghJub3QtYW4tZXhhbXBsZS5jb20wEwYDVR0gBAwwCjAIBgZngQwBAgEwCwYJKoZIhvcNAQELA0EAin25nYZKCCBA/Rf9lJj2D9cqUylBj4XS1hn1d/Aq0MOIKboEiqkZ0rfEZP8puW3hk16+BB4CozUvPzYfKWyZTQ==`
 )
 
 type MockSA struct {
@@ -260,8 +251,11 @@ func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, 
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
-	return core.Certificate{}, nil
+func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
+	// Return a basic certificate so NewCertificate can continue
+	randomCertDer, _ := base64.StdEncoding.DecodeString(GoodTestCert)
+	cert.DER = randomCertDer
+	return
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistration(reg core.Registration, updated core.Registration) (core.Registration, error) {
@@ -284,7 +278,7 @@ type MockCA struct{}
 
 func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (cert core.Certificate, err error) {
 	// Return a basic certificate so NewCertificate can continue
-	randomCertDer, _ := hex.DecodeString(GoodTestCert)
+	randomCertDer, _ := base64.StdEncoding.DecodeString(GoodTestCert)
 	cert.DER = randomCertDer
 	return
 }
@@ -502,11 +496,11 @@ func TestIssueCertificate(t *testing.T) {
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
 		Body: makeBody(signRequest(t, `{
-      "csr": "MIH1MIGiAgEAMA0xCzAJBgNVBAYTAlVTMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAOXRzB9hDSCRPYjlu6HzJ9MkUPplDG-o0IS3ENiD8zcgCM-XvEEsse06CyhRb6g5Bz9AsGH9thaxszGB0o2RpakCAwEAAaAwMC4GCSqGSIb3DQEJDjEhMB8wHQYDVR0RBBYwFIISbm90LWFuLWV4YW1wbGUuY29tMAsGCSqGSIb3DQEBCwNBAFpyURFqjVn-7zx73GKaBvPF_2RhBsdehqSjaJ0BpvPKmzpoIFADjttNzKkWaRRDrTeT-GGMV2Gky8S-E_dzoms=",
+      "csr": "MIIBBTCBsgIBADAdMRswGQYDVQQDExJub3QtYW4tZXhhbXBsZS5jb20wXDANBgkqhkiG9w0BAQEFAANLADBIAkEAsoxPGWV6ezszDFLax_-6A61Ti6CGa1opkBMsLf8XSXSHZYKRkeBNGwrb7lrQZyVco-ph96ymTXWgj48YFcCWeQIDAQABoDAwLgYJKoZIhvcNAQkOMSEwHzAdBgNVHREEFjAUghJub3QtYW4tZXhhbXBsZS5jb20wCwYJKoZIhvcNAQELA0EAU_yMpzbEhxRHpiXpOz2h9PTb8U5BjdaFyQf62nL5Ud-e5Ldg6oCWP2L8lsY-3gzieJ6XFjoKE7BSQK8l_0-I1g==",
       "authorizations": ["valid"]
     }`, &wfe.nonceService)),
 	})
-	randomCertDer, _ := hex.DecodeString(GoodTestCert)
+	randomCertDer, _ := base64.StdEncoding.DecodeString(GoodTestCert)
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		string(randomCertDer))
