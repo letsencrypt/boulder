@@ -481,7 +481,7 @@ type IssuedCertIdentifierData struct {
 type IdentifierData struct {
 	ReversedName string    // The label-wise reverse of an identifier, e.g. com.example or com.example.*
 	CertSHA1     string    // The hex encoding of the SHA-1 hash of a cert containing the identifier
-	LastUpdated  time.Time // The time the indicated certificate expires
+	LastUpdated  time.Time // The time the entry for the cert associated with this identifier was last updated
 }
 
 // ExternalCerts holds information about certificates issued by other CAs,
@@ -495,6 +495,7 @@ type ExternalCert struct {
 	Valid       bool   // Whether this certificate was valid at LastUpdated time
 	EV          bool   // Whether this cert was EV valid
 	LastUpdated time.Time // Last time this cert's data was updated
+  CertDER     []byte // DER (binary) encoding of the raw certificate
 }
 
 // MatchesCSR tests the contents of a generated certificate to make sure

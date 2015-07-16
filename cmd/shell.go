@@ -120,6 +120,10 @@ type Config struct {
 		ResponseLimit   int
 	}
 
+	ExternalCertImporter struct {
+		CertCSVFilesPrefix string
+	}
+
 	Common struct {
 		BaseURL string
 		// Path to a PEM-encoded copy of the issuer certificate.
