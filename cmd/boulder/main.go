@@ -70,7 +70,7 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
-		go cmd.DebugServer("localhost:8080")
+		go cmd.DebugServer(c.Monolith.DebugAddr)
 
 		// Run StatsD profiling
 		go cmd.ProfileCmd("Monolith", stats)

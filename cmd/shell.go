@@ -79,6 +79,11 @@ type Config struct {
 
 	CA ca.Config
 
+	Monolith struct {
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
+	}
+
 	RA struct {
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
