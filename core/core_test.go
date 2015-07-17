@@ -30,12 +30,6 @@ func TestChallenges(t *testing.T) {
 	if dvsni.Status != StatusPending {
 		t.Errorf("Incorrect status for challenge: %v", dvsni.Status)
 	}
-	if len(dvsni.R) != 43 {
-		t.Errorf("Incorrect length for DVSNI R: %v", dvsni.R)
-	}
-	if len(dvsni.Nonce) != 32 {
-		t.Errorf("Incorrect length for DVSNI nonce: %v", dvsni.Nonce)
-	}
 }
 
 // objects.go
@@ -84,31 +78,25 @@ func TestCertificateRequest(t *testing.T) {
 }
 
 func TestMergeChallenge(t *testing.T) {
+	tls := true
 	t1 := time.Now()
 	t2 := time.Now().Add(-5 * time.Hour)
 	challenge := Challenge{
 		Status:    StatusPending,
 		Validated: &t1,
 		Token:     "asdf",
-		R:         "asdf",
-		S:         "",
-		Nonce:     "asdf",
 	}
 	response := Challenge{
 		Status:    StatusValid,
 		Validated: &t2,
 		Token:     "qwer",
-		R:         "qwer",
-		S:         "qwer",
-		Nonce:     "qwer",
+		TLS:       &tls,
 	}
 	merged := Challenge{
 		Status:    StatusPending,
 		Validated: &t1,
 		Token:     "asdf",
-		R:         "asdf",
-		S:         "qwer",
-		Nonce:     "asdf",
+		TLS:       &tls,
 	}
 
 	probe := challenge.MergeResponse(response)
@@ -121,11 +109,8 @@ func TestMergeChallenge(t *testing.T) {
 	if probe.Token != merged.Token {
 		t.Errorf("MergeChallenge allowed response to overwrite status")
 	}
-	if probe.R != merged.R {
-		t.Errorf("MergeChallenge allowed response to overwrite R")
-	}
-	if probe.Nonce != merged.Nonce {
-		t.Errorf("MergeChallenge allowed response to overwrite nonce")
+	if probe.TLS != merged.TLS {
+		t.Errorf("MergeChallenge failed to overwrite TLS")
 	}
 }
 

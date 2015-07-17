@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/syslog"
@@ -155,10 +156,13 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 	server.Serve(listener)
 }
 
-func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
-	RS := append(R, S...)
-	z := sha256.Sum256(RS)
-	zName := fmt.Sprintf("%064x.acme.invalid", z)
+func dvsniSrv(t *testing.T, chall core.Challenge, stopChan, waitChan chan bool) {
+	encodedSig := core.B64enc(chall.Validation.Signatures[0].Signature)
+	h := sha256.New()
+	h.Write([]byte(encodedSig))
+	Z := hex.EncodeToString(h.Sum(nil))
+	ZName := fmt.Sprintf("%s.%s.acme.invalid", Z[:32], Z[32:])
+
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1337),
 		Subject: pkix.Name{
@@ -171,7 +175,7 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 
-		DNSNames: []string{zName},
+		DNSNames: []string{ZName},
 	}
 
 	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
@@ -184,7 +188,7 @@ func dvsniSrv(t *testing.T, R, S []byte, stopChan, waitChan chan bool) {
 		Certificates: []tls.Certificate{*cert},
 		ClientAuth:   tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			if clientHello.ServerName == "wait-long.acme.invalid" {
+			if clientHello.ServerName != ZName {
 				time.Sleep(time.Second * 10)
 				return nil, nil
 			}
@@ -308,9 +312,7 @@ func TestDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 
-	a := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
-	ba := core.B64enc(a)
-	chall := core.Challenge{R: ba, S: ba}
+	chall := staticDVSNIChallenge()
 
 	invalidChall, err := va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -319,7 +321,7 @@ func TestDvsni(t *testing.T) {
 
 	waitChan := make(chan bool, 1)
 	stopChan := make(chan bool, 1)
-	go dvsniSrv(t, a, a, stopChan, waitChan)
+	go dvsniSrv(t, chall, stopChan, waitChan)
 	defer func() { stopChan <- true }()
 	<-waitChan
 
@@ -339,21 +341,16 @@ func TestDvsni(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 
 	va.TestMode = true
-	chall.R = ba[5:]
-	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "R Should be illegal Base64")
-	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
-	chall.R = ba
-	chall.S = "!@#"
-	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "S Should be illegal Base64")
-	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
+	// Need to re-sign to get an unknown SNI (from the signature value)
+	validationPayload, _ := json.Marshal(map[string]interface{}{
+		"type":  chall.Type,
+		"token": "wait-long",
+	})
+	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
+	validationJWS, _ := signer.Sign(validationPayload, "")
+	chall.Validation = (*core.AcmeJWS)(validationJWS)
 
-	chall.S = ba
-	chall.Nonce = "wait-long"
 	started := time.Now()
 	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
 	took := time.Since(started)
@@ -369,10 +366,7 @@ func TestTLSError(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 
-	a := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
-	ba := core.B64enc(a)
-	chall := core.Challenge{R: ba, S: ba}
-
+	chall := staticDVSNIChallenge()
 	waitChan := make(chan bool, 1)
 	stopChan := make(chan bool, 1)
 	go brokenTLSSrv(t, stopChan, waitChan)
@@ -418,20 +412,33 @@ func TestValidateHTTP(t *testing.T) {
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
+func staticDVSNIChallenge() core.Challenge {
+	chall := core.Challenge{
+		Type:  core.ChallengeTypeDVSNI,
+		Token: `qCIRComnWG-6M0z0e2oaXvtmH1f_zlXYkF6ic7lPg3g`,
+	}
+
+	validationPayload, _ := json.Marshal(map[string]interface{}{
+		"type":  chall.Type,
+		"token": chall.Token,
+	})
+
+	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
+	validationJWS, _ := signer.Sign(validationPayload, "")
+	chall.Validation = (*core.AcmeJWS)(validationJWS)
+	return chall
+}
+
 func TestValidateDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	challDvsni := core.DvsniChallenge()
-	challDvsni.S = challDvsni.R
-
+	chall := staticDVSNIChallenge()
 	waitChanDvsni := make(chan bool, 1)
 	stopChanDvsni := make(chan bool, 1)
-	ar, _ := core.B64dec(challDvsni.R)
-	as, _ := core.B64dec(challDvsni.S)
-	go dvsniSrv(t, ar, as, stopChanDvsni, waitChanDvsni)
+	go dvsniSrv(t, chall, stopChanDvsni, waitChanDvsni)
 
 	// Let them start
 	<-waitChanDvsni
@@ -445,7 +452,7 @@ func TestValidateDvsni(t *testing.T) {
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{challDvsni},
+		Challenges:     []core.Challenge{chall},
 	}
 	va.validate(authz, 0, AccountKey)
 
@@ -458,14 +465,10 @@ func TestValidateDvsniNotSane(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	challDvsni := core.DvsniChallenge()
-	challDvsni.R = "boulder" // Not a sane thing to do.
-
+	chall := staticDVSNIChallenge()
 	waitChanDvsni := make(chan bool, 1)
 	stopChanDvsni := make(chan bool, 1)
-	ar, _ := core.B64dec(challDvsni.R)
-	as, _ := core.B64dec(challDvsni.S)
-	go dvsniSrv(t, ar, as, stopChanDvsni, waitChanDvsni)
+	go dvsniSrv(t, chall, stopChanDvsni, waitChanDvsni)
 
 	// Let them start
 	<-waitChanDvsni
@@ -475,11 +478,13 @@ func TestValidateDvsniNotSane(t *testing.T) {
 		stopChanDvsni <- true
 	}()
 
+	chall.Token = "not sane"
+
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{challDvsni},
+		Challenges:     []core.Challenge{chall},
 	}
 	va.validate(authz, 0, AccountKey)
 
@@ -646,23 +651,14 @@ func TestDNSValidationNotSane(t *testing.T) {
 	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
 
 	chal2 := core.DNSChallenge()
-	chal2.R = "1"
-
-	chal3 := core.DNSChallenge()
-	chal3.S = "2"
-
-	chal4 := core.DNSChallenge()
-	chal4.Nonce = "2"
-
-	chal5 := core.DNSChallenge()
-	var tls = true
-	chal5.TLS = &tls
+	chal2.TLS = new(bool)
+	*chal2.TLS = true
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{chal0, chal1, chal2, chal3, chal4, chal5},
+		Challenges:     []core.Challenge{chal0, chal1, chal2},
 	}
 
 	for i := 0; i < 6; i++ {
