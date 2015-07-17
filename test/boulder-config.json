@@ -147,6 +147,10 @@
     "debugAddr": "localhost:8006"
   },
 
+  "activityMonitor": {
+    "debugAddr": "localhost:8007"
+  },
+
   "mail": {
     "server": "mail.example.com",
     "port": "25",
