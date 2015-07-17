@@ -114,11 +114,11 @@ func TestRoundtripsJWSCorruptSignature(t *testing.T) {
 	corrupters := []func(*JsonWebSignature){
 		func(obj *JsonWebSignature) {
 			// Changes bytes in signature
-			obj.Signatures[0].signature[10]++
+			obj.Signatures[0].Signature[10]++
 		},
 		func(obj *JsonWebSignature) {
 			// Set totally invalid signature
-			obj.Signatures[0].signature = []byte("###")
+			obj.Signatures[0].Signature = []byte("###")
 		},
 	}
 

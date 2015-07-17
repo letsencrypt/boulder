@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -52,6 +53,42 @@ type verificationRequestEvent struct {
 	RequestTime  time.Time      `json:",omitempty"`
 	ResponseTime time.Time      `json:",omitempty"`
 	Error        string         `json:",omitempty"`
+}
+
+func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey jose.JsonWebKey, target map[string]interface{}) error {
+
+	if len(validation.Signatures) > 1 {
+		return fmt.Errorf("Too many signatures on validation JWS")
+	}
+	if len(validation.Signatures) == 0 {
+		return fmt.Errorf("Validation JWS not signed")
+	}
+
+	payload, _, err := validation.Verify(accountKey)
+	if err != nil {
+		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
+	}
+
+	var parsedResponse map[string]interface{}
+	err = json.Unmarshal(payload, &parsedResponse)
+	if err != nil {
+		return fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
+	}
+
+	if len(parsedResponse) != len(target) {
+		return fmt.Errorf("Validation payload did not have all fields")
+	}
+
+	for key, targetValue := range target {
+		parsedValue, ok := parsedResponse[key]
+		if !ok {
+			return fmt.Errorf("Validation payload missing a field %s", key)
+		} else if parsedValue != targetValue {
+			return fmt.Errorf("Validation payload has improper value for field %s", key)
+		}
+	}
+
+	return nil
 }
 
 // Validation methods
@@ -160,102 +197,17 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		return challenge, err
 	}
 
-	if len(parsedJws.Signatures) > 1 {
-		err = fmt.Errorf("Too many signatures on validation JWS")
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-	if len(parsedJws.Signatures) == 0 {
-		err = fmt.Errorf("Validation JWS not signed")
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	key := parsedJws.Signatures[0].Header.JsonWebKey
-	if !core.KeyDigestEquals(key, accountKey) {
-		err = fmt.Errorf("Response JWS signed with improper key")
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	payload, _, err := parsedJws.Verify(key)
-	if err != nil {
-		err = fmt.Errorf("Validation response failed to verify: %s", err.Error())
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
 	// Check that JWS body is as expected
 	// * "type" == "simpleHttp"
 	// * "token" == challenge.token
 	// * "tls" == challenge.tls || true
-	va.log.Debug(fmt.Sprintf("Validation response payload: %s", string(payload)))
-	var parsedResponse map[string]interface{}
-	err = json.Unmarshal(payload, &parsedResponse)
+	target := map[string]interface{}{
+		"type":  core.ChallengeTypeSimpleHTTP,
+		"token": challenge.Token,
+		"tls":   (challenge.TLS == nil) || *challenge.TLS,
+	}
+	err = verifyValidationJWS(parsedJws, accountKey, target)
 	if err != nil {
-		err = fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-	if len(parsedResponse) != 3 {
-		err = fmt.Errorf("Validation payload did not have all fields")
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-	typePassed := false
-	tokenPassed := false
-	tlsPassed := false
-	for key, value := range parsedResponse {
-		switch key {
-		case "type":
-			castValue, ok := value.(string)
-			typePassed = ok && castValue == core.ChallengeTypeSimpleHTTP
-		case "token":
-			castValue, ok := value.(string)
-			tokenPassed = ok && castValue == challenge.Token
-		case "tls":
-			castValue, ok := value.(bool)
-			tlsValue := challenge.TLS == nil || *challenge.TLS
-			tlsPassed = ok && castValue == tlsValue
-		default:
-			err = fmt.Errorf("Validation payload had an unexpected field")
-			challenge.Status = core.StatusInvalid
-			return challenge, err
-		}
-	}
-	if !typePassed || !tokenPassed || !tlsPassed {
-		err = fmt.Errorf("Validation contents were not correct: type=%v token=%v tls=%v",
-			typePassed, tokenPassed, tlsPassed)
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
@@ -282,33 +234,30 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		return challenge, challenge.Error
 	}
 
-	const DVSNIsuffix = ".acme.invalid"
-	nonceName := challenge.Nonce + DVSNIsuffix
-
-	R, err := core.B64dec(challenge.R)
+	// Check that JWS body is as expected
+	// * "type" == "dvsni"
+	// * "token" == challenge.token
+	target := map[string]interface{}{
+		"type":  core.ChallengeTypeDVSNI,
+		"token": challenge.Token,
+	}
+	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), accountKey, target)
 	if err != nil {
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "Failed to decode R value from DVSNI challenge",
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
 		}
-		va.log.Debug(fmt.Sprintf("DVSNI [%s] R Decode failure: %s", identifier, err))
 		return challenge, err
 	}
-	S, err := core.B64dec(challenge.S)
-	if err != nil {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "Failed to decode S value from DVSNI challenge",
-		}
-		va.log.Debug(fmt.Sprintf("DVSNI [%s] S Decode failure: %s", identifier, err))
-		return challenge, err
-	}
-	RS := append(R, S...)
 
-	z := sha256.Sum256(RS)
-	zName := fmt.Sprintf("%064x.acme.invalid", z)
+	// Compute the digest that will appear in the certificate
+	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
+	h := sha256.New()
+	h.Write([]byte(encodedSignature))
+	Z := hex.EncodeToString(h.Sum(nil))
+	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.DVSNISuffix)
 
 	// Make a connection with SNI = nonceName
 	hostPort := identifier.Value + ":443"
@@ -316,9 +265,9 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		hostPort = "localhost:5001"
 	}
 	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
-		identifier, hostPort, zName))
+		identifier, hostPort, ZName))
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", hostPort, &tls.Config{
-		ServerName:         nonceName,
+		ServerName:         ZName,
 		InsecureSkipVerify: true,
 	})
 
@@ -333,7 +282,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	}
 	defer conn.Close()
 
-	// Check that zName is a dNSName SAN in the server's certificate
+	// Check that ZName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		challenge.Error = &core.ProblemDetails{
@@ -344,7 +293,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		return challenge, challenge.Error
 	}
 	for _, name := range certs[0].DNSNames {
-		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
+		if subtle.ConstantTimeCompare([]byte(name), []byte(ZName)) == 1 {
 			challenge.Status = core.StatusValid
 			return challenge, nil
 		}
@@ -352,7 +301,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	challenge.Error = &core.ProblemDetails{
 		Type:   core.UnauthorizedProblem,
-		Detail: "Correct zName not found for DVSNI challenge",
+		Detail: "Correct ZName not found for DVSNI challenge",
 	}
 	challenge.Status = core.StatusInvalid
 	return challenge, challenge.Error
@@ -393,9 +342,27 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 		return challenge, challenge.Error
 	}
 
-	const DNSPrefix = "_acme-challenge"
+	// Check that JWS body is as expected
+	// * "type" == "dvsni"
+	// * "token" == challenge.token
+	target := map[string]interface{}{
+		"type":  core.ChallengeTypeDNS,
+		"token": challenge.Token,
+	}
+	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), accountKey, target)
+	if err != nil {
+		va.log.Debug(err.Error())
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
+		return challenge, err
+	}
+	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
 
-	challengeSubdomain := fmt.Sprintf("%s.%s", DNSPrefix, identifier.Value)
+	// Look for the required record in the DNS
+	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
 	txts, _, err := va.DNSResolver.LookupTXT(challengeSubdomain)
 
 	if err != nil {
@@ -415,9 +382,8 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 		return challenge, challenge.Error
 	}
 
-	byteToken := []byte(challenge.Token)
 	for _, element := range txts {
-		if subtle.ConstantTimeCompare([]byte(element), byteToken) == 1 {
+		if subtle.ConstantTimeCompare([]byte(element), []byte(encodedSignature)) == 1 {
 			challenge.Status = core.StatusValid
 			return challenge, nil
 		}

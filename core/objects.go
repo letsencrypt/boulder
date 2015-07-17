@@ -8,21 +8,18 @@ package core
 import (
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"net"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 )
 
 // AcmeStatus defines the state of a given authorization
 type AcmeStatus string
-
-// Buffer is a variable-length collection of bytes
-type Buffer []byte
 
 // IdentifierType defines the available identification mechanisms for domains
 type IdentifierType string
@@ -78,6 +75,9 @@ const (
 	ChallengeTypeDVSNI      = "dvsni"
 	ChallengeTypeDNS        = "dns"
 )
+
+const DVSNISuffix = "acme.invalid"
+const DNSPrefix = "_acme-challenge"
 
 func (pd *ProblemDetails) Error() string {
 	return fmt.Sprintf("%v :: %v", pd.Type, pd.Detail)
@@ -240,10 +240,8 @@ type Challenge struct {
 	// Used by simpleHTTP challenges
 	TLS *bool `json:"tls,omitempty"`
 
-	// Used by dvsni challenges
-	R     string `json:"r,omitempty"`
-	S     string `json:"s,omitempty"`
-	Nonce string `json:"nonce,omitempty"`
+	// Used by dns and dvsni challenges
+	Validation *AcmeJWS `json"validation,omitempty"`
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
@@ -256,17 +254,12 @@ func (ch Challenge) IsSane(completed bool) bool {
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP:
 		// check extra fields aren't used
-		if ch.R != "" || ch.S != "" || ch.Nonce != "" {
+		if ch.Validation != nil {
 			return false
 		}
 
-		// If the client has marked the challenge as completed, there should be a
-		// non-empty path provided. Otherwise there should be no default path.
-		if !completed {
-			// TLS should set set to true by default
-			if ch.TLS == nil || !*ch.TLS {
-				return false
-			}
+		if completed && ch.TLS == nil {
+			return false
 		}
 
 		// check token is present, corrent length, and contains b64 encoded string
@@ -278,40 +271,24 @@ func (ch Challenge) IsSane(completed bool) bool {
 		}
 	case ChallengeTypeDVSNI:
 		// check extra fields aren't used
-		if ch.Token != "" || ch.TLS != nil {
+		if ch.TLS != nil {
 			return false
 		}
 
-		if ch.Nonce == "" || len(ch.Nonce) != 32 {
+		// check token is present, corrent length, and contains b64 encoded string
+		if ch.Token == "" || len(ch.Token) != 43 {
 			return false
 		}
-		if _, err := hex.DecodeString(ch.Nonce); err != nil {
-			return false
-		}
-
-		// Check R & S are sane
-		if ch.R == "" || len(ch.R) != 43 {
-			return false
-		}
-		if _, err := B64dec(ch.R); err != nil {
+		if _, err := B64dec(ch.Token); err != nil {
 			return false
 		}
 
-		if completed {
-			if ch.S == "" || len(ch.S) != 43 {
-				return false
-			}
-			if _, err := B64dec(ch.S); err != nil {
-				return false
-			}
-		} else {
-			if ch.S != "" {
-				return false
-			}
+		if completed && ch.Validation == nil {
+			return false
 		}
 	case ChallengeTypeDNS:
 		// check extra fields aren't used
-		if ch.R != "" || ch.S != "" || ch.Nonce != "" || ch.TLS != nil {
+		if ch.TLS != nil {
 			return false
 		}
 
@@ -334,12 +311,16 @@ func (ch Challenge) IsSane(completed bool) bool {
 // Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	// Only override fields that are supposed to be client-provided
-	if len(ch.S) == 0 {
-		ch.S = resp.S
-	}
-
+	// If "tls" is not provided, default to "true"
 	if resp.TLS != nil {
 		ch.TLS = resp.TLS
+	} else {
+		ch.TLS = new(bool)
+		*ch.TLS = true
+	}
+
+	if resp.Validation != nil {
+		ch.Validation = resp.Validation
 	}
 
 	return ch
@@ -409,6 +390,30 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 	*jb, err = base64URLDecode(str)
+	return
+}
+
+// AcmeJWS adds JSON serialization / deserialization to the go-jose JsonWebSignature object
+type AcmeJWS jose.JsonWebSignature
+
+// Verify is just passed through to the underlying type
+func (jws AcmeJWS) Verify(jwk interface{}) ([]byte, jose.JoseHeader, error) {
+	return jose.JsonWebSignature(jws).Verify(jwk)
+}
+
+// MarshalJSON encodes a JSONBuffer for transmission.
+func (jws AcmeJWS) MarshalJSON() (result []byte, err error) {
+	return []byte(jose.JsonWebSignature(jws).FullSerialize()), nil
+}
+
+// UnmarshalJSON decodes a JSONBuffer to an object.
+func (jws *AcmeJWS) UnmarshalJSON(data []byte) (err error) {
+	parsedJWS, err := jose.ParseSigned(string(data))
+	if err != nil {
+		return err
+	}
+
+	*jws = AcmeJWS(*parsedJWS)
 	return
 }
 
