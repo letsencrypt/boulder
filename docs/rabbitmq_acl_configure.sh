@@ -71,6 +71,9 @@ admin declare queue name="RA.server" durable=false
 admin declare queue name="VA.server" durable=false
 
 admin declare exchange name="boulder" type=topic durable=false
+
+# Bind the wildcard topic (#) to Monitor, asking the server to copy all messages
+# and place them in the Montior queue.
 admin declare binding source="boulder" destination="Monitor" routing_key="#"
 
 admin declare user name=${USER_BOULDER_AM} password=${PASS_BOULDER_AM} tags=""
@@ -81,10 +84,53 @@ admin declare user name=${USER_BOULDER_VA} password=${PASS_BOULDER_VA} tags=""
 admin declare user name=${USER_BOULDER_WFE} password=${PASS_BOULDER_WFE} tags=""
 admin declare user name=${USER_BOULDER_OCSP} password=${PASS_BOULDER_OCSP} tags=""
 
-admin declare permission vhost=${VHOST} user=${USER_BOULDER_AM} configure="^$" write="^$" read="^Monitor$"
-admin declare permission vhost=${VHOST} user=${USER_BOULDER_VA} configure="^(VA\.server|VA->.*)$" write="^(boulder|VA\.server|VA->.*)$" read="^(boulder|VA\.server|VA->.*)$"
-admin declare permission vhost=${VHOST} user=${USER_BOULDER_RA} configure="^(RA\.server|RA->.*)$" write="^(boulder|RA\.server|RA->.*)$" read="^(boulder|RA\.server|RA->.*)$"
-admin declare permission vhost=${VHOST} user=${USER_BOULDER_CA} configure="^(CA\.server|CA->.*)$" write="^(boulder|CA\.server|CA->.*)$" read="^(boulder|CA\.server|CA->.*)$"
-admin declare permission vhost=${VHOST} user=${USER_BOULDER_SA} configure="^(SA\.server|SA->.*)$" write="^(boulder|SA\.server|SA->.*)$" read="^(boulder|SA\.server|SA->.*)$"
-admin declare permission vhost=${VHOST} user=${USER_BOULDER_WFE} configure="^(WFE->.*)$" write="^(boulder|WFE->.*)$" read="^(boulder|WFE->.*)$"
-admin declare permission vhost=${VHOST} user=${USER_BOULDER_OCSP} configure="^(OCSP->.*)$" write="^(boulder|OCSP->.*)$" read="^(boulder|OCSP->.*)$"
+##################################################
+## Permissions RegExes                          ##
+##################################################
+## Mystified? These are applied by the server   ##
+## to various operations on queue names per     ##
+## the decoder matrix here:                     ##
+## https://www.rabbitmq.com/access-control.html ##
+##################################################
+
+# AM is read-only, and uses a predeclared Queue.
+admin declare permission vhost=${VHOST} user=${USER_BOULDER_AM} \
+  configure="^$" \
+  write="^$" \
+  read="^Monitor$"
+
+# VA uses VA.server, as well as dynamic queues named VA->RA.{hostname}.
+admin declare permission vhost=${VHOST} user=${USER_BOULDER_VA} \
+  configure="^(VA\.server|VA->RA.*)$" \
+  write="^(boulder|VA\.server|VA->RA.*)$" \
+  read="^(boulder|VA\.server|VA->RA.*)$"
+
+# RA uses RA.server, and RA->CA, RA->SA, RA->VA
+admin declare permission vhost=${VHOST} user=${USER_BOULDER_RA} \
+  configure="^(RA\.server|RA->(CA|SA|VA).*)$" \
+  write="^(boulder|RA\.server|RA->(CA|SA|VA).*)$" \
+  read="^(boulder|RA\.server|RA->(CA|SA|VA).*)$"
+
+# CA uses CA.server, and CA->SA
+admin declare permission vhost=${VHOST} user=${USER_BOULDER_CA} \
+  configure="^(CA\.server|CA->SA.*)$" \
+  write="^(boulder|CA\.server|CA->SA.*)$" \
+  read="^(boulder|CA\.server|CA->SA.*)$"
+
+# SA uses only SA.server
+admin declare permission vhost=${VHOST} user=${USER_BOULDER_SA} \
+  configure="^SA\.server$" \
+  write="^(boulder|SA\.server)$" \
+  read="^(boulder|SA\.server)$"
+
+# WFE uses WFE->RA and WFE->SA
+admin declare permission vhost=${VHOST} user=${USER_BOULDER_WFE} \
+  configure="^(WFE->(RA|SA).*)$" \
+  write="^(boulder|WFE->(RA|SA).*)$" \
+  read="^(boulder|WFE->(RA|SA).*)$"
+
+# OCSP uses only OCSP->CA
+admin declare permission vhost=${VHOST} user=${USER_BOULDER_OCSP} \
+  configure="^(OCSP->CA.*)$" \
+  write="^(boulder|OCSP->CA.*)$" \
+  read="^(boulder|OCSP->CA.*)$"
