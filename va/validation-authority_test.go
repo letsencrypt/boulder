@@ -51,9 +51,15 @@ var TheKey = rsa.PrivateKey{
 
 var ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
 
-const expectedToken = "THETOKEN"
-const pathWrongToken = "wrongtoken"
-const path404 = "404"
+const (
+	expectedToken  = "THETOKEN"
+	pathWrongToken = "wrongtoken"
+	path404        = "404"
+	pathFound      = "302"
+	pathMoved      = "301"
+	pathUnsafe     = "%"
+	pathUnsafe302  = "302-to-unsafe"
+)
 
 func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableTLS bool) {
 	m := http.NewServeMux()
@@ -65,6 +71,15 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 		} else if strings.HasSuffix(r.URL.Path, pathWrongToken) {
 			t.Logf("SIMPLESRV: Got a wrongtoken req\n")
 			fmt.Fprintf(w, "wrongtoken")
+		} else if strings.HasSuffix(r.URL.Path, pathMoved) {
+			t.Logf("SIMPLESRV: Got a 301 redirect req\n")
+			http.Redirect(w, r, "valid", 301)
+		} else if strings.HasSuffix(r.URL.Path, pathFound) {
+			t.Logf("SIMPLESRV: Got a 302 redirect req\n")
+			http.Redirect(w, r, pathMoved, 302)
+		} else if strings.HasSuffix(r.URL.Path, pathUnsafe302) {
+			t.Logf("SIMPLESRV: Got a 302-to-unsafe-path req\n")
+			http.Redirect(w, r, pathUnsafe, 302)
 		} else if strings.HasSuffix(r.URL.Path, "wait") {
 			t.Logf("SIMPLESRV: Got a wait req\n")
 			time.Sleep(time.Second * 3)
@@ -215,6 +230,18 @@ func TestSimpleHttpTLS(t *testing.T) {
 	test.AssertNotError(t, err, chall.Path)
 }
 
+func TestSimpleHttpRedirect(t *testing.T) {
+	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = &mocks.MockDNS{}
+
+	stopChan := make(chan bool, 1)
+	waitChan := make(chan bool, 1)
+	go simpleSrv(t, expectedToken, stopChan, waitChan, true)
+	defer func() { stopChan <- true }()
+	<-waitChan
+
+}
+
 func TestSimpleHttp(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
@@ -236,6 +263,18 @@ func TestSimpleHttp(t *testing.T) {
 	finChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
+
+	chall.Path = pathMoved
+	finChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, chall.Path)
+	// TODO: verify the redirect was logged.
+
+	chall.Path = pathFound
+	finChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, chall.Path)
+	// TODO: verify two redirects were logged.
 
 	chall.Path = path404
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
@@ -269,11 +308,17 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 	va.TestMode = true
 
-	chall.Path = "%"
+	chall.Path = pathUnsafe
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Path doesn't consist of URL-safe characters.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
+
+	chall.Path = pathUnsafe302
+	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Redirect should have failed.")
+	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 
 	chall.Path = "wait-long"
 	started := time.Now()
