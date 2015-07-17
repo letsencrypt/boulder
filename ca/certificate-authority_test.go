@@ -407,6 +407,13 @@ func TestFailNoSerial(t *testing.T) {
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
+func TestFailNoOIDs(t *testing.T) {
+	cadb, _, caConfig := setup(t)
+	caConfig.CFSSL.Signing.Profiles[profileName].Policies = []cfsslConfig.CertificatePolicy{}
+	_, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	test.AssertError(t, err, "CA should have failed with no policy OIDs in signing profiles")
+}
+
 func TestRevoke(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
 	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
