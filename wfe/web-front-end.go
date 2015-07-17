@@ -121,6 +121,65 @@ func NewWebFrontEndImpl() (WebFrontEndImpl, error) {
 	}, nil
 }
 
+// BodylessResponseWriter wraps http.ResponseWriter, discarding
+// anything written to the body.
+type BodylessResponseWriter struct {
+	http.ResponseWriter
+}
+
+func (mrw BodylessResponseWriter) Write(buf []byte) (int, error) {
+	return len(buf), nil
+}
+
+// HandleFunc registers a handler at the given path. It's
+// http.HandleFunc(), but with a wrapper around the handler that
+// provides some generic per-request functionality:
+//
+// * Set a Replay-Nonce header.
+//
+// * Respond http.StatusMethodNotAllowed for HTTP methods other than
+//   those listed.
+//
+// * Never send a body in response to a HEAD request. (Anything
+//   written by the handler will be discarded if the method is HEAD.)
+func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h func(http.ResponseWriter, *http.Request), methods ...string) {
+	methodsOK := make(map[string]bool)
+	for _, m := range methods {
+		methodsOK[m] = true
+	}
+	mux.HandleFunc(pattern, func(response http.ResponseWriter, request *http.Request) {
+		// We do not propagate errors here, because (1) they should be
+		// transient, and (2) they fail closed.
+		nonce, err := wfe.nonceService.Nonce()
+		if err == nil {
+			response.Header().Set("Replay-Nonce", nonce)
+		}
+		response.Header().Set("Access-Control-Allow-Origin", "*")
+
+		switch request.Method {
+		case "HEAD":
+			// We'll be sending an error anyway, but we
+			// should still comply with HTTP spec by not
+			// sending a body.
+			response = BodylessResponseWriter{response}
+		case "OPTIONS":
+			// TODO, #469
+		}
+
+		if _, ok := methodsOK[request.Method]; !ok {
+			logEvent := wfe.populateRequestEvent(request)
+			defer wfe.logRequestDetails(&logEvent)
+			logEvent.Error = "Method not allowed"
+			response.Header().Set("Allow", strings.Join(methods, ", "))
+			wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Call the wrapped handler.
+		h(response, request)
+	})
+}
+
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
 func (wfe *WebFrontEndImpl) Handler() http.Handler {
@@ -132,17 +191,17 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.CertBase = wfe.BaseURL + CertPath
 
 	m := http.NewServeMux()
-	m.HandleFunc("/", wfe.Index)
-	m.HandleFunc(NewRegPath, wfe.NewRegistration)
-	m.HandleFunc(NewAuthzPath, wfe.NewAuthorization)
-	m.HandleFunc(NewCertPath, wfe.NewCertificate)
-	m.HandleFunc(RegPath, wfe.Registration)
-	m.HandleFunc(AuthzPath, wfe.Authorization)
-	m.HandleFunc(CertPath, wfe.Certificate)
-	m.HandleFunc(RevokeCertPath, wfe.RevokeCertificate)
-	m.HandleFunc(TermsPath, wfe.Terms)
-	m.HandleFunc(IssuerPath, wfe.Issuer)
-	m.HandleFunc(BuildIDPath, wfe.BuildID)
+	wfe.HandleFunc(m, "/", wfe.Index, "GET")
+	wfe.HandleFunc(m, NewRegPath, wfe.NewRegistration, "POST")
+	wfe.HandleFunc(m, NewAuthzPath, wfe.NewAuthorization, "POST")
+	wfe.HandleFunc(m, NewCertPath, wfe.NewCertificate, "POST")
+	wfe.HandleFunc(m, RegPath, wfe.Registration, "POST")
+	wfe.HandleFunc(m, AuthzPath, wfe.Authorization, "GET", "POST")
+	wfe.HandleFunc(m, CertPath, wfe.Certificate, "GET", "POST")
+	wfe.HandleFunc(m, RevokeCertPath, wfe.RevokeCertificate, "POST")
+	wfe.HandleFunc(m, TermsPath, wfe.Terms, "GET")
+	wfe.HandleFunc(m, IssuerPath, wfe.Issuer, "GET")
+	wfe.HandleFunc(m, BuildIDPath, wfe.BuildID, "GET")
 	return m
 }
 
@@ -153,21 +212,12 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	wfe.sendStandardHeaders(response)
-
 	// http://golang.org/pkg/net/http/#example_ServeMux_Handle
 	// The "/" pattern matches everything, so we need to check
 	// that we're at the root here.
 	if request.URL.Path != "/" {
 		logEvent.Error = "Resource not found"
 		http.NotFound(response, request)
-		return
-	}
-
-	if request.Method != "GET" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "GET")
-		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -187,21 +237,6 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 func parseIDFromPath(path string) string {
 	re := regexp.MustCompile("^.*/")
 	return re.ReplaceAllString(path, "")
-}
-
-func sendAllow(response http.ResponseWriter, methods ...string) {
-	response.Header().Set("Allow", strings.Join(methods, ", "))
-}
-
-func (wfe *WebFrontEndImpl) sendStandardHeaders(response http.ResponseWriter) {
-	// We do not propagate errors here, because (1) they should be
-	// transient, and (2) they fail closed.
-	nonce, err := wfe.nonceService.Nonce()
-	if err == nil {
-		response.Header().Set("Replay-Nonce", nonce)
-	}
-
-	response.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
 const (
@@ -329,15 +364,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "POST" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "POST")
-		wfe.sendError(response, logEvent.Error, "", http.StatusMethodNotAllowed)
-		return
-	}
-
 	body, key, _, err := wfe.verifyPOST(request, false)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -405,15 +431,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
-
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "POST" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "POST")
-		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
-		return
-	}
 
 	body, _, currReg, err := wfe.verifyPOST(request, true)
 	if err != nil {
@@ -483,15 +500,6 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
-
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "POST" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "POST")
-		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
-		return
-	}
 
 	// We don't ask verifyPOST to verify there is a correponding registration,
 	// because anyone with the right private key can revoke a certificate.
@@ -585,15 +593,6 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "POST" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "POST")
-		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
-		return
-	}
-
 	body, key, reg, err := wfe.verifyPOST(request, true)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -673,15 +672,6 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 }
 
 func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.ResponseWriter, request *http.Request, logEvent requestEvent) requestEvent {
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "GET" && request.Method != "POST" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
-		return logEvent
-	}
-
 	// Check that the requested challenge exists within the authorization
 	found := false
 	var challengeIndex int
@@ -701,12 +691,6 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 	}
 
 	switch request.Method {
-	default:
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, logEvent.Error, "", http.StatusMethodNotAllowed)
-		return logEvent
-
 	case "GET":
 		challenge := authz.Challenges[challengeIndex]
 		jsonReply, err := json.Marshal(challenge)
@@ -810,15 +794,6 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "POST" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "POST")
-		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
-		return
-	}
-
 	body, _, currReg, err := wfe.verifyPOST(request, true)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -898,15 +873,6 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "GET" && request.Method != "POST" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
-		return
-	}
-
 	// Requests to this handler should have a path that leads to a known authz
 	id := parseIDFromPath(request.URL.Path)
 	authz, err := wfe.SA.GetAuthorization(id)
@@ -929,12 +895,6 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 	}
 
 	switch request.Method {
-	default:
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
-		return
-
 	case "GET":
 		// Blank out ID and regID
 		authz.ID = ""
@@ -964,14 +924,6 @@ var allHex = regexp.MustCompile("^[0-9a-f]+$")
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
-
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "GET" && request.Method != "POST" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "GET", "POST")
-		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
-	}
 
 	path := request.URL.Path
 	switch request.Method {
@@ -1025,15 +977,6 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "GET" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "GET")
-		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
-		return
-	}
-
 	http.Redirect(response, request, wfe.SubscriberAgreementURL, http.StatusFound)
 }
 
@@ -1041,15 +984,6 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
-
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "GET" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "GET")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
-		return
-	}
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
@@ -1064,15 +998,6 @@ func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.R
 func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
-
-	wfe.sendStandardHeaders(response)
-
-	if request.Method != "GET" {
-		logEvent.Error = "Method not allowed"
-		sendAllow(response, "GET")
-		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
-		return
-	}
 
 	response.Header().Set("Content-Type", "text/plain")
 	response.WriteHeader(http.StatusOK)
