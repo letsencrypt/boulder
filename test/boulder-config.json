@@ -107,7 +107,7 @@
 
   "monolith": {
     "debugAddr": "localhost:8008"
-  }
+  },
 
   "ra": {
     "debugAddr": "localhost:8002"
