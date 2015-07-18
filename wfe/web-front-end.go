@@ -68,10 +68,10 @@ type WebFrontEndImpl struct {
 	nonceService core.NonceService
 
 	// Cache settings
-	CertCacheDuration         time.Duration
-	CertCacheExpirationWindow time.Duration
-	IssuerCacheDuration       time.Duration
-	IndexCacheDuration        time.Duration
+	CertCacheDuration           time.Duration
+	CertNoCacheExpirationWindow time.Duration
+	IndexCacheDuration          time.Duration
+	IssuerCacheDuration         time.Duration
 }
 
 func statusCodeFromError(err interface{}) int {
@@ -1015,7 +1015,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		}
 
 		// Set cache-control header if certificate NotAfter is > time.Now().Add(-WFE.CertCacheExpirationWindow)
-		if time.Now().Add(-wfe.CertCacheExpirationWindow).After(cert.Expires) {
+		if time.Now().Add(-wfe.CertNoCacheExpirationWindow).After(cert.Expires) {
 			response.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", wfe.CertCacheDuration.Seconds()))
 		} else {
 			response.Header().Add("Cache-Control", "public, max-age=0, no-cache")

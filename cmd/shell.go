@@ -73,6 +73,11 @@ type Config struct {
 		BaseURL       string
 		ListenAddress string
 
+		CertCacheDuration           string
+		CertNoCacheExpirationWindow string
+		IndexCacheDuration          string
+		IssuerCacheDuration         string
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}

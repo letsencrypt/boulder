@@ -1053,13 +1053,14 @@ func TestIssuer(t *testing.T) {
 func TestGetCertificate(t *testing.T) {
 	wfe := setupWFE(t)
 	wfe.CertCacheDuration = time.Second * 10
-	wfe.CertCacheExpirationWindow = time.Hour * 24 * 7
+	wfe.CertNoCacheExpirationWindow = time.Hour * 24 * 7
 	wfe.SA = &MockSA{}
-
-	responseWriter := httptest.NewRecorder()
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	certBlock, _ := pem.Decode(certPemBytes)
+
+	responseWriter := httptest.NewRecorder()
+
 	path, _ := url.Parse("/acme/cert/00000000000000b2")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",

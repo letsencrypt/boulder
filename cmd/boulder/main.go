@@ -82,6 +82,15 @@ func main() {
 		cmd.FailOnError(err, "Unable to create SA")
 		sa.SetSQLDebug(c.SQL.SQLDebug)
 
+		wfei.CertCacheDuration, err = time.ParseDuration(c.WFE.CertCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse certificate caching duration")
+		wfei.CertNoCacheExpirationWindow, err = time.ParseDuration(c.WFE.CertNoCacheExpirationWindow)
+		cmd.FailOnError(err, "Couldn't parse certificate expiration no-cache window")
+		wfei.IndexCacheDuration, err = time.ParseDuration(c.WFE.IndexCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse index caching duration")
+		wfei.IssuerCacheDuration, err = time.ParseDuration(c.WFE.IssuerCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse issuer caching duration")
+
 		ra := ra.NewRegistrationAuthorityImpl()
 
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
