@@ -297,6 +297,7 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 	va.TestMode = true
 
+	chall.Token = "wait-long"
 	started := time.Now()
 	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	took := time.Since(started)
@@ -312,7 +313,7 @@ func TestDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 
-	chall := staticDVSNIChallenge()
+	chall := createChallenge(core.ChallengeTypeDVSNI)
 
 	invalidChall, err := va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -343,9 +344,10 @@ func TestDvsni(t *testing.T) {
 	va.TestMode = true
 
 	// Need to re-sign to get an unknown SNI (from the signature value)
+	chall.Token = core.NewToken()
 	validationPayload, _ := json.Marshal(map[string]interface{}{
 		"type":  chall.Type,
-		"token": "wait-long",
+		"token": chall.Token,
 	})
 	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
 	validationJWS, _ := signer.Sign(validationPayload, "")
@@ -366,7 +368,7 @@ func TestTLSError(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 
-	chall := staticDVSNIChallenge()
+	chall := createChallenge(core.ChallengeTypeDVSNI)
 	waitChan := make(chan bool, 1)
 	stopChan := make(chan bool, 1)
 	go brokenTLSSrv(t, stopChan, waitChan)
@@ -412,10 +414,12 @@ func TestValidateHTTP(t *testing.T) {
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
-func staticDVSNIChallenge() core.Challenge {
+// challengeType == "dvsni" or "dns", since they're the same
+func createChallenge(challengeType string) core.Challenge {
 	chall := core.Challenge{
-		Type:  core.ChallengeTypeDVSNI,
-		Token: `qCIRComnWG-6M0z0e2oaXvtmH1f_zlXYkF6ic7lPg3g`,
+		Type:   challengeType,
+		Status: core.StatusPending,
+		Token:  core.NewToken(),
 	}
 
 	validationPayload, _ := json.Marshal(map[string]interface{}{
@@ -435,7 +439,7 @@ func TestValidateDvsni(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chall := staticDVSNIChallenge()
+	chall := createChallenge(core.ChallengeTypeDVSNI)
 	waitChanDvsni := make(chan bool, 1)
 	stopChanDvsni := make(chan bool, 1)
 	go dvsniSrv(t, chall, stopChanDvsni, waitChanDvsni)
@@ -465,7 +469,7 @@ func TestValidateDvsniNotSane(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chall := staticDVSNIChallenge()
+	chall := createChallenge(core.ChallengeTypeDVSNI)
 	waitChanDvsni := make(chan bool, 1)
 	stopChanDvsni := make(chan bool, 1)
 	go dvsniSrv(t, chall, stopChanDvsni, waitChanDvsni)
@@ -595,7 +599,7 @@ func TestDNSValidationFailure(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chalDNS := core.DNSChallenge()
+	chalDNS := createChallenge(core.ChallengeTypeDNS)
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
@@ -661,7 +665,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 		Challenges:     []core.Challenge{chal0, chal1, chal2},
 	}
 
-	for i := 0; i < 6; i++ {
+	for i := 0; i < len(authz.Challenges); i++ {
 		va.validate(authz, i, AccountKey)
 		test.AssertEquals(t, authz.Challenges[i].Status, core.StatusInvalid)
 		test.AssertEquals(t, authz.Challenges[i].Error.Type, core.MalformedProblem)
