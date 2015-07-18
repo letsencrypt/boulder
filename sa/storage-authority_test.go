@@ -75,7 +75,7 @@ func TestAddRegistration(t *testing.T) {
 	uu, err := url.Parse("test.com")
 	u := core.AcmeURL(*uu)
 
-	newReg := core.Registration{ID: reg.ID, Key: jwk, RecoveryToken: "RBNvo1WzZ4oRRq0W9", Contact: []core.AcmeURL{u}, Agreement: "yes"}
+	newReg := core.Registration{ID: reg.ID, Key: jwk, Contact: []core.AcmeURL{u}, Agreement: "yes"}
 	err = sa.UpdateRegistration(newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
@@ -83,7 +83,6 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't get registration by key")
 
 	test.AssertEquals(t, dbReg.ID, newReg.ID)
-	test.AssertEquals(t, dbReg.RecoveryToken, newReg.RecoveryToken)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
 	jwk.KeyID = "bad"
@@ -114,10 +113,7 @@ func TestAddAuthorization(t *testing.T) {
 		return
 	}
 
-	uu, err := url.Parse("test.com")
-	u := core.AcmeURL(*uu)
-
-	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusPending, URI: u, Token: "THISWOULDNTBEAGOODTOKEN", Path: "test-me"}
+	chall := core.SimpleHTTPChallenge()
 
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}

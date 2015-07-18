@@ -240,7 +240,7 @@ type Challenge struct {
 	TLS *bool `json:"tls,omitempty"`
 
 	// Used by dns and dvsni challenges
-	Validation *AcmeJWS `json"validation,omitempty"`
+	Validation *AcmeJWS `json:"validation,omitempty"`
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client

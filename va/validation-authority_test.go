@@ -678,7 +678,7 @@ func TestDNSValidationServFail(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chalDNS := core.DNSChallenge()
+	chalDNS := createChallenge(core.ChallengeTypeDNS)
 
 	badIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
@@ -703,7 +703,8 @@ func TestDNSValidationNoServer(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chalDNS := core.DNSChallenge()
+	chalDNS := createChallenge(core.ChallengeTypeDNS)
+
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
