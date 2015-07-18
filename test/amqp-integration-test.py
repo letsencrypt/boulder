@@ -46,12 +46,26 @@ def run(path):
     processes.append(info)
     return info
 
+def runDNS():
+    global processes
+    binary = os.path.join(tempdir, os.path.basename("./test/dns-test-srv"))
+    cmd = 'GORACE="halt_on_error=1" go build -race -o %s %s' % (binary, "./test/dns-test-srv")
+    print(cmd)
+    if subprocess.Popen(cmd, shell=True).wait() != 0:
+        die(ExitStatus.Error)
+    runCmd = "exec %s" % binary
+    print(runCmd)
+    info = ProcInfo(runCmd, subprocess.Popen(runCmd, shell=True))
+    processes.append(info)
+    return info
+
 def start():
     run('./cmd/boulder-wfe')
     run('./cmd/boulder-ra')
     run('./cmd/boulder-sa')
     run('./cmd/boulder-ca')
     run('./cmd/boulder-va')
+    runDNS()
 
 def run_node_test():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
