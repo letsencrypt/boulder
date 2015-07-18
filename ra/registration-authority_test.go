@@ -114,19 +114,8 @@ var (
 		RegistrationID: 1,
 		Status:         "pending",
 		Challenges: []core.Challenge{
-			core.Challenge{
-				Type:   "simpleHttp",
-				Status: "pending",
-				URI:    core.AcmeURL(*url0),
-				Token:  "pDX9vBFJ043_gEc9Wyp8of-SqZMN2H3-fvj5iUgP7mg",
-			},
-			core.Challenge{
-				Type:   "dvsni",
-				Status: "pending",
-				URI:    core.AcmeURL(*url1),
-				R:      "AI83O7gCMPDr4z7OIdl8T6axx6nui4HV1aAFQ5LJvVs",
-				Nonce:  "f011c9a0ce1a4fe0f18f2252d64c4239",
-			},
+			core.SimpleHTTPChallenge(),
+			core.DvsniChallenge(),
 		},
 		Combinations: [][]int{[]int{0}, []int{1}},
 	}
