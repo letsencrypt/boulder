@@ -270,22 +270,8 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 	case ChallengeTypeDVSNI:
-		// check extra fields aren't used
-		if ch.TLS != nil {
-			return false
-		}
-
-		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
-			return false
-		}
-		if _, err := B64dec(ch.Token); err != nil {
-			return false
-		}
-
-		if completed && ch.Validation == nil {
-			return false
-		}
+		// Same as DNS
+		fallthrough
 	case ChallengeTypeDNS:
 		// check extra fields aren't used
 		if ch.TLS != nil {
@@ -297,6 +283,11 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 		if _, err := B64dec(ch.Token); err != nil {
+			return false
+		}
+
+		// If completed, check that there's a validation object
+		if completed && ch.Validation == nil {
 			return false
 		}
 

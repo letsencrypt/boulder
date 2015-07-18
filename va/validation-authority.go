@@ -55,7 +55,8 @@ type verificationRequestEvent struct {
 	Error        string         `json:",omitempty"`
 }
 
-func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey jose.JsonWebKey, target map[string]interface{}) error {
+// TODO Update jws.go to accept jose.JsonWebKey in newVerifier
+func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
 
 	if len(validation.Signatures) > 1 {
 		return fmt.Errorf("Too many signatures on validation JWS")
@@ -206,7 +207,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		"token": challenge.Token,
 		"tls":   (challenge.TLS == nil) || *challenge.TLS,
 	}
-	err = verifyValidationJWS(parsedJws, accountKey, target)
+	err = verifyValidationJWS(parsedJws, &accountKey, target)
 	if err != nil {
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
@@ -241,7 +242,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		"type":  core.ChallengeTypeDVSNI,
 		"token": challenge.Token,
 	}
-	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), accountKey, target)
+	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), &accountKey, target)
 	if err != nil {
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
@@ -349,7 +350,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 		"type":  core.ChallengeTypeDNS,
 		"token": challenge.Token,
 	}
-	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), accountKey, target)
+	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), &accountKey, target)
 	if err != nil {
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
