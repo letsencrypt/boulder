@@ -307,6 +307,11 @@ func AmqpChannel(conf Config) (*amqp.Channel, error) {
 		return nil, err
 	}
 
+	err = rpc.AMQPDeclareExchange(conn)
+	if err != nil {
+		return nil, err
+	}
+
 	return conn.Channel()
 }
 
