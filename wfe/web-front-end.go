@@ -66,6 +66,12 @@ type WebFrontEndImpl struct {
 
 	// Register of anti-replay nonces
 	nonceService core.NonceService
+
+	// Cache settings
+	CertCacheDuration         time.Duration
+	CertCacheExpirationWindow time.Duration
+	IssuerCacheDuration       time.Duration
+	IndexCacheDuration        time.Duration
 }
 
 func statusCodeFromError(err interface{}) int {
@@ -181,6 +187,8 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 `))
 	tmpl.Execute(response, wfe)
 	response.Header().Set("Content-Type", "text/html")
+	// Set cache header
+	response.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", wfe.IndexCacheDuration.Seconds()))
 }
 
 // The ID is always the last slash-separated token in the path
@@ -981,12 +989,14 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		if !strings.HasPrefix(path, CertPath) {
 			logEvent.Error = "Certificate not found"
 			wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
+			response.Header().Add("Cache-Control", "public, max-age=0, no-cache")
 			return
 		}
 		serial := path[len(CertPath):]
 		if len(serial) != 16 || !allHex.Match([]byte(serial)) {
 			logEvent.Error = "Certificate not found"
 			wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
+			response.Header().Add("Cache-Control", "public, max-age=0, no-cache")
 			return
 		}
 		wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
@@ -998,9 +1008,17 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 			if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 				wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
 			} else {
+				response.Header().Add("Cache-Control", "public, max-age=0, no-cache")
 				wfe.sendError(response, "Not found", err, http.StatusNotFound)
 			}
 			return
+		}
+
+		// Set cache-control header if certificate NotAfter is > time.Now().Add(-WFE.CertCacheExpirationWindow)
+		if time.Now().Add(-wfe.CertCacheExpirationWindow).After(cert.Expires) {
+			response.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", wfe.CertCacheDuration.Seconds()))
+		} else {
+			response.Header().Add("Cache-Control", "public, max-age=0, no-cache")
 		}
 
 		// TODO Content negotiation
@@ -1050,6 +1068,9 @@ func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.R
 		wfe.sendError(response, "Method not allowed", request.Method, http.StatusMethodNotAllowed)
 		return
 	}
+
+	// Set cache header
+	response.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", wfe.IssuerCacheDuration.Seconds()))
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
