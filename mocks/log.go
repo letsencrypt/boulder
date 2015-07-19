@@ -30,27 +30,21 @@ type LogMessage struct {
 	Message  string          // content of log message
 }
 
-var levelName []string
+var levelName [8]string
 
 func init() {
-	for _, ps := range []struct {
-		p syslog.Priority
-		s string
-	}{
-		{syslog.LOG_EMERG, "EMERG"},
-		{syslog.LOG_ALERT, "ALERT"},
-		{syslog.LOG_CRIT, "CRIT"},
-		{syslog.LOG_ERR, "ERR"},
-		{syslog.LOG_WARNING, "WARNING"},
-		{syslog.LOG_NOTICE, "NOTICE"},
-		{syslog.LOG_INFO, "INFO"},
-		{syslog.LOG_DEBUG, "DEBUG"},
-	} {
-		for len(levelName) <= int(ps.p) {
-			levelName = append(levelName, "")
-		}
-		levelName[int(ps.p)] = ps.s
-	}
+	levelName[syslog.LOG_EMERG] = "EMERG"
+	levelName[syslog.LOG_ALERT] = "ALERT"
+	levelName[syslog.LOG_CRIT] = "CRIT"
+	levelName[syslog.LOG_ERR] = "ERR"
+	levelName[syslog.LOG_WARNING] = "WARNING"
+	levelName[syslog.LOG_NOTICE] = "NOTICE"
+	levelName[syslog.LOG_INFO] = "INFO"
+	levelName[syslog.LOG_DEBUG] = "DEBUG"
+}
+
+func (lm *LogMessage) String() string {
+	return levelName[lm.Priority&7] + ": " + lm.Message
 }
 
 // SwitchLog changes the SyslogWriter used by the current singleton
@@ -70,6 +64,21 @@ func SwitchLog(sw blog.SyslogWriter) blog.SyslogWriter {
 	return was
 }
 
+// UseMockLog changes the SyslogWriter used by the current singleton
+// audit logger to a new mock logger, and returns the mock. Example:
+//
+//	var log = mocks.UseMockLog()
+//	func TestFoo(t *testing.T) {
+//		log.Clear()
+//		// ...
+//		Assert(t, len(log.GetAll()) > 0, "Should have logged something")
+//	}
+func UseMockLog() *MockSyslogWriter {
+	sw := NewSyslogWriter()
+	blog.GetAuditLogger().SyslogWriter = sw
+	return sw
+}
+
 // NewSyslogWriter returns a new MockSyslogWriter.
 func NewSyslogWriter() *MockSyslogWriter {
 	msgChan := make(chan *LogMessage)
@@ -87,7 +96,7 @@ func NewSyslogWriter() *MockSyslogWriter {
 		for {
 			select {
 			case logMsg := <-msgChan:
-				log.Print("MockSyslog:" + levelName[logMsg.Priority] + ": " + logMsg.Message)
+				log.Print("MockSyslog:" + logMsg.String())
 				msw.logged = append(msw.logged, logMsg)
 			case getChan <- msw.logged:
 			case <-clearChan:
