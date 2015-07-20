@@ -125,12 +125,10 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	numPolicies := 0
-	for _, v := range cfsslConfigObj.Signing.Profiles {
-		numPolicies += len(v.Policies)
-	}
-	if numPolicies == 0 {
-		return nil, fmt.Errorf("CFSSL signing profiles contain no policy OIDs")
+	for k, v := range cfsslConfigObj.Signing.Profiles {
+		if len(v.Policies) == 0 {
+			return nil, fmt.Errorf("CFSSL signing profile [%s] contains no policy OIDs", k)
+		}
 	}
 
 	// Load the private key, which can be a file or a PKCS#11 key.
