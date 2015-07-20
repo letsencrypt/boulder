@@ -24,13 +24,23 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		switch q.Qtype {
 		case dns.TypeA:
 			record := new(dns.A)
-			record.Hdr = dns.RR_Header{Name: q.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
+			record.Hdr = dns.RR_Header{
+				Name:   q.Name,
+				Rrtype: dns.TypeA,
+				Class:  dns.ClassINET,
+				Ttl:    0,
+			}
 			record.A = net.ParseIP("127.0.0.1")
 
 			m.Answer = append(m.Answer, record)
 		case dns.TypeMX:
 			record := new(dns.MX)
-			record.Hdr = dns.RR_Header{Name: q.Name, Rrtype: dns.TypeMX, Class: dns.ClassINET, Ttl: 0}
+			record.Hdr = dns.RR_Header{
+				Name:   q.Name,
+				Rrtype: dns.TypeMX,
+				Class:  dns.ClassINET,
+				Ttl:    0,
+			}
 			record.Mx = "mail." + q.Name
 			record.Preference = 10
 
@@ -44,7 +54,12 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 
 func serveTestResolver() {
 	dns.HandleFunc(".", dnsHandler)
-	server := &dns.Server{Addr: "127.0.0.1:8053", Net: "udp", ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}
+	server := &dns.Server{
+		Addr:         "127.0.0.1:8053",
+		Net:          "udp",
+		ReadTimeout:  time.Millisecond,
+		WriteTimeout: time.Millisecond,
+	}
 	go func() {
 		err := server.ListenAndServe()
 		if err != nil {
