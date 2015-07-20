@@ -1009,7 +1009,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 				wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
 			} else {
 				response.Header().Add("Cache-Control", "public, max-age=0, no-cache")
-				wfe.sendError(response, "Not found", err, http.StatusNotFound)
+				wfe.sendError(response, "Certificate not found", err, http.StatusNotFound)
 			}
 			return
 		}
