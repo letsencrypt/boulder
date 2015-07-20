@@ -33,25 +33,26 @@ class ProcInfo:
         self.cmd = cmd
         self.proc = proc
 
-def run(path):
+def run(path, args=""):
     global processes
     binary = os.path.join(tempdir, os.path.basename(path))
     cmd = 'GORACE="halt_on_error=1" go build -tags pkcs11 -race -o %s %s' % (binary, path)
     print(cmd)
     if subprocess.Popen(cmd, shell=True).wait() != 0:
         die(ExitStatus.Error)
-    runCmd = "exec %s --config test/boulder-test-config.json" % binary
+    runCmd = "exec %s %s" % (binary, args)
     print(runCmd)
     info = ProcInfo(runCmd, subprocess.Popen(runCmd, shell=True))
     processes.append(info)
     return info
 
 def start():
-    run('./cmd/boulder-wfe')
-    run('./cmd/boulder-ra')
-    run('./cmd/boulder-sa')
-    run('./cmd/boulder-ca')
-    run('./cmd/boulder-va')
+    run('./cmd/boulder-wfe', '--config test/boulder-test-config.json')
+    run('./cmd/boulder-ra', '--config test/boulder-test-config.json')
+    run('./cmd/boulder-sa', '--config test/boulder-test-config.json')
+    run('./cmd/boulder-ca', '--config test/boulder-test-config.json')
+    run('./cmd/boulder-va', '--config test/boulder-test-config.json')
+    run('./test/dns-test-srv')
 
 def run_node_test():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
