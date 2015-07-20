@@ -98,7 +98,7 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 	log.Debug(fmt.Sprintf("Searching for OCSP issued by us for serial %s", serialString))
 
 	var ocspResponse core.OCSPResponse
-	err := src.dbMap.SelectOne(&ocspResponse, "SELECT * from ocspResponses WHERE serial = :serial  ORDER BY createdAt DESC LIMIT 1;",
+	err := src.dbMap.SelectOne(&ocspResponse, "SELECT * from ocspResponses WHERE serial = :serial ORDER BY createdAt DESC LIMIT 1;",
 		map[string]interface{}{"serial": serialString})
 	if err != nil {
 		present = false
