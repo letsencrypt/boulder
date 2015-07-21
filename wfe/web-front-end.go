@@ -244,11 +244,6 @@ const (
 	malformedJWS = "Unable to read/verify body"
 )
 
-const (
-	unknownKey   = "No registration exists matching provided key"
-	malformedJWS = "Unable to read/verify body"
-)
-
 func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, *jose.JsonWebKey, core.Registration, error) {
 	var reg core.Registration
 
