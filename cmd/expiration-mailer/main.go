@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -24,10 +25,13 @@ type mailer struct {
 	stats statsd.Statter
 	log   *blog.AuditLogger
 	dbMap *gorp.DbMap
+
+	Mailer *mail.Mailer
 }
 
 func (m *mailer) findExpiringCertificates(warningDays []int) error {
 	var err error
+	// E.g. warningDays = [0, 1, 3, 7, 14] days from expiration
 	for _, expiresIn := range warningDays {
 		left := time.Now().Add(time.Hour * 24 * time.Duration(expiresIn))
 		right := left.Add(time.Hour * 24)
@@ -35,9 +39,9 @@ func (m *mailer) findExpiringCertificates(warningDays []int) error {
 		var certs []core.Certificate
 		_, err := m.dbMap.Select(
 			&certs,
-			`SELECT cert.* FROM certificates AS certs JOIN certificateStatus AS cs on cs.serial = cert.serial
-       WHERE cert.expires > :cutoff-a AND cert.Expires < :cutoff-b AND cs.status != "revoked"
-       ORDER BY cert.Issued ASC`,
+			`SELECT * FROM certificates
+       WHERE expires > :cutoff-a AND Expires < :cutoff-b AND status != "revoked"
+       ORDER BY issued ASC`,
 			map[string]interface{}{
 				"cutoff-a": left,
 				"cutoff-b": right,
@@ -56,7 +60,7 @@ func (m *mailer) findExpiringCertificates(warningDays []int) error {
 					return err
 				}
 
-				m.sendWarning(cert, reg, expiresIn)
+				go m.sendWarning(cert, reg, expiresIn)
 			}
 		}
 	}
@@ -64,8 +68,30 @@ func (m *mailer) findExpiringCertificates(warningDays []int) error {
 	return err
 }
 
-func (m *mailer) sendWarning(cert core.Certificate, reg core.Registration, expiresIn int) {
+const warningTemplate = `Hello,
 
+Your certificate for %s is going to expire in %d days (%s), make sure you run the
+renewer before then!
+
+Regards,
+letsencryptbot
+`
+
+func (m *mailer) sendWarning(cert core.Certificate, reg core.Registration, expiresIn int) {
+	emails := []string{}
+	for _, contact := range reg.Contact {
+		if contact.Scheme == "mailto" {
+			emails = append(emails, contact.Opaque)
+		}
+	}
+	if len(emails) > 0 {
+		err = m.Mailer.SendMail(emails, fmt.Sprintf(warningTemplate, cert.CommonName, expiresIn, cert.NotAfter))
+		if err != nil {
+			m.log.WarningErr(err)
+			return
+		}
+		m.stats.Inc("Mailer.Expiration.Sent", len(emails))
+	}
 }
 
 func main() {
