@@ -31,6 +31,8 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
+		go cmd.DebugServer(c.RA.DebugAddr)
+
 		rai := ra.NewRegistrationAuthorityImpl()
 		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize

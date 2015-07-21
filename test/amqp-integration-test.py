@@ -21,23 +21,38 @@ def die(status):
 
 processes = []
 
-def run(path):
+
+class ProcInfo:
+    """
+        Args:
+            cmd (str): The command that was run
+            proc(subprocess.Popen): The Popen of the command run
+    """
+
+    def __init__(self, cmd, proc):
+        self.cmd = cmd
+        self.proc = proc
+
+def run(path, args=""):
     global processes
     binary = os.path.join(tempdir, os.path.basename(path))
-    cmd = 'go build -tags pkcs11 -o %s %s' % (binary, path)
+    cmd = 'GORACE="halt_on_error=1" go build -tags pkcs11 -race -o %s %s' % (binary, path)
     print(cmd)
     if subprocess.Popen(cmd, shell=True).wait() != 0:
         die(ExitStatus.Error)
-    processes.append(subprocess.Popen('''
-        exec %s --config test/boulder-test-config.json
-        ''' % binary, shell=True))
+    runCmd = "exec %s %s" % (binary, args)
+    print(runCmd)
+    info = ProcInfo(runCmd, subprocess.Popen(runCmd, shell=True))
+    processes.append(info)
+    return info
 
 def start():
-    run('./cmd/boulder-wfe')
-    run('./cmd/boulder-ra')
-    run('./cmd/boulder-sa')
-    run('./cmd/boulder-ca')
-    run('./cmd/boulder-va')
+    run('./cmd/boulder-wfe', '--config test/boulder-test-config.json')
+    run('./cmd/boulder-ra', '--config test/boulder-test-config.json')
+    run('./cmd/boulder-sa', '--config test/boulder-test-config.json')
+    run('./cmd/boulder-ca', '--config test/boulder-test-config.json')
+    run('./cmd/boulder-va', '--config test/boulder-test-config.json')
+    run('./test/dns-test-srv')
 
 def run_node_test():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -79,15 +94,25 @@ def run_client_tests():
 
 try:
     start()
+    busted = []
+    for pinfo in processes:
+        if pinfo.proc.poll() is not None:
+            busted.append(pinfo)
+    if len(busted) != 0:
+        print "\n\nThese processes didn't start up successfully (check above for their output):"
+        for pinfo in busted:
+            print "\t'%s' exited with %d" % (pinfo.cmd, pinfo.proc.returncode)
+        sys.exit(1)
+
     run_node_test()
     run_client_tests()
 except Exception as e:
     exit_status = ExitStatus.Error
     print e
 finally:
-    for p in processes:
-        if p.poll() is None:
-            p.kill()
+    for pinfo in processes:
+        if pinfo.proc.poll() is None:
+            pinfo.proc.kill()
         else:
             exit_status = 1
 

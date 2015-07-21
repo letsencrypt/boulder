@@ -55,6 +55,8 @@ CentOS:
 OS X:
 `sudo port install libtool` or `brew install libtool`
 
+(On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
+
 ```
 > go get github.com/letsencrypt/boulder # Ignore errors about no buildable files
 > cd $GOPATH/src/github.com/letsencrypt/boulder

@@ -87,6 +87,8 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
+		go cmd.DebugServer(c.WFE.DebugAddr)
+
 		wfe, err := wfe.NewWebFrontEndImpl()
 		cmd.FailOnError(err, "Unable to create WFE")
 		rac, sac, closeChan := setupWFE(c)
@@ -118,13 +120,13 @@ func main() {
 
 		// Set up paths
 		wfe.BaseURL = c.Common.BaseURL
-		wfe.HandlePaths()
+		h := wfe.Handler()
 
 		auditlogger.Info(app.VersionString())
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
-		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
+		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(h, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

@@ -70,13 +70,15 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
+		go cmd.DebugServer(c.Monolith.DebugAddr)
+
 		// Run StatsD profiling
 		go cmd.ProfileCmd("Monolith", stats)
 
 		// Create the components
 		wfei, err := wfe.NewWebFrontEndImpl()
 		cmd.FailOnError(err, "Unable to create WFE")
-		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBName)
+		sa, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBConnect)
 		cmd.FailOnError(err, "Unable to create SA")
 		sa.SetSQLDebug(c.SQL.SQLDebug)
 
@@ -88,7 +90,7 @@ func main() {
 		va.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.VA.DNSResolver})
 		va.UserAgent = c.VA.UserAgent
 
-		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBName)
+		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBConnect)
 		cmd.FailOnError(err, "Failed to create CA database")
 
 		ca, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert)
@@ -120,7 +122,7 @@ func main() {
 		// Set up paths
 		ra.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		wfei.BaseURL = c.Common.BaseURL
-		wfei.HandlePaths()
+		h := wfei.Handler()
 
 		ra.MaxKeySize = c.Common.MaxKeySize
 		ca.MaxKeySize = c.Common.MaxKeySize
@@ -128,7 +130,7 @@ func main() {
 		auditlogger.Info(app.VersionString())
 
 		fmt.Fprintf(os.Stderr, "Server running, listening on %s...\n", c.WFE.ListenAddress)
-		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
+		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(h, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 
