@@ -52,6 +52,8 @@ var TheKey = rsa.PrivateKey{
 
 var ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
 
+var log = mocks.UseMockLog()
+
 const expectedToken = "THETOKEN"
 const pathWrongToken = "wrongtoken"
 const path404 = "404"
@@ -203,10 +205,6 @@ func TestSimpleHttpTLS(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 
-	log := mocks.NewSyslogWriter()
-	defer log.Close()
-	defer mocks.SwitchLog(mocks.SwitchLog(log))
-
 	chall := core.Challenge{Path: "test", Token: expectedToken}
 
 	stopChan := make(chan bool, 1)
@@ -215,6 +213,7 @@ func TestSimpleHttpTLS(t *testing.T) {
 	defer func() { stopChan <- true }()
 	<-waitChan
 
+	log.Clear()
 	finChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
@@ -226,10 +225,6 @@ func TestSimpleHttpTLS(t *testing.T) {
 func TestSimpleHttp(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-
-	log := mocks.NewSyslogWriter()
-	defer log.Close()
-	defer mocks.SwitchLog(mocks.SwitchLog(log))
 
 	tls := false
 	chall := core.Challenge{Path: "test", Token: expectedToken, TLS: &tls}

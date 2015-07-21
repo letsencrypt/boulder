@@ -18,10 +18,13 @@ import (
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 	"io/ioutil"
 	"testing"
 )
+
+var log = mocks.UseMockLog()
 
 func initSA(t *testing.T) *SQLStorageAuthority {
 	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")

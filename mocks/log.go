@@ -45,23 +45,6 @@ func (lm *LogMessage) String() string {
 	return levelName[lm.Priority&7] + ": " + lm.Message
 }
 
-// SwitchLog changes the SyslogWriter used by the current singleton
-// audit logger, and returns the previous value. Example:
-//
-//	func TestFoo(t *testing.T) {
-//		log := mocks.NewSyslogWriter()
-//		defer log.Close()
-//		defer mocks.SwitchLog(mocks.SwitchLog(log))
-//		// ...
-//		Assert(t, len(log.GetAll()) > 0, "Should have logged something")
-//	}
-func SwitchLog(sw blog.SyslogWriter) blog.SyslogWriter {
-	al := blog.GetAuditLogger()
-	was := al.SyslogWriter
-	al.SyslogWriter = sw
-	return was
-}
-
 // UseMockLog changes the SyslogWriter used by the current singleton
 // audit logger to a new mock logger, and returns the mock. Example:
 //

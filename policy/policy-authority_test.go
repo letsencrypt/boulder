@@ -9,7 +9,10 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/mocks"
 )
+
+var log = mocks.UseMockLog()
 
 func TestWillingToIssue(t *testing.T) {
 	shouldBeSyntaxError := []string{
