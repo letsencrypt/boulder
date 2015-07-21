@@ -65,7 +65,6 @@ const (
 // Error types that can be used in ACME payloads
 const (
 	ConnectionProblem     = ProblemType("urn:acme:error:connection")
-	DNSSECProblem         = ProblemType("urn:acme:error:dnssec")
 	MalformedProblem      = ProblemType("urn:acme:error:malformed")
 	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
 	TLSProblem            = ProblemType("urn:acme:error:tls")
