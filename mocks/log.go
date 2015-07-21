@@ -100,7 +100,7 @@ func NewSyslogWriter() *MockSyslogWriter {
 				msw.logged = append(msw.logged, logMsg)
 			case getChan <- msw.logged:
 			case <-clearChan:
-				msw.logged = msw.logged[:0]
+				msw.logged = []*LogMessage{}
 			case <-closeChan:
 				close(getChan)
 				return
@@ -117,6 +117,8 @@ func (msw *MockSyslogWriter) write(m string, priority syslog.Priority) error {
 
 // GetAll returns all LogMessages logged (since the last call to
 // Clear(), if applicable).
+//
+// The caller must not modify the returned slice or its elements.
 func (msw *MockSyslogWriter) GetAll() []*LogMessage {
 	return <-msw.getChan
 }
@@ -125,6 +127,8 @@ func (msw *MockSyslogWriter) GetAll() []*LogMessage {
 // Clear()) whose text matches the given regexp. The regexp is
 // accepted as a string and compiled on the fly, because convenience
 // is more important than performance.
+//
+// The caller must not modify the elements of the returned slice.
 func (msw *MockSyslogWriter) GetAllMatching(reString string) (matches []*LogMessage) {
 	re := regexp.MustCompile(reString)
 	for _, logMsg := range <-msw.getChan {
