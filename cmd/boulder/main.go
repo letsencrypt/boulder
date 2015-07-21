@@ -122,7 +122,8 @@ func main() {
 		// Set up paths
 		ra.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		wfei.BaseURL = c.Common.BaseURL
-		h := wfei.Handler()
+		h, err := wfei.Handler()
+		cmd.FailOnError(err, "Failed to marshal directory to JSON")
 
 		ra.MaxKeySize = c.Common.MaxKeySize
 		ca.MaxKeySize = c.Common.MaxKeySize

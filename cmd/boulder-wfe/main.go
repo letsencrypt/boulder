@@ -120,7 +120,8 @@ func main() {
 
 		// Set up paths
 		wfe.BaseURL = c.Common.BaseURL
-		h := wfe.Handler()
+		h, err := wfe.Handler()
+		cmd.FailOnError(err, "Failed to marshal directory to JSON")
 
 		auditlogger.Info(app.VersionString())
 
