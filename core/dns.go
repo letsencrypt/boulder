@@ -61,8 +61,8 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 	if err != nil {
 		return nil, 0, err
 	}
-	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
-		err = fmt.Errorf("Failure at resolver: %d-%s for TXT query", r.Rcode, dns.RcodeToString[r.Rcode])
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for TXT query", r.Rcode, dns.RcodeToString[r.Rcode])
 		return nil, 0, err
 	}
 
@@ -89,8 +89,8 @@ func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.
 	if err != nil {
 		return addrs, 0, 0, err
 	}
-	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
-		err = fmt.Errorf("Failure at resolver: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
 		return nil, aRtt, 0, err
 	}
 
@@ -100,8 +100,8 @@ func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.
 	if err != nil {
 		return addrs, aRtt, 0, err
 	}
-	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
-		err = fmt.Errorf("Failure at resolver: %d-%s for AAAA query", r.Rcode, dns.RcodeToString[r.Rcode])
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for AAAA query", r.Rcode, dns.RcodeToString[r.Rcode])
 		return nil, aRtt, aaaaRtt, err
 	}
 
@@ -129,8 +129,8 @@ func (dnsResolver *DNSResolverImpl) LookupCNAME(hostname string) (string, time.D
 	if err != nil {
 		return "", 0, err
 	}
-	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
-		err = fmt.Errorf("Failure at resolver: %d-%s for CNAME query", r.Rcode, dns.RcodeToString[r.Rcode])
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for CNAME query", r.Rcode, dns.RcodeToString[r.Rcode])
 		return "", rtt, err
 	}
 

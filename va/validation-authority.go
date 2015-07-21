@@ -54,9 +54,10 @@ type verificationRequestEvent struct {
 
 // Validation methods
 
-// setChallengeErrorFromDNSError checks the error returned from Lookup... methods and tests if the error
-// was an underlying net.OpError or an error caused by resolver returning SERVFAIL or other
-// invalid Rcodes and sets the challenge.Error field accordingly.
+// setChallengeErrorFromDNSError checks the error returned from Lookup...
+// methods and tests if the error was an underlying net.OpError or an error
+// caused by resolver returning SERVFAIL or other invalid Rcodes and sets
+// the challenge.Error field accordingly.
 func setChallengeErrorFromDNSError(err error, challenge *core.Challenge) {
 	challenge.Error = &core.ProblemDetails{Type: core.ConnectionProblem}
 	if netErr, ok := err.(*net.OpError); ok {
@@ -94,15 +95,6 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		return challenge, challenge.Error
 	}
 	hostName := identifier.Value
-
-	// Check for resolver SERVFAIL for A/AAAA records
-	_, _, _, err := va.DNSResolver.LookupHost(hostName)
-	if err != nil {
-		challenge.Status = core.StatusInvalid
-		setChallengeErrorFromDNSError(err, &challenge)
-		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
-		return challenge, challenge.Error
-	}
 
 	var scheme string
 	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
@@ -231,15 +223,6 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	z := sha256.Sum256(RS)
 	zName := fmt.Sprintf("%064x.acme.invalid", z)
-
-	// Check for resolver SERVFAIL for A/AAAA records
-	_, _, _, err = va.DNSResolver.LookupHost(identifier.Value)
-	if err != nil {
-		challenge.Status = core.StatusInvalid
-		setChallengeErrorFromDNSError(err, &challenge)
-		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
-		return challenge, challenge.Error
-	}
 
 	// Make a connection with SNI = nonceName
 	hostPort := identifier.Value + ":443"
