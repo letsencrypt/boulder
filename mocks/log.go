@@ -30,17 +30,15 @@ type LogMessage struct {
 	Message  string          // content of log message
 }
 
-var levelName [8]string
-
-func init() {
-	levelName[syslog.LOG_EMERG] = "EMERG"
-	levelName[syslog.LOG_ALERT] = "ALERT"
-	levelName[syslog.LOG_CRIT] = "CRIT"
-	levelName[syslog.LOG_ERR] = "ERR"
-	levelName[syslog.LOG_WARNING] = "WARNING"
-	levelName[syslog.LOG_NOTICE] = "NOTICE"
-	levelName[syslog.LOG_INFO] = "INFO"
-	levelName[syslog.LOG_DEBUG] = "DEBUG"
+var levelName = map[syslog.Priority]string{
+	syslog.LOG_EMERG:   "EMERG",
+	syslog.LOG_ALERT:   "ALERT",
+	syslog.LOG_CRIT:    "CRIT",
+	syslog.LOG_ERR:     "ERR",
+	syslog.LOG_WARNING: "WARNING",
+	syslog.LOG_NOTICE:  "NOTICE",
+	syslog.LOG_INFO:    "INFO",
+	syslog.LOG_DEBUG:   "DEBUG",
 }
 
 func (lm *LogMessage) String() string {
