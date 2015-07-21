@@ -33,5 +33,5 @@ func TestForgottenDialect(t *testing.T) {
 
 func TestParseTimeRequired(t *testing.T) {
 	_, err := NewDbMap("mysql", "invalid")
-	test.AssertError(t, err, "DB name must have parseTime=true")
+	test.AssertError(t, err, "DB connect string must have parseTime=true")
 }

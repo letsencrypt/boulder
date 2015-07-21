@@ -36,14 +36,16 @@
   },
 
   "wfe": {
-    "listenAddress": "127.0.0.1:4000"
+    "listenAddress": "127.0.0.1:4000",
+    "debugAddr": "localhost:8000"
   },
 
   "ca": {
     "serialPrefix": 255,
     "profile": "ee",
     "dbDriver": "sqlite3",
-    "dbName": ":memory:",
+    "dbConnect": ":memory:",
+    "debugAddr": "localhost:8001",
     "testMode": true,
     "_comment": "This should only be present in testMode. In prod use an HSM.",
     "Key": {
@@ -74,9 +76,14 @@
                 "ID": "2.23.140.1.2.1"
               },
               {
-                "ID": "1.3.6.1.4.1.44947.1.1.1",
-                "type": "id-qt-cps",
-                "qualifier": "http://cps.root-x1.letsencrypt.org"
+                "ID": "1.2.3.4",
+                "Qualifiers": [ {
+                  "type": "id-qt-cps",
+                  "value": "http://example.com/cps"
+                }, {
+                  "type": "id-qt-unotice",
+                  "value": "Do What Thou Wilt"
+                } ]
               }
             ],
             "expiry": "8760h",
@@ -98,15 +105,25 @@
     }
   },
 
+  "monolith": {
+    "debugAddr": "localhost:8008"
+  },
+
+  "ra": {
+    "debugAddr": "localhost:8002"
+  },
+
   "sa": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:"
+    "dbConnect": ":memory:",
+    "debugAddr": "localhost:8003"
   },
 
   "va": {
     "dnsResolver": "8.8.8.8:53",
     "dnsTimeout": "10s",
-    "userAgent": "boulder"
+    "userAgent": "boulder",
+    "debugAddr": "localhost:8004"
   },
 
   "sql": {
@@ -116,20 +133,26 @@
 
   "revoker": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:"
+    "dbConnect": ":memory:"
   },
 
   "ocspResponder": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:",
+    "dbConnect": ":memory:",
     "path": "/",
-    "listenAddress": "localhost:4001"
+    "listenAddress": "localhost:4001",
+    "debugAddr": "localhost:8005"
   },
 
   "ocspUpdater": {
     "dbDriver": "sqlite3",
-    "dbName": ":memory:",
-    "minTimeToExpiry": "72h"
+    "dbConnect": ":memory:",
+    "minTimeToExpiry": "72h",
+    "debugAddr": "localhost:8006"
+  },
+
+  "activityMonitor": {
+    "debugAddr": "localhost:8007"
   },
 
   "mail": {

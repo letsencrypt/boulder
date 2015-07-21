@@ -32,7 +32,7 @@ type Config struct {
 	Profile      string
 	TestMode     bool
 	DBDriver     string
-	DBName       string
+	DBConnect    string
 	SerialPrefix int
 	Key          KeyConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
@@ -44,6 +44,9 @@ type Config struct {
 	// The maximum number of subjectAltNames in a single certificate
 	MaxNames int
 	CFSSL    cfsslConfig.Config
+
+	// DebugAddr is the address to run the /debug handlers on.
+	DebugAddr string
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,

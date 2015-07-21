@@ -168,11 +168,9 @@ Notes:
 1: Client ---new-cert--> WFE
 2:                       WFE ---NewCertificate--> RA
 3:                                                RA ---IssueCertificate--> CA
-4:                                                                          CA --> CFSSL
-5:                                                                          CA <-- CFSSL
-6:                                                RA <------return--------- CA
-7:                       WFE <------return------- RA
-8: Client <------------- WFE
+5:                                                RA <------return--------- CA
+5:                       WFE <------return------- RA
+6: Client <------------- WFE
 ```
 
 * 1-2: WFE does the following:
@@ -205,7 +203,8 @@ Notes:
   * Verify that the issued cert will not be valid longer than the CA cert
   * Verify that the issued cert will not be valid longer than the underlying authorizations
   * Open a CA DB transaction and allocate a new serial number
-  * Request that CFSSL sign the certificate
+  * Create the first OCSP response
+  * Sign the certificate and the first OCSP response with the CFSSL library
 
 * 5-6: CA does the following:
   * Store the certificate

@@ -76,7 +76,7 @@ func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.A
 	cac, err := rpc.NewCertificateAuthorityClient(caRPC)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	dbMap, err := sa.NewDbMap(c.Revoker.DBDriver, c.Revoker.DBName)
+	dbMap, err := sa.NewDbMap(c.Revoker.DBDriver, c.Revoker.DBConnect)
 	cmd.FailOnError(err, "Couldn't setup database connection")
 
 	return cac, auditlogger, dbMap
@@ -163,7 +163,7 @@ func main() {
 			Usage:  "Path to Boulder JSON configuration file",
 		},
 		cli.BoolFlag{
-			Name:  "deny-future",
+			Name:  "deny",
 			Usage: "Add certificate DNS names to the denied list",
 		},
 	}

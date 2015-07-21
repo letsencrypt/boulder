@@ -33,6 +33,8 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
+		go cmd.DebugServer(c.VA.DebugAddr)
+
 		go cmd.ProfileCmd("VA", stats)
 
 		vai := va.NewValidationAuthorityImpl(c.CA.TestMode)
