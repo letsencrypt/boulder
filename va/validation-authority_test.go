@@ -244,7 +244,7 @@ func TestSimpleHttp(t *testing.T) {
 	finChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 2)
 
 	log.Clear()
 	chall.Path = path404
@@ -252,7 +252,7 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Should have found a 404 for the challenge.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 2)
 
 	chall.Path = pathWrongToken
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
