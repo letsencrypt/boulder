@@ -129,7 +129,8 @@ func main() {
 
 		// Set up paths
 		wfe.BaseURL = c.Common.BaseURL
-		h := wfe.Handler()
+		h, err := wfe.Handler()
+		cmd.FailOnError(err, "Problem setting up HTTP handlers")
 
 		auditlogger.Info(app.VersionString())
 

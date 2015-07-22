@@ -134,7 +134,8 @@ func main() {
 		// Set up paths
 		ra.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		wfei.BaseURL = c.Common.BaseURL
-		h := wfei.Handler()
+		h, err := wfei.Handler()
+		cmd.FailOnError(err, "Problem setting up HTTP handlers")
 
 		ra.MaxKeySize = c.Common.MaxKeySize
 		ca.MaxKeySize = c.Common.MaxKeySize

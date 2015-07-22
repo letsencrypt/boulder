@@ -412,7 +412,8 @@ func TestHandleFunc(t *testing.T) {
 
 func TestStandardHeaders(t *testing.T) {
 	wfe := setupWFE(t)
-	mux := wfe.Handler()
+	mux, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	cases := []struct {
 		path    string
@@ -472,11 +473,29 @@ func TestIndex(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "")
 }
 
+func TestDirectory(t *testing.T) {
+	wfe := setupWFE(t)
+	wfe.BaseURL = "http://localhost:4300"
+	mux, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+
+	responseWriter := httptest.NewRecorder()
+
+	url, _ := url.Parse("/directory")
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    url,
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+}
+
 // TODO: Write additional test cases for:
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
 	wfe := setupWFE(t)
-	mux := wfe.Handler()
+	mux, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl()
@@ -663,7 +682,8 @@ func TestChallenge(t *testing.T) {
 
 func TestNewRegistration(t *testing.T) {
 	wfe := setupWFE(t)
-	mux := wfe.Handler()
+	mux, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
@@ -907,7 +927,8 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 
 func TestAuthorization(t *testing.T) {
 	wfe := setupWFE(t)
-	mux := wfe.Handler()
+	mux, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
@@ -986,13 +1007,14 @@ func TestAuthorization(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}")
 
 	var authz core.Authorization
-	err := json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
+	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 }
 
 func TestRegistration(t *testing.T) {
 	wfe := setupWFE(t)
-	mux := wfe.Handler()
+	mux, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
