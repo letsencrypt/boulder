@@ -126,16 +126,24 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	httpRequest.Host = hostName
-	tr := &http.Transport{
-		// We are talking to a client that does not yet have a certificate,
-		// so we accept a temporary, invalid one.
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		// We don't expect to make multiple requests to a client, so close
-		// connection immediately.
-		DisableKeepAlives: true,
+	tr := *http.DefaultTransport.(*http.Transport)
+	// We are talking to a client that does not yet have a certificate,
+	// so we accept a temporary, invalid one.
+	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	// We don't expect to make multiple requests to a client, so close
+	// connection immediately.
+	tr.DisableKeepAlives = true
+	// Intercept Dial in order to log the remote IP address used.
+	defaultDial := tr.Dial
+	tr.Dial = func(network, addr string) (conn net.Conn, err error) {
+		conn, err = defaultDial(network, addr)
+		if err == nil {
+			va.log.Info(fmt.Sprintf("SimpleHTTP [%s] request to host %s using remote %s local %s", identifier, addr, conn.RemoteAddr().String(), conn.LocalAddr().String()))
+		}
+		return
 	}
 	client := http.Client{
-		Transport: tr,
+		Transport: &tr,
 		Timeout:   5 * time.Second,
 	}
 	httpResponse, err := client.Do(httpRequest)
@@ -246,6 +254,8 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		return challenge, err
 	}
 	defer conn.Close()
+
+	va.log.Info(fmt.Sprintf("DVSNI [%s] request to host %s using remote %s local %s", identifier, hostPort, conn.RemoteAddr().String(), conn.LocalAddr().String()))
 
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
