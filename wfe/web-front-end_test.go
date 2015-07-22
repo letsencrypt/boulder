@@ -6,6 +6,7 @@
 package wfe
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"crypto/x509"
 	"database/sql"
@@ -193,13 +194,12 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 			RegistrationID: 1,
 			DER:            certBlock.Bytes,
 		}, nil
-	} else {
-		return core.Certificate{}, errors.New("No cert")
 	}
+	return core.Certificate{}, errors.New("No cert")
 }
 
-func (sa *MockSA) GetCertificateByShortSerial(string) (core.Certificate, error) {
-	return core.Certificate{}, nil
+func (sa *MockSA) GetCertificateByShortSerial(serial string) (core.Certificate, error) {
+	return sa.GetCertificate("0000000000000000" + serial)
 }
 
 func (sa *MockSA) GetCertificateStatus(serial string) (core.CertificateStatus, error) {
@@ -378,7 +378,7 @@ func TestHandleFunc(t *testing.T) {
 		{[]string{"GET", "POST"}, "POST", true},
 		{[]string{"GET"}, "", false},
 		{[]string{"GET"}, "POST", false},
-		{[]string{"GET"}, "OPTIONS", false},	 // TODO, #469
+		{[]string{"GET"}, "OPTIONS", false},     // TODO, #469
 		{[]string{"GET"}, "MAKE-COFFEE", false}, // 405, or 418?
 	} {
 		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.allowed...)
@@ -446,6 +446,7 @@ func TestStandardHeaders(t *testing.T) {
 
 func TestIndex(t *testing.T) {
 	wfe := setupWFE(t)
+	wfe.IndexCacheDuration = time.Second * 10
 
 	responseWriter := httptest.NewRecorder()
 
@@ -458,14 +459,17 @@ func TestIndex(t *testing.T) {
 	test.AssertNotEquals(t, responseWriter.Body.String(), "404 page not found\n")
 	test.Assert(t, strings.Contains(responseWriter.Body.String(), wfe.NewReg),
 		"new-reg not found")
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
 
 	responseWriter.Body.Reset()
+	responseWriter.Header().Del("Cache-Control")
 	url, _ = url.Parse("/foo")
 	wfe.Index(responseWriter, &http.Request{
 		URL: url,
 	})
 	//test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	test.AssertEquals(t, responseWriter.Body.String(), "404 page not found\n")
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "")
 }
 
 // TODO: Write additional test cases for:
@@ -1109,4 +1113,76 @@ func TestTermsRedirect(t *testing.T) {
 		t, responseWriter.Header().Get("Location"),
 		agreementURL)
 	test.AssertEquals(t, responseWriter.Code, 302)
+}
+
+func TestIssuer(t *testing.T) {
+	wfe := setupWFE(t)
+	wfe.IssuerCacheDuration = time.Second * 10
+	wfe.IssuerCert = []byte{0, 0, 1}
+
+	responseWriter := httptest.NewRecorder()
+
+	wfe.Issuer(responseWriter, &http.Request{
+		Method: "GET",
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), wfe.IssuerCert) == 0, "Incorrect bytes returned")
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
+}
+
+func TestGetCertificate(t *testing.T) {
+	wfe := setupWFE(t)
+	wfe.CertCacheDuration = time.Second * 10
+	wfe.CertNoCacheExpirationWindow = time.Hour * 24 * 7
+	wfe.SA = &MockSA{}
+
+	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+	certBlock, _ := pem.Decode(certPemBytes)
+
+	responseWriter := httptest.NewRecorder()
+
+	// Valid short serial, cached
+	path, _ := url.Parse("/acme/cert/00000000000000b2")
+	wfe.Certificate(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    path,
+	})
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
+	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
+
+	// Unused short serial, no cache
+	responseWriter = httptest.NewRecorder()
+	path, _ = url.Parse("/acme/cert/00000000000000ff")
+	wfe.Certificate(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    path,
+	})
+	test.AssertEquals(t, responseWriter.Code, 404)
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
+
+	// Invalid short serial, no cache
+	responseWriter = httptest.NewRecorder()
+	path, _ = url.Parse("/acme/cert/nothex")
+	wfe.Certificate(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    path,
+	})
+	test.AssertEquals(t, responseWriter.Code, 404)
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
+
+	// Invalid short serial, no cache
+	responseWriter = httptest.NewRecorder()
+	path, _ = url.Parse("/acme/cert/00000000000000")
+	wfe.Certificate(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    path,
+	})
+	test.AssertEquals(t, responseWriter.Code, 404)
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
+
 }
