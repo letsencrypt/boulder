@@ -90,6 +90,9 @@ type Config struct {
 	}
 
 	RA struct {
+		DNSResolver string
+		DNSTimeout  string
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}

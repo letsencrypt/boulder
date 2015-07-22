@@ -6,8 +6,11 @@
 package main
 
 import (
+	"time"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/core"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -36,6 +39,9 @@ func main() {
 		rai := ra.NewRegistrationAuthorityImpl()
 		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize
+		raDNSTimeout, err := time.ParseDuration(c.RA.DNSTimeout)
+		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
+		rai.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.RA.DNSResolver})
 
 		go cmd.ProfileCmd("RA", stats)
 

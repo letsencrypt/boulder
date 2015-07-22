@@ -97,3 +97,14 @@ func (mock *MockDNS) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error)
 	}
 	return results, 0, nil
 }
+
+// LookupMX is a mock
+func (mock *MockDNS) LookupMX(domain string) ([]string, time.Duration, error) {
+	switch domain {
+	case "letsencrypt.org":
+		fallthrough
+	case "email.com":
+		return []string{"mail.email.com"}, 0, nil
+	}
+	return nil, 0, nil
+}
