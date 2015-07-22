@@ -252,6 +252,9 @@ type Challenge struct {
 
 	// Used by dns and dvsni challenges
 	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
+
+	// IP addresses resolved from authorization identifier
+	ResolvedAddrs []net.IP `json:"resolvedAddrs,omitempty"`
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client

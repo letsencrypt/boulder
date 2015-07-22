@@ -147,7 +147,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		challenge.Status = core.StatusInvalid
 		return challenge, errors.New(challenge.Error.Detail)
 	}
-	va.log.Audit(fmt.Sprintf("Resolved IP addresses for SimpleHTTP validation for %s: %s", hostName, addrs))
+	challenge.ResolvedAddrs = addrs
 
 	var scheme string
 	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
@@ -320,7 +320,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		challenge.Status = core.StatusInvalid
 		return challenge, errors.New(challenge.Error.Detail)
 	}
-	va.log.Audit(fmt.Sprintf("Resolved IP addresses for DVSNI validation for %s: %s", identifier.Value, addrs))
+	challenge.ResolvedAddrs = addrs
 
 	// Make a connection with SNI = nonceName
 	hostPort := fmt.Sprintf("%s:443", addrs[0].String())
