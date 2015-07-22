@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -170,6 +171,9 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 				PublicKeyAlgorithm: true,
 				SignatureAlgorithm: true,
 				DNSNames:           true,
+			},
+			Policies: []cfsslConfig.CertificatePolicy{
+				cfsslConfig.CertificatePolicy{ID: cfsslConfig.OID(asn1.ObjectIdentifier([]int{2, 23, 140, 1, 2, 1}))},
 			},
 		},
 	}

@@ -11,12 +11,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"net"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 )
 
 // AcmeStatus defines the state of a given authorization
@@ -520,6 +521,10 @@ func (cert Certificate) MatchesCSR(csr *x509.CertificateRequest, earliestExpiry 
 	}
 	if !cmpExtKeyUsageSlice(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
 		err = InternalServerError("Generated certificate doesn't have correct key usage extensions")
+		return
+	}
+	if len(parsedCertificate.PolicyIdentifiers) == 0 {
+		err = InternalServerError("Generated certificate doesn't have any policy identifiers")
 		return
 	}
 
