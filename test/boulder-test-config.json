@@ -115,7 +115,7 @@
   },
 
   "va": {
-    "dnsResolver": "8.8.8.8:53",
+    "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "10s",
     "userAgent": "boulder",
     "debugAddr": "localhost:8004"

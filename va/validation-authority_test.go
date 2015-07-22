@@ -320,8 +320,8 @@ func TestDvsni(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Domain name is invalid.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
-	va.TestMode = true
 
+	va.TestMode = true
 	chall.R = ba[5:]
 	invalidChall, err = va.validateDvsni(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -536,8 +536,8 @@ func TestCAAChecking(t *testing.T) {
 		test.AssertEquals(t, caaTest.Valid, valid)
 	}
 
-	present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "dnssec-failed.org"})
-	test.AssertError(t, err, "dnssec-failed.org")
+	present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 }
@@ -630,7 +630,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 }
 
-func TestDNSValidationBadDNSSEC(t *testing.T) {
+func TestDNSValidationServFail(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 	mockRA := &MockRegistrationAuthority{}
@@ -638,21 +638,21 @@ func TestDNSValidationBadDNSSEC(t *testing.T) {
 
 	chalDNS := core.DNSChallenge()
 
-	badDNSSEC := core.AcmeIdentifier{
+	badIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
-		Value: "dnssec-failed.org",
+		Value: "servfail.com",
 	}
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
-		Identifier:     badDNSSEC,
+		Identifier:     badIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
 	va.validate(authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
-	test.AssertEquals(t, authz.Challenges[0].Error.Type, core.DNSSECProblem)
+	test.AssertEquals(t, authz.Challenges[0].Error.Type, core.ConnectionProblem)
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
@@ -672,7 +672,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
-	test.AssertEquals(t, authz.Challenges[0].Error.Type, core.ServerInternalProblem)
+	test.AssertEquals(t, authz.Challenges[0].Error.Type, core.ConnectionProblem)
 }
 
 // TestDNSValidationLive is an integration test, depending on

@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -339,31 +340,103 @@ func setupWFE(t *testing.T) WebFrontEndImpl {
 	return wfe
 }
 
+func mustParseURL(s string) *url.URL {
+	if u, err := url.Parse(s); err != nil {
+		panic("Cannot parse URL " + s)
+	} else {
+		return u
+	}
+}
+
+func sortHeader(s string) string {
+	a := strings.Split(s, ", ")
+	sort.Sort(sort.StringSlice(a))
+	return strings.Join(a, ", ")
+}
+
+func TestHandleFunc(t *testing.T) {
+	wfe := setupWFE(t)
+	var mux *http.ServeMux
+	var rw *httptest.ResponseRecorder
+	var stubCalled bool
+	runWrappedHandler := func(req *http.Request, allowed ...string) {
+		mux = http.NewServeMux()
+		rw = httptest.NewRecorder()
+		stubCalled = false
+		wfe.HandleFunc(mux, "/test", func(http.ResponseWriter, *http.Request) {
+			stubCalled = true
+		}, allowed...)
+		req.URL = mustParseURL("/test")
+		mux.ServeHTTP(rw, req)
+	}
+
+	// Plain requests (no CORS)
+	type testCase struct {
+		allowed       []string
+		reqMethod     string
+		shouldSucceed bool
+	}
+	var lastNonce string
+	for _, c := range []testCase{
+		{[]string{"GET", "POST"}, "GET", true},
+		{[]string{"GET", "POST"}, "POST", true},
+		{[]string{"GET"}, "", false},
+		{[]string{"GET"}, "POST", false},
+		{[]string{"GET"}, "OPTIONS", false},     // TODO, #469
+		{[]string{"GET"}, "MAKE-COFFEE", false}, // 405, or 418?
+	} {
+		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.allowed...)
+		test.AssertEquals(t, stubCalled, c.shouldSucceed)
+		if c.shouldSucceed {
+			test.AssertEquals(t, rw.Code, http.StatusOK)
+		} else {
+			test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
+			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), strings.Join(c.allowed, ", "))
+			test.AssertEquals(t,
+				rw.Body.String(),
+				`{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
+		}
+		nonce := rw.Header().Get("Replay-Nonce")
+		test.AssertNotEquals(t, nonce, lastNonce)
+		lastNonce = nonce
+	}
+
+	// Disallowed method returns error JSON in body
+	runWrappedHandler(&http.Request{Method: "PUT"}, "GET", "POST")
+	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
+	test.AssertEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
+
+	// Disallowed method special case: response to HEAD has got no body
+	runWrappedHandler(&http.Request{Method: "HEAD"}, "GET", "POST")
+	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, rw.Body.String(), "")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
+}
+
 func TestStandardHeaders(t *testing.T) {
 	wfe := setupWFE(t)
+	mux := wfe.Handler()
 
 	cases := []struct {
 		path    string
-		handler func(http.ResponseWriter, *http.Request)
 		allowed []string
 	}{
-		{"/", wfe.Index, []string{"GET"}},
-		{wfe.NewReg, wfe.NewRegistration, []string{"POST"}},
-		{wfe.RegBase, wfe.Registration, []string{"POST"}},
-		{wfe.NewAuthz, wfe.NewAuthorization, []string{"POST"}},
-		{wfe.AuthzBase, wfe.Authorization, []string{"GET", "POST"}},
-		{wfe.NewCert, wfe.NewCertificate, []string{"POST"}},
-		{wfe.CertBase, wfe.Certificate, []string{"GET", "POST"}},
-		{wfe.SubscriberAgreementURL, wfe.Terms, []string{"GET"}},
-		{wfe.BaseURL + IssuerPath, wfe.Issuer, []string{"GET"}},
+		{"/", []string{"GET"}},
+		{wfe.NewReg, []string{"POST"}},
+		{wfe.RegBase, []string{"POST"}},
+		{wfe.NewAuthz, []string{"POST"}},
+		{wfe.AuthzBase, []string{"GET", "POST"}},
+		{wfe.NewCert, []string{"POST"}},
+		{wfe.CertBase, []string{"GET", "POST"}},
+		{wfe.SubscriberAgreementURL, []string{"GET"}},
 	}
 
 	for _, c := range cases {
 		responseWriter := httptest.NewRecorder()
-		url, _ := url.Parse(c.path)
-		c.handler(responseWriter, &http.Request{
+		mux.ServeHTTP(responseWriter, &http.Request{
 			Method: "BOGUS",
-			URL:    url,
+			URL:    mustParseURL(c.path),
 		})
 		acao := responseWriter.Header().Get("Access-Control-Allow-Origin")
 		nonce := responseWriter.Header().Get("Replay-Nonce")
@@ -407,6 +480,7 @@ func TestIndex(t *testing.T) {
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
 	wfe := setupWFE(t)
+	mux := wfe.Handler()
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl()
@@ -418,8 +492,9 @@ func TestIssueCertificate(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
-	wfe.NewCertificate(responseWriter, &http.Request{
+	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
+		URL:    mustParseURL(NewCertPath),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -586,6 +661,7 @@ func TestChallenge(t *testing.T) {
 
 func TestNewRegistration(t *testing.T) {
 	wfe := setupWFE(t)
+	mux := wfe.Handler()
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
@@ -594,8 +670,9 @@ func TestNewRegistration(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
-	wfe.NewRegistration(responseWriter, &http.Request{
+	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
+		URL:    mustParseURL(NewRegPath),
 	})
 	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
 
@@ -828,6 +905,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 
 func TestAuthorization(t *testing.T) {
 	wfe := setupWFE(t)
+	mux := wfe.Handler()
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
@@ -835,8 +913,9 @@ func TestAuthorization(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
-	wfe.NewAuthorization(responseWriter, &http.Request{
+	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
+		URL:    mustParseURL(NewAuthzPath),
 	})
 	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
 
@@ -911,6 +990,7 @@ func TestAuthorization(t *testing.T) {
 
 func TestRegistration(t *testing.T) {
 	wfe := setupWFE(t)
+	mux := wfe.Handler()
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
@@ -919,11 +999,10 @@ func TestRegistration(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	// Test invalid method
-	path, _ := url.Parse("/1")
-	wfe.Registration(responseWriter, &http.Request{
+	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "MAKE-COFFEE",
+		URL:    mustParseURL(RegPath),
 		Body:   makeBody("invalid"),
-		URL:    path,
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -931,10 +1010,9 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test GET proper entry returns 405
-	path, _ = url.Parse("/1")
-	wfe.Registration(responseWriter, &http.Request{
+	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    path,
+		URL:    mustParseURL(RegPath),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -942,7 +1020,7 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST invalid JSON
-	path, _ = url.Parse("/2")
+	path, _ := url.Parse("/2")
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
 		Body:   makeBody("invalid"),
