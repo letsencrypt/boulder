@@ -14,6 +14,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"fmt"
+	"log/syslog"
 	"math/big"
 	"net"
 	"net/http"
@@ -50,6 +51,8 @@ var TheKey = rsa.PrivateKey{
 }
 
 var ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
+
+var log = mocks.UseMockLog()
 
 const expectedToken = "THETOKEN"
 const pathWrongToken = "wrongtoken"
@@ -210,9 +213,13 @@ func TestSimpleHttpTLS(t *testing.T) {
 	defer func() { stopChan <- true }()
 	<-waitChan
 
+	log.Clear()
 	finChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
+	logs := log.GetAllMatching(`^\[AUDIT\] Attempting to validate SimpleHTTPS for `)
+	test.AssertEquals(t, len(logs), 1)
+	test.AssertEquals(t, logs[0].Priority, syslog.LOG_NOTICE)
 }
 
 func TestSimpleHttp(t *testing.T) {
@@ -233,15 +240,19 @@ func TestSimpleHttp(t *testing.T) {
 	defer func() { stopChan <- true }()
 	<-waitChan
 
+	log.Clear()
 	finChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
+	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
+	log.Clear()
 	chall.Path = path404
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Should have found a 404 for the challenge.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
+	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	chall.Path = pathWrongToken
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)

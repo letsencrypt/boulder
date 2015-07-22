@@ -15,6 +15,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"log/syslog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -28,6 +29,7 @@ import (
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
 
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -124,6 +126,8 @@ wk6Oiadty3eQqSBJv0HnpmiEdQVffIK5Pg4M8Dd+aOBnEkbopAJOuA==
 		"f349efa6d2fadbaf8ed9ba67e5a9b98c3d5a13c06297c4cf36dc76f494e8887e3" +
 		"5dd9c885526136d810fc7640f5ba56281e2b75fa3ff7c91a7d23bab7fd4"
 )
+
+var log = mocks.UseMockLog()
 
 type MockSA struct {
 	// empty
@@ -574,6 +578,7 @@ func TestIssueCertificate(t *testing.T) {
 		responseWriter.Body.String(),
 		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert :: Key not authorized for name meep.com\"}")
 
+	log.Clear()
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
@@ -595,6 +600,11 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Content-Type"),
 		"application/pkix-cert")
+	reqlogs := log.GetAllMatching(`Certificate request - successful`)
+	test.AssertEquals(t, len(reqlogs), 1)
+	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_NOTICE)
+	test.AssertContains(t, reqlogs[0].Message, `[AUDIT] `)
+	test.AssertContains(t, reqlogs[0].Message, `"Names":["not-an-example.com"]`)
 }
 
 func TestChallenge(t *testing.T) {
