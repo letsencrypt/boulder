@@ -235,18 +235,6 @@ func TestSimpleHttpTLS(t *testing.T) {
 	test.AssertEquals(t, logs[0].Priority, syslog.LOG_NOTICE)
 }
 
-func TestSimpleHttpRedirect(t *testing.T) {
-	va := NewValidationAuthorityImpl(true)
-	va.DNSResolver = &mocks.MockDNS{}
-
-	stopChan := make(chan bool, 1)
-	waitChan := make(chan bool, 1)
-	go simpleSrv(t, expectedToken, stopChan, waitChan, true)
-	defer func() { stopChan <- true }()
-	<-waitChan
-
-}
-
 func TestSimpleHttp(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
