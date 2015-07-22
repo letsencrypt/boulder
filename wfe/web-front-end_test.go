@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log/syslog"
@@ -127,8 +128,6 @@ wk6Oiadty3eQqSBJv0HnpmiEdQVffIK5Pg4M8Dd+aOBnEkbopAJOuA==
 		"f349efa6d2fadbaf8ed9ba67e5a9b98c3d5a13c06297c4cf36dc76f494e8887e3" +
 		"5dd9c885526136d810fc7640f5ba56281e2b75fa3ff7c91a7d23bab7fd4"
 )
-
-var log = mocks.UseMockLog()
 
 type MockSA struct {
 	// empty
@@ -332,6 +331,7 @@ func setupWFE(t *testing.T) WebFrontEndImpl {
 	wfe.NewCert = wfe.BaseURL + NewCertPath
 	wfe.CertBase = wfe.BaseURL + CertPath
 	wfe.SubscriberAgreementURL = agreementURL
+	wfe.log.SyslogWriter = mocks.NewSyslogWriter()
 
 	return wfe
 }
@@ -496,6 +496,7 @@ func TestIssueCertificate(t *testing.T) {
 	wfe := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl()
@@ -572,6 +573,7 @@ func TestIssueCertificate(t *testing.T) {
 		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert :: Invalid signature on CSR\"}")
 
 	// Valid, signed JWS body, payload has a CSR with no DNS names
+	mockLog.Clear()
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
@@ -583,12 +585,14 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert :: Key not authorized for name Oh hi\"}")
+	assertCsrLogged(t, mockLog)
 
 	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
 	// {
 	//   "csr": "MIIBK...",
 	//   "authorizations: []
 	// }
+	mockLog.Clear()
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
@@ -600,8 +604,9 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert :: Key not authorized for name meep.com\"}")
+	assertCsrLogged(t, mockLog)
 
-	log.Clear()
+	mockLog.Clear()
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
@@ -610,6 +615,7 @@ func TestIssueCertificate(t *testing.T) {
       "authorizations": ["valid"]
     }`, &wfe.nonceService)),
 	})
+	assertCsrLogged(t, mockLog)
 	randomCertDer, _ := hex.DecodeString(GoodTestCert)
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
@@ -623,7 +629,7 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Content-Type"),
 		"application/pkix-cert")
-	reqlogs := log.GetAllMatching(`Certificate request - successful`)
+	reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
 	test.AssertEquals(t, len(reqlogs), 1)
 	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_NOTICE)
 	test.AssertContains(t, reqlogs[0].Message, `[AUDIT] `)
@@ -1206,5 +1212,29 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
+}
 
+func assertCsrLogged(t *testing.T, mockLog *mocks.MockSyslogWriter) {
+	matches := mockLog.GetAllMatching("^\\[AUDIT\\] Certificate request CSR=")
+	test.Assert(t, len(matches) == 1,
+		fmt.Sprintf("Incorrect number of certificate request log entries: %d",
+			len(matches)))
+	test.AssertEquals(t, matches[0].Priority, syslog.LOG_NOTICE)
+}
+
+func TestLogCsrPem(t *testing.T) {
+	const certificateRequestJson = `{
+		"csr": "MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca-fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB-6dp48xkcX7Z_KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD-eeu8-z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7_C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT_DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq_Bbe7TBGVYZabUEh-LOskYwhgcOuThVN7tHnH5rhN-gb7cEdysjTb1QL-vOUwYgV75CB6PE5JVYK-cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub-fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G_W-Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd-L3IcyvHVKxNhIJXZVH0AOqh_1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY"
+	}`
+	wfe := setupWFE(t)
+	var certificateRequest core.CertificateRequest
+	err := json.Unmarshal([]byte(certificateRequestJson), &certificateRequest)
+	test.AssertNotError(t, err, "Unable to parse certificateRequest")
+	wfe.logCsr(certificateRequest)
+	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
+	matches := mockLog.GetAllMatching("Certificate request")
+	test.Assert(t, len(matches) == 1,
+		"Incorrect number of certificate request log entries")
+	test.AssertEquals(t, matches[0].Priority, syslog.LOG_NOTICE)
+	test.AssertEquals(t, matches[0].Message, `[AUDIT] Certificate request CSR=MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca+fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB+6dp48xkcX7Z/KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD+eeu8+z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7/C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT/DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq/Bbe7TBGVYZabUEh+LOskYwhgcOuThVN7tHnH5rhN+gb7cEdysjTb1QL+vOUwYgV75CB6PE5JVYK+cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub+fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G/W+Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd+L3IcyvHVKxNhIJXZVH0AOqh/1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY=`)
 }

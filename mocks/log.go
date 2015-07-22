@@ -126,47 +126,47 @@ func (msw *MockSyslogWriter) Clear() {
 }
 
 // Close releases resources. No other methods may be called after this.
-func (msw *MockSyslogWriter) Close() error {
+func (msw MockSyslogWriter) Close() error {
 	msw.closeChan <- struct{}{}
 	return nil
 }
 
 // Alert logs at LOG_ALERT
-func (msw *MockSyslogWriter) Alert(m string) error {
+func (msw MockSyslogWriter) Alert(m string) error {
 	return msw.write(m, syslog.LOG_ALERT)
 }
 
 // Crit logs at LOG_CRIT
-func (msw *MockSyslogWriter) Crit(m string) error {
+func (msw MockSyslogWriter) Crit(m string) error {
 	return msw.write(m, syslog.LOG_CRIT)
 }
 
 // Debug logs at LOG_DEBUG
-func (msw *MockSyslogWriter) Debug(m string) error {
+func (msw MockSyslogWriter) Debug(m string) error {
 	return msw.write(m, syslog.LOG_DEBUG)
 }
 
 // Emerg logs at LOG_EMERG
-func (msw *MockSyslogWriter) Emerg(m string) error {
+func (msw MockSyslogWriter) Emerg(m string) error {
 	return msw.write(m, syslog.LOG_EMERG)
 }
 
 // Err logs at LOG_ERR
-func (msw *MockSyslogWriter) Err(m string) error {
+func (msw MockSyslogWriter) Err(m string) error {
 	return msw.write(m, syslog.LOG_ERR)
 }
 
 // Info logs at LOG_INFO
-func (msw *MockSyslogWriter) Info(m string) error {
+func (msw MockSyslogWriter) Info(m string) error {
 	return msw.write(m, syslog.LOG_INFO)
 }
 
 // Notice logs at LOG_NOTICE
-func (msw *MockSyslogWriter) Notice(m string) error {
+func (msw MockSyslogWriter) Notice(m string) error {
 	return msw.write(m, syslog.LOG_NOTICE)
 }
 
 // Warning logs at LOG_WARNING
-func (msw *MockSyslogWriter) Warning(m string) error {
+func (msw MockSyslogWriter) Warning(m string) error {
 	return msw.write(m, syslog.LOG_WARNING)
 }

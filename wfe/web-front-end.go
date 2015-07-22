@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -624,6 +625,11 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 }
 
+func (wfe *WebFrontEndImpl) logCsr(cr core.CertificateRequest) {
+	wfe.log.Audit(fmt.Sprintf("Certificate request CSR=%s",
+		base64.StdEncoding.EncodeToString(cr.Bytes)))
+}
+
 // NewCertificate is used by clients to request the issuance of a cert for an
 // authorized identifier.
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
@@ -659,6 +665,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
+	wfe.logCsr(init)
 	logEvent.Extra["Authorizations"] = init.Authorizations
 	logEvent.Extra["CSRDNSNames"] = init.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = init.CSR.EmailAddresses
