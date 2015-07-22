@@ -132,6 +132,23 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 	hostName := identifier.Value
 
+	addrs, _, _, err := va.DNSResolver.LookupHost(hostName)
+	if err != nil {
+		challenge.Status = core.StatusInvalid
+		setChallengeErrorFromDNSError(err, &challenge)
+		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
+		return challenge, challenge.Error
+	}
+	if len(addrs) == 0 {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnknownHostProblem,
+			Detail: fmt.Sprintf("Could not resolve %s", hostName),
+		}
+		challenge.Status = core.StatusInvalid
+		return challenge, errors.New(challenge.Error.Detail)
+	}
+	va.log.Audit(fmt.Sprintf("Resolved IP addresses for SimpleHTTP validation for %s: %s", hostName, addrs))
+
 	var scheme string
 	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
 		scheme = "https"
@@ -288,8 +305,25 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.DVSNISuffix)
 
+	addrs, _, _, err := va.DNSResolver.LookupHost(identifier.Value)
+	if err != nil {
+		challenge.Status = core.StatusInvalid
+		setChallengeErrorFromDNSError(err, &challenge)
+		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
+		return challenge, challenge.Error
+	}
+	if len(addrs) == 0 {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnknownHostProblem,
+			Detail: fmt.Sprintf("Could not resolve %s", identifier.Value),
+		}
+		challenge.Status = core.StatusInvalid
+		return challenge, errors.New(challenge.Error.Detail)
+	}
+	va.log.Audit(fmt.Sprintf("Resolved IP addresses for DVSNI validation for %s: %s", identifier.Value, addrs))
+
 	// Make a connection with SNI = nonceName
-	hostPort := identifier.Value + ":443"
+	hostPort := fmt.Sprintf("%s:443", addrs[0].String())
 	if va.TestMode {
 		hostPort = "localhost:5001"
 	}
