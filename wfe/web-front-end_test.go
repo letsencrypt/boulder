@@ -190,14 +190,6 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 			RegistrationID: 1,
 			DER:            certBlock.Bytes,
 		}, nil
-	} else if serial == "00000000000000000000000000000001" {
-		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
-		certBlock, _ := pem.Decode(certPemBytes)
-		return core.Certificate{
-			RegistrationID: 1,
-			DER:            certBlock.Bytes,
-			Expires:        time.Now().Add(time.Hour * 12),
-		}, nil
 	}
 	return core.Certificate{}, errors.New("No cert")
 }
@@ -1147,18 +1139,6 @@ func TestGetCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
-	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
-
-	// Valid short serial, no cache
-	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/0000000000000001")
-	wfe.Certificate(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
-	test.AssertEquals(t, responseWriter.Code, 200)
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
 

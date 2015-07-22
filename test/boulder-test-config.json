@@ -33,7 +33,7 @@
   "wfe": {
     "listenAddress": "127.0.0.1:4300",
     "certCacheDuration": "6h",
-    "certNoCacheExpirationWindow": "96h",
+    "certNoCacheExpirationWindow": "8765h",
     "indexCacheDuration": "24h",
     "issuerCacheDuration": "48h",
     "debugAddr": "localhost:8000"
