@@ -91,15 +91,16 @@ func main() {
 		wfei.IssuerCacheDuration, err = time.ParseDuration(c.WFE.IssuerCacheDuration)
 		cmd.FailOnError(err, "Couldn't parse issuer caching duration")
 
+		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
+		cmd.FailOnError(err, "Couldn't parse DNS timeout")
+		dnsResolver := core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+
 		ra := ra.NewRegistrationAuthorityImpl()
-		raDNSTimeout, err := time.ParseDuration(c.RA.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
-		ra.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.RA.DNSResolver})
+		ra.DNSResolver = dnsResolver
 
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
-		vaDNSTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
-		cmd.FailOnError(err, "Couldn't parse VA DNS timeout")
-		va.DNSResolver = core.NewDNSResolverImpl(vaDNSTimeout, []string{c.VA.DNSResolver})
+		va.DNSResolver = dnsResolver
 		va.UserAgent = c.VA.UserAgent
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBConnect)
