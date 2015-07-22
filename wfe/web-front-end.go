@@ -625,9 +625,21 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 }
 
-func (wfe *WebFrontEndImpl) logCsr(cr core.CertificateRequest) {
-	wfe.log.Audit(fmt.Sprintf("Certificate request CSR=%s",
-		base64.StdEncoding.EncodeToString(cr.Bytes)))
+func (wfe *WebFrontEndImpl) logCsr(remoteAddr string, cr core.CertificateRequest, registration core.Registration) {
+	var csrLog = struct {
+		RemoteAddr   string
+		CsrBase64    string
+		Registration core.Registration
+	}{
+		RemoteAddr:   remoteAddr,
+		CsrBase64:    base64.StdEncoding.EncodeToString(cr.Bytes),
+		Registration: registration,
+	}
+	_, err := json.Marshal(csrLog)
+	if err != nil {
+		panic(err)
+	}
+	wfe.log.AuditObject("Certificate request", csrLog)
 }
 
 // NewCertificate is used by clients to request the issuance of a cert for an
@@ -636,7 +648,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, key, reg, err := wfe.verifyPOST(request, true)
+	body, _, reg, err := wfe.verifyPOST(request, true)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
@@ -665,14 +677,11 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
-	wfe.logCsr(init)
+	wfe.logCsr(request.RemoteAddr, init, reg)
 	logEvent.Extra["Authorizations"] = init.Authorizations
 	logEvent.Extra["CSRDNSNames"] = init.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = init.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = init.CSR.IPAddresses
-
-	wfe.log.Notice(fmt.Sprintf("Client requested new certificate: %v %v %v",
-		request.RemoteAddr, init, key))
 
 	// Create new certificate and return
 	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the

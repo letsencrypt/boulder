@@ -143,6 +143,9 @@ type AcmeIdentifier struct {
 // CertificateRequest is just a CSR together with
 // URIs pointing to authorizations that should collectively
 // authorize the certificate being requsted.
+//
+// This data is unmarshalled from JSON by way of rawCertificateRequest, which
+// represents the actual structure received from the client.
 type CertificateRequest struct {
 	CSR            *x509.CertificateRequest // The CSR
 	Authorizations []AcmeURL                // Links to Authorization over the account key

@@ -165,8 +165,8 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 		return core.Registration{ID: 2}, sql.ErrNoRows
 	}
 
-	// Return a fake registration
-	return core.Registration{ID: 1, Agreement: agreementURL}, nil
+	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.
+	return core.Registration{ID: 1, Key: test1KeyPublic, Agreement: agreementURL}, nil
 }
 
 func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
@@ -576,7 +576,8 @@ func TestIssueCertificate(t *testing.T) {
 	mockLog.Clear()
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
-		Method: "POST",
+		Method:     "POST",
+		RemoteAddr: "1.1.1.1",
 		Body: makeBody(signRequest(t, `{
       "authorizations": [],
       "csr": "MIIBBTCBsgIBADBNMQowCAYDVQQGEwFjMQowCAYDVQQKEwFvMQswCQYDVQQLEwJvdTEKMAgGA1UEBxMBbDEKMAgGA1UECBMBczEOMAwGA1UEAxMFT2ggaGkwXDANBgkqhkiG9w0BAQEFAANLADBIAkEAsr76ZkU2RTqi41eHfmpE5htDvkr202yjRS8x2M5yzT52ooT2WEVtnSuim0YfOEw6f-fHmbqsasqKmqlsJdgz2QIDAQABoAAwCwYJKoZIhvcNAQEFA0EAHkCv4kVPJa53ltOGrhpdH0mT04qHUqiTllJPPjxXxn6iwiVYL8nQuhs4Q2758ENoODBuM2F8gH19TIoXlcm3LQ=="
@@ -595,7 +596,8 @@ func TestIssueCertificate(t *testing.T) {
 	mockLog.Clear()
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(responseWriter, &http.Request{
-		Method: "POST",
+		Method:     "POST",
+		RemoteAddr: "1.1.1.1",
 		Body: makeBody(signRequest(t, `{
       "authorizations": [],
       "csr": "MIIBKzCB2AIBADBNMQowCAYDVQQGEwFjMQowCAYDVQQKEwFvMQswCQYDVQQLEwJvdTEKMAgGA1UEBxMBbDEKMAgGA1UECBMBczEOMAwGA1UEAxMFT2ggaGkwXDANBgkqhkiG9w0BAQEFAANLADBIAkEAqvFEGBNrjAotPbcdTSyDpxsESN0-eYl4TqS0ZLYwLTV-FuPHTPjFiq2oH1BEgmRzjb8YiPVXFMnaOeHE7zuuXQIDAQABoCYwJAYJKoZIhvcNAQkOMRcwFTATBgNVHREEDDAKgghtZWVwLmNvbTALBgkqhkiG9w0BAQUDQQBSEcEq-lMUnzv1DO8jK0hJR8YKc0yV8zuWVfAWN0_dsPg5Ny-OHhtJcOTIrUrLTb_xCU7cjiKxU8i3j1kaT-rt"
@@ -1215,7 +1217,7 @@ func TestGetCertificate(t *testing.T) {
 }
 
 func assertCsrLogged(t *testing.T, mockLog *mocks.MockSyslogWriter) {
-	matches := mockLog.GetAllMatching("^\\[AUDIT\\] Certificate request CSR=")
+	matches := mockLog.GetAllMatching("^\\[AUDIT\\] Certificate request JSON=")
 	test.Assert(t, len(matches) == 1,
 		fmt.Sprintf("Incorrect number of certificate request log entries: %d",
 			len(matches)))
@@ -1230,11 +1232,19 @@ func TestLogCsrPem(t *testing.T) {
 	var certificateRequest core.CertificateRequest
 	err := json.Unmarshal([]byte(certificateRequestJson), &certificateRequest)
 	test.AssertNotError(t, err, "Unable to parse certificateRequest")
-	wfe.logCsr(certificateRequest)
+
+	mockSA := MockSA{}
+	reg, err := mockSA.GetRegistration(789)
+	test.AssertNotError(t, err, "Unable to get registration")
+
+	remoteAddr := "12.34.98.76"
+
+	wfe.logCsr(remoteAddr, certificateRequest, reg)
+
 	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
 	matches := mockLog.GetAllMatching("Certificate request")
 	test.Assert(t, len(matches) == 1,
 		"Incorrect number of certificate request log entries")
 	test.AssertEquals(t, matches[0].Priority, syslog.LOG_NOTICE)
-	test.AssertEquals(t, matches[0].Message, `[AUDIT] Certificate request CSR=MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca+fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB+6dp48xkcX7Z/KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD+eeu8+z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7/C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT/DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq/Bbe7TBGVYZabUEh+LOskYwhgcOuThVN7tHnH5rhN+gb7cEdysjTb1QL+vOUwYgV75CB6PE5JVYK+cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub+fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G/W+Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd+L3IcyvHVKxNhIJXZVH0AOqh/1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY=`)
+	test.AssertEquals(t, matches[0].Message, `[AUDIT] Certificate request JSON={"RemoteAddr":"12.34.98.76","CsrBase64":"MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca+fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB+6dp48xkcX7Z/KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD+eeu8+z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7/C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT/DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq/Bbe7TBGVYZabUEh+LOskYwhgcOuThVN7tHnH5rhN+gb7cEdysjTb1QL+vOUwYgV75CB6PE5JVYK+cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub+fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G/W+Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd+L3IcyvHVKxNhIJXZVH0AOqh/1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY=","Registration":{"id":789,"key":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AAEAAQ"},"recoveryToken":"","agreement":"http://example.invalid/terms"}}`)
 }
