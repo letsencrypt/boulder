@@ -237,7 +237,6 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 `))
 	tmpl.Execute(response, wfe)
 	response.Header().Set("Content-Type", "text/html")
-	// Set cache header
 	addCacheHeader(response, wfe.IndexCacheDuration.Seconds())
 }
 
@@ -974,7 +973,6 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 			return
 		}
 
-		// Set cache header
 		addCacheHeader(response, wfe.CertCacheDuration.Seconds())
 
 		// TODO Content negotiation
@@ -1007,7 +1005,6 @@ func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.R
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	// Set cache header
 	addCacheHeader(response, wfe.IssuerCacheDuration.Seconds())
 
 	// TODO Content negotiation
