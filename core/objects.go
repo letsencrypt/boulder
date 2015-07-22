@@ -11,12 +11,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"net"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 )
 
 // AcmeStatus defines the state of a given authorization
@@ -249,6 +250,9 @@ type Challenge struct {
 	R     string `json:"r,omitempty"`
 	S     string `json:"s,omitempty"`
 	Nonce string `json:"nonce,omitempty"`
+
+	// IP addresses resolved from authorization identifier
+	ResolvedAddrs []net.IP `json:"resolvedAddrs,omitempty"`
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
