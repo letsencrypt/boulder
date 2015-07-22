@@ -84,6 +84,9 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 	currentToken := defaultToken
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != "localhost" {
+			t.Errorf("Bad Host header: " + r.Host)
+		}
 		if strings.HasSuffix(r.URL.Path, path404) {
 			t.Logf("SIMPLESRV: Got a 404 req\n")
 			http.NotFound(w, r)

@@ -179,20 +179,32 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	httpRequest.Host = hostName
-	tr := &http.Transport{
-		// We are talking to a client that does not yet have a certificate,
-		// so we accept a temporary, invalid one.
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		// We don't expect to make multiple requests to a client, so close
-		// connection immediately.
-		DisableKeepAlives: true,
+	tr := *http.DefaultTransport.(*http.Transport)
+	// We are talking to a client that does not yet have a certificate,
+	// so we accept a temporary, invalid one.
+	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	// We don't expect to make multiple requests to a client, so close
+	// connection immediately.
+	tr.DisableKeepAlives = true
+	// Intercept Dial in order to connect to the IP address we
+	// selected above.
+	defaultDial := tr.Dial
+	tr.Dial = func(_, _ string) (net.Conn, error) {
+		// Ignore the addr selected by net/http.
+		port := "80"
+		if va.TestMode {
+			port = "5001"
+		} else if scheme == "https" {
+			port = "443"
+		}
+		return defaultDial("tcp", net.JoinHostPort(addrs[0].String(), port))
 	}
 	logRedirect := func(req *http.Request, via []*http.Request) error {
 		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q", identifier, via[len(via)-1].URL.String(), req.URL.String()))
 		return nil
 	}
 	client := http.Client{
-		Transport:     tr,
+		Transport:     &tr,
 		CheckRedirect: logRedirect,
 		Timeout:       5 * time.Second,
 	}
