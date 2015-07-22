@@ -863,6 +863,10 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		return
 	}
 	response.Header().Set("Content-Type", "application/json")
+	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
+	if len(wfe.SubscriberAgreementURL) > 0 {
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+	}
 	response.WriteHeader(http.StatusAccepted)
 	response.Write(jsonReply)
 }
