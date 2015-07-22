@@ -245,6 +245,7 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`request to host localhost:\d+ using remote (127\.0\.0\.1|\[::1\]):5001 local (127\.0\.0\.1|\[::1\]):\d+`)), 1)
 
 	log.Clear()
 	chall.Path = path404
@@ -317,9 +318,11 @@ func TestDvsni(t *testing.T) {
 	defer func() { stopChan <- true }()
 	<-waitChan
 
+	log.Clear()
 	finChall, err := va.validateDvsni(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "")
+	test.AssertEquals(t, len(log.GetAllMatching(`request to host localhost:\d+ using remote (127\.0\.0\.1|\[::1\]):5001 local (127\.0\.0\.1|\[::1\]):\d+`)), 1)
 
 	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
