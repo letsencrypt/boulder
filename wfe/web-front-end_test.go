@@ -378,7 +378,7 @@ func TestHandleFunc(t *testing.T) {
 		{[]string{"GET", "POST"}, "POST", true},
 		{[]string{"GET"}, "", false},
 		{[]string{"GET"}, "POST", false},
-		{[]string{"GET"}, "OPTIONS", false},	 // TODO, #469
+		{[]string{"GET"}, "OPTIONS", false},     // TODO, #469
 		{[]string{"GET"}, "MAKE-COFFEE", false}, // 405, or 418?
 	} {
 		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.allowed...)
