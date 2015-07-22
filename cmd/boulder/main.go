@@ -83,11 +83,14 @@ func main() {
 		sa.SetSQLDebug(c.SQL.SQLDebug)
 
 		ra := ra.NewRegistrationAuthorityImpl()
+		raDNSTimeout, err := time.ParseDuration(c.RA.DNSTimeout)
+		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
+		ra.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.RA.DNSResolver})
 
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
-		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
-		cmd.FailOnError(err, "Couldn't parse DNS timeout")
-		va.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.VA.DNSResolver})
+		vaDNSTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
+		cmd.FailOnError(err, "Couldn't parse VA DNS timeout")
+		va.DNSResolver = core.NewDNSResolverImpl(vaDNSTimeout, []string{c.VA.DNSResolver})
 		va.UserAgent = c.VA.UserAgent
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBConnect)

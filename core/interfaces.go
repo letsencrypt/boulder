@@ -145,4 +145,5 @@ type DNSResolver interface {
 	LookupHost(string) ([]net.IP, time.Duration, time.Duration, error)
 	LookupCNAME(string) (string, time.Duration, error)
 	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
+	LookupMX(string) ([]string, time.Duration, error)
 }

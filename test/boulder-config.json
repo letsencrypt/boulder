@@ -110,6 +110,8 @@
   },
 
   "ra": {
+    "dnsResolver": "8.8.8.8:53",
+    "dnsTimeout": "10s",
     "debugAddr": "localhost:8002"
   },
 
