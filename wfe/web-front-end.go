@@ -196,8 +196,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 
 	// Only generate directory once
 	directory := map[string]string{
-		"new-reg": wfe.NewReg,
-		// "recover-reg": wfe.
+		"new-reg":     wfe.NewReg,
 		"new-authz":   wfe.NewAuthz,
 		"new-cert":    wfe.NewCert,
 		"revoke-cert": wfe.BaseURL + RevokeCertPath,

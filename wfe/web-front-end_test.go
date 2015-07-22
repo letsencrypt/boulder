@@ -409,7 +409,7 @@ func TestHandleFunc(t *testing.T) {
 func TestStandardHeaders(t *testing.T) {
 	wfe := setupWFE(t)
 	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Failed to marshal directory to JSON")
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	cases := []struct {
 		path    string
@@ -469,7 +469,7 @@ func TestDirectory(t *testing.T) {
 	wfe := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Failed to marshal directory to JSON")
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	responseWriter := httptest.NewRecorder()
 
@@ -487,7 +487,7 @@ func TestDirectory(t *testing.T) {
 func TestIssueCertificate(t *testing.T) {
 	wfe := setupWFE(t)
 	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Failed to marshal directory to JSON")
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	ra := ra.NewRegistrationAuthorityImpl()
@@ -669,7 +669,7 @@ func TestChallenge(t *testing.T) {
 func TestNewRegistration(t *testing.T) {
 	wfe := setupWFE(t)
 	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Failed to marshal directory to JSON")
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
@@ -914,7 +914,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 func TestAuthorization(t *testing.T) {
 	wfe := setupWFE(t)
 	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Failed to marshal directory to JSON")
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
@@ -1000,7 +1000,7 @@ func TestAuthorization(t *testing.T) {
 func TestRegistration(t *testing.T) {
 	wfe := setupWFE(t)
 	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Failed to marshal directory to JSON")
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
