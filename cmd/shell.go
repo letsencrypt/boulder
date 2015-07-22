@@ -79,6 +79,11 @@ type Config struct {
 
 	CA ca.Config
 
+	Monolith struct {
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
+	}
+
 	RA struct {
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -293,6 +298,11 @@ func AmqpChannel(conf Config) (*amqp.Channel, error) {
 		conn, err = amqp.DialTLS(conf.AMQP.Server, cfg)
 	}
 
+	if err != nil {
+		return nil, err
+	}
+
+	err = rpc.AMQPDeclareExchange(conn)
 	if err != nil {
 		return nil, err
 	}

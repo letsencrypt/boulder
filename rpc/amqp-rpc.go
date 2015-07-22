@@ -43,20 +43,21 @@ const (
 	AmqpImmediate    = false
 )
 
-// A simplified way to get a channel for a given AMQP server
-func amqpConnect(url string) (ch *amqp.Channel, err error) {
-	conn, err := amqp.Dial(url)
-	if err != nil {
-		return
-	}
+// AMQPDeclareExchange attempts to declare the configured AMQP exchange,
+// returning silently if already declared, erroring if nonexistant and
+// unable to create.
+func AMQPDeclareExchange(conn *amqp.Connection) error {
+	var err error
+	var ch *amqp.Channel
+	log := blog.GetAuditLogger()
 
 	ch, err = conn.Channel()
-	return
-}
+	if err != nil {
+		log.Crit(fmt.Sprintf("Could not connect Channel: %s", err))
+		return err
+	}
 
-// A simplified way to declare and subscribe to an AMQP queue
-func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (msgs <-chan amqp.Delivery, err error) {
-	err = ch.ExchangeDeclare(
+	err = ch.ExchangeDeclarePassive(
 		AmqpExchange,
 		AmqpExchangeType,
 		AmqpDurable,
@@ -65,11 +66,40 @@ func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (msgs <
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		log.Crit(fmt.Sprintf("Could not declare exchange: %s", err))
-		return
+		log.Info(fmt.Sprintf("Exchange %s does not exist on AMQP server, attempting to create. (err=%s)", AmqpExchange, err))
+
+		// Channel is invalid at this point, so recreate
+		ch.Close()
+		ch, err = conn.Channel()
+		if err != nil {
+			log.Crit(fmt.Sprintf("Could not connect Channel: %s", err))
+			return err
+		}
+
+		err = ch.ExchangeDeclare(
+			AmqpExchange,
+			AmqpExchangeType,
+			AmqpDurable,
+			AmqpDeleteUnused,
+			AmqpInternal,
+			AmqpNoWait,
+			nil)
+		if err != nil {
+			log.Crit(fmt.Sprintf("Could not declare exchange: %s", err))
+			ch.Close()
+			return err
+		}
 	}
 
-	q, err := ch.QueueDeclare(
+	ch.Close()
+	return err
+}
+
+// A simplified way to declare and subscribe to an AMQP queue
+func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan amqp.Delivery, error) {
+	var err error
+
+	_, err = ch.QueueDeclare(
 		name,
 		AmqpDurable,
 		AmqpDeleteUnused,
@@ -78,22 +108,24 @@ func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (msgs <
 		nil)
 	if err != nil {
 		log.Crit(fmt.Sprintf("Could not declare queue: %s", err))
-		return
+		return nil, err
 	}
+
+	routingKey := name
 
 	err = ch.QueueBind(
 		name,
-		name,
+		routingKey,
 		AmqpExchange,
 		false,
 		nil)
 	if err != nil {
-		log.Crit(fmt.Sprintf("Could not bind queue: %s", err))
-		return
+		log.Crit(fmt.Sprintf("Could not bind to queue [%s]. NOTE: You may need to delete %s to re-trigger the bind attempt after fixing permissions, or manually bind the queue to %s.", name, name, routingKey))
+		return nil, err
 	}
 
-	msgs, err = ch.Consume(
-		q.Name,
+	msgs, err := ch.Consume(
+		name,
 		"",
 		AmqpAutoAck,
 		AmqpExclusive,
@@ -102,10 +134,10 @@ func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (msgs <
 		nil)
 	if err != nil {
 		log.Crit(fmt.Sprintf("Could not subscribe to queue: %s", err))
-		return
+		return nil, err
 	}
 
-	return
+	return msgs, err
 }
 
 // AmqpRPCServer listens on a specified queue within an AMQP channel.

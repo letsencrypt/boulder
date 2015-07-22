@@ -140,10 +140,9 @@ type CertificateAuthorityDatabase interface {
 
 // DNSResolver defines methods used for DNS resolution
 type DNSResolver interface {
-	ExchangeOne(*dns.Msg) (*dns.Msg, time.Duration, error)
-	LookupDNSSEC(*dns.Msg) (*dns.Msg, time.Duration, error)
+	ExchangeOne(string, uint16) (*dns.Msg, time.Duration, error)
 	LookupTXT(string) ([]string, time.Duration, error)
-	LookupHost(string) ([]net.IP, time.Duration, error)
-	LookupCNAME(string) (string, error)
-	LookupCAA(string, bool) ([]*dns.CAA, error)
+	LookupHost(string) ([]net.IP, time.Duration, time.Duration, error)
+	LookupCNAME(string) (string, time.Duration, error)
+	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
 }

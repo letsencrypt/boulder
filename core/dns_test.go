@@ -26,6 +26,11 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 	m.Compress = false
 
 	for _, q := range r.Question {
+		if q.Name == "servfail.com." {
+			m.Rcode = dns.RcodeServerFailure
+			w.WriteMsg(m)
+			return
+		}
 		switch q.Qtype {
 		case dns.TypeSOA:
 			record := new(dns.SOA)
@@ -42,19 +47,12 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 			w.WriteMsg(m)
 			return
 		case dns.TypeA:
-			switch q.Name {
-			case "cps.letsencrypt.org.":
+			if q.Name == "cps.letsencrypt.org." {
 				record := new(dns.A)
 				record.Hdr = dns.RR_Header{Name: "cps.letsencrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
 				record.A = net.ParseIP("127.0.0.1")
 
 				m.Answer = append(m.Answer, record)
-				w.WriteMsg(m)
-				return
-			case "sigfail.verteiltesysteme.net.":
-				if !r.CheckingDisabled {
-					m.Rcode = dns.RcodeServerFailure
-				}
 				w.WriteMsg(m)
 				return
 			}
@@ -111,8 +109,7 @@ func TestMain(m *testing.M) {
 func TestDNSNoServers(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Hour, []string{})
 
-	m := new(dns.Msg)
-	_, _, err := obj.ExchangeOne(m)
+	_, _, err := obj.ExchangeOne("letsencrypt.org", dns.TypeA)
 
 	test.AssertError(t, err, "No servers")
 }
@@ -120,9 +117,7 @@ func TestDNSNoServers(t *testing.T) {
 func TestDNSOneServer(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
-	m := new(dns.Msg)
-	m.SetQuestion("letsencrypt.org.", dns.TypeSOA)
-	_, _, err := obj.ExchangeOne(m)
+	_, _, err := obj.ExchangeOne("letsencrypt.org", dns.TypeSOA)
 
 	test.AssertNotError(t, err, "No message")
 }
@@ -130,9 +125,7 @@ func TestDNSOneServer(t *testing.T) {
 func TestDNSDuplicateServers(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr, dnsLoopbackAddr})
 
-	m := new(dns.Msg)
-	m.SetQuestion("letsencrypt.org.", dns.TypeSOA)
-	_, _, err := obj.ExchangeOne(m)
+	_, _, err := obj.ExchangeOne("letsencrypt.org", dns.TypeSOA)
 
 	test.AssertNotError(t, err, "No message")
 }
@@ -143,39 +136,34 @@ func TestDNSLookupsNoServer(t *testing.T) {
 	_, _, err := obj.LookupTXT("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
-	_, _, err = obj.LookupHost("letsencrypt.org")
+	_, _, _, err = obj.LookupHost("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
-	_, err = obj.LookupCNAME("letsencrypt.org")
+	_, _, err = obj.LookupCNAME("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
-	_, err = obj.LookupCAA("letsencrypt.org", false)
+	_, _, err = obj.LookupCAA("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 }
 
-func TestDNSLookupDNSSEC(t *testing.T) {
-	goodServer := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+func TestDNSServFail(t *testing.T) {
+	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+	bad := "servfail.com"
 
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn("sigfail.verteiltesysteme.net"), dns.TypeA)
+	_, _, err := obj.LookupTXT(bad)
+	test.AssertError(t, err, "LookupTXT didn't return an error")
 
-	_, _, err := goodServer.LookupDNSSEC(m)
-	test.AssertError(t, err, "DNSSEC failure")
-	_, ok := err.(DNSSECError)
-	fmt.Println(err)
-	test.Assert(t, ok, "Should have been a DNSSECError")
+	_, _, err = obj.LookupCNAME(bad)
+	test.AssertError(t, err, "LookupCNAME didn't return an error")
 
-	m.SetQuestion(dns.Fqdn("sigok.verteiltesysteme.net"), dns.TypeA)
+	_, _, _, err = obj.LookupHost(bad)
+	test.AssertError(t, err, "LookupCNAME didn't return an error")
 
-	_, _, err = goodServer.LookupDNSSEC(m)
-	test.AssertNotError(t, err, "DNSSEC should have worked")
-
-	badServer := NewDNSResolverImpl(time.Second*10, []string{"127.0.0.1:99"})
-
-	_, _, err = badServer.LookupDNSSEC(m)
-	test.AssertError(t, err, "Should have failed")
-	_, ok = err.(DNSSECError)
-	test.Assert(t, !ok, "Shouldn't have been a DNSSECError")
+	// CAA lookup ignores validation failures from the resolver for now
+	// and returns an empty list of CAA records.
+	emptyCaa, _, err := obj.LookupCAA(bad)
+	test.Assert(t, len(emptyCaa) == 0, "Query returned non-empty list of CAA records")
+	test.AssertNotError(t, err, "LookupCAA returned an error")
 }
 
 func TestDNSLookupTXT(t *testing.T) {
@@ -190,30 +178,30 @@ func TestDNSLookupTXT(t *testing.T) {
 func TestDNSLookupHost(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
-	ip, _, err := obj.LookupHost("sigfail.verteiltesysteme.net")
-	t.Logf("sigfail.verteiltesysteme.net - IP: %s, Err: %s", ip, err)
-	test.AssertError(t, err, "DNSSEC failure")
+	ip, _, _, err := obj.LookupHost("servfail.com")
+	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
+	test.AssertError(t, err, "Server failure")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
-	ip, _, err = obj.LookupHost("nonexistent.letsencrypt.org")
+	ip, _, _, err = obj.LookupHost("nonexistent.letsencrypt.org")
 	t.Logf("nonexistent.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to not exist")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
-	ip, _, err = obj.LookupHost("cps.letsencrypt.org")
+	ip, _, _, err = obj.LookupHost("cps.letsencrypt.org")
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
-	test.AssertNotError(t, err, "Not an error to be a CNAME")
+	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) > 0, "Should have IPs")
 }
 
 func TestDNSLookupCAA(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
-	caas, err := obj.LookupCAA("bracewel.net", false)
+	caas, _, err := obj.LookupCAA("bracewel.net")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should have CAA records")
 
-	caas, err = obj.LookupCAA("nonexistent.letsencrypt.org", false)
+	caas, _, err = obj.LookupCAA("nonexistent.letsencrypt.org")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
 }

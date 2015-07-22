@@ -132,6 +132,8 @@ var (
 	}
 	AuthzUpdated = core.Authorization{}
 	AuthzFinal   = core.Authorization{}
+
+	log = mocks.UseMockLog()
 )
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
