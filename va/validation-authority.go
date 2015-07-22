@@ -120,14 +120,14 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	} else {
 		scheme = "http"
 	}
-	var dvsniAddr string
+	var addr string
 	if va.TestMode {
-		dvsniAddr = "localhost:5001"
+		addr = "127.0.0.1"
 	} else {
-		dvsniAddr = addrs[0].String()
+		addr = addrs[0].String()
 	}
 
-	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, dvsniAddr, challenge.Path)
+	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, hostName, challenge.Path)
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(scheme), url))
@@ -147,16 +147,28 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	httpRequest.Host = hostName
-	tr := &http.Transport{
-		// We are talking to a client that does not yet have a certificate,
-		// so we accept a temporary, invalid one.
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		// We don't expect to make multiple requests to a client, so close
-		// connection immediately.
-		DisableKeepAlives: true,
+	tr := *http.DefaultTransport.(*http.Transport)
+	// We are talking to a client that does not yet have a certificate,
+	// so we accept a temporary, invalid one.
+	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	// We don't expect to make multiple requests to a client, so close
+	// connection immediately.
+	tr.DisableKeepAlives = true
+	// Intercept Dial in order to connect to the IP address we
+	// selected above.
+	defaultDial := tr.Dial
+	tr.Dial = func(_, _ string) (net.Conn, error) {
+		// Ignore the addr selected by net/http.
+		port := "80"
+		if va.TestMode {
+			port = "5001"
+		} else if scheme == "https" {
+			port = "443"
+		}
+		return defaultDial("tcp", net.JoinHostPort(addr, port))
 	}
 	client := http.Client{
-		Transport: tr,
+		Transport: &tr,
 		Timeout:   5 * time.Second,
 	}
 	httpResponse, err := client.Do(httpRequest)
