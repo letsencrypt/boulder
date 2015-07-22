@@ -11,7 +11,7 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/miekg/pkcs11"
+	"Godeps/_workspace/src/github.com/miekg/pkcs11"
 )
 
 // from src/pkg/crypto/rsa/pkcs1v15.go
