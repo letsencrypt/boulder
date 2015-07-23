@@ -1,0 +1,8 @@
+Hello,
+
+Your Lets Encrypt SSL certificate for common name {{.CommonName}} (and DNSNames {{.DNSNames}}) is
+going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}}), make sure you
+run the renewer before then!
+
+Regards,
+letsencryptbot
