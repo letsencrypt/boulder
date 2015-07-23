@@ -97,6 +97,15 @@ func main() {
 		wfe.Stats = stats
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
 
+		wfe.CertCacheDuration, err = time.ParseDuration(c.WFE.CertCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse certificate caching duration")
+		wfe.CertNoCacheExpirationWindow, err = time.ParseDuration(c.WFE.CertNoCacheExpirationWindow)
+		cmd.FailOnError(err, "Couldn't parse certificate expiration no-cache window")
+		wfe.IndexCacheDuration, err = time.ParseDuration(c.WFE.IndexCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse index caching duration")
+		wfe.IssuerCacheDuration, err = time.ParseDuration(c.WFE.IssuerCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse issuer caching duration")
+
 		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
@@ -120,7 +129,8 @@ func main() {
 
 		// Set up paths
 		wfe.BaseURL = c.Common.BaseURL
-		h := wfe.Handler()
+		h, err := wfe.Handler()
+		cmd.FailOnError(err, "Problem setting up HTTP handlers")
 
 		auditlogger.Info(app.VersionString())
 

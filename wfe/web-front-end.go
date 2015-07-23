@@ -30,6 +30,7 @@ import (
 
 // Paths are the ACME-spec identified URL path-segments for various methods
 const (
+	DirectoryPath  = "/directory"
 	NewRegPath     = "/acme/new-reg"
 	RegPath        = "/acme/reg/"
 	NewAuthzPath   = "/acme/new-authz"
@@ -58,6 +59,9 @@ type WebFrontEndImpl struct {
 	NewCert   string
 	CertBase  string
 
+	// JSON encoded endpoint directory
+	DirectoryJSON []byte
+
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
 
@@ -66,6 +70,12 @@ type WebFrontEndImpl struct {
 
 	// Register of anti-replay nonces
 	nonceService core.NonceService
+
+	// Cache settings
+	CertCacheDuration           time.Duration
+	CertNoCacheExpirationWindow time.Duration
+	IndexCacheDuration          time.Duration
+	IssuerCacheDuration         time.Duration
 }
 
 func statusCodeFromError(err interface{}) int {
@@ -182,7 +192,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
-func (wfe *WebFrontEndImpl) Handler() http.Handler {
+func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.NewReg = wfe.BaseURL + NewRegPath
 	wfe.RegBase = wfe.BaseURL + RegPath
 	wfe.NewAuthz = wfe.BaseURL + NewAuthzPath
@@ -190,8 +200,22 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.NewCert = wfe.BaseURL + NewCertPath
 	wfe.CertBase = wfe.BaseURL + CertPath
 
+	// Only generate directory once
+	directory := map[string]string{
+		"new-reg":     wfe.NewReg,
+		"new-authz":   wfe.NewAuthz,
+		"new-cert":    wfe.NewCert,
+		"revoke-cert": wfe.BaseURL + RevokeCertPath,
+	}
+	directoryJSON, err := json.Marshal(directory)
+	if err != nil {
+		return nil, err
+	}
+	wfe.DirectoryJSON = directoryJSON
+
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, "/", wfe.Index, "GET")
+	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	wfe.HandleFunc(m, NewRegPath, wfe.NewRegistration, "POST")
 	wfe.HandleFunc(m, NewAuthzPath, wfe.NewAuthorization, "POST")
 	wfe.HandleFunc(m, NewCertPath, wfe.NewCertificate, "POST")
@@ -202,7 +226,7 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.HandleFunc(m, TermsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, IssuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, BuildIDPath, wfe.BuildID, "GET")
-	return m
+	return m, nil
 }
 
 // Method implementations
@@ -231,6 +255,19 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 `))
 	tmpl.Execute(response, wfe)
 	response.Header().Set("Content-Type", "text/html")
+	addCacheHeader(response, wfe.IndexCacheDuration.Seconds())
+}
+
+func addNoCacheHeader(w http.ResponseWriter) {
+	w.Header().Add("Cache-Control", "public, max-age=0, no-cache")
+}
+
+func addCacheHeader(w http.ResponseWriter, age float64) {
+	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", age))
+}
+
+func (wfe *WebFrontEndImpl) Directory(response http.ResponseWriter, request *http.Request) {
+	response.Write(wfe.DirectoryJSON)
 }
 
 // The ID is always the last slash-separated token in the path
@@ -933,12 +970,14 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		if !strings.HasPrefix(path, CertPath) {
 			logEvent.Error = "Certificate not found"
 			wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
+			addNoCacheHeader(response)
 			return
 		}
 		serial := path[len(CertPath):]
 		if len(serial) != 16 || !allHex.Match([]byte(serial)) {
 			logEvent.Error = "Certificate not found"
 			wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
+			addNoCacheHeader(response)
 			return
 		}
 		wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
@@ -950,10 +989,13 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 			if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 				wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
 			} else {
-				wfe.sendError(response, "Not found", err, http.StatusNotFound)
+				addNoCacheHeader(response)
+				wfe.sendError(response, "Certificate not found", err, http.StatusNotFound)
 			}
 			return
 		}
+
+		addCacheHeader(response, wfe.CertCacheDuration.Seconds())
 
 		// TODO Content negotiation
 		response.Header().Set("Content-Type", "application/pkix-cert")
@@ -984,6 +1026,8 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
+
+	addCacheHeader(response, wfe.IssuerCacheDuration.Seconds())
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")

@@ -57,6 +57,8 @@ var log = mocks.UseMockLog()
 const expectedToken = "THETOKEN"
 const pathWrongToken = "wrongtoken"
 const path404 = "404"
+const pathFound = "302"
+const pathMoved = "301"
 
 func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableTLS bool) {
 	m := http.NewServeMux()
@@ -68,6 +70,12 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 		} else if strings.HasSuffix(r.URL.Path, pathWrongToken) {
 			t.Logf("SIMPLESRV: Got a wrongtoken req\n")
 			fmt.Fprintf(w, "wrongtoken")
+		} else if strings.HasSuffix(r.URL.Path, pathMoved) {
+			t.Logf("SIMPLESRV: Got a 301 redirect req\n")
+			http.Redirect(w, r, "valid", 301)
+		} else if strings.HasSuffix(r.URL.Path, pathFound) {
+			t.Logf("SIMPLESRV: Got a 302 redirect req\n")
+			http.Redirect(w, r, pathMoved, 302)
 		} else if strings.HasSuffix(r.URL.Path, "wait") {
 			t.Logf("SIMPLESRV: Got a wait req\n")
 			time.Sleep(time.Second * 3)
@@ -245,6 +253,21 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+
+	log.Clear()
+	chall.Path = pathMoved
+	finChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, chall.Path)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+
+	log.Clear()
+	chall.Path = pathFound
+	finChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, chall.Path)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
 
 	log.Clear()
 	chall.Path = path404

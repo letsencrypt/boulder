@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"net"
 	"net/mail"
 	"net/url"
 	"regexp"
@@ -27,11 +26,12 @@ import (
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	CA  core.CertificateAuthority
-	VA  core.ValidationAuthority
-	SA  core.StorageAuthority
-	PA  core.PolicyAuthority
-	log *blog.AuditLogger
+	CA          core.CertificateAuthority
+	VA          core.ValidationAuthority
+	SA          core.StorageAuthority
+	PA          core.PolicyAuthority
+	DNSResolver core.DNSResolver
+	log         *blog.AuditLogger
 
 	AuthzBase  string
 	MaxKeySize int
@@ -53,7 +53,7 @@ func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
-func validateEmail(address string) (err error) {
+func validateEmail(address string, resolver core.DNSResolver) (err error) {
 	_, err = mail.ParseAddress(address)
 	if err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("%s is not a valid e-mail address", address))
@@ -61,8 +61,8 @@ func validateEmail(address string) (err error) {
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	var mx []*net.MX
-	mx, err = net.LookupMX(domain)
+	var mx []string
+	mx, _, err = resolver.LookupMX(domain)
 	if err != nil || len(mx) == 0 {
 		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
 		return
@@ -70,13 +70,13 @@ func validateEmail(address string) (err error) {
 	return
 }
 
-func validateContacts(contacts []core.AcmeURL) (err error) {
+func validateContacts(contacts []core.AcmeURL, resolver core.DNSResolver) (err error) {
 	for _, contact := range contacts {
 		switch contact.Scheme {
 		case "tel":
 			continue
 		case "mailto":
-			err = validateEmail(contact.Opaque)
+			err = validateEmail(contact.Opaque, resolver)
 			if err != nil {
 				return
 			}
@@ -116,7 +116,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	}
 	reg.MergeUpdate(init)
 
-	err = validateContacts(reg.Contact)
+	err = validateContacts(reg.Contact, ra.DNSResolver)
 	if err != nil {
 		return
 	}
@@ -367,7 +367,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	err = validateContacts(base.Contact)
+	err = validateContacts(base.Contact, ra.DNSResolver)
 	if err != nil {
 		return
 	}

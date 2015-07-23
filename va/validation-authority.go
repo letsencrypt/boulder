@@ -150,9 +150,14 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		}
 		return originalDial("tcp", net.JoinHostPort(addr.String(), port))
 	}
+	logRedirect := func(req *http.Request, via []*http.Request) error {
+		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q", identifier, via[len(via)-1].URL.String(), req.URL.String()))
+		return nil
+	}
 	client := http.Client{
-		Transport: &tr,
-		Timeout:   5 * time.Second,
+		Transport:     &tr,
+		CheckRedirect: logRedirect,
+		Timeout:       5 * time.Second,
 	}
 	httpResponse, err := client.Do(httpRequest)
 

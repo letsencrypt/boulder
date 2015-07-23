@@ -168,3 +168,25 @@ func (dnsResolver *DNSResolverImpl) LookupCAA(hostname string) ([]*dns.CAA, time
 	}
 	return CAAs, rtt, nil
 }
+
+// LookupMX sends a DNS query to find a MX record associated hostname and returns the
+// record target.
+func (dnsResolver *DNSResolverImpl) LookupMX(hostname string) ([]string, time.Duration, error) {
+	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeMX)
+	if err != nil {
+		return nil, 0, err
+	}
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for MX query", r.Rcode, dns.RcodeToString[r.Rcode])
+		return nil, rtt, err
+	}
+
+	var results []string
+	for _, answer := range r.Answer {
+		if mx, ok := answer.(*dns.MX); ok {
+			results = append(results, mx.Mx)
+		}
+	}
+
+	return results, rtt, nil
+}
