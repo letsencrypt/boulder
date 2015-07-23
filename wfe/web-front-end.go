@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -636,7 +637,9 @@ func (wfe *WebFrontEndImpl) logCsr(remoteAddr string, cr core.CertificateRequest
 	}
 	_, err := json.Marshal(csrLog)
 	if err != nil {
-		panic(err)
+		wfe.log.AuditErr(fmt.Errorf(
+			"Certificate request failed to serialize. RemoteAddr=%s CSR=%s",
+			remoteAddr, base64.StdEncoding.EncodeToString(cr.Bytes)))
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
