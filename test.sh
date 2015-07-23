@@ -134,13 +134,7 @@ function run_unit_tests() {
     [ -e $GOBIN/goveralls ] && $GOBIN/goveralls -coverprofile=gover.coverprofile -service=travis-ci
   else
     # Run all the tests together if local, for speed
-    dirlist=""
-
-    for dir in ${TESTDIRS}; do
-      dirlist="${dirlist} ./${dir}/"
-    done
-
-    run go test $GOTESTFLAGS -tags pkcs11 ${dirlist}
+    run go test $GOTESTFLAGS -tags pkcs11 ./...
   fi
 }
 
