@@ -135,5 +135,5 @@
     "maxKeySize": 4096
   },
 
-  "subscriberAgreementURL": "http://example.com/terms"
+  "subscriberAgreementURL": "http://localhost:4300/terms/"
 }

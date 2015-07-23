@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -97,22 +96,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 	hostName := identifier.Value
 
-	addrs, _, _, err := va.DNSResolver.LookupHost(hostName)
-	if err != nil {
-		challenge.Status = core.StatusInvalid
-		setChallengeErrorFromDNSError(err, &challenge)
-		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
+	addr := va.getFirstAddr(identifier.Value, &challenge)
+	if challenge.Error != nil {
 		return challenge, challenge.Error
 	}
-	if len(addrs) == 0 {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnknownHostProblem,
-			Detail: fmt.Sprintf("Could not resolve %s", hostName),
-		}
-		challenge.Status = core.StatusInvalid
-		return challenge, errors.New(challenge.Error.Detail)
-	}
-	challenge.ResolvedAddrs = addrs
 
 	var scheme string
 	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
@@ -120,18 +107,17 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	} else {
 		scheme = "http"
 	}
-	var dvsniAddr string
-	if va.TestMode {
-		dvsniAddr = "localhost:5001"
-	} else {
-		dvsniAddr = addrs[0].String()
-	}
 
-	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, dvsniAddr, challenge.Path)
+	url := url.URL{
+		Scheme: scheme,
+		Host:   hostName,
+		Path:   fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Path),
+	}
+	// url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, hostName, challenge.Path)
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(scheme), url))
-	httpRequest, err := http.NewRequest("GET", url, nil)
+	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(scheme), url.String()))
+	httpRequest, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		challenge.Error = &core.ProblemDetails{
 			Type:   core.MalformedProblem,
@@ -147,16 +133,25 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	httpRequest.Host = hostName
-	tr := &http.Transport{
-		// We are talking to a client that does not yet have a certificate,
-		// so we accept a temporary, invalid one.
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		// We don't expect to make multiple requests to a client, so close
-		// connection immediately.
-		DisableKeepAlives: true,
+	tr := *http.DefaultTransport.(*http.Transport)
+	// We are talking to a client that does not yet have a certificate,
+	// so we accept a temporary, invalid one
+	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	// We don't expect to make multiple requests to a client, so close
+	// connection immediately
+	tr.DisableKeepAlives = true
+	originalDial := tr.Dial
+	tr.Dial = func(_, _ string) (net.Conn, error) {
+		port := "80"
+		if va.TestMode {
+			port = "5001"
+		} else if scheme == "https" {
+			port = "443"
+		}
+		return originalDial("tcp", net.JoinHostPort(addr.String(), port))
 	}
 	client := http.Client{
-		Transport: tr,
+		Transport: &tr,
 		Timeout:   5 * time.Second,
 	}
 	httpResponse, err := client.Do(httpRequest)
@@ -180,7 +175,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			challenge.Error = &core.ProblemDetails{
 				Type: core.UnauthorizedProblem,
 				Detail: fmt.Sprintf("Incorrect token validating Simple%s for %s",
-					strings.ToUpper(scheme), url),
+					strings.ToUpper(scheme), url.String()),
 			}
 			err = challenge.Error
 		}
@@ -188,7 +183,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type:   parseHTTPConnError(err),
-			Detail: fmt.Sprintf("Could not connect to %s", url),
+			Detail: fmt.Sprintf("Could not connect to %s", url.String()),
 		}
 		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
 	} else {
@@ -196,12 +191,32 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		challenge.Error = &core.ProblemDetails{
 			Type: core.UnauthorizedProblem,
 			Detail: fmt.Sprintf("Invalid response from %s: %d",
-				url, httpResponse.StatusCode),
+				url.String(), httpResponse.StatusCode),
 		}
 		err = challenge.Error
 	}
 
 	return challenge, err
+}
+
+func (va ValidationAuthorityImpl) getFirstAddr(hostname string, chall *core.Challenge) (address net.IP) {
+	addrs, _, _, err := va.DNSResolver.LookupHost(hostname)
+	if err != nil {
+		chall.Status = core.StatusInvalid
+		setChallengeErrorFromDNSError(err, chall)
+		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", chall.Type, hostname, err))
+		return nil
+	}
+	if len(addrs) == 0 {
+		chall.Error = &core.ProblemDetails{
+			Type:   core.UnknownHostProblem,
+			Detail: fmt.Sprintf("Could not resolve %s", hostname),
+		}
+		chall.Status = core.StatusInvalid
+		return nil
+	}
+	chall.ResolvedAddrs = addrs
+	return addrs[0]
 }
 
 func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
@@ -245,27 +260,17 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	z := sha256.Sum256(RS)
 	zName := fmt.Sprintf("%064x.acme.invalid", z)
 
-	addrs, _, _, err := va.DNSResolver.LookupHost(identifier.Value)
-	if err != nil {
-		challenge.Status = core.StatusInvalid
-		setChallengeErrorFromDNSError(err, &challenge)
-		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
+	addr := va.getFirstAddr(identifier.Value, &challenge)
+	if challenge.Error != nil {
 		return challenge, challenge.Error
 	}
-	if len(addrs) == 0 {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnknownHostProblem,
-			Detail: fmt.Sprintf("Could not resolve %s", identifier.Value),
-		}
-		challenge.Status = core.StatusInvalid
-		return challenge, errors.New(challenge.Error.Detail)
-	}
-	challenge.ResolvedAddrs = addrs
 
 	// Make a connection with SNI = nonceName
-	hostPort := fmt.Sprintf("%s:443", addrs[0].String())
+	var hostPort string
 	if va.TestMode {
-		hostPort = "localhost:5001"
+		hostPort = net.JoinHostPort(addr.String(), "5001")
+	} else {
+		hostPort = net.JoinHostPort(addr.String(), "443")
 	}
 	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
 		identifier, hostPort, zName))

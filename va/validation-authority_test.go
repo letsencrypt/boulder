@@ -280,12 +280,6 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 	va.TestMode = true
 
-	chall.Path = "%"
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Path doesn't consist of URL-safe characters.")
-	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
-
 	chall.Path = "wait-long"
 	started := time.Now()
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
