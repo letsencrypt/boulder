@@ -113,7 +113,6 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		Host:   hostName,
 		Path:   fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Path),
 	}
-	// url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, hostName, challenge.Path)
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(scheme), url.String()))
@@ -135,20 +134,23 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	httpRequest.Host = hostName
 	tr := *http.DefaultTransport.(*http.Transport)
 	// We are talking to a client that does not yet have a certificate,
-	// so we accept a temporary, invalid one
+	// so we accept a temporary, invalid one.
 	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	// We don't expect to make multiple requests to a client, so close
-	// connection immediately
+	// connection immediately.
 	tr.DisableKeepAlives = true
-	originalDial := tr.Dial
+	// Intercept Dial in order to connect to the IP address we
+	// selected above.
+	defaultDial := tr.Dial
 	tr.Dial = func(_, _ string) (net.Conn, error) {
+		// Ignore the addr selected by net/http.
 		port := "80"
 		if va.TestMode {
 			port = "5001"
 		} else if scheme == "https" {
 			port = "443"
 		}
-		return originalDial("tcp", net.JoinHostPort(addr.String(), port))
+		return defaultDial("tcp", net.JoinHostPort(addr.String(), port))
 	}
 	logRedirect := func(req *http.Request, via []*http.Request) error {
 		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q", identifier, via[len(via)-1].URL.String(), req.URL.String()))
