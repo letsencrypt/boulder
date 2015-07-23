@@ -210,7 +210,7 @@ fi
 # If the unittests failed, exit before trying to run the integration test.
 if [ ${FAILURE} != 0 ]; then
   echo "--------------------------------------------------"
-  echo "---          A unit test failed.               ---"
+  echo "---        A unit test or tool failed.         ---"
   echo "--- Stopping before running integration tests. ---"
   echo "--------------------------------------------------"
   exit ${FAILURE}
