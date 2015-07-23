@@ -11,12 +11,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"net"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 )
 
 // AcmeStatus defines the state of a given authorization
@@ -554,6 +555,8 @@ type CertificateStatus struct {
 	//   revocation. Otherwise it is zero (which happens to be the reason
 	//   code for 'unspecified').
 	RevokedReason int `db:"revokedReason"`
+
+	ExpirationNagsSent int `db:"expirationNagsSent"`
 
 	LockCol int64 `json:"-"`
 }

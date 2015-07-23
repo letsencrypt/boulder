@@ -6,6 +6,7 @@
 package mail
 
 import (
+	"net"
 	"net/smtp"
 )
 
@@ -17,7 +18,7 @@ type Mailer struct {
 	From   string
 }
 
-// NewMailer constructs a Mailer to represent an account at a particular mail
+// NewMailer constructs a Mailer to represent an account on a particular mail
 // transfer agent.
 func NewMailer(server, port, username, password string) Mailer {
 	auth := smtp.PlainAuth("", username, password, server)
@@ -32,6 +33,6 @@ func NewMailer(server, port, username, password string) Mailer {
 // SendMail sends an email to the provided list of recipients. The email body
 // is simple text.
 func (m *Mailer) SendMail(to []string, msg string) (err error) {
-	err = smtp.SendMail(m.Server+":"+m.Port, m.Auth, m.From, to, []byte(msg))
+	err = smtp.SendMail(net.JoinHostPort(m.Server, m.Port), m.Auth, m.From, to, []byte(msg))
 	return
 }

@@ -127,14 +127,19 @@ type Config struct {
 		DBConnect string
 	}
 
-	Mail struct {
+	Mailer struct {
 		Server   string
 		Port     string
 		Username string
 		Password string
 
+		DBDriver  string
+		DBConnect string
+
 		MessageLimit   int
 		ExpiryWarnings []int
+		// Path to a text/template email template
+		EmailTemplate string
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
