@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"crypto/x509"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -628,11 +627,11 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 func (wfe *WebFrontEndImpl) logCsr(remoteAddr string, cr core.CertificateRequest, registration core.Registration) {
 	var csrLog = struct {
 		RemoteAddr   string
-		CsrBase64    string
+		CsrBase64    []byte
 		Registration core.Registration
 	}{
 		RemoteAddr:   remoteAddr,
-		CsrBase64:    base64.StdEncoding.EncodeToString(cr.Bytes),
+		CsrBase64:    cr.Bytes,
 		Registration: registration,
 	}
 	_, err := json.Marshal(csrLog)
