@@ -32,6 +32,10 @@
 
   "wfe": {
     "listenAddress": "127.0.0.1:4300",
+    "certCacheDuration": "6h",
+    "certNoCacheExpirationWindow": "8765h",
+    "indexCacheDuration": "24h",
+    "issuerCacheDuration": "48h",
     "debugAddr": "localhost:8000"
   },
 
@@ -101,6 +105,8 @@
   },
 
   "ra": {
+    "dnsResolver": "127.0.0.1:8053",
+    "dnsTimeout": "10s",
     "debugAddr": "localhost:8002"
   },
 

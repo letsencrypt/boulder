@@ -332,6 +332,8 @@ var BadAlgorithmCSRhex = "308202aa30820192020100300d310b300906035504061302" +
 var FarFuture = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
 var FarPast = time.Date(1950, 1, 1, 0, 0, 0, 0, time.UTC)
 
+var log = mocks.UseMockLog()
+
 // CFSSL config
 const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"

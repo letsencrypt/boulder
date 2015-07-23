@@ -132,6 +132,8 @@ var (
 	}
 	AuthzUpdated = core.Authorization{}
 	AuthzFinal   = core.Authorization{}
+
+	log = mocks.UseMockLog()
 )
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
@@ -198,6 +200,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	ra.PA = pa
 	ra.AuthzBase = "http://acme.invalid/authz/"
 	ra.MaxKeySize = 4096
+	ra.DNSResolver = &mocks.MockDNS{}
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -228,38 +231,38 @@ func TestValidateContacts(t *testing.T) {
 	invalidEmail, _ := url.Parse("mailto:admin@example.com")
 	malformedEmail, _ := url.Parse("mailto:admin.com")
 
-	err := validateContacts([]core.AcmeURL{})
+	err := validateContacts([]core.AcmeURL{}, &mocks.MockDNS{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*tel)})
+	err = validateContacts([]core.AcmeURL{core.AcmeURL(*tel)}, &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*validEmail)})
+	err = validateContacts([]core.AcmeURL{core.AcmeURL(*validEmail)}, &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*invalidEmail)})
+	err = validateContacts([]core.AcmeURL{core.AcmeURL(*invalidEmail)}, &mocks.MockDNS{})
 	test.AssertError(t, err, "Invalid Email")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*malformedEmail)})
+	err = validateContacts([]core.AcmeURL{core.AcmeURL(*malformedEmail)}, &mocks.MockDNS{})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*ansible)})
+	err = validateContacts([]core.AcmeURL{core.AcmeURL(*ansible)}, &mocks.MockDNS{})
 	test.AssertError(t, err, "Unknown scehme")
 }
 
 func TestValidateEmail(t *testing.T) {
-	err := validateEmail("an email`")
+	err := validateEmail("an email`", &mocks.MockDNS{})
 	test.AssertError(t, err, "Malformed")
 
-	err = validateEmail("a@not.a.domain")
+	err = validateEmail("a@not.a.domain", &mocks.MockDNS{})
 	test.AssertError(t, err, "Cannot resolve")
 	t.Logf("No Resolve: %s", err)
 
-	err = validateEmail("a@example.com")
+	err = validateEmail("a@example.com", &mocks.MockDNS{})
 	test.AssertError(t, err, "No MX Record")
 	t.Logf("No MX: %s", err)
 
-	err = validateEmail("a@email.com")
+	err = validateEmail("a@email.com", &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Valid")
 }
 

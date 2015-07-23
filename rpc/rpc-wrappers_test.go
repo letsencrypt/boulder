@@ -13,8 +13,11 @@ import (
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
+
+var log = mocks.UseMockLog()
 
 const JWK1JSON = `{
   "kty": "RSA",
