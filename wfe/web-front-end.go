@@ -43,7 +43,6 @@ const (
 	BuildIDPath    = "/build"
 )
 
-// WebFrontEndImpl represents a Boulder web service and its resources
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
@@ -289,15 +288,16 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		return nil, nil, reg, errors.New("No body on POST")
 	}
 
-	body, err := ioutil.ReadAll(request.Body)
+	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
 		return nil, nil, reg, err
 	}
 
+	body := string(bodyBytes)
 	// Parse as JWS
-	parsedJws, err := jose.ParseSigned(string(body))
+	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
-		wfe.log.Debug(fmt.Sprintf("Parse error reading JWS: %v", err))
+		wfe.log.Debug(fmt.Sprintf("Parse error reading JWS: %#v", err))
 		return nil, nil, reg, err
 	}
 
@@ -312,7 +312,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		return nil, nil, reg, errors.New("Too many signatures on POST")
 	}
 	if len(parsedJws.Signatures) == 0 {
-		wfe.log.Debug(fmt.Sprintf("POST not signed: %v", parsedJws))
+		wfe.log.Debug(fmt.Sprintf("POST not signed: %s", body))
 		return nil, nil, reg, errors.New("POST not signed")
 	}
 	key := parsedJws.Signatures[0].Header.JsonWebKey

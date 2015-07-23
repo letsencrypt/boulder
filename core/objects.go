@@ -11,12 +11,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"net"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 )
 
 // AcmeStatus defines the state of a given authorization
@@ -81,7 +82,7 @@ const (
 )
 
 func (pd *ProblemDetails) Error() string {
-	return fmt.Sprintf("%v :: %v", pd.Type, pd.Detail)
+	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
 }
 
 func cmpStrSlice(a, b []string) bool {
