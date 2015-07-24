@@ -33,16 +33,6 @@ type emailContent struct {
 	DNSNames         string
 }
 
-const warningTemplate = `Hello,
-
-Your certificate for common name {{.CommonName}} (and DNSNames {{.DNSNames}}) is
-going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}}), make sure you
-run the renewer before then!
-
-Regards,
-letsencryptbot
-`
-
 type mailer struct {
 	stats         statsd.Statter
 	log           *blog.AuditLogger
@@ -54,6 +44,7 @@ type mailer struct {
 
 func (m *mailer) findExpiringCertificates() error {
 	var err error
+	expiresStats := make(map[int]int64, len(m.WarningDays))
 	now := time.Now()
 	// E.g. m.WarningDays = [1, 3, 7, 14] days from expiration
 	for i, expiresIn := range m.WarningDays {
@@ -95,22 +86,26 @@ func (m *mailer) findExpiringCertificates() error {
 			if err != nil {
 				return err
 			}
-			err = m.sendWarning(parsedCert, reg)
+			expiresIn := int(time.Now().Sub(parsedCert.NotAfter).Hours() / 24)
+			err = m.sendWarning(parsedCert, reg, expiresIn)
 			if err != nil {
 				return err
 			}
+			expiresStats[expiresIn]++
 
 			// Update CertificateStatus object
 			tx, err := m.dbMap.Begin()
 			if err != nil {
 				// BAD
 				tx.Rollback()
+				return err
 			}
 
 			csObj, err := tx.Get(&core.CertificateStatus{}, core.SerialToString(parsedCert.SerialNumber))
 			if err != nil {
 				// BAD
 				tx.Rollback()
+				return err
 			}
 			certStatus := csObj.(core.CertificateStatus)
 			certStatus.ExpirationNagsSent = len(m.WarningDays) - i
@@ -119,21 +114,26 @@ func (m *mailer) findExpiringCertificates() error {
 			if err != nil {
 				// BAD
 				tx.Rollback()
+				return err
 			}
 
 			err = tx.Commit()
 			if err != nil {
 				// BAD
 				tx.Rollback()
+				return err
 			}
 		}
 		m.log.Info("expiration-mailer: Finished sending messages")
+	}
+	for k, v := range expiresStats {
+		m.stats.Gauge(fmt.Sprintf("CertificatesExpiringIn.%d-days", k), v, 1.0)
 	}
 
 	return err
 }
 
-func (m *mailer) sendWarning(parsedCert *x509.Certificate, reg core.Registration) error {
+func (m *mailer) sendWarning(parsedCert *x509.Certificate, reg core.Registration, expiresIn int) error {
 	emails := []string{}
 	for _, contact := range reg.Contact {
 		if contact.Scheme == "mailto" {
@@ -141,7 +141,6 @@ func (m *mailer) sendWarning(parsedCert *x509.Certificate, reg core.Registration
 		}
 	}
 	if len(emails) > 0 {
-		expiresIn := int(time.Now().Sub(parsedCert.NotAfter).Hours() / 24)
 		email := emailContent{
 			ExpirationDate:   parsedCert.NotAfter,
 			DaysToExpiration: expiresIn,
