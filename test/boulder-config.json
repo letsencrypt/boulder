@@ -161,11 +161,17 @@
     "debugAddr": "localhost:8007"
   },
 
-  "mail": {
+  "mailer": {
     "server": "mail.example.com",
     "port": "25",
     "username": "cert-master@example.com",
-    "password": "password"
+    "password": "password",
+    "dbDriver": "sqlite3",
+    "dbConnect": ":memory:",
+    "messageLimit": 0,
+    "expiryWarnings": [1, 3, 7, 14],
+    "EmailTemplate": "test/example-expiration-template",
+    "debugAddr": "localhost:8004"
   },
 
   "common": {

@@ -17,7 +17,8 @@ TESTDIRS="analysis \
           sa \
           test \
           va \
-          wfe"
+          wfe \
+          cmd/expiration-mailer"
           # cmd
           # Godeps
 

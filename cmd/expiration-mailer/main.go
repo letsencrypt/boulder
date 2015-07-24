@@ -8,7 +8,6 @@ package main
 import (
 	"bytes"
 	"crypto/x509"
-	"database/sql"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -59,71 +58,69 @@ func (m *mailer) findExpiringCertificates() error {
 		_, err := m.dbMap.Select(
 			&certs,
 			`SELECT cert.* FROM certificates AS cert JOIN certificateStatus AS cs on cs.serial = cert.serial
-       WHERE cert.expires > :cutoff-a AND cert.expires < :cutoff-b AND cs.expirationNagsSent < :nags AND cert.status != "revoked"
+       WHERE cert.expires > :cutoffA AND cert.expires < :cutoffB AND cs.expirationNagsSent < :nags AND cert.status != "revoked"
        ORDER BY cert.expires ASC`,
 			map[string]interface{}{
-				"cutoff-a": left,
-				"cutoff-b": right,
-				"nags":     len(m.WarningDays) - i,
+				"cutoffA": left,
+				"cutoffB": right,
+				"nags":    len(m.WarningDays) - i,
 			},
 		)
-		if err == sql.ErrNoRows {
-			m.log.Info("expiration-mailer: None found, No expiration emails needed.")
-			continue
-		} else if err != nil {
+		if err != nil {
 			m.log.Err(fmt.Sprintf("expiration-mailer: Error loading certificates: %s", err))
 			continue
 		}
+		if len(certs) > 0 {
+			m.log.Info(fmt.Sprintf("expiration-mailer: Found %d certificates, starting sending messages", len(certs)))
+			for _, cert := range certs {
+				regObj, err := m.dbMap.Get(&core.Registration{}, cert.RegistrationID)
+				if err != nil {
+					return err
+				}
+				reg := regObj.(*core.Registration)
+				parsedCert, err := x509.ParseCertificate(cert.DER)
+				if err != nil {
+					return err
+				}
+				err = m.sendWarning(parsedCert, reg.Contact)
+				if err != nil {
+					return err
+				}
+				expiresStats[expiresIn]++
 
-		m.log.Info(fmt.Sprintf("expiration-mailer: Found %d certificates, starting sending messages", len(certs)))
-		for _, cert := range certs {
-			regObj, err := m.dbMap.Get(&core.Registration{}, cert.RegistrationID)
-			if err != nil {
-				return err
-			}
-			reg := regObj.(core.Registration)
-			parsedCert, err := x509.ParseCertificate(cert.DER)
-			if err != nil {
-				return err
-			}
-			err = m.sendWarning(parsedCert, reg.Contact)
-			if err != nil {
-				return err
-			}
-			expiresStats[expiresIn]++
+				// Update CertificateStatus object
+				tx, err := m.dbMap.Begin()
+				if err != nil {
+					// BAD
+					tx.Rollback()
+					return err
+				}
 
-			// Update CertificateStatus object
-			tx, err := m.dbMap.Begin()
-			if err != nil {
-				// BAD
-				tx.Rollback()
-				return err
-			}
+				csObj, err := tx.Get(&core.CertificateStatus{}, cert.Serial)
+				if err != nil {
+					// BAD
+					tx.Rollback()
+					return err
+				}
+				certStatus := csObj.(*core.CertificateStatus)
+				certStatus.ExpirationNagsSent = len(m.WarningDays) - i
 
-			csObj, err := tx.Get(&core.CertificateStatus{}, core.SerialToString(parsedCert.SerialNumber))
-			if err != nil {
-				// BAD
-				tx.Rollback()
-				return err
-			}
-			certStatus := csObj.(core.CertificateStatus)
-			certStatus.ExpirationNagsSent = len(m.WarningDays) - i
+				_, err = tx.Update(certStatus)
+				if err != nil {
+					// BAD
+					tx.Rollback()
+					return err
+				}
 
-			_, err = tx.Update(certStatus)
-			if err != nil {
-				// BAD
-				tx.Rollback()
-				return err
+				err = tx.Commit()
+				if err != nil {
+					// BAD
+					tx.Rollback()
+					return err
+				}
 			}
-
-			err = tx.Commit()
-			if err != nil {
-				// BAD
-				tx.Rollback()
-				return err
-			}
+			m.log.Info("expiration-mailer: Finished sending messages")
 		}
-		m.log.Info("expiration-mailer: Finished sending messages")
 	}
 	for k, v := range expiresStats {
 		m.stats.Gauge(fmt.Sprintf("CertificatesExpiringIn.%d-days", k), v, 1.0)
