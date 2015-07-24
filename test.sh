@@ -122,7 +122,7 @@ function run_unit_tests() {
   if [ "${TRAVIS}" == "true" ]; then
     # Run each test by itself for Travis, so we can get coverage
     for dir in ${TESTDIRS}; do
-      run go test -tags pkcs11 -race -covermode=count -coverprofile=${dir}.coverprofile ./${dir}/
+      run go test -race -covermode=count -coverprofile=${dir}.coverprofile ./${dir}/
     done
 
     # Gather all the coverprofiles
@@ -134,7 +134,7 @@ function run_unit_tests() {
     [ -e $GOBIN/goveralls ] && $GOBIN/goveralls -coverprofile=gover.coverprofile -service=travis-ci
   else
     # Run all the tests together if local, for speed
-    run go test $GOTESTFLAGS -tags pkcs11 ./...
+    run go test $GOTESTFLAGS ./...
   fi
 }
 

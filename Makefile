@@ -45,7 +45,7 @@ pre:
 # Compile each of the binaries
 $(OBJECTS): pre
 	@echo [go] bin/$@
-	@go build -tags pkcs11 -o ./bin/$@ -ldflags \
+	@go build -o ./bin/$@ -ldflags \
 		"-X $(BUILD_ID_VAR) '$(BUILD_ID)' -X $(BUILD_TIME_VAR) '$(BUILD_TIME)' \
 		 -X $(BUILD_HOST_VAR) '$(BUILD_HOST)'" \
 		cmd/$@/main.go

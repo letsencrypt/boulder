@@ -7,4 +7,4 @@ fi
 # Kill all children on exit.
 export BOULDER_CONFIG=${BOULDER_CONFIG:-test/boulder-config.json}
 
-exec go run -tags pkcs11 ./cmd/boulder/main.go
+exec go run ./cmd/boulder/main.go

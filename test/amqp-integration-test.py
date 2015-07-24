@@ -36,7 +36,7 @@ class ProcInfo:
 def run(path, args=""):
     global processes
     binary = os.path.join(tempdir, os.path.basename(path))
-    cmd = 'GORACE="halt_on_error=1" go build -tags pkcs11 -race -o %s %s' % (binary, path)
+    cmd = 'GORACE="halt_on_error=1" go build -race -o %s %s' % (binary, path)
     print(cmd)
     if subprocess.Popen(cmd, shell=True).wait() != 0:
         die(ExitStatus.Error)
