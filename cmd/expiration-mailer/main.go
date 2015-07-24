@@ -161,12 +161,6 @@ func (m *mailer) sendWarning(parsedCert *x509.Certificate, contacts []core.AcmeU
 func main() {
 	app := cmd.NewAppShell("expiration-mailer")
 
-	app.App.Flags = append(app.App.Flags, cli.IntFlag{
-		Name:   "message_limit",
-		EnvVar: "EMAIL_LIMIT",
-		Usage:  "Maximum number of emails to send per run",
-	})
-
 	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
 		if c.GlobalInt("emailLimit") > 0 {
 			config.Mailer.MessageLimit = c.GlobalInt("emailLimit")
