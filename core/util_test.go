@@ -8,8 +8,8 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/go-jose"
 	"math"
 	"math/big"
 	"net/url"
