@@ -37,7 +37,7 @@ type mailer struct {
 	stats         statsd.Statter
 	log           *blog.AuditLogger
 	dbMap         *gorp.DbMap
-	Mailer        *mail.Mailer
+	Mailer        mail.Mailer
 	EmailTemplate *template.Template
 	WarningDays   []int
 }
@@ -86,8 +86,7 @@ func (m *mailer) findExpiringCertificates() error {
 			if err != nil {
 				return err
 			}
-			expiresIn := int(time.Now().Sub(parsedCert.NotAfter).Hours() / 24)
-			err = m.sendWarning(parsedCert, reg, expiresIn)
+			err = m.sendWarning(parsedCert, reg.Contact)
 			if err != nil {
 				return err
 			}
@@ -133,9 +132,10 @@ func (m *mailer) findExpiringCertificates() error {
 	return err
 }
 
-func (m *mailer) sendWarning(parsedCert *x509.Certificate, reg core.Registration, expiresIn int) error {
+func (m *mailer) sendWarning(parsedCert *x509.Certificate, contacts []core.AcmeURL) error {
+	expiresIn := int(parsedCert.NotAfter.Sub(time.Now()).Hours() / 24)
 	emails := []string{}
-	for _, contact := range reg.Contact {
+	for _, contact := range contacts {
 		if contact.Scheme == "mailto" {
 			emails = append(emails, contact.Opaque)
 		}
