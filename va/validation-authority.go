@@ -165,14 +165,14 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			return problem
 		}
 		challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addrs...)
-		port := "80"
+		redirectPort := "80"
 		if va.TestMode {
-			port = "5001"
+			redirectPort = "5001"
 		} else if strings.ToLower(req.URL.Scheme) == "https" {
-			port = "443"
+			redirectPort = "443"
 		}
 		tr.Dial = func(_, _ string) (net.Conn, error) {
-			return defaultDial("tcp", net.JoinHostPort(addrs[0].String(), port))
+			return defaultDial("tcp", net.JoinHostPort(addrs[0].String(), redirectPort))
 		}
 		return nil
 	}
