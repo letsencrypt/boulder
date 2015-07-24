@@ -54,21 +54,22 @@ type verificationRequestEvent struct {
 
 // Validation methods
 
-// setChallengeErrorFromDNSError checks the error returned from Lookup...
+// problemDetailsFromDNSError checks the error returned from Lookup...
 // methods and tests if the error was an underlying net.OpError or an error
-// caused by resolver returning SERVFAIL or other invalid Rcodes and sets
-// the challenge.Error field accordingly.
-func setChallengeErrorFromDNSError(err error, challenge *core.Challenge) {
-	challenge.Error = &core.ProblemDetails{Type: core.ConnectionProblem}
+// caused by resolver returning SERVFAIL or other invalid Rcodes returns the
+// relevant core.ProblemDetails.
+func problemDetailsFromDNSError(err error) *core.ProblemDetails {
+	problem := &core.ProblemDetails{Type: core.ConnectionProblem}
 	if netErr, ok := err.(*net.OpError); ok {
 		if netErr.Timeout() {
-			challenge.Error.Detail = "DNS query timed out"
+			problem.Detail = "DNS query timed out"
 		} else if netErr.Temporary() {
-			challenge.Error.Detail = "Temporary network connectivity error"
+			problem.Detail = "Temporary network connectivity error"
 		}
 	} else {
-		challenge.Error.Detail = "Server failure at resolver"
+		problem.Detail = "Server failure at resolver"
 	}
+	return problem
 }
 
 func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
@@ -96,8 +97,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 	hostName := identifier.Value
 
-	addr := va.getFirstAddr(identifier.Value, &challenge)
-	if challenge.Error != nil {
+	addr, problem := va.getFirstAddr(identifier.Value)
+	if problem != nil {
+		challenge.Status = core.StatusInvalid
+		challenge.Error = problem
 		return challenge, challenge.Error
 	}
 
@@ -206,24 +209,22 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	return challenge, err
 }
 
-func (va ValidationAuthorityImpl) getFirstAddr(hostname string, chall *core.Challenge) (address net.IP) {
+func (va ValidationAuthorityImpl) getFirstAddr(hostname string) (address net.IP, problem *core.ProblemDetails) {
 	addrs, _, _, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
-		chall.Status = core.StatusInvalid
-		setChallengeErrorFromDNSError(err, chall)
-		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", chall.Type, hostname, err))
-		return nil
+		problem = problemDetailsFromDNSError(err)
+		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
+		return
 	}
 	if len(addrs) == 0 {
-		chall.Error = &core.ProblemDetails{
+		problem = &core.ProblemDetails{
 			Type:   core.UnknownHostProblem,
 			Detail: fmt.Sprintf("Could not resolve %s", hostname),
 		}
-		chall.Status = core.StatusInvalid
-		return nil
+		return
 	}
-	chall.ResolvedAddrs = addrs
-	return addrs[0]
+	address = addrs[0]
+	return
 }
 
 func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
@@ -267,8 +268,10 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	z := sha256.Sum256(RS)
 	zName := fmt.Sprintf("%064x.acme.invalid", z)
 
-	addr := va.getFirstAddr(identifier.Value, &challenge)
-	if challenge.Error != nil {
+	addr, problem := va.getFirstAddr(identifier.Value)
+	if problem != nil {
+		challenge.Status = core.StatusInvalid
+		challenge.Error = problem
 		return challenge, challenge.Error
 	}
 
@@ -364,7 +367,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		setChallengeErrorFromDNSError(err, &challenge)
+		challenge.Error = problemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
 		return challenge, challenge.Error
 	}
