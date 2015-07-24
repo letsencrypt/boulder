@@ -46,7 +46,7 @@ RUN virtualenv --no-site-packages -p python2 venv && \
 COPY . /go/src/github.com/letsencrypt/boulder
 
 # Build Boulder
-RUN go install -tags pkcs11 \
+RUN go install \
   github.com/letsencrypt/boulder/cmd/activity-monitor \
   github.com/letsencrypt/boulder/cmd/boulder \
   github.com/letsencrypt/boulder/cmd/boulder-ca \

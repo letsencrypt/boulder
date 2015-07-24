@@ -17,7 +17,7 @@ def die():
     sys.exit(1)
 
 def build(path):
-    cmd = 'go build -tags pkcs11 -o %s/%s %s' % (tempdir, os.path.basename(path), path)
+    cmd = 'go build -o %s/%s %s' % (tempdir, os.path.basename(path), path)
     print(cmd)
     if subprocess.Popen(cmd, shell=True).wait() != 0:
         die()
