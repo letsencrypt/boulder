@@ -97,7 +97,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 	hostName := identifier.Value
 
-	addr, addrs, problem := va.getFirstAddr(identifier.Value)
+	addrs, problem := va.getAddrs(identifier.Value)
 	if problem != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = problem
@@ -154,7 +154,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		} else if scheme == "https" {
 			port = "443"
 		}
-		return defaultDial("tcp", net.JoinHostPort(addr.String(), port))
+		return defaultDial("tcp", net.JoinHostPort(addrs[0].String(), port))
 	}
 	logRedirect := func(req *http.Request, via []*http.Request) error {
 		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q", identifier, via[len(via)-1].URL.String(), req.URL.String()))
@@ -210,7 +210,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	return challenge, err
 }
 
-func (va ValidationAuthorityImpl) getFirstAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
+func (va ValidationAuthorityImpl) getAddrs(hostname string) (addrs []net.IP, problem *core.ProblemDetails) {
 	addrs, _, _, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
 		problem = problemDetailsFromDNSError(err)
@@ -225,7 +225,6 @@ func (va ValidationAuthorityImpl) getFirstAddr(hostname string) (addr net.IP, ad
 		return
 	}
 	va.log.Info(fmt.Sprintf("Resolved addresses for %s: %s", hostname, addrs))
-	addr = addrs[0]
 	return
 }
 
@@ -270,7 +269,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	z := sha256.Sum256(RS)
 	zName := fmt.Sprintf("%064x.acme.invalid", z)
 
-	addr, addrs, problem := va.getFirstAddr(identifier.Value)
+	addrs, problem := va.getAddrs(identifier.Value)
 	if problem != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = problem
@@ -281,9 +280,9 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	// Make a connection with SNI = nonceName
 	var hostPort string
 	if va.TestMode {
-		hostPort = net.JoinHostPort(addr.String(), "5001")
+		hostPort = net.JoinHostPort(addrs[0].String(), "5001")
 	} else {
-		hostPort = net.JoinHostPort(addr.String(), "443")
+		hostPort = net.JoinHostPort(addrs[0].String(), "443")
 	}
 	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
 		identifier, hostPort, zName))
