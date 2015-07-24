@@ -123,14 +123,10 @@ To update dependencies:
 # Disable insecure fallback by blocking port 80.
 sudo /sbin/iptables -A OUTPUT -p tcp --dport 80 -j DROP
 # Fetch godep
-go get https://github.com/tools/godep.git
-# Pull in the tags branch and install
-cd $GOPATH/src/github.com/tools/godep
-git pull https://github.com/jnfeinstein/godep.git jnfeinstein
-go install
-
+go get -u https://github.com/tools/godep
 # Update to the latest version of a dependency. Alternately you can cd to the
-# directory under GOPATH and check out a specific revision.
+# directory under GOPATH and check out a specific revision. Here's an example
+# using cfssl:
 go get -u github.com/cloudflare/cfssl/...
 # Update the Godep config to the appropriate version.
 godep update github.com/cloudflare/cfssl/...
