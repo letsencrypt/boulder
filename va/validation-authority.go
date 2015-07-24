@@ -147,17 +147,33 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	// selected above.
 	defaultDial := tr.Dial
 	tr.Dial = func(_, _ string) (net.Conn, error) {
-		// Ignore the addr selected by net/http.
 		port := "80"
 		if va.TestMode {
 			port = "5001"
 		} else if scheme == "https" {
 			port = "443"
 		}
+		// Ignore the addr selected by net/http.
 		return defaultDial("tcp", net.JoinHostPort(addrs[0].String(), port))
 	}
+	var redirects []string
 	logRedirect := func(req *http.Request, via []*http.Request) error {
+		redirects = append(redirects, req.URL.String())
 		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q", identifier, via[len(via)-1].URL.String(), req.URL.String()))
+		addrs, problem := va.getAddrs(req.URL.Host)
+		if problem != nil {
+			return problem
+		}
+		challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addrs...)
+		port := "80"
+		if va.TestMode {
+			port = "5001"
+		} else if strings.ToLower(req.URL.Scheme) == "https" {
+			port = "443"
+		}
+		tr.Dial = func(_, _ string) (net.Conn, error) {
+			return defaultDial("tcp", net.JoinHostPort(addrs[0].String(), port))
+		}
 		return nil
 	}
 	client := http.Client{
@@ -166,7 +182,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		Timeout:       5 * time.Second,
 	}
 	httpResponse, err := client.Do(httpRequest)
-
+	challenge.Redirects = redirects
 	if err == nil && httpResponse.StatusCode == 200 {
 		// Read body & test
 		body, readErr := ioutil.ReadAll(httpResponse.Body)
@@ -192,9 +208,14 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		}
 	} else if err != nil {
 		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   parseHTTPConnError(err),
-			Detail: fmt.Sprintf("Could not connect to %s", url.String()),
+		// Catch if error came from CheckRedirect
+		if problem, ok := err.(*core.ProblemDetails); ok {
+			challenge.Error = problem
+		} else {
+			challenge.Error = &core.ProblemDetails{
+				Type:   parseHTTPConnError(err),
+				Detail: fmt.Sprintf("Could not connect to %s", url.String()),
+			}
 		}
 		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
 	} else {

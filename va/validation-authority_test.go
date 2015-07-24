@@ -59,6 +59,7 @@ const pathWrongToken = "wrongtoken"
 const path404 = "404"
 const pathFound = "302"
 const pathMoved = "301"
+const pathRedirectLookup = "re-lookup"
 
 func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableTLS bool) {
 	m := http.NewServeMux()
@@ -85,6 +86,9 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 		} else if strings.HasSuffix(r.URL.Path, "wait-long") {
 			t.Logf("SIMPLESRV: Got a wait-long req\n")
 			time.Sleep(time.Second * 10)
+		} else if strings.HasSuffix(r.URL.Path, "re-lookup") {
+			t.Logf("SIMPLESRV: Got a redirect to invalid lookup req\n")
+			http.Redirect(w, r, "http://invalid.super/path", 302)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
 			fmt.Fprintf(w, "%s", token)
@@ -263,6 +267,7 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Path)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
 	chall.Path = pathFound
@@ -271,6 +276,16 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertNotError(t, err, chall.Path)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 3)
+
+	log.Clear()
+	chall.Path = pathRedirectLookup
+	finChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, chall.Path)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/re-lookup" to ".*invalid.super/path"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Could not resolve invalid.super`)), 1)
 
 	log.Clear()
 	chall.Path = path404

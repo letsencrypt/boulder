@@ -66,7 +66,7 @@ func (mock *MockDNS) LookupTXT(hostname string) ([]string, time.Duration, error)
 
 // LookupHost is a mock
 func (mock *MockDNS) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
-	if hostname == "always.invalid" {
+	if hostname == "always.invalid" || hostname == "invalid.super" {
 		return []net.IP{}, 0, 0, nil
 	}
 	ip := net.ParseIP("127.0.0.1")
