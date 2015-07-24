@@ -82,7 +82,7 @@ const (
 )
 
 func (pd *ProblemDetails) Error() string {
-	return fmt.Sprintf("%v :: %v", pd.Type, pd.Detail)
+	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
 }
 
 func cmpStrSlice(a, b []string) bool {
@@ -145,13 +145,12 @@ type AcmeIdentifier struct {
 // URIs pointing to authorizations that should collectively
 // authorize the certificate being requsted.
 //
-// This type is never marshaled, since we only ever receive
-// it from the client.  So it carries some additional information
-// that is useful internally.  (We rely on Go's case-insensitive
-// JSON unmarshal to properly unmarshal client requests.)
+// This data is unmarshalled from JSON by way of rawCertificateRequest, which
+// represents the actual structure received from the client.
 type CertificateRequest struct {
 	CSR            *x509.CertificateRequest // The CSR
 	Authorizations []AcmeURL                // Links to Authorization over the account key
+	Bytes          []byte                   // The original bytes of the CSR, for logging.
 }
 
 type rawCertificateRequest struct {
@@ -173,6 +172,7 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 
 	cr.CSR = csr
 	cr.Authorizations = raw.Authorizations
+	cr.Bytes = raw.CSR
 	return nil
 }
 

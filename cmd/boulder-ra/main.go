@@ -39,9 +39,9 @@ func main() {
 		rai := ra.NewRegistrationAuthorityImpl()
 		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize
-		raDNSTimeout, err := time.ParseDuration(c.RA.DNSTimeout)
+		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
-		rai.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.RA.DNSResolver})
+		rai.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
 
 		go cmd.ProfileCmd("RA", stats)
 

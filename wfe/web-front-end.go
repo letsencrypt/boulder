@@ -43,7 +43,6 @@ const (
 	BuildIDPath    = "/build"
 )
 
-// WebFrontEndImpl represents a Boulder web service and its resources
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
@@ -289,15 +288,16 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		return nil, nil, reg, errors.New("No body on POST")
 	}
 
-	body, err := ioutil.ReadAll(request.Body)
+	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
 		return nil, nil, reg, err
 	}
 
+	body := string(bodyBytes)
 	// Parse as JWS
-	parsedJws, err := jose.ParseSigned(string(body))
+	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
-		wfe.log.Debug(fmt.Sprintf("Parse error reading JWS: %v", err))
+		wfe.log.Debug(fmt.Sprintf("Parse error reading JWS: %#v", err))
 		return nil, nil, reg, err
 	}
 
@@ -312,7 +312,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		return nil, nil, reg, errors.New("Too many signatures on POST")
 	}
 	if len(parsedJws.Signatures) == 0 {
-		wfe.log.Debug(fmt.Sprintf("POST not signed: %v", parsedJws))
+		wfe.log.Debug(fmt.Sprintf("POST not signed: %s", body))
 		return nil, nil, reg, errors.New("POST not signed")
 	}
 	key := parsedJws.Signatures[0].Header.JsonWebKey
@@ -624,13 +624,26 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 }
 
+func (wfe *WebFrontEndImpl) logCsr(remoteAddr string, cr core.CertificateRequest, registration core.Registration) {
+	var csrLog = struct {
+		RemoteAddr   string
+		CsrBase64    []byte
+		Registration core.Registration
+	}{
+		RemoteAddr:   remoteAddr,
+		CsrBase64:    cr.Bytes,
+		Registration: registration,
+	}
+	wfe.log.AuditObject("Certificate request", csrLog)
+}
+
 // NewCertificate is used by clients to request the issuance of a cert for an
 // authorized identifier.
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, key, reg, err := wfe.verifyPOST(request, true)
+	body, _, reg, err := wfe.verifyPOST(request, true)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
@@ -659,13 +672,11 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
+	wfe.logCsr(request.RemoteAddr, init, reg)
 	logEvent.Extra["Authorizations"] = init.Authorizations
 	logEvent.Extra["CSRDNSNames"] = init.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = init.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = init.CSR.IPAddresses
-
-	wfe.log.Notice(fmt.Sprintf("Client requested new certificate: %v %v %v",
-		request.RemoteAddr, init, key))
 
 	// Create new certificate and return
 	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
