@@ -90,9 +90,6 @@ type Config struct {
 	}
 
 	RA struct {
-		DNSResolver string
-		DNSTimeout  string
-
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -106,9 +103,7 @@ type Config struct {
 	}
 
 	VA struct {
-		DNSResolver string
-		DNSTimeout  string
-		UserAgent   string
+		UserAgent string
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -167,6 +162,9 @@ type Config struct {
 		// Path to a PEM-encoded copy of the issuer certificate.
 		IssuerCert string
 		MaxKeySize int
+
+		DNSResolver string
+		DNSTimeout  string
 	}
 
 	SubscriberAgreementURL string

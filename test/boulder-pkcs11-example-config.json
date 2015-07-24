@@ -101,8 +101,6 @@
   },
 
   "ra": {
-    "dnsResolver": "8.8.8.8:53",
-    "dnsTimeout": "10s",
     "debugAddr": "localhost:8002"
   },
 
@@ -110,6 +108,11 @@
     "dbDriver": "sqlite3",
     "dbConnect": ":memory:",
     "debugAddr": "localhost:8003"
+  },
+
+  "va": {
+    "userAgent": "boulder",
+    "debugAddr": "localhost:8004"
   },
 
   "sql": {
@@ -150,7 +153,9 @@
 
   "common": {
     "baseURL": "http://localhost:4000",
-    "issuerCert": "test/test-ca.pem"
+    "issuerCert": "test/test-ca.pem",
+    "dnsResolver": "8.8.8.8:53",
+    "dnsTimeout": "10s"
   },
 
   "subscriberAgreementURL": "http://localhost:4000/terms"

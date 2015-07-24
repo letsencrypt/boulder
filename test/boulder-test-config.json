@@ -105,8 +105,6 @@
   },
 
   "ra": {
-    "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
     "debugAddr": "localhost:8002"
   },
 
@@ -117,8 +115,6 @@
   },
 
   "va": {
-    "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
     "userAgent": "boulder",
     "debugAddr": "localhost:8004"
   },
@@ -138,7 +134,9 @@
   "common": {
     "baseURL": "http://localhost:4300",
     "issuerCert": "test/test-ca.pem",
-    "maxKeySize": 4096
+    "maxKeySize": 4096,
+    "dnsResolver": "127.0.0.1:8053",
+    "dnsTimeout": "10s"
   },
 
   "subscriberAgreementURL": "http://example.com/terms"
