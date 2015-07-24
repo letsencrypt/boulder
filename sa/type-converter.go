@@ -10,8 +10,8 @@ import (
 	"errors"
 	"fmt"
 
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-	jose "github.com/letsencrypt/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
 )

@@ -12,9 +12,9 @@ import (
 	"fmt"
 	"time"
 
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	jose "github.com/letsencrypt/go-jose"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,

@@ -15,11 +15,11 @@ import (
 	"net/url"
 	"time"
 
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
-	jose "github.com/letsencrypt/go-jose"
 	"io/ioutil"
 	"testing"
 )

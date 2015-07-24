@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"time"
 
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-	jose "github.com/letsencrypt/go-jose"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
