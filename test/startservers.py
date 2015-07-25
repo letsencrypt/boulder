@@ -15,16 +15,15 @@ tempdir = tempfile.mkdtemp()
 
 def run(path):
     binary = os.path.join(tempdir, os.path.basename(path))
-    cmd = 'GORACE="halt_on_error=1" go build -race -o %s ./%s' % (binary, path)
-    print(cmd)
-    subprocess.check_call(cmd, shell=True)
-    def _ignore_sigint():
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
-    p = subprocess.Popen(
-        [binary, '--config', config],
-        preexec_fn=_ignore_sigint)
-    p.cmd = cmd
-    print('started %s with pid %d' % (binary, p.pid))
+
+    buildcmd = 'GORACE="halt_on_error=1" go build -race -o %s ./%s' % (binary, path)
+    print(buildcmd)
+    subprocess.check_call(buildcmd, shell=True)
+
+    srvcmd = [binary, '--config', config]
+    p = subprocess.Popen(srvcmd)
+    p.cmd = srvcmd
+    print('started %s with pid %d' % (p.cmd, p.pid))
     return p
 
 
@@ -48,7 +47,10 @@ def start():
         except Exception as e:
             print(e)
             return False
-    return check()
+        if not check():
+            # Don't keep building stuff if a server has already died.
+            return False
+    return True
 
 
 def check():
@@ -64,11 +66,10 @@ def check():
             stillok.append(p)
         else:
             busted.append(p)
-    print "\n%d servers are running." % len(stillok)
     if busted:
-        print "\n\nThese processes didn't start up successfully (check above for their output):"
+        print "\n\nThese processes exited early (check above for their output):"
         for p in busted:
-            print "\t'%s' exited %d" % (p.cmd, p.returncode)
+            print "\t'%s' with pid %d exited %d" % (p.cmd, p.pid, p.returncode)
     processes = stillok
     return not busted
 
@@ -76,5 +77,6 @@ def check():
 @atexit.register
 def stop():
     for p in processes:
-        p.kill()
+        if p.poll() is None:
+            p.kill()
     shutil.rmtree(tempdir)

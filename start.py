@@ -8,18 +8,37 @@ Keeps servers alive until ^C or 100K seconds elapse. Exits non-zero if
 any servers fail to start, or die before timer/^C.
 """
 
+import os
+import signal
 import sys
 import time
 
 sys.path.append('./test')
 import startservers
 
+
+MAX_RUNTIME = 100000
+
+
+class Alarm(Exception):
+    pass
+
+
 if not startservers.start():
     sys.exit(1)
 try:
-    time.sleep(100000)
-except KeyboardInterrupt:
-    pass
-if not startservers.check():
+    time.sleep(1)
+    print("All servers are running. To stop, hit ^C or wait %d seconds." % MAX_RUNTIME)
+
+    def handler(*args):
+        raise Alarm
+    signal.signal(signal.SIGALRM, handler)
+    signal.alarm(MAX_RUNTIME)
+    os.wait()
+
+    # If we reach here, a child died early. Log what died:
+    startservers.check()
     sys.exit(1)
-print "stopping servers."
+except KeyboardInterrupt, Alarm:
+    signal.alarm(0)
+    print "\nstopping servers."
