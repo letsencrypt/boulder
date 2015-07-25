@@ -1,9 +1,21 @@
 import atexit
+import BaseHTTPServer
 import os
 import shutil
 import signal
 import subprocess
 import tempfile
+import threading
+
+
+class ToSServerThread(threading.Thread):
+    class ToSHandler(BaseHTTPServer.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write("Do What Ye Will (An it Harm None).\n")
+    def run(self):
+        BaseHTTPServer.HTTPServer(("localhost", 4001), self.ToSHandler).serve_forever()
 
 
 config = os.environ.get('BOULDER_CONFIG')
@@ -35,6 +47,7 @@ def start():
     up explicitly by calling stop(), or automatically atexit.
     """
     global processes
+    ToSServerThread().start()
     for prog in [
             'cmd/boulder-wfe',
             'cmd/boulder-ra',
