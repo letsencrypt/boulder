@@ -423,7 +423,7 @@ func TestStandardHeaders(t *testing.T) {
 		{wfe.NewReg, []string{"POST"}},
 		{wfe.RegBase, []string{"POST"}},
 		{wfe.NewAuthz, []string{"POST"}},
-		{wfe.AuthzBase, []string{"GET"}},
+		{wfe.AuthzBase, []string{"GET", "POST"}},
 		{wfe.NewCert, []string{"POST"}},
 		{wfe.CertBase, []string{"GET"}},
 		{wfe.SubscriberAgreementURL, []string{"GET"}},
