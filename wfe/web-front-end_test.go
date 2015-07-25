@@ -799,6 +799,10 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"/acme/reg/0")
+	links := responseWriter.Header()["Link"]
+	test.AssertEquals(t, contains(links, "</acme/new-authz>;rel=\"next\""), true)
+	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
+
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
 		"</acme/new-authz>;rel=\"next\"")
@@ -1019,6 +1023,15 @@ func TestAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 }
 
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
+}
+
 func TestRegistration(t *testing.T) {
 	wfe := setupWFE(t)
 	mux, err := wfe.Handler()
@@ -1121,6 +1134,10 @@ func TestRegistration(t *testing.T) {
 		URL:    path,
 	})
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	links := responseWriter.Header()["Link"]
+	test.AssertEquals(t, contains(links, "</acme/new-authz>;rel=\"next\""), true)
+	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
+
 	responseWriter.Body.Reset()
 }
 
