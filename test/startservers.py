@@ -15,8 +15,7 @@ tempdir = tempfile.mkdtemp()
 
 def run(path):
     binary = os.path.join(tempdir, os.path.basename(path))
-    goargs = '-race' if os.environ.get('GORACE') else ''
-    cmd = 'go build %s -o %s ./%s' % (goargs, binary, path)
+    cmd = 'GORACE="halt_on_error=1" go build -race -o %s ./%s' % (binary, path)
     print(cmd)
     subprocess.check_call(cmd, shell=True)
     def _ignore_sigint():

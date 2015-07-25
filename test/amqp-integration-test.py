@@ -85,7 +85,6 @@ def cleanup():
 
 exit_status = ExitStatus.OK
 tempdir = tempfile.mkdtemp()
-os.environ['GORACE'] = 'halt_on_error=1'
 if not startservers.start():
     die(ExitStatus.Error)
 run_node_test()
