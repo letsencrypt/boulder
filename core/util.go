@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	blog "github.com/letsencrypt/boulder/log"
 	"hash"
 	"io"

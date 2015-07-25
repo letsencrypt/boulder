@@ -20,7 +20,7 @@ if config is None:
 
 def run(path):
     binary = os.path.join(tempdir, os.path.basename(path))
-    cmd = 'go build -tags pkcs11 -o %s %s' % (binary, path)
+    cmd = 'go build -o %s %s' % (binary, path)
     print(cmd)
     if subprocess.Popen(cmd, shell=True).wait() != 0:
         sys.exit(1)

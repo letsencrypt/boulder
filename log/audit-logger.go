@@ -183,7 +183,7 @@ func caller(level int) string {
 func (log *AuditLogger) AuditPanic() {
 	if err := recover(); err != nil {
 		buf := make([]byte, 8192)
-		log.Audit(fmt.Sprintf("Panic caused by err: %v", err))
+		log.Audit(fmt.Sprintf("Panic caused by err: %s", err))
 
 		runtime.Stack(buf, false)
 		log.Audit(fmt.Sprintf("Stack Trace (Current frame) %s", buf))
