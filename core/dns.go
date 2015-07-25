@@ -122,12 +122,17 @@ func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.
 	return addrs, aRtt, aaaaRtt, nil
 }
 
-// LookupCNAME sends a DNS query to find a CNAME record associated hostname and returns the
-// record target.
+// LookupCNAME returns the target name if a CNAME record exists for
+// the given domain name. If the CNAME does not exist (NXDOMAIN,
+// NXRRSET, or a successful response with no CNAME records), it
+// returns the empty string and a nil error.
 func (dnsResolver *DNSResolverImpl) LookupCNAME(hostname string) (string, time.Duration, error) {
 	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeCNAME)
 	if err != nil {
 		return "", 0, err
+	}
+	if r.Rcode == dns.RcodeNXRrset || r.Rcode == dns.RcodeNameError {
+		return "", 0, nil
 	}
 	if r.Rcode != dns.RcodeSuccess {
 		err = fmt.Errorf("DNS failure: %d-%s for CNAME query", r.Rcode, dns.RcodeToString[r.Rcode])

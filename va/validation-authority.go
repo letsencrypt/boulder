@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -23,6 +24,11 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 )
+
+const maxCNAME = 16 // Prevents infinite loops. Same limit as BIND.
+
+// Returned by CheckCAARecords if it has to follow too many consecutive CNAME lookups.
+var ErrTooManyCNAME = errors.New("Too many CNAME lookups")
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
@@ -447,23 +453,29 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 			break
 		}
 
-		// Query CAA records for domain and its alias if it has a CNAME
-		for _, alias := range []bool{false, true} {
-			if alias {
-				target, _, err := va.DNSResolver.LookupCNAME(queryDomain)
-				if err != nil {
-					return nil, err
-				}
-				queryDomain = target
-			}
-			CAAs, _, err := va.DNSResolver.LookupCAA(queryDomain)
+		cnames := 0
+		for {
+			target, _, err := va.DNSResolver.LookupCNAME(queryDomain)
 			if err != nil {
 				return nil, err
 			}
-
-			if len(CAAs) > 0 {
-				return newCAASet(CAAs), nil
+			if target == "" || target == queryDomain {
+				break
 			}
+			queryDomain = target
+
+			cnames++
+			if cnames > maxCNAME {
+				return nil, ErrTooManyCNAME
+			}
+		}
+
+		CAAs, _, err := va.DNSResolver.LookupCAA(queryDomain)
+		if err != nil {
+			return nil, err
+		}
+		if len(CAAs) > 0 {
+			return newCAASet(CAAs), nil
 		}
 	}
 

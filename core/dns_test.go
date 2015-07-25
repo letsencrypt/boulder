@@ -56,6 +56,16 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				w.WriteMsg(m)
 				return
 			}
+		case dns.TypeCNAME:
+			if q.Name == "cname.letsencrypt.org." {
+				record := new(dns.CNAME)
+				record.Hdr = dns.RR_Header{Name: "cname.letsencrypt.org.", Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: 30}
+				record.Target = "cps.letsencrypt.org."
+
+				m.Answer = append(m.Answer, record)
+				w.WriteMsg(m)
+				return
+			}
 		case dns.TypeCAA:
 			if q.Name == "bracewel.net." {
 				record := new(dns.CAA)
@@ -157,7 +167,7 @@ func TestDNSServFail(t *testing.T) {
 	test.AssertError(t, err, "LookupCNAME didn't return an error")
 
 	_, _, _, err = obj.LookupHost(bad)
-	test.AssertError(t, err, "LookupCNAME didn't return an error")
+	test.AssertError(t, err, "LookupHost didn't return an error")
 
 	// CAA lookup ignores validation failures from the resolver for now
 	// and returns an empty list of CAA records.
@@ -204,4 +214,16 @@ func TestDNSLookupCAA(t *testing.T) {
 	caas, _, err = obj.LookupCAA("nonexistent.letsencrypt.org")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
+}
+
+func TestDNSLookupCNAME(t *testing.T) {
+	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+
+	target, _, err := obj.LookupCNAME("cps.letsencrypt.org")
+	test.AssertNotError(t, err, "CNAME lookup failed")
+	test.AssertEquals(t, target, "")
+
+	target, _, err = obj.LookupCNAME("cname.letsencrypt.org")
+	test.AssertNotError(t, err, "CNAME lookup failed")
+	test.AssertEquals(t, target, "cps.letsencrypt.org.")
 }

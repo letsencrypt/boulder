@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	// Load SQLite3 for test purposes
@@ -71,14 +72,33 @@ func (mock *MockDNS) LookupHost(hostname string) ([]net.IP, time.Duration, time.
 
 // LookupCNAME is a mock
 func (mock *MockDNS) LookupCNAME(domain string) (string, time.Duration, error) {
-	return "hostname", 0, nil
+	switch strings.TrimRight(domain, ".") {
+	case "cname-absent.com":
+		return "absent.com.", 30, nil
+	case "cname-critical.com":
+		return "critical.com.", 30, nil
+	case "cname-present.com":
+		return "present.com.", 30, nil
+	case "cname2-present.com":
+		return "cname-present.com.", 30, nil
+	case "a.cname-loop.com":
+		return "b.cname-loop.com.", 30, nil
+	case "b.cname-loop.com":
+		return "a.cname-loop.com.", 30, nil
+	case "cname2servfail.com":
+		return "servfail.com.", 30, nil
+	case "cname-servfail.com":
+		return "", 0, fmt.Errorf("SERVFAIL")
+	default:
+		return "", 0, nil
+	}
 }
 
 // LookupCAA is a mock
 func (mock *MockDNS) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error) {
 	var results []*dns.CAA
 	var record dns.CAA
-	switch domain {
+	switch strings.TrimRight(domain, ".") {
 	case "reserved.com":
 		record.Tag = "issue"
 		record.Value = "symantec.com"
@@ -100,7 +120,7 @@ func (mock *MockDNS) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error)
 
 // LookupMX is a mock
 func (mock *MockDNS) LookupMX(domain string) ([]string, time.Duration, error) {
-	switch domain {
+	switch strings.TrimRight(domain, ".") {
 	case "letsencrypt.org":
 		fallthrough
 	case "email.com":
