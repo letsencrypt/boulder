@@ -220,7 +220,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.HandleFunc(m, NewCertPath, wfe.NewCertificate, "POST")
 	wfe.HandleFunc(m, RegPath, wfe.Registration, "POST")
 	wfe.HandleFunc(m, AuthzPath, wfe.Authorization, "GET", "POST")
-	wfe.HandleFunc(m, CertPath, wfe.Certificate, "GET", "POST")
+	wfe.HandleFunc(m, CertPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, RevokeCertPath, wfe.RevokeCertificate, "POST")
 	wfe.HandleFunc(m, TermsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, IssuerPath, wfe.Issuer, "GET")
@@ -946,9 +946,9 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 		return
 	}
 
+	// Blank out ID and regID
 	switch request.Method {
 	case "GET":
-		// Blank out ID and regID
 		authz.ID = ""
 		authz.RegistrationID = 0
 
@@ -978,54 +978,47 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	defer wfe.logRequestDetails(&logEvent)
 
 	path := request.URL.Path
-	switch request.Method {
-	case "GET":
-		// Certificate paths consist of the CertBase path, plus exactly sixteen hex
-		// digits.
-		if !strings.HasPrefix(path, CertPath) {
-			logEvent.Error = "Certificate not found"
-			wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
-			addNoCacheHeader(response)
-			return
-		}
-		serial := path[len(CertPath):]
-		if len(serial) != 16 || !allHex.Match([]byte(serial)) {
-			logEvent.Error = "Certificate not found"
-			wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
-			addNoCacheHeader(response)
-			return
-		}
-		wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
-		logEvent.Extra["RequestedSerial"] = serial
-
-		cert, err := wfe.SA.GetCertificateByShortSerial(serial)
-		if err != nil {
-			logEvent.Error = err.Error()
-			if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
-				wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
-			} else {
-				addNoCacheHeader(response)
-				wfe.sendError(response, "Certificate not found", err, http.StatusNotFound)
-			}
-			return
-		}
-
-		addCacheHeader(response, wfe.CertCacheDuration.Seconds())
-
-		// TODO Content negotiation
-		response.Header().Set("Content-Type", "application/pkix-cert")
-		response.Header().Add("Link", link(IssuerPath, "up"))
-		response.WriteHeader(http.StatusOK)
-		if _, err = response.Write(cert.DER); err != nil {
-			logEvent.Error = err.Error()
-			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
-		}
-		return
-	case "POST":
-		logEvent.Error = "Not yet supported"
-		wfe.sendError(response, logEvent.Error, "", http.StatusNotFound)
+	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
+	// digits.
+	if !strings.HasPrefix(path, CertPath) {
+		logEvent.Error = "Certificate not found"
+		wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
+		addNoCacheHeader(response)
 		return
 	}
+	serial := path[len(CertPath):]
+	if len(serial) != 16 || !allHex.Match([]byte(serial)) {
+		logEvent.Error = "Certificate not found"
+		wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
+		addNoCacheHeader(response)
+		return
+	}
+	wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
+	logEvent.Extra["RequestedSerial"] = serial
+
+	cert, err := wfe.SA.GetCertificateByShortSerial(serial)
+	if err != nil {
+		logEvent.Error = err.Error()
+		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
+			wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
+		} else {
+			addNoCacheHeader(response)
+			wfe.sendError(response, "Certificate not found", err, http.StatusNotFound)
+		}
+		return
+	}
+
+	addCacheHeader(response, wfe.CertCacheDuration.Seconds())
+
+	// TODO Content negotiation
+	response.Header().Set("Content-Type", "application/pkix-cert")
+	response.Header().Add("Link", link(IssuerPath, "up"))
+	response.WriteHeader(http.StatusOK)
+	if _, err = response.Write(cert.DER); err != nil {
+		logEvent.Error = err.Error()
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	}
+	return
 }
 
 // Terms is used by the client to obtain the current Terms of Service /
