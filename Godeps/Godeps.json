@@ -73,6 +73,10 @@
 			"Rev": "a197e5d40516f2e9f74dcee085a5f2d4604e94df"
 		},
 		{
+			"ImportPath": "github.com/letsencrypt/go-jose",
+			"Rev": "924fcf0aaa98274fd0d586edf64a517ebe24797e"
+		},
+		{
 			"ImportPath": "github.com/mattn/go-sqlite3",
 			"Rev": "308067797b0fcce4ca06362580dc6db77c1bfeda"
 		},
@@ -85,8 +89,8 @@
 			"Rev": "88c9f842544e629ec046105d7fb50d5daafae737"
 		},
 		{
-			"ImportPath": "github.com/square/go-jose",
-			"Rev": "d3ba9be3fbf631c353e477ab8fba8ec04f05a8b4"
+			"ImportPath": "github.com/square/go-jose/cipher",
+			"Rev": "2f4e4fff85a98acc176ac2712c31394ac1acb7e8"
 		},
 		{
 			"ImportPath": "github.com/streadway/amqp",
