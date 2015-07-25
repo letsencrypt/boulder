@@ -172,5 +172,5 @@
     "dnsTimeout": "10s"
   },
 
-  "subscriberAgreementURL": "http://localhost:4300/terms"
+  "subscriberAgreementURL": "http://localhost:4000/directory"
 }
