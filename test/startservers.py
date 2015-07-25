@@ -47,7 +47,9 @@ def start():
     up explicitly by calling stop(), or automatically atexit.
     """
     global processes
-    ToSServerThread().start()
+    t = ToSServerThread()
+    t.daemon = True
+    t.start()
     for prog in [
             'cmd/boulder-wfe',
             'cmd/boulder-ra',
