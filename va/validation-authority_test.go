@@ -572,11 +572,15 @@ func TestCAAChecking(t *testing.T) {
 		CAATest{"cname-absent.com", false, true},
 		CAATest{"nx.cname-absent.com", false, true},
 		CAATest{"cname-nx.com", false, true},
+		CAATest{"example.co.uk", false, true},
 		// Good (present)
 		CAATest{"present.com", true, true},
 		CAATest{"cname-present.com", true, true},
 		CAATest{"cname2-present.com", true, true},
 		CAATest{"nx.cname2-present.com", true, true},
+		CAATest{"cname-and-dname-and-caa.com", true, true},
+		CAATest{"dname-present.com", true, true},
+		CAATest{"dname2cname.com", true, true},
 		// CNAME to critical
 	}
 
@@ -596,7 +600,16 @@ func TestCAAChecking(t *testing.T) {
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	for _, name := range []string{"a.cname-loop.com", "cname-servfail.com", "cname2servfail.com", "servfail.com"} {
+	for _, name := range []string{
+		"www.caa-loop.com",
+		"a.cname-loop.com",
+		"a.dname-loop.com",
+		"cname-servfail.com",
+		"cname2servfail.com",
+		"dname-servfail.com",
+		"cname-and-dname.com",
+		"servfail.com",
+	} {
 		_, _, err = va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: name})
 		test.AssertError(t, err, name)
 	}

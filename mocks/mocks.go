@@ -77,18 +77,41 @@ func (mock *MockDNS) LookupCNAME(domain string) (string, time.Duration, error) {
 		return "absent.com.", 30, nil
 	case "cname-critical.com":
 		return "critical.com.", 30, nil
-	case "cname-present.com":
-		return "present.com.", 30, nil
+	case "cname-present.com", "cname-and-caa.com", "cname-and-dname.com", "cname-and-dname-and-caa.com":
+		return "cname-target.present.com.", 30, nil
 	case "cname2-present.com":
 		return "cname-present.com.", 30, nil
 	case "a.cname-loop.com":
 		return "b.cname-loop.com.", 30, nil
 	case "b.cname-loop.com":
 		return "a.cname-loop.com.", 30, nil
+	case "www.caa-loop.com":
+		// nothing wrong with CNAME, but prevents CAA algorithm from terminating
+		return "oops.www.caa-loop.com.", 30, nil
 	case "cname2servfail.com":
 		return "servfail.com.", 30, nil
 	case "cname-servfail.com":
 		return "", 0, fmt.Errorf("SERVFAIL")
+	case "cname2dname.com":
+		return "dname2cname.com.", 30, nil
+	default:
+		return "", 0, nil
+	}
+}
+
+// LookupDNAME is a mock
+func (mock *MockDNS) LookupDNAME(domain string) (string, time.Duration, error) {
+	switch strings.TrimRight(domain, ".") {
+	case "cname-and-dname.com", "cname-and-dname-and-caa.com", "dname-present.com":
+		return "dname-target.present.com.", time.Minute, nil
+	case "a.dname-loop.com":
+		return "b.dname-loop.com.", time.Minute, nil
+	case "b.dname-loop.com":
+		return "a.dname-loop.com.", time.Minute, nil
+	case "dname2cname.com":
+		return "cname2-present.com.", time.Minute, nil
+	case "dname-servfail.com":
+		return "", time.Minute, fmt.Errorf("SERVFAIL")
 	default:
 		return "", 0, nil
 	}
@@ -108,7 +131,7 @@ func (mock *MockDNS) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error)
 		record.Tag = "issue"
 		record.Value = "symantec.com"
 		results = append(results, &record)
-	case "present.com":
+	case "present.com", "cname-and-caa.com", "cname-and-dname-and-caa.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org"
 		results = append(results, &record)
