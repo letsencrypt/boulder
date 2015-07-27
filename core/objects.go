@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
 // AcmeStatus defines the state of a given authorization
@@ -444,11 +444,11 @@ type Certificate struct {
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`
 
-	Serial  string     `db:"serial"`
-	Digest  string     `db:"digest"`
-	DER     JSONBuffer `db:"der"`
-	Issued  time.Time  `db:"issued"`
-	Expires time.Time  `db:"expires"`
+	Serial  string    `db:"serial"`
+	Digest  string    `db:"digest"`
+	DER     []byte    `db:"der"`
+	Issued  time.Time `db:"issued"`
+	Expires time.Time `db:"expires"`
 }
 
 // MatchesCSR tests the contents of a generated certificate to make sure

@@ -28,7 +28,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
 
 	"github.com/letsencrypt/boulder/mocks"
@@ -425,7 +425,7 @@ func TestStandardHeaders(t *testing.T) {
 		{wfe.NewAuthz, []string{"POST"}},
 		{wfe.AuthzBase, []string{"GET", "POST"}},
 		{wfe.NewCert, []string{"POST"}},
-		{wfe.CertBase, []string{"GET", "POST"}},
+		{wfe.CertBase, []string{"GET"}},
 		{wfe.SubscriberAgreementURL, []string{"GET"}},
 	}
 
@@ -799,6 +799,10 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"/acme/reg/0")
+	links := responseWriter.Header()["Link"]
+	test.AssertEquals(t, contains(links, "</acme/new-authz>;rel=\"next\""), true)
+	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
+
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
 		"</acme/new-authz>;rel=\"next\"")
@@ -1019,6 +1023,15 @@ func TestAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 }
 
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
+}
+
 func TestRegistration(t *testing.T) {
 	wfe := setupWFE(t)
 	mux, err := wfe.Handler()
@@ -1121,6 +1134,10 @@ func TestRegistration(t *testing.T) {
 		URL:    path,
 	})
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
+	links := responseWriter.Header()["Link"]
+	test.AssertEquals(t, contains(links, "</acme/new-authz>;rel=\"next\""), true)
+	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
+
 	responseWriter.Body.Reset()
 }
 
