@@ -165,8 +165,8 @@
     "dbDriver": "sqlite3",
     "dbConnect": ":memory:",
     "messageLimit": 0,
-    "expiryWarnings": ["24h", "72h", "168h", "336h"],
-    "EmailTemplate": "test/example-expiration-template",
+    "nagTimes": ["24h", "72h", "168h", "336h"],
+    "emailTemplate": "test/example-expiration-template",
     "debugAddr": "localhost:8004"
   },
 
