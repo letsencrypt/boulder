@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
+	"sort"
 	"strings"
 	"text/template"
 	"time"
@@ -35,10 +36,10 @@ type mailer struct {
 	stats         statsd.Statter
 	log           *blog.AuditLogger
 	dbMap         *gorp.DbMap
-	Mailer        mail.Mailer
-	EmailTemplate *template.Template
-	NagTimes      []time.Duration
-	Limit         int
+	mailer        mail.Mailer
+	emailTemplate *template.Template
+	nagTimes      []time.Duration
+	limit         int
 }
 
 func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []core.AcmeURL) error {
@@ -56,12 +57,12 @@ func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []core.AcmeURL)
 			DNSNames:         strings.Join(parsedCert.DNSNames, ", "),
 		}
 		msgBuf := new(bytes.Buffer)
-		err := m.EmailTemplate.Execute(msgBuf, email)
+		err := m.emailTemplate.Execute(msgBuf, email)
 		if err != nil {
 			m.stats.Inc("Mailer.Errors.SendingNag.TemplateFailure", 1, 1.0)
 			return err
 		}
-		err = m.Mailer.SendMail(emails, msgBuf.String())
+		err = m.mailer.SendMail(emails, msgBuf.String())
 		if err != nil {
 			m.stats.Inc("Mailer.Errors.SendingNag.SendFailure", 1, 1.0)
 			return err
@@ -142,10 +143,10 @@ func (m *mailer) processCerts(certs []core.Certificate) {
 func (m *mailer) findExpiringCertificates() error {
 	now := time.Now()
 	// E.g. m.NagTimes = [1, 3, 7, 14] days from expiration
-	for i, expiresIn := range m.NagTimes {
+	for i, expiresIn := range m.nagTimes {
 		left := now
 		if i > 0 {
-			left = left.Add(m.NagTimes[i-1])
+			left = left.Add(m.nagTimes[i-1])
 		}
 		right := now.Add(expiresIn)
 
@@ -156,7 +157,9 @@ func (m *mailer) findExpiringCertificates() error {
 			`SELECT cert.* FROM certificates AS cert
 			 JOIN certificateStatus AS cs
 			 ON cs.serial = cert.serial
-       WHERE cert.expires > :cutoffA AND cert.expires < :cutoffB AND cert.status != "revoked"
+			 WHERE cert.expires > :cutoffA
+			 AND cert.expires < :cutoffB
+			 AND cert.status != "revoked"
 			 AND cs.lastExpirationNagSent <= :nagCutoff
        ORDER BY cert.expires ASC
 			 LIMIT :limit`,
@@ -164,7 +167,7 @@ func (m *mailer) findExpiringCertificates() error {
 				"cutoffA":   left,
 				"cutoffB":   right,
 				"nagCutoff": time.Now().Add(-expiresIn),
-				"limit":     m.Limit,
+				"limit":     m.limit,
 			},
 		)
 		if err != nil {
@@ -179,18 +182,32 @@ func (m *mailer) findExpiringCertificates() error {
 	return nil
 }
 
+type durationSlice []time.Duration
+
+func (ds durationSlice) Len() int {
+	return len(ds)
+}
+
+func (ds durationSlice) Less(a, b int) bool {
+	return ds[a] < ds[b]
+}
+
+func (ds durationSlice) Swap(a, b int) {
+	ds[a], ds[b] = ds[b], ds[a]
+}
+
 func main() {
 	app := cmd.NewAppShell("expiration-mailer")
 
 	app.App.Flags = append(app.App.Flags, cli.IntFlag{
 		Name:   "cert_limit",
 		Value:  100,
-		EnvVar: "cert_LIMIT",
+		EnvVar: "CERT_LIMIT",
 		Usage:  "Count of certificates to process per expiration period",
 	})
 
 	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
-		if c.GlobalInt("email_limit") > 0 {
+		if c.GlobalInt("cert_limit") > 0 {
 			config.Mailer.CertLimit = c.GlobalInt("cert_limit")
 		}
 		return config
@@ -225,7 +242,7 @@ func main() {
 
 		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, c.Mailer.Password)
 
-		var nags []time.Duration
+		var nags durationSlice
 		for _, nagDuration := range c.Mailer.NagTimes {
 			dur, err := time.ParseDuration(nagDuration)
 			if err != nil {
@@ -234,15 +251,17 @@ func main() {
 			}
 			nags = append(nags, dur)
 		}
+		// Make sure durations are sorted in increasing order
+		sort.Sort(nags)
 
 		m := mailer{
 			stats:         stats,
 			log:           auditlogger,
 			dbMap:         dbMap,
-			Mailer:        &mailClient,
-			EmailTemplate: tmpl,
-			NagTimes:      nags,
-			Limit:         c.Mailer.CertLimit,
+			mailer:        &mailClient,
+			emailTemplate: tmpl,
+			nagTimes:      nags,
+			limit:         c.Mailer.CertLimit,
 		}
 
 		auditlogger.Info("expiration-mailer: Starting")

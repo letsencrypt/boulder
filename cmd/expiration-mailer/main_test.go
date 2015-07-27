@@ -77,8 +77,8 @@ func TestSendNags(t *testing.T) {
 	mc := mockMail{}
 	m := mailer{
 		stats:         stats,
-		Mailer:        &mc,
-		EmailTemplate: tmpl,
+		mailer:        &mc,
+		emailTemplate: tmpl,
 	}
 
 	cert := &x509.Certificate{
@@ -134,11 +134,11 @@ func TestFindExpiringCertificates(t *testing.T) {
 	m := mailer{
 		log:           blog.GetAuditLogger(),
 		stats:         stats,
-		Mailer:        &mc,
-		EmailTemplate: tmpl,
+		mailer:        &mc,
+		emailTemplate: tmpl,
 		dbMap:         dbMap,
-		NagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
-		Limit:         100,
+		nagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
+		limit:         100,
 	}
 
 	log.Clear()
