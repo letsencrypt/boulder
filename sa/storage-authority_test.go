@@ -123,7 +123,8 @@ func TestAddAuthorization(t *testing.T) {
 	combos[0] = []int{0, 1}
 
 	exp := time.Now().AddDate(0, 0, 1)
-	newPa := core.Authorization{ID: PA.ID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, RegistrationID: 0, Status: core.StatusPending, Expires: &exp, Challenges: []core.Challenge{chall}, Combinations: combos}
+	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
+	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: 0, Status: core.StatusPending, Expires: &exp, Challenges: []core.Challenge{chall}, Combinations: combos}
 	err = sa.UpdatePendingAuthorization(newPa)
 	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 
@@ -133,6 +134,10 @@ func TestAddAuthorization(t *testing.T) {
 
 	dbPa, err = sa.GetAuthorization(PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
+
+	authz, err := sa.GetLatestValidAuthorization(0, identifier)
+	test.AssertNotError(t, err, "Couldn't get latest authorization with identifier "+identifier.Value)
+	test.AssertEquals(t, authz.ID, PA.ID)
 }
 
 func TestAddCertificate(t *testing.T) {
