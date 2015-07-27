@@ -10,6 +10,7 @@ import (
 	"net/smtp"
 )
 
+// Mailer provides the interface for a mailer
 type Mailer interface {
 	SendMail([]string, string) error
 }
@@ -22,9 +23,9 @@ type MailerImpl struct {
 	From   string
 }
 
-// NewMailer constructs a Mailer to represent an account on a particular mail
+// New constructs a Mailer to represent an account on a particular mail
 // transfer agent.
-func NewMailer(server, port, username, password string) MailerImpl {
+func New(server, port, username, password string) MailerImpl {
 	auth := smtp.PlainAuth("", username, password, server)
 	return MailerImpl{
 		Server: server,

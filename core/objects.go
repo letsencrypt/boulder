@@ -555,7 +555,7 @@ type CertificateStatus struct {
 	//   code for 'unspecified').
 	RevokedReason int `db:"revokedReason"`
 
-	ExpirationNagsSent int `db:"expirationNagsSent"`
+	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
 	LockCol int64 `json:"-"`
 }

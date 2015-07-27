@@ -139,8 +139,8 @@ type Config struct {
 		DBDriver  string
 		DBConnect string
 
-		MessageLimit   int
-		ExpiryWarnings []int
+		CertLimit int
+		NagTimes  []string
 		// Path to a text/template email template
 		EmailTemplate string
 
