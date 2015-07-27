@@ -425,10 +425,8 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse CSR")
 	sa.UpdatePendingAuthorization(authz)
 	sa.FinalizeAuthorization(authz)
-	authzURL, _ := url.Parse("http://doesnt.matter/" + authz.ID)
 	certRequest := core.CertificateRequest{
-		CSR:            parsedCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*authzURL)},
+		CSR: parsedCSR,
 	}
 
 	// Registration id 1 has key == AccountKeyA
@@ -446,14 +444,10 @@ func TestAuthorizationRequired(t *testing.T) {
 	sa.UpdatePendingAuthorization(AuthzFinal)
 	sa.FinalizeAuthorization(AuthzFinal)
 
-	// Construct a cert request referencing the authorization
-	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
-
 	// ExampleCSR requests not-example.com and www.not-example.com,
 	// but the authorization only covers not-example.com
 	certRequest := core.CertificateRequest{
-		CSR:            ExampleCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*url1)},
+		CSR: ExampleCSR,
 	}
 
 	_, err := ra.NewCertificate(certRequest, 1)
@@ -475,13 +469,8 @@ func TestNewCertificate(t *testing.T) {
 	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
 	sa.FinalizeAuthorization(authzFinalWWW)
 
-	// Construct a cert request referencing the two authorizations
-	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
-	url2, _ := url.Parse("http://doesnt.matter/" + authzFinalWWW.ID)
-
 	certRequest := core.CertificateRequest{
-		CSR:            ExampleCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*url1), core.AcmeURL(*url2)},
+		CSR: ExampleCSR,
 	}
 
 	cert, err := ra.NewCertificate(certRequest, 1)
