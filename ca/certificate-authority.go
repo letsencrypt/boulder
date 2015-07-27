@@ -474,7 +474,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return cert, nil
 	}
 
-	ca.SA.UpdateOCSP(serial, ocspResponse)
+	err = ca.SA.UpdateOCSP(serial, ocspResponse)
 	if err != nil {
 		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed storing: %s", err))
 		return cert, nil
