@@ -161,7 +161,7 @@ func (m *mailer) findExpiringCertificates() error {
 			 AND cert.expires < :cutoffB
 			 AND cert.status != "revoked"
 			 AND cs.lastExpirationNagSent <= :nagCutoff
-       ORDER BY cert.expires ASC
+			 ORDER BY cert.expires ASC
 			 LIMIT :limit`,
 			map[string]interface{}{
 				"cutoffA":   left,
