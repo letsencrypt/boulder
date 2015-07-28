@@ -106,3 +106,15 @@ func TestInvalidCompression(t *testing.T) {
 		t.Error("should not accept invalid data")
 	}
 }
+
+func TestByteBufferTrim(t *testing.T) {
+	buf := newBufferFromInt(1)
+	if !bytes.Equal(buf.data, []byte{1}) {
+		t.Error("Byte buffer for integer '1' should contain [0x01]")
+	}
+
+	buf = newBufferFromInt(65537)
+	if !bytes.Equal(buf.data, []byte{1, 0, 1}) {
+		t.Error("Byte buffer for integer '65537' should contain [0x01, 0x00, 0x01]")
+	}
+}
