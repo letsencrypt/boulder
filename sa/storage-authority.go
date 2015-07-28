@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -49,22 +50,39 @@ type authzModel struct {
 }
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for Boulder.
-func NewSQLStorageAuthority(driver string, dbConnect string) (ssa *SQLStorageAuthority, err error) {
+func NewSQLStorageAuthority(driver string, dbConnect string) (*SQLStorageAuthority, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Storage Authority Starting")
 
-	dbMap, err := NewDbMap(driver, dbConnect)
-	if err != nil {
-		return
+	if driver == "mysql" {
+		// Check the parseTime=true DSN is present
+		dbURI, err := url.Parse(dbConnect)
+		if err != nil {
+			return nil, err
+		}
+		dsnVals, err := url.ParseQuery(dbURI.RawQuery)
+		if err != nil {
+			return nil, err
+		}
+		if k := dsnVals.Get("parseTime"); k != "true" {
+			dsnVals.Set("parseTime", "true")
+			dbURI.RawQuery = dsnVals.Encode()
+		}
+		dbConnect = dbURI.String()
 	}
 
-	ssa = &SQLStorageAuthority{
+	dbMap, err := NewDbMap(driver, dbConnect)
+	if err != nil {
+		return nil, err
+	}
+
+	ssa := &SQLStorageAuthority{
 		dbMap:  dbMap,
 		log:    logger,
 		bucket: make(map[string]interface{}),
 	}
 
-	return
+	return ssa, nil
 }
 
 // SetSQLDebug enables/disables GORP SQL-level Debugging
