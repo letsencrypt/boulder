@@ -121,7 +121,9 @@ type Config struct {
 	}
 
 	ExternalCertImporter struct {
-		CertCSVFilesPrefix string
+		CertsToImportCSVFilename   string
+		DomainsToImportCSVFilename string
+		CertsToRemoveCSVFilename   string
 	}
 
 	Common struct {

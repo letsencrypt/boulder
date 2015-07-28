@@ -26,7 +26,7 @@ import (
 var datestamp_format string = "2006-01-02 15:04:05"
 
 
-func addOrUpdateCerts(csvFilename string, dbMap *gorp.DbMap) {
+func addCerts(csvFilename string, dbMap *gorp.DbMap) {
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
@@ -44,7 +44,7 @@ func addOrUpdateCerts(csvFilename string, dbMap *gorp.DbMap) {
 		spkiBytes, err := hex.DecodeString(record[4])
 		lastUpdated, err := time.Parse(datestamp_format, record[7])
 		certDER, err := hex.DecodeString(record[8])
-				
+		
 		externalCert := core.ExternalCert{
 			SHA1: record[0],
 			Issuer: record[1],
@@ -56,21 +56,15 @@ func addOrUpdateCerts(csvFilename string, dbMap *gorp.DbMap) {
 			LastUpdated: lastUpdated,
 			CertDER: certDER,
 		}
-		
-		var count int64
-		err = dbMap.SelectOne(&count, "SELECT COUNT(*) FROM externalCerts WHERE SHA1=?", record[0])
-		if count > 0 {
-			_, err = dbMap.Update(&externalCert)
-		} else {
-			err = dbMap.Insert(&externalCert)
-		}
-		
+
+		err = dbMap.Insert(&externalCert)
+
 		cmd.FailOnError(err, "Could not insert into database")
 	}
 }
 
 
-func addOrUpdateIdentifiers(csvFilename string, dbMap *gorp.DbMap) {
+func addIdentifiers(csvFilename string, dbMap *gorp.DbMap) {
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
@@ -92,13 +86,7 @@ func addOrUpdateIdentifiers(csvFilename string, dbMap *gorp.DbMap) {
 			LastUpdated: lastUpdated,
 		}
 
-		var count int64
-		err = dbMap.SelectOne(&count, "SELECT COUNT(*) FROM identifierData WHERE CertSHA1=? AND ReversedName=?", record[0], record[1])
-		if count > 0 {
-			_, err = dbMap.Update(&identifierData)
-		} else {
-			err = dbMap.Insert(&identifierData)
-		}
+		err = dbMap.Insert(&identifierData)
 	}
 }
 
@@ -125,8 +113,7 @@ func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap) {
 		}
 
 		_, err = dbMap.Delete(&identifierData)
-		_, err = dbMap.Delete(&externalCert)		
-
+		_, err = dbMap.Delete(&externalCert)
 	}
 }
 
@@ -135,15 +122,25 @@ func main() {
 	app := cmd.NewAppShell("external-cert-importer")
 
 	app.App.Flags = append(app.App.Flags, cli.StringFlag{
-		Name:   "a, certs-to-add-prefix",
-		Value:  "lets-encrypt-export",
-		Usage:  "Prefix (including the path) of the three CSV files which will be imported. The filenames are assumed to be of the form lets-encrypt-export-domains.csv, lets-encrypt-export-invalid-certs.csv, and lets-encrypt-export-valid-certs.csv.",
+		Name:  "a, certs-to-import-csv-file",
+		Value: "ssl-observatory-valid-certs.csv",
+		Usage: "The CSV file containing the valid certs to import."
+	}, cli.StringFlag {
+		Name:  "d", "domains-to-import-csv-file",
+		Value: "ssl-observatory-domains.csv",
+		Usage: "The CSV file containing the domains associated with the certs that are being imported."
+	}, cli.StringFlag {
+		Name:  "r", "certs-to-remove-csv-file",
+		Value: "ssl-observatory-invalid-certs.csv",
+		Usage: "The CSV file Containing now invalid certs which should be removed."
 	})
 
 
 	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
 		fmt.Println(c.Args())
-		config.ExternalCertImporter.CertCSVFilesPrefix = c.GlobalString("a")
+		config.ExternalCertImporter.CertsToImportCSVFilename = c.GlobalString("a")
+		config.ExternalCertImporter.DomainsToImportCSVFilename = c.GlobalString("d")
+		config.ExternalCertImporter.CertsToRemoveCSVFilename = c.GlobalString("r")
 		return config
 	}
 
@@ -169,11 +166,14 @@ func main() {
 		err = dbMap.CreateTablesIfNotExists()
 		cmd.FailOnError(err, "Could not create the tables")
 
-		addOrUpdateCerts(c.ExternalCertImporter.CertCSVFilesPrefix + "-valid-certs.csv", dbMap)
-		addOrUpdateIdentifiers(c.ExternalCertImporter.CertCSVFilesPrefix + "-domains.csv", dbMap)
-		removeInvalidCerts(c.ExternalCertImporter.CertCSVFilesPrefix + "-invalid-certs.csv", dbMap)
-
-		auditlogger.Info(app.VersionString())
+		// Note that this order of operations is intentional: we first add
+		// new certs to the database. Then, since certs are identified by
+		// the entries in the identifiers table, we add those. Then, we
+		// can remove invalid certs (which first removes the associated
+		// identifiers).
+		addCerts(c.ExternalCertImporter.CertsToImportCSVFilesname, dbMap)
+		addIdentifiers(c.ExternalCertImporter.DomainsToImportCSVFilename, dbMap)
+		removeInvalidCerts(c.ExternalCertImporter.CertsToRemoveCSVFilename, dbMap)
 	}
 
 	app.Run()
