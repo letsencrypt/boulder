@@ -59,14 +59,16 @@ func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []core.AcmeURL)
 		msgBuf := new(bytes.Buffer)
 		err := m.emailTemplate.Execute(msgBuf, email)
 		if err != nil {
-			m.stats.Inc("Mailer.Errors.SendingNag.TemplateFailure", 1, 1.0)
+			m.stats.Inc("Mailer.Expiration.Errors.SendingNag.TemplateFailure", 1, 1.0)
 			return err
 		}
+		startSending := time.Now()
 		err = m.mailer.SendMail(emails, msgBuf.String())
 		if err != nil {
-			m.stats.Inc("Mailer.Errors.SendingNag.SendFailure", 1, 1.0)
+			m.stats.Inc("Mailer.Expiration.Errors.SendingNag.SendFailure", 1, 1.0)
 			return err
 		}
+		m.stats.TimingDuration("Mailer.Expiration.Sending", time.Since(startSending), 1.0)
 		m.stats.Inc("Mailer.Expiration.Sent", int64(len(emails)), 1.0)
 	}
 	return nil
@@ -113,26 +115,26 @@ func (m *mailer) processCerts(certs []core.Certificate) {
 		regObj, err := m.dbMap.Get(&core.Registration{}, cert.RegistrationID)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error fetching registration %d: %s", cert.RegistrationID, err))
-			m.stats.Inc("Mailer.Errors.GetRegistration", 1, 1.0)
+			m.stats.Inc("Mailer.Expiration.Errors.GetRegistration", 1, 1.0)
 			continue
 		}
 		reg := regObj.(*core.Registration)
 		parsedCert, err := x509.ParseCertificate(cert.DER)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error parsing certificate %s: %s", cert.Serial, err))
-			m.stats.Inc("Mailer.Errors.ParseCertificate", 1, 1.0)
+			m.stats.Inc("Mailer.Expiration.Errors.ParseCertificate", 1, 1.0)
 			continue
 		}
 		err = m.sendNags(parsedCert, reg.Contact)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error sending nag emails: %s", err))
-			m.stats.Inc("Mailer.Errors.SendingNags", 1, 1.0)
+			m.stats.Inc("Mailer.Expiration.Errors.SendingNags", 1, 1.0)
 			continue
 		}
 		err = m.updateCertStatus(cert.Serial)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error updating certificate status for %s: %s", cert.Serial, err))
-			m.stats.Inc("Mailer.Errors.UpdateCertificateStatus", 1, 1.0)
+			m.stats.Inc("Mailer.Expiration.Errors.UpdateCertificateStatus", 1, 1.0)
 			continue
 		}
 	}
@@ -157,7 +159,10 @@ func (m *mailer) findExpiringCertificates() error {
 			`SELECT cert.* FROM certificates AS cert
 			 JOIN certificateStatus AS cs
 			 ON cs.serial = cert.serial
-			 WHERE cert.expires > :cutoffA
+			 JOIN registrations AS reg
+			 ON cert.registrationId = reg.id
+			 WHERE LOCATE("mailto", reg.contact) > 0
+			 AND cert.expires > :cutoffA
 			 AND cert.expires < :cutoffB
 			 AND cert.status != "revoked"
 			 AND cs.lastExpirationNagSent <= :nagCutoff
@@ -175,7 +180,9 @@ func (m *mailer) findExpiringCertificates() error {
 			return err // fatal
 		}
 		if len(certs) > 0 {
+			processingStarted := time.Now()
 			m.processCerts(certs)
+			m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificates", time.Since(processingStarted), 1.0)
 		}
 	}
 
