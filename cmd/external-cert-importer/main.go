@@ -124,15 +124,15 @@ func main() {
 	app.App.Flags = append(app.App.Flags, cli.StringFlag{
 		Name:  "a, certs-to-import-csv-file",
 		Value: "ssl-observatory-valid-certs.csv",
-		Usage: "The CSV file containing the valid certs to import."
-	}, cli.StringFlag {
-		Name:  "d", "domains-to-import-csv-file",
+		Usage: "The CSV file containing the valid certs to import.",
+	}, cli.StringFlag{
+		Name:  "d, domains-to-import-csv-file",
 		Value: "ssl-observatory-domains.csv",
-		Usage: "The CSV file containing the domains associated with the certs that are being imported."
-	}, cli.StringFlag {
-		Name:  "r", "certs-to-remove-csv-file",
+		Usage: "The CSV file containing the domains associated with the certs that are being imported.",
+	}, cli.StringFlag{
+		Name:  "r, certs-to-remove-csv-file",
 		Value: "ssl-observatory-invalid-certs.csv",
-		Usage: "The CSV file Containing now invalid certs which should be removed."
+		Usage: "The CSV file Containing now invalid certs which should be removed.",
 	})
 
 
@@ -152,9 +152,6 @@ func main() {
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
 
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
-
 		blog.SetAuditLogger(auditlogger)
 
 		// Configure DB
@@ -171,7 +168,7 @@ func main() {
 		// the entries in the identifiers table, we add those. Then, we
 		// can remove invalid certs (which first removes the associated
 		// identifiers).
-		addCerts(c.ExternalCertImporter.CertsToImportCSVFilesname, dbMap)
+		addCerts(c.ExternalCertImporter.CertsToImportCSVFilename, dbMap)
 		addIdentifiers(c.ExternalCertImporter.DomainsToImportCSVFilename, dbMap)
 		removeInvalidCerts(c.ExternalCertImporter.CertsToRemoveCSVFilename, dbMap)
 	}
