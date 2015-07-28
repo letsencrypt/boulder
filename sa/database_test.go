@@ -34,6 +34,5 @@ func TestForgottenDialect(t *testing.T) {
 
 func TestInvalidDSN(t *testing.T) {
 	_, err := NewDbMap("mysql", "invalid")
-	fmt.Println(err)
 	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
 }
