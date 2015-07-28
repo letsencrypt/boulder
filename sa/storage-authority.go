@@ -284,7 +284,7 @@ func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (
 
 	// Reset the update clock
 	status.OCSPLastUpdated = timeStamp
-	_, err = tx.Update(status)
+	_, err = tx.Update(&status)
 	if err != nil {
 		tx.Rollback()
 		return err
