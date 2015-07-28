@@ -230,7 +230,7 @@ func TestDNSLookupCAA(t *testing.T) {
 
 	caas, _, err = obj.LookupCAA("cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
-	test.Assert(t, len(caas) == 0, "Should ignore CAA obtained via CNAME")
+	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
 }
 
 func TestDNSLookupCNAME(t *testing.T) {

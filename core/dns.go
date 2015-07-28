@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -174,10 +173,7 @@ func (dnsResolver *DNSResolverImpl) LookupDNAME(hostname string) (string, time.D
 
 // LookupCAA sends a DNS query to find all CAA records associated with
 // the provided hostname. If the response code from the resolver is
-// SERVFAIL an empty slice of CAA records is returned. This function
-// only returns CAA records belonging to the specified name: even if
-// the upstream cache follows CNAME/DNAME and provides CAA records
-// belonging to the CNAME/DNAME targets, they are ignored.
+// SERVFAIL an empty slice of CAA records is returned.
 func (dnsResolver *DNSResolverImpl) LookupCAA(hostname string) ([]*dns.CAA, time.Duration, error) {
 	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeCAA)
 	if err != nil {
@@ -191,15 +187,9 @@ func (dnsResolver *DNSResolverImpl) LookupCAA(hostname string) ([]*dns.CAA, time
 		return CAAs, rtt, nil
 	}
 
-	expectName := strings.ToLower(strings.TrimRight(hostname, "."))
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeCAA {
 			if caaR, ok := answer.(*dns.CAA); ok {
-				rrName := strings.ToLower(strings.TrimRight(caaR.Header().Name, "."))
-				if rrName != expectName {
-					// Ignore CAA records retrieved via CNAME/DNAME.
-					continue
-				}
 				CAAs = append(CAAs, caaR)
 			}
 		}
