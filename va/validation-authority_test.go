@@ -578,7 +578,6 @@ func TestCAAChecking(t *testing.T) {
 		CAATest{"cname-present.com", true, true},
 		CAATest{"cname2-present.com", true, true},
 		CAATest{"nx.cname2-present.com", true, true},
-		CAATest{"cname-and-dname-and-caa.com", true, true},
 		CAATest{"dname-present.com", true, true},
 		CAATest{"dname2cname.com", true, true},
 		// CNAME to critical

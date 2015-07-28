@@ -77,7 +77,7 @@ func (mock *MockDNS) LookupCNAME(domain string) (string, time.Duration, error) {
 		return "absent.com.", 30, nil
 	case "cname-critical.com":
 		return "critical.com.", 30, nil
-	case "cname-present.com", "cname-and-caa.com", "cname-and-dname.com", "cname-and-dname-and-caa.com":
+	case "cname-present.com", "cname-and-dname.com":
 		return "cname-target.present.com.", 30, nil
 	case "cname2-present.com":
 		return "cname-present.com.", 30, nil
@@ -102,7 +102,7 @@ func (mock *MockDNS) LookupCNAME(domain string) (string, time.Duration, error) {
 // LookupDNAME is a mock
 func (mock *MockDNS) LookupDNAME(domain string) (string, time.Duration, error) {
 	switch strings.TrimRight(domain, ".") {
-	case "cname-and-dname.com", "cname-and-dname-and-caa.com", "dname-present.com":
+	case "cname-and-dname.com", "dname-present.com":
 		return "dname-target.present.com.", time.Minute, nil
 	case "a.dname-loop.com":
 		return "b.dname-loop.com.", time.Minute, nil
@@ -131,7 +131,7 @@ func (mock *MockDNS) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error)
 		record.Tag = "issue"
 		record.Value = "symantec.com"
 		results = append(results, &record)
-	case "present.com", "cname-and-caa.com", "cname-and-dname-and-caa.com":
+	case "present.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org"
 		results = append(results, &record)
