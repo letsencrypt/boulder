@@ -174,7 +174,7 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	}
 	err = ssa.dbMap.SelectOne(&authz, "SELECT id, identifier, registrationID, status, expires, challenges, combinations "+
 		"FROM authz "+
-		"WHERE identifier = :identifier AND registrationID = :registrationId "+
+		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
 		"ORDER BY expires DESC LIMIT 1",
 		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
 	return
