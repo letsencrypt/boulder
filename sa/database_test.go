@@ -6,6 +6,7 @@
 package sa
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -31,7 +32,8 @@ func TestForgottenDialect(t *testing.T) {
 	test.AssertError(t, err, "Shouldn't have found the dialect")
 }
 
-func TestParseTimeRequired(t *testing.T) {
+func TestInvalidDSN(t *testing.T) {
 	_, err := NewDbMap("mysql", "invalid")
-	test.AssertError(t, err, "DB connect string must have parseTime=true")
+	fmt.Println(err)
+	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
 }
