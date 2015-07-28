@@ -12,6 +12,7 @@ import (
 	"os"
 	"io"
 	"encoding/hex"
+	"math"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
@@ -23,10 +24,9 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-var datestamp_format string = "2006-01-02 15:04:05"
+const datestamp_format string = "2006-01-02 15:04:05"
 
-
-func addCerts(csvFilename string, dbMap *gorp.DbMap) {
+func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, statsRate float32) {
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
@@ -57,14 +57,15 @@ func addCerts(csvFilename string, dbMap *gorp.DbMap) {
 			CertDER: certDER,
 		}
 
+		importStart := time.Now()
 		err = dbMap.Insert(&externalCert)
-
-		cmd.FailOnError(err, "Could not insert into database")
+		stats.TimingDuration("ExistingCert.CertImportTime", time.Since(importStart), statsRate)
+		stats.Inc("ExistingCert.CertsImported", 1, statsRate)
 	}
 }
 
 
-func addIdentifiers(csvFilename string, dbMap *gorp.DbMap) {
+func addIdentifiers(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, statsRate float32) {
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
@@ -86,12 +87,15 @@ func addIdentifiers(csvFilename string, dbMap *gorp.DbMap) {
 			LastUpdated: lastUpdated,
 		}
 
+		importStart := time.Now()
 		err = dbMap.Insert(&identifierData)
+		stats.TimingDuration("ExistingCert.DomainImportTime", time.Since(importStart), statsRate)
+		stats.Inc("ExistingCert.DomainsImported", 1, statsRate)
 	}
 }
 
 
-func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap) {
+func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, statsRate float32) {
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
@@ -112,8 +116,12 @@ func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap) {
 		 	SHA1: record[0],
 		}
 
+		deleteStart := time.Now()
 		_, err = dbMap.Delete(&identifierData)
+		stats.TimingDuration("ExistingCert.DomainDeleteTime", time.Since(deleteStart), statsRate)
 		_, err = dbMap.Delete(&externalCert)
+		stats.TimingDuration("ExistingCert.CertDeleteTime", time.Since(deleteStart), statsRate)
+		stats.Inc("ExistingCert.CertsDeleted", 1, statsRate)
 	}
 }
 
@@ -122,17 +130,21 @@ func main() {
 	app := cmd.NewAppShell("external-cert-importer")
 
 	app.App.Flags = append(app.App.Flags, cli.StringFlag{
-		Name:  "a, certs-to-import-csv-file",
+		Name:  "a, valid-certs-file",
 		Value: "ssl-observatory-valid-certs.csv",
 		Usage: "The CSV file containing the valid certs to import.",
 	}, cli.StringFlag{
-		Name:  "d, domains-to-import-csv-file",
+		Name:  "d, domains-file",
 		Value: "ssl-observatory-domains.csv",
 		Usage: "The CSV file containing the domains associated with the certs that are being imported.",
 	}, cli.StringFlag{
-		Name:  "r, certs-to-remove-csv-file",
+		Name:  "r, invalid-certs-file",
 		Value: "ssl-observatory-invalid-certs.csv",
 		Usage: "The CSV file Containing now invalid certs which should be removed.",
+	}, cli.Float64Flag{
+		Name:  "statsd-rate",
+		Value: 0.1,
+		Usage: "A floating point number between 0 and 1 representing the rate at which the statsd client will send data.",
 	})
 
 
@@ -141,6 +153,7 @@ func main() {
 		config.ExternalCertImporter.CertsToImportCSVFilename = c.GlobalString("a")
 		config.ExternalCertImporter.DomainsToImportCSVFilename = c.GlobalString("d")
 		config.ExternalCertImporter.CertsToRemoveCSVFilename = c.GlobalString("r")
+		config.ExternalCertImporter.StatsdRate = float32(math.Min(math.Max(c.Float64("statsd-rate"), 0.0), 1.0))
 		return config
 	}
 
@@ -168,9 +181,9 @@ func main() {
 		// the entries in the identifiers table, we add those. Then, we
 		// can remove invalid certs (which first removes the associated
 		// identifiers).
-		addCerts(c.ExternalCertImporter.CertsToImportCSVFilename, dbMap)
-		addIdentifiers(c.ExternalCertImporter.DomainsToImportCSVFilename, dbMap)
-		removeInvalidCerts(c.ExternalCertImporter.CertsToRemoveCSVFilename, dbMap)
+		addCerts(c.ExternalCertImporter.CertsToImportCSVFilename, dbMap, stats, c.ExternalCertImporter.StatsdRate)
+		addIdentifiers(c.ExternalCertImporter.DomainsToImportCSVFilename, dbMap, stats, c.ExternalCertImporter.StatsdRate)
+		removeInvalidCerts(c.ExternalCertImporter.CertsToRemoveCSVFilename, dbMap, stats, c.ExternalCertImporter.StatsdRate)
 	}
 
 	app.Run()

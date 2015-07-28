@@ -124,6 +124,7 @@ type Config struct {
 		CertsToImportCSVFilename   string
 		DomainsToImportCSVFilename string
 		CertsToRemoveCSVFilename   string
+		StatsdRate                 float32
 	}
 
 	Common struct {
