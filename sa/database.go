@@ -8,6 +8,7 @@ package sa
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
 
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
@@ -32,6 +33,23 @@ var dialectMap = map[string]interface{}{
 // schema, like that for `certificate-authority-data.go`.
 func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 	logger := blog.GetAuditLogger()
+
+	if driver == "mysql" {
+		// Check the parseTime=true DSN is present
+		dbURI, err := url.Parse(dbConnect)
+		if err != nil {
+			return nil, err
+		}
+		dsnVals, err := url.ParseQuery(dbURI.RawQuery)
+		if err != nil {
+			return nil, err
+		}
+		if k := dsnVals.Get("parseTime"); k != "true" {
+			dsnVals.Set("parseTime", "true")
+			dbURI.RawQuery = dsnVals.Encode()
+			dbConnect = dbURI.String()
+		}
+	}
 
 	db, err := sql.Open(driver, dbConnect)
 	if err != nil {
