@@ -56,7 +56,6 @@ func (dnsResolver *DNSResolverImpl) ExchangeOne(hostname string, qtype uint16) (
 // LookupTXT sends a DNS query to find all TXT records associated with
 // the provided hostname.
 func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.Duration, error) {
-	var txt []string
 	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeTXT)
 	if err != nil {
 		return nil, 0, err
@@ -66,6 +65,7 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 		return nil, 0, err
 	}
 
+	txt := []string{}
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeTXT {
 			if txtRec, ok := answer.(*dns.TXT); ok {
@@ -82,23 +82,20 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 // LookupHost sends a DNS query to find all A/AAAA records associated with
 // the provided hostname.
 func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
-	var addrs []net.IP
-	var answers []dns.RR
-
 	r, aRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeA)
 	if err != nil {
-		return addrs, 0, 0, err
+		return nil, 0, 0, err
 	}
 	if r.Rcode != dns.RcodeSuccess {
 		err = fmt.Errorf("DNS failure: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
 		return nil, aRtt, 0, err
 	}
 
-	answers = append(answers, r.Answer...)
+	answers := r.Answer
 
 	r, aaaaRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeAAAA)
 	if err != nil {
-		return addrs, aRtt, 0, err
+		return nil, aRtt, 0, err
 	}
 	if r.Rcode != dns.RcodeSuccess {
 		err = fmt.Errorf("DNS failure: %d-%s for AAAA query", r.Rcode, dns.RcodeToString[r.Rcode])
@@ -107,6 +104,7 @@ func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.
 
 	answers = append(answers, r.Answer...)
 
+	addrs := []net.IP{}
 	for _, answer := range answers {
 		if answer.Header().Rrtype == dns.TypeA {
 			if a, ok := answer.(*dns.A); ok {
@@ -182,7 +180,7 @@ func (dnsResolver *DNSResolverImpl) LookupCAA(hostname string) ([]*dns.CAA, time
 
 	// On resolver validation failure, or other server failures, return empty an
 	// set and no error.
-	var CAAs []*dns.CAA
+	CAAs := []*dns.CAA{}
 	if r.Rcode == dns.RcodeServerFailure {
 		return CAAs, rtt, nil
 	}
@@ -209,7 +207,7 @@ func (dnsResolver *DNSResolverImpl) LookupMX(hostname string) ([]string, time.Du
 		return nil, rtt, err
 	}
 
-	var results []string
+	results := []string{}
 	for _, answer := range r.Answer {
 		if mx, ok := answer.(*dns.MX); ok {
 			results = append(results, mx.Mx)

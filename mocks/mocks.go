@@ -119,26 +119,17 @@ func (mock *MockDNS) LookupDNAME(domain string) (string, time.Duration, error) {
 
 // LookupCAA is a mock
 func (mock *MockDNS) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error) {
-	var results []*dns.CAA
-	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
 	case "reserved.com":
-		record.Tag = "issue"
-		record.Value = "symantec.com"
-		results = append(results, &record)
+		return []*dns.CAA{&dns.CAA{Tag: "issue", Value: "symantec.com"}}, 0, nil
 	case "critical.com":
-		record.Flag = 1
-		record.Tag = "issue"
-		record.Value = "symantec.com"
-		results = append(results, &record)
+		return []*dns.CAA{&dns.CAA{Flag: 1, Tag: "issue", Value: "symantec.com"}}, 0, nil
 	case "present.com":
-		record.Tag = "issue"
-		record.Value = "letsencrypt.org"
-		results = append(results, &record)
+		return []*dns.CAA{&dns.CAA{Tag: "issue", Value: "letsencrypt.org"}}, 0, nil
 	case "servfail.com":
-		return results, 0, fmt.Errorf("SERVFAIL")
+		return nil, 0, fmt.Errorf("SERVFAIL")
 	}
-	return results, 0, nil
+	return []*dns.CAA{}, 0, nil
 }
 
 // LookupMX is a mock

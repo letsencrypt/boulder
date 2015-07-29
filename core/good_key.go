@@ -105,7 +105,7 @@ func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) (err error) {
 		}
 	})
 	for _, prime := range smallPrimes {
-		var result big.Int
+		result := big.NewInt(0)
 		result.Mod(modulus, prime)
 		if result.Sign() == 0 {
 			err = MalformedRequestError(fmt.Sprintf("Key divisible by small prime: %d", prime))

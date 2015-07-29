@@ -47,11 +47,9 @@ const (
 // returning silently if already declared, erroring if nonexistant and
 // unable to create.
 func AMQPDeclareExchange(conn *amqp.Connection) error {
-	var err error
-	var ch *amqp.Channel
 	log := blog.GetAuditLogger()
 
-	ch, err = conn.Channel()
+	ch, err := conn.Channel()
 	if err != nil {
 		log.Crit(fmt.Sprintf("Could not connect Channel: %s", err))
 		return err
@@ -97,9 +95,7 @@ func AMQPDeclareExchange(conn *amqp.Connection) error {
 
 // A simplified way to declare and subscribe to an AMQP queue
 func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan amqp.Delivery, error) {
-	var err error
-
-	_, err = ch.QueueDeclare(
+	_, err := ch.QueueDeclare(
 		name,
 		AmqpDurable,
 		AmqpDeleteUnused,
@@ -257,7 +253,7 @@ func (rpc *AmqpRPCServer) Start() (err error) {
 				rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
 				continue
 			}
-			var response rpcResponse
+			response := rpcResponse{}
 			response.ReturnVal, err = cb(msg.Body)
 			response.Error = wrapError(err)
 			jsonResponse, err := json.Marshal(response)

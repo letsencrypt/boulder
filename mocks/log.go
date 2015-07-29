@@ -48,7 +48,7 @@ func (lm *LogMessage) String() string {
 // UseMockLog changes the SyslogWriter used by the current singleton
 // audit logger to a new mock logger, and returns the mock. Example:
 //
-//	var log = mocks.UseMockLog()
+//	log := mocks.UseMockLog()
 //	func TestFoo(t *testing.T) {
 //		log.Clear()
 //		// ...

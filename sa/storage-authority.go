@@ -487,13 +487,12 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 }
 
 // AddCertificate stores an issued certificate.
-func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
-	var parsedCertificate *x509.Certificate
-	parsedCertificate, err = x509.ParseCertificate(certDER)
+func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (string, error) {
+	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		return
+		return "", err
 	}
-	digest = core.Fingerprint256(certDER)
+	digest := core.Fingerprint256(certDER)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
 	cert := &core.Certificate{
@@ -516,24 +515,24 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return digest, err
 	}
 
 	// TODO Verify that the serial number doesn't yet exist
 	err = tx.Insert(cert)
 	if err != nil {
 		tx.Rollback()
-		return
+		return digest, err
 	}
 
 	err = tx.Insert(certStatus)
 	if err != nil {
 		tx.Rollback()
-		return
+		return digest, err
 	}
 
 	err = tx.Commit()
-	return
+	return digest, nil
 }
 
 // AlreadyDeniedCSR queries to find if the name list has already been denied.

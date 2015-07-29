@@ -414,15 +414,13 @@ type JSONBuffer []byte
 
 // URL-safe base64 encode that strips padding
 func base64URLEncode(data []byte) string {
-	var result = base64.URLEncoding.EncodeToString(data)
-	return strings.TrimRight(result, "=")
+	return strings.TrimRight(base64.URLEncoding.EncodeToString(data), "=")
 }
 
 // URL-safe base64 decoder that adds padding
 func base64URLDecode(data string) ([]byte, error) {
-	var missing = (4 - len(data)%4) % 4
-	data += strings.Repeat("=", missing)
-	return base64.URLEncoding.DecodeString(data)
+	missing := (4 - len(data)%4) % 4
+	return base64.URLEncoding.DecodeString(data + strings.Repeat("=", missing))
 }
 
 // MarshalJSON encodes a JSONBuffer for transmission.

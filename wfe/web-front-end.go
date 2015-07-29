@@ -284,21 +284,19 @@ const (
 )
 
 func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
-	var err error
 	var reg core.Registration
 
 	// Read body
 	if request.Body == nil {
-		err = core.MalformedRequestError("No body on POST")
+		err := core.MalformedRequestError("No body on POST")
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
 	}
 
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
 		wfe.log.Debug(err.Error())
-		return nil, nil, reg, err
+		return nil, nil, reg, core.InternalServerError(err.Error())
 	}
 
 	body := string(bodyBytes)
@@ -474,7 +472,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
-	var id int64 = reg.ID
+	id := int64(reg.ID)
 	regURL := fmt.Sprintf("%s%d", wfe.RegBase, id)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
@@ -659,14 +657,10 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 }
 
 func (wfe *WebFrontEndImpl) logCsr(remoteAddr string, cr core.CertificateRequest, registration core.Registration) {
-	var csrLog = struct {
-		RemoteAddr   string
-		CsrBase64    []byte
-		Registration core.Registration
-	}{
-		RemoteAddr:   remoteAddr,
-		CsrBase64:    cr.Bytes,
-		Registration: registration,
+	csrLog := map[string]interface{}{
+		"RemoteAddr":   remoteAddr,
+		"CsrBase64":    cr.Bytes,
+		"Registration": registration,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
