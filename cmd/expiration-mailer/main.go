@@ -161,7 +161,7 @@ func (m *mailer) findExpiringCertificates() error {
 			 ON cs.serial = cert.serial
 			 JOIN registrations AS reg
 			 ON cert.registrationId = reg.id
-			 WHERE LOCATE("mailto", reg.contact) > 0
+			 WHERE reg.contact LIKE "%mailto%"
 			 AND cert.expires > :cutoffA
 			 AND cert.expires < :cutoffB
 			 AND cert.status != "revoked"
