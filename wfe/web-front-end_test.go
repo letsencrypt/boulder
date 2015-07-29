@@ -527,7 +527,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
@@ -536,7 +536,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST"}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -546,7 +546,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS"}`)
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -556,7 +556,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error unmarshaling certificate request\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON"}`)
 
 	// Valid, signed JWS body, payload is '{}'
 	responseWriter.Body.Reset()
@@ -566,7 +566,17 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error unmarshaling certificate request\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload does not specify a resource"}`)
+
+	// Valid, signed JWS body, payload is '{"resource":"new-cert"}'
+	responseWriter.Body.Reset()
+	wfe.NewCertificate(responseWriter, &http.Request{
+		Method: "POST",
+		Body:   makeBody(signRequest(t, `{"resource":"new-cert"}`, &wfe.nonceService)),
+	})
+	test.AssertEquals(t,
+		responseWriter.Body.String(),
+		`{"type":"urn:acme:error:malformed","detail":"Error unmarshaling certificate request"}`)
 
 	// Valid, signed JWS body, payload has a invalid signature on CSR and no authorizations:
 	// {
@@ -577,13 +587,14 @@ func TestIssueCertificate(t *testing.T) {
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
 		Body: makeBody(signRequest(t, `{
+      "resource":"new-cert",
       "csr": "MIICUzCCATsCAQAwDjEMMAoGA1UEAwwDZm9vMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3UWce2PY9y8n4B7jOk3DXZnu2pUgLqs7a5DzRBxnPqL7axis6thjSBI2FO7w5CUjO-m8XjD-GYWgfXebZ3aQVlBiYqdxZ3UG6RDwEbBCeKo7v8W-UUfESNNCXF874ddhJmEw0RF0YWSAEctAYHEGoPFz69gCql6xXDPY1OlpMArkIIlq9EZWwT081ekyJv0GYRfQigCMK4b1gkFvKsHja9-Q5u1b0AZyA-mPTu6z5EWkB2onhAXwWXX90sfUe8DSet9r9GxMln3lgZWT1zh3RMZILp0Uhh3NbXnA8JInukha3HPO8WgmDd4K6uBzWso0A6fp5NpX28ZpKAwM5iQltQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAFGJV3OcghJEZvO_hGtIdaRnsu6eX3CeqS0bYcEEza8vizlj4x09ntMH3QooqPOj8suul0vD75HZTpz6FHE7SyLeNKQBGNGp1PMWmXsFqD6xURCyMHvCZoHynpCr7D5HtzIvu9fAV7XRK7qBKXfRxbv21q0ysMWnfwkbS2wrs1wAzPPg4iGJq8uVItrlcFL8buJLzxvKa3lu_OjxNXjzdEt3VVko-AKS1swkYEhsGwKd8ZzNbpF2IQ-okXgR_ZecyW8t83pV-w33GhDL9w6RLRMgSM5aojy8ri7YIoIvc3-9klbw2kwY5oM2lmhoIOGU10TkEyn18myy_5GUEGhNzPA=",
       "authorizations": []
     }`, &wfe.nonceService)),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert :: Invalid signature on CSR\"}")
+		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Invalid signature on CSR"}`)
 
 	// Valid, signed JWS body, payload has a CSR with no DNS names
 	mockLog.Clear()
@@ -592,13 +603,13 @@ func TestIssueCertificate(t *testing.T) {
 		Method:     "POST",
 		RemoteAddr: "1.1.1.1",
 		Body: makeBody(signRequest(t, `{
-      "authorizations": [],
+      "resource":"new-cert",
       "csr": "MIIBBTCBsgIBADBNMQowCAYDVQQGEwFjMQowCAYDVQQKEwFvMQswCQYDVQQLEwJvdTEKMAgGA1UEBxMBbDEKMAgGA1UECBMBczEOMAwGA1UEAxMFT2ggaGkwXDANBgkqhkiG9w0BAQEFAANLADBIAkEAsr76ZkU2RTqi41eHfmpE5htDvkr202yjRS8x2M5yzT52ooT2WEVtnSuim0YfOEw6f-fHmbqsasqKmqlsJdgz2QIDAQABoAAwCwYJKoZIhvcNAQEFA0EAHkCv4kVPJa53ltOGrhpdH0mT04qHUqiTllJPPjxXxn6iwiVYL8nQuhs4Q2758ENoODBuM2F8gH19TIoXlcm3LQ=="
     }`, &wfe.nonceService)),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert :: Key not authorized for name Oh hi\"}")
+		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Key not authorized for name Oh hi"}`)
 	assertCsrLogged(t, mockLog)
 
 	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
@@ -612,13 +623,13 @@ func TestIssueCertificate(t *testing.T) {
 		Method:     "POST",
 		RemoteAddr: "1.1.1.1",
 		Body: makeBody(signRequest(t, `{
-      "authorizations": [],
+      "resource":"new-cert",
       "csr": "MIIBKzCB2AIBADBNMQowCAYDVQQGEwFjMQowCAYDVQQKEwFvMQswCQYDVQQLEwJvdTEKMAgGA1UEBxMBbDEKMAgGA1UECBMBczEOMAwGA1UEAxMFT2ggaGkwXDANBgkqhkiG9w0BAQEFAANLADBIAkEAqvFEGBNrjAotPbcdTSyDpxsESN0-eYl4TqS0ZLYwLTV-FuPHTPjFiq2oH1BEgmRzjb8YiPVXFMnaOeHE7zuuXQIDAQABoCYwJAYJKoZIhvcNAQkOMRcwFTATBgNVHREEDDAKgghtZWVwLmNvbTALBgkqhkiG9w0BAQUDQQBSEcEq-lMUnzv1DO8jK0hJR8YKc0yV8zuWVfAWN0_dsPg5Ny-OHhtJcOTIrUrLTb_xCU7cjiKxU8i3j1kaT-rt"
     }`, &wfe.nonceService)),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"Error creating new cert :: Key not authorized for name meep.com\"}")
+		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Key not authorized for name meep.com"}`)
 	assertCsrLogged(t, mockLog)
 
 	mockLog.Clear()
@@ -626,6 +637,7 @@ func TestIssueCertificate(t *testing.T) {
 	wfe.NewCertificate(responseWriter, &http.Request{
 		Method: "POST",
 		Body: makeBody(signRequest(t, `{
+      "resource":"new-cert",
       "csr": "MIH1MIGiAgEAMA0xCzAJBgNVBAYTAlVTMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAOXRzB9hDSCRPYjlu6HzJ9MkUPplDG-o0IS3ENiD8zcgCM-XvEEsse06CyhRb6g5Bz9AsGH9thaxszGB0o2RpakCAwEAAaAwMC4GCSqGSIb3DQEJDjEhMB8wHQYDVR0RBBYwFIISbm90LWFuLWV4YW1wbGUuY29tMAsGCSqGSIb3DQEBCwNBAFpyURFqjVn-7zx73GKaBvPF_2RhBsdehqSjaJ0BpvPKmzpoIFADjttNzKkWaRRDrTeT-GGMV2Gky8S-E_dzoms=",
       "authorizations": ["valid"]
     }`, &wfe.nonceService)),
@@ -640,7 +652,7 @@ func TestIssueCertificate(t *testing.T) {
 		"/acme/cert/0000000000000000")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		"</acme/issuer-cert>;rel=\"up\"")
+		`</acme/issuer-cert>;rel="up"`)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Content-Type"),
 		"application/pkix-cert")
@@ -687,7 +699,7 @@ func TestChallenge(t *testing.T) {
 	wfe.challenge(authz, responseWriter, &http.Request{
 		Method: "POST",
 		URL:    challengeURL,
-		Body:   makeBody(signRequest(t, "{}", &wfe.nonceService)),
+		Body:   makeBody(signRequest(t, `{"resource":"challenge"}`, &wfe.nonceService)),
 	}, requestEvent{})
 
 	test.AssertEquals(
@@ -695,10 +707,10 @@ func TestChallenge(t *testing.T) {
 		"/acme/authz/asdf?challenge=foo")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		"</acme/authz/asdf>;rel=\"up\"")
+		`</acme/authz/asdf>;rel="up"`)
 	test.AssertEquals(
 		t, responseWriter.Body.String(),
-		"{\"type\":\"dns\",\"uri\":\"/acme/authz/asdf?challenge=foo\"}")
+		`{"type":"dns","uri":"/acme/authz/asdf?challenge=foo"}`)
 }
 
 func TestNewRegistration(t *testing.T) {
@@ -717,14 +729,14 @@ func TestNewRegistration(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(NewRegPath),
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST"}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -732,7 +744,7 @@ func TestNewRegistration(t *testing.T) {
 		Method: "POST",
 		Body:   makeBody("hi"),
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS"}`)
 
 	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
@@ -752,7 +764,7 @@ func TestNewRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error unmarshaling JSON\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON"}`)
 
 	// Same signed body, but payload modified by one byte, breaking signature.
 	// should fail JWS verification.
@@ -776,13 +788,13 @@ func TestNewRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: JWS verification error"}`)
 
 	responseWriter.Body.Reset()
 	nonce, err = wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
 	result, err = signer.Sign(
-		[]byte("{\"contact\":[\"tel:123456789\"],\"agreement\":\"https://letsencrypt.org/im-bad\"}"),
+		[]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"https://letsencrypt.org/im-bad"}`),
 		nonce)
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
@@ -790,12 +802,12 @@ func TestNewRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL ["+agreementURL+"]\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]"}`)
 
 	responseWriter.Body.Reset()
 	nonce, err = wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
-	result, err = signer.Sign([]byte("{\"contact\":[\"tel:123456789\"],\"agreement\":\""+agreementURL+"\"}"), nonce)
+	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"`+agreementURL+`"}`), nonce)
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
 		Body:   makeBody(result.FullSerialize()),
@@ -818,7 +830,7 @@ func TestNewRegistration(t *testing.T) {
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		"</acme/new-authz>;rel=\"next\"")
+		`</acme/new-authz>;rel="next"`)
 
 	key, err = jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
@@ -832,14 +844,15 @@ func TestNewRegistration(t *testing.T) {
 	// POST, Valid JSON, Key already in use
 	nonce, err = wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
-	result, err = signer.Sign([]byte("{\"contact\":[\"tel:123456789\"],\"agreement\":\""+agreementURL+"\"}"), nonce)
+	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"`+agreementURL+`"}`), nonce)
+
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
 		Body:   makeBody(result.FullSerialize()),
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Registration key is already in use\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Registration key is already in use"}`)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"/acme/reg/1")
@@ -861,10 +874,13 @@ func TestRevokeCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to load cert")
 	certBlock, _ := pem.Decode(certPemBytes)
 	test.Assert(t, certBlock != nil, "Failed to decode PEM")
-	var revokeRequest struct {
+	revokeRequest := struct {
+		Resource       string          `json:"resource"`
 		CertificateDER core.JSONBuffer `json:"certificate"`
+	}{
+		Resource:       "revoke-cert",
+		CertificateDER: certBlock.Bytes,
 	}
-	revokeRequest.CertificateDER = certBlock.Bytes
 	revokeRequestJSON, err := json.Marshal(revokeRequest)
 	test.AssertNotError(t, err, "Failed to marshal request")
 
@@ -922,10 +938,13 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to load cert")
 	certBlock, _ := pem.Decode(certPemBytes)
 	test.Assert(t, certBlock != nil, "Failed to decode PEM")
-	var revokeRequest struct {
+	revokeRequest := struct {
+		Resource       string          `json:"resource"`
 		CertificateDER core.JSONBuffer `json:"certificate"`
+	}{
+		Resource:       "revoke-cert",
+		CertificateDER: certBlock.Bytes,
 	}
-	revokeRequest.CertificateDER = certBlock.Bytes
 	revokeRequestJSON, err := json.Marshal(revokeRequest)
 	test.AssertNotError(t, err, "Failed to marshal request")
 
@@ -947,7 +966,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, 409)
 	test.AssertEquals(t, responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Certificate already revoked\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Certificate already revoked"}`)
 }
 
 func TestAuthorization(t *testing.T) {
@@ -965,14 +984,14 @@ func TestAuthorization(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(NewAuthzPath),
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
 
 	// POST, but no body.
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(responseWriter, &http.Request{
 		Method: "POST",
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST"}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -980,7 +999,7 @@ func TestAuthorization(t *testing.T) {
 		Method: "POST",
 		Body:   makeBody("hi"),
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS"}`)
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -990,7 +1009,7 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Error unmarshaling JSON\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON"}`)
 
 	// Same signed body, but payload modified by one byte, breaking signature.
 	// should fail JWS verification.
@@ -1014,12 +1033,12 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: JWS verification error"}`)
 
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(responseWriter, &http.Request{
 		Method: "POST",
-		Body:   makeBody(signRequest(t, "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}", &wfe.nonceService)),
+		Body:   makeBody(signRequest(t, `{"resource":"new-authz","identifier":{"type":"dns","value":"test.com"}}`, &wfe.nonceService)),
 	})
 
 	test.AssertEquals(
@@ -1027,9 +1046,9 @@ func TestAuthorization(t *testing.T) {
 		"/acme/authz/bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		"</acme/new-cert>;rel=\"next\"")
+		`</acme/new-cert>;rel="next"`)
 
-	test.AssertEquals(t, responseWriter.Body.String(), "{\"identifier\":{\"type\":\"dns\",\"value\":\"test.com\"}}")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
 
 	var authz core.Authorization
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
@@ -1064,7 +1083,7 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
 	responseWriter.Body.Reset()
 
 	// Test GET proper entry returns 405
@@ -1074,7 +1093,7 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Method not allowed\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
 	responseWriter.Body.Reset()
 
 	// Test POST invalid JSON
@@ -1086,7 +1105,7 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Unable to read/verify body\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS"}`)
 	responseWriter.Body.Reset()
 
 	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
@@ -1099,7 +1118,7 @@ func TestRegistration(t *testing.T) {
 	// Test POST valid JSON but key is not registered
 	nonce, err := wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
-	result, err := signer.Sign([]byte("{\"agreement\":\""+agreementURL+"\"}"), nonce)
+	result, err := signer.Sign([]byte(`{"resource":"reg","agreement":"`+agreementURL+`"}`), nonce)
 	path, _ = url.Parse("/2")
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
@@ -1108,7 +1127,7 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:unauthorized\",\"detail\":\"No registration exists matching provided key\"}")
+		`{"type":"urn:acme:error:unauthorized","detail":"No registration exists matching provided key"}`)
 	responseWriter.Body.Reset()
 
 	key, err = jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
@@ -1123,7 +1142,7 @@ func TestRegistration(t *testing.T) {
 	// Test POST valid JSON with registration up in the mock (with incorrect agreement URL)
 	nonce, err = wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
-	result, err = signer.Sign([]byte("{\"agreement\":\"https://letsencrypt.org/im-bad\"}"), nonce)
+	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"https://letsencrypt.org/im-bad"}`), nonce)
 
 	// Test POST valid JSON with registration up in the mock
 	path, _ = url.Parse("/1")
@@ -1134,13 +1153,13 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		"{\"type\":\"urn:acme:error:malformed\",\"detail\":\"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL ["+agreementURL+"]\"}")
+		`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]"}`)
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with registration up in the mock (with correct agreement URL)
 	nonce, err = wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
-	result, err = signer.Sign([]byte("{\"agreement\":\""+agreementURL+"\"}"), nonce)
+	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"`+agreementURL+`"}`), nonce)
 	wfe.Registration(responseWriter, &http.Request{
 		Method: "POST",
 		Body:   makeBody(result.FullSerialize()),
