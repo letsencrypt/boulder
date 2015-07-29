@@ -368,8 +368,8 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 		err = core.MalformedRequestError("Request payload does not specify a resource")
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
-	} else if resource != core.AcmeResource(requestedResource) {
-		err = core.MalformedRequestError(fmt.Sprintf("Request payload has invalid resource: %s != %s", requestedResource, resource))
+	} else if resource != core.AcmeResource(parsedRequest.Resource) {
+		err = core.MalformedRequestError(fmt.Sprintf("Request payload has invalid resource: %s != %s", parsedRequest.Resource, resource))
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
 	}
