@@ -103,6 +103,7 @@ type StorageGetter interface {
 	GetRegistration(int64) (Registration, error)
 	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
+	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
 	GetCertificate(string) (Certificate, error)
 	GetCertificateByShortSerial(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
@@ -144,6 +145,7 @@ type DNSResolver interface {
 	LookupTXT(string) ([]string, time.Duration, error)
 	LookupHost(string) ([]net.IP, time.Duration, time.Duration, error)
 	LookupCNAME(string) (string, time.Duration, error)
+	LookupDNAME(string) (string, time.Duration, error)
 	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
 	LookupMX(string) ([]string, time.Duration, error)
 }

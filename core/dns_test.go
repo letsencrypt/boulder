@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,11 +26,14 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 	m.SetReply(r)
 	m.Compress = false
 
+	appendAnswer := func(rr dns.RR) {
+		m.Answer = append(m.Answer, rr)
+	}
 	for _, q := range r.Question {
+		q.Name = strings.ToLower(q.Name)
 		if q.Name == "servfail.com." {
 			m.Rcode = dns.RcodeServerFailure
-			w.WriteMsg(m)
-			return
+			break
 		}
 		switch q.Qtype {
 		case dns.TypeSOA:
@@ -42,31 +46,50 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 			record.Retry = 1
 			record.Expire = 1
 			record.Minttl = 1
-
-			m.Answer = append(m.Answer, record)
-			w.WriteMsg(m)
-			return
+			appendAnswer(record)
 		case dns.TypeA:
 			if q.Name == "cps.letsencrypt.org." {
 				record := new(dns.A)
 				record.Hdr = dns.RR_Header{Name: "cps.letsencrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
 				record.A = net.ParseIP("127.0.0.1")
-
-				m.Answer = append(m.Answer, record)
-				w.WriteMsg(m)
-				return
+				appendAnswer(record)
+			}
+		case dns.TypeCNAME:
+			if q.Name == "cname.letsencrypt.org." {
+				record := new(dns.CNAME)
+				record.Hdr = dns.RR_Header{Name: "cname.letsencrypt.org.", Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: 30}
+				record.Target = "cps.letsencrypt.org."
+				appendAnswer(record)
+			}
+			if q.Name == "cname.example.com." {
+				record := new(dns.CNAME)
+				record.Hdr = dns.RR_Header{Name: "cname.example.com.", Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: 30}
+				record.Target = "CAA.example.com."
+				appendAnswer(record)
+			}
+		case dns.TypeDNAME:
+			if q.Name == "dname.letsencrypt.org." {
+				record := new(dns.DNAME)
+				record.Hdr = dns.RR_Header{Name: "dname.letsencrypt.org.", Rrtype: dns.TypeDNAME, Class: dns.ClassINET, Ttl: 30}
+				record.Target = "cps.letsencrypt.org."
+				appendAnswer(record)
 			}
 		case dns.TypeCAA:
-			if q.Name == "bracewel.net." {
+			if q.Name == "bracewel.net." || q.Name == "caa.example.com." {
 				record := new(dns.CAA)
-				record.Hdr = dns.RR_Header{Name: "bracewel.net.", Rrtype: dns.TypeCAA, Class: dns.ClassINET, Ttl: 0}
+				record.Hdr = dns.RR_Header{Name: q.Name, Rrtype: dns.TypeCAA, Class: dns.ClassINET, Ttl: 0}
 				record.Tag = "issue"
 				record.Value = "letsencrypt.org"
 				record.Flag = 1
-
-				m.Answer = append(m.Answer, record)
-				w.WriteMsg(m)
-				return
+				appendAnswer(record)
+			}
+			if q.Name == "cname.example.com." {
+				record := new(dns.CAA)
+				record.Hdr = dns.RR_Header{Name: "caa.example.com.", Rrtype: dns.TypeCAA, Class: dns.ClassINET, Ttl: 0}
+				record.Tag = "issue"
+				record.Value = "letsencrypt.org"
+				record.Flag = 1
+				appendAnswer(record)
 			}
 		}
 	}
@@ -157,7 +180,7 @@ func TestDNSServFail(t *testing.T) {
 	test.AssertError(t, err, "LookupCNAME didn't return an error")
 
 	_, _, _, err = obj.LookupHost(bad)
-	test.AssertError(t, err, "LookupCNAME didn't return an error")
+	test.AssertError(t, err, "LookupHost didn't return an error")
 
 	// CAA lookup ignores validation failures from the resolver for now
 	// and returns an empty list of CAA records.
@@ -204,4 +227,32 @@ func TestDNSLookupCAA(t *testing.T) {
 	caas, _, err = obj.LookupCAA("nonexistent.letsencrypt.org")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
+
+	caas, _, err = obj.LookupCAA("cname.example.com")
+	test.AssertNotError(t, err, "CAA lookup failed")
+	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
+}
+
+func TestDNSLookupCNAME(t *testing.T) {
+	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+
+	target, _, err := obj.LookupCNAME("cps.letsencrypt.org")
+	test.AssertNotError(t, err, "CNAME lookup failed")
+	test.AssertEquals(t, target, "")
+
+	target, _, err = obj.LookupCNAME("cname.letsencrypt.org")
+	test.AssertNotError(t, err, "CNAME lookup failed")
+	test.AssertEquals(t, target, "cps.letsencrypt.org.")
+}
+
+func TestDNSLookupDNAME(t *testing.T) {
+	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+
+	target, _, err := obj.LookupDNAME("cps.letsencrypt.org")
+	test.AssertNotError(t, err, "DNAME lookup failed")
+	test.AssertEquals(t, target, "")
+
+	target, _, err = obj.LookupDNAME("dname.letsencrypt.org")
+	test.AssertNotError(t, err, "DNAME lookup failed")
+	test.AssertEquals(t, target, "cps.letsencrypt.org.")
 }

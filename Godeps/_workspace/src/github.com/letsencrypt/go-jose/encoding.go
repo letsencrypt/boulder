@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"math/big"
@@ -129,6 +130,12 @@ func newBuffer(data []byte) *byteBuffer {
 	return &byteBuffer{
 		data: data,
 	}
+}
+
+func newBufferFromInt(num uint64) *byteBuffer {
+	data := make([]byte, 8)
+	binary.BigEndian.PutUint64(data, num)
+	return newBuffer(bytes.TrimLeft(data, "\x00"))
 }
 
 func (b *byteBuffer) MarshalJSON() ([]byte, error) {

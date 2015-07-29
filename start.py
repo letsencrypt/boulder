@@ -15,13 +15,9 @@ import time
 sys.path.append('./test')
 import startservers
 
-
-if not startservers.start():
+if not startservers.start(race_detection=False):
     sys.exit(1)
 try:
-    time.sleep(1)
-    print("All servers are running. To stop, hit ^C.")
-
     os.wait()
 
     # If we reach here, a child died early. Log what died:

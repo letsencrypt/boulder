@@ -10,14 +10,12 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -280,16 +278,21 @@ const (
 	malformedJWS = "Unable to read/verify body"
 )
 
-func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, *jose.JsonWebKey, core.Registration, error) {
+func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
+	var err error
 	var reg core.Registration
 
 	// Read body
 	if request.Body == nil {
-		return nil, nil, reg, errors.New("No body on POST")
+		err = core.MalformedRequestError("No body on POST")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
+		err = core.InternalServerError(err.Error())
+		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
 	}
 
@@ -297,8 +300,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 	// Parse as JWS
 	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
-		wfe.log.Debug(fmt.Sprintf("Parse error reading JWS: %#v", err))
-		return nil, nil, reg, err
+		puberr := core.SignatureValidationError("Parse error reading JWS")
+		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
+		return nil, nil, reg, puberr
 	}
 
 	// Verify JWS
@@ -308,29 +312,34 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
 	if len(parsedJws.Signatures) > 1 {
-		wfe.log.Debug(fmt.Sprintf("Too many signatures on POST"))
-		return nil, nil, reg, errors.New("Too many signatures on POST")
+		err = core.SignatureValidationError("Too many signatures on POST")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 	if len(parsedJws.Signatures) == 0 {
-		wfe.log.Debug(fmt.Sprintf("POST not signed: %s", body))
-		return nil, nil, reg, errors.New("POST not signed")
+		err = core.SignatureValidationError("POST JWS not signed")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 	key := parsedJws.Signatures[0].Header.JsonWebKey
 	payload, header, err := parsedJws.Verify(key)
 	if err != nil {
+		puberr := core.SignatureValidationError("JWS verification error")
 		wfe.log.Debug(string(body))
-		wfe.log.Debug(fmt.Sprintf("JWS verification error: %v", err))
-		return nil, nil, reg, err
+		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
+		return nil, nil, reg, puberr
 	}
 
 	// Check that the request has a known anti-replay nonce
 	// i.e., Nonce is in protected header and
 	if err != nil || len(header.Nonce) == 0 {
-		wfe.log.Debug("JWS has no anti-replay nonce")
-		return nil, nil, reg, errors.New("JWS has no anti-replay nonce")
+		err = core.SignatureValidationError("JWS has no anti-replay nonce")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	} else if !wfe.nonceService.Valid(header.Nonce) {
-		wfe.log.Debug(fmt.Sprintf("JWS has invalid anti-replay nonce: %s", header.Nonce))
-		return nil, nil, reg, errors.New("JWS has invalid anti-replay nonce")
+		err = core.SignatureValidationError(fmt.Sprintf("JWS has invalid anti-replay nonce"))
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 
 	reg, err = wfe.SA.GetRegistrationByKey(*key)
@@ -343,6 +352,26 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		// Otherwise we just return an empty registration. The caller is expected
 		// to use the returned key instead.
 		reg = core.Registration{}
+	}
+
+	// Check that the "resource" field is present and has the correct value
+	var parsedRequest struct {
+		Resource string `json:"resource"`
+	}
+	err = json.Unmarshal([]byte(payload), &parsedRequest)
+	if err != nil {
+		puberr := core.SignatureValidationError("Request payload did not parse as JSON")
+		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
+		return nil, nil, reg, puberr
+	}
+	if parsedRequest.Resource == "" {
+		err = core.MalformedRequestError("Request payload does not specify a resource")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
+	} else if resource != core.AcmeResource(parsedRequest.Resource) {
+		err = core.MalformedRequestError(fmt.Sprintf("Request payload has invalid resource: %s != %s", parsedRequest.Resource, resource))
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 
 	return []byte(payload), key, reg, nil
@@ -401,7 +430,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, key, _, err := wfe.verifyPOST(request, false)
+	body, key, _, err := wfe.verifyPOST(request, false, core.ResourceNewReg)
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, malformedJWS, err, http.StatusBadRequest)
@@ -469,7 +498,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, _, currReg, err := wfe.verifyPOST(request, true)
+	body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceNewAuthz)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
@@ -540,7 +569,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 
 	// We don't ask verifyPOST to verify there is a correponding registration,
 	// because anyone with the right private key can revoke a certificate.
-	body, requestKey, registration, err := wfe.verifyPOST(request, false)
+	body, requestKey, registration, err := wfe.verifyPOST(request, false, core.ResourceRevokeCert)
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, malformedJWS, err, http.StatusBadRequest)
@@ -643,7 +672,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, _, reg, err := wfe.verifyPOST(request, true)
+	body, _, reg, err := wfe.verifyPOST(request, true, core.ResourceNewCert)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
@@ -673,7 +702,6 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 	wfe.logCsr(request.RemoteAddr, init, reg)
-	logEvent.Extra["Authorizations"] = init.Authorizations
 	logEvent.Extra["CSRDNSNames"] = init.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = init.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = init.CSR.IPAddresses
@@ -763,7 +791,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		}
 
 	case "POST":
-		body, _, currReg, err := wfe.verifyPOST(request, true)
+		body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceChallenge)
 		if err != nil {
 			logEvent.Error = err.Error()
 			respMsg := malformedJWS
@@ -842,7 +870,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, _, currReg, err := wfe.verifyPOST(request, true)
+	body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceRegistration)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
@@ -1053,7 +1081,7 @@ func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.
 
 	response.Header().Set("Content-Type", "text/plain")
 	response.WriteHeader(http.StatusOK)
-	detailsString := fmt.Sprintf("Boulder=(%s %s) Golang=(%s) BuildHost=(%s)", core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
 		logEvent.Error = err.Error()
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))

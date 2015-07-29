@@ -49,22 +49,22 @@ type authzModel struct {
 }
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for Boulder.
-func NewSQLStorageAuthority(driver string, dbConnect string) (ssa *SQLStorageAuthority, err error) {
+func NewSQLStorageAuthority(driver string, dbConnect string) (*SQLStorageAuthority, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Storage Authority Starting")
 
 	dbMap, err := NewDbMap(driver, dbConnect)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	ssa = &SQLStorageAuthority{
+	ssa := &SQLStorageAuthority{
 		dbMap:  dbMap,
 		log:    logger,
 		bucket: make(map[string]interface{}),
 	}
 
-	return
+	return ssa, nil
 }
 
 // SetSQLDebug enables/disables GORP SQL-level Debugging
@@ -163,6 +163,20 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	authz = authD.Authorization
 
 	err = tx.Commit()
+	return
+}
+
+// Get the valid authorization with biggest expire date for a given domain and registrationId
+func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+	ident, err := json.Marshal(identifier)
+	if err != nil {
+		return
+	}
+	err = ssa.dbMap.SelectOne(&authz, "SELECT id, identifier, registrationID, status, expires, challenges, combinations "+
+		"FROM authz "+
+		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
+		"ORDER BY expires DESC LIMIT 1",
+		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
 	return
 }
 
@@ -266,7 +280,7 @@ func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (
 
 	// Reset the update clock
 	status.OCSPLastUpdated = timeStamp
-	_, err = tx.Update(status)
+	_, err = tx.Update(&status)
 	if err != nil {
 		tx.Rollback()
 		return err

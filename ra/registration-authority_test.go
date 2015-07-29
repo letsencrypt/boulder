@@ -57,14 +57,14 @@ var (
 	AccountKeyJSONB = []byte(`{
 		"kty":"RSA",
 		"n":"z8bp-jPtHt4lKBqepeKF28g_QAEOuEsCIou6sZ9ndsQsEjxEOQxQ0xNOQezsKa63eogw8YS3vzjUcPP5BJuVzfPfGd5NVUdT-vSSwxk3wvk_jtNqhrpcoG0elRPQfMVsQWmxCAXCVRz3xbcFI8GTe-syynG3l-g1IzYIIZVNI6jdljCZML1HOMTTW4f7uJJ8mM-08oQCeHbr5ejK7O2yMSSYxW03zY-Tj1iVEebROeMv6IEEJNFSS4yM-hLpNAqVuQxFGetwtwjDMC1Drs1dTWrPuUAAjKGrP151z1_dE74M5evpAhZUmpKv1hY-x85DC6N0hFPgowsanmTNNiV75w",
-		"e":"AAEAAQ"
+		"e":"AQAB"
 	}`)
 	AccountKeyB = jose.JsonWebKey{}
 
 	AccountKeyJSONC = []byte(`{
 		"kty":"RSA",
 		"n":"rFH5kUBZrlPj73epjJjyCxzVzZuV--JjKgapoqm9pOuOt20BUTdHqVfC2oDclqM7HFhkkX9OSJMTHgZ7WaVqZv9u1X2yjdx9oVmMLuspX7EytW_ZKDZSzL-sCOFCuQAuYKkLbsdcA3eHBK_lwc4zwdeHFMKIulNvLqckkqYB9s8GpgNXBDIQ8GjR5HuJke_WUNjYHSd8jY1LU9swKWsLQe2YoQUz_ekQvBvBCoaFEtrtRaSJKNLIVDObXFr2TLIiFiM0Em90kK01-eQ7ZiruZTKomll64bRFPoNo4_uwubddg3xTqur2vdF3NyhTrYdvAgTem4uC0PFjEQ1bK_djBQ",
-		"e":"AAEAAQ"
+		"e":"AQAB"
 	}`)
 	AccountKeyC = jose.JsonWebKey{}
 
@@ -425,10 +425,8 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse CSR")
 	sa.UpdatePendingAuthorization(authz)
 	sa.FinalizeAuthorization(authz)
-	authzURL, _ := url.Parse("http://doesnt.matter/" + authz.ID)
 	certRequest := core.CertificateRequest{
-		CSR:            parsedCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*authzURL)},
+		CSR: parsedCSR,
 	}
 
 	// Registration id 1 has key == AccountKeyA
@@ -446,14 +444,10 @@ func TestAuthorizationRequired(t *testing.T) {
 	sa.UpdatePendingAuthorization(AuthzFinal)
 	sa.FinalizeAuthorization(AuthzFinal)
 
-	// Construct a cert request referencing the authorization
-	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
-
 	// ExampleCSR requests not-example.com and www.not-example.com,
 	// but the authorization only covers not-example.com
 	certRequest := core.CertificateRequest{
-		CSR:            ExampleCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*url1)},
+		CSR: ExampleCSR,
 	}
 
 	_, err := ra.NewCertificate(certRequest, 1)
@@ -475,13 +469,8 @@ func TestNewCertificate(t *testing.T) {
 	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
 	sa.FinalizeAuthorization(authzFinalWWW)
 
-	// Construct a cert request referencing the two authorizations
-	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
-	url2, _ := url.Parse("http://doesnt.matter/" + authzFinalWWW.ID)
-
 	certRequest := core.CertificateRequest{
-		CSR:            ExampleCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*url1), core.AcmeURL(*url2)},
+		CSR: ExampleCSR,
 	}
 
 	cert, err := ra.NewCertificate(certRequest, 1)
