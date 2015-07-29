@@ -166,6 +166,20 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	return
 }
 
+// Get the valid authorization with biggest expire date for a given domain and registrationId
+func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+	ident, err := json.Marshal(identifier)
+	if err != nil {
+		return
+	}
+	err = ssa.dbMap.SelectOne(&authz, "SELECT id, identifier, registrationID, status, expires, challenges, combinations "+
+		"FROM authz "+
+		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
+		"ORDER BY expires DESC LIMIT 1",
+		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
+	return
+}
+
 // GetCertificateByShortSerial takes an id consisting of the first, sequential half of a
 // serial number and returns the first certificate whose full serial number is
 // lexically greater than that id. This allows clients to query on the known

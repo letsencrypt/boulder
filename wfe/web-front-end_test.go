@@ -130,7 +130,7 @@ wk6Oiadty3eQqSBJv0HnpmiEdQVffIK5Pg4M8Dd+aOBnEkbopAJOuA==
 )
 
 type MockSA struct {
-	// empty
+	authorizedDomains map[string]bool
 }
 
 func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
@@ -175,6 +175,16 @@ func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
 		return core.Authorization{Status: core.StatusValid, RegistrationID: 1, Expires: &exp, Identifier: core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"}}, nil
 	}
 	return core.Authorization{}, nil
+}
+
+func (sa *MockSA) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+	if registrationId == 1 && identifier.Type == "dns" {
+		if sa.authorizedDomains[identifier.Value] || identifier.Value == "not-an-example.com" {
+			exp := time.Now().AddDate(100, 0, 0)
+			return core.Authorization{Status: core.StatusValid, RegistrationID: 1, Expires: &exp, Identifier: identifier}, nil
+		}
+	}
+	return core.Authorization{}, errors.New("no authz")
 }
 
 func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
@@ -225,6 +235,9 @@ func (sa *MockSA) AddCertificate(certDER []byte, regID int64) (digest string, er
 }
 
 func (sa *MockSA) FinalizeAuthorization(authz core.Authorization) (err error) {
+	if authz.Status == core.StatusValid && authz.Identifier.Type == core.IdentifierDNS {
+		sa.authorizedDomains[authz.Identifier.Value] = true
+	}
 	return
 }
 
