@@ -3,46 +3,29 @@
 Run a local instance of Boulder for testing purposes.
 
 This runs in non-monolithic mode and requires RabbitMQ on localhost.
+
+Keeps servers alive until ^C. Exit non-zero if any servers fail to
+start, or die before ^C.
 """
+
 import os
-import shutil
-import socket
-import subprocess
 import sys
-import tempfile
 import time
 
-tempdir = tempfile.mkdtemp()
+sys.path.append('./test')
+import startservers
 
-config = os.environ.get('BOULDER_CONFIG')
-if config is None:
-	config = 'test/boulder-config.json'
 
-def run(path):
-    binary = os.path.join(tempdir, os.path.basename(path))
-    cmd = 'go build -o %s %s' % (binary, path)
-    print(cmd)
-    if subprocess.Popen(cmd, shell=True).wait() != 0:
-        sys.exit(1)
-    return subprocess.Popen('''
-        exec %s --config %s
-        ''' % (binary, config), shell=True)
-
-processes = []
-
-def start():
-    global processes
-    processes = [
-        run('./cmd/boulder-wfe'),
-        run('./cmd/boulder-ra'),
-        run('./cmd/boulder-sa'),
-        run('./cmd/boulder-ca'),
-        run('./cmd/boulder-va')]
-    time.sleep(100000)
-
+if not startservers.start():
+    sys.exit(1)
 try:
-    start()
-finally:
-    for p in processes:
-        if p.poll() is None:
-            p.kill()
+    time.sleep(1)
+    print("All servers are running. To stop, hit ^C.")
+
+    os.wait()
+
+    # If we reach here, a child died early. Log what died:
+    startservers.check()
+    sys.exit(1)
+except KeyboardInterrupt:
+    print "\nstopping servers."

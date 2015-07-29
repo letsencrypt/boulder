@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -23,6 +24,12 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 )
+
+const maxCNAME = 16 // Prevents infinite loops. Same limit as BIND.
+
+// Returned by CheckCAARecords if it has to follow too many
+// consecutive CNAME lookups.
+var ErrTooManyCNAME = errors.New("too many CNAME/DNAME lookups")
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
@@ -510,36 +517,50 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 }
 
 func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
-	hostname = strings.TrimRight(hostname, ".")
-	splitDomain := strings.Split(hostname, ".")
-	// RFC 6844 CAA set query sequence, 'x.y.z.com' => ['x.y.z.com', 'y.z.com', 'z.com']
-	for i := range splitDomain {
-		queryDomain := strings.Join(splitDomain[i:], ".")
-		// Don't query a public suffix
-		if _, present := policy.PublicSuffixList[queryDomain]; present {
+	label := strings.TrimRight(hostname, ".")
+	cnames := 0
+	// See RFC 6844 "Certification Authority Processing" for pseudocode.
+	for {
+		if strings.IndexRune(label, '.') == -1 {
+			// Reached TLD
 			break
 		}
-
-		// Query CAA records for domain and its alias if it has a CNAME
-		for _, alias := range []bool{false, true} {
-			if alias {
-				target, _, err := va.DNSResolver.LookupCNAME(queryDomain)
-				if err != nil {
-					return nil, err
-				}
-				queryDomain = target
-			}
-			CAAs, _, err := va.DNSResolver.LookupCAA(queryDomain)
-			if err != nil {
-				return nil, err
-			}
-
-			if len(CAAs) > 0 {
-				return newCAASet(CAAs), nil
-			}
+		if _, present := policy.PublicSuffixList[label]; present {
+			break
+		}
+		CAAs, _, err := va.DNSResolver.LookupCAA(label)
+		if err != nil {
+			return nil, err
+		}
+		if len(CAAs) > 0 {
+			return newCAASet(CAAs), nil
+		}
+		cname, _, err := va.DNSResolver.LookupCNAME(label)
+		if err != nil {
+			return nil, err
+		}
+		dname, _, err := va.DNSResolver.LookupDNAME(label)
+		if err != nil {
+			return nil, err
+		}
+		if cname == "" && dname == "" {
+			// Try parent domain (note we confirmed
+			// earlier that label contains '.')
+			label = label[strings.IndexRune(label, '.')+1:]
+			continue
+		}
+		if cname != "" && dname != "" && cname != dname {
+			return nil, errors.New("both CNAME and DNAME exist for " + label)
+		}
+		if cname != "" {
+			label = cname
+		} else {
+			label = dname
+		}
+		if cnames++; cnames > maxCNAME {
+			return nil, ErrTooManyCNAME
 		}
 	}
-
 	// no CAA records found
 	return nil, nil
 }

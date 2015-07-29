@@ -20,7 +20,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -128,13 +127,10 @@ func (key rawJsonWebKey) rsaPublicKey() (*rsa.PublicKey, error) {
 }
 
 func fromRsaPublicKey(pub *rsa.PublicKey) *rawJsonWebKey {
-	e := make([]byte, 4)
-	binary.BigEndian.PutUint32(e, uint32(pub.E))
-
 	return &rawJsonWebKey{
 		Kty: "RSA",
 		N:   newBuffer(pub.N.Bytes()),
-		E:   newBuffer(e),
+		E:   newBufferFromInt(uint64(pub.E)),
 	}
 }
 

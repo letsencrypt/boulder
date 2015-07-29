@@ -436,8 +436,9 @@ func TestRevoke(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get cert status")
 
 	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
-	test.Assert(t, time.Now().Sub(status.OCSPLastUpdated) > time.Second,
-		fmt.Sprintf("OCSP LastUpdated was wrong: %v", status.OCSPLastUpdated))
+	secondAgo := time.Now().Add(-time.Second)
+	test.Assert(t, status.OCSPLastUpdated.After(secondAgo),
+		fmt.Sprintf("OCSP LastUpdated was more than a second old: %v", status.OCSPLastUpdated))
 }
 
 func TestIssueCertificate(t *testing.T) {

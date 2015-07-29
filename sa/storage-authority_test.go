@@ -211,3 +211,32 @@ func TestDeniedCSR(t *testing.T) {
 	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
 	test.Assert(t, !exists, "Found non-existent CSR")
 }
+
+func TestUpdateOCSP(t *testing.T) {
+	sa := initSA(t)
+
+	// Add a cert to the DB to test with.
+	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	_, err = sa.AddCertificate(certDER, 1)
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	serial := "00000000000000000000000000021bd4"
+	const ocspResponse = "this is a fake OCSP response"
+	err = sa.UpdateOCSP(serial, []byte(ocspResponse))
+	test.AssertNotError(t, err, "UpdateOCSP failed")
+
+	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
+	certificateStatus := certificateStatusObj.(*core.CertificateStatus)
+	test.AssertNotError(t, err, "Failed to fetch certificate status")
+	test.Assert(t,
+		certificateStatus.OCSPLastUpdated.After(time.Now().Add(-time.Second)),
+		"OCSP last updated too old.")
+
+	var fetchedOcspResponse core.OCSPResponse
+	err = sa.dbMap.SelectOne(&fetchedOcspResponse,
+		`SELECT * from ocspResponses where serial = ? order by createdAt DESC limit 1;`,
+		serial)
+	test.AssertNotError(t, err, "Failed to fetch OCSP response")
+	test.AssertEquals(t, ocspResponse, string(fetchedOcspResponse.Response))
+}
