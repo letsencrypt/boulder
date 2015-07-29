@@ -47,8 +47,8 @@ func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 		if k := dsnVals.Get("parseTime"); k != "true" {
 			dsnVals.Set("parseTime", "true")
 			dbURI.RawQuery = dsnVals.Encode()
-			dbConnect = dbURI.String()
 		}
+		dbConnect = dbURI.String()
 	}
 
 	db, err := sql.Open(driver, dbConnect)

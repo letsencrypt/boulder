@@ -6,7 +6,6 @@
 package sa
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
