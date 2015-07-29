@@ -33,13 +33,12 @@ tempdir = tempfile.mkdtemp()
 
 
 def run(path, race_detection):
-    binary = os.path.join(tempdir, os.path.basename(path))
-
-    build = "go build"
+    install = "go install"
     if race_detection:
-        build = """GORACE="halt_on_error=1" go build -race"""
+        install = """GORACE="halt_on_error=1" go install -race"""
 
-    cmd = """%s -o %s ./%s; exec %s --config %s""" % (build, binary, path, binary, config)
+    binary = os.path.basename(path)
+    cmd = """%s ./%s; exec %s --config %s""" % (install, path, binary, config)
     p = subprocess.Popen(cmd, shell=True)
     p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))
