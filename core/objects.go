@@ -449,7 +449,6 @@ type Certificate struct {
 // that the PublicKey, CommonName, and DNSNames match those provided in
 // the CSR that was used to generate the certificate. It also checks the
 // following fields for:
-//		* notAfter is after earliestExpiry
 //		* notBefore is not more than 24 hours ago
 //		* BasicConstraintsValid is true
 //		* IsCA is false
@@ -494,10 +493,6 @@ func (cert Certificate) MatchesCSR(csr *x509.CertificateRequest, earliestExpiry 
 		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
 		len(parsedCertificate.Subject.PostalCode) > 0 || len(parsedCertificate.Subject.SerialNumber) > 0 {
 		err = InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
-		return
-	}
-	if parsedCertificate.NotAfter.After(earliestExpiry) {
-		err = InternalServerError("Generated certificate expires before earliest expiration")
 		return
 	}
 	now := time.Now()
