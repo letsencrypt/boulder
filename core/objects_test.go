@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -60,7 +62,7 @@ func TestSanityCheck(t *testing.T) {
 			chall.TLS = &tls
 			test.Assert(t, chall.IsSane(false), "IsSane should be true")
 		} else if challengeType == ChallengeTypeDVSNI || challengeType == ChallengeTypeDNS {
-			chall.Validation = new(AcmeJWS)
+			chall.Validation = new(jose.JsonWebSignature)
 			test.Assert(t, chall.IsSane(true), "IsSane should be true")
 		}
 	}

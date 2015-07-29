@@ -82,17 +82,20 @@ func TestMergeChallenge(t *testing.T) {
 	t1 := time.Now()
 	t2 := time.Now().Add(-5 * time.Hour)
 	challenge := Challenge{
+		Type:      ChallengeTypeSimpleHTTP,
 		Status:    StatusPending,
 		Validated: &t1,
 		Token:     "asdf",
 	}
 	response := Challenge{
+		Type:      ChallengeTypeSimpleHTTP,
 		Status:    StatusValid,
 		Validated: &t2,
 		Token:     "qwer",
 		TLS:       &tls,
 	}
 	merged := Challenge{
+		Type:      ChallengeTypeSimpleHTTP,
 		Status:    StatusPending,
 		Validated: &t1,
 		Token:     "asdf",

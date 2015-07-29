@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
 // AcmeStatus defines the state of a given authorization
@@ -75,7 +75,10 @@ const (
 	ChallengeTypeDNS        = "dns"
 )
 
+// The suffix appended to pseudo-domain names in DVSNI challenges
 const DVSNISuffix = "acme.invalid"
+
+// The label attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
 
 func (pd *ProblemDetails) Error() string {
@@ -311,9 +314,9 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 			*ch.TLS = true
 		}
 
-	case DVSNI:
+	case ChallengeTypeDVSNI:
 		fallthrough
-	case DNS:
+	case ChallengeTypeDNS:
 		// For dvsni and dns, only "validation" is client-provided
 		if resp.Validation != nil {
 			ch.Validation = resp.Validation
