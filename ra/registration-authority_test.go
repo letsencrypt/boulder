@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
-	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
@@ -161,11 +161,11 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
 	caCertPEM, _ := pem.Decode([]byte(CAcertPEM))
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
-	basicPolicy := &cfsslConfig.Signing{
-		Default: &cfsslConfig.SigningProfile{
+	basicPolicy := &config.Signing{
+		Default: &config.SigningProfile{
 			Usage:  []string{"server auth", "client auth"},
 			Expiry: 1 * time.Hour,
-			CSRWhitelist: &cfsslConfig.CSRWhitelist{
+			CSRWhitelist: &config.CSRWhitelist{
 				PublicKey:          true,
 				PublicKeyAlgorithm: true,
 				SignatureAlgorithm: true,
