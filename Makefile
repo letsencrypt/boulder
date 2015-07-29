@@ -11,7 +11,6 @@ MAINTAINER ?= "Community"
 
 OBJECTS = activity-monitor \
 	admin-revoker \
-	boulder \
 	boulder-ca \
 	boulder-ra \
 	boulder-sa \
