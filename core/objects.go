@@ -240,7 +240,7 @@ type Challenge struct {
 	TLS *bool `json:"tls,omitempty"`
 
 	// Used by dns and dvsni challenges
-	Validation *AcmeJWS `json:"validation,omitempty"`
+	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
@@ -380,30 +380,6 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 	*jb, err = base64URLDecode(str)
-	return
-}
-
-// AcmeJWS adds JSON serialization / deserialization to the go-jose JsonWebSignature object
-type AcmeJWS jose.JsonWebSignature
-
-// Verify is just passed through to the underlying type
-func (jws AcmeJWS) Verify(jwk interface{}) ([]byte, jose.JoseHeader, error) {
-	return jose.JsonWebSignature(jws).Verify(jwk)
-}
-
-// MarshalJSON encodes a JSONBuffer for transmission.
-func (jws AcmeJWS) MarshalJSON() (result []byte, err error) {
-	return []byte(jose.JsonWebSignature(jws).FullSerialize()), nil
-}
-
-// UnmarshalJSON decodes a JSONBuffer to an object.
-func (jws *AcmeJWS) UnmarshalJSON(data []byte) (err error) {
-	parsedJWS, err := jose.ParseSigned(string(data))
-	if err != nil {
-		return err
-	}
-
-	*jws = AcmeJWS(*parsedJWS)
 	return
 }
 
