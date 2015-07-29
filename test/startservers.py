@@ -6,6 +6,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -22,14 +23,13 @@ class ToSServerThread(threading.Thread):
             BaseHTTPServer.HTTPServer(("localhost", 4001), self.ToSHandler).serve_forever()
         except Exception as e:
             print "Problem starting ToSServer: %s" % e
-            exit(1)
+            sys.exit(1)
 
 
 config = os.environ.get('BOULDER_CONFIG')
 if config is None:
     config = 'test/boulder-config.json'
 processes = []
-tempdir = tempfile.mkdtemp()
 
 
 def run(path, race_detection):
@@ -125,4 +125,3 @@ def stop():
     for p in processes:
         if p.poll() is None:
             p.kill()
-    shutil.rmtree(tempdir)
