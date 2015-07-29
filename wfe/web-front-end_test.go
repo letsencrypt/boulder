@@ -523,7 +523,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST"}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -533,7 +533,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS"}`)
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -543,7 +543,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON"}`)
 
 	// Valid, signed JWS body, payload is '{}'
 	responseWriter.Body.Reset()
@@ -553,7 +553,7 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload does not specify a resource"}`)
 
 	// Valid, signed JWS body, payload is '{"resource":"new-cert"}'
 	responseWriter.Body.Reset()
@@ -723,7 +723,7 @@ func TestNewRegistration(t *testing.T) {
 	wfe.NewRegistration(responseWriter, &http.Request{
 		Method: "POST",
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST"}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -731,7 +731,7 @@ func TestNewRegistration(t *testing.T) {
 		Method: "POST",
 		Body:   makeBody("hi"),
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS"}`)
 
 	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
@@ -751,7 +751,7 @@ func TestNewRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON"}`)
 
 	// Same signed body, but payload modified by one byte, breaking signature.
 	// should fail JWS verification.
@@ -775,7 +775,7 @@ func TestNewRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: JWS verification error"}`)
 
 	responseWriter.Body.Reset()
 	nonce, err = wfe.nonceService.Nonce()
@@ -978,7 +978,7 @@ func TestAuthorization(t *testing.T) {
 	wfe.NewAuthorization(responseWriter, &http.Request{
 		Method: "POST",
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST"}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
@@ -986,7 +986,7 @@ func TestAuthorization(t *testing.T) {
 		Method: "POST",
 		Body:   makeBody("hi"),
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS"}`)
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -996,7 +996,7 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON"}`)
 
 	// Same signed body, but payload modified by one byte, breaking signature.
 	// should fail JWS verification.
@@ -1020,7 +1020,7 @@ func TestAuthorization(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: JWS verification error"}`)
 
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(responseWriter, &http.Request{
@@ -1092,7 +1092,7 @@ func TestRegistration(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS"}`)
 	responseWriter.Body.Reset()
 
 	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))

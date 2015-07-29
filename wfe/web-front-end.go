@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -281,15 +280,20 @@ const (
 )
 
 func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
+	var err error
 	var reg core.Registration
 
 	// Read body
 	if request.Body == nil {
-		return nil, nil, reg, errors.New("No body on POST")
+		err = core.MalformedRequestError("No body on POST")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
+		err = core.InternalServerError(err.Error())
+		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
 	}
 
@@ -297,8 +301,9 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 	// Parse as JWS
 	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
-		wfe.log.Debug(fmt.Sprintf("Parse error reading JWS: %#v", err))
-		return nil, nil, reg, err
+		puberr := core.SignatureValidationError("Parse error reading JWS")
+		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
+		return nil, nil, reg, puberr
 	}
 
 	// Verify JWS
@@ -308,29 +313,34 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
 	if len(parsedJws.Signatures) > 1 {
-		wfe.log.Debug(fmt.Sprintf("Too many signatures on POST"))
-		return nil, nil, reg, errors.New("Too many signatures on POST")
+		err = core.SignatureValidationError("Too many signatures on POST")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 	if len(parsedJws.Signatures) == 0 {
-		wfe.log.Debug(fmt.Sprintf("POST not signed: %s", body))
-		return nil, nil, reg, errors.New("POST not signed")
+		err = core.SignatureValidationError("POST JWS not signed")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 	key := parsedJws.Signatures[0].Header.JsonWebKey
 	payload, header, err := parsedJws.Verify(key)
 	if err != nil {
+		puberr := core.SignatureValidationError("JWS verification error")
 		wfe.log.Debug(string(body))
-		wfe.log.Debug(fmt.Sprintf("JWS verification error: %v", err))
-		return nil, nil, reg, err
+		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
+		return nil, nil, reg, puberr
 	}
 
 	// Check that the request has a known anti-replay nonce
 	// i.e., Nonce is in protected header and
 	if err != nil || len(header.Nonce) == 0 {
-		wfe.log.Debug("JWS has no anti-replay nonce")
-		return nil, nil, reg, errors.New("JWS has no anti-replay nonce")
+		err = core.SignatureValidationError("JWS has no anti-replay nonce")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	} else if !wfe.nonceService.Valid(header.Nonce) {
-		wfe.log.Debug(fmt.Sprintf("JWS has invalid anti-replay nonce: %s", header.Nonce))
-		return nil, nil, reg, errors.New("JWS has invalid anti-replay nonce")
+		err = core.SignatureValidationError(fmt.Sprintf("JWS has invalid anti-replay nonce"))
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 
 	reg, err = wfe.SA.GetRegistrationByKey(*key)
@@ -348,14 +358,21 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 	// Check that the "resource" field is present and has the correct value
 	var parsedRequest map[string]interface{}
 	err = json.Unmarshal([]byte(payload), &parsedRequest)
+	if err != nil {
+		puberr := core.SignatureValidationError("Request payload did not parse as JSON")
+		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
+		return nil, nil, reg, puberr
+	}
 	parsedResource, present := parsedRequest["resource"]
 	requestedResource, valid := parsedResource.(string)
 	if !present {
-		wfe.log.Debug("Request payload does not specify a resource")
-		return nil, nil, reg, errors.New("Request payload does not specify a resource")
+		err = core.MalformedRequestError("Request payload does not specify a resource")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	} else if !valid || resource != core.AcmeResource(requestedResource) {
-		wfe.log.Debug(fmt.Sprintf("Request payload has invalid resource: %s != %s", requestedResource, resource))
-		return nil, nil, reg, errors.New("Request payload has invalid resource")
+		err = core.MalformedRequestError(fmt.Sprintf("Request payload has invalid resource: %s != %s", requestedResource, resource))
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 
 	return []byte(payload), key, reg, nil

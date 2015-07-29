@@ -62,14 +62,12 @@ const (
 
 // The types of ACME resources
 const (
-	ResourceNewReg        = AcmeResource("new-reg")
-	ResourceNewAuthz      = AcmeResource("new-authz")
-	ResourceNewCert       = AcmeResource("new-cert")
-	ResourceRevokeCert    = AcmeResource("revoke-cert")
-	ResourceRegistration  = AcmeResource("reg")
-	ResourceAuthorization = AcmeResource("authz")
-	ResourceChallenge     = AcmeResource("challenge")
-	ResourceCertificate   = AcmeResource("cert")
+	ResourceNewReg       = AcmeResource("new-reg")
+	ResourceNewAuthz     = AcmeResource("new-authz")
+	ResourceNewCert      = AcmeResource("new-cert")
+	ResourceRevokeCert   = AcmeResource("revoke-cert")
+	ResourceRegistration = AcmeResource("reg")
+	ResourceChallenge    = AcmeResource("challenge")
 )
 
 // These status are the states of OCSP
