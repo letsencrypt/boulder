@@ -20,7 +20,7 @@ class ToSServerThread(threading.Thread):
     def run(self):
         try:
             BaseHTTPServer.HTTPServer(("localhost", 4001), self.ToSHandler).serve_forever()
-        except e:
+        except Exception as e:
             print "Problem starting ToSServer: %s" % e
             exit(1)
 
