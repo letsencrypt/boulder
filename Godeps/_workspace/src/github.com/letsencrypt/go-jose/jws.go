@@ -235,3 +235,20 @@ func (obj JsonWebSignature) FullSerialize() string {
 
 	return string(mustSerializeJSON(raw))
 }
+
+// MarshalJSON serializes the JWS to JSON.
+func (obj JsonWebSignature) MarshalJSON() (result []byte, err error) {
+	return []byte(obj.FullSerialize()), nil
+}
+
+// UnmarshalJSON parses a JWS from JSON data.  (This may also accept a compact
+// JWS in a string.)
+func (obj *JsonWebSignature) UnmarshalJSON(data []byte) (err error) {
+	parsedJWS, err := ParseSigned(string(data))
+	if err != nil {
+		return err
+	}
+
+	*obj = *parsedJWS
+	return nil
+}
