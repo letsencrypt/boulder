@@ -6,7 +6,21 @@ go:
 services:
   - rabbitmq
 
-sudo: required
+addons:
+  apt:
+    packages:
+      - lsb-release
+      - git-core
+      - python-dev
+      - python-virtualenv
+      - gcc
+      - dialog
+      - libaugeas0
+      - libssl-dev
+      - libffi-dev
+      - ca-certificates
+
+sudo: false
 
 matrix:
   fast_finish: true
@@ -15,8 +29,6 @@ matrix:
 branches:
   only:
     - master
-
-sudo: required
 
 before_install:
   # Github-PR-Status secret
@@ -38,7 +50,6 @@ before_install:
   - test ! -d $GOPATH/src/github.com/letsencrypt/boulder && ln -s $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt/boulder || true
   - git clone https://www.github.com/letsencrypt/lets-encrypt-preview.git "$LETSENCRYPT_PATH"
   - cd "$LETSENCRYPT_PATH"
-  - sudo ./bootstrap/debian.sh
   - virtualenv --no-site-packages -p python2 ./venv
   - travis_retry ./venv/bin/pip install -r requirements.txt -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
   - "cd -"
