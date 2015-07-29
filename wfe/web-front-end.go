@@ -672,7 +672,6 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 	wfe.logCsr(request.RemoteAddr, init, reg)
-	logEvent.Extra["Authorizations"] = init.Authorizations
 	logEvent.Extra["CSRDNSNames"] = init.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = init.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = init.CSR.IPAddresses

@@ -42,12 +42,7 @@ func TestChallenges(t *testing.T) {
 
 var testCertificateRequestBadCSR = []byte(`{"csr":"AAAA"}`)
 var testCertificateRequestGood = []byte(`{
-  "csr": "MIHRMHgCAQAwFjEUMBIGA1UEAxMLZXhhbXBsZS5jb20wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQWUlnRrm5ErSVkTzBTk3isg1hNydfyY4NM1P_N1S-ZeD39HMrYJsQkUh2tKvy3ztfmEqWpekvO4WRktSa000BPoAAwCgYIKoZIzj0EAwMDSQAwRgIhAIZIBwu4xOUD_4dJuGgceSKaoXTFBQKA3BFBNVJvbpdsAiEAlfq3Dq_8dnYbtmyDdXgopeKkSV5_76VSpcog-wkwEwo",
-  "authorizations": [
-    "https://example.com/authz/1",
-    "https://example.com/authz/2",
-    "https://example.com/authz/3"
-  ]
+  "csr": "MIHRMHgCAQAwFjEUMBIGA1UEAxMLZXhhbXBsZS5jb20wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQWUlnRrm5ErSVkTzBTk3isg1hNydfyY4NM1P_N1S-ZeD39HMrYJsQkUh2tKvy3ztfmEqWpekvO4WRktSa000BPoAAwCgYIKoZIzj0EAwMDSQAwRgIhAIZIBwu4xOUD_4dJuGgceSKaoXTFBQKA3BFBNVJvbpdsAiEAlfq3Dq_8dnYbtmyDdXgopeKkSV5_76VSpcog-wkwEwo"
 }`)
 
 func TestCertificateRequest(t *testing.T) {
@@ -60,9 +55,6 @@ func TestCertificateRequest(t *testing.T) {
 	}
 	if err = VerifyCSR(goodCR.CSR); err != nil {
 		t.Errorf("Valid CSR in CertificateRequest failed to verify: %v", err)
-	}
-	if len(goodCR.Authorizations) == 0 {
-		t.Errorf("Certificate request parsing failed to parse authorizations")
 	}
 
 	// Bad CSR
