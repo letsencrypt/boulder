@@ -24,17 +24,17 @@ const JWK1JSON = `{
   "e": "AQAB"
 }`
 
-type MockRPCClient struct {
+type MockClient struct {
 	LastMethod string
 	LastBody   []byte
 	NextResp   []byte
 	NextErr    error
 }
 
-func (rpc *MockRPCClient) SetTimeout(ttl time.Duration) {
+func (rpc *MockClient) SetTimeout(ttl time.Duration) {
 }
 
-func (rpc *MockRPCClient) Dispatch(method string, body []byte) chan []byte {
+func (rpc *MockClient) Dispatch(method string, body []byte) chan []byte {
 	rpc.LastMethod = method
 	rpc.LastBody = body
 
@@ -43,7 +43,7 @@ func (rpc *MockRPCClient) Dispatch(method string, body []byte) chan []byte {
 	return rsp
 }
 
-func (rpc *MockRPCClient) DispatchSync(method string, body []byte) (response []byte, err error) {
+func (rpc *MockClient) DispatchSync(method string, body []byte) (response []byte, err error) {
 	rpc.LastMethod = method
 	rpc.LastBody = body
 	response = body
@@ -62,7 +62,7 @@ func (rpc *MockRPCClient) DispatchSync(method string, body []byte) (response []b
 }
 
 func TestRANewRegistration(t *testing.T) {
-	mock := &MockRPCClient{}
+	mock := &MockClient{}
 	client, err := NewRegistrationAuthorityClient(mock)
 	test.AssertNotError(t, err, "Client construction")
 	test.AssertNotNil(t, client, "Client construction")
@@ -86,7 +86,7 @@ func TestRANewRegistration(t *testing.T) {
 }
 
 func TestGenerateOCSP(t *testing.T) {
-	mock := &MockRPCClient{}
+	mock := &MockClient{}
 
 	client, err := NewCertificateAuthorityClient(mock)
 	test.AssertNotError(t, err, "Client construction")

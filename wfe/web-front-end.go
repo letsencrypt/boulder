@@ -41,6 +41,9 @@ const (
 	BuildIDPath    = "/build"
 )
 
+// WebFrontEndImpl provides the ACME interface to the boulder CA.  It provides
+// handlers to represent each type of ACME resource, and vets requests before
+// passing them through to a Registration Authority.
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
@@ -263,6 +266,8 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", age))
 }
 
+// Directory responds to a request with a directory of ACME resources
+// available on this server.
 func (wfe *WebFrontEndImpl) Directory(response http.ResponseWriter, request *http.Request) {
 	response.Write(wfe.DirectoryJSON)
 }

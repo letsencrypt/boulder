@@ -273,7 +273,7 @@ func AmqpChannel(conf Config) (*amqp.Channel, error) {
 		if conf.AMQP.TLS.CertFile != nil || conf.AMQP.TLS.KeyFile != nil {
 			// But they have to give both.
 			if conf.AMQP.TLS.CertFile == nil || conf.AMQP.TLS.KeyFile == nil {
-				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile.")
+				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile")
 				return nil, err
 			}
 
@@ -381,6 +381,7 @@ func LoadCert(path string) (cert []byte, err error) {
 	return
 }
 
+// DebugServer starts up a debug server at the indicated address
 func DebugServer(addr string) {
 	if addr == "" {
 		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")
