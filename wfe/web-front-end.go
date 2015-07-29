@@ -356,20 +356,20 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 	}
 
 	// Check that the "resource" field is present and has the correct value
-	var parsedRequest map[string]interface{}
+	var parsedRequest struct {
+		Resource string `json:"resource"`
+	}
 	err = json.Unmarshal([]byte(payload), &parsedRequest)
 	if err != nil {
 		puberr := core.SignatureValidationError("Request payload did not parse as JSON")
 		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
 		return nil, nil, reg, puberr
 	}
-	parsedResource, present := parsedRequest["resource"]
-	requestedResource, valid := parsedResource.(string)
-	if !present {
+	if parsedRequest.Resource == "" {
 		err = core.MalformedRequestError("Request payload does not specify a resource")
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
-	} else if !valid || resource != core.AcmeResource(requestedResource) {
+	} else if resource != core.AcmeResource(requestedResource) {
 		err = core.MalformedRequestError(fmt.Sprintf("Request payload has invalid resource: %s != %s", requestedResource, resource))
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
