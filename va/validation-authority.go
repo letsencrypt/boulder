@@ -84,7 +84,7 @@ func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.Jso
 	}
 
 	if len(parsedResponse) != len(target) {
-		return fmt.Errorf("Validation payload did not have all fields")
+		return fmt.Errorf("Validation payload had an improper number of fields")
 	}
 
 	for key, targetValue := range target {

@@ -300,17 +300,24 @@ func (ch Challenge) IsSane(completed bool) bool {
 // MergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
-	// Only override fields that are supposed to be client-provided
-	// If "tls" is not provided, default to "true"
-	if resp.TLS != nil {
-		ch.TLS = resp.TLS
-	} else {
-		ch.TLS = new(bool)
-		*ch.TLS = true
-	}
+	switch ch.Type {
+	case ChallengeTypeSimpleHTTP:
+		// For simpleHttp, only "tls" is client-provided
+		// If "tls" is not provided, default to "true"
+		if resp.TLS != nil {
+			ch.TLS = resp.TLS
+		} else {
+			ch.TLS = new(bool)
+			*ch.TLS = true
+		}
 
-	if resp.Validation != nil {
-		ch.Validation = resp.Validation
+	case DVSNI:
+		fallthrough
+	case DNS:
+		// For dvsni and dns, only "validation" is client-provided
+		if resp.Validation != nil {
+			ch.Validation = resp.Validation
+		}
 	}
 
 	return ch
