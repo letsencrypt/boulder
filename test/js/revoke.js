@@ -24,8 +24,7 @@ function main() {
   var revokeUrl = process.argv[4];
   var certDERB64URL = util.b64enc(new Buffer(certDER))
   var revokeMessage = JSON.stringify({
-    // For some reason forge adds an extra, incorrect '00' at the front of the
-    // serial number.
+    resource: "revoke-cert",
     certificate: certDERB64URL
   });
   console.log('Requesting revocation:', revokeMessage)
