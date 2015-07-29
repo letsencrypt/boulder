@@ -88,10 +88,10 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 			t.Logf("SIMPLESRV: Got a wait-long req\n")
 			time.Sleep(time.Second * 10)
 		} else if strings.HasSuffix(r.URL.Path, "re-lookup") {
-			t.Logf("SIMPLESRV: Got a redirect to invalid lookup req\n")
+			t.Logf("SIMPLESRV: Got a redirect req to a valid hostname\n")
 			http.Redirect(w, r, "http://localhost2/path", 302)
 		} else if strings.HasSuffix(r.URL.Path, "re-lookup-invalid") {
-			t.Logf("SIMPLESRV: Got a redirect to invalid lookup req\n")
+			t.Logf("SIMPLESRV: Got a redirect req to a invalid hostname\n")
 			http.Redirect(w, r, "http://invalid.super/path", 302)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
@@ -266,41 +266,6 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
-	chall.Path = pathMoved
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Path)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 2)
-
-	log.Clear()
-	chall.Path = pathFound
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Path)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 3)
-
-	log.Clear()
-	chall.Path = pathRedirectLookupInvalid
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, chall.Path)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/re-lookup-invalid" to ".*invalid.super/path"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Could not resolve invalid.super`)), 1)
-
-	log.Clear()
-	chall.Path = pathRedirectLookup
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Path)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/re-lookup" to ".*localhost2/path"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost2: \[127.0.0.1\]`)), 1)
-
-	log.Clear()
 	chall.Path = path404
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -344,6 +309,54 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Connection should've timed out")
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
+}
+
+func TestSimpleHttpRedirectLookup(t *testing.T) {
+	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = &mocks.MockDNS{}
+
+	tls := false
+	chall := core.Challenge{Token: expectedToken, TLS: &tls}
+
+	stopChan := make(chan bool, 1)
+	waitChan := make(chan bool, 1)
+	go simpleSrv(t, expectedToken, stopChan, waitChan, tls)
+	defer func() { stopChan <- true }()
+	<-waitChan
+
+	log.Clear()
+	chall.Path = pathMoved
+	finChall, err := va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, chall.Path)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 2)
+
+	log.Clear()
+	chall.Path = pathFound
+	finChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, chall.Path)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 3)
+
+	log.Clear()
+	chall.Path = pathRedirectLookupInvalid
+	finChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, chall.Path)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Could not resolve invalid.super`)), 1)
+
+	log.Clear()
+	chall.Path = pathRedirectLookup
+	finChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, chall.Path)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/re-lookup" to ".*localhost2/path"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost2: \[127.0.0.1\]`)), 1)
 }
 
 func TestDvsni(t *testing.T) {

@@ -56,8 +56,8 @@ type verificationRequestEvent struct {
 
 // problemDetailsFromDNSError checks the error returned from Lookup...
 // methods and tests if the error was an underlying net.OpError or an error
-// caused by resolver returning SERVFAIL or other invalid Rcodes returns the
-// relevant core.ProblemDetails.
+// caused by resolver returning SERVFAIL or other invalid Rcodes and returns
+// the relevant core.ProblemDetails.
 func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 	problem := &core.ProblemDetails{Type: core.ConnectionProblem}
 	if netErr, ok := err.(*net.OpError); ok {
@@ -157,13 +157,15 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		return defaultDial("tcp", net.JoinHostPort(addrs[0].String(), port))
 	}
 	var redirects []string
+	addrUsed := addrs[0]
 	logRedirect := func(req *http.Request, via []*http.Request) error {
 		redirects = append(redirects, req.URL.String())
-		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q", identifier, via[len(via)-1].URL.String(), req.URL.String()))
 		addrs, problem := va.getAddrs(req.URL.Host)
 		if problem != nil {
 			return problem
 		}
+		addrUsed = addrs[0]
+		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q [%s]", identifier, via[len(via)-1].URL.String(), req.URL.String(), addrs[0]))
 		challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addrs...)
 		redirectPort := "80"
 		if va.TestMode {
@@ -222,8 +224,8 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type: core.UnauthorizedProblem,
-			Detail: fmt.Sprintf("Invalid response from %s: %d",
-				url.String(), httpResponse.StatusCode),
+			Detail: fmt.Sprintf("Invalid response from %s [%s]: %d",
+				url.String(), addrUsed, httpResponse.StatusCode),
 		}
 		err = challenge.Error
 	}
