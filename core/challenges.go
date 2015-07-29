@@ -65,7 +65,7 @@ func ProofOfPosessionChallenge(hints POPChallengeHints) Challenge {
 		Type:   ChallengeTypeProofOfPosession,
 		Status: StatusPending,
 		Nonce:  hex.EncodeToString(nonce),
-		Alg: "RS256",
-		Hints: hints,
+		Alg:    "RS256",
+		Hints:  hints,
 	}
 }

@@ -6,9 +6,9 @@
 package policy
 
 import (
-	"fmt"
-	"crypto/x509"
 	"crypto/rsa"
+	"crypto/x509"
+	"fmt"
 	"net"
 	"regexp"
 	"strings"
@@ -16,9 +16,9 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	blog "github.com/letsencrypt/boulder/log"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 )
 
 // The Policy Authority has a separate, read-only DB that contains information
@@ -33,7 +33,7 @@ type Config struct {
 
 // PolicyAuthorityImpl enforces CA policy decisions.
 type PolicyAuthorityImpl struct {
-	log *blog.AuditLogger
+	log  *blog.AuditLogger
 	padb PADB
 
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
@@ -241,18 +241,18 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (cha
 			return nil, nil
 		}
 		switch pk := pubKey.(type) {
-			case *rsa.PublicKey:
-				hints.JWKs = append(hints.JWKs, jose.JsonWebKey{
-					Key: pk,
-					// TODO: core.ProofOfPosessionChallenge should check the algorithms on
-					// JWKs and propagate up to the Alg field on the challenge. Alternately,
-					// remove the Alg field from the challenge and depend on the JWKs.
-					Algorithm: "RS256",
-				})
-			default:
-				// If any of the returned certs has a non-RSA key, return error.
-				pa.log.Debug("ExternalCerts provided a cert with non-RSA key")
-				return nil, nil
+		case *rsa.PublicKey:
+			hints.JWKs = append(hints.JWKs, jose.JsonWebKey{
+				Key: pk,
+				// TODO: core.ProofOfPosessionChallenge should check the algorithms on
+				// JWKs and propagate up to the Alg field on the challenge. Alternately,
+				// remove the Alg field from the challenge and depend on the JWKs.
+				Algorithm: "RS256",
+			})
+		default:
+			// If any of the returned certs has a non-RSA key, return error.
+			pa.log.Debug("ExternalCerts provided a cert with non-RSA key")
+			return nil, nil
 		}
 	}
 

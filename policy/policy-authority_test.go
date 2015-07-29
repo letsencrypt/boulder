@@ -7,8 +7,8 @@ package policy
 
 import (
 	"fmt"
-	"testing"
 	"io/ioutil"
+	"testing"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
@@ -92,7 +92,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	pa, err := NewPolicyAuthorityImpl(Config{
 		Driver: "sqlite3",
-		Name: ":memory:",
+		Name:   ":memory:",
 	})
 	test.AssertNotError(t, err, "Failed to create PA")
 
@@ -143,32 +143,31 @@ func TestWillingToIssue(t *testing.T) {
 	}
 }
 
-
-type PADBMock struct {}
+type PADBMock struct{}
 
 func (padb PADBMock) externalCertDataForFQDN(fqdn string) ([]core.ExternalCert, error) {
 	spkiBytes, err := ioutil.ReadFile("test/external-cert-pubkey.der")
 	if err != nil {
 		return nil, err
 	}
-	if (fqdn == "mail.eff.org") {
+	if fqdn == "mail.eff.org" {
 		return []core.ExternalCert{
 			core.ExternalCert{
-				SHA1: "fake fingerprint!",
+				SHA1:   "fake fingerprint!",
 				Issuer: "Some Other CA",
-				SPKI: spkiBytes,
-				EV: false,
+				SPKI:   spkiBytes,
+				EV:     false,
 			},
 		}, nil
-	} else if (fqdn == "ev.example.com") {
+	} else if fqdn == "ev.example.com" {
 		return []core.ExternalCert{
 			core.ExternalCert{
 				SPKI: spkiBytes,
-				EV: true,
+				EV:   true,
 			},
 			core.ExternalCert{
 				SPKI: spkiBytes,
-				EV: false,
+				EV:   false,
 			},
 		}, nil
 	}
@@ -178,7 +177,7 @@ func (padb PADBMock) externalCertDataForFQDN(fqdn string) ([]core.ExternalCert, 
 func TestChallengesFor(t *testing.T) {
 	pa, err := NewPolicyAuthorityImpl(Config{
 		Driver: "sqlite3",
-		Name: ":memory:",
+		Name:   ":memory:",
 	})
 	test.AssertNotError(t, err, "Failed to create PA")
 	pa.padb = PADBMock{}
@@ -198,13 +197,13 @@ func TestChallengesFor(t *testing.T) {
 func TestChallengesForExistingDVCert(t *testing.T) {
 	pa, err := NewPolicyAuthorityImpl(Config{
 		Driver: "sqlite3",
-		Name: ":memory:",
+		Name:   ":memory:",
 	})
 	test.AssertNotError(t, err, "Failed to create PA")
 	pa.padb = PADBMock{}
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{
-		Type: core.IdentifierDNS,
+		Type:  core.IdentifierDNS,
 		Value: "mail.eff.org",
 	})
 	fmt.Println("XYZ", challenges)
@@ -238,13 +237,13 @@ func TestChallengesForExistingDVCert(t *testing.T) {
 func TestChallengesForExistingEVCert(t *testing.T) {
 	pa, err := NewPolicyAuthorityImpl(Config{
 		Driver: "sqlite3",
-		Name: ":memory:",
+		Name:   ":memory:",
 	})
 	test.AssertNotError(t, err, "Failed to create PA")
 	pa.padb = PADBMock{}
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{
-		Type: core.IdentifierDNS,
+		Type:  core.IdentifierDNS,
 		Value: "ev.example.com",
 	})
 	test.Assert(t, len(challenges) == 0, "incorrect number of challenges")

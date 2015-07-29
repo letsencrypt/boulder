@@ -6,13 +6,13 @@
 package main
 
 import (
-	"time"
-	"fmt"
 	"encoding/csv"
-	"os"
-	"io"
 	"encoding/hex"
+	"fmt"
+	"io"
 	"math"
+	"os"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
@@ -30,7 +30,7 @@ func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, stats
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
-		
+
 	for {
 		record, err := csvReader.Read()
 		if err == io.EOF {
@@ -39,22 +39,22 @@ func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, stats
 			fmt.Println("Error:", err)
 			return
 		}
-			
+
 		notAfter, err := time.Parse(datestamp_format, record[3])
 		spkiBytes, err := hex.DecodeString(record[4])
 		lastUpdated, err := time.Parse(datestamp_format, record[7])
 		certDER, err := hex.DecodeString(record[8])
-		
+
 		externalCert := core.ExternalCert{
-			SHA1: record[0],
-			Issuer: record[1],
-			Subject: record[2],
-			NotAfter: notAfter,
-			SPKI: spkiBytes,
-			Valid: record[5]=="1",
-			EV: record[6]=="1",
+			SHA1:        record[0],
+			Issuer:      record[1],
+			Subject:     record[2],
+			NotAfter:    notAfter,
+			SPKI:        spkiBytes,
+			Valid:       record[5] == "1",
+			EV:          record[6] == "1",
 			LastUpdated: lastUpdated,
-			CertDER: certDER,
+			CertDER:     certDER,
 		}
 
 		importStart := time.Now()
@@ -64,12 +64,11 @@ func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, stats
 	}
 }
 
-
 func addIdentifiers(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, statsRate float32) {
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
-		
+
 	for {
 		record, err := csvReader.Read()
 		if err == io.EOF {
@@ -83,8 +82,8 @@ func addIdentifiers(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter,
 
 		identifierData := core.IdentifierData{
 			ReversedName: record[1],
-			CertSHA1: record[0],
-			LastUpdated: lastUpdated,
+			CertSHA1:     record[0],
+			LastUpdated:  lastUpdated,
 		}
 
 		importStart := time.Now()
@@ -94,12 +93,11 @@ func addIdentifiers(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter,
 	}
 }
 
-
 func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, statsRate float32) {
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
-		
+
 	for {
 		record, err := csvReader.Read()
 		if err == io.EOF {
@@ -113,7 +111,7 @@ func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Stat
 			CertSHA1: record[0],
 		}
 		externalCert := core.ExternalCert{
-		 	SHA1: record[0],
+			SHA1: record[0],
 		}
 
 		deleteStart := time.Now()
@@ -124,7 +122,6 @@ func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Stat
 		stats.Inc("ExistingCert.CertsDeleted", 1, statsRate)
 	}
 }
-
 
 func main() {
 	app := cmd.NewAppShell("external-cert-importer")
@@ -146,7 +143,6 @@ func main() {
 		Value: 0.1,
 		Usage: "A floating point number between 0 and 1 representing the rate at which the statsd client will send data.",
 	})
-
 
 	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
 		fmt.Println(c.Args())

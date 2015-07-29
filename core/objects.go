@@ -248,21 +248,21 @@ type Challenge struct {
 	TLS  *bool  `json:"tls,omitempty"`
 
 	// Used by dvsni challenges
-	R     string `json:"r,omitempty"`
-	S     string `json:"s,omitempty"`
+	R string `json:"r,omitempty"`
+	S string `json:"s,omitempty"`
 
 	// Used by dvsni and proofOfPosession challenges
 	Nonce string `json:"nonce,omitempty"`
 
 	// Used by proofOfPosession challenges
-	Alg string `json:"alg,omitempty"`
+	Alg   string `json:"alg,omitempty"`
 	Hints POPChallengeHints
 }
 
 // POPChallengeHints contains hints used to solve proofOfPosession challenges.
 type POPChallengeHints struct {
 	CertFingerprints []string
-	Issuers []string
+	Issuers          []string
 	// NOTE: This field is not just a hint, it will be used to validate the
 	// challenge.
 	// TODO: Updated the spec to indicate that there can be multiple JWKs.
@@ -487,15 +487,15 @@ type IdentifierData struct {
 // ExternalCerts holds information about certificates issued by other CAs,
 // obtained through Certificate Transparency, the SSL Observatory, or scans.io.
 type ExternalCert struct {
-	SHA1        string // The hex encoding of the SHA-1 hash of this cert
-	Issuer      string // The Issuer field of this cert
-	Subject     string // The Subject field of this cert
+	SHA1        string    // The hex encoding of the SHA-1 hash of this cert
+	Issuer      string    // The Issuer field of this cert
+	Subject     string    // The Subject field of this cert
 	NotAfter    time.Time // Date after which this cert should be considered invalid
-	SPKI        []byte // The hex encoding of the certificate's SubjectPublicKeyInfo in DER form
-	Valid       bool   // Whether this certificate was valid at LastUpdated time
-	EV          bool   // Whether this cert was EV valid
+	SPKI        []byte    // The hex encoding of the certificate's SubjectPublicKeyInfo in DER form
+	Valid       bool      // Whether this certificate was valid at LastUpdated time
+	EV          bool      // Whether this cert was EV valid
 	LastUpdated time.Time // Last time this cert's data was updated
-	CertDER     []byte // DER (binary) encoding of the raw certificate
+	CertDER     []byte    // DER (binary) encoding of the raw certificate
 }
 
 // MatchesCSR tests the contents of a generated certificate to make sure
