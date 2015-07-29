@@ -132,7 +132,7 @@ func (dnsResolver *DNSResolverImpl) LookupCNAME(hostname string) (string, time.D
 		return "", 0, err
 	}
 	if r.Rcode == dns.RcodeNXRrset || r.Rcode == dns.RcodeNameError {
-		return "", 0, nil
+		return "", rtt, nil
 	}
 	if r.Rcode != dns.RcodeSuccess {
 		err = fmt.Errorf("DNS failure: %d-%s for CNAME query", r.Rcode, dns.RcodeToString[r.Rcode])
@@ -155,7 +155,7 @@ func (dnsResolver *DNSResolverImpl) LookupDNAME(hostname string) (string, time.D
 		return "", 0, err
 	}
 	if r.Rcode == dns.RcodeNXRrset || r.Rcode == dns.RcodeNameError {
-		return "", 0, nil
+		return "", rtt, nil
 	}
 	if r.Rcode != dns.RcodeSuccess {
 		err = fmt.Errorf("DNS failure: %d-%s for DNAME query", r.Rcode, dns.RcodeToString[r.Rcode])
