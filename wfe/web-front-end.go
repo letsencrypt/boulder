@@ -945,25 +945,22 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 	}
 
 	// Blank out ID and regID
-	switch request.Method {
-	case "GET":
-		authz.ID = ""
-		authz.RegistrationID = 0
+	authz.ID = ""
+	authz.RegistrationID = 0
 
-		jsonReply, err := json.Marshal(authz)
-		if err != nil {
-			logEvent.Error = err.Error()
-			// InternalServerError because this is a failure to decode from our DB.
-			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
-			return
-		}
-		response.Header().Add("Link", link(wfe.NewCert, "next"))
-		response.Header().Set("Content-Type", "application/json")
-		response.WriteHeader(http.StatusOK)
-		if _, err = response.Write(jsonReply); err != nil {
-			logEvent.Error = err.Error()
-			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
-		}
+	jsonReply, err := json.Marshal(authz)
+	if err != nil {
+		logEvent.Error = err.Error()
+		// InternalServerError because this is a failure to decode from our DB.
+		wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
+		return
+	}
+	response.Header().Add("Link", link(wfe.NewCert, "next"))
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(http.StatusOK)
+	if _, err = response.Write(jsonReply); err != nil {
+		logEvent.Error = err.Error()
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
 
