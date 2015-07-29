@@ -68,9 +68,7 @@ const pathMoved = "301"
 const pathUnsafe = "%"
 const pathUnsafe302 = "302-to-unsafe"
 
-func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableTLS bool) {
-	m := http.NewServeMux()
-
+func createValidation(token string, enableTLS bool) string {
 	payload, _ := json.Marshal(map[string]interface{}{
 		"type":  "simpleHttp",
 		"token": token,
@@ -78,15 +76,18 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 	})
 	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
 	obj, _ := signer.Sign(payload, "")
-	response := obj.FullSerialize()
+	return obj.FullSerialize()
+}
+
+func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, tokenChan chan string, enableTLS bool) {
+	m := http.NewServeMux()
+
+	validation := createValidation(token, enableTLS)
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, path404) {
 			t.Logf("SIMPLESRV: Got a 404 req\n")
 			http.NotFound(w, r)
-		} else if strings.HasSuffix(r.URL.Path, pathWrongToken) {
-			t.Logf("SIMPLESRV: Got a wrongtoken req\n")
-			fmt.Fprintf(w, "wrongtoken")
 		} else if strings.HasSuffix(r.URL.Path, pathMoved) {
 			t.Logf("SIMPLESRV: Got a 301 redirect req\n")
 			http.Redirect(w, r, "valid", 301)
@@ -104,7 +105,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 			time.Sleep(time.Second * 10)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
-			fmt.Fprintf(w, "%s", response)
+			fmt.Fprintf(w, "%s", validation)
 		}
 	})
 
@@ -113,6 +114,15 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 	if err != nil {
 		waitChan <- true
 		t.Fatalf("Couldn't listen on %s: %s", server.Addr, err)
+	}
+
+	// Listen for token updates
+	if tokenChan != nil {
+		go func() {
+			for newToken := range tokenChan {
+				validation = createValidation(newToken, enableTLS)
+			}
+		}()
 	}
 
 	go func() {
@@ -153,6 +163,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 	}
 
 	waitChan <- true
+	t.Logf("Serving SIMPLESRV")
 	server.Serve(listener)
 }
 
@@ -240,7 +251,7 @@ func TestSimpleHttpTLS(t *testing.T) {
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
-	go simpleSrv(t, expectedToken, stopChan, waitChan, true)
+	go simpleSrv(t, expectedToken, stopChan, waitChan, nil, true)
 	defer func() { stopChan <- true }()
 	<-waitChan
 
@@ -267,8 +278,12 @@ func TestSimpleHttp(t *testing.T) {
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
-	go simpleSrv(t, expectedToken, stopChan, waitChan, tls)
-	defer func() { stopChan <- true }()
+	tokenChan := make(chan string, 1)
+	go simpleSrv(t, expectedToken, stopChan, waitChan, tokenChan, tls)
+	defer func() {
+		close(tokenChan)
+		stopChan <- true
+	}()
 	<-waitChan
 
 	log.Clear()
@@ -277,12 +292,40 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertNotError(t, err, "Error validating simpleHttp")
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
-	chall.Token = "not-found"
+	log.Clear()
+	chall.Token = path404
 	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Should have found a 404 for the challenge.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+
+	log.Clear()
+	chall.Token = pathWrongToken
+	// The "wrong token" will actually be the expectedToken.  It's wrong
+	// because it doesn't match pathWrongToken.
+	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Should have found the wrong token value.")
+	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
+	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+
+	log.Clear()
+	chall.Token = pathMoved
+	tokenChan <- pathMoved
+	finChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, "Failed to follow 301 redirect")
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+
+	log.Clear()
+	chall.Token = pathFound
+	tokenChan <- pathFound
+	finChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
+	test.AssertEquals(t, finChall.Status, core.StatusValid)
+	test.AssertNotError(t, err, "Failed to follow 302 redirect")
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
 
 	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
 	invalidChall, err = va.validateSimpleHTTP(ipIdentifier, chall, AccountKey)
@@ -350,8 +393,7 @@ func TestDvsni(t *testing.T) {
 		"token": chall.Token,
 	})
 	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	validationJWS, _ := signer.Sign(validationPayload, "")
-	chall.Validation = (*core.AcmeJWS)(validationJWS)
+	chall.Validation, _ = signer.Sign(validationPayload, "")
 
 	started := time.Now()
 	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
@@ -393,7 +435,7 @@ func TestValidateHTTP(t *testing.T) {
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
-	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP, tls)
+	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP, nil, tls)
 
 	// Let them start
 	<-waitChanHTTP
@@ -428,8 +470,7 @@ func createChallenge(challengeType string) core.Challenge {
 	})
 
 	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	validationJWS, _ := signer.Sign(validationPayload, "")
-	chall.Validation = (*core.AcmeJWS)(validationJWS)
+	chall.Validation, _ = signer.Sign(validationPayload, "")
 	return chall
 }
 
@@ -507,7 +548,7 @@ func TestUpdateValidations(t *testing.T) {
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
-	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP, tls)
+	go simpleSrv(t, challHTTP.Token, stopChanHTTP, waitChanHTTP, nil, tls)
 
 	// Let them start
 	<-waitChanHTTP
