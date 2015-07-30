@@ -308,6 +308,7 @@ function register(answers) {
 
   // Register public key
   post(state.newRegistrationURL, {
+    resource: "new-reg",
     contact: [ "mailto:" + email ]
   }, getTerms);
 }
@@ -367,6 +368,7 @@ function sendAgreement(answers) {
   console.log("Posting agreement to: " + state.registrationURL)
 
   state.registration = {
+    resource: "reg",
     agreement: state.termsURL
   }
   post(state.registrationURL, state.registration,
@@ -391,6 +393,7 @@ function getChallenges(answers) {
 
   // Register public key
   post(state.newAuthorizationURL, {
+    resource: "new-authz",
     identifier: {
       type: "dns",
       value: state.domain
@@ -465,6 +468,8 @@ function getReadyToValidate(err, resp, body) {
 
   cli.spinner("Validating domain");
   post(state.responseURL, {
+    resource: "challenge",
+    path: state.path,
     tls: false
   }, ensureValidation);
 }
@@ -524,6 +529,7 @@ function getCertificate() {
   cli.spinner("Requesting certificate");
   var csr = crypto.generateCSR(state.certPrivateKey, state.validatedDomains);
   post(state.newCertificateURL, {
+    resource: "new-cert",
     csr: csr,
     authorizations: state.validAuthorizationURLs
   }, downloadCertificate);

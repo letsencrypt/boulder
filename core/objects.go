@@ -21,6 +21,12 @@ import (
 // AcmeStatus defines the state of a given authorization
 type AcmeStatus string
 
+// AcmeResource values identify different types of ACME resources
+type AcmeResource string
+
+// Buffer is a variable-length collection of bytes
+type Buffer []byte
+
 // IdentifierType defines the available identification mechanisms for domains
 type IdentifierType string
 
@@ -50,6 +56,16 @@ const (
 // These types are the available identification mechanisms
 const (
 	IdentifierDNS = IdentifierType("dns")
+)
+
+// The types of ACME resources
+const (
+	ResourceNewReg       = AcmeResource("new-reg")
+	ResourceNewAuthz     = AcmeResource("new-authz")
+	ResourceNewCert      = AcmeResource("new-cert")
+	ResourceRevokeCert   = AcmeResource("revoke-cert")
+	ResourceRegistration = AcmeResource("reg")
+	ResourceChallenge    = AcmeResource("challenge")
 )
 
 // These status are the states of OCSP
@@ -141,21 +157,17 @@ type AcmeIdentifier struct {
 	Value string         `json:"value"` // The identifier itself
 }
 
-// CertificateRequest is just a CSR together with
-// URIs pointing to authorizations that should collectively
-// authorize the certificate being requsted.
+// CertificateRequest is just a CSR
 //
 // This data is unmarshalled from JSON by way of rawCertificateRequest, which
 // represents the actual structure received from the client.
 type CertificateRequest struct {
-	CSR            *x509.CertificateRequest // The CSR
-	Authorizations []AcmeURL                // Links to Authorization over the account key
-	Bytes          []byte                   // The original bytes of the CSR, for logging.
+	CSR   *x509.CertificateRequest // The CSR
+	Bytes []byte                   // The original bytes of the CSR, for logging.
 }
 
 type rawCertificateRequest struct {
-	CSR            JSONBuffer `json:"csr"`            // The encoded CSR
-	Authorizations []AcmeURL  `json:"authorizations"` // Authorizations
+	CSR JSONBuffer `json:"csr"` // The encoded CSR
 }
 
 // UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
@@ -171,7 +183,6 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 	}
 
 	cr.CSR = csr
-	cr.Authorizations = raw.Authorizations
 	cr.Bytes = raw.CSR
 	return nil
 }
@@ -179,8 +190,7 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 // MarshalJSON provides an implementation for encoding CertificateRequest objects.
 func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rawCertificateRequest{
-		CSR:            cr.CSR.Raw,
-		Authorizations: cr.Authorizations,
+		CSR: cr.CSR.Raw,
 	})
 }
 

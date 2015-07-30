@@ -48,6 +48,7 @@ const (
 	MethodGetRegistration             = "GetRegistration"             // SA
 	MethodGetRegistrationByKey        = "GetRegistrationByKey"        // RA, SA
 	MethodGetAuthorization            = "GetAuthorization"            // SA
+	MethodGetLatestValidAuthorization = "GetLatestValidAuthorization" // SA
 	MethodGetCertificate              = "GetCertificate"              // SA
 	MethodGetCertificateByShortSerial = "GetCertificateByShortSerial" // SA
 	MethodGetCertificateStatus        = "GetCertificateStatus"        // SA
@@ -82,6 +83,11 @@ type updateAuthorizationRequest struct {
 	Authz    core.Authorization
 	Index    int
 	Response core.Challenge
+}
+
+type latestValidAuthorizationRequest struct {
+	RegID      int64
+	Identifier core.AcmeIdentifier
 }
 
 type certificateRequest struct {
@@ -717,6 +723,28 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		return
 	})
 
+	rpc.Handle(MethodGetLatestValidAuthorization, func(req []byte) (response []byte, err error) {
+		var lvar latestValidAuthorizationRequest
+		if err = json.Unmarshal(req, &lvar); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodNewAuthorization, err, req)
+			return
+		}
+
+		authz, err := impl.GetLatestValidAuthorization(lvar.RegID, lvar.Identifier)
+		if err != nil {
+			return
+		}
+
+		response, err = json.Marshal(authz)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetLatestValidAuthorization, err, req)
+			return
+		}
+		return
+	})
+
 	rpc.Handle(MethodAddCertificate, func(req []byte) (response []byte, err error) {
 		var acReq addCertificateRequest
 		err = json.Unmarshal(req, &acReq)
@@ -951,6 +979,27 @@ func (cac StorageAuthorityClient) GetRegistrationByKey(key jose.JsonWebKey) (reg
 // GetAuthorization sends a request to get an Authorization by ID
 func (cac StorageAuthorityClient) GetAuthorization(id string) (authz core.Authorization, err error) {
 	jsonAuthz, err := cac.rpc.DispatchSync(MethodGetAuthorization, []byte(id))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonAuthz, &authz)
+	return
+}
+
+// GetLatestValidAuthorization sends a request to get an Authorization by RegID, Identifier
+func (cac StorageAuthorityClient) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+
+	var lvar latestValidAuthorizationRequest
+	lvar.RegID = registrationId
+	lvar.Identifier = identifier
+
+	data, err := json.Marshal(lvar)
+	if err != nil {
+		return
+	}
+
+	jsonAuthz, err := cac.rpc.DispatchSync(MethodGetLatestValidAuthorization, data)
 	if err != nil {
 		return
 	}

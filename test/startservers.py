@@ -1,11 +1,15 @@
 import atexit
 import BaseHTTPServer
+import errno
 import os
 import shutil
 import signal
+import socket
 import subprocess
+import sys
 import tempfile
 import threading
+import time
 
 
 class ToSServerThread(threading.Thread):
@@ -15,31 +19,33 @@ class ToSServerThread(threading.Thread):
             self.end_headers()
             self.wfile.write("Do What Ye Will (An it Harm None).\n")
     def run(self):
-        BaseHTTPServer.HTTPServer(("localhost", 4001), self.ToSHandler).serve_forever()
+        try:
+            BaseHTTPServer.HTTPServer(("localhost", 4001), self.ToSHandler).serve_forever()
+        except Exception as e:
+            print "Problem starting ToSServer: %s" % e
+            sys.exit(1)
 
 
 config = os.environ.get('BOULDER_CONFIG')
 if config is None:
-	config = 'test/boulder-config.json'
+    config = 'test/boulder-config.json'
 processes = []
-tempdir = tempfile.mkdtemp()
 
 
-def run(path):
-    binary = os.path.join(tempdir, os.path.basename(path))
+def run(path, race_detection):
+    install = "go install"
+    if race_detection:
+        install = """GORACE="halt_on_error=1" go install -race"""
 
-    buildcmd = 'GORACE="halt_on_error=1" go build -race -o %s ./%s' % (binary, path)
-    print(buildcmd)
-    subprocess.check_call(buildcmd, shell=True)
-
-    srvcmd = [binary, '--config', config]
-    p = subprocess.Popen(srvcmd)
-    p.cmd = srvcmd
+    binary = os.path.basename(path)
+    cmd = """%s ./%s; exec %s --config %s""" % (install, path, binary, config)
+    p = subprocess.Popen(cmd, shell=True)
+    p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))
     return p
 
 
-def start():
+def start(race_detection):
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -58,13 +64,38 @@ def start():
             'cmd/boulder-va',
             'test/dns-test-srv']:
         try:
-            processes.append(run(prog))
+            processes.append(run(prog, race_detection))
         except Exception as e:
             print(e)
             return False
         if not check():
             # Don't keep building stuff if a server has already died.
             return False
+
+    # Wait until all servers are up before returning to caller. This means
+    # checking each server's debug port until it's available.
+    # seconds.
+    while True:
+        try:
+            # If one of the servers has died, quit immediately.
+            if not check():
+                return False
+            for debug_port in range(8000, 8005):
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.connect(('localhost', debug_port))
+                s.close()
+            break
+        except socket.error as e:
+            if e.errno == errno.ECONNREFUSED:
+                print "Waiting for debug port %d" % debug_port
+            else:
+                raise
+        time.sleep(1)
+
+    # Some servers emit extra text after their debug server is open. Sleep 1
+    # second so the "servers running" message comes last.
+    time.sleep(1)
+    print "All servers running. Hit ^C to kill."
     return True
 
 
@@ -94,4 +125,3 @@ def stop():
     for p in processes:
         if p.poll() is None:
             p.kill()
-    shutil.rmtree(tempdir)
