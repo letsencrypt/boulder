@@ -74,7 +74,7 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/go-jose",
-			"Rev": "ed929ba3c826dbed7c66c97096cfaf2bfa35aa55"
+			"Rev": "e7bd87a386998d423741e8e370af1a22638767e0"
 		},
 		{
 			"ImportPath": "github.com/mattn/go-sqlite3",

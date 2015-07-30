@@ -196,7 +196,7 @@ func parseSignedCompact(input string) (*JsonWebSignature, error) {
 
 // CompactSerialize serializes an object using the compact serialization format.
 func (obj JsonWebSignature) CompactSerialize() (string, error) {
-	if len(obj.Signatures) > 1 || obj.Signatures[0].header != nil {
+	if len(obj.Signatures) != 1 || obj.Signatures[0].header != nil || obj.Signatures[0].protected == nil {
 		return "", ErrNotSupported
 	}
 
@@ -216,19 +216,22 @@ func (obj JsonWebSignature) FullSerialize() string {
 	}
 
 	if len(obj.Signatures) == 1 {
-		serializedProtected := mustSerializeJSON(obj.Signatures[0].protected)
-		raw.Protected = newBuffer(serializedProtected)
+		if obj.Signatures[0].protected != nil {
+			serializedProtected := mustSerializeJSON(obj.Signatures[0].protected)
+			raw.Protected = newBuffer(serializedProtected)
+		}
 		raw.Header = obj.Signatures[0].header
 		raw.Signature = newBuffer(obj.Signatures[0].Signature)
 	} else {
 		raw.Signatures = make([]rawSignatureInfo, len(obj.Signatures))
 		for i, signature := range obj.Signatures {
-			serializedProtected := mustSerializeJSON(signature.protected)
-
 			raw.Signatures[i] = rawSignatureInfo{
-				Protected: newBuffer(serializedProtected),
 				Header:    signature.header,
 				Signature: newBuffer(signature.Signature),
+			}
+
+			if signature.protected != nil {
+				raw.Signatures[i].Protected = newBuffer(mustSerializeJSON(signature.protected))
 			}
 		}
 	}
