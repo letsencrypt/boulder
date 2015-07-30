@@ -142,7 +142,7 @@ func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) 
 	uu, err := url.Parse(domainName)
 	test.AssertNotError(t, err, "Couldn't parse domainName "+domainName)
 	u := core.AcmeURL(*uu)
-	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusValid, URI: u, Token: "THISWOULDNTBEAGOODTOKEN", Path: "test-me"}
+	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusValid, URI: u, Token: "THISWOULDNTBEAGOODTOKEN"}
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}
 	exp := time.Now().AddDate(0, 0, 1) // expire in 1 day
