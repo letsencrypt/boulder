@@ -65,8 +65,6 @@ const pathWrongToken = "wrongtoken"
 const path404 = "404"
 const pathFound = "302"
 const pathMoved = "301"
-const pathUnsafe = "%"
-const pathUnsafe302 = "302-to-unsafe"
 
 func createValidation(token string, enableTLS bool) string {
 	payload, _ := json.Marshal(map[string]interface{}{

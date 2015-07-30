@@ -62,7 +62,6 @@ type verificationRequestEvent struct {
 	Error        string         `json:",omitempty"`
 }
 
-// TODO Update jws.go to accept jose.JsonWebKey in newVerifier
 func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
 
 	if len(validation.Signatures) > 1 {
