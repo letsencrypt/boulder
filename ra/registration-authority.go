@@ -111,8 +111,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	reg = core.Registration{
-		RecoveryToken: core.NewToken(),
-		Key:           init.Key,
+		Key: init.Key,
 	}
 	reg.MergeUpdate(init)
 
@@ -371,8 +370,15 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 
+	// Look up the account key for this authorization
+	reg, err := ra.SA.GetRegistration(authz.RegistrationID)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		return
+	}
+
 	// Dispatch to the VA for service
-	ra.VA.UpdateValidations(authz, challengeIndex)
+	ra.VA.UpdateValidations(authz, challengeIndex, reg.Key)
 
 	return
 }

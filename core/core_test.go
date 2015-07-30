@@ -30,12 +30,6 @@ func TestChallenges(t *testing.T) {
 	if dvsni.Status != StatusPending {
 		t.Errorf("Incorrect status for challenge: %v", dvsni.Status)
 	}
-	if len(dvsni.R) != 43 {
-		t.Errorf("Incorrect length for DVSNI R: %v", dvsni.R)
-	}
-	if len(dvsni.Nonce) != 32 {
-		t.Errorf("Incorrect length for DVSNI nonce: %v", dvsni.Nonce)
-	}
 }
 
 // objects.go
@@ -76,34 +70,28 @@ func TestCertificateRequest(t *testing.T) {
 }
 
 func TestMergeChallenge(t *testing.T) {
+	tls := true
 	t1 := time.Now()
 	t2 := time.Now().Add(-5 * time.Hour)
 	challenge := Challenge{
+		Type:      ChallengeTypeSimpleHTTP,
 		Status:    StatusPending,
 		Validated: &t1,
 		Token:     "asdf",
-		Path:      "",
-		R:         "asdf",
-		S:         "",
-		Nonce:     "asdf",
 	}
 	response := Challenge{
+		Type:      ChallengeTypeSimpleHTTP,
 		Status:    StatusValid,
 		Validated: &t2,
 		Token:     "qwer",
-		Path:      "qwer",
-		R:         "qwer",
-		S:         "qwer",
-		Nonce:     "qwer",
+		TLS:       &tls,
 	}
 	merged := Challenge{
+		Type:      ChallengeTypeSimpleHTTP,
 		Status:    StatusPending,
 		Validated: &t1,
 		Token:     "asdf",
-		Path:      "qwer",
-		R:         "asdf",
-		S:         "qwer",
-		Nonce:     "asdf",
+		TLS:       &tls,
 	}
 
 	probe := challenge.MergeResponse(response)
@@ -116,17 +104,8 @@ func TestMergeChallenge(t *testing.T) {
 	if probe.Token != merged.Token {
 		t.Errorf("MergeChallenge allowed response to overwrite status")
 	}
-	if probe.Path != merged.Path {
-		t.Errorf("MergeChallenge failed to copy path from response")
-	}
-	if probe.R != merged.R {
-		t.Errorf("MergeChallenge allowed response to overwrite R")
-	}
-	if probe.Path != merged.Path {
-		t.Errorf("MergeChallenge failed to copy S from response")
-	}
-	if probe.Nonce != merged.Nonce {
-		t.Errorf("MergeChallenge allowed response to overwrite nonce")
+	if probe.TLS != merged.TLS {
+		t.Errorf("MergeChallenge failed to overwrite TLS")
 	}
 }
 

@@ -178,5 +178,5 @@
     "dnsTimeout": "10s"
   },
 
-  "subscriberAgreementURL": "http://localhost:4001/terms/v1"
+  "subscriberAgreementURL": "http://localhost:4000/terms/v1"
 }

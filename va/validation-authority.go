@@ -9,6 +9,8 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -18,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
@@ -59,6 +62,43 @@ type verificationRequestEvent struct {
 	Error        string         `json:",omitempty"`
 }
 
+// TODO Update jws.go to accept jose.JsonWebKey in newVerifier
+func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
+
+	if len(validation.Signatures) > 1 {
+		return fmt.Errorf("Too many signatures on validation JWS")
+	}
+	if len(validation.Signatures) == 0 {
+		return fmt.Errorf("Validation JWS not signed")
+	}
+
+	payload, _, err := validation.Verify(accountKey)
+	if err != nil {
+		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
+	}
+
+	var parsedResponse map[string]interface{}
+	err = json.Unmarshal(payload, &parsedResponse)
+	if err != nil {
+		return fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
+	}
+
+	if len(parsedResponse) != len(target) {
+		return fmt.Errorf("Validation payload had an improper number of fields")
+	}
+
+	for key, targetValue := range target {
+		parsedValue, ok := parsedResponse[key]
+		if !ok {
+			return fmt.Errorf("Validation payload missing a field %s", key)
+		} else if parsedValue != targetValue {
+			return fmt.Errorf("Validation payload has improper value for field %s", key)
+		}
+	}
+
+	return nil
+}
+
 // Validation methods
 
 // setChallengeErrorFromDNSError checks the error returned from Lookup...
@@ -78,18 +118,8 @@ func setChallengeErrorFromDNSError(err error, challenge *core.Challenge) {
 	}
 }
 
-func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
 	challenge := input
-
-	if len(challenge.Path) == 0 {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "No path provided for SimpleHTTP challenge.",
-		}
-		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] path empty: %v", identifier, challenge))
-		return challenge, challenge.Error
-	}
 
 	if identifier.Type != core.IdentifierDNS {
 		challenge.Status = core.StatusInvalid
@@ -113,7 +143,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		hostName = "localhost:5001"
 	}
 
-	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, hostName, challenge.Path)
+	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, hostName, challenge.Token)
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(scheme), url))
@@ -152,37 +182,17 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 	httpResponse, err := client.Do(httpRequest)
 
-	if err == nil && httpResponse.StatusCode == 200 {
-		// Read body & test
-		body, readErr := ioutil.ReadAll(httpResponse.Body)
-		if readErr != nil {
-			challenge.Error = &core.ProblemDetails{
-				Type: core.ServerInternalProblem,
-			}
-			va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] Read failure: %s", identifier, readErr))
-			challenge.Status = core.StatusInvalid
-			return challenge, readErr
-		}
-
-		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
-			challenge.Status = core.StatusValid
-		} else {
-			challenge.Status = core.StatusInvalid
-			challenge.Error = &core.ProblemDetails{
-				Type: core.UnauthorizedProblem,
-				Detail: fmt.Sprintf("Incorrect token validating Simple%s for %s",
-					strings.ToUpper(scheme), url),
-			}
-			err = challenge.Error
-		}
-	} else if err != nil {
+	if err != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type:   parseHTTPConnError(err),
 			Detail: fmt.Sprintf("Could not connect to %s", url),
 		}
 		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
-	} else {
+		return challenge, err
+	}
+
+	if httpResponse.StatusCode != 200 {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type: core.UnauthorizedProblem,
@@ -190,12 +200,58 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 				url, httpResponse.StatusCode),
 		}
 		err = challenge.Error
+		return challenge, err
 	}
 
-	return challenge, err
+	// Read body & test
+	body, readErr := ioutil.ReadAll(httpResponse.Body)
+	if readErr != nil {
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: fmt.Sprintf("Error reading HTTP response body"),
+		}
+		return challenge, readErr
+	}
+
+	// Parse and verify JWS
+	parsedJws, err := jose.ParseSigned(string(body))
+	if err != nil {
+		err = fmt.Errorf("Validation response failed to parse as JWS: %s", err.Error())
+		va.log.Debug(err.Error())
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
+		return challenge, err
+	}
+
+	// Check that JWS body is as expected
+	// * "type" == "simpleHttp"
+	// * "token" == challenge.token
+	// * "tls" == challenge.tls || true
+	target := map[string]interface{}{
+		"type":  core.ChallengeTypeSimpleHTTP,
+		"token": challenge.Token,
+		"tls":   (challenge.TLS == nil) || *challenge.TLS,
+	}
+	err = verifyValidationJWS(parsedJws, &accountKey, target)
+	if err != nil {
+		va.log.Debug(err.Error())
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
+		return challenge, err
+	}
+
+	challenge.Status = core.StatusValid
+	return challenge, nil
 }
 
-func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != "dns" {
@@ -208,33 +264,30 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		return challenge, challenge.Error
 	}
 
-	const DVSNIsuffix = ".acme.invalid"
-	nonceName := challenge.Nonce + DVSNIsuffix
-
-	R, err := core.B64dec(challenge.R)
+	// Check that JWS body is as expected
+	// * "type" == "dvsni"
+	// * "token" == challenge.token
+	target := map[string]interface{}{
+		"type":  core.ChallengeTypeDVSNI,
+		"token": challenge.Token,
+	}
+	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), &accountKey, target)
 	if err != nil {
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "Failed to decode R value from DVSNI challenge",
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
 		}
-		va.log.Debug(fmt.Sprintf("DVSNI [%s] R Decode failure: %s", identifier, err))
 		return challenge, err
 	}
-	S, err := core.B64dec(challenge.S)
-	if err != nil {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "Failed to decode S value from DVSNI challenge",
-		}
-		va.log.Debug(fmt.Sprintf("DVSNI [%s] S Decode failure: %s", identifier, err))
-		return challenge, err
-	}
-	RS := append(R, S...)
 
-	z := sha256.Sum256(RS)
-	zName := fmt.Sprintf("%064x.acme.invalid", z)
+	// Compute the digest that will appear in the certificate
+	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
+	h := sha256.New()
+	h.Write([]byte(encodedSignature))
+	Z := hex.EncodeToString(h.Sum(nil))
+	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.DVSNISuffix)
 
 	// Make a connection with SNI = nonceName
 	hostPort := identifier.Value + ":443"
@@ -242,9 +295,9 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		hostPort = "localhost:5001"
 	}
 	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
-		identifier, hostPort, zName))
+		identifier, hostPort, ZName))
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", hostPort, &tls.Config{
-		ServerName:         nonceName,
+		ServerName:         ZName,
 		InsecureSkipVerify: true,
 	})
 
@@ -259,7 +312,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	}
 	defer conn.Close()
 
-	// Check that zName is a dNSName SAN in the server's certificate
+	// Check that ZName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		challenge.Error = &core.ProblemDetails{
@@ -270,7 +323,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		return challenge, challenge.Error
 	}
 	for _, name := range certs[0].DNSNames {
-		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
+		if subtle.ConstantTimeCompare([]byte(name), []byte(ZName)) == 1 {
 			challenge.Status = core.StatusValid
 			return challenge, nil
 		}
@@ -278,7 +331,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	challenge.Error = &core.ProblemDetails{
 		Type:   core.UnauthorizedProblem,
-		Detail: "Correct zName not found for DVSNI challenge",
+		Detail: "Correct ZName not found for DVSNI challenge",
 	}
 	challenge.Status = core.StatusInvalid
 	return challenge, challenge.Error
@@ -306,7 +359,7 @@ func parseHTTPConnError(err error) core.ProblemType {
 	return core.ConnectionProblem
 }
 
-func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
@@ -319,9 +372,27 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 		return challenge, challenge.Error
 	}
 
-	const DNSPrefix = "_acme-challenge"
+	// Check that JWS body is as expected
+	// * "type" == "dvsni"
+	// * "token" == challenge.token
+	target := map[string]interface{}{
+		"type":  core.ChallengeTypeDNS,
+		"token": challenge.Token,
+	}
+	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), &accountKey, target)
+	if err != nil {
+		va.log.Debug(err.Error())
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
+		return challenge, err
+	}
+	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
 
-	challengeSubdomain := fmt.Sprintf("%s.%s", DNSPrefix, identifier.Value)
+	// Look for the required record in the DNS
+	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
 	txts, _, err := va.DNSResolver.LookupTXT(challengeSubdomain)
 
 	if err != nil {
@@ -331,9 +402,8 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 		return challenge, challenge.Error
 	}
 
-	byteToken := []byte(challenge.Token)
 	for _, element := range txts {
-		if subtle.ConstantTimeCompare([]byte(element), byteToken) == 1 {
+		if subtle.ConstantTimeCompare([]byte(element), []byte(encodedSignature)) == 1 {
 			challenge.Status = core.StatusValid
 			return challenge, nil
 		}
@@ -349,7 +419,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 
 // Overall validation process
 
-func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int) {
+func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int, accountKey jose.JsonWebKey) {
 
 	// Select the first supported validation method
 	// XXX: Remove the "break" lines to process all supported validations
@@ -370,13 +440,13 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 
 		switch authz.Challenges[challengeIndex].Type {
 		case core.ChallengeTypeSimpleHTTP:
-			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
+			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
 			break
 		case core.ChallengeTypeDVSNI:
-			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
+			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
 			break
 		case core.ChallengeTypeDNS:
-			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex])
+			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
 			break
 		}
 
@@ -395,8 +465,8 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 }
 
 // UpdateValidations runs the validate() method asynchronously using goroutines.
-func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
-	go va.validate(authz, challengeIndex)
+func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int, accountKey jose.JsonWebKey) error {
+	go va.validate(authz, challengeIndex, accountKey)
 	return nil
 }
 
