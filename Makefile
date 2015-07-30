@@ -17,6 +17,7 @@ OBJECTS = activity-monitor \
 	boulder-sa \
 	boulder-va \
 	boulder-wfe \
+	expiration-mailer \
 	ocsp-updater \
 	ocsp-responder
 

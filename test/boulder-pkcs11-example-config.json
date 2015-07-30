@@ -144,11 +144,17 @@
     "debugAddr": "localhost:8006"
   },
 
-  "mail": {
+  "mailer": {
     "server": "mail.example.com",
     "port": "25",
     "username": "cert-master@example.com",
-    "password": "password"
+    "password": "password",
+    "dbDriver": "sqlite3",
+    "dbConnect": ":memory:",
+    "messageLimit": 0,
+    "nagTimes": ["24h", "72h", "168h", "336h"],
+    "emailTemplate": "test/example-expiration-template",
+    "debugAddr": "localhost:8004"
   },
 
   "common": {

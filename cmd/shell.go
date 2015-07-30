@@ -130,11 +130,22 @@ type Config struct {
 		DBConnect string
 	}
 
-	Mail struct {
+	Mailer struct {
 		Server   string
 		Port     string
 		Username string
 		Password string
+
+		DBDriver  string
+		DBConnect string
+
+		CertLimit int
+		NagTimes  []string
+		// Path to a text/template email template
+		EmailTemplate string
+
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
 	}
 
 	OCSPResponder struct {
@@ -273,7 +284,7 @@ func AmqpChannel(conf Config) (*amqp.Channel, error) {
 		if conf.AMQP.TLS.CertFile != nil || conf.AMQP.TLS.KeyFile != nil {
 			// But they have to give both.
 			if conf.AMQP.TLS.CertFile == nil || conf.AMQP.TLS.KeyFile == nil {
-				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile.")
+				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile")
 				return nil, err
 			}
 
