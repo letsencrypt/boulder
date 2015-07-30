@@ -80,7 +80,7 @@ type RegistrationAuthority interface {
 // ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
-	UpdateValidations(Authorization, int) error
+	UpdateValidations(Authorization, int, jose.JsonWebKey) error
 	CheckCAARecords(AcmeIdentifier) (bool, bool, error)
 }
 
@@ -103,6 +103,7 @@ type StorageGetter interface {
 	GetRegistration(int64) (Registration, error)
 	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
+	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
 	GetCertificate(string) (Certificate, error)
 	GetCertificateByShortSerial(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)

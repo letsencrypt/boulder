@@ -111,8 +111,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	reg = core.Registration{
-		RecoveryToken: core.NewToken(),
-		Key:           init.Key,
+		Key: init.Key,
 	}
 	reg.MergeUpdate(init)
 
@@ -279,49 +278,20 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	// Gather authorized domains from the referenced authorizations
-	authorizedDomains := map[string]bool{}
-	verificationMethodSet := map[string]bool{}
-	earliestExpiry := time.Date(2100, 01, 01, 0, 0, 0, 0, time.UTC)
+	// Check that each requested name has a valid authorization
 	now := time.Now()
-	for _, url := range req.Authorizations {
-		id := lastPathSegment(url)
-		authz, err := ra.SA.GetAuthorization(id)
-		if err != nil || // Couldn't find authorization
-			authz.RegistrationID != registration.ID || // Not for this account
-			authz.Status != core.StatusValid || // Not finalized or not successful
-			authz.Expires.Before(now) || // Expired
-			authz.Identifier.Type != core.IdentifierDNS {
-			// XXX: It may be good to fail here instead of ignoring invalid authorizations.
-			//      However, it seems like this treatment is more in the spirit of Postel's
-			//      law, and it hides information from attackers.
-			continue
+	earliestExpiry := time.Date(2100, 01, 01, 0, 0, 0, 0, time.UTC)
+	for _, name := range names {
+		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
+		if err != nil || authz.Expires.Before(now) {
+			// unable to find a valid authorization or authz is expired
+			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
+			logEvent.Error = err.Error()
+			return emptyCert, err
 		}
 
 		if authz.Expires.Before(earliestExpiry) {
 			earliestExpiry = *authz.Expires
-		}
-
-		for _, challenge := range authz.Challenges {
-			if challenge.Status == core.StatusValid {
-				verificationMethodSet[challenge.Type] = true
-			}
-		}
-
-		authorizedDomains[authz.Identifier.Value] = true
-	}
-	verificationMethods := []string{}
-	for method := range verificationMethodSet {
-		verificationMethods = append(verificationMethods, method)
-	}
-	logEvent.VerificationMethods = verificationMethods
-
-	// Validate all domains
-	for _, name := range names {
-		if !authorizedDomains[name] {
-			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
-			logEvent.Error = err.Error()
-			return emptyCert, err
 		}
 	}
 
@@ -400,8 +370,15 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 
+	// Look up the account key for this authorization
+	reg, err := ra.SA.GetRegistration(authz.RegistrationID)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		return
+	}
+
 	// Dispatch to the VA for service
-	ra.VA.UpdateValidations(authz, challengeIndex)
+	ra.VA.UpdateValidations(authz, challengeIndex, reg.Key)
 
 	return
 }

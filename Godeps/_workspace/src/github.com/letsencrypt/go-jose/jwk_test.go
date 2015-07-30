@@ -119,7 +119,7 @@ func TestRoundtripEcPrivate(t *testing.T) {
 	}
 }
 
-func TestMarshalUnmarshal(t *testing.T) {
+func TestMarshalUnmarshalJWK(t *testing.T) {
 	kid := "DEADBEEF"
 
 	for i, key := range []interface{}{ecTestKey256, ecTestKey384, ecTestKey521, rsaTestKey} {

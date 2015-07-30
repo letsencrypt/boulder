@@ -35,7 +35,7 @@ type DummyValidationAuthority struct {
 	Argument core.Authorization
 }
 
-func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
+func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int, key jose.JsonWebKey) (err error) {
 	dva.Called = true
 	dva.Argument = authz
 	return
@@ -99,7 +99,7 @@ var (
 
 	ResponseIndex = 0
 	Response      = core.Challenge{
-		Path: "Hf5GrX4Q7EBax9hc2jJnfw",
+		Type: "simpleHttp",
 	}
 
 	ExampleCSR = &x509.CertificateRequest{}
@@ -114,19 +114,8 @@ var (
 		RegistrationID: 1,
 		Status:         "pending",
 		Challenges: []core.Challenge{
-			core.Challenge{
-				Type:   "simpleHttp",
-				Status: "pending",
-				URI:    core.AcmeURL(*url0),
-				Token:  "pDX9vBFJ043_gEc9Wyp8of-SqZMN2H3-fvj5iUgP7mg",
-			},
-			core.Challenge{
-				Type:   "dvsni",
-				Status: "pending",
-				URI:    core.AcmeURL(*url1),
-				R:      "AI83O7gCMPDr4z7OIdl8T6axx6nui4HV1aAFQ5LJvVs",
-				Nonce:  "f011c9a0ce1a4fe0f18f2252d64c4239",
-			},
+			core.SimpleHTTPChallenge(),
+			core.DvsniChallenge(),
 		},
 		Combinations: [][]int{[]int{0}, []int{1}},
 	}
@@ -205,7 +194,6 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	AuthzInitial.RegistrationID = Registration.ID
 
 	AuthzUpdated = AuthzInitial
-	AuthzUpdated.Challenges[0].Path = "Hf5GrX4Q7EBax9hc2jJnfw"
 
 	AuthzFinal = AuthzUpdated
 	AuthzFinal.Status = "valid"
@@ -282,7 +270,6 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, mailto.String() == result.Contact[0].String(),
 		"Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
-	test.Assert(t, result.RecoveryToken != "", "Recovery token not filled")
 
 	reg, err := sa.GetRegistration(result.ID)
 	test.AssertNotError(t, err, "Failed to retrieve registration")
@@ -293,11 +280,10 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, _, ra := initAuthorities(t)
 	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		ID:            23,
-		Key:           AccountKeyC,
-		RecoveryToken: "RecoverMe",
-		Contact:       []core.AcmeURL{core.AcmeURL(*mailto)},
-		Agreement:     "I agreed",
+		ID:        23,
+		Key:       AccountKeyC,
+		Contact:   []core.AcmeURL{core.AcmeURL(*mailto)},
+		Agreement: "I agreed",
 	}
 
 	result, err := ra.NewRegistration(input)
@@ -306,17 +292,14 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	test.Assert(t, result.ID != 23, "ID shouldn't be set by user")
 	// TODO: Enable this test case once we validate terms agreement.
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
-	test.Assert(t, result.RecoveryToken != "RecoverMe", "Recovery token shouldn't be set by user")
 
 	result2, err := ra.UpdateRegistration(result, core.Registration{
-		ID:            33,
-		Key:           ShortKey,
-		RecoveryToken: "RecoverMe2",
+		ID:  33,
+		Key: ShortKey,
 	})
 	test.AssertNotError(t, err, "Could not update registration")
 	test.Assert(t, result2.ID != 33, "ID shouldn't be overwritten.")
 	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
-	test.Assert(t, result2.RecoveryToken != "RecoverMe2", "Recovery token shouldn't be overwritten by user")
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
@@ -378,8 +361,6 @@ func TestUpdateAuthorization(t *testing.T) {
 
 	// Verify that the responses are reflected
 	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
-	simpleHTTP := va.Argument.Challenges[0]
-	test.Assert(t, simpleHTTP.Path == Response.Path, "simpleHTTP changed")
 
 	t.Log("DONE TestUpdateAuthorization")
 }
@@ -425,10 +406,8 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse CSR")
 	sa.UpdatePendingAuthorization(authz)
 	sa.FinalizeAuthorization(authz)
-	authzURL, _ := url.Parse("http://doesnt.matter/" + authz.ID)
 	certRequest := core.CertificateRequest{
-		CSR:            parsedCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*authzURL)},
+		CSR: parsedCSR,
 	}
 
 	// Registration id 1 has key == AccountKeyA
@@ -446,14 +425,10 @@ func TestAuthorizationRequired(t *testing.T) {
 	sa.UpdatePendingAuthorization(AuthzFinal)
 	sa.FinalizeAuthorization(AuthzFinal)
 
-	// Construct a cert request referencing the authorization
-	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
-
 	// ExampleCSR requests not-example.com and www.not-example.com,
 	// but the authorization only covers not-example.com
 	certRequest := core.CertificateRequest{
-		CSR:            ExampleCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*url1)},
+		CSR: ExampleCSR,
 	}
 
 	_, err := ra.NewCertificate(certRequest, 1)
@@ -475,13 +450,8 @@ func TestNewCertificate(t *testing.T) {
 	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
 	sa.FinalizeAuthorization(authzFinalWWW)
 
-	// Construct a cert request referencing the two authorizations
-	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
-	url2, _ := url.Parse("http://doesnt.matter/" + authzFinalWWW.ID)
-
 	certRequest := core.CertificateRequest{
-		CSR:            ExampleCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*url1), core.AcmeURL(*url2)},
+		CSR: ExampleCSR,
 	}
 
 	cert, err := ra.NewCertificate(certRequest, 1)

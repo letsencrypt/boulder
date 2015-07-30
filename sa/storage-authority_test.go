@@ -75,7 +75,7 @@ func TestAddRegistration(t *testing.T) {
 	uu, err := url.Parse("test.com")
 	u := core.AcmeURL(*uu)
 
-	newReg := core.Registration{ID: reg.ID, Key: jwk, RecoveryToken: "RBNvo1WzZ4oRRq0W9", Contact: []core.AcmeURL{u}, Agreement: "yes"}
+	newReg := core.Registration{ID: reg.ID, Key: jwk, Contact: []core.AcmeURL{u}, Agreement: "yes"}
 	err = sa.UpdateRegistration(newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
@@ -83,7 +83,6 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't get registration by key")
 
 	test.AssertEquals(t, dbReg.ID, newReg.ID)
-	test.AssertEquals(t, dbReg.RecoveryToken, newReg.RecoveryToken)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
 	jwk.KeyID = "bad"
@@ -114,16 +113,14 @@ func TestAddAuthorization(t *testing.T) {
 		return
 	}
 
-	uu, err := url.Parse("test.com")
-	u := core.AcmeURL(*uu)
-
-	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusPending, URI: u, Token: "THISWOULDNTBEAGOODTOKEN", Path: "test-me"}
+	chall := core.SimpleHTTPChallenge()
 
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}
 
 	exp := time.Now().AddDate(0, 0, 1)
-	newPa := core.Authorization{ID: PA.ID, Identifier: core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}, RegistrationID: 0, Status: core.StatusPending, Expires: &exp, Challenges: []core.Challenge{chall}, Combinations: combos}
+	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
+	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: 0, Status: core.StatusPending, Expires: &exp, Challenges: []core.Challenge{chall}, Combinations: combos}
 	err = sa.UpdatePendingAuthorization(newPa)
 	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 
@@ -133,6 +130,119 @@ func TestAddAuthorization(t *testing.T) {
 
 	dbPa, err = sa.GetAuthorization(PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
+}
+
+func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
+	// create pending auth
+	authz, err := sa.NewPendingAuthorization(core.Authorization{})
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	test.Assert(t, authz.ID != "", "ID shouldn't be blank")
+
+	// prepare challenge for auth
+	uu, err := url.Parse(domainName)
+	test.AssertNotError(t, err, "Couldn't parse domainName "+domainName)
+	u := core.AcmeURL(*uu)
+	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusValid, URI: u, Token: "THISWOULDNTBEAGOODTOKEN"}
+	combos := make([][]int, 1)
+	combos[0] = []int{0, 1}
+	exp := time.Now().AddDate(0, 0, 1) // expire in 1 day
+
+	// validate pending auth
+	authz.Status = core.StatusPending
+	authz.Identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domainName}
+	authz.RegistrationID = 42
+	authz.Expires = &exp
+	authz.Challenges = []core.Challenge{chall}
+	authz.Combinations = combos
+
+	// save updated auth
+	err = sa.UpdatePendingAuthorization(authz)
+	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+authz.ID)
+
+	return
+}
+
+// Ensure we get only valid authorization with correct RegID
+func TestGetLatestValidAuthorizationBasic(t *testing.T) {
+	sa := initSA(t)
+
+	// attempt to get unauthorized domain
+	authz, err := sa.GetLatestValidAuthorization(0, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
+	test.AssertError(t, err, "Should not have found a valid auth for example.org")
+
+	// authorize "example.org"
+	authz = CreateDomainAuth(t, "example.org", sa)
+
+	// finalize auth
+	authz.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(authz)
+	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+
+	// attempt to get authorized domain with wrong RegID
+	authz, err = sa.GetLatestValidAuthorization(0, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
+	test.AssertError(t, err, "Should not have found a valid auth for example.org and regID 0")
+
+	// get authorized domain
+	authz, err = sa.GetLatestValidAuthorization(42, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
+	test.AssertNotError(t, err, "Should have found a valid auth for example.org and regID 42")
+	test.AssertEquals(t, authz.Status, core.StatusValid)
+	test.AssertEquals(t, authz.Identifier.Type, core.IdentifierDNS)
+	test.AssertEquals(t, authz.Identifier.Value, "example.org")
+	test.AssertEquals(t, authz.RegistrationID, int64(42))
+}
+
+// Ensure we get the latest valid authorization for an ident
+func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
+	sa := initSA(t)
+	domain := "example.org"
+	ident := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
+	regID := int64(42)
+	var err error
+
+	// create invalid authz
+	authz := CreateDomainAuth(t, domain, sa)
+	exp := time.Now().AddDate(0, 0, 10) // expire in 10 day
+	authz.Expires = &exp
+	authz.Status = core.StatusInvalid
+	err = sa.FinalizeAuthorization(authz)
+	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+
+	// should not get the auth
+	authz, err = sa.GetLatestValidAuthorization(regID, ident)
+	test.AssertError(t, err, "Should not have found a valid auth for "+domain)
+
+	// create valid auth
+	authz = CreateDomainAuth(t, domain, sa)
+	exp = time.Now().AddDate(0, 0, 1) // expire in 1 day
+	authz.Expires = &exp
+	authz.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(authz)
+	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+
+	// should get the valid auth even if it's expire date is lower than the invalid one
+	authz, err = sa.GetLatestValidAuthorization(regID, ident)
+	test.AssertNotError(t, err, "Should have found a valid auth for "+domain)
+	test.AssertEquals(t, authz.Status, core.StatusValid)
+	test.AssertEquals(t, authz.Identifier.Type, ident.Type)
+	test.AssertEquals(t, authz.Identifier.Value, ident.Value)
+	test.AssertEquals(t, authz.RegistrationID, regID)
+
+	// create a newer auth
+	newAuthz := CreateDomainAuth(t, domain, sa)
+	exp = time.Now().AddDate(0, 0, 2) // expire in 2 day
+	newAuthz.Expires = &exp
+	newAuthz.Status = core.StatusValid
+	err = sa.FinalizeAuthorization(newAuthz)
+	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+newAuthz.ID)
+
+	authz, err = sa.GetLatestValidAuthorization(regID, ident)
+	test.AssertNotError(t, err, "Should have found a valid auth for "+domain)
+	test.AssertEquals(t, authz.Status, core.StatusValid)
+	test.AssertEquals(t, authz.Identifier.Type, ident.Type)
+	test.AssertEquals(t, authz.Identifier.Value, ident.Value)
+	test.AssertEquals(t, authz.RegistrationID, regID)
+	// make sure we got the latest auth
+	test.AssertEquals(t, authz.ID, newAuthz.ID)
 }
 
 func TestAddCertificate(t *testing.T) {

@@ -8,20 +8,21 @@ package core
 import (
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
 // AcmeStatus defines the state of a given authorization
 type AcmeStatus string
+
+// AcmeResource values identify different types of ACME resources
+type AcmeResource string
 
 // Buffer is a variable-length collection of bytes
 type Buffer []byte
@@ -57,6 +58,16 @@ const (
 	IdentifierDNS = IdentifierType("dns")
 )
 
+// The types of ACME resources
+const (
+	ResourceNewReg       = AcmeResource("new-reg")
+	ResourceNewAuthz     = AcmeResource("new-authz")
+	ResourceNewCert      = AcmeResource("new-cert")
+	ResourceRevokeCert   = AcmeResource("revoke-cert")
+	ResourceRegistration = AcmeResource("reg")
+	ResourceChallenge    = AcmeResource("challenge")
+)
+
 // These status are the states of OCSP
 const (
 	OCSPStatusGood    = OCSPStatus("good")
@@ -75,11 +86,16 @@ const (
 
 // These types are the available challenges
 const (
-	ChallengeTypeSimpleHTTP    = "simpleHttp"
-	ChallengeTypeDVSNI         = "dvsni"
-	ChallengeTypeDNS           = "dns"
-	ChallengeTypeRecoveryToken = "recoveryToken"
+	ChallengeTypeSimpleHTTP = "simpleHttp"
+	ChallengeTypeDVSNI      = "dvsni"
+	ChallengeTypeDNS        = "dns"
 )
+
+// The suffix appended to pseudo-domain names in DVSNI challenges
+const DVSNISuffix = "acme.invalid"
+
+// The label attached to DNS names in DNS challenges
+const DNSPrefix = "_acme-challenge"
 
 func (pd *ProblemDetails) Error() string {
 	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
@@ -141,21 +157,17 @@ type AcmeIdentifier struct {
 	Value string         `json:"value"` // The identifier itself
 }
 
-// CertificateRequest is just a CSR together with
-// URIs pointing to authorizations that should collectively
-// authorize the certificate being requsted.
+// CertificateRequest is just a CSR
 //
 // This data is unmarshalled from JSON by way of rawCertificateRequest, which
 // represents the actual structure received from the client.
 type CertificateRequest struct {
-	CSR            *x509.CertificateRequest // The CSR
-	Authorizations []AcmeURL                // Links to Authorization over the account key
-	Bytes          []byte                   // The original bytes of the CSR, for logging.
+	CSR   *x509.CertificateRequest // The CSR
+	Bytes []byte                   // The original bytes of the CSR, for logging.
 }
 
 type rawCertificateRequest struct {
-	CSR            JSONBuffer `json:"csr"`            // The encoded CSR
-	Authorizations []AcmeURL  `json:"authorizations"` // Authorizations
+	CSR JSONBuffer `json:"csr"` // The encoded CSR
 }
 
 // UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
@@ -171,7 +183,6 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 	}
 
 	cr.CSR = csr
-	cr.Authorizations = raw.Authorizations
 	cr.Bytes = raw.CSR
 	return nil
 }
@@ -179,8 +190,7 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 // MarshalJSON provides an implementation for encoding CertificateRequest objects.
 func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rawCertificateRequest{
-		CSR:            cr.CSR.Raw,
-		Authorizations: cr.Authorizations,
+		CSR: cr.CSR.Raw,
 	})
 }
 
@@ -192,9 +202,6 @@ type Registration struct {
 
 	// Account key to which the details are attached
 	Key jose.JsonWebKey `json:"key" db:"jwk"`
-
-	// Recovery Token is used to prove connection to an earlier transaction
-	RecoveryToken string `json:"recoveryToken" db:"recoveryToken"`
 
 	// Contact URIs
 	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
@@ -239,23 +246,20 @@ type Challenge struct {
 	// A URI to which a response can be POSTed
 	URI AcmeURL `json:"uri"`
 
-	// Used by simpleHTTP, recoveryToken, and dns challenges
+	// Used by simpleHttp, dvsni, and dns challenges
 	Token string `json:"token,omitempty"`
 
 	// Used by simpleHTTP challenges
-	Path string `json:"path,omitempty"`
-	TLS  *bool  `json:"tls,omitempty"`
-
-	// Used by dvsni challenges
-	R     string `json:"r,omitempty"`
-	S     string `json:"s,omitempty"`
-	Nonce string `json:"nonce,omitempty"`
+	TLS *bool `json:"tls,omitempty"`
 
 	// IP addresses resolved from authorization identifier during SimpleHTTP validation
 	ResolvedAddrs []net.IP `json:"resolvedAddrs,omitempty"`
 
 	// URLs redirected to during SimpleHTTP validation
 	Redirects []string `json:"redirects,omitempty"`
+
+	// Used by dns and dvsni challenges
+	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
@@ -268,29 +272,12 @@ func (ch Challenge) IsSane(completed bool) bool {
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP:
 		// check extra fields aren't used
-		if ch.R != "" || ch.S != "" || ch.Nonce != "" {
+		if ch.Validation != nil {
 			return false
 		}
 
-		// If the client has marked the challenge as completed, there should be a
-		// non-empty path provided. Otherwise there should be no default path.
-		if completed {
-			if ch.Path == "" {
-				return false
-			}
-			// Composed path should be a clean filepath (i.e. no double slashes, dot segments, etc)
-			vaURL := fmt.Sprintf("/.well-known/acme-challenge/%s", ch.Path)
-			if vaURL != filepath.Clean(vaURL) {
-				return false
-			}
-		} else {
-			if ch.Path != "" {
-				return false
-			}
-			// TLS should set set to true by default
-			if ch.TLS == nil || !*ch.TLS {
-				return false
-			}
+		if completed && ch.TLS == nil {
+			return false
 		}
 
 		// check token is present, corrent length, and contains b64 encoded string
@@ -301,41 +288,11 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 	case ChallengeTypeDVSNI:
-		// check extra fields aren't used
-		if ch.Path != "" || ch.Token != "" || ch.TLS != nil {
-			return false
-		}
-
-		if ch.Nonce == "" || len(ch.Nonce) != 32 {
-			return false
-		}
-		if _, err := hex.DecodeString(ch.Nonce); err != nil {
-			return false
-		}
-
-		// Check R & S are sane
-		if ch.R == "" || len(ch.R) != 43 {
-			return false
-		}
-		if _, err := B64dec(ch.R); err != nil {
-			return false
-		}
-
-		if completed {
-			if ch.S == "" || len(ch.S) != 43 {
-				return false
-			}
-			if _, err := B64dec(ch.S); err != nil {
-				return false
-			}
-		} else {
-			if ch.S != "" {
-				return false
-			}
-		}
+		// Same as DNS
+		fallthrough
 	case ChallengeTypeDNS:
 		// check extra fields aren't used
-		if ch.R != "" || ch.S != "" || ch.Nonce != "" || ch.TLS != nil {
+		if ch.TLS != nil {
 			return false
 		}
 
@@ -344,6 +301,11 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 		if _, err := B64dec(ch.Token); err != nil {
+			return false
+		}
+
+		// If completed, check that there's a validation object
+		if completed && ch.Validation == nil {
 			return false
 		}
 
@@ -357,17 +319,24 @@ func (ch Challenge) IsSane(completed bool) bool {
 // MergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
-	// Only override fields that are supposed to be client-provided
-	if len(ch.Path) == 0 {
-		ch.Path = resp.Path
-	}
+	switch ch.Type {
+	case ChallengeTypeSimpleHTTP:
+		// For simpleHttp, only "tls" is client-provided
+		// If "tls" is not provided, default to "true"
+		if resp.TLS != nil {
+			ch.TLS = resp.TLS
+		} else {
+			ch.TLS = new(bool)
+			*ch.TLS = true
+		}
 
-	if len(ch.S) == 0 {
-		ch.S = resp.S
-	}
-
-	if resp.TLS != nil {
-		ch.TLS = resp.TLS
+	case ChallengeTypeDVSNI:
+		fallthrough
+	case ChallengeTypeDNS:
+		// For dvsni and dns, only "validation" is client-provided
+		if resp.Validation != nil {
+			ch.Validation = resp.Validation
+		}
 	}
 
 	return ch
@@ -560,6 +529,8 @@ type CertificateStatus struct {
 	//   revocation. Otherwise it is zero (which happens to be the reason
 	//   code for 'unspecified').
 	RevokedReason int `db:"revokedReason"`
+
+	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
 	LockCol int64 `json:"-"`
 }
