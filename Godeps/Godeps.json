@@ -12,51 +12,51 @@
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/config",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs11key",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs12",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs7",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/csr",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/errors",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/info",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/log",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
-			"Rev": "fd649feb9eb317e3ed24afee0d92c0ea55bf4a33"
+			"Rev": "e46a042fbff1afcb445a5164d392ab2bf1b938be"
 		},
 		{
 			"ImportPath": "github.com/codegangsta/cli",
@@ -73,20 +73,24 @@
 			"Rev": "a197e5d40516f2e9f74dcee085a5f2d4604e94df"
 		},
 		{
+			"ImportPath": "github.com/letsencrypt/go-jose",
+			"Rev": "e7bd87a386998d423741e8e370af1a22638767e0"
+		},
+		{
 			"ImportPath": "github.com/mattn/go-sqlite3",
 			"Rev": "308067797b0fcce4ca06362580dc6db77c1bfeda"
 		},
 		{
 			"ImportPath": "github.com/miekg/dns",
-			"Rev": "6da0cd2c927d5cb11255c468b5c3a1744c3351b1"
+			"Rev": "259969e797348d20e8c144a7573c23f06fa962f5"
 		},
 		{
 			"ImportPath": "github.com/miekg/pkcs11",
 			"Rev": "88c9f842544e629ec046105d7fb50d5daafae737"
 		},
 		{
-			"ImportPath": "github.com/square/go-jose",
-			"Rev": "d3ba9be3fbf631c353e477ab8fba8ec04f05a8b4"
+			"ImportPath": "github.com/square/go-jose/cipher",
+			"Rev": "2f4e4fff85a98acc176ac2712c31394ac1acb7e8"
 		},
 		{
 			"ImportPath": "github.com/streadway/amqp",

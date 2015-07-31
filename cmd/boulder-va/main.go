@@ -38,9 +38,9 @@ func main() {
 		go cmd.ProfileCmd("VA", stats)
 
 		vai := va.NewValidationAuthorityImpl(c.CA.TestMode)
-		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
+		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
-		vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.VA.DNSResolver})
+		vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
 		vai.UserAgent = c.VA.UserAgent
 
 		for {

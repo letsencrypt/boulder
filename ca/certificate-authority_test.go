@@ -332,6 +332,8 @@ var BadAlgorithmCSRhex = "308202aa30820192020100300d310b300906035504061302" +
 var FarFuture = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
 var FarPast = time.Date(1950, 1, 1, 0, 0, 0, 0, time.UTC)
 
+var log = mocks.UseMockLog()
+
 // CFSSL config
 const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"
@@ -434,8 +436,9 @@ func TestRevoke(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get cert status")
 
 	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
-	test.Assert(t, time.Now().Sub(status.OCSPLastUpdated) > time.Second,
-		fmt.Sprintf("OCSP LastUpdated was wrong: %v", status.OCSPLastUpdated))
+	secondAgo := time.Now().Add(-time.Second)
+	test.Assert(t, status.OCSPLastUpdated.After(secondAgo),
+		fmt.Sprintf("OCSP LastUpdated was more than a second old: %v", status.OCSPLastUpdated))
 }
 
 func TestIssueCertificate(t *testing.T) {

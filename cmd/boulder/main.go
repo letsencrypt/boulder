@@ -82,12 +82,25 @@ func main() {
 		cmd.FailOnError(err, "Unable to create SA")
 		sa.SetSQLDebug(c.SQL.SQLDebug)
 
+		wfei.CertCacheDuration, err = time.ParseDuration(c.WFE.CertCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse certificate caching duration")
+		wfei.CertNoCacheExpirationWindow, err = time.ParseDuration(c.WFE.CertNoCacheExpirationWindow)
+		cmd.FailOnError(err, "Couldn't parse certificate expiration no-cache window")
+		wfei.IndexCacheDuration, err = time.ParseDuration(c.WFE.IndexCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse index caching duration")
+		wfei.IssuerCacheDuration, err = time.ParseDuration(c.WFE.IssuerCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse issuer caching duration")
+
+		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
+		cmd.FailOnError(err, "Couldn't parse DNS timeout")
+		dnsResolver := core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+
 		ra := ra.NewRegistrationAuthorityImpl()
+		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
+		ra.DNSResolver = dnsResolver
 
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
-		dnsTimeout, err := time.ParseDuration(c.VA.DNSTimeout)
-		cmd.FailOnError(err, "Couldn't parse DNS timeout")
-		va.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.VA.DNSResolver})
+		va.DNSResolver = dnsResolver
 		va.UserAgent = c.VA.UserAgent
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBConnect)
@@ -122,7 +135,8 @@ func main() {
 		// Set up paths
 		ra.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		wfei.BaseURL = c.Common.BaseURL
-		h := wfei.Handler()
+		h, err := wfei.Handler()
+		cmd.FailOnError(err, "Problem setting up HTTP handlers")
 
 		ra.MaxKeySize = c.Common.MaxKeySize
 		ca.MaxKeySize = c.Common.MaxKeySize

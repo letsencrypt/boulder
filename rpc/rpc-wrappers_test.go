@@ -10,16 +10,18 @@ import (
 	"testing"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
-
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
+
+var log = mocks.UseMockLog()
 
 const JWK1JSON = `{
   "kty": "RSA",
   "n": "vuc785P8lBj3fUxyZchF_uZw6WtbxcorqgTyq-qapF5lrO1U82Tp93rpXlmctj6fyFHBVVB5aXnUHJ7LZeVPod7Wnfl8p5OyhlHQHC8BnzdzCqCMKmWZNX5DtETDId0qzU7dPzh0LP0idt5buU7L9QNaabChw3nnaL47iu_1Di5Wp264p2TwACeedv2hfRDjDlJmaQXuS8Rtv9GnRWyC9JBu7XmGvGDziumnJH7Hyzh3VNu-kSPQD3vuAFgMZS6uUzOztCkT0fpOalZI6hqxtWLvXUMj-crXrn-Maavz8qRhpAyp5kcYk3jiHGgQIi7QSK2JIdRJ8APyX9HlmTN5AQ",
-  "e": "AAEAAQ"
+  "e": "AQAB"
 }`
 
 type MockRPCClient struct {
@@ -69,9 +71,8 @@ func TestRANewRegistration(t *testing.T) {
 	json.Unmarshal([]byte(JWK1JSON), &jwk)
 
 	reg := core.Registration{
-		ID:            1,
-		Key:           jwk,
-		RecoveryToken: "1234",
+		ID:  1,
+		Key: jwk,
 	}
 
 	_, err = client.NewRegistration(reg)

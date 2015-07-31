@@ -18,11 +18,11 @@ package jose
 
 import (
 	"bytes"
-	"fmt"
-	"encoding/json"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"encoding/json"
+	"fmt"
 	"math/big"
 	"reflect"
 	"testing"
@@ -119,7 +119,7 @@ func TestRoundtripEcPrivate(t *testing.T) {
 	}
 }
 
-func TestMarshalUnmarshal(t *testing.T) {
+func TestMarshalUnmarshalJWK(t *testing.T) {
 	kid := "DEADBEEF"
 
 	for i, key := range []interface{}{ecTestKey256, ecTestKey384, ecTestKey521, rsaTestKey} {
@@ -178,7 +178,7 @@ func TestMarshalNonPointer(t *testing.T) {
 		t.Error(fmt.Sprintf("Error marshalling JSON: %v", err))
 		return
 	}
-	expected := "{\"Key\":{\"kty\":\"RSA\",\"n\":\"vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw\",\"e\":\"AAEAAQ\"}}"
+	expected := "{\"Key\":{\"kty\":\"RSA\",\"n\":\"vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw\",\"e\":\"AQAB\"}}"
 	if string(out) != expected {
 		t.Error("Failed to marshal embedded non-pointer JWK properly:", string(out))
 	}

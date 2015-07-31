@@ -6,7 +6,6 @@
 package core
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -14,15 +13,6 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
-
-// DNSSECError indicates an error caused by DNSSEC failing.
-type DNSSECError struct {
-}
-
-// Error gives the DNSSEC failure notice.
-func (err DNSSECError) Error() string {
-	return "DNSSEC validation failure"
-}
 
 // DNSResolverImpl represents a resolver system
 type DNSResolverImpl struct {
@@ -42,8 +32,16 @@ func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolve
 }
 
 // ExchangeOne performs a single DNS exchange with a randomly chosen server
-// out of the server list, returning the response, time, and error (if any)
-func (dnsResolver *DNSResolverImpl) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt time.Duration, err error) {
+// out of the server list, returning the response, time, and error (if any).
+// This method sets the DNSSEC OK bit on the message to true before sending
+// it to the resolver in case validation isn't the resolvers default behaviour.
+func (dnsResolver *DNSResolverImpl) ExchangeOne(hostname string, qtype uint16) (rsp *dns.Msg, rtt time.Duration, err error) {
+	m := new(dns.Msg)
+	// Set question type
+	m.SetQuestion(dns.Fqdn(hostname), qtype)
+	// Set DNSSEC OK bit for resolver
+	m.SetEdns0(4096, true)
+
 	if len(dnsResolver.Servers) < 1 {
 		err = fmt.Errorf("Not configured with at least one DNS Server")
 		return
@@ -55,60 +53,25 @@ func (dnsResolver *DNSResolverImpl) ExchangeOne(m *dns.Msg) (rsp *dns.Msg, rtt t
 	return dnsResolver.DNSClient.Exchange(m, chosenServer)
 }
 
-// LookupDNSSEC sends the provided DNS message to a randomly chosen server (see
-// ExchangeOne) with DNSSEC enabled. If the lookup fails, this method sends a
-// clarification query to determine if it's because DNSSEC was invalid or just
-// a run-of-the-mill error. If it's because of DNSSEC, it returns ErrorDNSSEC.
-func (dnsResolver *DNSResolverImpl) LookupDNSSEC(m *dns.Msg) (*dns.Msg, time.Duration, error) {
-	// Set DNSSEC OK bit
-	m.SetEdns0(4096, true)
-	r, rtt, err := dnsResolver.ExchangeOne(m)
-	if err != nil {
-		return r, rtt, err
-	}
-
-	if r.Rcode != dns.RcodeSuccess && r.Rcode != dns.RcodeNameError && r.Rcode != dns.RcodeNXRrset {
-		if r.Rcode == dns.RcodeServerFailure {
-			// Re-send query with +cd to see if SERVFAIL was caused by DNSSEC
-			// validation failure at the resolver
-			m.CheckingDisabled = true
-			checkR, _, err := dnsResolver.ExchangeOne(m)
-			if err != nil {
-				return r, rtt, err
-			}
-
-			if checkR.Rcode != dns.RcodeServerFailure {
-				// DNSSEC error, so we return the testable object.
-				err = DNSSECError{}
-				return r, rtt, err
-			}
-		}
-		err = fmt.Errorf("Invalid response code: %d-%s", r.Rcode, dns.RcodeToString[r.Rcode])
-		return r, rtt, err
-	}
-
-	return r, rtt, err
-}
-
-// LookupTXT uses a DNSSEC-enabled query to find all TXT records associated with
-// the provided hostname. If the query fails due to DNSSEC, error will be
-// set to ErrorDNSSEC.
+// LookupTXT sends a DNS query to find all TXT records associated with
+// the provided hostname.
 func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.Duration, error) {
 	var txt []string
-
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(hostname), dns.TypeTXT)
-	r, rtt, err := dnsResolver.LookupDNSSEC(m)
-
+	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeTXT)
 	if err != nil {
+		return nil, 0, err
+	}
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for TXT query", r.Rcode, dns.RcodeToString[r.Rcode])
 		return nil, 0, err
 	}
 
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeTXT {
-			txtRec := answer.(*dns.TXT)
-			for _, field := range txtRec.Txt {
-				txt = append(txt, field)
+			if txtRec, ok := answer.(*dns.TXT); ok {
+				for _, field := range txtRec.Txt {
+					txt = append(txt, field)
+				}
 			}
 		}
 	}
@@ -116,97 +79,142 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 	return txt, rtt, err
 }
 
-// LookupHost uses a DNSSEC-enabled query to find all A/AAAA records associated with
-// the provided hostname. If the query fails due to DNSSEC, error will be
-// set to ErrorDNSSEC.
-func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
+// LookupHost sends a DNS query to find all A/AAAA records associated with
+// the provided hostname.
+func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
 	var addrs []net.IP
 	var answers []dns.RR
 
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(hostname), dns.TypeA)
-	r, aRtt, err := dnsResolver.LookupDNSSEC(m)
+	r, aRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeA)
 	if err != nil {
-		return addrs, aRtt, err
+		return addrs, 0, 0, err
 	}
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
+		return nil, aRtt, 0, err
+	}
+
 	answers = append(answers, r.Answer...)
 
-	m.SetQuestion(dns.Fqdn(hostname), dns.TypeAAAA)
-	r, aaaaRtt, err := dnsResolver.LookupDNSSEC(m)
+	r, aaaaRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeAAAA)
 	if err != nil {
-		return addrs, aRtt + aaaaRtt, err
+		return addrs, aRtt, 0, err
 	}
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for AAAA query", r.Rcode, dns.RcodeToString[r.Rcode])
+		return nil, aRtt, aaaaRtt, err
+	}
+
 	answers = append(answers, r.Answer...)
 
 	for _, answer := range answers {
 		if answer.Header().Rrtype == dns.TypeA {
-			a := answer.(*dns.A)
-			addrs = append(addrs, a.A)
+			if a, ok := answer.(*dns.A); ok {
+				addrs = append(addrs, a.A)
+			}
 		} else if answer.Header().Rrtype == dns.TypeAAAA {
-			aaaa := answer.(*dns.AAAA)
-			addrs = append(addrs, aaaa.AAAA)
+			if aaaa, ok := answer.(*dns.AAAA); ok {
+				addrs = append(addrs, aaaa.AAAA)
+			}
 		}
 	}
 
-	return addrs, aRtt + aaaaRtt, nil
+	return addrs, aRtt, aaaaRtt, nil
 }
 
-// LookupCNAME uses a DNSSEC-enabled query to  records for domain and returns either
-// the target, "", or a if the query fails due to DNSSEC, error will be set to
-// ErrorDNSSEC.
-func (dnsResolver *DNSResolverImpl) LookupCNAME(domain string) (string, error) {
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(domain), dns.TypeCNAME)
-
-	r, _, err := dnsResolver.LookupDNSSEC(m)
+// LookupCNAME returns the target name if a CNAME record exists for
+// the given domain name. If the CNAME does not exist (NXDOMAIN,
+// NXRRSET, or a successful response with no CNAME records), it
+// returns the empty string and a nil error.
+func (dnsResolver *DNSResolverImpl) LookupCNAME(hostname string) (string, time.Duration, error) {
+	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeCNAME)
 	if err != nil {
-		return "", err
+		return "", 0, err
+	}
+	if r.Rcode == dns.RcodeNXRrset || r.Rcode == dns.RcodeNameError {
+		return "", rtt, nil
+	}
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for CNAME query", r.Rcode, dns.RcodeToString[r.Rcode])
+		return "", rtt, err
 	}
 
 	for _, answer := range r.Answer {
 		if cname, ok := answer.(*dns.CNAME); ok {
-			return cname.Target, nil
+			return cname.Target, rtt, nil
 		}
 	}
 
-	return "", nil
+	return "", rtt, nil
 }
 
-// LookupCAA uses a DNSSEC-enabled query to find all CAA records associated with
-// the provided hostname. If the query fails due to DNSSEC, error will be
-// set to ErrorDNSSEC.
-func (dnsResolver *DNSResolverImpl) LookupCAA(domain string, alias bool) ([]*dns.CAA, error) {
-	if alias {
-		// Check if there is a CNAME record for domain
-		canonName, err := dnsResolver.LookupCNAME(domain)
-		if err != nil {
-			return nil, err
-		}
-		if canonName == "" || canonName == domain {
-			return []*dns.CAA{}, nil
-		}
-		domain = canonName
-	}
-
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(domain), dns.TypeCAA)
-
-	r, _, err := dnsResolver.LookupDNSSEC(m)
+// LookupDNAME is LookupCNAME, but for DNAME.
+func (dnsResolver *DNSResolverImpl) LookupDNAME(hostname string) (string, time.Duration, error) {
+	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeDNAME)
 	if err != nil {
-		return nil, err
+		return "", 0, err
+	}
+	if r.Rcode == dns.RcodeNXRrset || r.Rcode == dns.RcodeNameError {
+		return "", rtt, nil
+	}
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for DNAME query", r.Rcode, dns.RcodeToString[r.Rcode])
+		return "", rtt, err
 	}
 
+	for _, answer := range r.Answer {
+		if cname, ok := answer.(*dns.DNAME); ok {
+			return cname.Target, rtt, nil
+		}
+	}
+
+	return "", rtt, nil
+}
+
+// LookupCAA sends a DNS query to find all CAA records associated with
+// the provided hostname. If the response code from the resolver is
+// SERVFAIL an empty slice of CAA records is returned.
+func (dnsResolver *DNSResolverImpl) LookupCAA(hostname string) ([]*dns.CAA, time.Duration, error) {
+	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeCAA)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// On resolver validation failure, or other server failures, return empty an
+	// set and no error.
 	var CAAs []*dns.CAA
+	if r.Rcode == dns.RcodeServerFailure {
+		return CAAs, rtt, nil
+	}
+
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeCAA {
-			caaR, ok := answer.(*dns.CAA)
-			if !ok {
-				err = errors.New("Badly formatted record")
-				return nil, err
+			if caaR, ok := answer.(*dns.CAA); ok {
+				CAAs = append(CAAs, caaR)
 			}
-			CAAs = append(CAAs, caaR)
+		}
+	}
+	return CAAs, rtt, nil
+}
+
+// LookupMX sends a DNS query to find a MX record associated hostname and returns the
+// record target.
+func (dnsResolver *DNSResolverImpl) LookupMX(hostname string) ([]string, time.Duration, error) {
+	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeMX)
+	if err != nil {
+		return nil, 0, err
+	}
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for MX query", r.Rcode, dns.RcodeToString[r.Rcode])
+		return nil, rtt, err
+	}
+
+	var results []string
+	for _, answer := range r.Answer {
+		if mx, ok := answer.(*dns.MX); ok {
+			results = append(results, mx.Mx)
 		}
 	}
 
-	return CAAs, nil
+	return results, rtt, nil
 }

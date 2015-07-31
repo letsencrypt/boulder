@@ -17,10 +17,10 @@ US maintained blocked list.
 ## Overview
 
 The implementation follows the
-[JSON Web Encryption](http://www.ietf.org/id/draft-ietf-jose-json-web-encryption-40.txt)
-standard (as of version 40) and
-[JSON Web Signature](http://www.ietf.org/id/draft-ietf-jose-json-web-signature-41.txt)
-standard (as of version 41). Tables of supported algorithms are shown below.
+[JSON Web Encryption](http://dx.doi.org/10.17487/RFC7516)
+standard (RFC 7516) and
+[JSON Web Signature](http://dx.doi.org/10.17487/RFC7515)
+standard (RFC 7515). Tables of supported algorithms are shown below.
 The library supports both the compact and full serialization formats, and has
 optional support for multiple recipients. It also comes with a small
 command-line utility (`jose-util`) for encrypting/decrypting JWE messages in a
@@ -30,7 +30,7 @@ shell.
 
 See below for a table of supported algorithms. Algorithm identifiers match
 the names in the
-[JSON Web Algorithms](http://www.ietf.org/id/draft-ietf-jose-json-web-algorithms-40.txt)
+[JSON Web Algorithms](http://dx.doi.org/10.17487/RFC7518)
 standard where possible. The
 [Godoc reference](https://godoc.org/github.com/square/go-jose#pkg-constants)
 has a list of constants.

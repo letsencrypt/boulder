@@ -10,26 +10,25 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods
 const (
+	DirectoryPath  = "/directory"
 	NewRegPath     = "/acme/new-reg"
 	RegPath        = "/acme/reg/"
 	NewAuthzPath   = "/acme/new-authz"
@@ -42,7 +41,6 @@ const (
 	BuildIDPath    = "/build"
 )
 
-// WebFrontEndImpl represents a Boulder web service and its resources
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
@@ -58,6 +56,9 @@ type WebFrontEndImpl struct {
 	NewCert   string
 	CertBase  string
 
+	// JSON encoded endpoint directory
+	DirectoryJSON []byte
+
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
 
@@ -66,6 +67,12 @@ type WebFrontEndImpl struct {
 
 	// Register of anti-replay nonces
 	nonceService core.NonceService
+
+	// Cache settings
+	CertCacheDuration           time.Duration
+	CertNoCacheExpirationWindow time.Duration
+	IndexCacheDuration          time.Duration
+	IssuerCacheDuration         time.Duration
 }
 
 func statusCodeFromError(err interface{}) int {
@@ -182,7 +189,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
-func (wfe *WebFrontEndImpl) Handler() http.Handler {
+func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.NewReg = wfe.BaseURL + NewRegPath
 	wfe.RegBase = wfe.BaseURL + RegPath
 	wfe.NewAuthz = wfe.BaseURL + NewAuthzPath
@@ -190,19 +197,33 @@ func (wfe *WebFrontEndImpl) Handler() http.Handler {
 	wfe.NewCert = wfe.BaseURL + NewCertPath
 	wfe.CertBase = wfe.BaseURL + CertPath
 
+	// Only generate directory once
+	directory := map[string]string{
+		"new-reg":     wfe.NewReg,
+		"new-authz":   wfe.NewAuthz,
+		"new-cert":    wfe.NewCert,
+		"revoke-cert": wfe.BaseURL + RevokeCertPath,
+	}
+	directoryJSON, err := json.Marshal(directory)
+	if err != nil {
+		return nil, err
+	}
+	wfe.DirectoryJSON = directoryJSON
+
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, "/", wfe.Index, "GET")
+	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	wfe.HandleFunc(m, NewRegPath, wfe.NewRegistration, "POST")
 	wfe.HandleFunc(m, NewAuthzPath, wfe.NewAuthorization, "POST")
 	wfe.HandleFunc(m, NewCertPath, wfe.NewCertificate, "POST")
 	wfe.HandleFunc(m, RegPath, wfe.Registration, "POST")
 	wfe.HandleFunc(m, AuthzPath, wfe.Authorization, "GET", "POST")
-	wfe.HandleFunc(m, CertPath, wfe.Certificate, "GET", "POST")
+	wfe.HandleFunc(m, CertPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, RevokeCertPath, wfe.RevokeCertificate, "POST")
 	wfe.HandleFunc(m, TermsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, IssuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, BuildIDPath, wfe.BuildID, "GET")
-	return m
+	return m, nil
 }
 
 // Method implementations
@@ -231,6 +252,19 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 `))
 	tmpl.Execute(response, wfe)
 	response.Header().Set("Content-Type", "text/html")
+	addCacheHeader(response, wfe.IndexCacheDuration.Seconds())
+}
+
+func addNoCacheHeader(w http.ResponseWriter) {
+	w.Header().Add("Cache-Control", "public, max-age=0, no-cache")
+}
+
+func addCacheHeader(w http.ResponseWriter, age float64) {
+	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", age))
+}
+
+func (wfe *WebFrontEndImpl) Directory(response http.ResponseWriter, request *http.Request) {
+	response.Write(wfe.DirectoryJSON)
 }
 
 // The ID is always the last slash-separated token in the path
@@ -244,24 +278,31 @@ const (
 	malformedJWS = "Unable to read/verify body"
 )
 
-func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]byte, *jose.JsonWebKey, core.Registration, error) {
+func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
+	var err error
 	var reg core.Registration
 
 	// Read body
 	if request.Body == nil {
-		return nil, nil, reg, errors.New("No body on POST")
-	}
-
-	body, err := ioutil.ReadAll(request.Body)
-	if err != nil {
+		err = core.MalformedRequestError("No body on POST")
+		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
 	}
 
+	bodyBytes, err := ioutil.ReadAll(request.Body)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
+	}
+
+	body := string(bodyBytes)
 	// Parse as JWS
-	parsedJws, err := jose.ParseSigned(string(body))
+	parsedJws, err := jose.ParseSigned(body)
 	if err != nil {
-		wfe.log.Debug(fmt.Sprintf("Parse error reading JWS: %v", err))
-		return nil, nil, reg, err
+		puberr := core.SignatureValidationError("Parse error reading JWS")
+		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
+		return nil, nil, reg, puberr
 	}
 
 	// Verify JWS
@@ -271,29 +312,34 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 	// *anyway*, so it could always lie about what key was used by faking
 	// the signature itself.
 	if len(parsedJws.Signatures) > 1 {
-		wfe.log.Debug(fmt.Sprintf("Too many signatures on POST"))
-		return nil, nil, reg, errors.New("Too many signatures on POST")
+		err = core.SignatureValidationError("Too many signatures on POST")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 	if len(parsedJws.Signatures) == 0 {
-		wfe.log.Debug(fmt.Sprintf("POST not signed: %v", parsedJws))
-		return nil, nil, reg, errors.New("POST not signed")
+		err = core.SignatureValidationError("POST JWS not signed")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 	key := parsedJws.Signatures[0].Header.JsonWebKey
 	payload, header, err := parsedJws.Verify(key)
 	if err != nil {
+		puberr := core.SignatureValidationError("JWS verification error")
 		wfe.log.Debug(string(body))
-		wfe.log.Debug(fmt.Sprintf("JWS verification error: %v", err))
-		return nil, nil, reg, err
+		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
+		return nil, nil, reg, puberr
 	}
 
 	// Check that the request has a known anti-replay nonce
 	// i.e., Nonce is in protected header and
 	if err != nil || len(header.Nonce) == 0 {
-		wfe.log.Debug("JWS has no anti-replay nonce")
-		return nil, nil, reg, errors.New("JWS has no anti-replay nonce")
+		err = core.SignatureValidationError("JWS has no anti-replay nonce")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	} else if !wfe.nonceService.Valid(header.Nonce) {
-		wfe.log.Debug(fmt.Sprintf("JWS has invalid anti-replay nonce: %s", header.Nonce))
-		return nil, nil, reg, errors.New("JWS has invalid anti-replay nonce")
+		err = core.SignatureValidationError(fmt.Sprintf("JWS has invalid anti-replay nonce"))
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 
 	reg, err = wfe.SA.GetRegistrationByKey(*key)
@@ -306,6 +352,26 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool) ([]
 		// Otherwise we just return an empty registration. The caller is expected
 		// to use the returned key instead.
 		reg = core.Registration{}
+	}
+
+	// Check that the "resource" field is present and has the correct value
+	var parsedRequest struct {
+		Resource string `json:"resource"`
+	}
+	err = json.Unmarshal([]byte(payload), &parsedRequest)
+	if err != nil {
+		puberr := core.SignatureValidationError("Request payload did not parse as JSON")
+		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
+		return nil, nil, reg, puberr
+	}
+	if parsedRequest.Resource == "" {
+		err = core.MalformedRequestError("Request payload does not specify a resource")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
+	} else if resource != core.AcmeResource(parsedRequest.Resource) {
+		err = core.MalformedRequestError(fmt.Sprintf("Request payload has invalid resource: %s != %s", parsedRequest.Resource, resource))
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 
 	return []byte(payload), key, reg, nil
@@ -364,7 +430,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, key, _, err := wfe.verifyPOST(request, false)
+	body, key, _, err := wfe.verifyPOST(request, false, core.ResourceNewReg)
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, malformedJWS, err, http.StatusBadRequest)
@@ -432,7 +498,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, _, currReg, err := wfe.verifyPOST(request, true)
+	body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceNewAuthz)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
@@ -503,7 +569,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 
 	// We don't ask verifyPOST to verify there is a correponding registration,
 	// because anyone with the right private key can revoke a certificate.
-	body, requestKey, registration, err := wfe.verifyPOST(request, false)
+	body, requestKey, registration, err := wfe.verifyPOST(request, false, core.ResourceRevokeCert)
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, malformedJWS, err, http.StatusBadRequest)
@@ -587,13 +653,26 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 }
 
+func (wfe *WebFrontEndImpl) logCsr(remoteAddr string, cr core.CertificateRequest, registration core.Registration) {
+	var csrLog = struct {
+		RemoteAddr   string
+		CsrBase64    []byte
+		Registration core.Registration
+	}{
+		RemoteAddr:   remoteAddr,
+		CsrBase64:    cr.Bytes,
+		Registration: registration,
+	}
+	wfe.log.AuditObject("Certificate request", csrLog)
+}
+
 // NewCertificate is used by clients to request the issuance of a cert for an
 // authorized identifier.
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, key, reg, err := wfe.verifyPOST(request, true)
+	body, _, reg, err := wfe.verifyPOST(request, true, core.ResourceNewCert)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
@@ -622,13 +701,10 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
-	logEvent.Extra["Authorizations"] = init.Authorizations
+	wfe.logCsr(request.RemoteAddr, init, reg)
 	logEvent.Extra["CSRDNSNames"] = init.CSR.DNSNames
 	logEvent.Extra["CSREmailAddresses"] = init.CSR.EmailAddresses
 	logEvent.Extra["CSRIPAddresses"] = init.CSR.IPAddresses
-
-	wfe.log.Notice(fmt.Sprintf("Client requested new certificate: %v %v %v",
-		request.RemoteAddr, init, key))
 
 	// Create new certificate and return
 	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
@@ -715,7 +791,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		}
 
 	case "POST":
-		body, _, currReg, err := wfe.verifyPOST(request, true)
+		body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceChallenge)
 		if err != nil {
 			logEvent.Error = err.Error()
 			respMsg := malformedJWS
@@ -794,7 +870,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
-	body, _, currReg, err := wfe.verifyPOST(request, true)
+	body, _, currReg, err := wfe.verifyPOST(request, true, core.ResourceRegistration)
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
@@ -863,6 +939,10 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		return
 	}
 	response.Header().Set("Content-Type", "application/json")
+	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
+	if len(wfe.SubscriberAgreementURL) > 0 {
+		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
+	}
 	response.WriteHeader(http.StatusAccepted)
 	response.Write(jsonReply)
 }
@@ -894,9 +974,9 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 		return
 	}
 
+	// Blank out ID and regID
 	switch request.Method {
 	case "GET":
-		// Blank out ID and regID
 		authz.ID = ""
 		authz.RegistrationID = 0
 
@@ -926,49 +1006,47 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	defer wfe.logRequestDetails(&logEvent)
 
 	path := request.URL.Path
-	switch request.Method {
-	case "GET":
-		// Certificate paths consist of the CertBase path, plus exactly sixteen hex
-		// digits.
-		if !strings.HasPrefix(path, CertPath) {
-			logEvent.Error = "Certificate not found"
-			wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
-			return
-		}
-		serial := path[len(CertPath):]
-		if len(serial) != 16 || !allHex.Match([]byte(serial)) {
-			logEvent.Error = "Certificate not found"
-			wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
-			return
-		}
-		wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
-		logEvent.Extra["RequestedSerial"] = serial
-
-		cert, err := wfe.SA.GetCertificateByShortSerial(serial)
-		if err != nil {
-			logEvent.Error = err.Error()
-			if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
-				wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
-			} else {
-				wfe.sendError(response, "Not found", err, http.StatusNotFound)
-			}
-			return
-		}
-
-		// TODO Content negotiation
-		response.Header().Set("Content-Type", "application/pkix-cert")
-		response.Header().Add("Link", link(IssuerPath, "up"))
-		response.WriteHeader(http.StatusOK)
-		if _, err = response.Write(cert.DER); err != nil {
-			logEvent.Error = err.Error()
-			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
-		}
-		return
-	case "POST":
-		logEvent.Error = "Not yet supported"
-		wfe.sendError(response, logEvent.Error, "", http.StatusNotFound)
+	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
+	// digits.
+	if !strings.HasPrefix(path, CertPath) {
+		logEvent.Error = "Certificate not found"
+		wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
+		addNoCacheHeader(response)
 		return
 	}
+	serial := path[len(CertPath):]
+	if len(serial) != 16 || !allHex.Match([]byte(serial)) {
+		logEvent.Error = "Certificate not found"
+		wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
+		addNoCacheHeader(response)
+		return
+	}
+	wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
+	logEvent.Extra["RequestedSerial"] = serial
+
+	cert, err := wfe.SA.GetCertificateByShortSerial(serial)
+	if err != nil {
+		logEvent.Error = err.Error()
+		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
+			wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
+		} else {
+			addNoCacheHeader(response)
+			wfe.sendError(response, "Certificate not found", err, http.StatusNotFound)
+		}
+		return
+	}
+
+	addCacheHeader(response, wfe.CertCacheDuration.Seconds())
+
+	// TODO Content negotiation
+	response.Header().Set("Content-Type", "application/pkix-cert")
+	response.Header().Add("Link", link(IssuerPath, "up"))
+	response.WriteHeader(http.StatusOK)
+	if _, err = response.Write(cert.DER); err != nil {
+		logEvent.Error = err.Error()
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	}
+	return
 }
 
 // Terms is used by the client to obtain the current Terms of Service /
@@ -984,6 +1062,8 @@ func (wfe *WebFrontEndImpl) Terms(response http.ResponseWriter, request *http.Re
 func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
+
+	addCacheHeader(response, wfe.IssuerCacheDuration.Seconds())
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
@@ -1001,7 +1081,7 @@ func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.
 
 	response.Header().Set("Content-Type", "text/plain")
 	response.WriteHeader(http.StatusOK)
-	detailsString := fmt.Sprintf("Boulder=(%s %s) Golang=(%s) BuildHost=(%s)", core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())
 	if _, err := fmt.Fprintln(response, detailsString); err != nil {
 		logEvent.Error = err.Error()
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))

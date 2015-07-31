@@ -19,6 +19,21 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 )
 
+// A SyslogWriter logs messages with explicit priority levels. It is
+// implemented by a logging back-end like syslog.Writer or
+// mocks.SyslogWriter.
+type SyslogWriter interface {
+	Close() error
+	Alert(m string) error
+	Crit(m string) error
+	Debug(m string) error
+	Emerg(m string) error
+	Err(m string) error
+	Info(m string) error
+	Notice(m string) error
+	Warning(m string) error
+}
+
 // singleton defines the object of a Singleton pattern
 type singleton struct {
 	once sync.Once
@@ -42,13 +57,11 @@ func defaultEmergencyExit() {
 	os.Exit(emergencyReturnValue)
 }
 
-// AuditLogger is a System Logger with additional audit-specific methods.
-// In addition to all the standard syslog.Writer methods from
-// http://golang.org/pkg/log/syslog/#Writer, you can also call
-//   auditLogger.Audit(msg string)
-// to send a message as an audit event.
+// AuditLogger implements SyslogWriter, and has additional
+// audit-specific methods, like Audit(), for indicating which messages
+// should be classified as audit events.
 type AuditLogger struct {
-	*syslog.Writer
+	SyslogWriter
 	Stats        statsd.Statter
 	exitFunction exitFunction
 }
@@ -64,9 +77,9 @@ func Dial(network, raddr string, tag string, stats statsd.Statter) (*AuditLogger
 	return NewAuditLogger(syslogger, stats)
 }
 
-// NewAuditLogger constructs an Audit Logger that decorates a normal
-// System Logger. All methods in log/syslog continue to work.
-func NewAuditLogger(log *syslog.Writer, stats statsd.Statter) (*AuditLogger, error) {
+// NewAuditLogger returns a new AuditLogger that uses the given
+// SyslogWriter as a backend.
+func NewAuditLogger(log SyslogWriter, stats statsd.Statter) (*AuditLogger, error) {
 	if log == nil {
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
@@ -78,13 +91,16 @@ func NewAuditLogger(log *syslog.Writer, stats statsd.Statter) (*AuditLogger, err
 	return audit, nil
 }
 
-// initializeAuditLogger should only be used in unit tests. Failures in this
-// method are unlikely as the defaults are safe, and they are also
-// of minimal consequence during unit testing -- logs get printed to stdout
-// even if syslog is missing.
+// initializeAuditLogger should only be used in unit tests.
 func initializeAuditLogger() {
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, _ := Dial("", "", "default", stats)
+	stats, err := statsd.NewNoopClient(nil)
+	if err != nil {
+		panic(err)
+	}
+	audit, err := Dial("", "", "default", stats)
+	if err != nil {
+		panic(err)
+	}
 	audit.Notice("Using default logging configuration.")
 
 	SetAuditLogger(audit)
@@ -125,21 +141,21 @@ func (log *AuditLogger) logAtLevel(level, msg string) (err error) {
 
 	switch level {
 	case "Logging.Alert":
-		err = log.Writer.Alert(msg)
+		err = log.SyslogWriter.Alert(msg)
 	case "Logging.Crit":
-		err = log.Writer.Crit(msg)
+		err = log.SyslogWriter.Crit(msg)
 	case "Logging.Debug":
-		err = log.Writer.Debug(msg)
+		err = log.SyslogWriter.Debug(msg)
 	case "Logging.Emerg":
-		err = log.Writer.Emerg(msg)
+		err = log.SyslogWriter.Emerg(msg)
 	case "Logging.Err":
-		err = log.Writer.Err(msg)
+		err = log.SyslogWriter.Err(msg)
 	case "Logging.Info":
-		err = log.Writer.Info(msg)
+		err = log.SyslogWriter.Info(msg)
 	case "Logging.Warning":
-		err = log.Writer.Warning(msg)
+		err = log.SyslogWriter.Warning(msg)
 	case "Logging.Notice":
-		err = log.Writer.Notice(msg)
+		err = log.SyslogWriter.Notice(msg)
 	default:
 		err = fmt.Errorf("Unknown logging level: %s", level)
 	}
@@ -170,7 +186,7 @@ func caller(level int) string {
 func (log *AuditLogger) AuditPanic() {
 	if err := recover(); err != nil {
 		buf := make([]byte, 8192)
-		log.Audit(fmt.Sprintf("Panic caused by err: %v", err))
+		log.Audit(fmt.Sprintf("Panic caused by err: %s", err))
 
 		runtime.Stack(buf, false)
 		log.Audit(fmt.Sprintf("Stack Trace (Current frame) %s", buf))
