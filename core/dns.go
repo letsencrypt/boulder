@@ -18,14 +18,14 @@ type AddrFilter int
 
 const (
 	// NoAddrFilter is used to tell LookupHost to query both A and AAAA records
-	noAddrFilter AddrFilter = iota
+	NoAddrFilter AddrFilter = iota
 	// IPv4OnlyFilter is used to tell LookupHost to only query A records
-	ipv4OnlyFilter
+	IPv4OnlyFilter
 )
 
 var NameToFilter = map[string]AddrFilter{
-	"":   noAddrFilter,
-	"v4": ipv4OnlyFilter,
+	"":   NoAddrFilter,
+	"v4": IPv4OnlyFilter,
 }
 
 var (
@@ -130,7 +130,7 @@ func (dnsResolver *DNSResolverImpl) LookupHost(hostname string, filter AddrFilte
 	}
 	answers = append(answers, r.Answer...)
 
-	if filter != ipv4OnlyFilter {
+	if filter != IPv4OnlyFilter {
 		r, aaaaRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeAAAA)
 		if err != nil {
 			return addrs, aRtt, aaaaRtt, err
@@ -148,7 +148,7 @@ func (dnsResolver *DNSResolverImpl) LookupHost(hostname string, filter AddrFilte
 				addrs = append(addrs, a.A)
 			}
 		} else if answer.Header().Rrtype == dns.TypeAAAA {
-			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && !isPrivate(aaaa.AAAA) && filter != ipv4OnlyFilter {
+			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && !isPrivate(aaaa.AAAA) && filter != IPv4OnlyFilter {
 				addrs = append(addrs, aaaa.AAAA)
 			}
 		}

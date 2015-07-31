@@ -178,7 +178,7 @@ func TestDNSLookupsNoServer(t *testing.T) {
 	_, _, err := obj.LookupTXT("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
-	_, _, _, err = obj.LookupHost("letsencrypt.org", noAddrFilter)
+	_, _, _, err = obj.LookupHost("letsencrypt.org", NoAddrFilter)
 	test.AssertError(t, err, "No servers")
 
 	_, _, err = obj.LookupCNAME("letsencrypt.org")
@@ -198,7 +198,7 @@ func TestDNSServFail(t *testing.T) {
 	_, _, err = obj.LookupCNAME(bad)
 	test.AssertError(t, err, "LookupCNAME didn't return an error")
 
-	_, _, _, err = obj.LookupHost(bad, noAddrFilter)
+	_, _, _, err = obj.LookupHost(bad, NoAddrFilter)
 	test.AssertError(t, err, "LookupHost didn't return an error")
 
 	// CAA lookup ignores validation failures from the resolver for now
@@ -220,28 +220,28 @@ func TestDNSLookupTXT(t *testing.T) {
 func TestDNSLookupHost(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
-	ip, _, _, err := obj.LookupHost("servfail.com", noAddrFilter)
+	ip, _, _, err := obj.LookupHost("servfail.com", NoAddrFilter)
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
 	test.AssertError(t, err, "Server failure")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
-	ip, _, _, err = obj.LookupHost("nonexistent.letsencrypt.org", noAddrFilter)
+	ip, _, _, err = obj.LookupHost("nonexistent.letsencrypt.org", NoAddrFilter)
 	t.Logf("nonexistent.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to not exist")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
 	// Single IPv4 address
-	ip, _, _, err = obj.LookupHost("cps.letsencrypt.org", noAddrFilter)
+	ip, _, _, err = obj.LookupHost("cps.letsencrypt.org", NoAddrFilter)
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have IP")
-	ip, _, _, err = obj.LookupHost("cps.letsencrypt.org", ipv4OnlyFilter)
+	ip, _, _, err = obj.LookupHost("cps.letsencrypt.org", IPv4OnlyFilter)
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have IP")
 
 	// Both addresses
-	ip, _, _, err = obj.LookupHost("mixed.letsencrypt.org", noAddrFilter)
+	ip, _, _, err = obj.LookupHost("mixed.letsencrypt.org", NoAddrFilter)
 	t.Logf("mixed.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 2, "Should not have IPs")
