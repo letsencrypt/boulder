@@ -116,6 +116,12 @@ func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 	return problem
 }
 
+// getAddr will query for all A/AAAA records associated with hostname and return
+// the first net.IP in the addrs slice (this prefers A records as LookupHost will
+// always place A records before AAAA records if core.NoAddrFilter is used). If one
+// of the address filters (core.IPv4OnlyFilter or core.IPv6OnlyFilter) is passed
+// to LookupHost only the relevant DNS queries will be performed and addresses
+// returned.
 func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, problem *core.ProblemDetails) {
 	addrs, _, _, err := va.DNSResolver.LookupHost(hostname, va.AddressFilter)
 	if err != nil {
@@ -135,7 +141,9 @@ func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, problem
 	return
 }
 
-func (va ValidationAuthorityImpl) resolvingDialer(name string, scheme string) (func(string, string) (net.Conn, error), net.IP, *core.ProblemDetails) {
+// resolveAndConstructDialer gets the prefered address using va.getAddr and returns
+// the chosen address and dialer for that address and correct port.
+func (va ValidationAuthorityImpl) resolveAndConstructDialer(name string, scheme string) (func(string, string) (net.Conn, error), net.IP, *core.ProblemDetails) {
 	addr, err := va.getAddr(name)
 	if err != nil {
 		return nil, nil, err
@@ -200,7 +208,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	httpRequest.Host = hostName
-	dialer, addrUsed, prob := va.resolvingDialer(hostName, scheme)
+	dialer, addrUsed, prob := va.resolveAndConstructDialer(hostName, scheme)
 	challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addrUsed)
 	if err != nil {
 		challenge.Status = core.StatusInvalid
@@ -222,12 +230,12 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 
 	logRedirect := func(req *http.Request, via []*http.Request) error {
 		challenge.Redirects = append(challenge.Redirects, req.URL.String())
-		dailer, addrUsed, err := va.resolvingDialer(req.URL.Host, req.URL.Scheme)
+		dialer, addrUsed, err := va.resolveAndConstructDialer(req.URL.Host, req.URL.Scheme)
 		challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addrUsed)
 		if err != nil {
 			return err
 		}
-		tr.Dial = dailer
+		tr.Dial = dialer
 		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q [%s]", identifier, via[len(via)-1].URL.String(), req.URL.String(), addrUsed))
 		return nil
 	}
@@ -375,7 +383,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	}
 	defer conn.Close()
 
-	// Check that ZName is a dNSName SAN in the server's certificate
+	// Check that ZName is a DNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		challenge.Error = &core.ProblemDetails{

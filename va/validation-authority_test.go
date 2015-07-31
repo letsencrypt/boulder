@@ -253,7 +253,7 @@ func brokenTLSSrv(t *testing.T, stopChan, waitChan chan bool) {
 func TestSimpleHttpTLS(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoFilter
+	va.AddressFilter = core.NoAddrFilter
 
 	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken}
 
