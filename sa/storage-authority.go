@@ -24,9 +24,8 @@ import (
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
-	dbMap  *gorp.DbMap
-	bucket map[string]interface{} // XXX included only for backward compat
-	log    *blog.AuditLogger
+	dbMap *gorp.DbMap
+	log   *blog.AuditLogger
 }
 
 func digest256(data []byte) []byte {
@@ -59,9 +58,8 @@ func NewSQLStorageAuthority(driver string, dbConnect string) (*SQLStorageAuthori
 	}
 
 	ssa := &SQLStorageAuthority{
-		dbMap:  dbMap,
-		log:    logger,
-		bucket: make(map[string]interface{}),
+		dbMap: dbMap,
+		log:   logger,
 	}
 
 	return ssa, nil
