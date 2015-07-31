@@ -42,7 +42,7 @@ type ValidationAuthorityImpl struct {
 	IssuerDomain  string
 	TestMode      bool
 	UserAgent     string
-	AddressFilter int
+	AddressFilter core.AddrFilter
 }
 
 // NewValidationAuthorityImpl constructs a new VA, and may place it

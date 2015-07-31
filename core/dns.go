@@ -14,14 +14,19 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
 
+type AddrFilter int
+
 const (
 	// NoAddrFilter is used to tell LookupHost to query both A and AAAA records
-	NoAddrFilter = iota
+	noAddrFilter AddrFilter = iota
 	// IPv4OnlyFilter is used to tell LookupHost to only query A records
-	IPv4OnlyFilter
-	// IPv6OnlyFilter is used to tell LookupHost to only query AAAA records
-	IPv6OnlyFilter
+	ipv4OnlyFilter
 )
+
+var NameToFilter = map[string]AddrFilter{
+	"":   noAddrFilter,
+	"v4": ipv4OnlyFilter,
+}
 
 var (
 	privateNetworkA = net.IPNet{
@@ -109,25 +114,23 @@ func isPrivate(ip net.IP) bool {
 
 // LookupHost sends a DNS query to find all A/AAAA records associated with
 // the provided hostname.
-func (dnsResolver *DNSResolverImpl) LookupHost(hostname string, filter int) ([]net.IP, time.Duration, time.Duration, error) {
+func (dnsResolver *DNSResolverImpl) LookupHost(hostname string, filter AddrFilter) ([]net.IP, time.Duration, time.Duration, error) {
 	var addrs []net.IP
 	var answers []dns.RR
 	var aRtt time.Duration
 	var aaaaRtt time.Duration
 
-	if filter != IPv6OnlyFilter {
-		r, aRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeA)
-		if err != nil {
-			return addrs, aRtt, 0, err
-		}
-		if r.Rcode != dns.RcodeSuccess {
-			err = fmt.Errorf("DNS failure: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
-			return nil, aRtt, 0, err
-		}
-		answers = append(answers, r.Answer...)
+	r, aRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeA)
+	if err != nil {
+		return addrs, aRtt, 0, err
 	}
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
+		return nil, aRtt, 0, err
+	}
+	answers = append(answers, r.Answer...)
 
-	if filter != IPv4OnlyFilter {
+	if filter != ipv4OnlyFilter {
 		r, aaaaRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeAAAA)
 		if err != nil {
 			return addrs, aRtt, aaaaRtt, err
@@ -141,11 +144,11 @@ func (dnsResolver *DNSResolverImpl) LookupHost(hostname string, filter int) ([]n
 
 	for _, answer := range answers {
 		if answer.Header().Rrtype == dns.TypeA {
-			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && !isPrivate(a.A) && filter != IPv6OnlyFilter {
+			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && !isPrivate(a.A) {
 				addrs = append(addrs, a.A)
 			}
 		} else if answer.Header().Rrtype == dns.TypeAAAA {
-			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && !isPrivate(aaaa.AAAA) && filter != IPv4OnlyFilter {
+			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && !isPrivate(aaaa.AAAA) && filter != ipv4OnlyFilter {
 				addrs = append(addrs, aaaa.AAAA)
 			}
 		}

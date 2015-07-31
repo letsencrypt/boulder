@@ -102,6 +102,13 @@ func main() {
 		va := va.NewValidationAuthorityImpl(c.CA.TestMode)
 		va.DNSResolver = dnsResolver
 		va.UserAgent = c.VA.UserAgent
+		addrFilter, ok := core.NameToFilter[c.VA.AddressFilter]
+		if !ok {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			fmt.Fprint(os.Stderr, "Invalid address filter")
+			os.Exit(1)
+		}
+		va.AddressFilter = addrFilter
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBConnect)
 		cmd.FailOnError(err, "Failed to create CA database")

@@ -16,6 +16,7 @@ import (
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/letsencrypt/boulder/core"
 )
 
 // MockCADatabase is a mock
@@ -66,7 +67,7 @@ func (mock *MockDNS) LookupTXT(hostname string) ([]string, time.Duration, error)
 }
 
 // LookupHost is a mock
-func (mock *MockDNS) LookupHost(hostname string, filter int) ([]net.IP, time.Duration, time.Duration, error) {
+func (mock *MockDNS) LookupHost(hostname string, filter core.AddrFilter) ([]net.IP, time.Duration, time.Duration, error) {
 	if hostname == "always.invalid" || hostname == "invalid.invalid" {
 		return []net.IP{}, 0, 0, nil
 	}
