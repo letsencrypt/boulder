@@ -96,8 +96,14 @@ func NewAuditLogger(log SyslogWriter, stats statsd.Statter) (*AuditLogger, error
 // of minimal consequence during unit testing -- logs get printed to stdout
 // even if syslog is missing.
 func initializeAuditLogger() {
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, _ := Dial("", "", "default", stats)
+	stats, err := statsd.NewNoopClient(nil)
+	if err != nil {
+		panic(err)
+	}
+	audit, err := Dial("", "", "default", stats)
+	if err != nil {
+		panic(err)
+	}
 	audit.Notice("Using default logging configuration.")
 
 	SetAuditLogger(audit)
