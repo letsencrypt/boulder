@@ -252,14 +252,14 @@ type Challenge struct {
 	// Used by simpleHTTP challenges
 	TLS *bool `json:"tls,omitempty"`
 
-	// IP addresses resolved from authorization identifier during SimpleHTTP validation
-	ResolvedAddrs []net.IP `json:"resolvedAddrs,omitempty"`
-
-	// URLs redirected to during SimpleHTTP validation
-	Redirects []string `json:"redirects,omitempty"`
-
 	// Used by dns and dvsni challenges
 	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
+
+	// IP addresses resolved from authorization identifier during SimpleHTTP validation
+	ResolvedAddrs []net.IP `json:"-"` // FIX(rolandshoemaker): this will break rpc layer
+
+	// URLs redirected to during SimpleHTTP validation
+	Redirects []string `json:"-"` // FIX(rolandshoemaker): this will break rpc layer
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client

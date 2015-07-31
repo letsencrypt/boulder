@@ -159,7 +159,7 @@ func TestDNSLookupsNoServer(t *testing.T) {
 	_, _, err := obj.LookupTXT("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
-	_, _, _, err = obj.LookupHost("letsencrypt.org")
+	_, _, _, err = obj.LookupHost("letsencrypt.org", NoFilter)
 	test.AssertError(t, err, "No servers")
 
 	_, _, err = obj.LookupCNAME("letsencrypt.org")
@@ -179,7 +179,7 @@ func TestDNSServFail(t *testing.T) {
 	_, _, err = obj.LookupCNAME(bad)
 	test.AssertError(t, err, "LookupCNAME didn't return an error")
 
-	_, _, _, err = obj.LookupHost(bad)
+	_, _, _, err = obj.LookupHost(bad, NoFilter)
 	test.AssertError(t, err, "LookupHost didn't return an error")
 
 	// CAA lookup ignores validation failures from the resolver for now
@@ -201,17 +201,17 @@ func TestDNSLookupTXT(t *testing.T) {
 func TestDNSLookupHost(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
-	ip, _, _, err := obj.LookupHost("servfail.com")
+	ip, _, _, err := obj.LookupHost("servfail.com", NoFilter)
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
 	test.AssertError(t, err, "Server failure")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
-	ip, _, _, err = obj.LookupHost("nonexistent.letsencrypt.org")
+	ip, _, _, err = obj.LookupHost("nonexistent.letsencrypt.org", NoFilter)
 	t.Logf("nonexistent.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to not exist")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
-	ip, _, _, err = obj.LookupHost("cps.letsencrypt.org")
+	ip, _, _, err = obj.LookupHost("cps.letsencrypt.org", NoFilter)
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) > 0, "Should have IPs")

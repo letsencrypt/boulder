@@ -14,6 +14,30 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
 
+const (
+	// No filter is used to tell LookupHost to query both A and AAAA records
+	NoFilter = iota
+	// IPv4OnlyFilter is used to tell LookupHost to only query A records
+	IPv4OnlyFilter
+	// IPv6OnlyFilter is used to tell LookupHost to only query AAAA records
+	IPv6OnlyFilter
+)
+
+var (
+	privateNetworkA = net.IPNet{
+		IP:   []byte{10, 0, 0, 0},
+		Mask: []byte{255, 0, 0, 0},
+	}
+	privateNetworkB = net.IPNet{
+		IP:   []byte{172, 16, 0, 0},
+		Mask: []byte{255, 240, 0, 0},
+	}
+	privateNetworkC = net.IPNet{
+		IP:   []byte{192, 168, 0, 0},
+		Mask: []byte{255, 255, 0, 0},
+	}
+)
+
 // DNSResolverImpl represents a resolver system
 type DNSResolverImpl struct {
 	DNSClient *dns.Client
@@ -79,41 +103,49 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 	return txt, rtt, err
 }
 
+func isPrivate(ip net.IP) bool {
+	return privateNetworkA.Contains(ip) || privateNetworkB.Contains(ip) || privateNetworkC.Contains(ip)
+}
+
 // LookupHost sends a DNS query to find all A/AAAA records associated with
 // the provided hostname.
-func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
+func (dnsResolver *DNSResolverImpl) LookupHost(hostname string, filter int) ([]net.IP, time.Duration, time.Duration, error) {
 	var addrs []net.IP
 	var answers []dns.RR
+	var aRtt time.Duration
+	var aaaaRtt time.Duration
 
-	r, aRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeA)
-	if err != nil {
-		return addrs, 0, 0, err
-	}
-	if r.Rcode != dns.RcodeSuccess {
-		err = fmt.Errorf("DNS failure: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, aRtt, 0, err
-	}
-
-	answers = append(answers, r.Answer...)
-
-	r, aaaaRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeAAAA)
-	if err != nil {
-		return addrs, aRtt, 0, err
-	}
-	if r.Rcode != dns.RcodeSuccess {
-		err = fmt.Errorf("DNS failure: %d-%s for AAAA query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, aRtt, aaaaRtt, err
+	if filter != IPv6OnlyFilter {
+		r, aRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeA)
+		if err != nil {
+			return addrs, aRtt, 0, err
+		}
+		if r.Rcode != dns.RcodeSuccess {
+			err = fmt.Errorf("DNS failure: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
+			return nil, aRtt, 0, err
+		}
+		answers = append(answers, r.Answer...)
 	}
 
-	answers = append(answers, r.Answer...)
+	if filter != IPv4OnlyFilter {
+		r, aaaaRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeAAAA)
+		if err != nil {
+			return addrs, aRtt, aaaaRtt, err
+		}
+		if r.Rcode != dns.RcodeSuccess {
+			err = fmt.Errorf("DNS failure: %d-%s for AAAA query", r.Rcode, dns.RcodeToString[r.Rcode])
+			return nil, aRtt, aaaaRtt, err
+		}
+		answers = append(answers, r.Answer...)
+	}
 
 	for _, answer := range answers {
 		if answer.Header().Rrtype == dns.TypeA {
-			if a, ok := answer.(*dns.A); ok {
+			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && !isPrivate(a.A) && filter != IPv6OnlyFilter {
 				addrs = append(addrs, a.A)
 			}
 		} else if answer.Header().Rrtype == dns.TypeAAAA {
-			if aaaa, ok := answer.(*dns.AAAA); ok {
+			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && !isPrivate(aaaa.AAAA) && filter != IPv4OnlyFilter {
 				addrs = append(addrs, aaaa.AAAA)
 			}
 		}

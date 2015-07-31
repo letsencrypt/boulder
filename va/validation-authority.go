@@ -36,12 +36,13 @@ var ErrTooManyCNAME = errors.New("too many CNAME/DNAME lookups")
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	RA           core.RegistrationAuthority
-	log          *blog.AuditLogger
-	DNSResolver  core.DNSResolver
-	IssuerDomain string
-	TestMode     bool
-	UserAgent    string
+	RA            core.RegistrationAuthority
+	log           *blog.AuditLogger
+	DNSResolver   core.DNSResolver
+	IssuerDomain  string
+	TestMode      bool
+	UserAgent     string
+	AddressFilter int
 }
 
 // NewValidationAuthorityImpl constructs a new VA, and may place it
@@ -118,6 +119,42 @@ func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 	return problem
 }
 
+func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, problem *core.ProblemDetails) {
+	addrs, _, _, err := va.DNSResolver.LookupHost(hostname, va.AddressFilter)
+	if err != nil {
+		problem = problemDetailsFromDNSError(err)
+		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
+		return
+	}
+	if len(addrs) == 0 {
+		problem = &core.ProblemDetails{
+			Type:   core.UnknownHostProblem,
+			Detail: fmt.Sprintf("Could not resolve %s", hostname),
+		}
+		return
+	}
+	addr = addrs[0]
+	va.log.Info(fmt.Sprintf("Resolved addresses for %s: %s", hostname, addrs))
+	return
+}
+
+func (va ValidationAuthorityImpl) resolvingDialer(name string, scheme string) (func(string, string) (net.Conn, error), net.IP, *core.ProblemDetails) {
+	addr, err := va.getAddr(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	redirectPort := "80"
+	if va.TestMode {
+		redirectPort = "5001"
+	} else if strings.ToLower(scheme) == "https" {
+		redirectPort = "443"
+	}
+	return func(_, _ string) (net.Conn, error) {
+		dialer := net.Dialer{Timeout: 5 * time.Second, KeepAlive: 5 * time.Second}
+		return dialer.Dial("tcp", net.JoinHostPort(addr.String(), redirectPort))
+	}, addr, nil
+}
+
 func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
 	challenge := input
 
@@ -132,14 +169,6 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		return challenge, challenge.Error
 	}
 	hostName := identifier.Value
-
-	addrs, problem := va.getAddrs(identifier.Value)
-	if problem != nil {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = problem
-		return challenge, challenge.Error
-	}
-	challenge.ResolvedAddrs = addrs
 
 	var scheme string
 	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
@@ -172,88 +201,48 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	httpRequest.Host = hostName
-	tr := *http.DefaultTransport.(*http.Transport)
-	// We are talking to a client that does not yet have a certificate,
-	// so we accept a temporary, invalid one.
-	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	// We don't expect to make multiple requests to a client, so close
-	// connection immediately.
-	tr.DisableKeepAlives = true
-	// Intercept Dial in order to connect to the IP address we
-	// selected above.
-	defaultDial := tr.Dial
-	tr.Dial = func(_, _ string) (net.Conn, error) {
-		port := "80"
-		if va.TestMode {
-			port = "5001"
-		} else if scheme == "https" {
-			port = "443"
-		}
-		// Ignore the addr selected by net/http.
-		return defaultDial("tcp", net.JoinHostPort(addrs[0].String(), port))
+	dialer, addrUsed, prob := va.resolvingDialer(hostName, scheme)
+	challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addrUsed)
+	if err != nil {
+		challenge.Status = core.StatusInvalid
+		challenge.Error = prob
+		return challenge, prob
 	}
-	var redirects []string
-	addrUsed := addrs[0]
+
+	tr := &http.Transport{
+		// We are talking to a client that does not yet have a certificate,
+		// so we accept a temporary, invalid one.
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		// We don't expect to make multiple requests to a client, so close
+		// connection immediately.
+		DisableKeepAlives: true,
+		// Intercept Dial in order to connect to the IP address we
+		// select.
+		Dial: dialer,
+	}
+
 	logRedirect := func(req *http.Request, via []*http.Request) error {
-		redirects = append(redirects, req.URL.String())
-		addrs, problem := va.getAddrs(req.URL.Host)
-		if problem != nil {
-			return problem
+		challenge.Redirects = append(challenge.Redirects, req.URL.String())
+		dailer, addrUsed, err := va.resolvingDialer(req.URL.Host, req.URL.Scheme)
+		challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addrUsed)
+		if err != nil {
+			return err
 		}
-		addrUsed = addrs[0]
-		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q [%s]", identifier, via[len(via)-1].URL.String(), req.URL.String(), addrs[0]))
-		challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addrs...)
-		redirectPort := "80"
-		if va.TestMode {
-			redirectPort = "5001"
-		} else if strings.ToLower(req.URL.Scheme) == "https" {
-			redirectPort = "443"
-		}
-		tr.Dial = func(_, _ string) (net.Conn, error) {
-			return defaultDial("tcp", net.JoinHostPort(addrs[0].String(), redirectPort))
-		}
+		tr.Dial = dailer
+		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q [%s]", identifier, via[len(via)-1].URL.String(), req.URL.String(), addrUsed))
 		return nil
 	}
 	client := http.Client{
-		Transport:     &tr,
+		Transport:     tr,
 		CheckRedirect: logRedirect,
 		Timeout:       5 * time.Second,
 	}
 	httpResponse, err := client.Do(httpRequest)
-	challenge.Redirects = redirects
-	if err == nil && httpResponse.StatusCode == 200 {
-		// Read body & test
-		body, readErr := ioutil.ReadAll(httpResponse.Body)
-		if readErr != nil {
-			challenge.Error = &core.ProblemDetails{
-				Type: core.ServerInternalProblem,
-			}
-			va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] Read failure: %s", identifier, readErr))
-			challenge.Status = core.StatusInvalid
-			return challenge, readErr
-		}
-
-		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
-			challenge.Status = core.StatusValid
-		} else {
-			challenge.Status = core.StatusInvalid
-			challenge.Error = &core.ProblemDetails{
-				Type: core.UnauthorizedProblem,
-				Detail: fmt.Sprintf("Incorrect token validating Simple%s for %s",
-					strings.ToUpper(scheme), url.String()),
-			}
-			err = challenge.Error
-		}
-	} else if err != nil {
+	if err != nil {
 		challenge.Status = core.StatusInvalid
-		// Catch if error came from CheckRedirect
-		if problem, ok := err.(*core.ProblemDetails); ok {
-			challenge.Error = problem
-		} else {
-			challenge.Error = &core.ProblemDetails{
-				Type:   parseHTTPConnError(err),
-				Detail: fmt.Sprintf("Could not connect to %s", url.String()),
-			}
+		challenge.Error = &core.ProblemDetails{
+			Type:   parseHTTPConnError(err),
+			Detail: fmt.Sprintf("Could not connect to %s", url),
 		}
 		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
 		return challenge, err
@@ -318,24 +307,6 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	return challenge, nil
 }
 
-func (va ValidationAuthorityImpl) getAddrs(hostname string) (addrs []net.IP, problem *core.ProblemDetails) {
-	addrs, _, _, err := va.DNSResolver.LookupHost(hostname)
-	if err != nil {
-		problem = problemDetailsFromDNSError(err)
-		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
-		return
-	}
-	if len(addrs) == 0 {
-		problem = &core.ProblemDetails{
-			Type:   core.UnknownHostProblem,
-			Detail: fmt.Sprintf("Could not resolve %s", hostname),
-		}
-		return
-	}
-	va.log.Info(fmt.Sprintf("Resolved addresses for %s: %s", hostname, addrs))
-	return
-}
-
 func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
 	challenge := input
 
@@ -374,20 +345,18 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.DVSNISuffix)
 
-	addrs, problem := va.getAddrs(identifier.Value)
+	addr, problem := va.getAddr(identifier.Value)
 	if problem != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = problem
 		return challenge, challenge.Error
 	}
-	challenge.ResolvedAddrs = addrs
+	challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addr)
 
 	// Make a connection with SNI = nonceName
-	var hostPort string
+	hostPort := net.JoinHostPort(addr.String(), "443")
 	if va.TestMode {
-		hostPort = net.JoinHostPort(addrs[0].String(), "5001")
-	} else {
-		hostPort = net.JoinHostPort(addrs[0].String(), "443")
+		hostPort = net.JoinHostPort(addr.String(), "5001")
 	}
 	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
 		identifier, hostPort, ZName))

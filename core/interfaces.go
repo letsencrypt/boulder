@@ -143,7 +143,7 @@ type CertificateAuthorityDatabase interface {
 type DNSResolver interface {
 	ExchangeOne(string, uint16) (*dns.Msg, time.Duration, error)
 	LookupTXT(string) ([]string, time.Duration, error)
-	LookupHost(string) ([]net.IP, time.Duration, time.Duration, error)
+	LookupHost(string, int) ([]net.IP, time.Duration, time.Duration, error)
 	LookupCNAME(string) (string, time.Duration, error)
 	LookupDNAME(string) (string, time.Duration, error)
 	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
