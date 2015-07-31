@@ -239,6 +239,7 @@ case $? in
   1) # Python client failed, but Node client didn't, which does
      # not constitute failure
     update_status --state success --description "Python integration failed."
+    FAILURE=1
     ;;
   2) # Node client failed
     update_status --state failure --description "NodeJS integration failed."
