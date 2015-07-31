@@ -373,7 +373,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 2)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
 	chall.Token = pathFound
@@ -382,14 +382,14 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertNotError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 3)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
 	chall.Token = pathRedirectLookupInvalid
 	finChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Could not resolve invalid.invalid`)), 1)
 
 	log.Clear()
@@ -398,8 +398,8 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/re-lookup" to ".*localhost2/path"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost2: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost2 \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 }
 
 func TestDvsni(t *testing.T) {
@@ -408,10 +408,12 @@ func TestDvsni(t *testing.T) {
 
 	chall := createChallenge(core.ChallengeTypeDVSNI)
 
+	log.Clear()
 	invalidChall, err := va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Server's not up yet; expected refusal. Where did we connect?")
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	waitChan := make(chan bool, 1)
 	stopChan := make(chan bool, 1)
@@ -419,15 +421,19 @@ func TestDvsni(t *testing.T) {
 	defer func() { stopChan <- true }()
 	<-waitChan
 
+	log.Clear()
 	finChall, err := va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "")
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
+	log.Clear()
 	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.MalformedProblem)
 
+	log.Clear()
 	va.TestMode = false
 	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -445,6 +451,7 @@ func TestDvsni(t *testing.T) {
 	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
 	chall.Validation, _ = signer.Sign(validationPayload, "")
 
+	log.Clear()
 	started := time.Now()
 	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
 	took := time.Since(started)
@@ -454,6 +461,7 @@ func TestDvsni(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Connection should've timed out")
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 }
 
 func TestTLSError(t *testing.T) {

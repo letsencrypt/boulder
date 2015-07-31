@@ -131,7 +131,7 @@ func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, problem
 		return
 	}
 	addr = addrs[0]
-	va.log.Info(fmt.Sprintf("Resolved addresses for %s: %s", hostname, addrs))
+	va.log.Info(fmt.Sprintf("Resolved addresses for %s [using %s]: %s", hostname, addr, addrs))
 	return
 }
 
