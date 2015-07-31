@@ -10,15 +10,14 @@ addons:
   apt:
     packages:
       - lsb-release
-      - git-core
       - python-dev
       - python-virtualenv
       - gcc
-      - dialog
       - libaugeas0
       - libssl-dev
       - libffi-dev
       - ca-certificates
+      - rsyslog
 
 sudo: false
 
