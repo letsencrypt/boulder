@@ -3,10 +3,23 @@ language: go
 go:
   - 1.4.1
 
+addons:
+  apt:
+    packages:
+      - lsb-release
+      - python-dev
+      - python-virtualenv
+      - gcc
+      - libaugeas0
+      - libssl-dev
+      - libffi-dev
+      - ca-certificates
+      - rsyslog
+
+sudo: false
+
 services:
   - rabbitmq
-
-sudo: required
 
 matrix:
   fast_finish: true
@@ -15,8 +28,6 @@ matrix:
 branches:
   only:
     - master
-
-sudo: required
 
 before_install:
   # Github-PR-Status secret
