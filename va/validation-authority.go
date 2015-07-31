@@ -64,7 +64,6 @@ type verificationRequestEvent struct {
 }
 
 func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
-
 	if len(validation.Signatures) > 1 {
 		return fmt.Errorf("Too many signatures on validation JWS")
 	}
@@ -98,8 +97,6 @@ func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.Jso
 
 	return nil
 }
-
-// Validation methods
 
 // problemDetailsFromDNSError checks the error returned from Lookup...
 // methods and tests if the error was an underlying net.OpError or an error
@@ -154,6 +151,8 @@ func (va ValidationAuthorityImpl) resolvingDialer(name string, scheme string) (f
 		return dialer.Dial("tcp", net.JoinHostPort(addr.String(), redirectPort))
 	}, addr, nil
 }
+
+// Validation methods
 
 func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
 	challenge := input

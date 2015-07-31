@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	// No filter is used to tell LookupHost to query both A and AAAA records
+	// NoFilter is used to tell LookupHost to query both A and AAAA records
 	NoFilter = iota
 	// IPv4OnlyFilter is used to tell LookupHost to only query A records
 	IPv4OnlyFilter
