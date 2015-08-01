@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
 
+// AddrFilter represents a DNS address filter
 type AddrFilter int
 
 const (
@@ -23,23 +24,33 @@ const (
 	IPv4OnlyFilter
 )
 
+// NameToFilter is used to by config setup to choose the correct address filter
 var NameToFilter = map[string]AddrFilter{
 	"":   NoAddrFilter,
 	"v4": IPv4OnlyFilter,
 }
 
+// Private CIDRs to ignore per RFC1918
 var (
+	// 10.0.0.0/8
 	privateNetworkA = net.IPNet{
 		IP:   []byte{10, 0, 0, 0},
 		Mask: []byte{255, 0, 0, 0},
 	}
+	// 172.16.0.0/12
 	privateNetworkB = net.IPNet{
 		IP:   []byte{172, 16, 0, 0},
 		Mask: []byte{255, 240, 0, 0},
 	}
+	// 192.168.0.0/16
 	privateNetworkC = net.IPNet{
 		IP:   []byte{192, 168, 0, 0},
 		Mask: []byte{255, 255, 0, 0},
+	}
+	// fc00::/8 (RFC4193)
+	privateNetworkD = net.IPNet{
+		IP:   []byte{252, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		Mask: []byte{254, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	}
 )
 
@@ -108,8 +119,12 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 	return txt, rtt, err
 }
 
-func isPrivate(ip net.IP) bool {
+func isPrivateV4(ip net.IP) bool {
 	return privateNetworkA.Contains(ip) || privateNetworkB.Contains(ip) || privateNetworkC.Contains(ip)
+}
+
+func isPrivateV6(ip net.IP) bool {
+	return privateNetworkD.Contains(ip)
 }
 
 // LookupHost sends a DNS query to find all A/AAAA records associated with
@@ -144,11 +159,11 @@ func (dnsResolver *DNSResolverImpl) LookupHost(hostname string, filter AddrFilte
 
 	for _, answer := range answers {
 		if answer.Header().Rrtype == dns.TypeA {
-			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && !isPrivate(a.A) {
+			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && !isPrivateV4(a.A) {
 				addrs = append(addrs, a.A)
 			}
 		} else if answer.Header().Rrtype == dns.TypeAAAA {
-			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && !isPrivate(aaaa.AAAA) && filter != IPv4OnlyFilter {
+			if aaaa, ok := answer.(*dns.AAAA); ok && filter != IPv4OnlyFilter && !isPrivateV6(aaaa.AAAA) {
 				addrs = append(addrs, aaaa.AAAA)
 			}
 		}

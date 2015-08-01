@@ -48,12 +48,6 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 			record.Minttl = 1
 			appendAnswer(record)
 		case dns.TypeAAAA:
-			if q.Name == "v6.letsencrypt.org." {
-				record := new(dns.AAAA)
-				record.Hdr = dns.RR_Header{Name: "v6.letsencrypt.org.", Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
-				record.AAAA = net.ParseIP("::1")
-				appendAnswer(record)
-			}
 			if q.Name == "mixed.letsencrypt.org." {
 				record := new(dns.AAAA)
 				record.Hdr = dns.RR_Header{Name: "mixed.letsencrypt.org.", Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
