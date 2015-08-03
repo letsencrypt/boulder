@@ -268,7 +268,6 @@ func AmqpChannel(conf Config) (*amqp.Channel, error) {
 		// Configuration did not specify TLS options, but Dial will
 		// use TLS anyway if the URL scheme is "amqps"
 		conn, err = amqp.Dial(conf.AMQP.Server)
-
 	} else {
 		// They provided TLS options, so let's load them.
 		log.Info("AMQPS: Loading TLS Options.")
@@ -336,16 +335,36 @@ func RunForever(server *rpc.AmqpRPCServer) {
 }
 
 // RunUntilSignaled starts the server and run until we get something on closeChan
-func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, closeChan chan *amqp.Error) {
-	server.Start()
+func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, closeChan chan *amqp.Error) error {
+	finishedProcessing, err := server.Start()
+	if err != nil {
+		return err
+	}
+	stopWatching, err := server.HandleInterrupts()
+	if err != nil {
+		return err
+	}
 	fmt.Fprintf(os.Stderr, "Server running...\n")
 
 	// Block until channel closes
-	err := <-closeChan
-
-	logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
-	time.Sleep(time.Second * 5)
-	logger.Warning("Reconnecting to AMQP...")
+	for {
+		finished := true
+		select {
+		case err := <-closeChan:
+			logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
+			stopWatching <- true
+			time.Sleep(time.Second * 5)
+			logger.Warning("Reconnecting to AMQP...")
+			finished = true
+		case <-finishedProcessing:
+			logger.Info(" [!] Finished processing remaining messages, exiting")
+			os.Exit(0)
+		}
+		if finished {
+			break
+		}
+	}
+	return nil
 }
 
 // ProfileCmd runs forever, sending Go statistics to StatsD.

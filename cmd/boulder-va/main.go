@@ -63,8 +63,8 @@ func main() {
 			cmd.FailOnError(err, "Unable to create VA server")
 
 			auditlogger.Info(app.VersionString())
-
-			cmd.RunUntilSignaled(auditlogger, vas, closeChan)
+			err = cmd.RunUntilSignaled(auditlogger, vas, closeChan)
+			cmd.FailOnError(err, "Unable to run VA server")
 		}
 	}
 

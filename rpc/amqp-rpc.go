@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
@@ -124,9 +126,15 @@ func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan
 		return nil, err
 	}
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
+	consumerName := fmt.Sprintf("%s.%s", name, hostname)
+
 	msgs, err := ch.Consume(
 		name,
-		"",
+		consumerName,
 		AmqpAutoAck,
 		AmqpExclusive,
 		AmqpNoLocal,
@@ -241,12 +249,13 @@ type RPCResponse struct {
 
 // Start starts the AMQP-RPC server running in a separate thread.
 // There is currently no Stop() method.
-func (rpc *AmqpRPCServer) Start() (err error) {
+func (rpc *AmqpRPCServer) Start() (finished chan bool, err error) {
 	msgs, err := amqpSubscribe(rpc.channel, rpc.serverQueue, rpc.log)
 	if err != nil {
 		return
 	}
 
+	finished = make(chan bool, 1)
 	go func() {
 		for msg := range msgs {
 			// XXX-JWS: jws.Verify(body)
@@ -278,8 +287,41 @@ func (rpc *AmqpRPCServer) Start() (err error) {
 					Body:          jsonResponse, // XXX-JWS: jws.Sign(privKey, body)
 				})
 		}
+		finished <- true
 	}()
 	return
+}
+
+func (rpc *AmqpRPCServer) HandleInterrupts() (chan bool, error) {
+	stopWatching := make(chan bool, 1)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+	signal.Notify(sigChan, os.Interrupt)
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, err
+	}
+	consumerName := fmt.Sprintf("%s.%s", rpc.serverQueue, hostname)
+
+	go func() {
+		finished := false
+		for {
+			select {
+			case <-sigChan:
+				rpc.log.Info(" [!] SIGTERM/SIGINT recieved, stopping new deliveries and processing remaining messages")
+				rpc.channel.Cancel(consumerName, false)
+				finished = true
+			case <-stopWatching:
+				finished = true
+			}
+			if finished {
+				break
+			}
+		}
+	}()
+
+	return stopWatching, nil
 }
 
 // AmqpRPCCLient is an AMQP-RPC client that sends requests to a specific server
