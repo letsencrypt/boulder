@@ -80,7 +80,8 @@ func main() {
 
 			auditlogger.Info(app.VersionString())
 
-			cmd.RunUntilSignaled(auditlogger, ras, closeChan)
+			err = cmd.RunUntilSignaled(auditlogger, ras, closeChan)
+			cmd.FailOnError(err, "Unable to run RA RPC server")
 		}
 
 	}

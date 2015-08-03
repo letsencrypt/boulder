@@ -57,7 +57,8 @@ func main() {
 
 			auditlogger.Info(app.VersionString())
 
-			cmd.RunUntilSignaled(auditlogger, sas, closeChan)
+			err = cmd.RunUntilSignaled(auditlogger, sas, closeChan)
+			cmd.FailOnError(err, "Unable to run SA RPC server")
 		}
 	}
 
