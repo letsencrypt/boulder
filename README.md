@@ -34,7 +34,7 @@ Alternatively, to run all services locally, using AMQP to pass messages between 
 
 ```
 > python start.py
-> # start.py will use the configuration specified by BOULDER_CONFIG or test/boulder-config.json
+# start.py will use the configuration specified by BOULDER_CONFIG or test/boulder-config.json
 ```
 
 To run a single module, specifying the AMQP server, you might use something more like:
