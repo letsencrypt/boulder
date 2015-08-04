@@ -62,6 +62,20 @@ func (mock *MockDNS) LookupTXT(hostname string) ([]string, time.Duration, error)
 	if hostname == "_acme-challenge.servfail.com" {
 		return nil, 0, fmt.Errorf("SERVFAIL")
 	}
+	if hostname == "_acme-challenge.good.bin.coffee" {
+		return []string{"P-sAHUTht3jvePd6oTqyjST6T69ni2C25N0LYajg2CYwStTXJCpNWvlRHVbILSrmuwX1vjPKqhB6DcLNjKP5uMNRu1Ceu1rZkW4Znfwq0mzwuOQX7DdhLKlfOGBnzUyPvmRpcmsWDDmFY3kec9SKbjJ-eI580pZa72VVuMsJGseEbPwbPiyuSWidGqqGCOu6DFEZKdN40Y-ut9yylqxmiZBL3nmx4Y4hJ48lzFJnY3MfJ3ldjhuvlnAcyDaXufH1IhZSJLUckrvwzxx5sHBj-YwiMY9bwW1Blo2WZxlf93mOSwl0aQwXd0gRpIMLPScESK1KfZgcj15b55GQCLndBA"}, 0, nil
+	}
+	if hostname == "_acme-challenge.splitted.bin.coffee" {
+		return []string{"P-sAHUTht3jvePd6oTqyjST6T69ni2C25N0LYajg2CYwStTXJCpNWvlRHVbILSrmuwX1",
+						"vjPKqhB6DcLNjKP5uMNRu1Ceu1rZkW4Znfwq0mzwuOQX7DdhLKlfOGBnzUyPvmRpcmsW",
+						"DDmFY3kec9SKbjJ-eI580pZa72VVuMsJGseEbPwbPiyuSWidGqqGCOu6DFEZKdN40Y-u",
+						"t9yylqxmiZBL3nmx4Y4hJ48lzFJnY3MfJ3ldjhuvlnAcyDaXufH1IhZSJLUckrvwzxx5",
+						"sHBj-YwiMY9bwW1Blo2WZxlf93mOSwl0aQwXd0gRpIMLPScESK1KfZgcj15b55GQCLndBA"}, 0, nil
+	}
+	if hostname == "_acme-challenge.bad-splitted.bin.coffee" {
+		return []string{"P-sAHUTht3jvePd6oTqyjST6T69ni2C25N0LYajg2CYwStTXJCpNWvlRHVbILSrmuwX1",
+						"You know I'm bad, I'm bad - come on, you know"}, 0, nil
+	}
 	return []string{"hostname"}, 0, nil
 }
 
