@@ -175,7 +175,10 @@ type AmqpRPCServer struct {
 func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer)) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
 	b := make([]byte, 4)
-	rand.Read(b)
+	_, err := rand.Read(b)
+	if err != nil {
+		return nil, err
+	}
 	consumerName := fmt.Sprintf("%s.%x", serverQueue, b)
 	return &AmqpRPCServer{
 		serverQueue:       serverQueue,
