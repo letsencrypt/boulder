@@ -320,8 +320,7 @@ func (rpc *AmqpRPCServer) HandleInterrupts() (chan bool, error) {
 	}
 
 	go func() {
-		finished := false
-		for {
+		for finished := false; !finished; {
 			select {
 			case <-sigChan:
 				rpc.log.Info(" [!] SIGTERM/SIGINT recieved, stopping new deliveries and processing remaining messages")
@@ -329,9 +328,6 @@ func (rpc *AmqpRPCServer) HandleInterrupts() (chan bool, error) {
 				finished = true
 			case <-stopWatching:
 				finished = true
-			}
-			if finished {
-				break
 			}
 		}
 	}()

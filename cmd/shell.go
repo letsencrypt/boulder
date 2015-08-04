@@ -339,13 +339,13 @@ func RunForever(server *rpc.AmqpRPCServer) {
 // has finished processing any retrieved messages before returning.
 func RunUntilSignaled(connectionHandler func(ch *amqp.Channel) *rpc.AmqpRPCServer, c Config, logger *blog.AuditLogger) error {
 	for {
+		// Setup AMQP channel
 		ch, err := AmqpChannel(c)
 		if err != nil {
 			return err
 		}
 
-		closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
-
+		// Setup AmqpRPCServer will required handlers/clients
 		server := connectionHandler(ch)
 
 		finishedProcessing, err := server.Start()
@@ -359,8 +359,8 @@ func RunUntilSignaled(connectionHandler func(ch *amqp.Channel) *rpc.AmqpRPCServe
 		fmt.Fprintf(os.Stderr, "Server running...\n")
 
 		// Block until channel closes
-		for {
-			finished := false
+		closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
+		for finished := false; !finished; {
 			select {
 			case err := <-closeChan:
 				logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
@@ -371,9 +371,6 @@ func RunUntilSignaled(connectionHandler func(ch *amqp.Channel) *rpc.AmqpRPCServe
 			case <-finishedProcessing:
 				logger.Info(" [!] Finished processing remaining messages, exiting")
 				os.Exit(0)
-			}
-			if finished {
-				break
 			}
 		}
 	}
