@@ -292,6 +292,8 @@ func (rpc *AmqpRPCServer) Start() (finished chan bool, err error) {
 	return
 }
 
+// HandleInterrupts creates a Goroutine to sit and watch for INT and TERM signals
+// and cancel the server consumer if it sees one so servers can gracefully shutdown.
 func (rpc *AmqpRPCServer) HandleInterrupts() (chan bool, error) {
 	stopWatching := make(chan bool, 1)
 	sigChan := make(chan os.Signal, 1)
