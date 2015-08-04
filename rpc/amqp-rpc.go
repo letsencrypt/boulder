@@ -396,11 +396,9 @@ func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
 				if ok {
 					rpc.processMessage(msg)
 				} else {
+					// chan has been closed by rpc.channel.Cancel
 					rpc.log.Info(" [!] Finished processing messages")
-					rpc.dMu.Lock()
-					rpc.done = true
-					rpc.dMu.Unlock()
-					blocking = false
+					return nil
 				}
 			case err = <-closeChan:
 				rpc.connected = false
