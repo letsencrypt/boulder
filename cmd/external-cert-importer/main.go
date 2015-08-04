@@ -24,7 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-const datestamp_format string = "2006-01-02 15:04:05"
+const datestampFormat string = "2006-01-02 15:04:05"
 
 func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, statsRate float32) {
 	file, err := os.Open(csvFilename)
@@ -40,7 +40,7 @@ func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, stats
 			return
 		}
 
-		notAfter, err := time.Parse(datestamp_format, record[3])
+		notAfter, err := time.Parse(datestampFormat, record[3])
 		spkiBytes, err := hex.DecodeString(record[4])
 		certDER, err := hex.DecodeString(record[7])
 

@@ -483,7 +483,7 @@ type IdentifierData struct {
 	CertSHA1     string `db:"certSHA1"`     // The hex encoding of the SHA-1 hash of a cert containing the identifier
 }
 
-// ExternalCerts holds information about certificates issued by other CAs,
+// ExternalCert holds information about certificates issued by other CAs,
 // obtained through Certificate Transparency, the SSL Observatory, or scans.io.
 type ExternalCert struct {
 	SHA1     string    `db:"sha1"`       // The hex encoding of the SHA-1 hash of this cert
