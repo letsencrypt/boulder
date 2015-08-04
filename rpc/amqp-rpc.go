@@ -397,7 +397,9 @@ func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
 					rpc.processMessage(msg)
 				} else {
 					rpc.log.Info(" [!] Finished processing messages")
+					rpc.dMu.Lock()
 					rpc.done = true
+					rpc.dMu.Unlock()
 					blocking = false
 				}
 			case err = <-closeChan:
