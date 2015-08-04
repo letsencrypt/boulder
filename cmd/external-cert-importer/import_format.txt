@@ -17,10 +17,6 @@ Example: `"10A9C1F8ADAACBFE2B0F83F7D5FA1FC293A8D2A2"`
 Data Type: Up to 255 characters
 Description: The domain to which the certificate applies, with the DNS labels reversed. Wildcards are included.  
 Example: `"org.eff.*"`
-1. Column Name: Last Changed Timestamp  
-Data Type: A MySQL `TIMESTAMP`, 19 characters long. (More information is available at https://dev.mysql.com/doc/refman/5.5/en/datetime.html)  
-Description: The UTC timestamp of the last time this row was updated.  
-Example: `"2015-03-23 22:59:01"`
 
 ###`valid-certs`
 1. Column Name: SHA1 Fingerprint  
@@ -51,10 +47,6 @@ Example: 1
 Data Type: 0 or 1  
 Description: 1 if the certificate is a valid Extended Validation (EV) certificate (as determined via the method described below in the section *EV Validity*), and 0 otherwise.  
 Example: 0  
-1. Column Name: Last Changed Timestamp  
-Data Type: A MySQL `TIMESTAMP`, 19 characters long. (More information is available at https://dev.mysql.com/doc/refman/5.5/en/datetime.html)  
-Description: The UTC timestamp of the last time this row was updated.  
-Example: `2015-03-23 22:59:01`
 1. Column Name: Hex-Encoded Certificate
 Data Type: Hexadecimal characters
 Description: The hexadecimal encoding of the DER-encoded certificate.

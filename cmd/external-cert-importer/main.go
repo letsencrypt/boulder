@@ -42,8 +42,7 @@ func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, stats
 
 		notAfter, err := time.Parse(datestamp_format, record[3])
 		spkiBytes, err := hex.DecodeString(record[4])
-		lastUpdated, err := time.Parse(datestamp_format, record[7])
-		certDER, err := hex.DecodeString(record[8])
+		certDER, err := hex.DecodeString(record[7])
 
 		externalCert := core.ExternalCert{
 			SHA1:        record[0],
@@ -53,7 +52,6 @@ func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, stats
 			SPKI:        spkiBytes,
 			Valid:       record[5] == "1",
 			EV:          record[6] == "1",
-			LastUpdated: lastUpdated,
 			CertDER:     certDER,
 		}
 
@@ -78,12 +76,9 @@ func addIdentifiers(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter,
 			return
 		}
 
-		lastUpdated, err := time.Parse(datestamp_format, record[2])
-
 		identifierData := core.IdentifierData{
 			ReversedName: record[1],
 			CertSHA1:     record[0],
-			LastUpdated:  lastUpdated,
 		}
 
 		importStart := time.Now()
