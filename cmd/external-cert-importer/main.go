@@ -45,14 +45,14 @@ func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, stats
 		certDER, err := hex.DecodeString(record[7])
 
 		externalCert := core.ExternalCert{
-			SHA1:        record[0],
-			Issuer:      record[1],
-			Subject:     record[2],
-			NotAfter:    notAfter,
-			SPKI:        spkiBytes,
-			Valid:       record[5] == "1",
-			EV:          record[6] == "1",
-			CertDER:     certDER,
+			SHA1:     record[0],
+			Issuer:   record[1],
+			Subject:  record[2],
+			NotAfter: notAfter,
+			SPKI:     spkiBytes,
+			Valid:    record[5] == "1",
+			EV:       record[6] == "1",
+			CertDER:  certDER,
 		}
 
 		importStart := time.Now()
