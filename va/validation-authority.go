@@ -401,11 +401,14 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 		return challenge, challenge.Error
 	}
 
+	txtRecord := ""
 	for _, element := range txts {
-		if subtle.ConstantTimeCompare([]byte(element), []byte(encodedSignature)) == 1 {
-			challenge.Status = core.StatusValid
-			return challenge, nil
-		}
+		txtRecord += element
+	}
+
+	if subtle.ConstantTimeCompare([]byte(txtRecord), []byte(encodedSignature)) == 1 {
+		challenge.Status = core.StatusValid
+		return challenge, nil
 	}
 
 	challenge.Error = &core.ProblemDetails{
