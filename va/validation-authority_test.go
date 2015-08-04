@@ -119,6 +119,9 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 		} else if strings.HasSuffix(r.URL.Path, "re-lookup-invalid") {
 			t.Logf("SIMPLESRV: Got a redirect req to a invalid hostname\n")
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
+		} else if strings.HasSuffix(r.URL.Path, "looper") {
+			t.Logf("SIMPLESRV: Got a loop req\n")
+			http.Redirect(w, r, r.URL.String(), 301)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
 			fmt.Fprint(w, createValidation(currentToken, enableTLS))
@@ -402,6 +405,27 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/re-lookup" to ".*localhost2/path"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost2 \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+}
+
+func TestSimpleHttpRedirectLoop(t *testing.T) {
+	va := NewValidationAuthorityImpl(true)
+	va.DNSResolver = &mocks.MockDNS{}
+	va.AddressFilter = core.NoAddrFilter
+
+	tls := false
+	chall := core.Challenge{Token: "looper", TLS: &tls}
+
+	stopChan := make(chan bool, 1)
+	waitChan := make(chan bool, 1)
+	go simpleSrv(t, expectedToken, stopChan, waitChan, tls)
+	defer func() { stopChan <- true }()
+	<-waitChan
+
+	log.Clear()
+	finChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
+	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, chall.Token)
+	fmt.Println(finChall)
 }
 
 func TestDvsni(t *testing.T) {

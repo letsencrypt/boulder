@@ -29,6 +29,7 @@ import (
 )
 
 const maxCNAME = 16 // Prevents infinite loops. Same limit as BIND.
+const maxRedirect = 10
 
 // Returned by CheckCAARecords if it has to follow too many
 // consecutive CNAME lookups.
@@ -122,7 +123,7 @@ func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 // of the address filters (core.IPv4OnlyFilter or core.IPv6OnlyFilter) is passed
 // to LookupHost only the relevant DNS queries will be performed and addresses
 // returned.
-func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, problem *core.ProblemDetails) {
+func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
 	addrs, _, _, err := va.DNSResolver.LookupHost(hostname, va.AddressFilter)
 	if err != nil {
 		problem = problemDetailsFromDNSError(err)
@@ -143,10 +144,10 @@ func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, problem
 
 // resolveAndConstructDialer gets the prefered address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
-func (va ValidationAuthorityImpl) resolveAndConstructDialer(name string, scheme string) (func(string, string) (net.Conn, error), net.IP, *core.ProblemDetails) {
-	addr, err := va.getAddr(name)
+func (va ValidationAuthorityImpl) resolveAndConstructDialer(name string, scheme string) (func(string, string) (net.Conn, error), net.IP, []net.IP, *core.ProblemDetails) {
+	addr, allAddrs, err := va.getAddr(name)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	redirectPort := "80"
 	if va.TestMode {
@@ -157,7 +158,7 @@ func (va ValidationAuthorityImpl) resolveAndConstructDialer(name string, scheme 
 	return func(_, _ string) (net.Conn, error) {
 		dialer := net.Dialer{Timeout: 5 * time.Second, KeepAlive: 5 * time.Second}
 		return dialer.Dial("tcp", net.JoinHostPort(addr.String(), redirectPort))
-	}, addr, nil
+	}, addr, allAddrs, nil
 }
 
 // Validation methods
@@ -208,8 +209,17 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	httpRequest.Host = hostName
-	dialer, addrUsed, prob := va.resolveAndConstructDialer(hostName, scheme)
-	challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addrUsed)
+	dialer, addrUsed, allAddrs, prob := va.resolveAndConstructDialer(hostName, scheme)
+	challenge.Targets = &core.ValidationTargets{
+		Type: "SimpleHTTP",
+		Used: []core.ValidationTarget{
+			core.ValidationTarget{
+				URL:               url.String(),
+				AddressesResolved: allAddrs,
+				AddressUsed:       addrUsed,
+			},
+		},
+	}
 	if err != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
@@ -229,9 +239,16 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	logRedirect := func(req *http.Request, via []*http.Request) error {
-		challenge.Redirects = append(challenge.Redirects, req.URL.String())
-		dialer, addrUsed, err := va.resolveAndConstructDialer(req.URL.Host, req.URL.Scheme)
-		challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addrUsed)
+		if len(challenge.Targets.Used) >= maxRedirect {
+			return fmt.Errorf("Too many redirects")
+		}
+		dialer, addrUsed, allAddrs, err := va.resolveAndConstructDialer(req.URL.Host, req.URL.Scheme)
+		redirectTarget := core.ValidationTarget{
+			URL:               req.URL.String(),
+			AddressesResolved: allAddrs,
+			AddressUsed:       addrUsed,
+		}
+		challenge.Targets.Used = append(challenge.Targets.Used, redirectTarget)
 		if err != nil {
 			return err
 		}
@@ -352,13 +369,22 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.DVSNISuffix)
 
-	addr, problem := va.getAddr(identifier.Value)
+	addr, allAddrs, problem := va.getAddr(identifier.Value)
+	challenge.Targets = &core.ValidationTargets{
+		Type: "DVSNI",
+		Used: []core.ValidationTarget{
+			core.ValidationTarget{
+				Hostname:          identifier.Value,
+				AddressesResolved: allAddrs,
+				AddressUsed:       addr,
+			},
+		},
+	}
 	if problem != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = problem
 		return challenge, challenge.Error
 	}
-	challenge.ResolvedAddrs = append(challenge.ResolvedAddrs, addr)
 
 	// Make a connection with SNI = nonceName
 	hostPort := net.JoinHostPort(addr.String(), "443")
@@ -383,7 +409,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	}
 	defer conn.Close()
 
-	// Check that ZName is a DNSName SAN in the server's certificate
+	// Check that ZName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		challenge.Error = &core.ProblemDetails{

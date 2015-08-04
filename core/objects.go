@@ -224,6 +224,22 @@ func (r *Registration) MergeUpdate(input Registration) {
 	}
 }
 
+// ValidationTarget describes a single URL and/or IP addresses resolved for the
+// URL/hostname
+type ValidationTarget struct {
+	URL               string   `json:"url,omitempty"`
+	Hostname          string   `json:"hostname,omitempty"`
+	AddressesResolved []net.IP `json:"addressesResolved"`
+	AddressUsed       net.IP   `json:"addressUsed"`
+}
+
+// ValidationTargets describes all of the URLs and/or IP addresses resolved
+// and used during a single validation attempt
+type ValidationTargets struct {
+	Type string             `json:"type"`
+	Used []ValidationTarget `json:"used"`
+}
+
 // Challenge is an aggregate of all data needed for any challenges.
 //
 // Rather than define individual types for different types of
@@ -255,11 +271,9 @@ type Challenge struct {
 	// Used by dns and dvsni challenges
 	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
 
-	// IP addresses resolved from authorization identifier during SimpleHTTP validation
-	ResolvedAddrs []net.IP `json:"resolveAddrs,omitempty"`
-
-	// URLs redirected to during SimpleHTTP validation
-	Redirects []string `json:"followedRedirects,omitempty"`
+	// Contains information about URLs used or redirected to and IPs resolved and
+	// used
+	Targets *ValidationTargets `json:"validationTargets,omitempty"`
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
