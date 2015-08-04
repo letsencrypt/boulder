@@ -65,7 +65,7 @@ func main() {
 		}
 
 		auditlogger.Info(app.VersionString())
-		err = cmd.RunAndReconnectUntilSignaled(connectionHandler, c, auditlogger)
+		err = cmd.RunUntilSignaled(connectionHandler, c, auditlogger)
 		cmd.FailOnError(err, "Unable to run CA RPC server")
 	}
 

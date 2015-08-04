@@ -334,8 +334,10 @@ func RunForever(server *rpc.AmqpRPCServer) {
 	<-forever
 }
 
-// RunAndReconnectUntilSignaled
-func RunAndReconnectUntilSignaled(connectionHandler func(ch *amqp.Channel) *rpc.AmqpRPCServer, c Config, logger *blog.AuditLogger) error {
+// RunUntilSignaled starts the RPC server and runs in a loop reconnecting if the
+// AMQP channel is closed. On SIGINT/SIGTERM/SIGHUP it will wait until the consumer
+// has finished processing any retrieved messages before returning.
+func RunUntilSignaled(connectionHandler func(ch *amqp.Channel) *rpc.AmqpRPCServer, c Config, logger *blog.AuditLogger) error {
 	for {
 		ch, err := AmqpChannel(c)
 		if err != nil {
