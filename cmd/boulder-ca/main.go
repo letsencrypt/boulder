@@ -7,7 +7,6 @@ package main
 
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
@@ -47,25 +46,23 @@ func main() {
 
 		go cmd.ProfileCmd("CA", stats)
 
-		connectionHandler := func(ch *amqp.Channel) *rpc.AmqpRPCServer {
-			saRPC, err := rpc.NewAmqpRPCClient("CA->SA", c.AMQP.SA.Server, ch)
+		connectionHandler := func(srv *rpc.AmqpRPCServer) {
+			saRPC, err := rpc.NewAmqpRPCClient("CA->SA", c.AMQP.SA.Server, srv.Channel)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
 			sac, err := rpc.NewStorageAuthorityClient(saRPC)
 			cmd.FailOnError(err, "Failed to create SA client")
 
 			cai.SA = &sac
-
-			cas := rpc.NewAmqpRPCServer(c.AMQP.CA.Server, ch)
-
-			err = rpc.NewCertificateAuthorityServer(cas, cai)
-			cmd.FailOnError(err, "Unable to create CA server")
-
-			return cas
 		}
 
+		cas, err := rpc.NewAmqpRPCServer(c.AMQP.CA.Server, connectionHandler)
+		cmd.FailOnError(err, "Unable to create CA RPC server")
+		rpc.NewCertificateAuthorityServer(cas, cai)
+
 		auditlogger.Info(app.VersionString())
-		err = cmd.RunUntilSignaled(connectionHandler, c, auditlogger)
+
+		err = cas.Start(c)
 		cmd.FailOnError(err, "Unable to run CA RPC server")
 	}
 

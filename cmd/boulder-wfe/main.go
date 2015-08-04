@@ -20,8 +20,9 @@ import (
 )
 
 func setupWFE(c cmd.Config) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
-	ch, err := cmd.AmqpChannel(c)
+	ch, err := rpc.AmqpChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
+	auditlogger.Info(" [!] Connected to AMQP")
 
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
@@ -117,12 +118,11 @@ func main() {
 			// with new RA and SA rpc clients.
 			for {
 				for err := range closeChan {
-					auditlogger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
+					auditlogger.Warning(fmt.Sprintf(" [!] AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
 					time.Sleep(time.Second * 5)
 					rac, sac, closeChan = setupWFE(c)
 					wfe.RA = &rac
 					wfe.SA = &sac
-					auditlogger.Warning("Reconnected to AMQP")
 				}
 			}
 		}()

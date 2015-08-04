@@ -7,7 +7,6 @@ package main
 
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -44,17 +43,15 @@ func main() {
 
 		go cmd.ProfileCmd("SA", stats)
 
-		connectionHandler := func(ch *amqp.Channel) *rpc.AmqpRPCServer {
-			sas := rpc.NewAmqpRPCServer(c.AMQP.SA.Server, ch)
+		connectionHandler := func(*rpc.AmqpRPCServer) {}
 
-			err = rpc.NewStorageAuthorityServer(sas, sai)
-			cmd.FailOnError(err, "Could create SA RPC server")
-
-			return sas
-		}
+		sas, err := rpc.NewAmqpRPCServer(c.AMQP.SA.Server, connectionHandler)
+		cmd.FailOnError(err, "Unable to create SA RPC server")
+		rpc.NewStorageAuthorityServer(sas, sai)
 
 		auditlogger.Info(app.VersionString())
-		err = cmd.RunUntilSignaled(connectionHandler, c, auditlogger)
+
+		err = sas.Start(c)
 		cmd.FailOnError(err, "Unable to run SA RPC server")
 	}
 

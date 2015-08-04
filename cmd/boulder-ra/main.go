@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/core"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -45,14 +44,14 @@ func main() {
 
 		go cmd.ProfileCmd("RA", stats)
 
-		connectionHandler := func(ch *amqp.Channel) *rpc.AmqpRPCServer {
-			vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, ch)
+		connectionHandler := func(srv *rpc.AmqpRPCServer) {
+			vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, srv.Channel)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
-			caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, ch)
+			caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, srv.Channel)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
-			saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, ch)
+			saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, srv.Channel)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
 			vac, err := rpc.NewValidationAuthorityClient(vaRPC)
@@ -67,17 +66,15 @@ func main() {
 			rai.VA = &vac
 			rai.CA = &cac
 			rai.SA = &sac
-
-			ras := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, ch)
-
-			err = rpc.NewRegistrationAuthorityServer(ras, &rai)
-			cmd.FailOnError(err, "Unable to create RA server")
-
-			return ras
 		}
 
+		ras, err := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, connectionHandler)
+		cmd.FailOnError(err, "Unable to create RA RPC server")
+		rpc.NewRegistrationAuthorityServer(ras, &rai)
+
 		auditlogger.Info(app.VersionString())
-		err = cmd.RunUntilSignaled(connectionHandler, c, auditlogger)
+
+		err = ras.Start(c)
 		cmd.FailOnError(err, "Unable to run RA RPC server")
 	}
 
