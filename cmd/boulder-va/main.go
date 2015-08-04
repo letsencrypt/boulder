@@ -43,12 +43,7 @@ func main() {
 		vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
 		vai.UserAgent = c.VA.UserAgent
 
-		for {
-			ch, err := cmd.AmqpChannel(c)
-			cmd.FailOnError(err, "Could not connect to AMQP")
-
-			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
-
+		connectionHandler := func(ch *amqp.Channel) *rpc.AmqpRPCServer {
 			raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, ch)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
@@ -62,10 +57,12 @@ func main() {
 			err = rpc.NewValidationAuthorityServer(vas, &vai)
 			cmd.FailOnError(err, "Unable to create VA server")
 
-			auditlogger.Info(app.VersionString())
-			err = cmd.RunUntilSignaled(auditlogger, vas, closeChan)
-			cmd.FailOnError(err, "Unable to run SA RPC server")
+			return vas
 		}
+
+		auditlogger.Info(app.VersionString())
+		err = cmd.RunAndReconnectUntilSignaled(connectionHandler, c, auditlogger)
+		cmd.FailOnError(err, "Unable to run VA RPC server")
 	}
 
 	app.Run()

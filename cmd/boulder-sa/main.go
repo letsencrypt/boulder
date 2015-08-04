@@ -44,22 +44,18 @@ func main() {
 
 		go cmd.ProfileCmd("SA", stats)
 
-		for {
-			ch, err := cmd.AmqpChannel(c)
-			cmd.FailOnError(err, "Could not connect to AMQP")
-
-			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
-
+		connectionHandler := func(ch *amqp.Channel) *rpc.AmqpRPCServer {
 			sas := rpc.NewAmqpRPCServer(c.AMQP.SA.Server, ch)
 
 			err = rpc.NewStorageAuthorityServer(sas, sai)
 			cmd.FailOnError(err, "Could create SA RPC server")
 
-			auditlogger.Info(app.VersionString())
-
-			err = cmd.RunUntilSignaled(auditlogger, sas, closeChan)
-			cmd.FailOnError(err, "Unable to run SA RPC server")
+			return sas
 		}
+
+		auditlogger.Info(app.VersionString())
+		err = cmd.RunAndReconnectUntilSignaled(connectionHandler, c, auditlogger)
+		cmd.FailOnError(err, "Unable to run SA RPC server")
 	}
 
 	app.Run()

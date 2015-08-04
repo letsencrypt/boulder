@@ -97,6 +97,16 @@ func AMQPDeclareExchange(conn *amqp.Connection) error {
 	return err
 }
 
+// Create a quick consumer ID we can recreate later if we need to cancel
+// a consumer.
+func getConsumerName(serverQueue string) (string, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s.%s", serverQueue, hostname), nil
+}
+
 // A simplified way to declare and subscribe to an AMQP queue
 func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan amqp.Delivery, error) {
 	var err error
@@ -126,12 +136,14 @@ func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan
 		return nil, err
 	}
 
-	hostname, err := os.Hostname()
+	consumerName, err := getConsumerName(name)
 	if err != nil {
 		return nil, err
 	}
-	consumerName := fmt.Sprintf("%s.%s", name, hostname)
 
+	// A consumer name is used so that the specific consumer can be cancelled later
+	// if signalled. If no name is used a UID is used which cannot be retrieved (as
+	// far as I can tell).
 	msgs, err := ch.Consume(
 		name,
 		consumerName,
@@ -247,8 +259,9 @@ type RPCResponse struct {
 	Error     RPCError `json:"error,omitempty"`
 }
 
-// Start starts the AMQP-RPC server running in a separate thread.
-// There is currently no Stop() method.
+// Start starts the AMQP-RPC server running in a separate thread. A channel, finished,
+// is returned so that the caller can detect when the for/range messages loop has
+// broke in the spawned thread so we can cleanly exit.
 func (rpc *AmqpRPCServer) Start() (finished chan bool, err error) {
 	msgs, err := amqpSubscribe(rpc.channel, rpc.serverQueue, rpc.log)
 	if err != nil {
@@ -292,19 +305,19 @@ func (rpc *AmqpRPCServer) Start() (finished chan bool, err error) {
 	return
 }
 
-// HandleInterrupts creates a Goroutine to sit and watch for INT and TERM signals
+// HandleInterrupts creates a Goroutine to sit and watch for INT, TERM, or HUP signals
 // and cancel the server consumer if it sees one so servers can gracefully shutdown.
 func (rpc *AmqpRPCServer) HandleInterrupts() (chan bool, error) {
 	stopWatching := make(chan bool, 1)
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM)
-	signal.Notify(sigChan, os.Interrupt)
+	signal.Notify(sigChan, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGHUP)
 
-	hostname, err := os.Hostname()
+	consumerName, err := getConsumerName(rpc.serverQueue)
 	if err != nil {
 		return nil, err
 	}
-	consumerName := fmt.Sprintf("%s.%s", rpc.serverQueue, hostname)
 
 	go func() {
 		finished := false

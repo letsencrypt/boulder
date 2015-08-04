@@ -334,37 +334,47 @@ func RunForever(server *rpc.AmqpRPCServer) {
 	<-forever
 }
 
-// RunUntilSignaled starts the server and run until we get something on closeChan
-func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, closeChan chan *amqp.Error) error {
-	finishedProcessing, err := server.Start()
-	if err != nil {
-		return err
-	}
-	stopWatching, err := server.HandleInterrupts()
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "Server running...\n")
-
-	// Block until channel closes
+// RunAndReconnectUntilSignaled
+func RunAndReconnectUntilSignaled(connectionHandler func(ch *amqp.Channel) *rpc.AmqpRPCServer, c Config, logger *blog.AuditLogger) error {
 	for {
-		finished := true
-		select {
-		case err := <-closeChan:
-			logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
-			stopWatching <- true
-			time.Sleep(time.Second * 5)
-			logger.Warning("Reconnecting to AMQP...")
-			finished = true
-		case <-finishedProcessing:
-			logger.Info(" [!] Finished processing remaining messages, exiting")
-			os.Exit(0)
+		ch, err := AmqpChannel(c)
+		if err != nil {
+			return err
 		}
-		if finished {
-			break
+
+		closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
+
+		server := connectionHandler(ch)
+
+		finishedProcessing, err := server.Start()
+		if err != nil {
+			return err
+		}
+		stopWatching, err := server.HandleInterrupts()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Server running...\n")
+
+		// Block until channel closes
+		for {
+			finished := false
+			select {
+			case err := <-closeChan:
+				logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
+				stopWatching <- true
+				time.Sleep(time.Second * 5)
+				logger.Warning("Reconnecting to AMQP...")
+				finished = true
+			case <-finishedProcessing:
+				logger.Info(" [!] Finished processing remaining messages, exiting")
+				os.Exit(0)
+			}
+			if finished {
+				break
+			}
 		}
 	}
-	return nil
 }
 
 // ProfileCmd runs forever, sending Go statistics to StatsD.

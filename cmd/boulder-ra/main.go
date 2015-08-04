@@ -45,12 +45,7 @@ func main() {
 
 		go cmd.ProfileCmd("RA", stats)
 
-		for {
-			ch, err := cmd.AmqpChannel(c)
-			cmd.FailOnError(err, "Could not connect to AMQP")
-
-			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
-
+		connectionHandler := func(ch *amqp.Channel) *rpc.AmqpRPCServer {
 			vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, ch)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
@@ -78,12 +73,12 @@ func main() {
 			err = rpc.NewRegistrationAuthorityServer(ras, &rai)
 			cmd.FailOnError(err, "Unable to create RA server")
 
-			auditlogger.Info(app.VersionString())
-
-			err = cmd.RunUntilSignaled(auditlogger, ras, closeChan)
-			cmd.FailOnError(err, "Unable to run RA RPC server")
+			return ras
 		}
 
+		auditlogger.Info(app.VersionString())
+		err = cmd.RunAndReconnectUntilSignaled(connectionHandler, c, auditlogger)
+		cmd.FailOnError(err, "Unable to run RA RPC server")
 	}
 
 	app.Run()
