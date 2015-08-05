@@ -37,12 +37,12 @@ type OCSPUpdater struct {
 }
 
 func setupClients(c cmd.Config) (rpc.CertificateAuthorityClient, chan *amqp.Error) {
-	ch, err := rpc.AmqpChannel(c)
+	ch, err := rpc.AMQPChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
 
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-	caRPC, err := rpc.NewAmqpRPCClient("OCSP->CA", c.AMQP.CA.Server, ch)
+	caRPC, err := rpc.NewAMQPRPCClient("OCSP->CA", c.AMQP.CA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	cac, err := rpc.NewCertificateAuthorityClient(caRPC)

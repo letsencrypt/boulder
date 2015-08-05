@@ -38,17 +38,17 @@ import (
 // XXX: I *think* these constants are appropriate.
 // We will probably want to tweak these in the future.
 const (
-	AmqpExchange     = "boulder"
-	AmqpExchangeType = "topic"
-	AmqpInternal     = false
-	AmqpDurable      = false
-	AmqpDeleteUnused = false
-	AmqpExclusive    = false
-	AmqpNoWait       = false
-	AmqpNoLocal      = false
-	AmqpAutoAck      = true
-	AmqpMandatory    = false
-	AmqpImmediate    = false
+	AMQPExchange     = "boulder"
+	AMQPExchangeType = "topic"
+	AMQPInternal     = false
+	AMQPDurable      = false
+	AMQPDeleteUnused = false
+	AMQPExclusive    = false
+	AMQPNoWait       = false
+	AMQPNoLocal      = false
+	AMQPAutoAck      = true
+	AMQPMandatory    = false
+	AMQPImmediate    = false
 )
 
 // AMQPDeclareExchange attempts to declare the configured AMQP exchange,
@@ -64,15 +64,15 @@ func AMQPDeclareExchange(conn *amqp.Connection) error {
 	}
 
 	err = ch.ExchangeDeclarePassive(
-		AmqpExchange,
-		AmqpExchangeType,
-		AmqpDurable,
-		AmqpDeleteUnused,
-		AmqpInternal,
-		AmqpNoWait,
+		AMQPExchange,
+		AMQPExchangeType,
+		AMQPDurable,
+		AMQPDeleteUnused,
+		AMQPInternal,
+		AMQPNoWait,
 		nil)
 	if err != nil {
-		log.Info(fmt.Sprintf("Exchange %s does not exist on AMQP server, attempting to create. (err=%s)", AmqpExchange, err))
+		log.Info(fmt.Sprintf("Exchange %s does not exist on AMQP server, attempting to create. (err=%s)", AMQPExchange, err))
 
 		// Channel is invalid at this point, so recreate
 		ch.Close()
@@ -83,12 +83,12 @@ func AMQPDeclareExchange(conn *amqp.Connection) error {
 		}
 
 		err = ch.ExchangeDeclare(
-			AmqpExchange,
-			AmqpExchangeType,
-			AmqpDurable,
-			AmqpDeleteUnused,
-			AmqpInternal,
-			AmqpNoWait,
+			AMQPExchange,
+			AMQPExchangeType,
+			AMQPDurable,
+			AMQPDeleteUnused,
+			AMQPInternal,
+			AMQPNoWait,
 			nil)
 		if err != nil {
 			log.Crit(fmt.Sprintf("Could not declare exchange: %s", err))
@@ -105,10 +105,10 @@ func AMQPDeclareExchange(conn *amqp.Connection) error {
 func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog.AuditLogger) (<-chan amqp.Delivery, error) {
 	_, err := ch.QueueDeclare(
 		name,
-		AmqpDurable,
-		AmqpDeleteUnused,
-		AmqpExclusive,
-		AmqpNoWait,
+		AMQPDurable,
+		AMQPDeleteUnused,
+		AMQPExclusive,
+		AMQPNoWait,
 		nil)
 	if err != nil {
 		log.Crit(fmt.Sprintf("Could not declare queue: %s", err))
@@ -120,7 +120,7 @@ func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog
 	err = ch.QueueBind(
 		name,
 		routingKey,
-		AmqpExchange,
+		AMQPExchange,
 		false,
 		nil)
 	if err != nil {
@@ -134,10 +134,10 @@ func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog
 	msgs, err := ch.Consume(
 		name,
 		consumerName,
-		AmqpAutoAck,
-		AmqpExclusive,
-		AmqpNoLocal,
-		AmqpNoWait,
+		AMQPAutoAck,
+		AMQPExclusive,
+		AMQPNoLocal,
+		AMQPNoWait,
 		nil)
 	if err != nil {
 		log.Crit(fmt.Sprintf("Could not subscribe to queue: %s", err))
@@ -147,27 +147,27 @@ func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog
 	return msgs, err
 }
 
-// AmqpRPCServer listens on a specified queue within an AMQP channel.
+// AMQPRPCServer listens on a specified queue within an AMQP channel.
 // When messages arrive on that queue, it dispatches them based on type,
 // and returns the response to the ReplyTo queue.
 //
 // To implement specific functionality, using code should use the Handle
 // method to add specific actions.
-type AmqpRPCServer struct {
+type AMQPRPCServer struct {
 	serverQueue       string
 	Channel           *amqp.Channel
 	log               *blog.AuditLogger
 	dispatchTable     map[string]func([]byte) ([]byte, error)
-	connectionHandler func(*AmqpRPCServer)
+	connectionHandler func(*AMQPRPCServer)
 	consumerName      string
 	connected         bool
 	done              bool
 	dMu               sync.Mutex
 }
 
-// NewAmqpRPCServer creates a new RPC server for the given queue and will begin
+// NewAMQPRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
-func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer)) (*AmqpRPCServer, error) {
+func NewAMQPRPCServer(serverQueue string, handler func(*AMQPRPCServer)) (*AMQPRPCServer, error) {
 	log := blog.GetAuditLogger()
 	b := make([]byte, 4)
 	_, err := rand.Read(b)
@@ -175,7 +175,7 @@ func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer)) (*AmqpRP
 		return nil, err
 	}
 	consumerName := fmt.Sprintf("%s.%x", serverQueue, b)
-	return &AmqpRPCServer{
+	return &AMQPRPCServer{
 		serverQueue:       serverQueue,
 		log:               log,
 		dispatchTable:     make(map[string]func([]byte) ([]byte, error)),
@@ -185,7 +185,7 @@ func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer)) (*AmqpRP
 }
 
 // Handle registers a function to handle a particular method.
-func (rpc *AmqpRPCServer) Handle(method string, handler func([]byte) ([]byte, error)) {
+func (rpc *AMQPRPCServer) Handle(method string, handler func([]byte) ([]byte, error)) {
 	rpc.dispatchTable[method] = handler
 }
 
@@ -257,8 +257,8 @@ type rpcResponse struct {
 	Error     rpcError `json:"error,omitempty"`
 }
 
-// AmqpChannel sets a AMQP connection up using SSL if configuration is provided
-func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
+// AMQPChannel sets a AMQP connection up using SSL if configuration is provided
+func AMQPChannel(conf cmd.Config) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 	var err error
 
@@ -326,7 +326,7 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 	return conn.Channel()
 }
 
-func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
+func (rpc *AMQPRPCServer) processMessage(msg amqp.Delivery) {
 	// XXX-JWS: jws.Verify(body)
 	cb, present := rpc.dispatchTable[msg.Type]
 	rpc.log.Info(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
@@ -335,7 +335,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 		rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
 		return
 	}
-	var response RPCResponse
+	var response rpcResponse
 	var err error
 	response.ReturnVal, err = cb(msg.Body)
 	response.Error = wrapError(err)
@@ -347,10 +347,10 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	}
 	rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(jsonResponse), msg.CorrelationId))
 	rpc.Channel.Publish(
-		AmqpExchange,
+		AMQPExchange,
 		msg.ReplyTo,
-		AmqpMandatory,
-		AmqpImmediate,
+		AMQPMandatory,
+		AMQPImmediate,
 		amqp.Publishing{
 			CorrelationId: msg.CorrelationId,
 			Type:          msg.Type,
@@ -359,9 +359,9 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 }
 
 // Start starts the AMQP-RPC server and handles reconnections, this will block
-// until a fatal error is returned or AmqpRPCServer.Stop() is called and all
+// until a fatal error is returned or AMQPRPCServer.Stop() is called and all
 // remaining messages are processed.
-func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
+func (rpc *AMQPRPCServer) Start(c cmd.Config) error {
 	go rpc.catchSignals()
 	for {
 		rpc.dMu.Lock()
@@ -371,7 +371,7 @@ func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
 		}
 		rpc.dMu.Unlock()
 		var err error
-		rpc.Channel, err = AmqpChannel(c)
+		rpc.Channel, err = AMQPChannel(c)
 		if err != nil {
 			return err
 		}
@@ -401,26 +401,6 @@ func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
 				time.Sleep(time.Second * 5)
 				blocking = false
 			}
-			response := rpcResponse{}
-			response.ReturnVal, err = cb(msg.Body)
-			response.Error = wrapError(err)
-			jsonResponse, err := json.Marshal(response)
-			if err != nil {
-				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-				rpc.log.Audit(fmt.Sprintf(" [s>][%s][%s] Error condition marshalling RPC response %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
-				continue
-			}
-			rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(jsonResponse), msg.CorrelationId))
-			rpc.channel.Publish(
-				AmqpExchange,
-				msg.ReplyTo,
-				AmqpMandatory,
-				AmqpImmediate,
-				amqp.Publishing{
-					CorrelationId: msg.CorrelationId,
-					Type:          msg.Type,
-					Body:          jsonResponse, // XXX-JWS: jws.Sign(privKey, body)
-				})
 		}
 	}
 	return nil
@@ -432,7 +412,7 @@ var signalToName = map[os.Signal]string{
 	syscall.SIGHUP:  "SIGHUP",
 }
 
-func (rpc *AmqpRPCServer) catchSignals() {
+func (rpc *AMQPRPCServer) catchSignals() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM)
 	signal.Notify(sigChan, syscall.SIGINT)
@@ -444,10 +424,10 @@ func (rpc *AmqpRPCServer) catchSignals() {
 	signal.Stop(sigChan)
 }
 
-// Stop gracefully stops the AmqpRPCServer, after calling AmqpRPCServer.Start will
+// Stop gracefully stops the AMQPRPCServer, after calling AMQPRPCServer.Start will
 // continue blocking until it has processed any messages that have already been
 // retrieved.
-func (rpc *AmqpRPCServer) Stop() {
+func (rpc *AMQPRPCServer) Stop() {
 	if rpc.connected {
 		rpc.log.Info(" [!] Shutting down RPC server, stopping new deliveries and processing remaining messages")
 		rpc.Channel.Cancel(rpc.consumerName, false)
@@ -459,7 +439,7 @@ func (rpc *AmqpRPCServer) Stop() {
 	}
 }
 
-// AmqpRPCCLient is an AMQP-RPC client that sends requests to a specific server
+// AMQPRPCCLient is an AMQP-RPC client that sends requests to a specific server
 // queue, and uses a dedicated response queue for responses.
 //
 // To implement specific functionality, using code uses the Dispatch()
@@ -468,7 +448,7 @@ func (rpc *AmqpRPCServer) Stop() {
 //
 // ```
 //   request = /* serialize request to []byte */
-//   response = <-AmqpRPCCLient.Dispatch(method, request)
+//   response = <-AMQPRPCCLient.Dispatch(method, request)
 //   return /* deserialized response */
 // ```
 //
@@ -477,7 +457,7 @@ func (rpc *AmqpRPCServer) Stop() {
 //
 // DispatchSync will manage the channel for you, and also enforce a
 // timeout on the transaction (default 60 seconds)
-type AmqpRPCCLient struct {
+type AMQPRPCCLient struct {
 	serverQueue string
 	clientQueue string
 	channel     *amqp.Channel
@@ -488,8 +468,8 @@ type AmqpRPCCLient struct {
 	pending map[string]chan []byte
 }
 
-// NewAmqpRPCClient constructs an RPC client using AMQP
-func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Channel) (rpc *AmqpRPCCLient, err error) {
+// NewAMQPRPCClient constructs an RPC client using AMQP
+func NewAMQPRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Channel) (rpc *AMQPRPCCLient, err error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -497,7 +477,7 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 
 	clientQueue := fmt.Sprintf("%s.%s", clientQueuePrefix, hostname)
 
-	rpc = &AmqpRPCCLient{
+	rpc = &AMQPRPCCLient{
 		serverQueue: serverQueue,
 		clientQueue: clientQueue,
 		channel:     channel,
@@ -538,14 +518,14 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 
 // SetTimeout configures the maximum time DispatchSync will wait for a response
 // before returning an error.
-func (rpc *AmqpRPCCLient) SetTimeout(ttl time.Duration) {
+func (rpc *AMQPRPCCLient) SetTimeout(ttl time.Duration) {
 	rpc.timeout = ttl
 }
 
 // Dispatch sends a body to the destination, and returns a response channel
 // that can be used to monitor for responses, or discarded for one-shot
 // actions.
-func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
+func (rpc *AMQPRPCCLient) Dispatch(method string, body []byte) chan []byte {
 	// Create a channel on which to direct the response
 	// At least in some cases, it's important that this channel
 	// be buffered to avoid deadlock
@@ -558,10 +538,10 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 	// Send the request
 	rpc.log.Debug(fmt.Sprintf(" [c>][%s] requesting %s(%s) [%s]", rpc.clientQueue, method, core.B64enc(body), corrID))
 	rpc.channel.Publish(
-		AmqpExchange,
+		AMQPExchange,
 		rpc.serverQueue,
-		AmqpMandatory,
-		AmqpImmediate,
+		AMQPMandatory,
+		AMQPImmediate,
 		amqp.Publishing{
 			CorrelationId: corrID,
 			ReplyTo:       rpc.clientQueue,
@@ -573,7 +553,7 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 }
 
 // DispatchSync sends a body to the destination, and blocks waiting on a response.
-func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []byte, err error) {
+func (rpc *AMQPRPCCLient) DispatchSync(method string, body []byte) (response []byte, err error) {
 	select {
 	case jsonResponse := <-rpc.Dispatch(method, body):
 		var rpcResponse rpcResponse

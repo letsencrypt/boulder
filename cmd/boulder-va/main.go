@@ -42,8 +42,8 @@ func main() {
 		vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
 		vai.UserAgent = c.VA.UserAgent
 
-		connectionHandler := func(srv *rpc.AmqpRPCServer) {
-			raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, srv.Channel)
+		connectionHandler := func(srv *rpc.AMQPRPCServer) {
+			raRPC, err := rpc.NewAMQPRPCClient("VA->RA", c.AMQP.RA.Server, srv.Channel)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
 			rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
@@ -52,7 +52,7 @@ func main() {
 			vai.RA = &rac
 		}
 
-		vas, err := rpc.NewAmqpRPCServer(c.AMQP.VA.Server, connectionHandler)
+		vas, err := rpc.NewAMQPRPCServer(c.AMQP.VA.Server, connectionHandler)
 		cmd.FailOnError(err, "Unable to create VA RPC server")
 		rpc.NewValidationAuthorityServer(vas, &vai)
 

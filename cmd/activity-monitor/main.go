@@ -26,17 +26,17 @@ import (
 // Constants for AMQP
 const (
 	QueueName        = "Monitor"
-	AmqpExchange     = "boulder"
-	AmqpExchangeType = "topic"
-	AmqpInternal     = false
-	AmqpDurable      = false
-	AmqpDeleteUnused = false
-	AmqpExclusive    = false
-	AmqpNoWait       = false
-	AmqpNoLocal      = false
-	AmqpAutoAck      = false
-	AmqpMandatory    = false
-	AmqpImmediate    = false
+	AMQPExchange     = "boulder"
+	AMQPExchangeType = "topic"
+	AMQPInternal     = false
+	AMQPDurable      = false
+	AMQPDeleteUnused = false
+	AMQPExclusive    = false
+	AMQPNoWait       = false
+	AMQPNoLocal      = false
+	AMQPAutoAck      = false
+	AMQPMandatory    = false
+	AMQPImmediate    = false
 )
 
 var openCalls int64
@@ -74,10 +74,10 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 
 	_, err = rpcCh.QueueDeclarePassive(
 		QueueName,
-		AmqpDurable,
-		AmqpDeleteUnused,
-		AmqpExclusive,
-		AmqpNoWait,
+		AMQPDurable,
+		AMQPDeleteUnused,
+		AMQPExclusive,
+		AMQPNoWait,
 		nil)
 	if err != nil {
 		logger.Info(fmt.Sprintf("Queue %s does not exist on AMQP server, attempting to create.", QueueName))
@@ -85,10 +85,10 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 		// Attempt to create the Queue if not exists
 		_, err = rpcCh.QueueDeclare(
 			QueueName,
-			AmqpDurable,
-			AmqpDeleteUnused,
-			AmqpExclusive,
-			AmqpNoWait,
+			AMQPDurable,
+			AMQPDeleteUnused,
+			AMQPExclusive,
+			AMQPNoWait,
 			nil)
 		if err != nil {
 			cmd.FailOnError(err, "Could not declare queue")
@@ -99,7 +99,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 		err = rpcCh.QueueBind(
 			QueueName,
 			routingKey,
-			AmqpExchange,
+			AMQPExchange,
 			false,
 			nil)
 		if err != nil {
@@ -111,10 +111,10 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 	deliveries, err := rpcCh.Consume(
 		QueueName,
 		consumerTag,
-		AmqpAutoAck,
-		AmqpExclusive,
-		AmqpNoLocal,
-		AmqpNoWait,
+		AMQPAutoAck,
+		AMQPExclusive,
+		AMQPNoLocal,
+		AMQPNoWait,
 		nil)
 	if err != nil {
 		cmd.FailOnError(err, "Could not subscribe to queue")
@@ -154,7 +154,7 @@ func main() {
 
 		go cmd.DebugServer(c.ActivityMonitor.DebugAddr)
 
-		ch, err := rpc.AmqpChannel(c)
+		ch, err := rpc.AMQPChannel(c)
 
 		cmd.FailOnError(err, "Could not connect to AMQP")
 
