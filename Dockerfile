@@ -48,7 +48,6 @@ COPY . /go/src/github.com/letsencrypt/boulder
 # Build Boulder
 RUN go install \
   github.com/letsencrypt/boulder/cmd/activity-monitor \
-  github.com/letsencrypt/boulder/cmd/boulder \
   github.com/letsencrypt/boulder/cmd/boulder-ca \
   github.com/letsencrypt/boulder/cmd/boulder-ra \
   github.com/letsencrypt/boulder/cmd/boulder-sa \
