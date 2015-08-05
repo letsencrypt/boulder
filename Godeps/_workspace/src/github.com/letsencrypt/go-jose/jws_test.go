@@ -17,6 +17,7 @@
 package jose
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 )
@@ -254,5 +255,36 @@ func TestSampleNimbusJWSMessagesHMAC(t *testing.T) {
 		if string(payload) != "Lorem ipsum dolor sit amet" {
 			t.Error("payload is not what we expected for msg", msg)
 		}
+	}
+}
+
+func TestMarshalUnmarshalJWS(t *testing.T) {
+	input := `{"jws":{"header":{"alg":"RS256","jwk":{"kty":"RSA","n":"7ixeydcbxxppzxrBphrW1atUiEZqTpiHDpI-79olav5XxAgWolHmVsJyxzoZXRxmtED8PF9-EICZWBGdSAL9ZTD0hLUCIsPcpdgT_LqNW3Sh2b2caPL2hbMF7vsXvnCGg9varpnHWuYTyRrCLUF9vM7ES-V3VCYTa7LcCSRm56Gg9r19qar43Z9kIKBBxpgt723v2cC4bmLmoAX2s217ou3uCpCXGLOeV_BesG4--Nl3pso1VhCfO85wEWjmW6lbv7Kg4d7Jdkv5DjDZfJ086fkEAYZVYGRpIgAvJBH3d3yKDCrSByUEud1bWuFjQBmMaeYOrVDXO_mbYg5PwUDMhw","e":"AQAB"}},"protected":"eyJub25jZSI6IjhISWVwVU5GWlVhLWV4S1RyWFZmNGcifQ","payload":"eyJjb250YWN0IjpbIm1haWx0bzpmb29AYmFyLmNvbSJdfQ","signature":"AyvVGMgXsQ1zTdXrZxE_gyO63pQgotL1KbI7gv6Wi8I7NRy0iAOkDAkWcTQT9pcCYApJ04lXfEDZfP5i0XgcFUm_6spxi5mFBZU-NemKcvK9dUiAbXvb4hB3GnaZtZiuVnMQUb_ku4DOaFFKbteA6gOYCnED_x7v0kAPHIYrQnvIa-KZ6pTajbV9348zgh9TL7NgGIIsTcMHd-Jatr4z1LQ0ubGa8tS300hoDhVzfoDQaEetYjCo1drR1RmdEN1SIzXdHOHfubjA3ZZRbrF_AJnNKpRRoIwzu1VayOhRmdy1qVSQZq_tENF4VrQFycEL7DhG7JLoXC4T2p1urwMlsw"}}`
+
+	parsed := struct {
+		JWS *JsonWebSignature `json:"jws"`
+	}{}
+
+	err := json.Unmarshal([]byte(input), &parsed)
+	if err != nil {
+		t.Error("unable to unmarshal JSON JWS")
+	}
+
+	if parsed.JWS == nil {
+		t.Error("JWS did not correctly unmarshal")
+	}
+
+	serialized, err := json.Marshal(parsed)
+	if err != nil {
+		t.Error("unable to marshal JSON JWS")
+	}
+
+	err = json.Unmarshal(serialized, &parsed)
+	if err != nil {
+		t.Error("unable to unmarshal marshaled JSON JWS")
+	}
+
+	if parsed.JWS == nil {
+		t.Error("JWS did not correctly unmarshal from marshaled JSON JWS")
 	}
 }

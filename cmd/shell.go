@@ -22,8 +22,6 @@
 package cmd
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -35,16 +33,12 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
-	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/rpc"
 )
 
 // Config stores configuration parameters that applications
@@ -130,11 +124,22 @@ type Config struct {
 		DBConnect string
 	}
 
-	Mail struct {
+	Mailer struct {
 		Server   string
 		Port     string
 		Username string
 		Password string
+
+		DBDriver  string
+		DBConnect string
+
+		CertLimit int
+		NagTimes  []string
+		// Path to a text/template email template
+		EmailTemplate string
+
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
 	}
 
 	OCSPResponder struct {
@@ -240,7 +245,7 @@ func (as *AppShell) VersionString() string {
 func FailOnError(err error, msg string) {
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		fmt.Fprintf(os.Stderr, "%s: %s", msg, err)
+		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
 		os.Exit(1)
 	}
 }

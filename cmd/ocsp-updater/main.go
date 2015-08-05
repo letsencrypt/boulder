@@ -37,7 +37,7 @@ type OCSPUpdater struct {
 }
 
 func setupClients(c cmd.Config) (rpc.CertificateAuthorityClient, chan *amqp.Error) {
-	ch, err := cmd.AmqpChannel(c)
+	ch, err := rpc.AmqpChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
 
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
@@ -223,7 +223,7 @@ func main() {
 			// Abort if we disconnect from AMQP
 			for {
 				for err := range closeChan {
-					auditlogger.Warning(fmt.Sprintf("AMQP Channel closed, aborting early: [%s]", err))
+					auditlogger.Warning(fmt.Sprintf(" [!] AMQP Channel closed, aborting early: [%s]", err))
 					panic(err)
 				}
 			}

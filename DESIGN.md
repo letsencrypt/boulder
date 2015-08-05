@@ -1,8 +1,7 @@
 # Boulder flow diagrams
 
 Boulder is built in a rather decentralized way in order to enable different
-parts to be deployed in different security contexts.  (Of course, they can
-also be run together, as in `./cmd/boulder`.)
+parts to be deployed in different security contexts.
 
 In order to you understand how boulder works and ensure it's working correctly,
 this document lays out how various operations flow through boulder.  We show a
@@ -18,9 +17,7 @@ A couple of notes:
   (certificates), and read by WFE, RA, and CA.
 
 * The interactions shown in the diagrams are the calls that go between
-  components.  These calls can be done directly (as in `./cmd/boulder`), or
-  they can be done via the AMQP-based RPC code in `./rpc/`.  We do not
-  distinguish between those cases here.
+  components.  These calls are done via the AMQP-based RPC code in `./rpc/`.
 
 
 ## New Registration

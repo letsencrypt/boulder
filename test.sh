@@ -17,7 +17,8 @@ TESTDIRS="analysis \
           sa \
           test \
           va \
-          wfe"
+          wfe \
+          cmd/expiration-mailer"
           # cmd
           # Godeps
 
@@ -101,19 +102,14 @@ function build_letsencrypt() {
     die "unable to find a python2 or python2.7 binary in \$PATH"
   fi
 
-  echo "------------------------------------------------"
-  echo "--- Checking out letsencrypt client is slow. ---"
-  echo "--- Recommend setting \$LETSENCRYPT_PATH to  ---"
-  echo "--- client repo with initialized virtualenv  ---"
-  echo "------------------------------------------------"
   run git clone \
-    https://www.github.com/letsencrypt/lets-encrypt-preview.git \
+    https://www.github.com/letsencrypt/letsencrypt.git \
     $LETSENCRYPT_PATH || exit 1
 
   cd $LETSENCRYPT_PATH
 
-  run virtualenv --no-site-packages -p $PY ./venv && \
-    ./venv/bin/pip install -r requirements.txt -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx || exit 1
+  run virtualenv --no-site-packages -p $PY ./venv
+  run ./venv/bin/pip install -r requirements.txt -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
 
   cd -
 }
@@ -222,6 +218,11 @@ update_status --state pending --description "Integration Tests in progress"
 
 if [ -z "$LETSENCRYPT_PATH" ]; then
   LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
+  echo "------------------------------------------------"
+  echo "--- Checking out letsencrypt client is slow. ---"
+  echo "--- Recommend setting \$LETSENCRYPT_PATH to  ---"
+  echo "--- client repo with initialized virtualenv  ---"
+  echo "------------------------------------------------"
   build_letsencrypt
 elif [ ! -d "${LETSENCRYPT_PATH}" ]; then
   build_letsencrypt

@@ -11,12 +11,12 @@ MAINTAINER ?= "Community"
 
 OBJECTS = activity-monitor \
 	admin-revoker \
-	boulder \
 	boulder-ca \
 	boulder-ra \
 	boulder-sa \
 	boulder-va \
 	boulder-wfe \
+	expiration-mailer \
 	ocsp-updater \
 	ocsp-responder
 

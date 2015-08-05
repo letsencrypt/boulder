@@ -71,9 +71,8 @@ func TestRANewRegistration(t *testing.T) {
 	json.Unmarshal([]byte(JWK1JSON), &jwk)
 
 	reg := core.Registration{
-		ID:            1,
-		Key:           jwk,
-		RecoveryToken: "1234",
+		ID:  1,
+		Key: jwk,
 	}
 
 	_, err = client.NewRegistration(reg)

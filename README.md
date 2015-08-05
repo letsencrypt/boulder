@@ -30,11 +30,19 @@ A quick-start method for running a Boulder instance is to use one of the example
 > docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro -p 4000:4000 quay.io/letsencrypt/boulder:latest boulder
 ```
 
+Alternatively, to run all services locally, using AMQP to pass messages between them, you can use:
+
+```
+> python start.py
+# start.py will use the configuration specified by BOULDER_CONFIG or test/boulder-config.json
+```
+
 To run a single module, specifying the AMQP server, you might use something more like:
 
 ```
 > docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:stable boulder-ra
 ```
+
 
 
 Quickstart

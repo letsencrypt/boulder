@@ -157,20 +157,26 @@
     "debugAddr": "localhost:8007"
   },
 
-  "mail": {
+  "mailer": {
     "server": "mail.example.com",
     "port": "25",
     "username": "cert-master@example.com",
-    "password": "password"
+    "password": "password",
+    "dbDriver": "sqlite3",
+    "dbConnect": ":memory:",
+    "messageLimit": 0,
+    "nagTimes": ["24h", "72h", "168h", "336h"],
+    "emailTemplate": "test/example-expiration-template",
+    "debugAddr": "localhost:8004"
   },
 
   "common": {
     "baseURL": "http://localhost:4000",
     "issuerCert": "test/test-ca.pem",
     "maxKeySize": 4096,
-    "dnsResolver": "8.8.8.8:53",
+    "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "10s"
   },
 
-  "subscriberAgreementURL": "http://localhost:4001/terms/v1"
+  "subscriberAgreementURL": "http://localhost:4000/terms/v1"
 }

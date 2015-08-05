@@ -216,7 +216,8 @@ func parseEncryptedCompact(input string) (*JsonWebEncryption, error) {
 
 // CompactSerialize serializes an object using the compact serialization format.
 func (obj JsonWebEncryption) CompactSerialize() (string, error) {
-	if len(obj.recipients) > 1 || obj.unprotected != nil || obj.recipients[0].header != nil {
+	if len(obj.recipients) != 1 || obj.unprotected != nil ||
+		obj.protected == nil || obj.recipients[0].header != nil {
 		return "", ErrNotSupported
 	}
 
@@ -257,7 +258,9 @@ func (obj JsonWebEncryption) FullSerialize() string {
 		raw.EncryptedKey = newBuffer(obj.recipients[0].encryptedKey)
 	}
 
-	raw.Protected = newBuffer(mustSerializeJSON(obj.protected))
+	if obj.protected != nil {
+		raw.Protected = newBuffer(mustSerializeJSON(obj.protected))
+	}
 
 	return string(mustSerializeJSON(raw))
 }

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -43,29 +42,24 @@ func main() {
 		vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
 		vai.UserAgent = c.VA.UserAgent
 
-		for {
-			ch, err := cmd.AmqpChannel(c)
-			cmd.FailOnError(err, "Could not connect to AMQP")
-
-			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
-
-			raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, ch)
+		connectionHandler := func(srv *rpc.AmqpRPCServer) {
+			raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, srv.Channel)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
 			rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
 			cmd.FailOnError(err, "Unable to create RA client")
 
 			vai.RA = &rac
-
-			vas := rpc.NewAmqpRPCServer(c.AMQP.VA.Server, ch)
-
-			err = rpc.NewValidationAuthorityServer(vas, &vai)
-			cmd.FailOnError(err, "Unable to create VA server")
-
-			auditlogger.Info(app.VersionString())
-
-			cmd.RunUntilSignaled(auditlogger, vas, closeChan)
 		}
+
+		vas, err := rpc.NewAmqpRPCServer(c.AMQP.VA.Server, connectionHandler)
+		cmd.FailOnError(err, "Unable to create VA RPC server")
+		rpc.NewValidationAuthorityServer(vas, &vai)
+
+		auditlogger.Info(app.VersionString())
+
+		err = vas.Start(c)
+		cmd.FailOnError(err, "Unable to run VA RPC server")
 	}
 
 	app.Run()

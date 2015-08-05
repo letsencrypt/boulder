@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -40,71 +42,32 @@ func TestRegistrationUpdate(t *testing.T) {
 }
 
 func TestSanityCheck(t *testing.T) {
-	tls := true
-	chall := Challenge{Type: ChallengeTypeSimpleHTTP, Status: StatusValid}
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.Status = StatusPending
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.R = "bad"
-	chall.S = "bad"
-	chall.Nonce = "bad"
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall = Challenge{Type: ChallengeTypeSimpleHTTP, Path: "bad", Status: StatusPending}
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.Token = ""
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.Token = "notlongenough"
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.Token = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ+PCt92wr+o!"
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
-	chall.Path = ""
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.TLS = &tls
-	test.Assert(t, chall.IsSane(false), "IsSane should be true")
+	types := []string{ChallengeTypeSimpleHTTP, ChallengeTypeDVSNI, ChallengeTypeDNS}
+	for _, challengeType := range types {
+		chall := Challenge{Type: challengeType, Status: StatusInvalid}
+		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+		chall.Status = StatusPending
+		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+		chall.Token = ""
+		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+		chall.Token = "notlongenough"
+		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+		chall.Token = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ+PCt92wr+o!"
+		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+		chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
 
-	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
-	chall.Path = "../.."
-	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
-	chall.Path = "/asd"
-	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
-	chall.Path = "bad//test"
-	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
-	chall.Path = "bad/./test"
-	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
-	chall.Path = "good"
-	test.Assert(t, chall.IsSane(true), "IsSane should be true")
-	chall.Path = "good/test"
-	test.Assert(t, chall.IsSane(true), "IsSane should be true")
+		// Post-completion tests differ by type
+		if challengeType == ChallengeTypeSimpleHTTP {
+			tls := true
+			chall.TLS = &tls
+			test.Assert(t, chall.IsSane(false), "IsSane should be true")
+		} else if challengeType == ChallengeTypeDVSNI || challengeType == ChallengeTypeDNS {
+			chall.Validation = new(jose.JsonWebSignature)
+			test.Assert(t, chall.IsSane(true), "IsSane should be true")
+		}
+	}
 
-	chall = Challenge{Type: ChallengeTypeDVSNI, Status: StatusPending}
-	chall.Path = "bad"
-	chall.Token = "bad"
-	chall.TLS = &tls
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall = Challenge{Type: ChallengeTypeDVSNI, Status: StatusPending}
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.Nonce = "wutwut"
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.Nonce = "!2345678901234567890123456789012"
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.Nonce = "12345678901234567890123456789012"
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.R = "notlongenough"
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.R = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ+PCt92wr+o!"
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	chall.R = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
-	test.Assert(t, chall.IsSane(false), "IsSane should be true")
-	chall.S = "anything"
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
-	chall.S = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ+PCt92wr+o!"
-	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
-	chall.S = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
-	test.Assert(t, chall.IsSane(true), "IsSane should be true")
-
-	chall = Challenge{Type: "bogus", Status: StatusPending}
+	chall := Challenge{Type: "bogus", Status: StatusPending}
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
 }
