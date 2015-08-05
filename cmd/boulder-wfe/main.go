@@ -19,9 +19,10 @@ import (
 	"github.com/letsencrypt/boulder/wfe"
 )
 
-func setupWFE(c cmd.Config) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
-	ch, err := cmd.AmqpChannel(c)
+func setupWFE(c cmd.Config, logger *blog.AuditLogger) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
+	ch, err := rpc.AmqpChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
+	logger.Info(" [!] Connected to AMQP")
 
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
@@ -91,7 +92,7 @@ func main() {
 
 		wfe, err := wfe.NewWebFrontEndImpl()
 		cmd.FailOnError(err, "Unable to create WFE")
-		rac, sac, closeChan := setupWFE(c)
+		rac, sac, closeChan := setupWFE(c, auditlogger)
 		wfe.RA = &rac
 		wfe.SA = &sac
 		wfe.Stats = stats
@@ -117,12 +118,11 @@ func main() {
 			// with new RA and SA rpc clients.
 			for {
 				for err := range closeChan {
-					auditlogger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
+					auditlogger.Warning(fmt.Sprintf(" [!] AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
 					time.Sleep(time.Second * 5)
-					rac, sac, closeChan = setupWFE(c)
+					rac, sac, closeChan = setupWFE(c, auditlogger)
 					wfe.RA = &rac
 					wfe.SA = &sac
-					auditlogger.Warning("Reconnected to AMQP")
 				}
 			}
 		}()

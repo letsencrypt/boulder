@@ -22,8 +22,6 @@
 package cmd
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -35,16 +33,12 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
-	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/rpc"
 )
 
 // Config stores configuration parameters that applications
@@ -254,98 +248,6 @@ func FailOnError(err error, msg string) {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
 		os.Exit(1)
 	}
-}
-
-// AmqpChannel is the same as amqpConnect in boulder, but with even
-// more aggressive error dropping
-func AmqpChannel(conf Config) (*amqp.Channel, error) {
-	var conn *amqp.Connection
-	var err error
-
-	log := blog.GetAuditLogger()
-
-	if conf.AMQP.TLS == nil {
-		// Configuration did not specify TLS options, but Dial will
-		// use TLS anyway if the URL scheme is "amqps"
-		conn, err = amqp.Dial(conf.AMQP.Server)
-
-	} else {
-		// They provided TLS options, so let's load them.
-		log.Info("AMQPS: Loading TLS Options.")
-
-		if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
-			err = fmt.Errorf("AMQPS: TLS configuration provided, but not using an AMQPS URL")
-			return nil, err
-		}
-
-		cfg := new(tls.Config)
-
-		// If the configuration specified a certificate (or key), load them
-		if conf.AMQP.TLS.CertFile != nil || conf.AMQP.TLS.KeyFile != nil {
-			// But they have to give both.
-			if conf.AMQP.TLS.CertFile == nil || conf.AMQP.TLS.KeyFile == nil {
-				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile")
-				return nil, err
-			}
-
-			cert, err := tls.LoadX509KeyPair(*conf.AMQP.TLS.CertFile, *conf.AMQP.TLS.KeyFile)
-			if err != nil {
-				err = fmt.Errorf("AMQPS: Could not load Client Certificate or Key: %s", err)
-				return nil, err
-			}
-
-			log.Info("AMQPS: Configured client certificate for AMQPS.")
-			cfg.Certificates = append(cfg.Certificates, cert)
-		}
-
-		// If the configuration specified a CA certificate, make it the only
-		// available root.
-		if conf.AMQP.TLS.CACertFile != nil {
-			cfg.RootCAs = x509.NewCertPool()
-
-			ca, err := ioutil.ReadFile(*conf.AMQP.TLS.CACertFile)
-			if err != nil {
-				err = fmt.Errorf("AMQPS: Could not load CA Certificate: %s", err)
-				return nil, err
-			}
-			cfg.RootCAs.AppendCertsFromPEM(ca)
-			log.Info("AMQPS: Configured CA certificate for AMQPS.")
-		}
-
-		conn, err = amqp.DialTLS(conf.AMQP.Server, cfg)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	err = rpc.AMQPDeclareExchange(conn)
-	if err != nil {
-		return nil, err
-	}
-
-	return conn.Channel()
-}
-
-// RunForever starts the server and wait around
-func RunForever(server *rpc.AmqpRPCServer) {
-	forever := make(chan bool)
-	server.Start()
-	fmt.Fprintf(os.Stderr, "Server running...\n")
-	<-forever
-}
-
-// RunUntilSignaled starts the server and run until we get something on closeChan
-func RunUntilSignaled(logger *blog.AuditLogger, server *rpc.AmqpRPCServer, closeChan chan *amqp.Error) {
-	server.Start()
-	fmt.Fprintf(os.Stderr, "Server running...\n")
-
-	// Block until channel closes
-	err := <-closeChan
-
-	logger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
-	time.Sleep(time.Second * 5)
-	logger.Warning("Reconnecting to AMQP...")
 }
 
 // ProfileCmd runs forever, sending Go statistics to StatsD.
