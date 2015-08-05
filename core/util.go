@@ -25,6 +25,7 @@ import (
 	"io"
 	"math/big"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -126,6 +127,12 @@ func RandomString(byteLength int) string {
 // NewToken produces a random string for Challenges, etc.
 func NewToken() string {
 	return RandomString(32)
+}
+
+const tokenFormat = "^[a-zA-Z0-9-_]{43}$"
+
+func LooksLikeAToken(token string) bool {
+	return regexp.MustCompile(tokenFormat).MatchString(token)
 }
 
 // Fingerprints

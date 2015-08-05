@@ -275,7 +275,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 		}
 
 		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
+		if !LooksLikeAToken(ch.Token) {
 			return false
 		}
 		if _, err := B64dec(ch.Token); err != nil {
