@@ -343,7 +343,7 @@ func TestDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 
-	chall := createChallenge(core.ChallengeTypeDVSNI)
+	chall := createChallenge(core.ChallengeTypeDVSNI, "")
 
 	invalidChall, err := va.validateDvsni(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -397,7 +397,7 @@ func TestTLSError(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 
-	chall := createChallenge(core.ChallengeTypeDVSNI)
+	chall := createChallenge(core.ChallengeTypeDVSNI, "")
 	waitChan := make(chan bool, 1)
 	stopChan := make(chan bool, 1)
 	go brokenTLSSrv(t, stopChan, waitChan)
@@ -444,11 +444,14 @@ func TestValidateHTTP(t *testing.T) {
 }
 
 // challengeType == "dvsni" or "dns", since they're the same
-func createChallenge(challengeType string) core.Challenge {
+func createChallenge(challengeType string, token string) core.Challenge {
+	if token == "" {
+		token = core.NewToken()
+	}
 	chall := core.Challenge{
 		Type:   challengeType,
 		Status: core.StatusPending,
-		Token:  core.NewToken(),
+		Token:  token,
 	}
 
 	validationPayload, _ := json.Marshal(map[string]interface{}{
@@ -467,7 +470,7 @@ func TestValidateDvsni(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chall := createChallenge(core.ChallengeTypeDVSNI)
+	chall := createChallenge(core.ChallengeTypeDVSNI, "")
 	waitChanDvsni := make(chan bool, 1)
 	stopChanDvsni := make(chan bool, 1)
 	go dvsniSrv(t, chall, stopChanDvsni, waitChanDvsni)
@@ -497,7 +500,7 @@ func TestValidateDvsniNotSane(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chall := createChallenge(core.ChallengeTypeDVSNI)
+	chall := createChallenge(core.ChallengeTypeDVSNI, "")
 	waitChanDvsni := make(chan bool, 1)
 	stopChanDvsni := make(chan bool, 1)
 	go dvsniSrv(t, chall, stopChanDvsni, waitChanDvsni)
@@ -627,7 +630,7 @@ func TestDNSValidationFailure(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chalDNS := createChallenge(core.ChallengeTypeDNS)
+	chalDNS := createChallenge(core.ChallengeTypeDNS, "")
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
@@ -706,7 +709,7 @@ func TestDNSValidationServFail(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chalDNS := createChallenge(core.ChallengeTypeDNS)
+	chalDNS := createChallenge(core.ChallengeTypeDNS, "")
 
 	badIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
@@ -731,7 +734,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chalDNS := createChallenge(core.ChallengeTypeDNS)
+	chalDNS := createChallenge(core.ChallengeTypeDNS, "")
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
@@ -746,27 +749,19 @@ func TestDNSValidationNoServer(t *testing.T) {
 	test.AssertEquals(t, authz.Challenges[0].Error.Type, core.ConnectionProblem)
 }
 
-// TestDNSValidationLive is an integration test, depending on
-// the existance of some Internet resources. Because of that,
-// it asserts nothing; it is intended for coverage.
-func TestDNSValidationLive(t *testing.T) {
+func TestDNSValidationSuccess(t *testing.T) {
 	va := NewValidationAuthorityImpl(false)
 	va.DNSResolver = &mocks.MockDNS{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	goodChalDNS := core.DNSChallenge()
-	// This token is set at _acme-challenge.good.bin.coffee
-	goodChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
+	// use a fixed value for token, to be able to provision the
+	// expected valud in MockDns
+	goodChalDNS := createChallenge(core.ChallengeTypeDNS, "6Y329M2z9NMg8cSv1YfLeW8EFv02fObAWMjTCt2gVxc")
 
 	var goodIdent = core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: "good.bin.coffee",
-	}
-
-	var badIdent = core.AcmeIdentifier{
-		Type:  core.IdentifierType("dns"),
-		Value: "bad.bin.coffee",
 	}
 
 	var authzGood = core.Authorization{
@@ -777,14 +772,47 @@ func TestDNSValidationLive(t *testing.T) {
 	}
 
 	va.validate(authzGood, 0, AccountKey)
+	test.AssertEquals(t, authzGood.Challenges[0].Status, core.StatusValid)
+}
 
-	if authzGood.Challenges[0].Status != core.StatusValid {
-		t.Logf("TestDNSValidationLive on Good did not succeed.")
+func TestDNSValidationSuccessSplitted(t *testing.T) {
+	va := NewValidationAuthorityImpl(false)
+	va.DNSResolver = &mocks.MockDNS{}
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	// use a fixed value for token, to be able to provision the
+	// expected valud in MockDns
+	goodChalDNS := createChallenge(core.ChallengeTypeDNS, "6Y329M2z9NMg8cSv1YfLeW8EFv02fObAWMjTCt2gVxc")
+
+	var goodIdent = core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "splitted.bin.coffee",
 	}
 
-	badChalDNS := core.DNSChallenge()
-	// This token is NOT set at _acme-challenge.bad.bin.coffee
-	badChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
+	var authzGood = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     goodIdent,
+		Challenges:     []core.Challenge{goodChalDNS},
+	}
+
+	va.validate(authzGood, 0, AccountKey)
+	test.AssertEquals(t, authzGood.Challenges[0].Status, core.StatusValid)
+}
+
+func TestDNSValidationBadValue(t *testing.T) {
+	va := NewValidationAuthorityImpl(false)
+	va.DNSResolver = &mocks.MockDNS{}
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	badChalDNS := createChallenge(core.ChallengeTypeDNS, "")
+
+	var badIdent = core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "bad.bin.coffee",
+	}
 
 	var authzBad = core.Authorization{
 		ID:             core.NewToken(),
@@ -794,10 +822,32 @@ func TestDNSValidationLive(t *testing.T) {
 	}
 
 	va.validate(authzBad, 0, AccountKey)
-	if authzBad.Challenges[0].Status != core.StatusInvalid {
-		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
+	test.AssertEquals(t, authzBad.Challenges[0].Status, core.StatusInvalid)
+}
+
+
+func TestDNSValidationBadSplittedValue(t *testing.T) {
+	va := NewValidationAuthorityImpl(false)
+	va.DNSResolver = &mocks.MockDNS{}
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	badChalDNS := createChallenge(core.ChallengeTypeDNS, "")
+
+	var badIdent = core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "bad-splitted.bin.coffee",
 	}
 
+	var authzBad = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     badIdent,
+		Challenges:     []core.Challenge{badChalDNS},
+	}
+
+	va.validate(authzBad, 0, AccountKey)
+	test.AssertEquals(t, authzBad.Challenges[0].Status, core.StatusInvalid)
 }
 
 type MockRegistrationAuthority struct {
