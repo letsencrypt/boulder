@@ -37,13 +37,12 @@ var ErrTooManyCNAME = errors.New("too many CNAME/DNAME lookups")
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	RA            core.RegistrationAuthority
-	log           *blog.AuditLogger
-	DNSResolver   core.DNSResolver
-	IssuerDomain  string
-	TestMode      bool
-	UserAgent     string
-	AddressFilter core.AddrFilter
+	RA           core.RegistrationAuthority
+	log          *blog.AuditLogger
+	DNSResolver  core.DNSResolver
+	IssuerDomain string
+	TestMode     bool
+	UserAgent    string
 }
 
 // NewValidationAuthorityImpl constructs a new VA, and may place it
@@ -117,14 +116,10 @@ func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 	return problem
 }
 
-// getAddr will query for all A/AAAA records associated with hostname and return
-// the first net.IP in the addrs slice (this prefers A records as LookupHost will
-// always place A records before AAAA records if core.NoAddrFilter is used). If one
-// of the address filters (core.IPv4OnlyFilter or core.IPv6OnlyFilter) is passed
-// to LookupHost only the relevant DNS queries will be performed and addresses
-// returned.
+// getAddr will query for all A records associated with hostname and return
+// the first net.IP in the addrs slice and all addresses resolved.
 func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
-	addrs, _, _, err := va.DNSResolver.LookupHost(hostname, va.AddressFilter)
+	addrs, _, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
 		problem = problemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
@@ -210,15 +205,13 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 
 	httpRequest.Host = hostName
 	dialer, addrUsed, allAddrs, prob := va.resolveAndConstructDialer(hostName, scheme)
-	challenge.Targets = &core.ValidationTargets{
-		Type: "SimpleHTTP",
-		Used: []core.ValidationTarget{
-			core.ValidationTarget{
-				URL:               url.String(),
-				AddressesResolved: allAddrs,
-				AddressUsed:       addrUsed,
-			},
-		},
+	challenge.ValidationRecord = &core.ValidationRecord{
+		SimpleHTTP: append([]core.SimpleHTTPFetch{}, core.SimpleHTTPFetch{
+			URL:               url.String(),
+			Hostname:          hostName,
+			AddressesResolved: allAddrs,
+			AddressUsed:       addrUsed,
+		}),
 	}
 	if err != nil {
 		challenge.Status = core.StatusInvalid
@@ -239,16 +232,16 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	logRedirect := func(req *http.Request, via []*http.Request) error {
-		if len(challenge.Targets.Used) >= maxRedirect {
+		if len(challenge.ValidationRecord.SimpleHTTP) >= maxRedirect {
 			return fmt.Errorf("Too many redirects")
 		}
 		dialer, addrUsed, allAddrs, err := va.resolveAndConstructDialer(req.URL.Host, req.URL.Scheme)
-		redirectTarget := core.ValidationTarget{
+		challenge.ValidationRecord.SimpleHTTP = append(challenge.ValidationRecord.SimpleHTTP, core.SimpleHTTPFetch{
 			URL:               req.URL.String(),
+			Hostname:          req.URL.Host,
 			AddressesResolved: allAddrs,
 			AddressUsed:       addrUsed,
-		}
-		challenge.Targets.Used = append(challenge.Targets.Used, redirectTarget)
+		})
 		if err != nil {
 			return err
 		}
@@ -370,14 +363,11 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.DVSNISuffix)
 
 	addr, allAddrs, problem := va.getAddr(identifier.Value)
-	challenge.Targets = &core.ValidationTargets{
-		Type: "DVSNI",
-		Used: []core.ValidationTarget{
-			core.ValidationTarget{
-				Hostname:          identifier.Value,
-				AddressesResolved: allAddrs,
-				AddressUsed:       addr,
-			},
+	challenge.ValidationRecord = &core.ValidationRecord{
+		Dvsni: core.DvsniValidationRecord{
+			Hostname:          identifier.Value,
+			AddressesResolved: allAddrs,
+			AddressUsed:       addr,
 		},
 	}
 	if problem != nil {

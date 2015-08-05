@@ -256,7 +256,6 @@ func brokenTLSSrv(t *testing.T, stopChan, waitChan chan bool) {
 func TestSimpleHttpTLS(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 
 	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken}
 
@@ -278,7 +277,6 @@ func TestSimpleHttpTLS(t *testing.T) {
 func TestSimpleHttp(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 
 	tls := false
 	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, TLS: &tls}
@@ -361,7 +359,6 @@ func TestSimpleHttp(t *testing.T) {
 func TestSimpleHttpRedirectLookup(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 
 	tls := false
 	chall := core.Challenge{Token: expectedToken, TLS: &tls}
@@ -410,7 +407,6 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 func TestSimpleHttpRedirectLoop(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 
 	tls := false
 	chall := core.Challenge{Token: "looper", TLS: &tls}
@@ -431,7 +427,6 @@ func TestSimpleHttpRedirectLoop(t *testing.T) {
 func TestDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 
 	chall := createChallenge(core.ChallengeTypeDVSNI)
 
@@ -494,7 +489,6 @@ func TestDvsni(t *testing.T) {
 func TestTLSError(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 
 	chall := createChallenge(core.ChallengeTypeDVSNI)
 	waitChan := make(chan bool, 1)
@@ -512,7 +506,6 @@ func TestTLSError(t *testing.T) {
 func TestValidateHTTP(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -564,7 +557,6 @@ func createChallenge(challengeType string) core.Challenge {
 func TestValidateDvsni(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -595,7 +587,6 @@ func TestValidateDvsni(t *testing.T) {
 func TestValidateDvsniNotSane(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -628,7 +619,6 @@ func TestValidateDvsniNotSane(t *testing.T) {
 func TestUpdateValidations(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -695,7 +685,6 @@ func TestCAAChecking(t *testing.T) {
 
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 	va.IssuerDomain = "letsencrypt.org"
 	for _, caaTest := range tests {
 		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
@@ -728,7 +717,6 @@ func TestCAAChecking(t *testing.T) {
 func TestDNSValidationFailure(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -765,7 +753,6 @@ func TestDNSValidationInvalid(t *testing.T) {
 
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -779,7 +766,6 @@ func TestDNSValidationInvalid(t *testing.T) {
 func TestDNSValidationNotSane(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -810,7 +796,6 @@ func TestDNSValidationNotSane(t *testing.T) {
 func TestDNSValidationServFail(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -860,7 +845,6 @@ func TestDNSValidationNoServer(t *testing.T) {
 func TestDNSValidationLive(t *testing.T) {
 	va := NewValidationAuthorityImpl(false)
 	va.DNSResolver = &mocks.MockDNS{}
-	va.AddressFilter = core.NoAddrFilter
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 

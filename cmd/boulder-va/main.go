@@ -6,8 +6,6 @@
 package main
 
 import (
-	"fmt"
-	"os"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -43,13 +41,6 @@ func main() {
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
 		vai.UserAgent = c.VA.UserAgent
-		addrFilter, ok := core.NameToFilter[c.VA.AddressFilter]
-		if !ok {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			fmt.Fprint(os.Stderr, "Invalid address filter")
-			os.Exit(1)
-		}
-		vai.AddressFilter = addrFilter
 
 		connectionHandler := func(srv *rpc.AmqpRPCServer) {
 			raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, srv.Channel)
