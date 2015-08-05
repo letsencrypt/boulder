@@ -31,6 +31,8 @@ import (
 const maxCNAME = 16 // Prevents infinite loops. Same limit as BIND.
 const maxRedirect = 10
 
+var validationTimeout = time.Second * 5
+
 // Returned by CheckCAARecords if it has to follow too many
 // consecutive CNAME lookups.
 var ErrTooManyCNAME = errors.New("too many CNAME/DNAME lookups")
@@ -151,7 +153,7 @@ func (va ValidationAuthorityImpl) resolveAndConstructDialer(name string, scheme 
 		redirectPort = "443"
 	}
 	return func(_, _ string) (net.Conn, error) {
-		dialer := net.Dialer{Timeout: 5 * time.Second, KeepAlive: 5 * time.Second}
+		dialer := net.Dialer{Timeout: validationTimeout, KeepAlive: validationTimeout}
 		return dialer.Dial("tcp", net.JoinHostPort(addr.String(), redirectPort))
 	}, addr, allAddrs, nil
 }
@@ -252,7 +254,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	client := http.Client{
 		Transport:     tr,
 		CheckRedirect: logRedirect,
-		Timeout:       5 * time.Second,
+		Timeout:       validationTimeout,
 	}
 	httpResponse, err := client.Do(httpRequest)
 	if err != nil {
@@ -383,7 +385,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	}
 	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
 		identifier, hostPort, ZName))
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", hostPort, &tls.Config{
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, &tls.Config{
 		ServerName:         ZName,
 		InsecureSkipVerify: true,
 	})

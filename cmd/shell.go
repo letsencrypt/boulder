@@ -97,8 +97,7 @@ type Config struct {
 	}
 
 	VA struct {
-		UserAgent     string
-		AddressFilter string
+		UserAgent string
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
