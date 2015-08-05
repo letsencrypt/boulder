@@ -169,9 +169,8 @@ type AmqpRPCServer struct {
 	dMu               sync.Mutex
 }
 
-// NewAmqpRPCServer creates a new RPC server on the given queue and channel.
-// Note that you must call Start() to actually start the server
-// listening for requests.
+// NewAmqpRPCServer creates a new RPC server for the given queue and will begin
+// consuming requests from the queue. To start the server you must call Start().
 func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer)) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
 	b := make([]byte, 4)
