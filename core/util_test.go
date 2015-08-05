@@ -8,12 +8,14 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	"github.com/letsencrypt/boulder/test"
 	"math"
 	"math/big"
 	"net/url"
 	"testing"
+
+	"github.com/letsencrypt/boulder/test"
+
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
 // challenges.go

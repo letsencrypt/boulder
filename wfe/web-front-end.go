@@ -41,6 +41,9 @@ const (
 	BuildIDPath    = "/build"
 )
 
+// WebFrontEndImpl provides the ACME interface to the boulder CA.  It provides
+// handlers to represent each type of ACME resource, and vets requests before
+// passing them through to a Registration Authority.
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
@@ -263,6 +266,8 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", age))
 }
 
+// Directory responds to a request with a directory of ACME resources
+// available on this server.
 func (wfe *WebFrontEndImpl) Directory(response http.ResponseWriter, request *http.Request) {
 	response.Write(wfe.DirectoryJSON)
 }
@@ -279,21 +284,19 @@ const (
 )
 
 func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
-	var err error
 	var reg core.Registration
 
 	// Read body
 	if request.Body == nil {
-		err = core.MalformedRequestError("No body on POST")
+		err := core.MalformedRequestError("No body on POST")
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
 	}
 
 	bodyBytes, err := ioutil.ReadAll(request.Body)
 	if err != nil {
-		err = core.InternalServerError(err.Error())
 		wfe.log.Debug(err.Error())
-		return nil, nil, reg, err
+		return nil, nil, reg, core.InternalServerError(err.Error())
 	}
 
 	body := string(bodyBytes)
@@ -469,7 +472,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
-	var id int64 = reg.ID
+	id := int64(reg.ID)
 	regURL := fmt.Sprintf("%s%d", wfe.RegBase, id)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
@@ -654,14 +657,10 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 }
 
 func (wfe *WebFrontEndImpl) logCsr(remoteAddr string, cr core.CertificateRequest, registration core.Registration) {
-	var csrLog = struct {
-		RemoteAddr   string
-		CsrBase64    []byte
-		Registration core.Registration
-	}{
-		RemoteAddr:   remoteAddr,
-		CsrBase64:    cr.Bytes,
-		Registration: registration,
+	csrLog := map[string]interface{}{
+		"RemoteAddr":   remoteAddr,
+		"CsrBase64":    cr.Bytes,
+		"Registration": registration,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
@@ -975,25 +974,22 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 	}
 
 	// Blank out ID and regID
-	switch request.Method {
-	case "GET":
-		authz.ID = ""
-		authz.RegistrationID = 0
+	authz.ID = ""
+	authz.RegistrationID = 0
 
-		jsonReply, err := json.Marshal(authz)
-		if err != nil {
-			logEvent.Error = err.Error()
-			// InternalServerError because this is a failure to decode from our DB.
-			wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
-			return
-		}
-		response.Header().Add("Link", link(wfe.NewCert, "next"))
-		response.Header().Set("Content-Type", "application/json")
-		response.WriteHeader(http.StatusOK)
-		if _, err = response.Write(jsonReply); err != nil {
-			logEvent.Error = err.Error()
-			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
-		}
+	jsonReply, err := json.Marshal(authz)
+	if err != nil {
+		logEvent.Error = err.Error()
+		// InternalServerError because this is a failure to decode from our DB.
+		wfe.sendError(response, "Failed to marshal authz", err, http.StatusInternalServerError)
+		return
+	}
+	response.Header().Add("Link", link(wfe.NewCert, "next"))
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(http.StatusOK)
+	if _, err = response.Write(jsonReply); err != nil {
+		logEvent.Error = err.Error()
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
 

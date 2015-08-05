@@ -53,21 +53,18 @@ func lastPathSegment(url core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
-func validateEmail(address string, resolver core.DNSResolver) (err error) {
-	_, err = mail.ParseAddress(address)
+func validateEmail(address string, resolver core.DNSResolver) error {
+	_, err := mail.ParseAddress(address)
 	if err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("%s is not a valid e-mail address", address))
-		return
+		return core.MalformedRequestError(fmt.Sprintf("%s is not a valid e-mail address", address))
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	var mx []string
-	mx, _, err = resolver.LookupMX(domain)
+	mx, _, err := resolver.LookupMX(domain)
 	if err != nil || len(mx) == 0 {
-		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
-		return
+		return core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
 	}
-	return
+	return nil
 }
 
 func validateContacts(contacts []core.AcmeURL, resolver core.DNSResolver) (err error) {
@@ -208,10 +205,9 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 // NewCertificate requests the issuance of a certificate.
 func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	emptyCert := core.Certificate{}
-	var logEventResult string
 
-	// Assume the worst
-	logEventResult = "error"
+	// Assume the worst to start
+	logEventResult := "error"
 
 	// Construct the log event
 	logEvent := certificateRequestEvent{

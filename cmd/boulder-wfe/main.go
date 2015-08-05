@@ -20,16 +20,16 @@ import (
 )
 
 func setupWFE(c cmd.Config, logger *blog.AuditLogger) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
-	ch, err := rpc.AmqpChannel(c)
+	ch, err := rpc.AMQPChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
 	logger.Info(" [!] Connected to AMQP")
 
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-	raRPC, err := rpc.NewAmqpRPCClient("WFE->RA", c.AMQP.RA.Server, ch)
+	raRPC, err := rpc.NewAMQPRPCClient("WFE->RA", c.AMQP.RA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
-	saRPC, err := rpc.NewAmqpRPCClient("WFE->SA", c.AMQP.SA.Server, ch)
+	saRPC, err := rpc.NewAMQPRPCClient("WFE->SA", c.AMQP.SA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	rac, err := rpc.NewRegistrationAuthorityClient(raRPC)

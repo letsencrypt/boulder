@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
@@ -130,16 +130,15 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] Identifier failure", identifier))
 		return challenge, challenge.Error
 	}
-	hostName := identifier.Value
 
-	var scheme string
-	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
-		scheme = "https"
-	} else {
-		scheme = "http"
-	}
+	hostName := identifier.Value
 	if va.TestMode {
 		hostName = "localhost:5001"
+	}
+
+	scheme := "http"
+	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
+		scheme = "https"
 	}
 
 	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, hostName, challenge.Token)
@@ -494,7 +493,7 @@ func (caaSet CAASet) criticalUnknown() bool {
 
 // Filter CAA records by property
 func newCAASet(CAAs []*dns.CAA) *CAASet {
-	var filtered CAASet
+	filtered := new(CAASet)
 
 	for _, caaRecord := range CAAs {
 		switch caaRecord.Tag {
@@ -509,7 +508,7 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 		}
 	}
 
-	return &filtered
+	return filtered
 }
 
 func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {

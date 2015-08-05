@@ -15,9 +15,8 @@ import (
 	"strings"
 	"time"
 
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -164,8 +163,9 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	return
 }
 
-// Get the valid authorization with biggest expire date for a given domain and registrationId
-func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+// GetLatestValidAuthorization finds the valid authorization with latest expiry
+// date for a given domain and registrationId
+func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	ident, err := json.Marshal(identifier)
 	if err != nil {
 		return
@@ -174,7 +174,7 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 		"FROM authz "+
 		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
 		"ORDER BY expires DESC LIMIT 1",
-		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
+		map[string]interface{}{"identifier": string(ident), "registrationId": registrationID})
 	return
 }
 
@@ -485,13 +485,12 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 }
 
 // AddCertificate stores an issued certificate.
-func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
-	var parsedCertificate *x509.Certificate
-	parsedCertificate, err = x509.ParseCertificate(certDER)
+func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (string, error) {
+	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		return
+		return "", err
 	}
-	digest = core.Fingerprint256(certDER)
+	digest := core.Fingerprint256(certDER)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
 	cert := &core.Certificate{
@@ -514,24 +513,24 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return digest, err
 	}
 
 	// TODO Verify that the serial number doesn't yet exist
 	err = tx.Insert(cert)
 	if err != nil {
 		tx.Rollback()
-		return
+		return digest, err
 	}
 
 	err = tx.Insert(certStatus)
 	if err != nil {
 		tx.Rollback()
-		return
+		return digest, err
 	}
 
 	err = tx.Commit()
-	return
+	return digest, nil
 }
 
 // AlreadyDeniedCSR queries to find if the name list has already been denied.

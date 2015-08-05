@@ -294,6 +294,7 @@ func LoadCert(path string) (cert []byte, err error) {
 	return
 }
 
+// DebugServer starts up a debug server at the indicated address
 func DebugServer(addr string) {
 	if addr == "" {
 		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")

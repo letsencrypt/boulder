@@ -284,12 +284,12 @@ func SerialToString(serial *big.Int) string {
 // StringToSerial converts a string into a certificate serial number (big.Int)
 // consistently.
 func StringToSerial(serial string) (*big.Int, error) {
-	var serialNum big.Int
 	if len(serial) != 32 {
-		return &serialNum, errors.New("Serial number should be 32 characters long")
+		return nil, errors.New("Serial number should be 32 characters long")
 	}
-	_, err := fmt.Sscanf(serial, "%032x", &serialNum)
-	return &serialNum, err
+	serialNum := big.NewInt(0)
+	_, err := fmt.Sscanf(serial, "%032x", serialNum)
+	return serialNum, err
 }
 
 // GetBuildID identifies what build is running.

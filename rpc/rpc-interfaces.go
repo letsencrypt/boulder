@@ -9,14 +9,14 @@ import (
 	"time"
 )
 
-// RPCClient describes the functions an RPC Client performs
-type RPCClient interface {
+// client describes the functions an RPC Client performs
+type client interface {
 	SetTimeout(time.Duration)
 	Dispatch(string, []byte) chan []byte
 	DispatchSync(string, []byte) ([]byte, error)
 }
 
-// RPCServer describes the functions an RPC Server performs
-type RPCServer interface {
+// server describes the functions an RPC Server performs
+type server interface {
 	Handle(string, func([]byte) ([]byte, error))
 }

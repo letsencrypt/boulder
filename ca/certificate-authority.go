@@ -104,7 +104,6 @@ type CertificateAuthorityImpl struct {
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
 func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config Config, issuerCert string) (*CertificateAuthorityImpl, error) {
-	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
 	logger.Notice("Certificate Authority Starting")
@@ -158,7 +157,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 
 	pa := policy.NewPolicyAuthorityImpl()
 
-	ca = &CertificateAuthorityImpl{
+	ca := &CertificateAuthorityImpl{
 		Signer:     signer,
 		OCSPSigner: ocspSigner,
 		profile:    config.Profile,
@@ -182,22 +181,19 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 	return ca, nil
 }
 
-func loadKey(keyConfig KeyConfig) (priv crypto.Signer, err error) {
+func loadKey(keyConfig KeyConfig) (crypto.Signer, error) {
 	if keyConfig.File != "" {
-		var keyBytes []byte
-		keyBytes, err = ioutil.ReadFile(keyConfig.File)
+		keyBytes, err := ioutil.ReadFile(keyConfig.File)
 		if err != nil {
 			return nil, fmt.Errorf("Could not read key file %s", keyConfig.File)
 		}
 
-		priv, err = helpers.ParsePrivateKeyPEM(keyBytes)
-		return
+		return helpers.ParsePrivateKeyPEM(keyBytes)
 	}
 
 	pkcs11Config := keyConfig.PKCS11
-	priv, err = pkcs11key.New(pkcs11Config.Module,
+	return pkcs11key.New(pkcs11Config.Module,
 		pkcs11Config.Token, pkcs11Config.PIN, pkcs11Config.Label)
-	return
 }
 
 func loadIssuer(filename string) (issuerCert *x509.Certificate, err error) {

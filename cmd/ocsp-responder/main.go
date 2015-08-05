@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
+	cfsslOCSP "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
@@ -151,7 +151,7 @@ func main() {
 
 		// Configure HTTP
 		m := http.NewServeMux()
-		m.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
+		m.Handle(c.OCSPResponder.Path, cfsslOCSP.Responder{Source: src})
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.OCSPResponder.ListenAddress))

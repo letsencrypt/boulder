@@ -153,7 +153,7 @@ func errorCondition(method string, err error, obj interface{}) {
 }
 
 // NewRegistrationAuthorityServer constructs an RPC server
-func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthority) error {
+func NewRegistrationAuthorityServer(rpc server, impl core.RegistrationAuthority) error {
 	log := blog.GetAuditLogger()
 
 	rpc.Handle(MethodNewRegistration, func(req []byte) (response []byte, err error) {
@@ -300,11 +300,11 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 
 // RegistrationAuthorityClient represents an RA RPC client
 type RegistrationAuthorityClient struct {
-	rpc RPCClient
+	rpc client
 }
 
 // NewRegistrationAuthorityClient constructs an RPC client
-func NewRegistrationAuthorityClient(client RPCClient) (rac RegistrationAuthorityClient, err error) {
+func NewRegistrationAuthorityClient(client client) (rac RegistrationAuthorityClient, err error) {
 	rac = RegistrationAuthorityClient{rpc: client}
 	return
 }
@@ -419,7 +419,7 @@ func (rac RegistrationAuthorityClient) OnValidationUpdate(authz core.Authorizati
 //
 // ValidationAuthorityClient / Server
 //  -> UpdateValidations
-func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) (err error) {
+func NewValidationAuthorityServer(rpc server, impl core.ValidationAuthority) (err error) {
 	rpc.Handle(MethodUpdateValidations, func(req []byte) (response []byte, err error) {
 		var vaReq validationRequest
 		if err = json.Unmarshal(req, &vaReq); err != nil {
@@ -463,11 +463,11 @@ func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) 
 
 // ValidationAuthorityClient represents an RPC client for the VA
 type ValidationAuthorityClient struct {
-	rpc RPCClient
+	rpc client
 }
 
 // NewValidationAuthorityClient constructs an RPC client
-func NewValidationAuthorityClient(client RPCClient) (vac ValidationAuthorityClient, err error) {
+func NewValidationAuthorityClient(client client) (vac ValidationAuthorityClient, err error) {
 	vac = ValidationAuthorityClient{rpc: client}
 	return
 }
@@ -517,7 +517,7 @@ func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) 
 //
 // CertificateAuthorityClient / Server
 //  -> IssueCertificate
-func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority) (err error) {
+func NewCertificateAuthorityServer(rpc server, impl core.CertificateAuthority) (err error) {
 	rpc.Handle(MethodIssueCertificate, func(req []byte) (response []byte, err error) {
 		var icReq issueCertificateRequest
 		err = json.Unmarshal(req, &icReq)
@@ -584,11 +584,11 @@ func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority
 
 // CertificateAuthorityClient is a client to communicate with the CA.
 type CertificateAuthorityClient struct {
-	rpc RPCClient
+	rpc client
 }
 
 // NewCertificateAuthorityClient constructs an RPC client
-func NewCertificateAuthorityClient(client RPCClient) (cac CertificateAuthorityClient, err error) {
+func NewCertificateAuthorityClient(client client) (cac CertificateAuthorityClient, err error) {
 	cac = CertificateAuthorityClient{rpc: client}
 	return
 }
@@ -650,7 +650,7 @@ func (cac CertificateAuthorityClient) GenerateOCSP(signRequest core.OCSPSigningR
 }
 
 // NewStorageAuthorityServer constructs an RPC server
-func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error {
+func NewStorageAuthorityServer(rpc server, impl core.StorageAuthority) error {
 	rpc.Handle(MethodUpdateRegistration, func(req []byte) (response []byte, err error) {
 		var reg core.Registration
 		if err = json.Unmarshal(req, &reg); err != nil {
@@ -932,11 +932,11 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 // StorageAuthorityClient is a client to communicate with the Storage Authority
 type StorageAuthorityClient struct {
-	rpc RPCClient
+	rpc client
 }
 
 // NewStorageAuthorityClient constructs an RPC client
-func NewStorageAuthorityClient(client RPCClient) (sac StorageAuthorityClient, err error) {
+func NewStorageAuthorityClient(client client) (sac StorageAuthorityClient, err error) {
 	sac = StorageAuthorityClient{rpc: client}
 	return
 }
@@ -988,11 +988,12 @@ func (cac StorageAuthorityClient) GetAuthorization(id string) (authz core.Author
 }
 
 // GetLatestValidAuthorization sends a request to get an Authorization by RegID, Identifier
-func (cac StorageAuthorityClient) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+func (cac StorageAuthorityClient) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 
-	var lvar latestValidAuthorizationRequest
-	lvar.RegID = registrationId
-	lvar.Identifier = identifier
+	lvar := latestValidAuthorizationRequest{
+		RegID:      registrationID,
+		Identifier: identifier,
+	}
 
 	data, err := json.Marshal(lvar)
 	if err != nil {

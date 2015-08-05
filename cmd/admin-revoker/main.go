@@ -67,10 +67,10 @@ func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.A
 	cmd.FailOnError(err, "Could not connect to Syslog")
 	blog.SetAuditLogger(auditlogger)
 
-	ch, err := rpc.AmqpChannel(c)
+	ch, err := rpc.AMQPChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
 
-	caRPC, err := rpc.NewAmqpRPCClient("revoker->CA", c.AMQP.CA.Server, ch)
+	caRPC, err := rpc.NewAMQPRPCClient("revoker->CA", c.AMQP.CA.Server, ch)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	cac, err := rpc.NewCertificateAuthorityClient(caRPC)
@@ -90,40 +90,38 @@ func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
 	return
 }
 
-func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
+func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) error {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
 
 	certObj, err := tx.Get(core.Certificate{}, serial)
 	if err != nil {
-		return
+		return err
 	}
 	certificate, ok := certObj.(*core.Certificate)
 	if !ok {
-		err = fmt.Errorf("Cast failure")
-		return
+		return fmt.Errorf("Cast failure")
 	}
 	if deny {
 		// Retrieve DNS names associated with serial
-		var cert *x509.Certificate
-		cert, err = x509.ParseCertificate(certificate.DER)
+		cert, err := x509.ParseCertificate(certificate.DER)
 		if err != nil {
-			return
+			return err
 		}
 		err = addDeniedNames(tx, append(cert.DNSNames, cert.Subject.CommonName))
 		if err != nil {
-			return
+			return err
 		}
 	}
 
 	err = cac.RevokeCertificate(certificate.Serial, reasonCode)
 	if err != nil {
-		return
+		return err
 	}
 
 	auditlogger.Info(fmt.Sprintf("Revoked certificate %s with reason '%s'", serial, reasons[reasonCode]))
-	return
+	return err
 }
 
 func revokeByReg(regID int, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
@@ -231,7 +229,7 @@ func main() {
 			Name:  "list-reasons",
 			Usage: "List all revocation reason codes",
 			Action: func(c *cli.Context) {
-				var codes []int
+				codes := []int{}
 				for k := range reasons {
 					codes = append(codes, k)
 				}
