@@ -91,13 +91,16 @@ func NewAuditLogger(log SyslogWriter, stats statsd.Statter) (*AuditLogger, error
 	return audit, nil
 }
 
-// initializeAuditLogger should only be used in unit tests. Failures in this
-// method are unlikely as the defaults are safe, and they are also
-// of minimal consequence during unit testing -- logs get printed to stdout
-// even if syslog is missing.
+// initializeAuditLogger should only be used in unit tests.
 func initializeAuditLogger() {
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, _ := Dial("", "", "default", stats)
+	stats, err := statsd.NewNoopClient(nil)
+	if err != nil {
+		panic(err)
+	}
+	audit, err := Dial("", "", "default", stats)
+	if err != nil {
+		panic(err)
+	}
 	audit.Notice("Using default logging configuration.")
 
 	SetAuditLogger(audit)

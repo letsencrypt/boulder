@@ -6,14 +6,22 @@
 package rpc
 
 import (
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"os/signal"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -96,7 +104,7 @@ func AMQPDeclareExchange(conn *amqp.Connection) error {
 }
 
 // A simplified way to declare and subscribe to an AMQP queue
-func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan amqp.Delivery, error) {
+func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog.AuditLogger) (<-chan amqp.Delivery, error) {
 	var err error
 
 	_, err = ch.QueueDeclare(
@@ -124,9 +132,12 @@ func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan
 		return nil, err
 	}
 
+	// A consumer name is used so that the specific consumer can be cancelled later
+	// if signalled. If no name is used a UID is used which cannot be retrieved (as
+	// far as I can tell).
 	msgs, err := ch.Consume(
 		name,
-		"",
+		consumerName,
 		AmqpAutoAck,
 		AmqpExclusive,
 		AmqpNoLocal,
@@ -147,23 +158,34 @@ func amqpSubscribe(ch *amqp.Channel, name string, log *blog.AuditLogger) (<-chan
 // To implement specific functionality, using code should use the Handle
 // method to add specific actions.
 type AmqpRPCServer struct {
-	serverQueue   string
-	channel       *amqp.Channel
-	log           *blog.AuditLogger
-	dispatchTable map[string]func([]byte) ([]byte, error)
+	serverQueue       string
+	Channel           *amqp.Channel
+	log               *blog.AuditLogger
+	dispatchTable     map[string]func([]byte) ([]byte, error)
+	connectionHandler func(*AmqpRPCServer)
+	consumerName      string
+	connected         bool
+	done              bool
+	dMu               sync.Mutex
 }
 
-// NewAmqpRPCServer creates a new RPC server on the given queue and channel.
-// Note that you must call Start() to actually start the server
-// listening for requests.
-func NewAmqpRPCServer(serverQueue string, channel *amqp.Channel) *AmqpRPCServer {
+// NewAmqpRPCServer creates a new RPC server for the given queue and will begin
+// consuming requests from the queue. To start the server you must call Start().
+func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer)) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
-	return &AmqpRPCServer{
-		serverQueue:   serverQueue,
-		channel:       channel,
-		log:           log,
-		dispatchTable: make(map[string]func([]byte) ([]byte, error)),
+	b := make([]byte, 4)
+	_, err := rand.Read(b)
+	if err != nil {
+		return nil, err
 	}
+	consumerName := fmt.Sprintf("%s.%x", serverQueue, b)
+	return &AmqpRPCServer{
+		serverQueue:       serverQueue,
+		log:               log,
+		dispatchTable:     make(map[string]func([]byte) ([]byte, error)),
+		connectionHandler: handler,
+		consumerName:      consumerName,
+	}, nil
 }
 
 // Handle registers a function to handle a particular method.
@@ -239,47 +261,186 @@ type RPCResponse struct {
 	Error     RPCError `json:"error,omitempty"`
 }
 
-// Start starts the AMQP-RPC server running in a separate thread.
-// There is currently no Stop() method.
-func (rpc *AmqpRPCServer) Start() (err error) {
-	msgs, err := amqpSubscribe(rpc.channel, rpc.serverQueue, rpc.log)
-	if err != nil {
-		return
+// AmqpChannel sets a AMQP connection up using SSL if configuration is provided
+func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
+	var conn *amqp.Connection
+	var err error
+
+	log := blog.GetAuditLogger()
+
+	if conf.AMQP.TLS == nil {
+		// Configuration did not specify TLS options, but Dial will
+		// use TLS anyway if the URL scheme is "amqps"
+		conn, err = amqp.Dial(conf.AMQP.Server)
+	} else {
+		// They provided TLS options, so let's load them.
+		log.Info("AMQPS: Loading TLS Options.")
+
+		if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
+			err = fmt.Errorf("AMQPS: TLS configuration provided, but not using an AMQPS URL")
+			return nil, err
+		}
+
+		cfg := new(tls.Config)
+
+		// If the configuration specified a certificate (or key), load them
+		if conf.AMQP.TLS.CertFile != nil || conf.AMQP.TLS.KeyFile != nil {
+			// But they have to give both.
+			if conf.AMQP.TLS.CertFile == nil || conf.AMQP.TLS.KeyFile == nil {
+				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile")
+				return nil, err
+			}
+
+			cert, err := tls.LoadX509KeyPair(*conf.AMQP.TLS.CertFile, *conf.AMQP.TLS.KeyFile)
+			if err != nil {
+				err = fmt.Errorf("AMQPS: Could not load Client Certificate or Key: %s", err)
+				return nil, err
+			}
+
+			log.Info("AMQPS: Configured client certificate for AMQPS.")
+			cfg.Certificates = append(cfg.Certificates, cert)
+		}
+
+		// If the configuration specified a CA certificate, make it the only
+		// available root.
+		if conf.AMQP.TLS.CACertFile != nil {
+			cfg.RootCAs = x509.NewCertPool()
+
+			ca, err := ioutil.ReadFile(*conf.AMQP.TLS.CACertFile)
+			if err != nil {
+				err = fmt.Errorf("AMQPS: Could not load CA Certificate: %s", err)
+				return nil, err
+			}
+			cfg.RootCAs.AppendCertsFromPEM(ca)
+			log.Info("AMQPS: Configured CA certificate for AMQPS.")
+		}
+
+		conn, err = amqp.DialTLS(conf.AMQP.Server, cfg)
 	}
 
-	go func() {
-		for msg := range msgs {
-			// XXX-JWS: jws.Verify(body)
-			cb, present := rpc.dispatchTable[msg.Type]
-			rpc.log.Info(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
-			if !present {
-				// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
-				rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
-				continue
-			}
-			var response RPCResponse
-			response.ReturnVal, err = cb(msg.Body)
-			response.Error = wrapError(err)
-			jsonResponse, err := json.Marshal(response)
-			if err != nil {
-				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-				rpc.log.Audit(fmt.Sprintf(" [s>][%s][%s] Error condition marshalling RPC response %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
-				continue
-			}
-			rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(jsonResponse), msg.CorrelationId))
-			rpc.channel.Publish(
-				AmqpExchange,
-				msg.ReplyTo,
-				AmqpMandatory,
-				AmqpImmediate,
-				amqp.Publishing{
-					CorrelationId: msg.CorrelationId,
-					Type:          msg.Type,
-					Body:          jsonResponse, // XXX-JWS: jws.Sign(privKey, body)
-				})
+	if err != nil {
+		return nil, err
+	}
+
+	err = AMQPDeclareExchange(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	return conn.Channel()
+}
+
+func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
+	// XXX-JWS: jws.Verify(body)
+	cb, present := rpc.dispatchTable[msg.Type]
+	rpc.log.Info(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
+	if !present {
+		// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
+		rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
+		return
+	}
+	var response RPCResponse
+	var err error
+	response.ReturnVal, err = cb(msg.Body)
+	response.Error = wrapError(err)
+	jsonResponse, err := json.Marshal(response)
+	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		rpc.log.Audit(fmt.Sprintf(" [s>][%s][%s] Error condition marshalling RPC response %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
+		return
+	}
+	rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(jsonResponse), msg.CorrelationId))
+	rpc.Channel.Publish(
+		AmqpExchange,
+		msg.ReplyTo,
+		AmqpMandatory,
+		AmqpImmediate,
+		amqp.Publishing{
+			CorrelationId: msg.CorrelationId,
+			Type:          msg.Type,
+			Body:          jsonResponse, // XXX-JWS: jws.Sign(privKey, body)
+		})
+}
+
+// Start starts the AMQP-RPC server and handles reconnections, this will block
+// until a fatal error is returned or AmqpRPCServer.Stop() is called and all
+// remaining messages are processed.
+func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
+	go rpc.catchSignals()
+	for {
+		rpc.dMu.Lock()
+		if rpc.done {
+			rpc.dMu.Unlock()
+			break
 		}
-	}()
-	return
+		rpc.dMu.Unlock()
+		var err error
+		rpc.Channel, err = AmqpChannel(c)
+		if err != nil {
+			return err
+		}
+		rpc.connectionHandler(rpc)
+
+		msgs, err := amqpSubscribe(rpc.Channel, rpc.serverQueue, rpc.consumerName, rpc.log)
+		if err != nil {
+			return err
+		}
+		rpc.connected = true
+		rpc.log.Info(" [!] Connected to AMQP")
+
+		closeChan := rpc.Channel.NotifyClose(make(chan *amqp.Error, 1))
+		for blocking := true; blocking; {
+			select {
+			case msg, ok := <-msgs:
+				if ok {
+					rpc.processMessage(msg)
+				} else {
+					// chan has been closed by rpc.channel.Cancel
+					rpc.log.Info(" [!] Finished processing messages")
+					return nil
+				}
+			case err = <-closeChan:
+				rpc.connected = false
+				rpc.log.Warning(fmt.Sprintf(" [!] AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
+				time.Sleep(time.Second * 5)
+				blocking = false
+			}
+		}
+	}
+	return nil
+}
+
+var signalToName = map[os.Signal]string{
+	syscall.SIGTERM: "SIGTERM",
+	syscall.SIGINT:  "SIGINT",
+	syscall.SIGHUP:  "SIGHUP",
+}
+
+func (rpc *AmqpRPCServer) catchSignals() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGHUP)
+
+	sig := <-sigChan
+	rpc.log.Info(fmt.Sprintf(" [!] Caught %s", signalToName[sig]))
+	rpc.Stop()
+	signal.Stop(sigChan)
+}
+
+// Stop gracefully stops the AmqpRPCServer, after calling AmqpRPCServer.Start will
+// continue blocking until it has processed any messages that have already been
+// retrieved.
+func (rpc *AmqpRPCServer) Stop() {
+	if rpc.connected {
+		rpc.log.Info(" [!] Shutting down RPC server, stopping new deliveries and processing remaining messages")
+		rpc.Channel.Cancel(rpc.consumerName, false)
+	} else {
+		rpc.log.Info("[!] Shutting down RPC server, nothing to clean up")
+		rpc.dMu.Lock()
+		rpc.done = true
+		rpc.dMu.Unlock()
+	}
 }
 
 // AmqpRPCCLient is an AMQP-RPC client that sends requests to a specific server
@@ -330,7 +491,7 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 	}
 
 	// Subscribe to the response queue and dispatch
-	msgs, err := amqpSubscribe(rpc.channel, clientQueue, rpc.log)
+	msgs, err := amqpSubscribe(rpc.channel, clientQueue, "", rpc.log)
 	if err != nil {
 		return nil, err
 	}

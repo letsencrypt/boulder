@@ -16,6 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/rpc"
 
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
@@ -153,7 +154,7 @@ func main() {
 
 		go cmd.DebugServer(c.ActivityMonitor.DebugAddr)
 
-		ch, err := cmd.AmqpChannel(c)
+		ch, err := rpc.AmqpChannel(c)
 
 		cmd.FailOnError(err, "Could not connect to AMQP")
 
