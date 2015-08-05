@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
 // AcmeStatus defines the state of a given authorization
