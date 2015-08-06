@@ -42,7 +42,7 @@ type mailer struct {
 	limit         int
 }
 
-func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []core.AcmeURL) error {
+func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []*core.AcmeURL) error {
 	expiresIn := int(parsedCert.NotAfter.Sub(time.Now()).Hours()/24) + 1
 	emails := []string{}
 	for _, contact := range contacts {
