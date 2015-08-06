@@ -51,13 +51,15 @@ const (
 	MethodGetLatestValidAuthorization = "GetLatestValidAuthorization" // SA
 	MethodGetCertificate              = "GetCertificate"              // SA
 	MethodGetCertificateByShortSerial = "GetCertificateByShortSerial" // SA
+	MethodGetCertificateByRequestID   = "GetCertificateByRequestID"   // SA
 	MethodGetCertificateStatus        = "GetCertificateStatus"        // SA
 	MethodMarkCertificateRevoked      = "MarkCertificateRevoked"      // SA
 	MethodUpdateOCSP                  = "UpdateOCSP"                  // SA
 	MethodNewPendingAuthorization     = "NewPendingAuthorization"     // SA
 	MethodUpdatePendingAuthorization  = "UpdatePendingAuthorization"  // SA
 	MethodFinalizeAuthorization       = "FinalizeAuthorization"       // SA
-	MethodAddCertificate              = "AddCertificate"              // SA
+	MethodNewPendingCertificate       = "NewPendingCertificate"       // SA
+	MethodFinalizeCertificate         = "FinalizeCertificate"         // SA
 	MethodAlreadyDeniedCSR            = "AlreadyDeniedCSR"            // SA
 )
 
@@ -99,11 +101,6 @@ type issueCertificateRequest struct {
 	Bytes          []byte
 	RegID          int64
 	EarliestExpiry time.Time
-}
-
-type addCertificateRequest struct {
-	Bytes []byte
-	RegID int64
 }
 
 type revokeCertificateRequest struct {
@@ -745,20 +742,34 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		return
 	})
 
-	rpc.Handle(MethodAddCertificate, func(req []byte) (response []byte, err error) {
-		var acReq addCertificateRequest
-		err = json.Unmarshal(req, &acReq)
+	rpc.Handle(MethodNewPendingCertificate, func(req []byte) (response []byte, err error) {
+		var cert core.Certificate
+		err = json.Unmarshal(req, &cert)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodAddCertificate, err, req)
+			improperMessage(MethodNewPendingCertificate, err, req)
 			return
 		}
 
-		id, err := impl.AddCertificate(acReq.Bytes, acReq.RegID)
+		output, err := impl.NewPendingCertificate(cert)
 		if err != nil {
 			return
 		}
-		response = []byte(id)
+
+		response, err = json.Marshal(output)
+		return
+	})
+
+	rpc.Handle(MethodFinalizeCertificate, func(req []byte) (response []byte, err error) {
+		var cert core.Certificate
+		err = json.Unmarshal(req, &cert)
+		if err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodNewPendingCertificate, err, req)
+			return
+		}
+
+		err = impl.FinalizeCertificate(cert)
 		return
 	})
 
@@ -849,6 +860,22 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 	rpc.Handle(MethodGetCertificateByShortSerial, func(req []byte) (response []byte, err error) {
 		cert, err := impl.GetCertificateByShortSerial(string(req))
+		if err != nil {
+			return
+		}
+
+		jsonResponse, err := json.Marshal(cert)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetCertificateByShortSerial, err, req)
+			return
+		}
+
+		return jsonResponse, nil
+	})
+
+	rpc.Handle(MethodGetCertificateByRequestID, func(req []byte) (response []byte, err error) {
+		cert, err := impl.GetCertificateByRequestID(string(req))
 		if err != nil {
 			return
 		}
@@ -1031,6 +1058,18 @@ func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert c
 	return
 }
 
+// GetCertificateByRequestID sends a request to search for a certificate by
+// the random ID assigned pre-issuance.
+func (cac StorageAuthorityClient) GetCertificateByRequestID(id string) (cert core.Certificate, err error) {
+	jsonCert, err := cac.rpc.DispatchSync(MethodGetCertificateByRequestID, []byte(id))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonCert, &cert)
+	return
+}
+
 // GetCertificateStatus sends a request to obtain the current status of a
 // certificate by ID
 func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.CertificateStatus, err error) {
@@ -1148,21 +1187,30 @@ func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization
 	return
 }
 
-// AddCertificate sends a request to record the issuance of a certificate
-func (cac StorageAuthorityClient) AddCertificate(cert []byte, regID int64) (id string, err error) {
-	var acReq addCertificateRequest
-	acReq.Bytes = cert
-	acReq.RegID = regID
-	data, err := json.Marshal(acReq)
+// NewPendingCertificate makes a new stub certificate
+func (cac StorageAuthorityClient) NewPendingCertificate(cert core.Certificate) (output core.Certificate, err error) {
+	data, err := json.Marshal(cert)
 	if err != nil {
 		return
 	}
 
-	response, err := cac.rpc.DispatchSync(MethodAddCertificate, data)
+	response, err := cac.rpc.DispatchSync(MethodNewPendingCertificate, data)
 	if err != nil {
 		return
 	}
-	id = string(response)
+
+	err = json.Unmarshal(response, &output)
+	return
+}
+
+// FinalizeCertificate takes moves a certificate from a pending to a final state
+func (cac StorageAuthorityClient) FinalizeCertificate(cert core.Certificate) (err error) {
+	data, err := json.Marshal(cert)
+	if err != nil {
+		return
+	}
+
+	_, err = cac.rpc.DispatchSync(MethodFinalizeCertificate, data)
 	return
 }
 

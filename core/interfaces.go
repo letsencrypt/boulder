@@ -123,7 +123,7 @@ type StorageAdder interface {
 	UpdateOCSP(serial string, ocspResponse []byte) error
 
 	NewPendingCertificate(Certificate) (Certificate, error)
-	FinalizeCertificate(Certificate) (string, error)
+	FinalizeCertificate(Certificate) error
 }
 
 // StorageAuthority interface represents a simple key/value
