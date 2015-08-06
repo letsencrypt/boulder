@@ -176,6 +176,39 @@ function getNonce(url, callback) {
   });
 }
 
+function get(url, callback) {
+  console.log('Getting', url, ':');
+  console.log(url.green);
+
+  request.get(url, function(error, response, body) {
+    console.log(("HTTP/1.1 " + response.statusCode).yellow)
+    Object.keys(response.headers).forEach(function(key) {
+      var value = response.headers[key];
+      var upcased = key.charAt(0).toUpperCase() + key.slice(1);
+      console.log((upcased + ": " + value).yellow)
+    });
+    console.log()
+
+    // Don't print non-ASCII characters (like DER-encoded cert) to the terminal
+    if (body && !body.toString().match(/[^\x00-\x7F]/)) {
+      try {
+        var parsed = JSON.parse(body);
+        console.log(JSON.stringify(parsed, null, 2).cyan);
+      } catch (e) {
+        console.log(body.toString().cyan);
+      }
+    }
+
+    // Remember the nonce provided by the server
+    if ("replay-nonce" in response.headers) {
+      console.log("Storing nonce: " + response.headers["replay-nonce"]);
+      state.nonces.push(response.headers["replay-nonce"]);
+    }
+
+    callback(error, response, body);
+  });
+}
+
 function post(url, body, callback) {
   // Pre-flight with HEAD if we don't have a nonce
   if (state.nonces.length == 0) {
@@ -334,7 +367,7 @@ function getTerms(err, resp) {
   if (state.termsRequired) {
     state.termsURL = links["terms-of-service"];
     console.log(state.termsURL);
-    request.get(state.termsURL, getAgreement)
+    get(state.termsURL, getAgreement)
   } else {
     inquirer.prompt(questions.domain, getChallenges);
   }
@@ -490,7 +523,7 @@ function ensureValidation(err, resp, body) {
 
   if (authz.status == "pending") {
     setTimeout(function() {
-      request.get(state.authorizationURL, {}, ensureValidation);
+      get(state.authorizationURL, ensureValidation);
     }, state.retryDelay);
   } else if (authz.status == "valid") {
     cli.spinner("Validating domain ... done", true);
@@ -505,14 +538,14 @@ function ensureValidation(err, resp, body) {
         getChallenges({domain: state.domains.pop()});
         return;
       } else {
-        getCertificate();
+        requestCertificate();
       }
     } else {
       inquirer.prompt(questions.anotherDomain, function(answers) {
         if (answers.anotherDomain) {
           inquirer.prompt(questions.domain, getChallenges);
         } else {
-          getCertificate();
+          requestCertificate();
         }
       });
     }
@@ -526,13 +559,13 @@ function ensureValidation(err, resp, body) {
   }
 }
 
-function requesttCertificate() {
+function requestCertificate() {
   cli.spinner("Requesting certificate");
   var csr = crypto.generateCSR(state.certPrivateKey, state.validatedDomains);
   post(state.newCertificateURL, {
     resource: "new-cert",
     csr: csr
-  }, getCertificateURL);
+  }, downloadCertificate);
 }
 
 function downloadCertificate(err, resp, body) {
@@ -546,7 +579,7 @@ function downloadCertificate(err, resp, body) {
   }
 
   state.certificateURL = resp.headers['location'];
-  request.get({
+  get({
     url: state.certificateURL,
     encoding: null // Return body as buffer.
   }, ensureCertificate);
@@ -562,9 +595,10 @@ function ensureCertificate(err, resp, body) {
 
     console.log()
     state.certificate = body
+    saveFiles();
   } else if (resp.statusCode === 202) {
     setTimeout(function() {
-      request.get(state.certificateURL, {}, ensureCertificate);
+      get({url: state.certificateURL, encoding: null}, ensureCertificate);
     }, state.retryDelay);
   } else {
     console.log("Error: Failed to fetch certificate from", certURL, ":", res.statusCode, res.body.toString());
