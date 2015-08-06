@@ -393,6 +393,8 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, 
 		fallthrough
 	case http.StatusBadRequest:
 		problem.Type = core.MalformedProblem
+	case http.StatusGone:
+		fallthrough
 	default: // Either http.StatusInternalServerError or an unexpected code
 		problem.Type = core.ServerInternalProblem
 	}
@@ -722,7 +724,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// Make a URL for this certificate.
 	// Right now, the result of NewCertificate will always be a pending certificate,
 	// so we make the URL from the request ID, which the SA randomly assigned.
-	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, cert.RequestID)
+	certURL := fmt.Sprintf("%s%s", wfe.CertBase, cert.RequestID)
 
 	response.Header().Add("Location", certURL)
 	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
@@ -1007,7 +1009,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	var err error
 	var cert core.Certificate
 	switch {
-	case len(certID) != 16 || !allHex.MatchString(certID):
+	case len(certID) == 16 || allHex.MatchString(certID):
 		cert, err = wfe.SA.GetCertificateByShortSerial(certID)
 	case core.LooksLikeAToken(certID):
 		cert, err = wfe.SA.GetCertificateByRequestID(certID)
@@ -1030,12 +1032,10 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	}
 
 	// If the signing request is still pending, just return a 202 Accepted
-	if cert.Status == core.StatusPending {
-		response.WriteHeader(http.StatusAccepted)
-	}
 	switch cert.Status {
 	case core.StatusPending:
 		// Return a polite 202
+		addNoCacheHeader(response)
 		response.Header().Add("Link", link(IssuerPath, "up"))
 		response.WriteHeader(http.StatusAccepted)
 	case core.StatusInvalid:
