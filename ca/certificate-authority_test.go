@@ -339,8 +339,24 @@ const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
 
-func TestMain(m *testing.M) {
+// Use this function to wait for the IssueCertificate->sign->SA handoff
+func awaitIssuance(t *testing.T, sa core.StorageAuthority, id string) (cert core.Certificate, found bool) {
+	wait := 125 * time.Millisecond
+	for wait < 2*time.Second {
+		time.Sleep(wait)
+		wait = 2 * wait
 
+		cert, err := sa.GetCertificateByRequestID(id)
+		test.AssertNotError(t, err, "Unable to retrieve supposedly pending certificate")
+		if cert.Status != core.StatusPending {
+			return cert, true
+		}
+	}
+	found = false
+	return
+}
+
+func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
@@ -421,14 +437,19 @@ func TestRevoke(t *testing.T) {
 
 	csrDER, _ := hex.DecodeString(CNandSANCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	certObj, err := ca.IssueCertificate(*csr, 1, FarFuture)
-	test.AssertNotError(t, err, "Failed to sign certificate")
+	pendingCert, err := ca.IssueCertificate(*csr, 1, FarFuture)
+	test.AssertNotError(t, err, "CA refused to issue")
 	if err != nil {
 		return
 	}
-	cert, err := x509.ParseCertificate(certObj.DER)
+
+	issuedCert, found := awaitIssuance(t, storageAuthority, pendingCert.RequestID)
+	test.Assert(t, found, "Timed out waiting for CA to issue certificate")
+
+	cert, err := x509.ParseCertificate(issuedCert.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	serialString := core.SerialToString(cert.SerialNumber)
+
 	err = ca.RevokeCertificate(serialString, 0)
 	test.AssertNotError(t, err, "Revocation failed")
 
@@ -457,17 +478,22 @@ func TestIssueCertificate(t *testing.T) {
 			}
 	*/
 
+	// then pull by RequestID
 	csrs := []string{CNandSANCSRhex, NoSANCSRhex, NoCNCSRhex}
 	for _, csrHEX := range csrs {
 		csrDER, _ := hex.DecodeString(csrHEX)
 		csr, _ := x509.ParseCertificateRequest(csrDER)
 
-		// Sign CSR
-		issuedCert, err := ca.IssueCertificate(*csr, 1, FarFuture)
+		// Dispatch signing
+		pendingCert, err := ca.IssueCertificate(*csr, 1, FarFuture)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 		if err != nil {
 			continue
 		}
+
+		// Wait for sign() to happen
+		issuedCert, found := awaitIssuance(t, storageAuthority, pendingCert.RequestID)
+		test.Assert(t, found, "Timed out waiting for certificate to be issued")
 
 		// Verify cert contents
 		cert, err := x509.ParseCertificate(issuedCert.DER)
@@ -494,12 +520,8 @@ func TestIssueCertificate(t *testing.T) {
 			t.Errorf("Improper list of domain names %v", cert.DNSNames)
 		}
 
-		// Test is broken by CFSSL Issue #156
-		// https://github.com/cloudflare/cfssl/issues/156
 		if len(cert.Subject.Country) > 0 {
-			// Uncomment the Errorf as soon as upstream #156 is fixed
-			// t.Errorf("Subject contained unauthorized values: %v", cert.Subject)
-			t.Logf("Subject contained unauthorized values: %v", cert.Subject)
+			t.Errorf("Subject contained unauthorized values: %v", cert.Subject)
 		}
 
 		// Verify that the cert got stored in the DB
@@ -561,6 +583,9 @@ func TestDeduplication(t *testing.T) {
 	if err != nil {
 		return
 	}
+
+	cert, found := awaitIssuance(t, storageAuthority, cert.RequestID)
+	test.Assert(t, found, "Timed out waiting for CA to issue")
 
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Error parsing certificate produced by CA")

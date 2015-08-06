@@ -75,6 +75,9 @@ type SignatureValidationError string
 // for some reason.
 type CertificateIssuanceError string
 
+// ServiceUnavailableError indicates that the CA cannot serve the request right now
+type ServiceUnavailableError string
+
 func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
 func (e MalformedRequestError) Error() string    { return string(e) }
@@ -83,6 +86,7 @@ func (e NotFoundError) Error() string            { return string(e) }
 func (e SyntaxError) Error() string              { return string(e) }
 func (e SignatureValidationError) Error() string { return string(e) }
 func (e CertificateIssuanceError) Error() string { return string(e) }
+func (e ServiceUnavailableError) Error() string  { return string(e) }
 
 // Base64 functions
 
