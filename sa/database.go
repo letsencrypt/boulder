@@ -35,20 +35,36 @@ func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 	logger := blog.GetAuditLogger()
 
 	if driver == "mysql" {
-		// Check the parseTime=true DSN is present
-		dbURI, err := url.Parse(dbConnect)
-		if err != nil {
-			return nil, err
+		// Check that the parseTime=true parm is present in the DSN
+		// DSN format: [user@][host]/dbname?[?param1=value1&paramN=valueN]
+		var i int
+		var query string
+		// Find the last '/', which separates the dbname
+		for i = len(dbConnect) - 1; i >= 0; i-- {
+			if dbConnect[i] == '/' {
+				// Find the next '?', which separates the query
+				for i += 1; i < len(dbConnect); i++ {
+					if dbConnect[i] == '?' {
+						query = dbConnect[i+1:]
+						break
+					}
+				}
+				break
+			}
 		}
-		dsnVals, err := url.ParseQuery(dbURI.RawQuery)
-		if err != nil {
-			return nil, err
+		if i > 0 {
+			// Parse the query and correct value for parseTime, if necessary
+			dsnParams, err := url.ParseQuery(query)
+			if err != nil {
+				return nil, err
+			}
+			if k := dsnParams.Get("parseTime"); k != "true" {
+				dsnParams.Set("parseTime", "true")
+				dbConnect = dbConnect[:i] + "?" + dsnParams.Encode()
+			}
+		} else {
+			return nil, fmt.Errorf("malformed MySQL DSN: %s", dbConnect)
 		}
-		if k := dsnVals.Get("parseTime"); k != "true" {
-			dsnVals.Set("parseTime", "true")
-			dbURI.RawQuery = dsnVals.Encode()
-		}
-		dbConnect = dbURI.String()
 	}
 
 	db, err := sql.Open(driver, dbConnect)
