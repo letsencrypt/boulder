@@ -18,7 +18,7 @@ func TestAdd(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add blacklist rule")
 	err = p.AddRule("b.bracewel.net", whitelisted)
 	test.AssertNotError(t, err, "Failed to add whitelist rule")
-	err = p.AddRule("b.bracewel.net", whitelisted)
+	err = p.AddRule("b.bracewel.net", blacklisted)
 	test.AssertError(t, err, "Didn't error on duplicate rule")
 }
 
