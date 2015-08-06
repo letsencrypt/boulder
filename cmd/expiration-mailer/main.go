@@ -18,11 +18,11 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mail"
+	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -32,10 +32,15 @@ type emailContent struct {
 	DNSNames         string
 }
 
+type regStore interface {
+	GetRegistration(int64) (core.Registration, error)
+}
+
 type mailer struct {
 	stats         statsd.Statter
 	log           *blog.AuditLogger
 	dbMap         *gorp.DbMap
+	rs            regStore
 	mailer        mail.Mailer
 	emailTemplate *template.Template
 	nagTimes      []time.Duration
@@ -111,14 +116,14 @@ func (m *mailer) updateCertStatus(serial string) error {
 
 func (m *mailer) processCerts(certs []core.Certificate) {
 	m.log.Info(fmt.Sprintf("expiration-mailer: Found %d certificates, starting sending messages", len(certs)))
+
 	for _, cert := range certs {
-		regObj, err := m.dbMap.Get(&core.Registration{}, cert.RegistrationID)
+		reg, err := m.rs.GetRegistration(cert.RegistrationID)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error fetching registration %d: %s", cert.RegistrationID, err))
 			m.stats.Inc("Mailer.Expiration.Errors.GetRegistration", 1, 1.0)
 			continue
 		}
-		reg := regObj.(*core.Registration)
 		parsedCert, err := x509.ParseCertificate(cert.DER)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error parsing certificate %s: %s", cert.Serial, err))
@@ -159,9 +164,6 @@ func (m *mailer) findExpiringCertificates() error {
 			`SELECT cert.* FROM certificates AS cert
 			 JOIN certificateStatus AS cs
 			 ON cs.serial = cert.serial
-			 JOIN registrations AS reg
-			 ON cert.registrationId = reg.id
-			 WHERE reg.contact LIKE "%mailto%"
 			 AND cert.expires > :cutoffA
 			 AND cert.expires < :cutoffB
 			 AND cert.status != "revoked"
@@ -241,6 +243,15 @@ func main() {
 		dbMap, err := sa.NewDbMap(c.Mailer.DBDriver, c.Mailer.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
+		ch, err := rpc.AmqpChannel(c)
+		cmd.FailOnError(err, "Could not connect to AMQP")
+
+		saRPC, err := rpc.NewAmqpRPCClient("CA->SA", c.AMQP.SA.Server, ch)
+		cmd.FailOnError(err, "Unable to create RPC client")
+
+		sac, err := rpc.NewStorageAuthorityClient(saRPC)
+		cmd.FailOnError(err, "Failed to create SA client")
+
 		// Load email template
 		emailTmpl, err := ioutil.ReadFile(c.Mailer.EmailTemplate)
 		cmd.FailOnError(err, fmt.Sprintf("Could not read email template file [%s]", c.Mailer.EmailTemplate))
@@ -265,6 +276,7 @@ func main() {
 			stats:         stats,
 			log:           auditlogger,
 			dbMap:         dbMap,
+			rs:            sac,
 			mailer:        &mailClient,
 			emailTemplate: tmpl,
 			nagTimes:      nags,

@@ -55,6 +55,22 @@ func (m *mockMail) SendMail(to []string, msg string) (err error) {
 	return
 }
 
+type fakeRegStore struct {
+	RegById map[int64]core.Registration
+}
+
+func (f fakeRegStore) GetRegistration(id int64) (core.Registration, error) {
+	r, ok := f.RegById[id]
+	if !ok {
+		return r, sa.NoSuchRegistrationError{fmt.Sprintf("no such registration %d", id)}
+	}
+	return r, nil
+}
+
+func newFakeRegStore() fakeRegStore {
+	return fakeRegStore{RegById: make(map[int64]core.Registration)}
+}
+
 const testTmpl = `hi, cert for DNS names {{.DNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`
 
 var jsonKeyA = []byte(`{
@@ -75,10 +91,12 @@ func TestSendNags(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't parse test email template")
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
+	rs := newFakeRegStore()
 	m := mailer{
 		stats:         stats,
 		mailer:        &mc,
 		emailTemplate: tmpl,
+		rs:            rs,
 	}
 
 	cert := &x509.Certificate{
@@ -131,12 +149,14 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't parse test email template")
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
+	rs := newFakeRegStore()
 	m := mailer{
 		log:           blog.GetAuditLogger(),
 		stats:         stats,
 		mailer:        &mc,
 		emailTemplate: tmpl,
 		dbMap:         dbMap,
+		rs:            rs,
 		nagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
 		limit:         100,
 	}
@@ -155,14 +175,14 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(jsonKeyB, &keyB)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-	regA := &core.Registration{
+	regA := core.Registration{
 		ID: 1,
 		Contact: []core.AcmeURL{
 			core.AcmeURL(*emailA),
 		},
 		Key: keyA,
 	}
-	regB := &core.Registration{
+	regB := core.Registration{
 		ID: 2,
 		Contact: []core.AcmeURL{
 			core.AcmeURL(*emailB),
@@ -222,10 +242,9 @@ func TestFindExpiringCertificates(t *testing.T) {
 		DER:            certDerC,
 	}
 	certStatusC := &core.CertificateStatus{Serial: "003"}
-	err = dbMap.Insert(regA)
-	test.AssertNotError(t, err, "Couldn't add regA")
-	err = dbMap.Insert(regB)
-	test.AssertNotError(t, err, "Couldn't add regB")
+	rs.RegById[regA.ID] = regA
+	rs.RegById[regB.ID] = regB
+
 	err = dbMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	err = dbMap.Insert(certB)

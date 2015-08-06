@@ -98,6 +98,14 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	return count > 0
 }
 
+type NoSuchRegistrationError struct {
+	Msg string
+}
+
+func (e NoSuchRegistrationError) Error() string {
+	return e.Msg
+}
+
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(id int64) (reg core.Registration, err error) {
 	regObj, err := ssa.dbMap.Get(core.Registration{}, id)
@@ -105,7 +113,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(id int64) (reg core.Registration
 		return
 	}
 	if regObj == nil {
-		err = fmt.Errorf("No registrations with ID %d", id)
+		err = NoSuchRegistrationError{fmt.Sprintf("No registrations with ID %d", id)}
 		return
 	}
 	regPtr, ok := regObj.(*core.Registration)

@@ -56,7 +56,7 @@ func loadConfig(c *cli.Context) (config cmd.Config, err error) {
 	return
 }
 
-func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.AuditLogger, *gorp.DbMap) {
+func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.AuditLogger, *gorp.DbMap, rpc.StorageAuthorityClient) {
 	c, err := loadConfig(context)
 	cmd.FailOnError(err, "Failed to load Boulder configuration")
 
@@ -79,7 +79,13 @@ func setupContext(context *cli.Context) (rpc.CertificateAuthorityClient, *blog.A
 	dbMap, err := sa.NewDbMap(c.Revoker.DBDriver, c.Revoker.DBConnect)
 	cmd.FailOnError(err, "Couldn't setup database connection")
 
-	return cac, auditlogger, dbMap
+	saRPC, err := rpc.NewAmqpRPCClient("CA->SA", c.AMQP.SA.Server, ch)
+	cmd.FailOnError(err, "Unable to create RPC client")
+
+	sac, err := rpc.NewStorageAuthorityClient(saRPC)
+	cmd.FailOnError(err, "Failed to create SA client")
+
+	return cac, auditlogger, dbMap, sac
 }
 
 func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
@@ -126,12 +132,7 @@ func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.Certificat
 	return
 }
 
-func revokeByReg(regID int, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
-	_, err = tx.Get(core.Registration{}, regID)
-	if err != nil {
-		return
-	}
-
+func revokeByReg(regID int64, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
 	var certs []core.Certificate
 	_, err = tx.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
@@ -178,7 +179,7 @@ func main() {
 				cmd.FailOnError(err, "Reason code argument must be a integer")
 				deny := c.GlobalBool("deny")
 
-				cac, auditlogger, dbMap := setupContext(c)
+				cac, auditlogger, dbMap, _ := setupContext(c)
 
 				tx, err := dbMap.Begin()
 				if err != nil {
@@ -201,13 +202,13 @@ func main() {
 			Usage: "Revoke all certificates associated with a registration ID",
 			Action: func(c *cli.Context) {
 				// 1: registration ID,  2: reasonCode (3: deny flag)
-				regID, err := strconv.Atoi(c.Args().First())
+				regID, err := strconv.ParseInt(c.Args().First(), 10, 64)
 				cmd.FailOnError(err, "Registration ID argument must be a integer")
 				reasonCode, err := strconv.Atoi(c.Args().Get(1))
 				cmd.FailOnError(err, "Reason code argument must be a integer")
 				deny := c.GlobalBool("deny")
 
-				cac, auditlogger, dbMap := setupContext(c)
+				cac, auditlogger, dbMap, sac := setupContext(c)
 				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 				defer auditlogger.AuditPanic()
 
@@ -216,6 +217,11 @@ func main() {
 					tx.Rollback()
 				}
 				cmd.FailOnError(err, "Couldn't begin transaction")
+
+				_, err = sac.GetRegistration(regID)
+				if err != nil {
+					cmd.FailOnError(err, "Couldn't fetch registration")
+				}
 
 				err = revokeByReg(regID, reasonCode, deny, cac, auditlogger, tx)
 				if err != nil {
