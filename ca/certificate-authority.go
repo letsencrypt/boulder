@@ -158,6 +158,10 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 
 	pa := policy.NewPolicyAuthorityImpl()
 
+	// TODO(rlb@ipv.sx)
+	// ca.SigningQueue chan something
+	// go func() { processSigningQueue() }()
+
 	ca = &CertificateAuthorityImpl{
 		Signer:     signer,
 		OCSPSigner: ocspSigner,
@@ -362,6 +366,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.Notice(message)
 	}
 
+	// TODO(rlb@ipv.sx)
+	// VVVVVVV move this to worker VVVVVVV
+
 	// Convert the CSR to PEM
 	csrPEM := string(pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE REQUEST",
@@ -450,6 +457,10 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.Audit(fmt.Sprintf("Failed to commit, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
 		return emptyCert, err
 	}
+
+	// TODO(rlb@ipv.sx)
+	// Spin OCSP signing off to a separate worker
+	// Main thread -> CA worker -> OCSP worker
 
 	// Attempt to generate the OCSP Response now. If this raises an error, it is
 	// logged but is not returned to the caller, as an error at this point does

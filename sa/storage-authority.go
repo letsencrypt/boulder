@@ -6,8 +6,6 @@
 package sa
 
 import (
-	"crypto/sha256"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,23 +27,19 @@ type SQLStorageAuthority struct {
 	log    *blog.AuditLogger
 }
 
-func digest256(data []byte) []byte {
-	d := sha256.New()
-	_, _ = d.Write(data) // Never returns an error
-	return d.Sum(nil)
-}
-
 // Utility models
-type pendingauthzModel struct {
+type pendingAuthzModel struct {
 	core.Authorization
-
 	LockCol int64
 }
 
 type authzModel struct {
 	core.Authorization
-
 	Sequence int64 `db:"sequence"`
+}
+
+type pendingCertModel struct {
+	core.Certificate
 }
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for Boulder.
@@ -82,22 +76,34 @@ func statusIsPending(status core.AcmeStatus) bool {
 	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
 }
 
-func existingPending(tx *gorp.Transaction, id string) bool {
+func existing(tx *gorp.Transaction, query string, id interface{}) bool {
 	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM pending_authz WHERE id = :id", map[string]interface{}{"id": id})
+	_ = tx.SelectOne(&count, query, map[string]interface{}{"id": id})
 	return count > 0
 }
 
-func existingFinal(tx *gorp.Transaction, id string) bool {
-	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
+func existingPendingAuthz(tx *gorp.Transaction, id string) bool {
+	return existing(tx, "SELECT count(*) FROM pending_authz WHERE id = :id", id)
+}
+
+func existingFinalAuthz(tx *gorp.Transaction, id string) bool {
+	return existing(tx, "SELECT count(*) FROM authz WHERE id = :id", id)
 }
 
 func existingRegistration(tx *gorp.Transaction, id int64) bool {
-	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
+	return existing(tx, "SELECT count(*) FROM registrations WHERE id = :id", id)
+}
+
+func existingPendingCert(tx *gorp.Transaction, id string) bool {
+	return existing(tx, "SELECT count(*) FROM pending_cert WHERE requestID = :id", id)
+}
+
+func existingFinalCert(tx *gorp.Transaction, id string) bool {
+	return existing(tx, "SELECT count(*) FROM certificates WHERE requestID = :id", id)
+}
+
+func existingFinalCertWithSerial(tx *gorp.Transaction, id string) bool {
+	return existing(tx, "SELECT count(*) FROM certificates WHERE serial = :id", id)
 }
 
 // GetRegistration obtains a Registration by ID
@@ -137,7 +143,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 		return
 	}
 
-	authObj, err := tx.Get(pendingauthzModel{}, id)
+	authObj, err := tx.Get(pendingAuthzModel{}, id)
 	if err != nil {
 		tx.Rollback()
 		return
@@ -159,7 +165,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 		err = tx.Commit()
 		return
 	}
-	authD := *authObj.(*pendingauthzModel)
+	authD := *authObj.(*pendingAuthzModel)
 	authz = authD.Authorization
 
 	err = tx.Commit()
@@ -177,6 +183,30 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
 		"ORDER BY expires DESC LIMIT 1",
 		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
+	return
+}
+
+// GetCertificateByID tries to look up a certificate based on a random ID
+// provided by the client.  It has the following output states:
+//
+// 1. No certificate record found with that identifier
+// 2. The identified certificate has been issued
+// 3. The identified certificate is still pending
+// 4. The identified certificate will never be issued
+//
+// The error return value will be non-nil only in the first case.  In the other
+// three cases, a certificate record will be returned, and the state of the certificate
+// will be indicated by the Certificate object returned.
+func (ssa *SQLStorageAuthority) GetCertificateByRequestID(requestID string) (cert core.Certificate, err error) {
+	// Request IDs are generated with core.NewToken, so they should look that way.
+	// As a side effect, this guards against rogue "%" characters.
+	if !core.LooksLikeAToken(requestID) {
+		err = errors.New("Invalid request ID " + requestID)
+		return
+	}
+
+	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE requestID LIKE :requestID",
+		map[string]interface{}{"requestID": requestID + "%"})
 	return
 }
 
@@ -372,12 +402,12 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 
 	// Check that it doesn't exist already
 	authz.ID = core.NewToken()
-	for existingPending(tx, authz.ID) || existingFinal(tx, authz.ID) {
+	for existingPendingAuthz(tx, authz.ID) || existingFinalAuthz(tx, authz.ID) {
 		authz.ID = core.NewToken()
 	}
 
 	// Insert a stub row in pending
-	pendingAuthz := pendingauthzModel{Authorization: authz}
+	pendingAuthz := pendingAuthzModel{Authorization: authz}
 	err = tx.Insert(&pendingAuthz)
 	if err != nil {
 		tx.Rollback()
@@ -402,24 +432,24 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 		return
 	}
 
-	if existingFinal(tx, authz.ID) {
+	if existingFinalAuthz(tx, authz.ID) {
 		err = errors.New("Cannot update a final authorization")
 		tx.Rollback()
 		return
 	}
 
-	if !existingPending(tx, authz.ID) {
+	if !existingPendingAuthz(tx, authz.ID) {
 		err = errors.New("Requested authorization not found " + authz.ID)
 		tx.Rollback()
 		return
 	}
 
-	authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
+	authObj, err := tx.Get(pendingAuthzModel{}, authz.ID)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
-	auth := authObj.(*pendingauthzModel)
+	auth := authObj.(*pendingAuthzModel)
 	auth.Authorization = authz
 	_, err = tx.Update(auth)
 	if err != nil {
@@ -439,7 +469,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	}
 
 	// Check that a pending authz exists
-	if !existingPending(tx, authz.ID) {
+	if !existingPendingAuthz(tx, authz.ID) {
 		err = errors.New("Cannot finalize a authorization that is not pending")
 		tx.Rollback()
 		return
@@ -462,14 +492,14 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		sequence += sequenceObj.Int64 + 1
 	}
 
-	auth := &authzModel{authz, sequence}
-	authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
+	authObj, err := tx.Get(pendingAuthzModel{}, authz.ID)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
-	oldAuth := authObj.(*pendingauthzModel)
+	oldAuth := authObj.(*pendingAuthzModel)
 
+	auth := &authzModel{authz, sequence}
 	err = tx.Insert(auth)
 	if err != nil {
 		tx.Rollback()
@@ -486,54 +516,101 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
-// AddCertificate stores an issued certificate.
-func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
-	var parsedCertificate *x509.Certificate
-	parsedCertificate, err = x509.ParseCertificate(certDER)
-	if err != nil {
-		return
-	}
-	digest = core.Fingerprint256(certDER)
-	serial := core.SerialToString(parsedCertificate.SerialNumber)
-
-	cert := &core.Certificate{
-		RegistrationID: regID,
-		Serial:         serial,
-		Digest:         digest,
-		DER:            certDER,
-		Issued:         time.Now(),
-		Expires:        parsedCertificate.NotAfter,
-	}
-	certStatus := &core.CertificateStatus{
-		SubscriberApproved: false,
-		Status:             core.OCSPStatus("good"),
-		OCSPLastUpdated:    time.Time{},
-		Serial:             serial,
-		RevokedDate:        time.Time{},
-		RevokedReason:      0,
-		LockCol:            0,
-	}
-
+// NewPendingCertificate creates a new certificate record with no contents,
+// and returns the resulting empty certificate object.  The incoming certificate
+// object should be empty except for a registration ID.  The returned certificate
+// will still be mostly empty, but the SA will assign it a request ID.
+func (ssa *SQLStorageAuthority) NewPendingCertificate(cert core.Certificate) (output core.Certificate, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
 	}
 
-	// TODO Verify that the serial number doesn't yet exist
-	err = tx.Insert(cert)
-	if err != nil {
-		tx.Rollback()
-		return
+	// Assign a new request ID that is unique in the database
+	cert.RequestID = core.NewToken()
+	for existingPendingCert(tx, cert.RequestID) || existingFinalCert(tx, cert.RequestID) {
+		cert.RequestID = core.NewToken()
 	}
 
-	err = tx.Insert(certStatus)
+	// Insert a stub row in pending
+	pendingCert := pendingCertModel{Certificate: cert}
+	err = tx.Insert(&pendingCert)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
 	err = tx.Commit()
+	output = pendingCert.Certificate
 	return
+}
+
+// FinalizeCertificate takes a pending certificate and "finalizes" it, storing
+// a record with a final state ("valid" or "invalid") in the database, and, if
+// "valid", provisioning certificate status information for it.
+//
+// The caller is responsible for populating all the fields in the certificate
+// object before sending it to the SA for storage.
+func (ssa *SQLStorageAuthority) FinalizeCertificate(cert core.Certificate) (err error) {
+	if cert.Status != core.StatusValid && cert.Status != core.StatusInvalid {
+		return fmt.Errorf("Cert must only be finalized to 'valid' or 'invalid' status")
+	}
+
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return err
+	}
+
+	// Check that a pending certificate exists
+	if !existingPendingCert(tx, cert.RequestID) {
+		err = fmt.Errorf("Cannot finalize a certificate that is not pending")
+		tx.Rollback()
+		return
+	}
+
+	// Check that no cert with this serial number exists
+	if existingFinalCertWithSerial(tx, cert.Serial) {
+		// XXX We should probably log this?
+		err = fmt.Errorf("Duplicate serial number detected! [%s]", cert.Serial)
+		tx.Rollback()
+		return
+	}
+
+	// Delete the pending certificate
+	_, err = tx.Delete(&pendingCertModel{cert})
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	// Insert the new certificate
+	err = tx.Insert(&cert)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	// If the certificate is good, add status information
+	if cert.Status == core.StatusValid {
+		certStatus := &core.CertificateStatus{
+			SubscriberApproved: false,
+			Status:             core.OCSPStatus("good"),
+			OCSPLastUpdated:    time.Time{},
+			Serial:             cert.Serial,
+			RevokedDate:        time.Time{},
+			RevokedReason:      0,
+			LockCol:            0,
+		}
+
+		err = tx.Insert(certStatus)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	err = tx.Commit()
+	return err
 }
 
 // AlreadyDeniedCSR queries to find if the name list has already been denied.

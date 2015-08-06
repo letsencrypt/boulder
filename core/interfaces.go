@@ -106,6 +106,7 @@ type StorageGetter interface {
 	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
 	GetCertificate(string) (Certificate, error)
 	GetCertificateByShortSerial(string) (Certificate, error)
+	GetCertificateByRequestID(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
 }
@@ -121,7 +122,8 @@ type StorageAdder interface {
 	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error
 	UpdateOCSP(serial string, ocspResponse []byte) error
 
-	AddCertificate([]byte, int64) (string, error)
+	NewPendingCertificate(Certificate) (Certificate, error)
+	FinalizeCertificate(Certificate) (string, error)
 }
 
 // StorageAuthority interface represents a simple key/value
