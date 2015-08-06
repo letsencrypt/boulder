@@ -14,7 +14,6 @@ import (
 	"html/template"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -98,16 +97,16 @@ func statusCodeFromError(err interface{}) int {
 }
 
 type requestEvent struct {
-	ID           string         `json:",omitempty"`
-	RealIP       string         `json:",omitempty"`
-	ForwardedFor string         `json:",omitempty"`
-	Endpoint     string         `json:",omitempty"`
-	Method       string         `json:",omitempty"`
-	RequestTime  time.Time      `json:",omitempty"`
-	ResponseTime time.Time      `json:",omitempty"`
-	Error        string         `json:",omitempty"`
-	Requester    int64          `json:",omitempty"`
-	Contacts     []core.AcmeURL `json:",omitempty"`
+	ID           string          `json:",omitempty"`
+	RealIP       string          `json:",omitempty"`
+	ForwardedFor string          `json:",omitempty"`
+	Endpoint     string          `json:",omitempty"`
+	Method       string          `json:",omitempty"`
+	RequestTime  time.Time       `json:",omitempty"`
+	ResponseTime time.Time       `json:",omitempty"`
+	Error        string          `json:",omitempty"`
+	Requester    int64           `json:",omitempty"`
+	Contacts     []*core.AcmeURL `json:",omitempty"`
 
 	Extra map[string]interface{} `json:",omitempty"`
 }
@@ -752,7 +751,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 	found := false
 	var challengeIndex int
 	for i, challenge := range authz.Challenges {
-		tempURL := url.URL(challenge.URI)
+		tempURL := challenge.URI
 		if tempURL.Path == request.URL.Path && tempURL.RawQuery == request.URL.RawQuery {
 			found = true
 			challengeIndex = i
@@ -779,8 +778,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		}
 
 		authzURL := wfe.AuthzBase + string(authz.ID)
-		challengeURL := url.URL(challenge.URI)
-		response.Header().Add("Location", challengeURL.String())
+		response.Header().Add("Location", challenge.URI.String())
 		response.Header().Set("Content-Type", "application/json")
 		response.Header().Add("Link", link(authzURL, "up"))
 		response.WriteHeader(http.StatusAccepted)
@@ -850,8 +848,7 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		}
 
 		authzURL := wfe.AuthzBase + string(authz.ID)
-		challengeURL := url.URL(challenge.URI)
-		response.Header().Add("Location", challengeURL.String())
+		response.Header().Add("Location", challenge.URI.String())
 		response.Header().Set("Content-Type", "application/json")
 		response.Header().Add("Link", link(authzURL, "up"))
 		response.WriteHeader(http.StatusAccepted)

@@ -12,7 +12,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
-	"net/url"
+	"io/ioutil"
+	"testing"
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -20,8 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
-	"io/ioutil"
-	"testing"
 )
 
 var log = mocks.UseMockLog()
@@ -72,10 +71,9 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
 	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
 
-	uu, err := url.Parse("test.com")
-	u := core.AcmeURL(*uu)
+	u, _ := core.ParseAcmeURL("test.com")
 
-	newReg := core.Registration{ID: reg.ID, Key: jwk, Contact: []core.AcmeURL{u}, Agreement: "yes"}
+	newReg := core.Registration{ID: reg.ID, Key: jwk, Contact: []*core.AcmeURL{u}, Agreement: "yes"}
 	err = sa.UpdateRegistration(newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
@@ -139,9 +137,8 @@ func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) 
 	test.Assert(t, authz.ID != "", "ID shouldn't be blank")
 
 	// prepare challenge for auth
-	uu, err := url.Parse(domainName)
+	u, err := core.ParseAcmeURL(domainName)
 	test.AssertNotError(t, err, "Couldn't parse domainName "+domainName)
-	u := core.AcmeURL(*uu)
 	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusValid, URI: u, Token: "THISWOULDNTBEAGOODTOKEN"}
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}

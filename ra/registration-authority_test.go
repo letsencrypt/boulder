@@ -213,28 +213,28 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 }
 
 func TestValidateContacts(t *testing.T) {
-	tel, _ := url.Parse("tel:")
-	ansible, _ := url.Parse("ansible:earth.sol.milkyway.laniakea/letsencrypt")
-	validEmail, _ := url.Parse("mailto:admin@email.com")
-	invalidEmail, _ := url.Parse("mailto:admin@example.com")
-	malformedEmail, _ := url.Parse("mailto:admin.com")
+	tel, _ := core.ParseAcmeURL("tel:")
+	ansible, _ := core.ParseAcmeURL("ansible:earth.sol.milkyway.laniakea/letsencrypt")
+	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
+	invalidEmail, _ := core.ParseAcmeURL("mailto:admin@example.com")
+	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	err := validateContacts([]core.AcmeURL{}, &mocks.MockDNS{})
+	err := validateContacts([]*core.AcmeURL{}, &mocks.MockDNS{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*tel)}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{tel}, &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*validEmail)}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*invalidEmail)}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.MockDNS{})
 	test.AssertError(t, err, "Invalid Email")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*malformedEmail)}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.MockDNS{})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*ansible)}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.MockDNS{})
 	test.AssertError(t, err, "Unknown scehme")
 }
 
@@ -256,9 +256,9 @@ func TestValidateEmail(t *testing.T) {
 
 func TestNewRegistration(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
-	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
+	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
+		Contact: []*core.AcmeURL{mailto},
 		Key:     AccountKeyB,
 	}
 
@@ -278,11 +278,11 @@ func TestNewRegistration(t *testing.T) {
 
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, _, ra := initAuthorities(t)
-	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
+	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
 		ID:        23,
 		Key:       AccountKeyC,
-		Contact:   []core.AcmeURL{core.AcmeURL(*mailto)},
+		Contact:   []*core.AcmeURL{mailto},
 		Agreement: "I agreed",
 	}
 
@@ -304,9 +304,9 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 
 func TestNewRegistrationBadKey(t *testing.T) {
 	_, _, _, ra := initAuthorities(t)
-	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
+	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
+		Contact: []*core.AcmeURL{mailto},
 		Key:     ShortKey,
 	}
 

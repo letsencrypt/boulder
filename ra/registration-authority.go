@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -49,7 +48,7 @@ func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
 
 var allButLastPathSegment = regexp.MustCompile("^.*/")
 
-func lastPathSegment(url core.AcmeURL) string {
+func lastPathSegment(url *core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
@@ -70,7 +69,7 @@ func validateEmail(address string, resolver core.DNSResolver) (err error) {
 	return
 }
 
-func validateContacts(contacts []core.AcmeURL, resolver core.DNSResolver) (err error) {
+func validateContacts(contacts []*core.AcmeURL, resolver core.DNSResolver) (err error) {
 	for _, contact := range contacts {
 		switch contact.Scheme {
 		case "tel":
@@ -181,8 +180,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Construct all the challenge URIs
 	for i := range challenges {
 		// Ignoring these errors because we construct the URLs to be correct
-		challengeURI, _ := url.Parse(ra.AuthzBase + authz.ID + "?challenge=" + strconv.Itoa(i))
-		challenges[i].URI = core.AcmeURL(*challengeURI)
+		challengeURI, _ := core.ParseAcmeURL(ra.AuthzBase + authz.ID + "?challenge=" + strconv.Itoa(i))
+		challenges[i].URI = challengeURI
 
 		if !challenges[i].IsSane(false) {
 			// InternalServerError because we generated these challenges, they should

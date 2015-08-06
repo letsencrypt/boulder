@@ -7,7 +7,6 @@ package core
 
 import (
 	"encoding/json"
-	"net/url"
 	"testing"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -23,16 +22,15 @@ func TestProblemDetails(t *testing.T) {
 }
 
 func TestRegistrationUpdate(t *testing.T) {
-	oldURL, _ := url.Parse("http://old.invalid")
-	newURL, _ := url.Parse("http://new.invalid")
-
+	oldURL, _ := ParseAcmeURL("http://old.invalid")
+	newURL, _ := ParseAcmeURL("http://new.invalid")
 	reg := Registration{
 		ID:        1,
-		Contact:   []AcmeURL{AcmeURL(*oldURL)},
+		Contact:   []*AcmeURL{oldURL},
 		Agreement: "",
 	}
 	update := Registration{
-		Contact:   []AcmeURL{AcmeURL(*newURL)},
+		Contact:   []*AcmeURL{newURL},
 		Agreement: "totally!",
 	}
 
