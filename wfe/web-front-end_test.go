@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/cmd"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
@@ -512,7 +513,11 @@ func TestIssueCertificate(t *testing.T) {
 	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl()
+	common := cmd.CommonConfig{
+		PolicyDBDriver:  "sqlite3",
+		PolicyDBConnect: ":memory:",
+	}
+	ra, _ := ra.NewRegistrationAuthorityImpl(common)
 	ra.SA = &MockSA{}
 	ra.CA = &MockCA{}
 	wfe.SA = &MockSA{}

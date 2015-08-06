@@ -109,8 +109,9 @@
     }
   },
 
-  "monolith": {
-    "debugAddr": "localhost:8008"
+  "pa": {
+    "dbDriver": "sqlite3",
+    "dbConnect": ":memory:"
   },
 
   "ra": {

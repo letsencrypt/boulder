@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"time"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
@@ -26,43 +27,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 )
-
-// Config defines the JSON configuration file schema
-type Config struct {
-	Profile      string
-	TestMode     bool
-	DBDriver     string
-	DBConnect    string
-	SerialPrefix int
-	Key          KeyConfig
-	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
-	// than the minTimeToExpiry field for the OCSP Updater.
-	LifespanOCSP string
-	// How long issued certificates are valid for, should match expiry field
-	// in cfssl config.
-	Expiry string
-	// The maximum number of subjectAltNames in a single certificate
-	MaxNames int
-	CFSSL    cfsslConfig.Config
-
-	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string
-}
-
-// KeyConfig should contain either a File path to a PEM-format private key,
-// or a PKCS11Config defining how to load a module for an HSM.
-type KeyConfig struct {
-	File   string
-	PKCS11 PKCS11Config
-}
-
-// PKCS11Config defines how to load a module for an HSM.
-type PKCS11Config struct {
-	Module string
-	Token  string
-	PIN    string
-	Label  string
-}
 
 // This map is used to detect algorithms in crypto/x509 that
 // are no longer considered sufficiently strong.
@@ -103,7 +67,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config Config, issuerCert string) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config cmd.CAConfig, commonConfig cmd.CommonConfig) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -131,7 +95,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	issuer, err := loadIssuer(issuerCert)
+	issuer, err := loadIssuer(commonConfig.IssuerCert)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +120,10 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	pa := policy.NewPolicyAuthorityImpl()
+	pa, err := policy.NewPolicyAuthorityImpl(commonConfig.PolicyDBDriver, commonConfig.PolicyDBConnect)
+	if err != nil {
+		return nil, err
+	}
 
 	ca = &CertificateAuthorityImpl{
 		Signer:     signer,
@@ -182,7 +149,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 	return ca, nil
 }
 
-func loadKey(keyConfig KeyConfig) (priv crypto.Signer, err error) {
+func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
 	if keyConfig.File != "" {
 		var keyBytes []byte
 		keyBytes, err = ioutil.ReadFile(keyConfig.File)

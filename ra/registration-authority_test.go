@@ -23,6 +23,7 @@ import (
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/ca"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
@@ -123,6 +124,11 @@ var (
 	AuthzFinal   = core.Authorization{}
 
 	log = mocks.UseMockLog()
+
+	common = cmd.CommonConfig{
+		PolicyDBDriver:  "sqlite3",
+		PolicyDBConnect: ":memory:",
+	}
 )
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
@@ -167,7 +173,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	}
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
 	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
-	pa := policy.NewPolicyAuthorityImpl()
+	pa, _ := policy.NewPolicyAuthorityImpl("sqlite3", ":memory:")
 	cadb, _ := mocks.NewMockCertificateAuthorityDatabase()
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
@@ -185,7 +191,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	// This registration implicitly gets ID = 1
 	Registration, _ = sa.NewRegistration(core.Registration{Key: AccountKeyA})
 
-	ra := NewRegistrationAuthorityImpl()
+	ra, err := NewRegistrationAuthorityImpl(common)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = &ca

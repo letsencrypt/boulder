@@ -20,21 +20,26 @@ type PolicyAuthorityImpl struct {
 	db  core.PolicyAuthorityDatabase
 
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
-	Blacklist        map[string]bool // A blacklist of denied names
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl() *PolicyAuthorityImpl {
+func NewPolicyAuthorityImpl(dbDriver, dbName string) (*PolicyAuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
 	pa := PolicyAuthorityImpl{log: logger}
 
+	// Setup policy db
+	padb, err := NewPolicyAuthorityDatabaseImpl(dbDriver, dbName)
+	if err != nil {
+		return nil, err
+	}
+	pa.db = padb
+
 	// TODO: Add configurability
 	pa.PublicSuffixList = PublicSuffixList
-	pa.Blacklist = blacklist
 
-	return &pa
+	return &pa, nil
 }
 
 const maxLabels = 10

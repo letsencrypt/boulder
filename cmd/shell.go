@@ -36,8 +36,8 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -76,7 +76,7 @@ type Config struct {
 		DebugAddr string
 	}
 
-	CA ca.Config
+	CA CAConfig
 
 	Monolith struct {
 		// DebugAddr is the address to run the /debug handlers on.
@@ -162,17 +162,58 @@ type Config struct {
 		DebugAddr string
 	}
 
-	Common struct {
-		BaseURL string
-		// Path to a PEM-encoded copy of the issuer certificate.
-		IssuerCert string
-		MaxKeySize int
-
-		DNSResolver string
-		DNSTimeout  string
-	}
+	Common CommonConfig
 
 	SubscriberAgreementURL string
+}
+
+type CAConfig struct {
+	Profile      string
+	TestMode     bool
+	DBDriver     string
+	DBConnect    string
+	SerialPrefix int
+	Key          KeyConfig
+	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
+	// than the minTimeToExpiry field for the OCSP Updater.
+	LifespanOCSP string
+	// How long issued certificates are valid for, should match expiry field
+	// in cfssl config.
+	Expiry string
+	// The maximum number of subjectAltNames in a single certificate
+	MaxNames int
+	CFSSL    cfsslConfig.Config
+
+	// DebugAddr is the address to run the /debug handlers on.
+	DebugAddr string
+}
+
+// KeyConfig should contain either a File path to a PEM-format private key,
+// or a PKCS11Config defining how to load a module for an HSM.
+type KeyConfig struct {
+	File   string
+	PKCS11 PKCS11Config
+}
+
+// PKCS11Config defines how to load a module for an HSM.
+type PKCS11Config struct {
+	Module string
+	Token  string
+	PIN    string
+	Label  string
+}
+
+type CommonConfig struct {
+	BaseURL string
+	// Path to a PEM-encoded copy of the issuer certificate.
+	IssuerCert string
+	MaxKeySize int
+
+	DNSResolver string
+	DNSTimeout  string
+
+	PolicyDBDriver  string
+	PolicyDBConnect string
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.

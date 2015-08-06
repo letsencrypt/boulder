@@ -90,7 +90,10 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zombo-.com",
 	}
 
-	pa := NewPolicyAuthorityImpl()
+	pa, _ := NewPolicyAuthorityImpl("sqlite3", ":memory:")
+	for _, b := range shouldBeBlacklisted {
+		pa.db.AddRule(b, blacklisted)
+	}
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
@@ -140,7 +143,7 @@ func TestWillingToIssue(t *testing.T) {
 }
 
 func TestChallengesFor(t *testing.T) {
-	pa := NewPolicyAuthorityImpl()
+	pa, _ := NewPolicyAuthorityImpl("sqlite3", ":memory:")
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 

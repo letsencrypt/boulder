@@ -35,7 +35,8 @@ func main() {
 
 		go cmd.DebugServer(c.RA.DebugAddr)
 
-		rai := ra.NewRegistrationAuthorityImpl()
+		rai, err := ra.NewRegistrationAuthorityImpl(c.Common)
+		cmd.FailOnError(err, "Couldn't create RA")
 		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)

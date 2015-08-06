@@ -18,6 +18,7 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/mocks"
 
 	"github.com/letsencrypt/boulder/core"
@@ -337,14 +338,19 @@ var log = mocks.UseMockLog()
 // CFSSL config
 const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"
-const caCertFile = "../test/test-ca.pem"
+
+var exCommon = cmd.CommonConfig{
+	IssuerCert:      "../test/test-ca.pem",
+	PolicyDBDriver:  "sqlite3",
+	PolicyDBConnect: ":memory:",
+}
 
 func TestMain(m *testing.M) {
 
 	os.Exit(m.Run())
 }
 
-func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthority core.StorageAuthority, caConfig Config) {
+func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthority core.StorageAuthority, caConfig cmd.CAConfig) {
 	// Create an SA
 	ssa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
@@ -354,10 +360,10 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 	cadb, _ = mocks.NewMockCertificateAuthorityDatabase()
 
 	// Create a CA
-	caConfig = Config{
+	caConfig = cmd.CAConfig{
 		Profile:      profileName,
 		SerialPrefix: 17,
-		Key: KeyConfig{
+		Key: cmd.KeyConfig{
 			File: caKeyFile,
 		},
 		TestMode:     true,
@@ -393,8 +399,8 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 				},
 			},
 			OCSP: &ocspConfig.Config{
-				CACertFile:        caCertFile,
-				ResponderCertFile: caCertFile,
+				CACertFile:        exCommon.IssuerCert,
+				ResponderCertFile: exCommon.IssuerCert,
 				KeyFile:           caKeyFile,
 			},
 		},
@@ -405,13 +411,13 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 func TestFailNoSerial(t *testing.T) {
 	cadb, _, caConfig := setup(t)
 	caConfig.SerialPrefix = 0
-	_, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	_, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
 func TestRevoke(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
 	test.AssertNotError(t, err, "Failed to create CA")
 	if err != nil {
 		return
@@ -443,7 +449,7 @@ func TestRevoke(t *testing.T) {
 
 func TestIssueCertificate(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -519,7 +525,7 @@ func TestIssueCertificate(t *testing.T) {
 
 func TestRejectNoName(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -535,7 +541,7 @@ func TestRejectNoName(t *testing.T) {
 
 func TestRejectTooManyNames(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 
@@ -548,7 +554,7 @@ func TestRejectTooManyNames(t *testing.T) {
 
 func TestDeduplication(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -577,7 +583,7 @@ func TestDeduplication(t *testing.T) {
 
 func TestRejectValidityTooLong(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -598,7 +604,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 
 func TestShortKey(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
 
@@ -611,7 +617,7 @@ func TestShortKey(t *testing.T) {
 
 func TestRejectBadAlgorithm(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
 
