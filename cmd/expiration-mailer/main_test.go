@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"net/url"
 	"testing"
 	"text/template"
 	"time"
@@ -55,6 +54,23 @@ func (m *mockMail) SendMail(to []string, msg string) (err error) {
 	return
 }
 
+type fakeRegStore struct {
+	RegById map[int64]core.Registration
+}
+
+func (f fakeRegStore) GetRegistration(id int64) (core.Registration, error) {
+	r, ok := f.RegById[id]
+	if !ok {
+		msg := fmt.Sprintf("no such registration %d", id)
+		return r, sa.NoSuchRegistrationError{Msg: msg}
+	}
+	return r, nil
+}
+
+func newFakeRegStore() fakeRegStore {
+	return fakeRegStore{RegById: make(map[int64]core.Registration)}
+}
+
 const testTmpl = `hi, cert for DNS names {{.DNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`
 
 var jsonKeyA = []byte(`{
@@ -75,10 +91,12 @@ func TestSendNags(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't parse test email template")
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
+	rs := newFakeRegStore()
 	m := mailer{
 		stats:         stats,
 		mailer:        &mc,
 		emailTemplate: tmpl,
+		rs:            rs,
 	}
 
 	cert := &x509.Certificate{
@@ -89,23 +107,23 @@ func TestSendNags(t *testing.T) {
 		DNSNames: []string{"example.com"},
 	}
 
-	email, _ := url.Parse("mailto:rolandshoemaker@gmail.com")
-	emailB, _ := url.Parse("mailto:test@gmail.com")
+	email, _ := core.ParseAcmeURL("mailto:rolandshoemaker@gmail.com")
+	emailB, _ := core.ParseAcmeURL("mailto:test@gmail.com")
 
-	err = m.sendNags(cert, []core.AcmeURL{core.AcmeURL(*email)})
+	err = m.sendNags(cert, []*core.AcmeURL{email})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
 
 	mc.Clear()
-	err = m.sendNags(cert, []core.AcmeURL{core.AcmeURL(*email), core.AcmeURL(*emailB)})
+	err = m.sendNags(cert, []*core.AcmeURL{email, emailB})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[1])
 
 	mc.Clear()
-	err = m.sendNags(cert, []core.AcmeURL{})
+	err = m.sendNags(cert, []*core.AcmeURL{})
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
 }
@@ -131,12 +149,14 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't parse test email template")
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
+	rs := newFakeRegStore()
 	m := mailer{
 		log:           blog.GetAuditLogger(),
 		stats:         stats,
 		mailer:        &mc,
 		emailTemplate: tmpl,
 		dbMap:         dbMap,
+		rs:            rs,
 		nagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
 		limit:         100,
 	}
@@ -147,25 +167,25 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching("Searching for certificates that expire between.*")), 3)
 
 	// Add some expiring certificates and registrations
-	emailA, _ := url.Parse("mailto:one@mail.com")
-	emailB, _ := url.Parse("mailto:twp@mail.com")
+	emailA, _ := core.ParseAcmeURL("mailto:one@mail.com")
+	emailB, _ := core.ParseAcmeURL("mailto:twp@mail.com")
 	var keyA jose.JsonWebKey
 	var keyB jose.JsonWebKey
 	err = json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(jsonKeyB, &keyB)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-	regA := &core.Registration{
+	regA := core.Registration{
 		ID: 1,
-		Contact: []core.AcmeURL{
-			core.AcmeURL(*emailA),
+		Contact: []*core.AcmeURL{
+			emailA,
 		},
 		Key: keyA,
 	}
-	regB := &core.Registration{
+	regB := core.Registration{
 		ID: 2,
-		Contact: []core.AcmeURL{
-			core.AcmeURL(*emailB),
+		Contact: []*core.AcmeURL{
+			emailB,
 		},
 		Key: keyB,
 	}
@@ -222,10 +242,9 @@ func TestFindExpiringCertificates(t *testing.T) {
 		DER:            certDerC,
 	}
 	certStatusC := &core.CertificateStatus{Serial: "003"}
-	err = dbMap.Insert(regA)
-	test.AssertNotError(t, err, "Couldn't add regA")
-	err = dbMap.Insert(regB)
-	test.AssertNotError(t, err, "Couldn't add regB")
+	rs.RegById[regA.ID] = regA
+	rs.RegById[regB.ID] = regB
+
 	err = dbMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	err = dbMap.Insert(certB)
