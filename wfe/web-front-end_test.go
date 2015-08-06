@@ -1297,3 +1297,14 @@ func TestLogCsrPem(t *testing.T) {
 	test.AssertEquals(t, matches[0].Priority, syslog.LOG_NOTICE)
 	test.AssertEquals(t, matches[0].Message, `[AUDIT] Certificate request JSON={"RemoteAddr":"12.34.98.76","CsrBase64":"MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca+fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB+6dp48xkcX7Z/KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD+eeu8+z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7/C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT/DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq/Bbe7TBGVYZabUEh+LOskYwhgcOuThVN7tHnH5rhN+gb7cEdysjTb1QL+vOUwYgV75CB6PE5JVYK+cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub+fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G/W+Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd+L3IcyvHVKxNhIJXZVH0AOqh/1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY=","Registration":{"id":789,"key":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"agreement":"http://example.invalid/terms"}}`)
 }
+
+func TestLengthRequired(t *testing.T) {
+	wfe := setupWFE(t)
+	_, _, _, err := wfe.verifyPOST(&http.Request{
+		Method: "POST",
+		URL:    mustParseURL("/"),
+	}, false, "resource")
+	test.Assert(t, err != nil, "No error returned for request body missing Content-Length.")
+	_, ok := err.(core.LengthRequiredError)
+	test.Assert(t, ok, "Error code for missing content-length wasn't 411.")
+}
