@@ -720,29 +720,14 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	}
 
 	// Make a URL for this certificate.
-	// We use only the sequential part of the serial number, because it should
-	// uniquely identify the certificate, and this makes it easy for anybody to
-	// enumerate and mirror our certificates.
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-	if err != nil {
-		logEvent.Error = err.Error()
-		wfe.sendError(response,
-			"Error creating new cert", err,
-			http.StatusBadRequest)
-		return
-	}
-	serial := parsedCertificate.SerialNumber
-	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, serial.Rsh(serial, 64))
+	// Right now, the result of NewCertificate will always be a pending certificate,
+	// so we make the URL from the request ID, which the SA randomly assigned.
+	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, cert.RequestID)
 
-	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
 	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
-	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
-	if _, err = response.Write(cert.DER); err != nil {
-		logEvent.Error = err.Error()
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
-	}
+
 	// incr cert stat
 	wfe.Stats.Inc("Certificates", 1, 1.0)
 }
@@ -1005,26 +990,34 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
 
+	// Certificate paths are of one of two forms:
+	// 1. CertPath + sixteen hex digits (for serial-based cert URLs)
+	// 2. CertPath + token (for request ID based cert URLs)
 	path := request.URL.Path
-	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
-	// digits.
 	if !strings.HasPrefix(path, CertPath) {
 		logEvent.Error = "Certificate not found"
 		wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
 		addNoCacheHeader(response)
 		return
 	}
-	serial := path[len(CertPath):]
-	if len(serial) != 16 || !allHex.Match([]byte(serial)) {
+
+	certID := path[len(CertPath):]
+	wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", certID))
+	logEvent.Extra["RequestedCertificateID"] = certID
+	var err error
+	var cert core.Certificate
+	switch {
+	case len(certID) != 16 || !allHex.MatchString(certID):
+		cert, err = wfe.SA.GetCertificateByShortSerial(certID)
+	case core.LooksLikeAToken(certID):
+		cert, err = wfe.SA.GetCertificateByRequestID(certID)
+	default:
 		logEvent.Error = "Certificate not found"
-		wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
+		wfe.sendError(response, logEvent.Error, certID, http.StatusNotFound)
 		addNoCacheHeader(response)
 		return
 	}
-	wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
-	logEvent.Extra["RequestedSerial"] = serial
 
-	cert, err := wfe.SA.GetCertificateByShortSerial(serial)
 	if err != nil {
 		logEvent.Error = err.Error()
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
@@ -1036,17 +1029,36 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		return
 	}
 
-	addCacheHeader(response, wfe.CertCacheDuration.Seconds())
-
-	// TODO Content negotiation
-	response.Header().Set("Content-Type", "application/pkix-cert")
-	response.Header().Add("Link", link(IssuerPath, "up"))
-	response.WriteHeader(http.StatusOK)
-	if _, err = response.Write(cert.DER); err != nil {
-		logEvent.Error = err.Error()
-		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	// If the signing request is still pending, just return a 202 Accepted
+	if cert.Status == core.StatusPending {
+		response.WriteHeader(http.StatusAccepted)
 	}
-	return
+	switch cert.Status {
+	case core.StatusPending:
+		// Return a polite 202
+		response.Header().Add("Link", link(IssuerPath, "up"))
+		response.WriteHeader(http.StatusAccepted)
+	case core.StatusInvalid:
+		// Return 410 Gone
+		addNoCacheHeader(response)
+		wfe.sendError(response, "Certificate could not be issued", nil, http.StatusGone)
+	case core.StatusValid, core.StatusRevoked:
+		// Actually return the cert
+		// TODO Content negotiation
+		addCacheHeader(response, wfe.CertCacheDuration.Seconds())
+		response.Header().Set("Content-Type", "application/pkix-cert")
+		response.Header().Add("Link", link(IssuerPath, "up"))
+		response.WriteHeader(http.StatusOK)
+		if _, err = response.Write(cert.DER); err != nil {
+			logEvent.Error = err.Error()
+			wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+		}
+	default:
+		// If we get here, it's a server error; the certificate should
+		// have one of the above status values
+		addNoCacheHeader(response)
+		wfe.sendError(response, "Internal error in certificate resource", nil, http.StatusInternalServerError)
+	}
 }
 
 // Terms is used by the client to obtain the current Terms of Service /
