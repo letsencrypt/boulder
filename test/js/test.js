@@ -526,14 +526,13 @@ function ensureValidation(err, resp, body) {
   }
 }
 
-function getCertificate() {
+function requesttCertificate() {
   cli.spinner("Requesting certificate");
   var csr = crypto.generateCSR(state.certPrivateKey, state.validatedDomains);
   post(state.newCertificateURL, {
     resource: "new-cert",
-    csr: csr,
-    authorizations: state.validAuthorizationURLs
-  }, downloadCertificate);
+    csr: csr
+  }, getCertificateURL);
 }
 
 function downloadCertificate(err, resp, body) {
@@ -546,35 +545,34 @@ function downloadCertificate(err, resp, body) {
     process.exit(1);
   }
 
-  cli.spinner("Requesting certificate ... done", true);
-  console.log();
-
-  state.certificate = body;
-  console.log()
-  var certURL = resp.headers['location'];
+  state.certificateURL = resp.headers['location'];
   request.get({
-    url: certURL,
+    url: state.certificateURL,
     encoding: null // Return body as buffer.
-  }, function(err, res, body) {
-    if (err) {
-      console.log("Error: Failed to fetch certificate from", certURL, ":", err);
-      process.exit(1);
-    }
-    if (res.statusCode !== 200) {
-      console.log("Error: Failed to fetch certificate from", certURL, ":", res.statusCode, res.body.toString());
-  fs.writeFileSync(state.certFile, state.certificate);
-      process.exit(1);
-    }
-    if (body.toString() !== state.certificate.toString()) {
-      console.log("Error: cert at", certURL, "did not match returned cert.");
-    } else {
-      console.log("Successfully verified cert at", certURL);
-      saveFiles()
-    }
-  });
+  }, ensureCertificate);
 }
 
-function saveFiles(answers) {
+function ensureCertificate(err, resp, body) {
+  if (err) {
+    console.log("Error: Failed to fetch certificate from", certURL, ":", err);
+    process.exit(1);
+  } else if (resp.statusCode === 200) {
+    cli.spinner("Requesting certificate ... done", true);
+    console.log();
+
+    console.log()
+    state.certificate = body
+  } else if (resp.statusCode === 202) {
+    setTimeout(function() {
+      request.get(state.certificateURL, {}, ensureCertificate);
+    }, state.retryDelay);
+  } else {
+    console.log("Error: Failed to fetch certificate from", certURL, ":", res.statusCode, res.body.toString());
+    process.exit(1);
+  }
+}
+
+function saveFiles() {
   fs.writeFileSync(state.certFile, state.certificate);
 
   console.log("Done!")
