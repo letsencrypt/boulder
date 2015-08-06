@@ -87,7 +87,7 @@ type ValidationAuthority interface {
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest, int64, time.Time) (Certificate, error)
+	IssueCertificate(x509.CertificateRequest, int64, string, time.Time) (Certificate, error)
 	RevokeCertificate(string, int) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }

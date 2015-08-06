@@ -75,10 +75,12 @@ const signingQueueSize = 100
 // signingRequest is used to carry the required information from
 // the main issuance request handling back to the signer.
 type signingRequest struct {
-	cert       core.Certificate
-	csr        string
-	commonName string
-	hostNames  []string
+	logEventID     string
+	cert           core.Certificate
+	csr            x509.CertificateRequest
+	commonName     string
+	hostNames      []string
+	earliestExpiry time.Time
 }
 
 // This map is used to detect algorithms in crypto/x509 that
@@ -307,9 +309,24 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
 // enforcing all policies.
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64, logEventID string, earliestExpiry time.Time) (core.Certificate, error) {
 	var err error
 	var emptyCert core.Certificate
+
+	logEventResult := "error"
+	logEvent := blog.CertificateRequestEvent{
+		ID:            logEventID + ".issueCertificate",
+		Requester:     regID,
+		RequestMethod: "online",
+		RequestTime:   time.Now(),
+	}
+
+	// No matter what, log the request
+	defer func() {
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
+	}()
+
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
 		err = fmt.Errorf("Invalid public key in CSR.")
@@ -389,12 +406,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.Notice(message)
 	}
 
-	// Convert the CSR to PEM
-	csrPEM := string(pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE REQUEST",
-		Bytes: csr.Raw,
-	}))
-
 	// At this point, we are willing to issue, so create a pending
 	// certificate request.
 	pendingCert := core.Certificate{RegistrationID: regID}
@@ -406,14 +417,17 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	// Dispatch signing request, or fail if the queue is full
 	request := signingRequest{
-		cert:       pendingCert,
-		csr:        csrPEM,
-		commonName: commonName,
-		hostNames:  hostNames,
+		logEventID:     logEventID,
+		cert:           pendingCert,
+		csr:            csr,
+		commonName:     commonName,
+		hostNames:      hostNames,
+		earliestExpiry: earliestExpiry,
 	}
 	select {
 	case ca.signingQueue <- request:
 		// No problem; request is now in the queue
+		logEventResult = "successful"
 		return pendingCert, nil
 	default:
 		err = core.ServiceUnavailableError("CA signing queue is full.")
@@ -423,6 +437,19 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 }
 
 func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
+	logEventResult := "error"
+	logEvent := blog.CertificateRequestEvent{
+		ID:            sr.logEventID + ".sign",
+		RequestMethod: "online",
+		RequestTime:   time.Now(),
+	}
+
+	// No matter what, log the request
+	defer func() {
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
+	}()
+
 	// Get the next serial number
 	tx, err := ca.DB.Begin()
 	if err != nil {
@@ -441,8 +468,12 @@ func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 	serialHex := fmt.Sprintf("%02X%014X", ca.Prefix, serialDec)
 
 	// Send the cert off for signing
+	csrPEM := string(pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE REQUEST",
+		Bytes: sr.csr.Raw,
+	}))
 	req := signer.SignRequest{
-		Request: sr.csr,
+		Request: csrPEM,
 		Profile: ca.profile,
 		Hosts:   sr.hostNames,
 		Subject: &signer.Subject{
@@ -501,6 +532,22 @@ func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 	sr.cert.Issued = time.Now()
 	sr.cert.Expires = certObj.NotAfter
 
+	// Fill in the remaining fields in the log event
+	logEvent.SerialNumber = sr.cert.Serial
+	logEvent.CommonName = certObj.Subject.CommonName
+	logEvent.NotBefore = certObj.NotBefore
+	logEvent.NotAfter = certObj.NotAfter
+	logEvent.ResponseTime = sr.cert.Issued
+
+	// Verify that this certificate object matches the CSR
+	err = sr.cert.MatchesCSR(&sr.csr, sr.earliestExpiry)
+	if err != nil {
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.log.Audit(fmt.Sprintf("Signer produced cert not matching CSR, rolling back: serial=[%s] err=[%v]", serialHex, err))
+		ca.SA.FinalizeCertificate(sr.cert)
+		tx.Rollback()
+	}
+
 	// This is one last check for uncaught errors
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -508,6 +555,8 @@ func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 		tx.Rollback()
 		return
 	}
+
+	logEventResult = "successful"
 
 	// Store the cert with the certificate authority
 	err = ca.SA.FinalizeCertificate(sr.cert)

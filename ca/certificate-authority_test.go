@@ -437,7 +437,7 @@ func TestRevoke(t *testing.T) {
 
 	csrDER, _ := hex.DecodeString(CNandSANCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	pendingCert, err := ca.IssueCertificate(*csr, 1, FarFuture)
+	pendingCert, err := ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.AssertNotError(t, err, "CA refused to issue")
 	if err != nil {
 		return
@@ -455,6 +455,8 @@ func TestRevoke(t *testing.T) {
 
 	status, err := storageAuthority.GetCertificateStatus(serialString)
 	test.AssertNotError(t, err, "Failed to get cert status")
+
+	fmt.Printf("   !!!   status: %+v\n", status)
 
 	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
 	secondAgo := time.Now().Add(-time.Second)
@@ -485,7 +487,7 @@ func TestIssueCertificate(t *testing.T) {
 		csr, _ := x509.ParseCertificateRequest(csrDER)
 
 		// Dispatch signing
-		pendingCert, err := ca.IssueCertificate(*csr, 1, FarFuture)
+		pendingCert, err := ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 		if err != nil {
 			continue
@@ -549,7 +551,7 @@ func TestRejectNoName(t *testing.T) {
 	// Test that the CA rejects CSRs with no names
 	csrDER, _ := hex.DecodeString(NoNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	if err == nil {
 		t.Errorf("CA improperly agreed to create a certificate with no name")
 	}
@@ -564,7 +566,7 @@ func TestRejectTooManyNames(t *testing.T) {
 	// Test that the CA rejects a CSR with too many names
 	csrDER, _ := hex.DecodeString(TooManyNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.Assert(t, err != nil, "Issued certificate with too many names")
 }
 
@@ -578,7 +580,7 @@ func TestDeduplication(t *testing.T) {
 	// Test that the CA collapses duplicate names
 	csrDER, _ := hex.DecodeString(DupeNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	cert, err := ca.IssueCertificate(*csr, 1, FarFuture)
+	cert, err := ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with duplicate names")
 	if err != nil {
 		return
@@ -610,14 +612,14 @@ func TestRejectValidityTooLong(t *testing.T) {
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ := hex.DecodeString(NoCNCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarPast)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarPast)
 	test.Assert(t, err == nil, "Can issue a certificate that expires after the underlying authorization.")
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ = hex.DecodeString(NoCNCSRhex)
 	csr, _ = x509.ParseCertificateRequest(csrDER)
 	ca.NotAfter = time.Now()
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.AssertEquals(t, err.Error(), "Cannot issue a certificate that expires after the intermediate certificate.")
 }
 
@@ -630,7 +632,7 @@ func TestShortKey(t *testing.T) {
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ := hex.DecodeString(ShortKeyCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.Assert(t, err != nil, "Issued a certificate with too short a key.")
 }
 
@@ -643,6 +645,6 @@ func TestRejectBadAlgorithm(t *testing.T) {
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ := hex.DecodeString(BadAlgorithmCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.Assert(t, err != nil, "Issued a certificate based on a CSR with a weak algorithm.")
 }

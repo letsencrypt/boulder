@@ -328,6 +328,8 @@ func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
 // with a timestamp and a reason.
 func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
+	now := time.Now()
+
 	if _, err = ssa.GetCertificate(serial); err != nil {
 		return fmt.Errorf(
 			"Unable to mark certificate %s revoked: cert not found.", serial)
@@ -343,7 +345,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 		return
 	}
 
-	ocspResp := &core.OCSPResponse{Serial: serial, CreatedAt: time.Now(), Response: ocspResponse}
+	ocspResp := &core.OCSPResponse{Serial: serial, CreatedAt: now, Response: ocspResponse}
 	err = tx.Insert(ocspResp)
 	if err != nil {
 		tx.Rollback()
@@ -360,9 +362,11 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 		tx.Rollback()
 		return
 	}
+
 	status := statusObj.(*core.CertificateStatus)
 	status.Status = core.OCSPStatusRevoked
-	status.RevokedDate = time.Now()
+	status.OCSPLastUpdated = now
+	status.RevokedDate = now
 	status.RevokedReason = reasonCode
 
 	_, err = tx.Update(status)
