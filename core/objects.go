@@ -204,7 +204,7 @@ type Registration struct {
 	Key jose.JsonWebKey `json:"key" db:"jwk"`
 
 	// Contact URIs
-	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
+	Contact []*AcmeURL `json:"contact,omitempty" db:"contact"`
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty" db:"agreement"`
@@ -244,7 +244,7 @@ type Challenge struct {
 	Validated *time.Time `json:"validated,omitempty"`
 
 	// A URI to which a response can be POSTed
-	URI AcmeURL `json:"uri"`
+	URI *AcmeURL `json:"uri"`
 
 	// Used by simpleHttp, dvsni, and dns challenges
 	Token string `json:"token,omitempty"`

@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"net/url"
 	"testing"
 	"text/template"
 	"time"
@@ -89,23 +88,23 @@ func TestSendNags(t *testing.T) {
 		DNSNames: []string{"example.com"},
 	}
 
-	email, _ := url.Parse("mailto:rolandshoemaker@gmail.com")
-	emailB, _ := url.Parse("mailto:test@gmail.com")
+	email, _ := core.ParseAcmeURL("mailto:rolandshoemaker@gmail.com")
+	emailB, _ := core.ParseAcmeURL("mailto:test@gmail.com")
 
-	err = m.sendNags(cert, []core.AcmeURL{core.AcmeURL(*email)})
+	err = m.sendNags(cert, []*core.AcmeURL{email})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
 
 	mc.Clear()
-	err = m.sendNags(cert, []core.AcmeURL{core.AcmeURL(*email), core.AcmeURL(*emailB)})
+	err = m.sendNags(cert, []*core.AcmeURL{email, emailB})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[1])
 
 	mc.Clear()
-	err = m.sendNags(cert, []core.AcmeURL{})
+	err = m.sendNags(cert, []*core.AcmeURL{})
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
 }
@@ -147,8 +146,8 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching("Searching for certificates that expire between.*")), 3)
 
 	// Add some expiring certificates and registrations
-	emailA, _ := url.Parse("mailto:one@mail.com")
-	emailB, _ := url.Parse("mailto:twp@mail.com")
+	emailA, _ := core.ParseAcmeURL("mailto:one@mail.com")
+	emailB, _ := core.ParseAcmeURL("mailto:twp@mail.com")
 	var keyA jose.JsonWebKey
 	var keyB jose.JsonWebKey
 	err = json.Unmarshal(jsonKeyA, &keyA)
@@ -157,15 +156,15 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	regA := &core.Registration{
 		ID: 1,
-		Contact: []core.AcmeURL{
-			core.AcmeURL(*emailA),
+		Contact: []*core.AcmeURL{
+			emailA,
 		},
 		Key: keyA,
 	}
 	regB := &core.Registration{
 		ID: 2,
-		Contact: []core.AcmeURL{
-			core.AcmeURL(*emailB),
+		Contact: []*core.AcmeURL{
+			emailB,
 		},
 		Key: keyB,
 	}
