@@ -26,53 +26,60 @@ var dialectMap = map[string]interface{}{
 	"postgres": gorp.PostgresDialect{},
 }
 
+// Makes sure that the parseTime=true parm is present in the DSN
+func fixMysqlDSN(dsn string) (string, error) {
+	// DSN format: [user@][host]/dbname?[?param1=value1&paramN=valueN]
+	var i int
+	var query string
+	// Find the last '/', which separates the dbname
+	for i = len(dsn) - 1; i >= 0; i-- {
+		if dsn[i] == '/' {
+			// Find the next '?', which separates the query
+			for i += 1; i < len(dsn); i++ {
+				if dsn[i] == '?' {
+					query = dsn[i+1:]
+					break
+				}
+			}
+			break
+		}
+	}
+	if i > 0 {
+		// Parse the query and correct value for parseTime, if necessary
+		dsnParams, err := url.ParseQuery(query)
+		if err != nil {
+			return "", err
+		}
+		if k := dsnParams.Get("parseTime"); k != "true" {
+			dsnParams.Set("parseTime", "true")
+			return dsn[:i] + "?" + dsnParams.Encode(), nil
+		}
+		return dsn, nil
+	}
+	return "", fmt.Errorf("malformed MySQL DSN: %s", dsn)
+}
+
 // NewDbMap creates the root gorp mapping object. Create one of these for each
 // database schema you wish to map. Each DbMap contains a list of mapped tables.
 // It automatically maps the tables for the primary parts of Boulder around the
 // Storage Authority. This may require some further work when we use a disjoint
 // schema, like that for `certificate-authority-data.go`.
-func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
+func NewDbMap(driver string, dbConnect string) (dbmap *gorp.DbMap, err error) {
 	logger := blog.GetAuditLogger()
 
 	if driver == "mysql" {
-		// Check that the parseTime=true parm is present in the DSN
-		// DSN format: [user@][host]/dbname?[?param1=value1&paramN=valueN]
-		var i int
-		var query string
-		// Find the last '/', which separates the dbname
-		for i = len(dbConnect) - 1; i >= 0; i-- {
-			if dbConnect[i] == '/' {
-				// Find the next '?', which separates the query
-				for i += 1; i < len(dbConnect); i++ {
-					if dbConnect[i] == '?' {
-						query = dbConnect[i+1:]
-						break
-					}
-				}
-				break
-			}
-		}
-		if i > 0 {
-			// Parse the query and correct value for parseTime, if necessary
-			dsnParams, err := url.ParseQuery(query)
-			if err != nil {
-				return nil, err
-			}
-			if k := dsnParams.Get("parseTime"); k != "true" {
-				dsnParams.Set("parseTime", "true")
-				dbConnect = dbConnect[:i] + "?" + dsnParams.Encode()
-			}
-		} else {
-			return nil, fmt.Errorf("malformed MySQL DSN: %s", dbConnect)
+		dbConnect, err = fixMysqlDSN(dbConnect)
+		if err != nil {
+			return
 		}
 	}
 
 	db, err := sql.Open(driver, dbConnect)
 	if err != nil {
-		return nil, err
+		return
 	}
 	if err = db.Ping(); err != nil {
-		return nil, err
+		return
 	}
 
 	logger.Debug(fmt.Sprintf("Connecting to database %s %s", driver, dbConnect))
@@ -80,16 +87,16 @@ func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 	dialect, ok := dialectMap[driver].(gorp.Dialect)
 	if !ok {
 		err = fmt.Errorf("Couldn't find dialect for %s", driver)
-		return nil, err
+		return
 	}
 
 	logger.Info(fmt.Sprintf("Connected to database %s %s", driver, dbConnect))
 
-	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
+	dbmap = &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 	initTables(dbmap)
 
-	return dbmap, err
+	return
 }
 
 // SetSQLDebug enables/disables GORP SQL-level Debugging
