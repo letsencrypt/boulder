@@ -62,7 +62,8 @@ type fakeRegStore struct {
 func (f fakeRegStore) GetRegistration(id int64) (core.Registration, error) {
 	r, ok := f.RegById[id]
 	if !ok {
-		return r, sa.NoSuchRegistrationError{fmt.Sprintf("no such registration %d", id)}
+		msg := fmt.Sprintf("no such registration %d", id)
+		return r, sa.NoSuchRegistrationError{Msg: msg}
 	}
 	return r, nil
 }
