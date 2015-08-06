@@ -36,11 +36,18 @@ func initSA(t *testing.T) *SQLStorageAuthority {
 	return sa
 }
 
-var theKey = `{
+var (
+	theKey = `{
     "kty": "RSA",
     "n": "n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw",
     "e": "AQAB"
 }`
+	anotherKey = `{
+	"kty":"RSA",
+	"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw",
+	"e":"AQAB"
+}`
+)
 
 func TestAddRegistration(t *testing.T) {
 	sa := initSA(t)
@@ -52,11 +59,20 @@ func TestAddRegistration(t *testing.T) {
 		return
 	}
 
+	contact, err := core.ParseAcmeURL("mailto:foo@example.com")
+	if err != nil {
+		t.Fatalf("unable to parse contact link: %s", err)
+	}
+	contacts := []*core.AcmeURL{contact}
 	reg, err := sa.NewRegistration(core.Registration{
-		Key: jwk,
+		Key:     jwk,
+		Contact: contacts,
 	})
-	test.AssertNotError(t, err, "Couldn't create new registration")
+	if err != nil {
+		t.Fatalf("Couldn't create new registration: %s", err)
+	}
 	test.Assert(t, reg.ID != 0, "ID shouldn't be 0")
+	test.AssertDeepEquals(t, reg.Contact, contacts)
 
 	_, err = sa.GetRegistration(0)
 	test.AssertError(t, err, "Registration object for ID 0 was returned")
@@ -76,16 +92,39 @@ func TestAddRegistration(t *testing.T) {
 	newReg := core.Registration{ID: reg.ID, Key: jwk, Contact: []*core.AcmeURL{u}, Agreement: "yes"}
 	err = sa.UpdateRegistration(newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
-
 	dbReg, err = sa.GetRegistrationByKey(jwk)
 	test.AssertNotError(t, err, "Couldn't get registration by key")
 
 	test.AssertEquals(t, dbReg.ID, newReg.ID)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
-	jwk.KeyID = "bad"
-	_, err = sa.GetRegistrationByKey(jwk)
+	var anotherJWK jose.JsonWebKey
+	err = json.Unmarshal([]byte(anotherKey), &anotherJWK)
+	test.AssertNotError(t, err, "couldn't unmarshal anotherJWK")
+	_, err = sa.GetRegistrationByKey(anotherJWK)
 	test.AssertError(t, err, "Registration object for invalid key was returned")
+}
+
+func TestNoSuchRegistrationErrors(t *testing.T) {
+	sa := initSA(t)
+
+	_, err := sa.GetRegistration(100)
+	if _, ok := err.(NoSuchRegistrationError); !ok {
+		t.Errorf("GetRegistration: expected NoSuchRegistrationError, got %T type error (%s)", err, err)
+	}
+
+	var jwk jose.JsonWebKey
+	err = json.Unmarshal([]byte(theKey), &jwk)
+	test.AssertNotError(t, err, "Unmarshal")
+	_, err = sa.GetRegistrationByKey(jwk)
+	if _, ok := err.(NoSuchRegistrationError); !ok {
+		t.Errorf("GetRegistrationByKey: expected a NoSuchRegistrationError, got %T type error (%s)", err, err)
+	}
+
+	err = sa.UpdateRegistration(core.Registration{ID: 100, Key: jwk})
+	if _, ok := err.(NoSuchRegistrationError); !ok {
+		t.Errorf("UpdateRegistration: expected a NoSuchRegistrationError, got %T type error (%v)", err, err)
+	}
 }
 
 func TestAddAuthorization(t *testing.T) {
