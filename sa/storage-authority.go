@@ -6,6 +6,7 @@
 package sa
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -186,8 +187,8 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	return
 }
 
-// GetCertificateByID tries to look up a certificate based on a random ID
-// provided by the client.  It has the following output states:
+// GetCertificateByRequestID tries to look up a certificate based on
+// a random ID provided by the client.  It has the following output states:
 //
 // 1. No certificate record found with that identifier
 // 2. The identified certificate has been issued
@@ -202,6 +203,12 @@ func (ssa *SQLStorageAuthority) GetCertificateByRequestID(requestID string) (cer
 	// As a side effect, this guards against rogue "%" characters.
 	if !core.LooksLikeAToken(requestID) {
 		err = errors.New("Invalid request ID " + requestID)
+		return
+	}
+
+	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM pending_cert WHERE requestID LIKE :requestID",
+		map[string]interface{}{"requestID": requestID + "%"})
+	if err != sql.ErrNoRows {
 		return
 	}
 
@@ -527,6 +534,7 @@ func (ssa *SQLStorageAuthority) NewPendingCertificate(cert core.Certificate) (ou
 	}
 
 	// Assign a new request ID that is unique in the database
+	cert.Status = core.StatusPending
 	cert.RequestID = core.NewToken()
 	for existingPendingCert(tx, cert.RequestID) || existingFinalCert(tx, cert.RequestID) {
 		cert.RequestID = core.NewToken()
