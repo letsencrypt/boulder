@@ -17,6 +17,7 @@ import (
 // PolicyAuthorityImpl enforces CA policy decisions.
 type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
+	db  core.PolicyAuthorityDatabase
 
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
 	Blacklist        map[string]bool // A blacklist of denied names
@@ -151,8 +152,8 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 	}
 
 	// Require no match against blacklist
-	if suffixMatch(labels, pa.Blacklist, false) {
-		return BlacklistedError{}
+	if err := pa.db.CheckRules(domain); err != nil {
+		return err
 	}
 
 	return nil
