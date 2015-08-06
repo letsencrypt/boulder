@@ -24,11 +24,15 @@ type domainRule struct {
 	Type string `db:"type"`
 }
 
+// PolicyAuthorityDatabaseImpl enforces policy decisions based on various rule
+// lists
 type PolicyAuthorityDatabaseImpl struct {
 	log   *blog.AuditLogger
 	dbMap *gorp.DbMap
 }
 
+// NewPolicyAuthorityDatabaseImpl constructs a Policy Authority Database (and
+// creates tables if they are non-existent)
 func NewPolicyAuthorityDatabaseImpl(driver, name string) (padb core.PolicyAuthorityDatabase, err error) {
 	logger := blog.GetAuditLogger()
 	dbMap, err := sa.NewDbMap(driver, name)
@@ -51,6 +55,7 @@ func NewPolicyAuthorityDatabaseImpl(driver, name string) (padb core.PolicyAuthor
 	return padb, nil
 }
 
+// AddRule will add a whitelist or blacklist rule to the database
 func (padb *PolicyAuthorityDatabaseImpl) AddRule(rule string, string string) error {
 	tx, err := padb.dbMap.Begin()
 	if err != nil {
@@ -78,27 +83,16 @@ func (padb *PolicyAuthorityDatabaseImpl) AddRule(rule string, string string) err
 	return err
 }
 
+// CheckRules will query the database for white/blacklist rules that match host,
+// if both whitelist and blacklist rules are found the whitelist will always win
 func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string) error {
-	// Wrap in transaction so the whitelist doesn't change under us
-	tx, err := padb.dbMap.Begin()
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-
 	var rules []domainRule
-	_, err = tx.Select(
+	_, err := padb.dbMap.Select(
 		&rules,
 		`SELECT type,rule FROM ruleList WHERE :host LIKE rule`,
 		map[string]interface{}{"host": host},
 	)
 	if err != nil {
-		return err
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		tx.Rollback()
 		return err
 	}
 
