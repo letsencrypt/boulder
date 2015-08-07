@@ -685,9 +685,9 @@ func TestIssueCertificate(t *testing.T) {
 	assertCsrLogged(t, mockLog)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
 	location := responseWriter.Header().Get("Location")
-	prefix := "/acme/cert/"
+	prefix := "/acme/cert/id/"
 	test.Assert(t, strings.HasPrefix(location, prefix), "Location URL in new-certificate response lacks prefix")
-	test.Assert(t, core.LooksLikeAToken(location[len(prefix):]), "No tokenin new-cert Location URL")
+	test.Assert(t, core.LooksLikeAToken(location[len(prefix):]), "No token in new-cert Location URL")
 	test.AssertEquals(t, responseWriter.Header().Get("Link"), `</acme/issuer-cert>;rel="up"`)
 	reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
 	test.AssertEquals(t, len(reqlogs), 1)
