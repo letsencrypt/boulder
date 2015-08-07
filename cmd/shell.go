@@ -54,13 +54,14 @@ type Config struct {
 
 	// General
 	AMQP struct {
-		Server string
-		RA     Queue
-		VA     Queue
-		SA     Queue
-		CA     Queue
-		OCSP   Queue
-		TLS    *TLSConfig
+		Server   string
+		Insecure bool
+		RA       Queue
+		VA       Queue
+		SA       Queue
+		CA       Queue
+		OCSP     Queue
+		TLS      *TLSConfig
 	}
 
 	WFE struct {
