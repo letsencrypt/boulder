@@ -269,19 +269,19 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 	log := blog.GetAuditLogger()
 
 	if conf.AMQP.Insecure == true {
-		// If the Insecure flag is true, then just go ahead and connected
+		// If the Insecure flag is true, then just go ahead and connect
 		conn, err = amqp.Dial(conf.AMQP.Server)
 	} else {
 		// The insecure flag is false or not set, so we need to load up the options
 		log.Info("AMQPS: Loading TLS Options.")
 
 		if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
-			err = fmt.Errorf("AMQPS: Not using an AMQPS URL even though insecure=false")
+			err = fmt.Errorf("AMQPS: Not using an AMQPS URL. To use AMQP instead of AMQPS, set insecure=true.")
 			return nil, err
 		}
 
 		if conf.AMQP.TLS == nil {
-			err = fmt.Errorf("AMQPS: No TLS configuration provided even though insecure=false")
+			err = fmt.Errorf("AMQPS: No TLS configuration provided. To use AMQP instead of AMQPS, set insecure=true.")
 			return nil, err
 		}
 
