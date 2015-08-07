@@ -67,6 +67,7 @@ const pathFound = "302"
 const pathMoved = "301"
 const pathRedirectLookup = "re-lookup"
 const pathRedirectLookupInvalid = "re-lookup-invalid"
+const pathRedirectPort = "port-redirect"
 
 func createValidation(token string, enableTLS bool) string {
 	payload, _ := json.Marshal(map[string]interface{}{
@@ -86,7 +87,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 	currentToken := defaultToken
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Host != "localhost" && r.Host != "localhost2" {
+		if r.Host != "localhost" && r.Host != "other.valid" {
 			t.Errorf("Bad Host header: " + r.Host)
 		}
 		if strings.HasSuffix(r.URL.Path, path404) {
@@ -115,13 +116,16 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 			if currentToken == defaultToken {
 				currentToken = "re-lookup"
 			}
-			http.Redirect(w, r, "http://localhost2/path", 302)
+			http.Redirect(w, r, "http://other.valid/path", 302)
 		} else if strings.HasSuffix(r.URL.Path, "re-lookup-invalid") {
 			t.Logf("SIMPLESRV: Got a redirect req to a invalid hostname\n")
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
 		} else if strings.HasSuffix(r.URL.Path, "looper") {
 			t.Logf("SIMPLESRV: Got a loop req\n")
 			http.Redirect(w, r, r.URL.String(), 301)
+		} else if strings.HasSuffix(r.URL.Path, pathRedirectPort) {
+			t.Logf("SIMPLESRV: Got a port redirect req\n")
+			http.Redirect(w, r, "http://other.valid:8080/path", 302)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
 			fmt.Fprint(w, createValidation(currentToken, enableTLS))
@@ -257,7 +261,7 @@ func TestSimpleHttpTLS(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 
-	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken}
+	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, ValidationRecord: &core.ValidationRecord{}}
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
@@ -279,7 +283,7 @@ func TestSimpleHttp(t *testing.T) {
 	va.DNSResolver = &mocks.MockDNS{}
 
 	tls := false
-	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, TLS: &tls}
+	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, TLS: &tls, ValidationRecord: &core.ValidationRecord{}}
 
 	invalidChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -361,7 +365,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	va.DNSResolver = &mocks.MockDNS{}
 
 	tls := false
-	chall := core.Challenge{Token: expectedToken, TLS: &tls}
+	chall := core.Challenge{Token: expectedToken, TLS: &tls, ValidationRecord: &core.ValidationRecord{}}
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
@@ -392,16 +396,25 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Could not resolve invalid.invalid`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`No IPv4 addresses found for invalid.invalid`)), 1)
 
 	log.Clear()
 	chall.Token = pathRedirectLookup
 	finChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/re-lookup" to ".*localhost2/path"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/re-lookup" to ".*other.valid/path"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost2 \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+
+	log.Clear()
+	chall.Token = pathRedirectPort
+	finChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
+	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, chall.Token)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/port-redirect" to ".*other.valid:8080/path"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 }
 
 func TestSimpleHttpRedirectLoop(t *testing.T) {
@@ -409,7 +422,7 @@ func TestSimpleHttpRedirectLoop(t *testing.T) {
 	va.DNSResolver = &mocks.MockDNS{}
 
 	tls := false
-	chall := core.Challenge{Token: "looper", TLS: &tls}
+	chall := core.Challenge{Token: "looper", TLS: &tls, ValidationRecord: &core.ValidationRecord{}}
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
@@ -512,6 +525,7 @@ func TestValidateHTTP(t *testing.T) {
 	tls := false
 	challHTTP := core.SimpleHTTPChallenge()
 	challHTTP.TLS = &tls
+	challHTTP.ValidationRecord = &core.ValidationRecord{}
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
@@ -539,9 +553,10 @@ func TestValidateHTTP(t *testing.T) {
 // challengeType == "dvsni" or "dns", since they're the same
 func createChallenge(challengeType string) core.Challenge {
 	chall := core.Challenge{
-		Type:   challengeType,
-		Status: core.StatusPending,
-		Token:  core.NewToken(),
+		Type:             challengeType,
+		Status:           core.StatusPending,
+		Token:            core.NewToken(),
+		ValidationRecord: &core.ValidationRecord{},
 	}
 
 	validationPayload, _ := json.Marshal(map[string]interface{}{
@@ -625,6 +640,7 @@ func TestUpdateValidations(t *testing.T) {
 	tls := false
 	challHTTP := core.SimpleHTTPChallenge()
 	challHTTP.TLS = &tls
+	challHTTP.ValidationRecord = &core.ValidationRecord{}
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)

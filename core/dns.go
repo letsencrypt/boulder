@@ -14,31 +14,26 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
 
-// Private CIDRs to ignore per RFC1918
 var (
+	// Private CIDRs to ignore per RFC1918
 	// 10.0.0.0/8
-	privateNetworkA = net.IPNet{
+	rfc1918_10 = net.IPNet{
 		IP:   []byte{10, 0, 0, 0},
 		Mask: []byte{255, 0, 0, 0},
 	}
 	// 172.16.0.0/12
-	privateNetworkB = net.IPNet{
+	rfc1918_172_16 = net.IPNet{
 		IP:   []byte{172, 16, 0, 0},
 		Mask: []byte{255, 240, 0, 0},
 	}
 	// 192.168.0.0/16
-	privateNetworkC = net.IPNet{
+	rfc1918_192_168 = net.IPNet{
 		IP:   []byte{192, 168, 0, 0},
 		Mask: []byte{255, 255, 0, 0},
 	}
-	// fc00::/8 (RFC4193)
-	privateNetworkD = net.IPNet{
-		IP:   []byte{252, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		Mask: []byte{254, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	}
 )
 
-// DNSResolverImpl represents a resolver system
+// DNSResolverImpl represents a client that talks to an external resolver
 type DNSResolverImpl struct {
 	DNSClient *dns.Client
 	Servers   []string
@@ -104,15 +99,12 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 }
 
 func isPrivateV4(ip net.IP) bool {
-	return privateNetworkA.Contains(ip) || privateNetworkB.Contains(ip) || privateNetworkC.Contains(ip)
-}
-
-func isPrivateV6(ip net.IP) bool {
-	return privateNetworkD.Contains(ip)
+	return rfc1918_10.Contains(ip) || rfc1918_172_16.Contains(ip) || rfc1918_192_168.Contains(ip)
 }
 
 // LookupHost sends a DNS query to find all A records associated with the provided
-// hostname.
+// hostname. This method assumes that the external resolver will chase CNAME/DNAME
+// aliases and return relevant A records.
 func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
 	var addrs []net.IP
 

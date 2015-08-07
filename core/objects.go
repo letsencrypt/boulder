@@ -224,24 +224,35 @@ func (r *Registration) MergeUpdate(input Registration) {
 	}
 }
 
+// SimpleHTTPValidationRecord represents a slice of validation records since
+// SimpleHTTP will follow redirects so there may be multiple attempts. The order
+// of this slice is the order in which they were encountered.
 type SimpleHTTPValidationRecord []SimpleHTTPFetch
 
+// SimpleHTTPFetch represents a single URL we attempted to connect to and the
+// addresses we resolved and used to do so
 type SimpleHTTPFetch struct {
-	URL               string
-	Hostname          string
-	AddressesResolved []net.IP
-	AddressUsed       net.IP
+	URL               string   `json:"url"`
+	Hostname          string   `json:"hostname"`
+	Port              string   `json:"port"`
+	AddressesResolved []net.IP `json:"addressesResolved"`
+	AddressUsed       net.IP   `json:"addressUsed"`
 }
 
+// DvsniValidationRecord represents a single hostname we attempted to connect to
+// and the addresses we resolved and used to do so.
 type DvsniValidationRecord struct {
-	Hostname          string
-	AddressesResolved []net.IP
-	AddressUsed       net.IP
+	Hostname          string   `json:"hostname"`
+	Port              string   `json:"port"`
+	AddressesResolved []net.IP `json:"AddressesResolved"`
+	AddressUsed       net.IP   `json:"AddressUsed"`
 }
 
+// ValidationRecord holds all possible validation record types, only the one
+// corresponding to the challenge type being attempted should be filled
 type ValidationRecord struct {
-	SimpleHTTP SimpleHTTPValidationRecord
-	Dvsni      DvsniValidationRecord
+	SimpleHTTP SimpleHTTPValidationRecord `json:"simpleHTTP,omitempty"`
+	Dvsni      *DvsniValidationRecord     `json:"dnsvi,omitempty"`
 }
 
 // Challenge is an aggregate of all data needed for any challenges.

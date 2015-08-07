@@ -118,8 +118,11 @@ func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 	return problem
 }
 
-// getAddr will query for all A records associated with hostname and return
-// the first net.IP in the addrs slice and all addresses resolved.
+// getAddr will query for all A records associated with hostname and return the
+// prefered address, the first net.IP in the addrs slice, and all addresses resolved.
+// This is the same choice made by the Go internal resolution library used by
+// net/http, except we only send A queries and accept IPv4 addresses.
+// TODO(#593): Add IPv6 support
 func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
 	addrs, _, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
@@ -130,7 +133,7 @@ func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs [
 	if len(addrs) == 0 {
 		problem = &core.ProblemDetails{
 			Type:   core.UnknownHostProblem,
-			Detail: fmt.Sprintf("Could not resolve %s", hostname),
+			Detail: fmt.Sprintf("No IPv4 addresses found for %s", hostname),
 		}
 		return
 	}
@@ -139,23 +142,31 @@ func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs [
 	return
 }
 
+type dialer struct {
+	record core.SimpleHTTPFetch
+}
+
+func (d *dialer) Dial(_, _ string) (net.Conn, error) {
+	realDialer := net.Dialer{Timeout: validationTimeout}
+	return realDialer.Dial("tcp", net.JoinHostPort(d.record.AddressUsed.String(), d.record.Port))
+}
+
 // resolveAndConstructDialer gets the prefered address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
-func (va ValidationAuthorityImpl) resolveAndConstructDialer(name string, scheme string) (func(string, string) (net.Conn, error), net.IP, []net.IP, *core.ProblemDetails) {
+func (va ValidationAuthorityImpl) resolveAndConstructDialer(name, port string) (dialer, *core.ProblemDetails) {
 	addr, allAddrs, err := va.getAddr(name)
 	if err != nil {
-		return nil, nil, nil, err
+		return dialer{}, err
 	}
-	redirectPort := "80"
-	if va.TestMode {
-		redirectPort = "5001"
-	} else if strings.ToLower(scheme) == "https" {
-		redirectPort = "443"
+	d := dialer{
+		record: core.SimpleHTTPFetch{
+			Hostname:          name,
+			Port:              port,
+			AddressesResolved: allAddrs,
+			AddressUsed:       addr,
+		},
 	}
-	return func(_, _ string) (net.Conn, error) {
-		dialer := net.Dialer{Timeout: validationTimeout, KeepAlive: validationTimeout}
-		return dialer.Dial("tcp", net.JoinHostPort(addr.String(), redirectPort))
-	}, addr, allAddrs, nil
+	return d, nil
 }
 
 // Validation methods
@@ -189,7 +200,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(scheme), url.String()))
+	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(scheme), url))
 	httpRequest, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		challenge.Error = &core.ProblemDetails{
@@ -206,16 +217,16 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	httpRequest.Host = hostName
-	dialer, addrUsed, allAddrs, prob := va.resolveAndConstructDialer(hostName, scheme)
-	challenge.ValidationRecord = &core.ValidationRecord{
-		SimpleHTTP: append([]core.SimpleHTTPFetch{}, core.SimpleHTTPFetch{
-			URL:               url.String(),
-			Hostname:          hostName,
-			AddressesResolved: allAddrs,
-			AddressUsed:       addrUsed,
-		}),
+	port := "80"
+	if va.TestMode {
+		port = "5001"
+	} else if strings.ToLower(scheme) == "https" {
+		port = "443"
 	}
-	if err != nil {
+	dialer, prob := va.resolveAndConstructDialer(hostName, port)
+	dialer.record.URL = url.String()
+	challenge.ValidationRecord.SimpleHTTP = core.SimpleHTTPValidationRecord{dialer.record}
+	if prob != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		return challenge, prob
@@ -230,25 +241,36 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		DisableKeepAlives: true,
 		// Intercept Dial in order to connect to the IP address we
 		// select.
-		Dial: dialer,
+		Dial: dialer.Dial,
 	}
 
 	logRedirect := func(req *http.Request, via []*http.Request) error {
 		if len(challenge.ValidationRecord.SimpleHTTP) >= maxRedirect {
 			return fmt.Errorf("Too many redirects")
 		}
-		dialer, addrUsed, allAddrs, err := va.resolveAndConstructDialer(req.URL.Host, req.URL.Scheme)
-		challenge.ValidationRecord.SimpleHTTP = append(challenge.ValidationRecord.SimpleHTTP, core.SimpleHTTPFetch{
-			URL:               req.URL.String(),
-			Hostname:          req.URL.Host,
-			AddressesResolved: allAddrs,
-			AddressUsed:       addrUsed,
-		})
+
+		host := req.URL.Host
+		port = "80"
+		if va.TestMode {
+			port = "5001"
+		}
+		if strings.Contains(host, ":") {
+			splitHost := strings.SplitN(host, ":", 2)
+			if len(splitHost) <= 1 {
+				return fmt.Errorf("Malformed host")
+			}
+			host, port = splitHost[0], splitHost[1]
+		} else if strings.ToLower(req.URL.Scheme) == "https" {
+			port = "443"
+		}
+		dialer, err := va.resolveAndConstructDialer(host, port)
+		dialer.record.URL = req.URL.String()
+		challenge.ValidationRecord.SimpleHTTP = append(challenge.ValidationRecord.SimpleHTTP, dialer.record)
 		if err != nil {
 			return err
 		}
-		tr.Dial = dialer
-		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q [%s]", identifier, via[len(via)-1].URL.String(), req.URL.String(), addrUsed))
+		tr.Dial = dialer.Dial
+		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q [%s]", identifier, via[len(via)-1].URL.String(), req.URL.String(), dialer.record.AddressUsed))
 		return nil
 	}
 	client := http.Client{
@@ -272,7 +294,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		challenge.Error = &core.ProblemDetails{
 			Type: core.UnauthorizedProblem,
 			Detail: fmt.Sprintf("Invalid response from %s [%s]: %d",
-				url.String(), addrUsed, httpResponse.StatusCode),
+				url.String(), dialer.record.AddressUsed, httpResponse.StatusCode),
 		}
 		err = challenge.Error
 		return challenge, err
@@ -366,7 +388,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	addr, allAddrs, problem := va.getAddr(identifier.Value)
 	challenge.ValidationRecord = &core.ValidationRecord{
-		Dvsni: core.DvsniValidationRecord{
+		Dvsni: &core.DvsniValidationRecord{
 			Hostname:          identifier.Value,
 			AddressesResolved: allAddrs,
 			AddressUsed:       addr,
@@ -380,8 +402,10 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	// Make a connection with SNI = nonceName
 	hostPort := net.JoinHostPort(addr.String(), "443")
+	challenge.ValidationRecord.Dvsni.Port = "443"
 	if va.TestMode {
 		hostPort = net.JoinHostPort(addr.String(), "5001")
+		challenge.ValidationRecord.Dvsni.Port = "5001"
 	}
 	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
 		identifier, hostPort, ZName))
