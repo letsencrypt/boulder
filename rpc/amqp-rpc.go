@@ -272,7 +272,7 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 		// If the Insecure flag is true, then just go ahead and connected
 		conn, err = amqp.Dial(conf.AMQP.Server)
 	} else {
-		// The insecure flag is false, so we need to load up the options
+		// The insecure flag is false or not set, so we need to load up the options
 		log.Info("AMQPS: Loading TLS Options.")
 
 		if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
