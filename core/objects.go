@@ -289,6 +289,38 @@ type Challenge struct {
 	ValidationRecord *ValidationRecord `json:"validationRecord,omitempty"`
 }
 
+// RecordsSane checks the sanity of a ValidationRecord object before sending it
+// back to the RA to be stored.
+func (ch Challenge) RecordsSane() bool {
+	if ch.ValidationRecord == nil {
+		return false
+	}
+
+	switch ch.Type {
+	case ChallengeTypeSimpleHTTP:
+		if ch.ValidationRecord.Dvsni != nil || ch.ValidationRecord.SimpleHTTP == nil {
+			return false
+		}
+		for _, r := range ch.ValidationRecord.SimpleHTTP {
+			if r.URL == "" || r.Hostname == "" || r.Port == "" || len(r.AddressesResolved) == 0 || r.AddressUsed == nil {
+				return false
+			}
+		}
+	case ChallengeTypeDVSNI:
+		if ch.ValidationRecord.SimpleHTTP != nil || ch.ValidationRecord.Dvsni == nil {
+			return false
+		}
+		if ch.ValidationRecord.Dvsni.Hostname == "" || ch.ValidationRecord.Dvsni.Port == "" ||
+			len(ch.ValidationRecord.Dvsni.AddressesResolved) == 0 || ch.ValidationRecord.Dvsni.AddressUsed == nil {
+			return false
+		}
+	case ChallengeTypeDNS:
+		// Nothing for now
+	}
+
+	return true
+}
+
 // IsSane checks the sanity of a challenge object before issued to the client
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
@@ -335,7 +367,6 @@ func (ch Challenge) IsSane(completed bool) bool {
 		if completed && ch.Validation == nil {
 			return false
 		}
-
 	default:
 		return false
 	}

@@ -533,9 +533,6 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 // Overall validation process
 
 func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int, accountKey jose.JsonWebKey) {
-
-	// Select the first supported validation method
-	// XXX: Remove the "break" lines to process all supported validations
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
@@ -555,19 +552,22 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 		switch authz.Challenges[challengeIndex].Type {
 		case core.ChallengeTypeSimpleHTTP:
 			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
-			break
 		case core.ChallengeTypeDVSNI:
 			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
-			break
 		case core.ChallengeTypeDNS:
 			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
-			break
 		}
 
-		logEvent.Challenge = authz.Challenges[challengeIndex]
 		if err != nil {
 			logEvent.Error = err.Error()
+		} else if !authz.Challenges[challengeIndex].RecordsSane() {
+			chall := &authz.Challenges[challengeIndex]
+			chall.Status = core.StatusInvalid
+			chall.Error = &core.ProblemDetails{Type: core.ServerInternalProblem,
+				Detail: "Records for validation failed sanity check"}
+			logEvent.Error = chall.Error.Detail
 		}
+		logEvent.Challenge = authz.Challenges[challengeIndex]
 	}
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
