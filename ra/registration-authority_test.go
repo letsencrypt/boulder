@@ -148,7 +148,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
-	sa.CreateTablesIfNotExists()
+	err = sa.CreateTablesIfNotExists()
+	if err != nil {
+		t.Fatalf("unable to create tables: %s", err)
+	}
 
 	va := &DummyValidationAuthority{}
 
@@ -239,7 +242,9 @@ func TestNewRegistration(t *testing.T) {
 	}
 
 	result, err := ra.NewRegistration(input)
-	test.AssertNotError(t, err, "Could not create new registration")
+	if err != nil {
+		t.Fatalf("could not create new registration: %s", err)
+	}
 
 	test.Assert(t, core.KeyDigestEquals(result.Key, AccountKeyB), "Key didn't match")
 	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")

@@ -99,10 +99,10 @@ func (log *SQLLogger) Printf(format string, v ...interface{}) {
 // initTables constructs the table map for the ORM. If you want to also create
 // the tables, call CreateTablesIfNotExists on the DbMap.
 func initTables(dbMap *gorp.DbMap) {
-	regTable := dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "id")
+	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "id")
 	regTable.SetVersionCol("LockCol")
-	regTable.ColMap("Key").SetMaxSize(1024).SetNotNull(true).SetUnique(true)
-
+	regTable.ColMap("Key").SetNotNull(true)
+	regTable.ColMap("KeySHA256").SetNotNull(true).SetUnique(true)
 	pendingAuthzTable := dbMap.AddTableWithName(pendingAuthzModel{}, "pending_authz").SetKeys(false, "id")
 	pendingAuthzTable.SetVersionCol("LockCol")
 	pendingAuthzTable.ColMap("Challenges").SetMaxSize(1536)

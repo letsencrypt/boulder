@@ -208,8 +208,6 @@ type Registration struct {
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty" db:"agreement"`
-
-	LockCol int64 `json:"-"`
 }
 
 // MergeUpdate copies a subset of information from the input Registration
