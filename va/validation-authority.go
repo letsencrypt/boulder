@@ -551,6 +551,7 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 	} else {
 		var err error
 
+		authz.Challenges[challengeIndex].ValidationRecord = &core.ValidationRecord{}
 		switch authz.Challenges[challengeIndex].Type {
 		case core.ChallengeTypeSimpleHTTP:
 			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
