@@ -195,6 +195,7 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 		return core.Certificate{
 			RegistrationID: 1,
 			Status:         core.StatusValid,
+			Serial:         serial,
 			DER:            certBlock.Bytes,
 		}, nil
 	} else if serial == "000000000000000000000000000000b2" {
@@ -203,6 +204,7 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 		return core.Certificate{
 			RegistrationID: 1,
 			Status:         core.StatusValid,
+			Serial:         serial,
 			DER:            certBlock.Bytes,
 		}, nil
 	}
@@ -229,6 +231,7 @@ func (sa *MockSA) GetCertificateByRequestID(id string) (core.Certificate, error)
 	case "good-good-good-good-good-good-good-good-xxx":
 		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 		certBlock, _ := pem.Decode(certPemBytes)
+		cert.Serial = "00000000000000b20000000000000000"
 		cert.Status = core.StatusValid
 		cert.DER = certBlock.Bytes
 	default:
@@ -680,8 +683,6 @@ func TestIssueCertificate(t *testing.T) {
     }`, &wfe.nonceService)),
 	})
 	assertCsrLogged(t, mockLog)
-	fmt.Println(">>> !!! >>> allowed:", responseWriter.Header().Get("Allow"))
-	fmt.Println(">>> !!! >>> body:", responseWriter.Body.String())
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
 	location := responseWriter.Header().Get("Location")
 	prefix := "/acme/cert/"
@@ -1253,7 +1254,7 @@ func TestGetCertificate(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	// Valid short serial, cached
-	path, _ := url.Parse("/acme/cert/00000000000000b2")
+	path, _ := url.Parse("/acme/cert/serial/00000000000000b2")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
@@ -1265,7 +1266,7 @@ func TestGetCertificate(t *testing.T) {
 
 	// Valid request ID, cached
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/good-good-good-good-good-good-good-good-xxx")
+	path, _ = url.Parse("/acme/cert/id/good-good-good-good-good-good-good-good-xxx")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
@@ -1273,10 +1274,23 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
+	certById := responseWriter.Body.Bytes()
+
+	// Verify that Content-Location is present and referenced cert matches the original
+	contentLocation := responseWriter.Header().Get("Content-Location")
+	test.AssertEquals(t, contentLocation, "/acme/cert/serial/00000000000000b2")
+	responseWriter = httptest.NewRecorder()
+	path, _ = url.Parse(contentLocation)
+	wfe.Certificate(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    path,
+	})
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certById) == 0, "Cert by serial doesn't match cert by ID")
 
 	// Valid request ID, pending, no cache
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/pending-pending-pending-pending-pending-xxx")
+	path, _ = url.Parse("/acme/cert/id/pending-pending-pending-pending-pending-xxx")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
@@ -1287,18 +1301,18 @@ func TestGetCertificate(t *testing.T) {
 
 	// Valid request ID, error in issuance, no cache
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/bad-bad-bad-bad-bad-bad-bad-bad-bad-bad-xxx")
+	path, _ = url.Parse("/acme/cert/id/bad-bad-bad-bad-bad-bad-bad-bad-bad-bad-xxx")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
 	})
 	test.AssertEquals(t, responseWriter.Code, 410)
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:serverInternal","detail":"Certificate could not be issued"}`)
 
 	// Valid request ID, invalid certificate status, no cache
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/weird-weird-weird-weird-weird-weird-weird-x")
+	path, _ = url.Parse("/acme/cert/id/weird-weird-weird-weird-weird-weird-weird-x")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
@@ -1309,7 +1323,7 @@ func TestGetCertificate(t *testing.T) {
 
 	// Unused short serial, no cache
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/00000000000000ff")
+	path, _ = url.Parse("/acme/cert/serial/00000000000000ff")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
@@ -1320,7 +1334,7 @@ func TestGetCertificate(t *testing.T) {
 
 	// Unused request ID, no cache
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/unused-unused-unused-unused-unused-unused-x")
+	path, _ = url.Parse("/acme/cert/id/unused-unused-unused-unused-unused-unused-x")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
@@ -1338,11 +1352,11 @@ func TestGetCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Invalid certificate type"}`)
 
 	// Invalid cert ID, no cache
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/00000000000000")
+	path, _ = url.Parse("/acme/cert/serial/00000000000000")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,

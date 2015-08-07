@@ -264,9 +264,22 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertError(t, err, "Finalized a cert that was still pending")
 
 	// Try to finalize a certificate for which there is no pending cert
+	novelCert := core.Certificate{RegistrationID: 1, RequestID: "unknown"}
+	err = sa.FinalizeCertificate(novelCert)
+	test.AssertError(t, err, "Finalized a cert that was not pending")
+
+	// Try to finalize an (correctly) invalid cert
 	pendingCert.Status = core.StatusInvalid
 	err = sa.FinalizeCertificate(pendingCert)
 	test.AssertNotError(t, err, "Failed to finalize on a valid request")
+
+	// Try to retrieve the corresponding pending certificate (which
+	// should have been deleted)
+	tx, err := sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Could not get DB transaction to look for pending certificate")
+	pendingStillAround := existingPendingCert(tx, pendingCert.RequestID)
+	test.Assert(t, !pendingStillAround, "FinalizeCertificate failed to delete pending certificate")
+	tx.Rollback()
 
 	// Try to retrieve the finalized certificate
 	retrieved, err = sa.GetCertificateByRequestID(pendingCert.RequestID)

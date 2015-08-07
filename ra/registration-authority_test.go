@@ -151,8 +151,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	sa.CreateTablesIfNotExists()
 
 	va := &DummyValidationAuthority{}
-	ca := &DummyCertificateAuthority{}
-	pa := policy.NewPolicyAuthorityImpl()
 
 	csrDER, _ := hex.DecodeString(CSRhex)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
@@ -163,8 +161,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl()
 	ra.SA = sa
 	ra.VA = va
-	ra.CA = ca
-	ra.PA = pa
+	ra.CA = &DummyCertificateAuthority{}
+	ra.PA = policy.NewPolicyAuthorityImpl()
 	ra.AuthzBase = "http://acme.invalid/authz/"
 	ra.MaxKeySize = 4096
 	ra.DNSResolver = &mocks.MockDNS{}

@@ -204,14 +204,14 @@ func (ssa *SQLStorageAuthority) GetCertificateByRequestID(requestID string) (cer
 		return
 	}
 
-	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM pending_cert WHERE requestID LIKE :requestID",
-		map[string]interface{}{"requestID": requestID + "%"})
+	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM pending_cert WHERE requestID = :requestID",
+		map[string]interface{}{"requestID": requestID})
 	if err != sql.ErrNoRows {
 		return
 	}
 
-	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE requestID LIKE :requestID",
-		map[string]interface{}{"requestID": requestID + "%"})
+	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE requestID = :requestID",
+		map[string]interface{}{"requestID": requestID})
 	return
 }
 
@@ -580,10 +580,19 @@ func (ssa *SQLStorageAuthority) FinalizeCertificate(cert core.Certificate) (err 
 
 	// Check that no cert with this serial number exists
 	if existingFinalCertWithSerial(tx, cert.Serial) {
-		// XXX We should probably log this?
+		originalCert, err := ssa.GetCertificate(cert.Serial)
+		originalRequestID := originalCert.RequestID
+		if err != nil {
+			originalRequestID = fmt.Sprintf("(could not fetch, err=[%s])", err.Error())
+		}
+
+		// XXX This is a bad error.  Is it properly tagged?  Does it correspond
+		// to any of the required audit events?
+		ssa.log.Audit(fmt.Sprintf("Attempt to create duplicate certificates! serial=[%s] original=[%s] new=[%s]",
+			cert.Serial, originalRequestID, cert.RequestID))
 		err = fmt.Errorf("Duplicate serial number detected! [%s]", cert.Serial)
 		tx.Rollback()
-		return
+		return err
 	}
 
 	// Delete the pending certificate

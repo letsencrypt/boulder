@@ -27,17 +27,19 @@ import (
 
 // Paths are the ACME-spec identified URL path-segments for various methods
 const (
-	DirectoryPath  = "/directory"
-	NewRegPath     = "/acme/new-reg"
-	RegPath        = "/acme/reg/"
-	NewAuthzPath   = "/acme/new-authz"
-	AuthzPath      = "/acme/authz/"
-	NewCertPath    = "/acme/new-cert"
-	CertPath       = "/acme/cert/"
-	RevokeCertPath = "/acme/revoke-cert"
-	TermsPath      = "/terms"
-	IssuerPath     = "/acme/issuer-cert"
-	BuildIDPath    = "/build"
+	DirectoryPath     = "/directory"
+	NewRegPath        = "/acme/new-reg"
+	RegPath           = "/acme/reg/"
+	NewAuthzPath      = "/acme/new-authz"
+	AuthzPath         = "/acme/authz/"
+	NewCertPath       = "/acme/new-cert"
+	CertPath          = "/acme/cert/"
+	CertIDSubPath     = "id/"
+	CertSerialSubPath = "serial/"
+	RevokeCertPath    = "/acme/revoke-cert"
+	TermsPath         = "/terms"
+	IssuerPath        = "/acme/issuer-cert"
+	BuildIDPath       = "/build"
 )
 
 type WebFrontEndImpl struct {
@@ -1000,15 +1002,31 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		return
 	}
 
-	certID := path[len(CertPath):]
-	wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", certID))
-	logEvent.Extra["RequestedCertificateID"] = certID
+	var prefixLen int
+	var certIDType string
+	switch {
+	case strings.HasPrefix(path, CertPath+CertSerialSubPath):
+		certIDType = "serial"
+		prefixLen = len(CertPath + CertSerialSubPath)
+	case strings.HasPrefix(path, CertPath+CertIDSubPath):
+		certIDType = "id"
+		prefixLen = len(CertPath + CertIDSubPath)
+	default:
+		logEvent.Error = "Invalid certificate type"
+		wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
+		addNoCacheHeader(response)
+		return
+	}
+	certID := path[prefixLen:]
+	wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s/%s", certIDType, certID))
+	logEvent.Extra["RequestedCertificateID"] = fmt.Sprintf("%s/%s", certIDType, certID)
+
 	var err error
 	var cert core.Certificate
 	switch {
-	case len(certID) == 16 || allHex.MatchString(certID):
+	case certIDType == "serial" && len(certID) == 16 && allHex.MatchString(certID):
 		cert, err = wfe.SA.GetCertificateByShortSerial(certID)
-	case core.LooksLikeAToken(certID):
+	case certIDType == "id" && core.LooksLikeAToken(certID):
 		cert, err = wfe.SA.GetCertificateByRequestID(certID)
 	default:
 		logEvent.Error = "Certificate not found"
@@ -1037,13 +1055,15 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		response.WriteHeader(http.StatusAccepted)
 	case core.StatusInvalid:
 		// Return 410 Gone
-		addNoCacheHeader(response)
+		addCacheHeader(response, wfe.CertCacheDuration.Seconds())
 		wfe.sendError(response, "Certificate could not be issued", nil, http.StatusGone)
 	case core.StatusValid, core.StatusRevoked:
 		// Actually return the cert
 		// TODO Content negotiation
+		serialURL := fmt.Sprintf("%s%s%s", wfe.CertBase, CertSerialSubPath, cert.Serial[:16])
 		addCacheHeader(response, wfe.CertCacheDuration.Seconds())
 		response.Header().Set("Content-Type", "application/pkix-cert")
+		response.Header().Set("Content-Location", serialURL)
 		response.Header().Add("Link", link(IssuerPath, "up"))
 		response.WriteHeader(http.StatusOK)
 		if _, err = response.Write(cert.DER); err != nil {

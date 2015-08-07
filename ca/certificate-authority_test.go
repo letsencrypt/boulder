@@ -11,7 +11,6 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -340,6 +339,11 @@ const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
 
 // Use this function to wait for the IssueCertificate->sign->SA handoff
+//
+//   Note: No need to use this for negative tests ("Test that the CA
+//   rejects...").  If IssueCertificate() returns without an error, then
+//   the CA has agreed to issue the certificate, which is already a
+//   failure for these cases.
 func awaitIssuance(t *testing.T, sa core.StorageAuthority, id string) (cert core.Certificate, found bool) {
 	wait := 125 * time.Millisecond
 	for wait < 2*time.Second {
@@ -348,16 +352,15 @@ func awaitIssuance(t *testing.T, sa core.StorageAuthority, id string) (cert core
 
 		cert, err := sa.GetCertificateByRequestID(id)
 		test.AssertNotError(t, err, "Unable to retrieve supposedly pending certificate")
+		if err != nil {
+			return cert, false
+		}
 		if cert.Status != core.StatusPending {
 			return cert, true
 		}
 	}
 	found = false
 	return
-}
-
-func TestMain(m *testing.M) {
-	os.Exit(m.Run())
 }
 
 func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthority core.StorageAuthority, caConfig Config) {
@@ -455,8 +458,6 @@ func TestRevoke(t *testing.T) {
 
 	status, err := storageAuthority.GetCertificateStatus(serialString)
 	test.AssertNotError(t, err, "Failed to get cert status")
-
-	fmt.Printf("   !!!   status: %+v\n", status)
 
 	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
 	secondAgo := time.Now().Add(-time.Second)

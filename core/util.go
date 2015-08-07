@@ -134,7 +134,7 @@ func NewToken() string {
 	return RandomString(32)
 }
 
-const tokenFormat = "^[a-zA-Z0-9-_]{43}$"
+const tokenFormat = "^[\\w-]{43}$"
 
 func LooksLikeAToken(token string) bool {
 	return regexp.MustCompile(tokenFormat).MatchString(token)

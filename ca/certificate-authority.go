@@ -36,6 +36,11 @@ type Config struct {
 	SerialPrefix int
 	Key          KeyConfig
 
+	// The number of outstanding signing requests that will be queued
+	// before the CA starts returning errors in response to requests
+	// for issuance
+	QueueSize int
+
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
 	// than the minTimeToExpiry field for the OCSP Updater.
 	LifespanOCSP string
@@ -67,10 +72,8 @@ type PKCS11Config struct {
 	Label  string
 }
 
-// The maximum number of requests to allow in the signing queue
-// before we start returning Service Unavailable errors in response
-// to new-certificate requests.
-const signingQueueSize = 100
+// Default value for config.QueueSize.
+const defaultQueueSize = 100
 
 // signingRequest is used to carry the required information from
 // the main issuance request handling back to the signer.
@@ -191,7 +194,11 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 	}
 
 	// TODO(rlb@ipv.sx): Add a stop channel to shut down the CA gracefully
-	ca.signingQueue = make(chan signingRequest, signingQueueSize)
+	queueSize := config.QueueSize
+	if queueSize == 0 {
+		queueSize = defaultQueueSize
+	}
+	ca.signingQueue = make(chan signingRequest, queueSize)
 	go func(src chan signingRequest) {
 		for req := range ca.signingQueue {
 			ca.sign(req)
@@ -315,10 +322,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	logEventResult := "error"
 	logEvent := blog.CertificateRequestEvent{
-		ID:            logEventID + ".issueCertificate",
-		Requester:     regID,
-		RequestMethod: "online",
-		RequestTime:   time.Now(),
+		ID:          logEventID + ".issueCertificate",
+		RequestTime: time.Now(),
 	}
 
 	// No matter what, log the request
@@ -439,9 +444,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 	logEventResult := "error"
 	logEvent := blog.CertificateRequestEvent{
-		ID:            sr.logEventID + ".sign",
-		RequestMethod: "online",
-		RequestTime:   time.Now(),
+		ID:          sr.logEventID + ".sign",
+		RequestTime: time.Now(),
 	}
 
 	// No matter what, log the request
@@ -482,15 +486,16 @@ func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 		SerialSeq: serialHex,
 	}
 
-	// Mark the cert valid for now.  We will finalize to this cert if
+	// Mark the cert invalid for now.  We will finalize to this cert if
 	// things go wrong
-	sr.cert.Status = core.StatusInvalid
+	cert := sr.cert
+	cert.Status = core.StatusInvalid
 
 	certPEM, err := ca.Signer.Sign(req)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Signer failed, rolling back: serial=[%s] err=[%v]", serialHex, err))
-		ca.SA.FinalizeCertificate(sr.cert)
+		ca.SA.FinalizeCertificate(cert)
 		tx.Rollback()
 		return
 	}
@@ -499,7 +504,7 @@ func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 		err = fmt.Errorf("No certificate returned by server")
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("PEM empty from Signer, rolling back: serial=[%s] err=[%v]", serialHex, err))
-		ca.SA.FinalizeCertificate(sr.cert)
+		ca.SA.FinalizeCertificate(cert)
 		tx.Rollback()
 		return
 	}
@@ -510,7 +515,7 @@ func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("PEM decode error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
-		ca.SA.FinalizeCertificate(sr.cert)
+		ca.SA.FinalizeCertificate(cert)
 		tx.Rollback()
 		return
 	}
@@ -519,32 +524,25 @@ func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Signer produced invalid DER, rolling back: serial=[%s] err=[%v]", serialHex, err))
-		ca.SA.FinalizeCertificate(sr.cert)
+		ca.SA.FinalizeCertificate(cert)
 		tx.Rollback()
 		return
 	}
 
 	// Fill in the remaining fields in the Certificate object
-	sr.cert.Status = core.StatusValid
-	sr.cert.Serial = core.SerialToString(certObj.SerialNumber)
-	sr.cert.Digest = core.Fingerprint256(certObj.Raw)
-	sr.cert.DER = certObj.Raw
-	sr.cert.Issued = time.Now()
-	sr.cert.Expires = certObj.NotAfter
-
-	// Fill in the remaining fields in the log event
-	logEvent.SerialNumber = sr.cert.Serial
-	logEvent.CommonName = certObj.Subject.CommonName
-	logEvent.NotBefore = certObj.NotBefore
-	logEvent.NotAfter = certObj.NotAfter
-	logEvent.ResponseTime = sr.cert.Issued
+	cert.Status = core.StatusValid
+	cert.Serial = core.SerialToString(certObj.SerialNumber)
+	cert.Digest = core.Fingerprint256(certObj.Raw)
+	cert.DER = certObj.Raw
+	cert.Issued = time.Now()
+	cert.Expires = certObj.NotAfter
 
 	// Verify that this certificate object matches the CSR
-	err = sr.cert.MatchesCSR(&sr.csr, sr.earliestExpiry)
+	err = cert.MatchesCSR(&sr.csr, sr.earliestExpiry)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Signer produced cert not matching CSR, rolling back: serial=[%s] err=[%v]", serialHex, err))
-		ca.SA.FinalizeCertificate(sr.cert)
+		ca.SA.FinalizeCertificate(cert)
 		tx.Rollback()
 	}
 
@@ -556,10 +554,8 @@ func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 		return
 	}
 
-	logEventResult = "successful"
-
 	// Store the cert with the certificate authority
-	err = ca.SA.FinalizeCertificate(sr.cert)
+	err = ca.SA.FinalizeCertificate(cert)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Failed RPC to store at SA, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
@@ -573,6 +569,16 @@ func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 		return
 	}
 
+	// Now that the certificate has been committed, we can fill out
+	// the rest of the log event and mark it as successful
+	logEvent.SerialNumber = cert.Serial
+	logEvent.CommonName = certObj.Subject.CommonName
+	logEvent.Names = certObj.DNSNames
+	logEvent.NotBefore = certObj.NotBefore
+	logEvent.NotAfter = certObj.NotAfter
+	logEvent.ResponseTime = cert.Issued
+	logEventResult = "successful"
+
 	// Attempt to generate the OCSP Response now.
 	signRequest := ocsp.SignRequest{
 		Certificate: certObj,
@@ -585,13 +591,11 @@ func (ca *CertificateAuthorityImpl) sign(sr signingRequest) {
 		return
 	}
 
-	err = ca.SA.UpdateOCSP(sr.cert.Serial, ocspResponse)
+	err = ca.SA.UpdateOCSP(cert.Serial, ocspResponse)
 	if err != nil {
 		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed storing: %s", err))
 		return
 	}
 
-	// Do not return an err at this point; caller must know that the Certificate
-	// was issued. (Also, it should be impossible for err to be non-nil here)
 	return
 }
