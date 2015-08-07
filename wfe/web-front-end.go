@@ -725,7 +725,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// Make a URL for this certificate.
 	// Right now, the result of NewCertificate will always be a pending certificate,
 	// so we make the URL from the request ID, which the SA randomly assigned.
-	certURL := fmt.Sprintf("%s%s", wfe.CertBase, cert.RequestID)
+	certURL := fmt.Sprintf("%s%s%s", wfe.CertBase, CertIDSubPath, cert.RequestID)
 
 	response.Header().Add("Location", certURL)
 	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))

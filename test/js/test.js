@@ -587,7 +587,7 @@ function downloadCertificate(err, resp, body) {
 
 function ensureCertificate(err, resp, body) {
   if (err) {
-    console.log("Error: Failed to fetch certificate from", certURL, ":", err);
+    console.log("Error: Failed to fetch certificate from", state.certificateURL, ":", err);
     process.exit(1);
   } else if (resp.statusCode === 200) {
     cli.spinner("Requesting certificate ... done", true);
@@ -601,7 +601,7 @@ function ensureCertificate(err, resp, body) {
       get({url: state.certificateURL, encoding: null}, ensureCertificate);
     }, state.retryDelay);
   } else {
-    console.log("Error: Failed to fetch certificate from", certURL, ":", res.statusCode, res.body.toString());
+    console.log("Error: Failed to fetch certificate from", state.certificateURL, ":", res.statusCode, res.body.toString());
     process.exit(1);
   }
 }
