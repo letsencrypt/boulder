@@ -12,7 +12,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
-	"net/url"
+	"io/ioutil"
+	"testing"
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -20,8 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
-	"io/ioutil"
-	"testing"
 )
 
 var log = mocks.UseMockLog()
@@ -37,11 +36,18 @@ func initSA(t *testing.T) *SQLStorageAuthority {
 	return sa
 }
 
-var theKey = `{
+var (
+	theKey = `{
     "kty": "RSA",
     "n": "n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw",
     "e": "AQAB"
 }`
+	anotherKey = `{
+	"kty":"RSA",
+	"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw",
+	"e":"AQAB"
+}`
+)
 
 func TestAddRegistration(t *testing.T) {
 	sa := initSA(t)
@@ -53,11 +59,20 @@ func TestAddRegistration(t *testing.T) {
 		return
 	}
 
+	contact, err := core.ParseAcmeURL("mailto:foo@example.com")
+	if err != nil {
+		t.Fatalf("unable to parse contact link: %s", err)
+	}
+	contacts := []*core.AcmeURL{contact}
 	reg, err := sa.NewRegistration(core.Registration{
-		Key: jwk,
+		Key:     jwk,
+		Contact: contacts,
 	})
-	test.AssertNotError(t, err, "Couldn't create new registration")
+	if err != nil {
+		t.Fatalf("Couldn't create new registration: %s", err)
+	}
 	test.Assert(t, reg.ID != 0, "ID shouldn't be 0")
+	test.AssertDeepEquals(t, reg.Contact, contacts)
 
 	_, err = sa.GetRegistration(0)
 	test.AssertError(t, err, "Registration object for ID 0 was returned")
@@ -72,22 +87,44 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
 	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
 
-	uu, err := url.Parse("test.com")
-	u := core.AcmeURL(*uu)
+	u, _ := core.ParseAcmeURL("test.com")
 
-	newReg := core.Registration{ID: reg.ID, Key: jwk, Contact: []core.AcmeURL{u}, Agreement: "yes"}
+	newReg := core.Registration{ID: reg.ID, Key: jwk, Contact: []*core.AcmeURL{u}, Agreement: "yes"}
 	err = sa.UpdateRegistration(newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
-
 	dbReg, err = sa.GetRegistrationByKey(jwk)
 	test.AssertNotError(t, err, "Couldn't get registration by key")
 
 	test.AssertEquals(t, dbReg.ID, newReg.ID)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
-	jwk.KeyID = "bad"
-	_, err = sa.GetRegistrationByKey(jwk)
+	var anotherJWK jose.JsonWebKey
+	err = json.Unmarshal([]byte(anotherKey), &anotherJWK)
+	test.AssertNotError(t, err, "couldn't unmarshal anotherJWK")
+	_, err = sa.GetRegistrationByKey(anotherJWK)
 	test.AssertError(t, err, "Registration object for invalid key was returned")
+}
+
+func TestNoSuchRegistrationErrors(t *testing.T) {
+	sa := initSA(t)
+
+	_, err := sa.GetRegistration(100)
+	if _, ok := err.(NoSuchRegistrationError); !ok {
+		t.Errorf("GetRegistration: expected NoSuchRegistrationError, got %T type error (%s)", err, err)
+	}
+
+	var jwk jose.JsonWebKey
+	err = json.Unmarshal([]byte(theKey), &jwk)
+	test.AssertNotError(t, err, "Unmarshal")
+	_, err = sa.GetRegistrationByKey(jwk)
+	if _, ok := err.(NoSuchRegistrationError); !ok {
+		t.Errorf("GetRegistrationByKey: expected a NoSuchRegistrationError, got %T type error (%s)", err, err)
+	}
+
+	err = sa.UpdateRegistration(core.Registration{ID: 100, Key: jwk})
+	if _, ok := err.(NoSuchRegistrationError); !ok {
+		t.Errorf("UpdateRegistration: expected a NoSuchRegistrationError, got %T type error (%v)", err, err)
+	}
 }
 
 func TestAddAuthorization(t *testing.T) {
@@ -139,9 +176,8 @@ func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) 
 	test.Assert(t, authz.ID != "", "ID shouldn't be blank")
 
 	// prepare challenge for auth
-	uu, err := url.Parse(domainName)
+	u, err := core.ParseAcmeURL(domainName)
 	test.AssertNotError(t, err, "Couldn't parse domainName "+domainName)
-	u := core.AcmeURL(*uu)
 	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusValid, URI: u, Token: "THISWOULDNTBEAGOODTOKEN"}
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}

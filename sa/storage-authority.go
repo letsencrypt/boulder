@@ -8,6 +8,7 @@ package sa
 import (
 	"crypto/sha256"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,9 +16,8 @@ import (
 	"strings"
 	"time"
 
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -98,34 +98,49 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	return count > 0
 }
 
+type NoSuchRegistrationError struct {
+	Msg string
+}
+
+func (e NoSuchRegistrationError) Error() string {
+	return e.Msg
+}
+
 // GetRegistration obtains a Registration by ID
-func (ssa *SQLStorageAuthority) GetRegistration(id int64) (reg core.Registration, err error) {
-	regObj, err := ssa.dbMap.Get(core.Registration{}, id)
+func (ssa *SQLStorageAuthority) GetRegistration(id int64) (core.Registration, error) {
+	regObj, err := ssa.dbMap.Get(regModel{}, id)
 	if err != nil {
-		return
+		return core.Registration{}, err
 	}
 	if regObj == nil {
-		err = fmt.Errorf("No registrations with ID %d", id)
-		return
+		msg := fmt.Sprintf("No registrations with ID %d", id)
+		return core.Registration{}, NoSuchRegistrationError{Msg: msg}
 	}
-	regPtr, ok := regObj.(*core.Registration)
+	regPtr, ok := regObj.(*regModel)
 	if !ok {
-		err = fmt.Errorf("Invalid cast")
+		return core.Registration{}, fmt.Errorf("Invalid cast to reg model object")
 	}
-
-	reg = *regPtr
-	return
+	return modelToRegistration(regPtr)
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
-func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (reg core.Registration, err error) {
-	keyJSON, err := json.Marshal(key)
+func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (core.Registration, error) {
+	reg := &regModel{}
+	sha, err := core.KeyDigest(key.Key)
 	if err != nil {
-		return
+		return core.Registration{}, err
+	}
+	err = ssa.dbMap.SelectOne(reg, "SELECT * FROM registrations WHERE jwk_sha256 = :key", map[string]interface{}{"key": sha})
+
+	if err == sql.ErrNoRows {
+		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
+		return core.Registration{}, NoSuchRegistrationError{Msg: msg}
+	}
+	if err != nil {
+		return core.Registration{}, err
 	}
 
-	err = ssa.dbMap.SelectOne(&reg, "SELECT * FROM registrations WHERE jwk = :key", map[string]interface{}{"key": string(keyJSON)})
-	return
+	return modelToRegistration(reg)
 }
 
 // GetAuthorization obtains an Authorization by ID
@@ -238,19 +253,15 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 
 // NewRegistration stores a new Registration
 func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
-	tx, err := ssa.dbMap.Begin()
+	rm, err := registrationToModel(&reg)
 	if err != nil {
 		return reg, err
 	}
-
-	err = tx.Insert(&reg)
+	err = ssa.dbMap.Insert(rm)
 	if err != nil {
-		tx.Rollback()
 		return reg, err
 	}
-
-	err = tx.Commit()
-	return reg, err
+	return modelToRegistration(rm)
 }
 
 // UpdateOCSP stores an updated OCSP response.
@@ -339,26 +350,22 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 }
 
 // UpdateRegistration stores an updated Registration
-func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) (err error) {
-	tx, err := ssa.dbMap.Begin()
+func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) error {
+	rm, err := registrationToModel(&reg)
 	if err != nil {
-		return
+		return err
 	}
 
-	if !existingRegistration(tx, reg.ID) {
-		err = fmt.Errorf("Requested registration not found %v", reg.ID)
-		tx.Rollback()
-		return
-	}
-
-	_, err = tx.Update(&reg)
+	n, err := ssa.dbMap.Update(rm)
 	if err != nil {
-		tx.Rollback()
-		return
+		return err
+	}
+	if n == 0 {
+		msg := fmt.Sprintf("Requested registration not found %v", reg.ID)
+		return NoSuchRegistrationError{Msg: msg}
 	}
 
-	err = tx.Commit()
-	return
+	return nil
 }
 
 // NewPendingAuthorization stores a new Pending Authorization

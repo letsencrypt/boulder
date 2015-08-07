@@ -680,7 +680,7 @@ func TestChallenge(t *testing.T) {
 	`), &key)
 	test.AssertNotError(t, err, "Could not unmarshal testing key")
 
-	challengeURL, _ := url.Parse("/acme/authz/asdf?challenge=foo")
+	challengeAcme, _ := core.ParseAcmeURL("/acme/authz/asdf?challenge=foo")
 	authz := core.Authorization{
 		ID: "asdf",
 		Identifier: core.AcmeIdentifier{
@@ -690,15 +690,16 @@ func TestChallenge(t *testing.T) {
 		Challenges: []core.Challenge{
 			core.Challenge{
 				Type: "dns",
-				URI:  core.AcmeURL(*challengeURL),
+				URI:  challengeAcme,
 			},
 		},
 		RegistrationID: 1,
 	}
 
+	challengeURL := url.URL(*challengeAcme)
 	wfe.challenge(authz, responseWriter, &http.Request{
 		Method: "POST",
-		URL:    challengeURL,
+		URL:    &challengeURL,
 		Body:   makeBody(signRequest(t, `{"resource":"challenge"}`, &wfe.nonceService)),
 	}, requestEvent{})
 
@@ -818,8 +819,7 @@ func TestNewRegistration(t *testing.T) {
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
-	uu := url.URL(reg.Contact[0])
-	test.AssertEquals(t, uu.String(), "tel:123456789")
+	test.AssertEquals(t, reg.Contact[0].String(), "tel:123456789")
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),

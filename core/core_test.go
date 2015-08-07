@@ -208,7 +208,7 @@ func TestURL(t *testing.T) {
 	jsonURL := fmt.Sprintf(`{"URL":"%s://%s%s?%s"}`, scheme, host, path, query)
 	badJSON := `{"URL":666}`
 
-	var url struct{ URL AcmeURL }
+	url := struct{ URL *AcmeURL }{URL: &AcmeURL{}}
 	err := json.Unmarshal([]byte(jsonURL), &url)
 	if err != nil {
 		t.Errorf("Error in json unmarshal: %v", err)
@@ -231,7 +231,7 @@ func TestURL(t *testing.T) {
 		t.Errorf("Error in json marshal: %v", err)
 	}
 	if string(marshaledURL) != jsonURL {
-		t.Errorf("Improper marshaled URL: %s", string(marshaledURL))
+		t.Errorf("Expected marshaled url %#v, got %#v", jsonURL, string(marshaledURL))
 	}
 }
 
