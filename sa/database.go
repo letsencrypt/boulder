@@ -108,7 +108,8 @@ func recombineURLForDB(dbConnect string) (string, error) {
 		dbConn += ":" + passwd
 	}
 	dbConn += "@tcp(" + dbURL.Host + ")"
-	return dbConn + dbURL.EscapedPath() + "?" + dsnVals.Encode(), nil
+	// TODO(jmhodges): should be dbURL.EscapedPath() but Travis doesn't have 1.5
+	return dbConn + dbURL.Path + "?" + dsnVals.Encode(), nil
 }
 
 // SetSQLDebug enables/disables GORP SQL-level Debugging
