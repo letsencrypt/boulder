@@ -77,10 +77,10 @@ func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 // username unescaped. Compromise by doing the leg work if the config
 // says the database URL's scheme is a fake one called
 // "mysqltcp://". See
-// https://github.com/go-sql-driver/mysql/issues/362 and
-// https://github.com/golang/go/issues/12023 for why we have to futz
-// around and avoid URL.String.
+// https://github.com/go-sql-driver/mysql/issues/362 for why we have
+// to futz around and avoid URL.String.
 func recombineURLForDB(dbConnect string) (string, error) {
+	dbConnect = strings.TrimSpace(dbConnect)
 	if !strings.HasPrefix(dbConnect, "mysqltcp://") {
 		return dbConnect, nil
 	}
