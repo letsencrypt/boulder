@@ -38,7 +38,7 @@ def run(path, race_detection):
         install = """GORACE="halt_on_error=1" go install -race"""
 
     binary = os.path.basename(path)
-    cmd = """%s ./%s; exec %s --config %s""" % (install, path, binary, config)
+    cmd = """%s ./%s && exec %s --config %s""" % (install, path, binary, config)
     p = subprocess.Popen(cmd, shell=True)
     p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))
