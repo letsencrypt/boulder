@@ -163,6 +163,13 @@ type Config struct {
 		DebugAddr string
 	}
 
+	ExternalCertImporter struct {
+		CertsToImportCSVFilename   string
+		DomainsToImportCSVFilename string
+		CertsToRemoveCSVFilename   string
+		StatsdRate                 float32
+	}
+
 	Common struct {
 		BaseURL string
 		// Path to a PEM-encoded copy of the issuer certificate.
