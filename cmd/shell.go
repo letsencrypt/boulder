@@ -212,8 +212,9 @@ type CommonConfig struct {
 	DNSResolver string
 	DNSTimeout  string
 
-	PolicyDBDriver  string
-	PolicyDBConnect string
+	PolicyDBDriver         string
+	PolicyDBConnect        string
+	EnforcePolicyWhitelist bool
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.

@@ -124,6 +124,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 	if err != nil {
 		return nil, err
 	}
+	pa.EnforceWhitelist = commonConfig.EnforcePolicyWhitelist
 
 	ca = &CertificateAuthorityImpl{
 		Signer:     signer,

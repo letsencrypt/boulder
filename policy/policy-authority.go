@@ -19,6 +19,7 @@ type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
 	db  core.PolicyAuthorityDatabase
 
+	EnforceWhitelist bool
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
 }
 
@@ -156,8 +157,9 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		return NonPublicError{}
 	}
 
-	// Require no match against blacklist
-	if err := pa.db.CheckRules(domain); err != nil {
+	// Require no match against blacklist (and if pa.EnforceWhitelist is true
+	// require domain to match a whitelist rule)
+	if err := pa.db.CheckRules(domain, pa.EnforceWhitelist); err != nil {
 		return err
 	}
 

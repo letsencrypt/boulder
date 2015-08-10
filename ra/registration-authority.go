@@ -47,6 +47,7 @@ func NewRegistrationAuthorityImpl(commonConfig cmd.CommonConfig) (ra Registratio
 	if err != nil {
 		return RegistrationAuthorityImpl{}, err
 	}
+	pa.EnforceWhitelist = commonConfig.EnforcePolicyWhitelist
 	ra.PA = pa
 
 	return ra, nil

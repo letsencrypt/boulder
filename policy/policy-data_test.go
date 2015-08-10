@@ -32,13 +32,17 @@ func TestGet(t *testing.T) {
 	err = p.AddRule("%ba.bracewel.net", whitelisted)
 	test.AssertNotError(t, err, "Failed to add blacklist rule")
 
-	err = p.CheckRules("abba.bracewel.net")
+	err = p.CheckRules("abba.bracewel.net", false)
 	test.AssertNotError(t, err, "Hostname should be whitelisted")
-	err = p.CheckRules("bracewel.net")
+	err = p.CheckRules("bracewel.net", false)
 	test.AssertError(t, err, "Hostname should be blacklisted")
 
 	err = p.AddRule("%bracewel.net", blacklisted)
 	test.AssertNotError(t, err, "Failed to add blacklist rule")
-	err = p.CheckRules("abba.bracewel.net")
+	err = p.CheckRules("abba.bracewel.net", false)
 	test.AssertNotError(t, err, "Hostname should be whitelisted")
+
+	err = p.CheckRules("bracewel.net", true)
+	test.AssertError(t, err, "Hostname shouldn't be whitelisted")
+
 }

@@ -85,7 +85,7 @@ func (padb *PolicyAuthorityDatabaseImpl) AddRule(rule string, string string) err
 
 // CheckRules will query the database for white/blacklist rules that match host,
 // if both whitelist and blacklist rules are found the whitelist will always win
-func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string) error {
+func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string, requireWhitelist bool) error {
 	var rules []domainRule
 	_, err := padb.dbMap.Select(
 		&rules,
@@ -107,7 +107,9 @@ func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string) error {
 		}
 	}
 
-	if len(wRules)+len(bRules) > 0 {
+	if requireWhitelist && len(wRules) == 0 {
+		return fmt.Errorf("Domain name is not whitelisted for issuance")
+	} else if len(wRules)+len(bRules) > 0 {
 		padb.log.Info(fmt.Sprintf("Hostname [%s] matches rules, Whitelist: %s, Blacklist: %s", host, wRules, bRules))
 		if len(wRules) > 0 {
 			return nil
