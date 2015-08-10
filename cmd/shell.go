@@ -163,7 +163,22 @@ type Config struct {
 		DebugAddr string
 	}
 
-	Common CommonConfig
+	ExternalCertImporter struct {
+		CertsToImportCSVFilename   string
+		DomainsToImportCSVFilename string
+		CertsToRemoveCSVFilename   string
+		StatsdRate                 float32
+	}
+
+	Common struct {
+		BaseURL string
+		// Path to a PEM-encoded copy of the issuer certificate.
+		IssuerCert string
+		MaxKeySize int
+
+		DNSResolver string
+		DNSTimeout  string
+	}
 
 	SubscriberAgreementURL string
 }
