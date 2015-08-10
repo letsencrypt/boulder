@@ -7,6 +7,7 @@
 
   "amqp": {
     "server": "amqp://guest:guest@localhost:5672",
+    "insecure": true,
     "-uncomment_for_AMQPS-tls": {
       "cacertfile": "/etc/boulder/rabbitmq-cacert.pem",
       "certfile": "/etc/boulder/rabbitmq-cert.pem",
