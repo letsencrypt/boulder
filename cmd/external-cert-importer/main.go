@@ -159,7 +159,7 @@ func main() {
 		blog.SetAuditLogger(auditlogger)
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.Common.PolicyDB.Driver, c.Common.PolicyDB.Name)
+		dbMap, err := sa.NewDbMap(c.Common.PolicyDBDriver, c.Common.PolicyDBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		dbMap.AddTableWithName(core.ExternalCert{}, "externalCerts").SetKeys(false, "SHA1")
