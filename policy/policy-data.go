@@ -56,7 +56,7 @@ func NewPolicyAuthorityDatabaseImpl(driver, name string) (padb core.PolicyAuthor
 }
 
 // AddRule will add a whitelist or blacklist rule to the database
-func (padb *PolicyAuthorityDatabaseImpl) AddRule(rule string, string string) error {
+func (padb *PolicyAuthorityDatabaseImpl) AddRule(rule string, rType string) error {
 	tx, err := padb.dbMap.Begin()
 	if err != nil {
 		tx.Rollback()
@@ -65,13 +65,13 @@ func (padb *PolicyAuthorityDatabaseImpl) AddRule(rule string, string string) err
 	r := domainRule{
 		Rule: rule,
 	}
-	switch string {
+	switch rType {
 	case blacklisted:
 		r.Type = "blacklist"
 	case whitelisted:
 		r.Type = "whitelist"
 	default:
-		return fmt.Errorf("Unsupported rule type: %s", string)
+		return fmt.Errorf("Unsupported rule type: %s", rType)
 	}
 	err = tx.Insert(&r)
 	if err != nil {
