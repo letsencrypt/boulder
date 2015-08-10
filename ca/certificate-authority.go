@@ -32,7 +32,7 @@ type Config struct {
 	Profile      string
 	TestMode     bool
 	DBDriver     string
-	DBName       string
+	DBConnect    string
 	SerialPrefix int
 	Key          KeyConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
@@ -44,6 +44,9 @@ type Config struct {
 	// The maximum number of subjectAltNames in a single certificate
 	MaxNames int
 	CFSSL    cfsslConfig.Config
+
+	// DebugAddr is the address to run the /debug handlers on.
+	DebugAddr string
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,
@@ -59,6 +62,22 @@ type PKCS11Config struct {
 	Token  string
 	PIN    string
 	Label  string
+}
+
+// This map is used to detect algorithms in crypto/x509 that
+// are no longer considered sufficiently strong.
+// * No MD2, MD5, or SHA-1
+// * No DSA
+//
+// SHA1WithRSA is allowed because there's still a fair bit of it
+// out there, but we should try to remove it soon.
+var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
+	x509.UnknownSignatureAlgorithm: true,
+	x509.MD2WithRSA:                true,
+	x509.MD5WithRSA:                true,
+	x509.DSAWithSHA1:               true,
+	x509.DSAWithSHA256:             true,
+	x509.ECDSAWithSHA1:             true,
 }
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -280,6 +299,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
+	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
+		err = fmt.Errorf("Invalid signature algorithm in CSR")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
+	}
 
 	// Pull hostnames from CSR
 	// Authorization is checked by the RA
@@ -452,7 +477,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return cert, nil
 	}
 
-	ca.SA.UpdateOCSP(serial, ocspResponse)
+	err = ca.SA.UpdateOCSP(serial, ocspResponse)
 	if err != nil {
 		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed storing: %s", err))
 		return cert, nil

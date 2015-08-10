@@ -9,10 +9,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"math/big"
-	"net"
 	"net/mail"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,11 +25,12 @@ import (
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	CA  core.CertificateAuthority
-	VA  core.ValidationAuthority
-	SA  core.StorageAuthority
-	PA  core.PolicyAuthority
-	log *blog.AuditLogger
+	CA          core.CertificateAuthority
+	VA          core.ValidationAuthority
+	SA          core.StorageAuthority
+	PA          core.PolicyAuthority
+	DNSResolver core.DNSResolver
+	log         *blog.AuditLogger
 
 	AuthzBase  string
 	MaxKeySize int
@@ -54,20 +52,20 @@ func NewRegistrationAuthorityImpl(policyDB policy.Config) (RegistrationAuthority
 
 var allButLastPathSegment = regexp.MustCompile("^.*/")
 
-func lastPathSegment(url core.AcmeURL) string {
+func lastPathSegment(url *core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
-func validateEmail(address string) (err error) {
+func validateEmail(address string, resolver core.DNSResolver) (err error) {
 	_, err = mail.ParseAddress(address)
 	if err != nil {
-		err = core.MalformedRequestError(err.Error())
+		err = core.MalformedRequestError(fmt.Sprintf("%s is not a valid e-mail address", address))
 		return
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	var mx []*net.MX
-	mx, err = net.LookupMX(domain)
+	var mx []string
+	mx, _, err = resolver.LookupMX(domain)
 	if err != nil || len(mx) == 0 {
 		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
 		return
@@ -75,13 +73,13 @@ func validateEmail(address string) (err error) {
 	return
 }
 
-func validateContacts(contacts []core.AcmeURL) (err error) {
+func validateContacts(contacts []*core.AcmeURL, resolver core.DNSResolver) (err error) {
 	for _, contact := range contacts {
 		switch contact.Scheme {
 		case "tel":
 			continue
 		case "mailto":
-			err = validateEmail(contact.Opaque)
+			err = validateEmail(contact.Opaque, resolver)
 			if err != nil {
 				return
 			}
@@ -97,7 +95,7 @@ func validateContacts(contacts []core.AcmeURL) (err error) {
 type certificateRequestEvent struct {
 	ID                  string    `json:",omitempty"`
 	Requester           int64     `json:",omitempty"`
-	SerialNumber        *big.Int  `json:",omitempty"`
+	SerialNumber        string    `json:",omitempty"`
 	RequestMethod       string    `json:",omitempty"`
 	VerificationMethods []string  `json:",omitempty"`
 	VerifiedFields      []string  `json:",omitempty"`
@@ -116,12 +114,11 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	reg = core.Registration{
-		RecoveryToken: core.NewToken(),
-		Key:           init.Key,
+		Key: init.Key,
 	}
 	reg.MergeUpdate(init)
 
-	err = validateContacts(reg.Contact)
+	err = validateContacts(reg.Contact, ra.DNSResolver)
 	if err != nil {
 		return
 	}
@@ -158,7 +155,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		return authz, err
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	ra.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %v, Valid for issuance: %v]", identifier.Value, regID, present, valid))
+	ra.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", identifier.Value, regID, present, valid))
 	if !valid {
 		err = errors.New("CAA check for identifier failed")
 		return authz, err
@@ -187,8 +184,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Construct all the challenge URIs
 	for i := range challenges {
 		// Ignoring these errors because we construct the URLs to be correct
-		challengeURI, _ := url.Parse(ra.AuthzBase + authz.ID + "?challenge=" + strconv.Itoa(i))
-		challenges[i].URI = core.AcmeURL(*challengeURI)
+		challengeURI, _ := core.ParseAcmeURL(ra.AuthzBase + authz.ID + "?challenge=" + strconv.Itoa(i))
+		challenges[i].URI = challengeURI
 
 		if !challenges[i].IsSane(false) {
 			// InternalServerError because we generated these challenges, they should
@@ -284,49 +281,20 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	// Gather authorized domains from the referenced authorizations
-	authorizedDomains := map[string]bool{}
-	verificationMethodSet := map[string]bool{}
-	earliestExpiry := time.Date(2100, 01, 01, 0, 0, 0, 0, time.UTC)
+	// Check that each requested name has a valid authorization
 	now := time.Now()
-	for _, url := range req.Authorizations {
-		id := lastPathSegment(url)
-		authz, err := ra.SA.GetAuthorization(id)
-		if err != nil || // Couldn't find authorization
-			authz.RegistrationID != registration.ID || // Not for this account
-			authz.Status != core.StatusValid || // Not finalized or not successful
-			authz.Expires.Before(now) || // Expired
-			authz.Identifier.Type != core.IdentifierDNS {
-			// XXX: It may be good to fail here instead of ignoring invalid authorizations.
-			//      However, it seems like this treatment is more in the spirit of Postel's
-			//      law, and it hides information from attackers.
-			continue
+	earliestExpiry := time.Date(2100, 01, 01, 0, 0, 0, 0, time.UTC)
+	for _, name := range names {
+		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
+		if err != nil || authz.Expires.Before(now) {
+			// unable to find a valid authorization or authz is expired
+			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
+			logEvent.Error = err.Error()
+			return emptyCert, err
 		}
 
 		if authz.Expires.Before(earliestExpiry) {
 			earliestExpiry = *authz.Expires
-		}
-
-		for _, challenge := range authz.Challenges {
-			if challenge.Status == core.StatusValid {
-				verificationMethodSet[challenge.Type] = true
-			}
-		}
-
-		authorizedDomains[authz.Identifier.Value] = true
-	}
-	verificationMethods := []string{}
-	for method := range verificationMethodSet {
-		verificationMethods = append(verificationMethods, method)
-	}
-	logEvent.VerificationMethods = verificationMethods
-
-	// Validate all domains
-	for _, name := range names {
-		if !authorizedDomains[name] {
-			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
-			logEvent.Error = err.Error()
-			return emptyCert, err
 		}
 	}
 
@@ -338,8 +306,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		// While this could be InternalServerError for certain conditions, most
 		// of the failure reasons (such as GoodKey failing) are caused by malformed
 		// requests.
-		err = core.MalformedRequestError(err.Error())
 		logEvent.Error = err.Error()
+		err = core.MalformedRequestError("Certificate request was invalid")
 		return emptyCert, err
 	}
 
@@ -358,7 +326,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	logEvent.SerialNumber = parsedCertificate.SerialNumber
+	logEvent.SerialNumber = core.SerialToString(parsedCertificate.SerialNumber)
 	logEvent.CommonName = parsedCertificate.Subject.CommonName
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
@@ -372,7 +340,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	err = validateContacts(base.Contact)
+	err = validateContacts(base.Contact, ra.DNSResolver)
 	if err != nil {
 		return
 	}
@@ -401,12 +369,19 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
 		// This can pretty much only happen when the client corrupts the Challenge
 		// data.
-		err = core.MalformedRequestError(err.Error())
+		err = core.MalformedRequestError("Challenge data was corrupted")
+		return
+	}
+
+	// Look up the account key for this authorization
+	reg, err := ra.SA.GetRegistration(authz.RegistrationID)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
 		return
 	}
 
 	// Dispatch to the VA for service
-	ra.VA.UpdateValidations(authz, challengeIndex)
+	ra.VA.UpdateValidations(authz, challengeIndex, reg.Key)
 
 	return
 }

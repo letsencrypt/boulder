@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
@@ -22,7 +22,7 @@ type BoulderTypeConverter struct{}
 // ToDb converts a Boulder object to one suitable for the DB representation.
 func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 	switch t := val.(type) {
-	case core.AcmeIdentifier, []core.Challenge, []core.AcmeURL, [][]int:
+	case core.AcmeIdentifier, []core.Challenge, []*core.AcmeURL, [][]int:
 		jsonBytes, err := json.Marshal(t)
 		if err != nil {
 			return nil, err
@@ -48,7 +48,7 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 // FromDb converts a DB representation back into a Boulder object.
 func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, bool) {
 	switch target.(type) {
-	case *core.AcmeIdentifier, *[]core.Challenge, *[]core.AcmeURL, *[][]int, core.JSONBuffer:
+	case *core.AcmeIdentifier, *[]core.Challenge, *[]*core.AcmeURL, *[][]int, core.JSONBuffer:
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
 			if !ok {

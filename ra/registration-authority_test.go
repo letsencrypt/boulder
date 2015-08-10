@@ -20,10 +20,11 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
@@ -34,7 +35,7 @@ type DummyValidationAuthority struct {
 	Argument core.Authorization
 }
 
-func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
+func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int, key jose.JsonWebKey) (err error) {
 	dva.Called = true
 	dva.Argument = authz
 	return
@@ -56,14 +57,14 @@ var (
 	AccountKeyJSONB = []byte(`{
 		"kty":"RSA",
 		"n":"z8bp-jPtHt4lKBqepeKF28g_QAEOuEsCIou6sZ9ndsQsEjxEOQxQ0xNOQezsKa63eogw8YS3vzjUcPP5BJuVzfPfGd5NVUdT-vSSwxk3wvk_jtNqhrpcoG0elRPQfMVsQWmxCAXCVRz3xbcFI8GTe-syynG3l-g1IzYIIZVNI6jdljCZML1HOMTTW4f7uJJ8mM-08oQCeHbr5ejK7O2yMSSYxW03zY-Tj1iVEebROeMv6IEEJNFSS4yM-hLpNAqVuQxFGetwtwjDMC1Drs1dTWrPuUAAjKGrP151z1_dE74M5evpAhZUmpKv1hY-x85DC6N0hFPgowsanmTNNiV75w",
-		"e":"AAEAAQ"
+		"e":"AQAB"
 	}`)
 	AccountKeyB = jose.JsonWebKey{}
 
 	AccountKeyJSONC = []byte(`{
 		"kty":"RSA",
 		"n":"rFH5kUBZrlPj73epjJjyCxzVzZuV--JjKgapoqm9pOuOt20BUTdHqVfC2oDclqM7HFhkkX9OSJMTHgZ7WaVqZv9u1X2yjdx9oVmMLuspX7EytW_ZKDZSzL-sCOFCuQAuYKkLbsdcA3eHBK_lwc4zwdeHFMKIulNvLqckkqYB9s8GpgNXBDIQ8GjR5HuJke_WUNjYHSd8jY1LU9swKWsLQe2YoQUz_ekQvBvBCoaFEtrtRaSJKNLIVDObXFr2TLIiFiM0Em90kK01-eQ7ZiruZTKomll64bRFPoNo4_uwubddg3xTqur2vdF3NyhTrYdvAgTem4uC0PFjEQ1bK_djBQ",
-		"e":"AAEAAQ"
+		"e":"AQAB"
 	}`)
 	AccountKeyC = jose.JsonWebKey{}
 
@@ -98,7 +99,7 @@ var (
 
 	ResponseIndex = 0
 	Response      = core.Challenge{
-		Path: "Hf5GrX4Q7EBax9hc2jJnfw",
+		Type: "simpleHttp",
 	}
 
 	ExampleCSR = &x509.CertificateRequest{}
@@ -113,24 +114,15 @@ var (
 		RegistrationID: 1,
 		Status:         "pending",
 		Challenges: []core.Challenge{
-			core.Challenge{
-				Type:   "simpleHttp",
-				Status: "pending",
-				URI:    core.AcmeURL(*url0),
-				Token:  "pDX9vBFJ043_gEc9Wyp8of-SqZMN2H3-fvj5iUgP7mg",
-			},
-			core.Challenge{
-				Type:   "dvsni",
-				Status: "pending",
-				URI:    core.AcmeURL(*url1),
-				R:      "AI83O7gCMPDr4z7OIdl8T6axx6nui4HV1aAFQ5LJvVs",
-				Nonce:  "f011c9a0ce1a4fe0f18f2252d64c4239",
-			},
+			core.SimpleHTTPChallenge(),
+			core.DvsniChallenge(),
 		},
 		Combinations: [][]int{[]int{0}, []int{1}},
 	}
 	AuthzUpdated = core.Authorization{}
 	AuthzFinal   = core.Authorization{}
+
+	log = mocks.UseMockLog()
 )
 
 func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
@@ -149,7 +141,10 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 
 	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Failed to create SA")
-	sa.CreateTablesIfNotExists()
+	err = sa.CreateTablesIfNotExists()
+	if err != nil {
+		t.Fatalf("unable to create tables: %s", err)
+	}
 
 	va := &DummyValidationAuthority{}
 
@@ -173,7 +168,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
 	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
 	pa := policy.NewPolicyAuthorityImpl()
-	cadb, _ := test.NewMockCertificateAuthorityDatabase()
+	cadb, _ := mocks.NewMockCertificateAuthorityDatabase()
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
 		OCSPSigner:     ocspSigner,
@@ -197,11 +192,11 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	ra.PA = pa
 	ra.AuthzBase = "http://acme.invalid/authz/"
 	ra.MaxKeySize = 4096
+	ra.DNSResolver = &mocks.MockDNS{}
 
 	AuthzInitial.RegistrationID = Registration.ID
 
 	AuthzUpdated = AuthzInitial
-	AuthzUpdated.Challenges[0].Path = "Hf5GrX4Q7EBax9hc2jJnfw"
 
 	AuthzFinal = AuthzUpdated
 	AuthzFinal.Status = "valid"
@@ -221,64 +216,65 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 }
 
 func TestValidateContacts(t *testing.T) {
-	tel, _ := url.Parse("tel:")
-	ansible, _ := url.Parse("ansible:earth.sol.milkyway.laniakea/letsencrypt")
-	validEmail, _ := url.Parse("mailto:admin@email.com")
-	invalidEmail, _ := url.Parse("mailto:admin@example.com")
-	malformedEmail, _ := url.Parse("mailto:admin.com")
+	tel, _ := core.ParseAcmeURL("tel:")
+	ansible, _ := core.ParseAcmeURL("ansible:earth.sol.milkyway.laniakea/letsencrypt")
+	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
+	invalidEmail, _ := core.ParseAcmeURL("mailto:admin@example.com")
+	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	err := validateContacts([]core.AcmeURL{})
+	err := validateContacts([]*core.AcmeURL{}, &mocks.MockDNS{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*tel)})
+	err = validateContacts([]*core.AcmeURL{tel}, &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*validEmail)})
+	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*invalidEmail)})
+	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.MockDNS{})
 	test.AssertError(t, err, "Invalid Email")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*malformedEmail)})
+	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.MockDNS{})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = validateContacts([]core.AcmeURL{core.AcmeURL(*ansible)})
+	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.MockDNS{})
 	test.AssertError(t, err, "Unknown scehme")
 }
 
 func TestValidateEmail(t *testing.T) {
-	err := validateEmail("an email`")
+	err := validateEmail("an email`", &mocks.MockDNS{})
 	test.AssertError(t, err, "Malformed")
 
-	err = validateEmail("a@not.a.domain")
+	err = validateEmail("a@not.a.domain", &mocks.MockDNS{})
 	test.AssertError(t, err, "Cannot resolve")
 	t.Logf("No Resolve: %s", err)
 
-	err = validateEmail("a@example.com")
+	err = validateEmail("a@example.com", &mocks.MockDNS{})
 	test.AssertError(t, err, "No MX Record")
 	t.Logf("No MX: %s", err)
 
-	err = validateEmail("a@email.com")
+	err = validateEmail("a@email.com", &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Valid")
 }
 
 func TestNewRegistration(t *testing.T) {
 	_, _, sa, ra := initAuthorities(t)
-	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
+	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
+		Contact: []*core.AcmeURL{mailto},
 		Key:     AccountKeyB,
 	}
 
 	result, err := ra.NewRegistration(input)
-	test.AssertNotError(t, err, "Could not create new registration")
+	if err != nil {
+		t.Fatalf("could not create new registration: %s", err)
+	}
 
 	test.Assert(t, core.KeyDigestEquals(result.Key, AccountKeyB), "Key didn't match")
 	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
 	test.Assert(t, mailto.String() == result.Contact[0].String(),
 		"Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
-	test.Assert(t, result.RecoveryToken != "", "Recovery token not filled")
 
 	reg, err := sa.GetRegistration(result.ID)
 	test.AssertNotError(t, err, "Failed to retrieve registration")
@@ -287,13 +283,12 @@ func TestNewRegistration(t *testing.T) {
 
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	_, _, _, ra := initAuthorities(t)
-	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
+	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		ID:            23,
-		Key:           AccountKeyC,
-		RecoveryToken: "RecoverMe",
-		Contact:       []core.AcmeURL{core.AcmeURL(*mailto)},
-		Agreement:     "I agreed",
+		ID:        23,
+		Key:       AccountKeyC,
+		Contact:   []*core.AcmeURL{mailto},
+		Agreement: "I agreed",
 	}
 
 	result, err := ra.NewRegistration(input)
@@ -302,24 +297,21 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	test.Assert(t, result.ID != 23, "ID shouldn't be set by user")
 	// TODO: Enable this test case once we validate terms agreement.
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
-	test.Assert(t, result.RecoveryToken != "RecoverMe", "Recovery token shouldn't be set by user")
 
 	result2, err := ra.UpdateRegistration(result, core.Registration{
-		ID:            33,
-		Key:           ShortKey,
-		RecoveryToken: "RecoverMe2",
+		ID:  33,
+		Key: ShortKey,
 	})
 	test.AssertNotError(t, err, "Could not update registration")
 	test.Assert(t, result2.ID != 33, "ID shouldn't be overwritten.")
 	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
-	test.Assert(t, result2.RecoveryToken != "RecoverMe2", "Recovery token shouldn't be overwritten by user")
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
 	_, _, _, ra := initAuthorities(t)
-	mailto, _ := url.Parse("mailto:foo@letsencrypt.org")
+	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact: []core.AcmeURL{core.AcmeURL(*mailto)},
+		Contact: []*core.AcmeURL{mailto},
 		Key:     ShortKey,
 	}
 
@@ -374,8 +366,6 @@ func TestUpdateAuthorization(t *testing.T) {
 
 	// Verify that the responses are reflected
 	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
-	simpleHTTP := va.Argument.Challenges[0]
-	test.Assert(t, simpleHTTP.Path == Response.Path, "simpleHTTP changed")
 
 	t.Log("DONE TestUpdateAuthorization")
 }
@@ -421,10 +411,8 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse CSR")
 	sa.UpdatePendingAuthorization(authz)
 	sa.FinalizeAuthorization(authz)
-	authzURL, _ := url.Parse("http://doesnt.matter/" + authz.ID)
 	certRequest := core.CertificateRequest{
-		CSR:            parsedCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*authzURL)},
+		CSR: parsedCSR,
 	}
 
 	// Registration id 1 has key == AccountKeyA
@@ -442,14 +430,10 @@ func TestAuthorizationRequired(t *testing.T) {
 	sa.UpdatePendingAuthorization(AuthzFinal)
 	sa.FinalizeAuthorization(AuthzFinal)
 
-	// Construct a cert request referencing the authorization
-	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
-
 	// ExampleCSR requests not-example.com and www.not-example.com,
 	// but the authorization only covers not-example.com
 	certRequest := core.CertificateRequest{
-		CSR:            ExampleCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*url1)},
+		CSR: ExampleCSR,
 	}
 
 	_, err := ra.NewCertificate(certRequest, 1)
@@ -471,13 +455,8 @@ func TestNewCertificate(t *testing.T) {
 	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
 	sa.FinalizeAuthorization(authzFinalWWW)
 
-	// Construct a cert request referencing the two authorizations
-	url1, _ := url.Parse("http://doesnt.matter/" + AuthzFinal.ID)
-	url2, _ := url.Parse("http://doesnt.matter/" + authzFinalWWW.ID)
-
 	certRequest := core.CertificateRequest{
-		CSR:            ExampleCSR,
-		Authorizations: []core.AcmeURL{core.AcmeURL(*url1), core.AcmeURL(*url2)},
+		CSR: ExampleCSR,
 	}
 
 	cert, err := ra.NewCertificate(certRequest, 1)
@@ -594,37 +573,6 @@ var CAcertPEM = "-----BEGIN CERTIFICATE-----\n" +
 // * Random public key
 // * CN = not-example.com
 // * DNSNames = not-example.com, www.not-example.com
-/*
-var CSRhex = "3082028c30820174020100301a311830160603550403130f" +
-	"6e6f742d6578616d706c652e636f6d30820122300d06092a" +
-	"864886f70d01010105000382010f003082010a0282010100" +
-	"aac67dd1e11fae980048b0ac91be005f21d9df8bb38461cc" +
-	"a7dfad601a00e91ae488c240a03ec53a5752a33d837d2d9c" +
-	"357c6a99ea7e55fe75482524480bb367aa85f75541bd0284" +
-	"ede1ab9b54925a5c9f88d08f9dc857ee707a59d3503b31ea" +
-	"64e42099acd70d2204c872ef49983e44cc2bc24389159fc5" +
-	"f6ca41b80540fb7a2fbf8aa43af7f539782f20f185d416cc" +
-	"66a88e5f8913a292b4a217e5b12e8244a9686af3b49ac88b" +
-	"215c6eb097c4befa3e66257a1358791e2bc471c18ba2ca6e" +
-	"161d2dcb53ebcb06e6b4b2e6cd42ff970581bc4971009cbd" +
-	"7ccc3f89648db720e2908a1be613a9c3afb46b477261c1bc" +
-	"c057bc749a102e6bd9dc45d87b2d97c50203010001a02d30" +
-	"2b06092a864886f70d01090e311e301c301a0603551d1104" +
-	"133011820f6e6f742d6578616d706c652e636f6d300d0609" +
-	"2a864886f70d01010b05000382010100a37025c2cb88b4fa" +
-	"f3c8417820a78a069b92cef45a3d2f3fbd18f41a07128258" +
-	"38bc55e6c1c416e5f34c365924391294741c23657ffa77e4" +
-	"aa3d589b560cbb9156aae175637cbb5061d69eefa7f432ca" +
-	"c9e4d03feaa367954cf6986a72ca76307c01852db72b43ae" +
-	"5ab7f673b81b58e06d8af1f681cd7c88d2fbc8c80d592a3f" +
-	"7c3ea20035b73c8e6afc8daea4d168fe469f7da9e4bac660" +
-	"fc207d1d93dce118dc7381e69fa4af37bb4d4d6d5342fa55" +
-	"7798a363aa04cf350ad1748e96eabee04fa379dd98524ea1" +
-	"53f07e1654e6077f4aaaf5c5b27edaf0385b48e0fc281424" +
-	"6363a01370c89e666169276eb133731cff2379d46d2fff9d" +
-	"f277b6d23fa24f9b"
-*/
-
 var CSRhex = "308202ae308201960201003027310b300906035504061302" +
 	"5553311830160603550403130f6e6f742d6578616d706c65" +
 	"2e636f6d30820122300d06092a864886f70d010101050003" +

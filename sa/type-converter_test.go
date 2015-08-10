@@ -12,13 +12,13 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
 const JWK1JSON = `{
   "kty": "RSA",
   "n": "vuc785P8lBj3fUxyZchF_uZw6WtbxcorqgTyq-qapF5lrO1U82Tp93rpXlmctj6fyFHBVVB5aXnUHJ7LZeVPod7Wnfl8p5OyhlHQHC8BnzdzCqCMKmWZNX5DtETDId0qzU7dPzh0LP0idt5buU7L9QNaabChw3nnaL47iu_1Di5Wp264p2TwACeedv2hfRDjDlJmaQXuS8Rtv9GnRWyC9JBu7XmGvGDziumnJH7Hyzh3VNu-kSPQD3vuAFgMZS6uUzOztCkT0fpOalZI6hqxtWLvXUMj-crXrn-Maavz8qRhpAyp5kcYk3jiHGgQIi7QSK2JIdRJ8APyX9HlmTN5AQ",
-  "e": "AAEAAQ"
+  "e": "AQAB"
 }`
 
 func TestAcmeIdentifier(t *testing.T) {
@@ -103,4 +103,23 @@ func TestOCSPStatus(t *testing.T) {
 	marshaled := marshaledI.(string)
 	err = scanner.Binder(&marshaled, &out)
 	test.AssertMarshaledEquals(t, os, out)
+}
+
+func TestAcmeURLSlice(t *testing.T) {
+	tc := BoulderTypeConverter{}
+	var au, out []*core.AcmeURL
+
+	marshaledI, err := tc.ToDb(au)
+	test.AssertNotError(t, err, "Could not ToDb")
+
+	scanner, ok := tc.FromDb(&out)
+	test.Assert(t, ok, "FromDb failed")
+	if !ok {
+		t.FailNow()
+		return
+	}
+
+	marshaled := marshaledI.(string)
+	err = scanner.Binder(&marshaled, &out)
+	test.AssertMarshaledEquals(t, au, out)
 }

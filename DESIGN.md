@@ -1,8 +1,7 @@
 # Boulder flow diagrams
 
 Boulder is built in a rather decentralized way in order to enable different
-parts to be deployed in different security contexts.  (Of course, they can
-also be run together, as in `./cmd/boulder`.)
+parts to be deployed in different security contexts.
 
 In order to you understand how boulder works and ensure it's working correctly,
 this document lays out how various operations flow through boulder.  We show a
@@ -18,9 +17,7 @@ A couple of notes:
   (certificates), and read by WFE, RA, and CA.
 
 * The interactions shown in the diagrams are the calls that go between
-  components.  These calls can be done directly (as in `./cmd/boulder`), or
-  they can be done via the AMQP-based RPC code in `./rpc/`.  We do not
-  distinguish between those cases here.
+  components.  These calls are done via the AMQP-based RPC code in `./rpc/`.
 
 
 ## New Registration
@@ -168,11 +165,9 @@ Notes:
 1: Client ---new-cert--> WFE
 2:                       WFE ---NewCertificate--> RA
 3:                                                RA ---IssueCertificate--> CA
-4:                                                                          CA --> CFSSL
-5:                                                                          CA <-- CFSSL
-6:                                                RA <------return--------- CA
-7:                       WFE <------return------- RA
-8: Client <------------- WFE
+5:                                                RA <------return--------- CA
+5:                       WFE <------return------- RA
+6: Client <------------- WFE
 ```
 
 * 1-2: WFE does the following:
@@ -205,7 +200,8 @@ Notes:
   * Verify that the issued cert will not be valid longer than the CA cert
   * Verify that the issued cert will not be valid longer than the underlying authorizations
   * Open a CA DB transaction and allocate a new serial number
-  * Request that CFSSL sign the certificate
+  * Create the first OCSP response
+  * Sign the certificate and the first OCSP response with the CFSSL library
 
 * 5-6: CA does the following:
   * Store the certificate
