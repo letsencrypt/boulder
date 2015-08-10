@@ -18,7 +18,8 @@ OBJECTS = activity-monitor \
 	boulder-wfe \
 	expiration-mailer \
 	ocsp-updater \
-	ocsp-responder
+	ocsp-responder \
+	policy-loader
 
 # Build environment variables (referencing core/util.go)
 COMMIT_ID = $(shell git rev-parse --short HEAD)

@@ -11,8 +11,11 @@ import (
 	"io/ioutil"
 	"os"
 
+	// Load both drivers to allow configuring either
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
+	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/core"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -57,12 +60,41 @@ func main() {
 			Name:  "view-whitelist",
 			Usage: "Print whitelist",
 			Action: func(c *cli.Context) {
+				padb, _ := setupContext(c)
+				rules, err := padb.GetRules("whitelist")
+				cmd.FailOnError(err, "Couldn't retrieve whitelist rules")
+				fmt.Println("# Domain whitelist")
+				for _, rule := range rules {
+					fmt.Println(rule)
+				}
 			},
 		},
 		cli.Command{
 			Name:  "view-blacklist",
 			Usage: "Print blacklist",
 			Action: func(c *cli.Context) {
+				padb, _ := setupContext(c)
+				rules, err := padb.GetRules("blacklist")
+				cmd.FailOnError(err, "Couldn't retrieve blacklist rules")
+				fmt.Println("# Domain blacklist")
+				for _, rule := range rules {
+					fmt.Println(rule)
+				}
+			},
+		},
+		cli.Command{
+			Name:  "delete-rule",
+			Usage: "Delete a rule",
+			Action: func(c *cli.Context) {
+				padb, _ := setupContext(c)
+				rule := c.Args().First()
+				if rule == "" {
+					fmt.Fprintf(os.Stderr, "No rule provided\n")
+					os.Exit(1)
+				}
+				err := padb.DeleteRule(rule)
+				cmd.FailOnError(err, "Couldn't delete rule")
+				fmt.Printf("Deleted rule \"%s\"\n", rule)
 			},
 		},
 		cli.Command{
@@ -77,6 +109,7 @@ func main() {
 				}
 				err := padb.AddRule(rule, "whitelist")
 				cmd.FailOnError(err, "Couldn't add rule to whitelist")
+				fmt.Printf("Added rule \"%s\" to whitelist\n", rule)
 			},
 		},
 		cli.Command{
@@ -91,6 +124,7 @@ func main() {
 				}
 				err := padb.AddRule(rule, "blacklist")
 				cmd.FailOnError(err, "Couldn't add rule to blacklist")
+				fmt.Printf("Added rule \"%s\" to blacklist\n", rule)
 			},
 		},
 	}...)

@@ -177,7 +177,9 @@
     "issuerCert": "test/test-ca.pem",
     "maxKeySize": 4096,
     "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s"
+    "dnsTimeout": "10s",
+    "policyDbDriver": "sqlite3",
+    "policyDbConnect": ":memory:"
   },
 
   "subscriberAgreementURL": "http://localhost:4000/terms/v1"

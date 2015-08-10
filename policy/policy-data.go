@@ -19,7 +19,6 @@ const whitelisted = "whitelist"
 const blacklisted = "blacklist"
 
 type domainRule struct {
-	ID   int    `db:"id"`
 	Rule string `db:"rule"`
 	Type string `db:"type"`
 }
@@ -40,7 +39,7 @@ func NewPolicyAuthorityDatabaseImpl(driver, name string) (padb core.PolicyAuthor
 		return nil, err
 	}
 
-	dbMap.AddTableWithName(domainRule{}, "ruleList").SetKeys(true, "ID").ColMap("Rule").SetUnique(true)
+	dbMap.AddTableWithName(domainRule{}, "ruleList").SetKeys(false, "Rule")
 
 	err = dbMap.CreateTablesIfNotExists()
 	if err != nil {
@@ -81,6 +80,26 @@ func (padb *PolicyAuthorityDatabaseImpl) AddRule(rule string, rType string) erro
 
 	err = tx.Commit()
 	return err
+}
+
+func (padb *PolicyAuthorityDatabaseImpl) DeleteRule(rule string) error {
+	obj, err := padb.dbMap.Get(&domainRule{}, rule)
+	if err != nil {
+		return err
+	}
+	dbRule := obj.(domainRule)
+	_, err = padb.dbMap.Delete(dbRule)
+	return nil
+}
+
+func (padb *PolicyAuthorityDatabaseImpl) GetRules(typeFilter string) ([]string, error) {
+	var dR []domainRule
+	_, err := padb.dbMap.Select(&dR, "SELECT * FROM ruleList WHERE type = :rType", map[string]interface{}{"rType": typeFilter})
+	rules := []string{}
+	for _, rule := range dR {
+		rules = append(rules, rule.Rule)
+	}
+	return rules, err
 }
 
 // CheckRules will query the database for white/blacklist rules that match host,
