@@ -9,6 +9,9 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -17,17 +20,28 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/policy"
 )
+
+const maxCNAME = 16 // Prevents infinite loops. Same limit as BIND.
+
+// Returned by CheckCAARecords if it has to follow too many
+// consecutive CNAME lookups.
+var ErrTooManyCNAME = errors.New("too many CNAME/DNAME lookups")
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
-	DNSResolver  *core.DNSResolver
+	DNSResolver  core.DNSResolver
 	IssuerDomain string
 	TestMode     bool
+	UserAgent    string
 }
 
 // NewValidationAuthorityImpl constructs a new VA, and may place it
@@ -48,19 +62,63 @@ type verificationRequestEvent struct {
 	Error        string         `json:",omitempty"`
 }
 
+func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
+
+	if len(validation.Signatures) > 1 {
+		return fmt.Errorf("Too many signatures on validation JWS")
+	}
+	if len(validation.Signatures) == 0 {
+		return fmt.Errorf("Validation JWS not signed")
+	}
+
+	payload, _, err := validation.Verify(accountKey)
+	if err != nil {
+		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
+	}
+
+	var parsedResponse map[string]interface{}
+	err = json.Unmarshal(payload, &parsedResponse)
+	if err != nil {
+		return fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
+	}
+
+	if len(parsedResponse) != len(target) {
+		return fmt.Errorf("Validation payload had an improper number of fields")
+	}
+
+	for key, targetValue := range target {
+		parsedValue, ok := parsedResponse[key]
+		if !ok {
+			return fmt.Errorf("Validation payload missing a field %s", key)
+		} else if parsedValue != targetValue {
+			return fmt.Errorf("Validation payload has improper value for field %s", key)
+		}
+	}
+
+	return nil
+}
+
 // Validation methods
 
-func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
-	challenge := input
-
-	if len(challenge.Path) == 0 {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "No path provided for SimpleHTTP challenge.",
+// setChallengeErrorFromDNSError checks the error returned from Lookup...
+// methods and tests if the error was an underlying net.OpError or an error
+// caused by resolver returning SERVFAIL or other invalid Rcodes and sets
+// the challenge.Error field accordingly.
+func setChallengeErrorFromDNSError(err error, challenge *core.Challenge) {
+	challenge.Error = &core.ProblemDetails{Type: core.ConnectionProblem}
+	if netErr, ok := err.(*net.OpError); ok {
+		if netErr.Timeout() {
+			challenge.Error.Detail = "DNS query timed out"
+		} else if netErr.Temporary() {
+			challenge.Error.Detail = "Temporary network connectivity error"
 		}
-		return challenge, challenge.Error
+	} else {
+		challenge.Error.Detail = "Server failure at resolver"
 	}
+}
+
+func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
+	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
 		challenge.Status = core.StatusInvalid
@@ -68,9 +126,12 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			Type:   core.MalformedProblem,
 			Detail: "Identifier type for SimpleHTTP was not DNS",
 		}
+
+		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] Identifier failure", identifier))
 		return challenge, challenge.Error
 	}
 	hostName := identifier.Value
+
 	var scheme string
 	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
 		scheme = "https"
@@ -79,10 +140,9 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 	if va.TestMode {
 		hostName = "localhost:5001"
-		scheme = "http"
 	}
 
-	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, hostName, challenge.Path)
+	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, hostName, challenge.Token)
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(scheme), url))
@@ -92,8 +152,13 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			Type:   core.MalformedProblem,
 			Detail: "URL provided for SimpleHTTP was invalid",
 		}
+		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] HTTP failure: %s", identifier, err))
 		challenge.Status = core.StatusInvalid
 		return challenge, err
+	}
+
+	if va.UserAgent != "" {
+		httpRequest.Header["User-Agent"] = []string{va.UserAgent}
 	}
 
 	httpRequest.Host = hostName
@@ -105,42 +170,28 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		// connection immediately.
 		DisableKeepAlives: true,
 	}
+	logRedirect := func(req *http.Request, via []*http.Request) error {
+		va.log.Info(fmt.Sprintf("validateSimpleHTTP [%s] redirect from %q to %q", identifier, via[len(via)-1].URL.String(), req.URL.String()))
+		return nil
+	}
 	client := http.Client{
-		Transport: tr,
-		Timeout:   5 * time.Second,
+		Transport:     tr,
+		CheckRedirect: logRedirect,
+		Timeout:       5 * time.Second,
 	}
 	httpResponse, err := client.Do(httpRequest)
 
-	if err == nil && httpResponse.StatusCode == 200 {
-		// Read body & test
-		body, readErr := ioutil.ReadAll(httpResponse.Body)
-		if readErr != nil {
-			challenge.Error = &core.ProblemDetails{
-				Type: core.ServerInternalProblem,
-			}
-			challenge.Status = core.StatusInvalid
-			return challenge, readErr
-		}
-
-		if subtle.ConstantTimeCompare(body, []byte(challenge.Token)) == 1 {
-			challenge.Status = core.StatusValid
-		} else {
-			challenge.Status = core.StatusInvalid
-			challenge.Error = &core.ProblemDetails{
-				Type: core.UnauthorizedProblem,
-				Detail: fmt.Sprintf("Incorrect token validating Simple%s for %s",
-					strings.ToUpper(scheme), url),
-			}
-			err = challenge.Error
-		}
-	} else if err != nil {
+	if err != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type:   parseHTTPConnError(err),
 			Detail: fmt.Sprintf("Could not connect to %s", url),
 		}
 		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
-	} else {
+		return challenge, err
+	}
+
+	if httpResponse.StatusCode != 200 {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type: core.UnauthorizedProblem,
@@ -148,12 +199,58 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 				url, httpResponse.StatusCode),
 		}
 		err = challenge.Error
+		return challenge, err
 	}
 
-	return challenge, err
+	// Read body & test
+	body, readErr := ioutil.ReadAll(httpResponse.Body)
+	if readErr != nil {
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: fmt.Sprintf("Error reading HTTP response body"),
+		}
+		return challenge, readErr
+	}
+
+	// Parse and verify JWS
+	parsedJws, err := jose.ParseSigned(string(body))
+	if err != nil {
+		err = fmt.Errorf("Validation response failed to parse as JWS: %s", err.Error())
+		va.log.Debug(err.Error())
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
+		return challenge, err
+	}
+
+	// Check that JWS body is as expected
+	// * "type" == "simpleHttp"
+	// * "token" == challenge.token
+	// * "tls" == challenge.tls || true
+	target := map[string]interface{}{
+		"type":  core.ChallengeTypeSimpleHTTP,
+		"token": challenge.Token,
+		"tls":   (challenge.TLS == nil) || *challenge.TLS,
+	}
+	err = verifyValidationJWS(parsedJws, &accountKey, target)
+	if err != nil {
+		va.log.Debug(err.Error())
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
+		return challenge, err
+	}
+
+	challenge.Status = core.StatusValid
+	return challenge, nil
 }
 
-func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != "dns" {
@@ -162,47 +259,44 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 			Detail: "Identifier type for DVSNI was not DNS",
 		}
 		challenge.Status = core.StatusInvalid
+		va.log.Debug(fmt.Sprintf("DVSNI [%s] Identifier failure", identifier))
 		return challenge, challenge.Error
 	}
 
-	const DVSNIsuffix = ".acme.invalid"
-	nonceName := challenge.Nonce + DVSNIsuffix
-
-	R, err := core.B64dec(challenge.R)
+	// Check that JWS body is as expected
+	// * "type" == "dvsni"
+	// * "token" == challenge.token
+	target := map[string]interface{}{
+		"type":  core.ChallengeTypeDVSNI,
+		"token": challenge.Token,
+	}
+	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), &accountKey, target)
 	if err != nil {
+		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "Failed to decode R value from DVSNI challenge",
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
 		}
-		va.log.Debug(challenge.Error.Detail)
 		return challenge, err
 	}
-	S, err := core.B64dec(challenge.S)
-	if err != nil {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "Failed to decode S value from DVSNI challenge",
-		}
-		va.log.Debug(challenge.Error.Detail)
-		return challenge, err
-	}
-	RS := append(R, S...)
 
-	z := sha256.Sum256(RS)
-	zName := fmt.Sprintf("%064x.acme.invalid", z)
+	// Compute the digest that will appear in the certificate
+	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
+	h := sha256.New()
+	h.Write([]byte(encodedSignature))
+	Z := hex.EncodeToString(h.Sum(nil))
+	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.DVSNISuffix)
 
 	// Make a connection with SNI = nonceName
-
 	hostPort := identifier.Value + ":443"
 	if va.TestMode {
 		hostPort = "localhost:5001"
 	}
-	va.log.Notice(fmt.Sprintf("Attempting to validate DVSNI for %s %s %s",
-		identifier, hostPort, zName))
+	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
+		identifier, hostPort, ZName))
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", hostPort, &tls.Config{
-		ServerName:         nonceName,
+		ServerName:         ZName,
 		InsecureSkipVerify: true,
 	})
 
@@ -212,12 +306,12 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 			Type:   parseHTTPConnError(err),
 			Detail: "Failed to connect to host for DVSNI challenge",
 		}
-		va.log.Debug(challenge.Error.Detail)
+		va.log.Debug(fmt.Sprintf("DVSNI [%s] TLS Connection failure: %s", identifier, err))
 		return challenge, err
 	}
 	defer conn.Close()
 
-	// Check that zName is a dNSName SAN in the server's certificate
+	// Check that ZName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		challenge.Error = &core.ProblemDetails{
@@ -228,7 +322,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		return challenge, challenge.Error
 	}
 	for _, name := range certs[0].DNSNames {
-		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
+		if subtle.ConstantTimeCompare([]byte(name), []byte(ZName)) == 1 {
 			challenge.Status = core.StatusValid
 			return challenge, nil
 		}
@@ -236,7 +330,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	challenge.Error = &core.ProblemDetails{
 		Type:   core.UnauthorizedProblem,
-		Detail: "Correct zName not found for DVSNI challenge",
+		Detail: "Correct ZName not found for DVSNI challenge",
 	}
 	challenge.Status = core.StatusInvalid
 	return challenge, challenge.Error
@@ -264,7 +358,7 @@ func parseHTTPConnError(err error) core.ProblemType {
 	return core.ConnectionProblem
 }
 
-func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
@@ -272,34 +366,43 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 			Type:   core.MalformedProblem,
 			Detail: "Identifier type for DNS was not itself DNS",
 		}
+		va.log.Debug(fmt.Sprintf("DNS [%s] Identifier failure", identifier))
 		challenge.Status = core.StatusInvalid
 		return challenge, challenge.Error
 	}
 
-	const DNSPrefix = "_acme-challenge"
+	// Check that JWS body is as expected
+	// * "type" == "dvsni"
+	// * "token" == challenge.token
+	target := map[string]interface{}{
+		"type":  core.ChallengeTypeDNS,
+		"token": challenge.Token,
+	}
+	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), &accountKey, target)
+	if err != nil {
+		va.log.Debug(err.Error())
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
+		return challenge, err
+	}
+	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
 
-	challengeSubdomain := fmt.Sprintf("%s.%s", DNSPrefix, identifier.Value)
+	// Look for the required record in the DNS
+	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
 	txts, _, err := va.DNSResolver.LookupTXT(challengeSubdomain)
 
 	if err != nil {
-		if dnssecErr, ok := err.(core.DNSSECError); ok {
-			challenge.Error = &core.ProblemDetails{
-				Type:   core.DNSSECProblem,
-				Detail: dnssecErr.Error(),
-			}
-		} else {
-			challenge.Error = &core.ProblemDetails{
-				Type:   core.ServerInternalProblem,
-				Detail: "Unable to communicate with DNS server",
-			}
-		}
 		challenge.Status = core.StatusInvalid
-		return challenge, err
+		setChallengeErrorFromDNSError(err, &challenge)
+		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
+		return challenge, challenge.Error
 	}
 
-	byteToken := []byte(challenge.Token)
 	for _, element := range txts {
-		if subtle.ConstantTimeCompare([]byte(element), byteToken) == 1 {
+		if subtle.ConstantTimeCompare([]byte(element), []byte(encodedSignature)) == 1 {
 			challenge.Status = core.StatusValid
 			return challenge, nil
 		}
@@ -315,7 +418,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 
 // Overall validation process
 
-func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int) {
+func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int, accountKey jose.JsonWebKey) {
 
 	// Select the first supported validation method
 	// XXX: Remove the "break" lines to process all supported validations
@@ -336,13 +439,13 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 
 		switch authz.Challenges[challengeIndex].Type {
 		case core.ChallengeTypeSimpleHTTP:
-			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
+			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
 			break
 		case core.ChallengeTypeDVSNI:
-			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
+			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
 			break
 		case core.ChallengeTypeDNS:
-			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex])
+			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
 			break
 		}
 
@@ -361,16 +464,108 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 }
 
 // UpdateValidations runs the validate() method asynchronously using goroutines.
-func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
-	go va.validate(authz, challengeIndex)
+func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int, accountKey jose.JsonWebKey) error {
+	go va.validate(authz, challengeIndex, accountKey)
 	return nil
+}
+
+// CAASet consists of filtered CAA records
+type CAASet struct {
+	Issue     []*dns.CAA
+	Issuewild []*dns.CAA
+	Iodef     []*dns.CAA
+	Unknown   []*dns.CAA
+}
+
+// returns true if any CAA records have unknown tag properties and are flagged critical.
+func (caaSet CAASet) criticalUnknown() bool {
+	if len(caaSet.Unknown) > 0 {
+		for _, caaRecord := range caaSet.Unknown {
+			// Critical flag is 1, but according to RFC 6844 any flag other than
+			// 0 should currently be interpreted as critical.
+			if caaRecord.Flag > 0 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// Filter CAA records by property
+func newCAASet(CAAs []*dns.CAA) *CAASet {
+	var filtered CAASet
+
+	for _, caaRecord := range CAAs {
+		switch caaRecord.Tag {
+		case "issue":
+			filtered.Issue = append(filtered.Issue, caaRecord)
+		case "issuewild":
+			filtered.Issuewild = append(filtered.Issuewild, caaRecord)
+		case "iodef":
+			filtered.Iodef = append(filtered.Iodef, caaRecord)
+		default:
+			filtered.Unknown = append(filtered.Unknown, caaRecord)
+		}
+	}
+
+	return &filtered
+}
+
+func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
+	label := strings.TrimRight(hostname, ".")
+	cnames := 0
+	// See RFC 6844 "Certification Authority Processing" for pseudocode.
+	for {
+		if strings.IndexRune(label, '.') == -1 {
+			// Reached TLD
+			break
+		}
+		if _, present := policy.PublicSuffixList[label]; present {
+			break
+		}
+		CAAs, _, err := va.DNSResolver.LookupCAA(label)
+		if err != nil {
+			return nil, err
+		}
+		if len(CAAs) > 0 {
+			return newCAASet(CAAs), nil
+		}
+		cname, _, err := va.DNSResolver.LookupCNAME(label)
+		if err != nil {
+			return nil, err
+		}
+		dname, _, err := va.DNSResolver.LookupDNAME(label)
+		if err != nil {
+			return nil, err
+		}
+		if cname == "" && dname == "" {
+			// Try parent domain (note we confirmed
+			// earlier that label contains '.')
+			label = label[strings.IndexRune(label, '.')+1:]
+			continue
+		}
+		if cname != "" && dname != "" && cname != dname {
+			return nil, errors.New("both CNAME and DNAME exist for " + label)
+		}
+		if cname != "" {
+			label = cname
+		} else {
+			label = dname
+		}
+		if cnames++; cnames > maxCNAME {
+			return nil, ErrTooManyCNAME
+		}
+	}
+	// no CAA records found
+	return nil, nil
 }
 
 // CheckCAARecords verifies that, if the indicated subscriber domain has any CAA
 // records, they authorize the configured CA domain to issue a certificate
 func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
-	domain := strings.ToLower(identifier.Value)
-	caaSet, err := getCaaSet(domain, va.DNSResolver)
+	hostname := strings.ToLower(identifier.Value)
+	caaSet, err := va.getCAASet(hostname)
 	if err != nil {
 		return
 	}
@@ -383,17 +578,20 @@ func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifie
 		present = true
 		valid = false
 		return
-	} else if len(caaSet.issue) > 0 || len(caaSet.issuewild) > 0 {
+	} else if len(caaSet.Issue) > 0 || len(caaSet.Issuewild) > 0 {
 		present = true
-		var checkSet []*CAA
-		if strings.SplitN(domain, ".", 2)[0] == "*" {
-			checkSet = caaSet.issuewild
+		var checkSet []*dns.CAA
+		if strings.SplitN(hostname, ".", 2)[0] == "*" {
+			checkSet = caaSet.Issuewild
 		} else {
-			checkSet = caaSet.issue
+			checkSet = caaSet.Issue
 		}
 		for _, caa := range checkSet {
-			if caa.value == va.IssuerDomain {
+			if caa.Value == va.IssuerDomain {
 				valid = true
+				return
+			} else if caa.Flag > 0 {
+				valid = false
 				return
 			}
 		}

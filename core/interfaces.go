@@ -7,10 +7,12 @@ package core
 
 import (
 	"crypto/x509"
+	"net"
 	"net/http"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
@@ -78,7 +80,7 @@ type RegistrationAuthority interface {
 // ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
-	UpdateValidations(Authorization, int) error
+	UpdateValidations(Authorization, int, jose.JsonWebKey) error
 	CheckCAARecords(AcmeIdentifier) (bool, bool, error)
 }
 
@@ -101,6 +103,7 @@ type StorageGetter interface {
 	GetRegistration(int64) (Registration, error)
 	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
+	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
 	GetCertificate(string) (Certificate, error)
 	GetCertificateByShortSerial(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
@@ -134,4 +137,15 @@ type CertificateAuthorityDatabase interface {
 	CreateTablesIfNotExists() error
 	IncrementAndGetSerial(*gorp.Transaction) (int64, error)
 	Begin() (*gorp.Transaction, error)
+}
+
+// DNSResolver defines methods used for DNS resolution
+type DNSResolver interface {
+	ExchangeOne(string, uint16) (*dns.Msg, time.Duration, error)
+	LookupTXT(string) ([]string, time.Duration, error)
+	LookupHost(string) ([]net.IP, time.Duration, time.Duration, error)
+	LookupCNAME(string) (string, time.Duration, error)
+	LookupDNAME(string) (string, time.Duration, error)
+	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
+	LookupMX(string) ([]string, time.Duration, error)
 }

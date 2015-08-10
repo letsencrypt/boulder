@@ -6,8 +6,10 @@
 package main
 
 import (
+	"time"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/core"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -31,27 +33,25 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
-		// Config object for the Policy DB.
-		rai, err := ra.NewRegistrationAuthorityImpl(c.Common.PolicyDB)
-		cmd.FailOnError(err, "Could not create Registration Authority")
+		go cmd.DebugServer(c.RA.DebugAddr)
+
+		rai := ra.NewRegistrationAuthorityImpl()
 		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize
+		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
+		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
+		rai.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
 
 		go cmd.ProfileCmd("RA", stats)
 
-		for {
-			ch, err := cmd.AmqpChannel(c)
-			cmd.FailOnError(err, "Could not connect to AMQP")
-
-			closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
-
-			vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, ch)
+		connectionHandler := func(srv *rpc.AmqpRPCServer) {
+			vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, srv.Channel)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
-			caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, ch)
+			caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, srv.Channel)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
-			saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, ch)
+			saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, srv.Channel)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
 			vac, err := rpc.NewValidationAuthorityClient(vaRPC)
@@ -66,17 +66,16 @@ func main() {
 			rai.VA = &vac
 			rai.CA = &cac
 			rai.SA = &sac
-
-			ras := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, ch)
-
-			err = rpc.NewRegistrationAuthorityServer(ras, &rai)
-			cmd.FailOnError(err, "Unable to create RA server")
-
-			auditlogger.Info(app.VersionString())
-
-			cmd.RunUntilSignaled(auditlogger, ras, closeChan)
 		}
 
+		ras, err := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, connectionHandler)
+		cmd.FailOnError(err, "Unable to create RA RPC server")
+		rpc.NewRegistrationAuthorityServer(ras, &rai)
+
+		auditlogger.Info(app.VersionString())
+
+		err = ras.Start(c)
+		cmd.FailOnError(err, "Unable to run RA RPC server")
 	}
 
 	app.Run()

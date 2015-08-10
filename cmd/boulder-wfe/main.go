@@ -19,9 +19,10 @@ import (
 	"github.com/letsencrypt/boulder/wfe"
 )
 
-func setupWFE(c cmd.Config) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
-	ch, err := cmd.AmqpChannel(c)
+func setupWFE(c cmd.Config, logger *blog.AuditLogger) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
+	ch, err := rpc.AmqpChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
+	logger.Info(" [!] Connected to AMQP")
 
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
@@ -87,12 +88,24 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
-		wfe := wfe.NewWebFrontEndImpl()
-		rac, sac, closeChan := setupWFE(c)
+		go cmd.DebugServer(c.WFE.DebugAddr)
+
+		wfe, err := wfe.NewWebFrontEndImpl()
+		cmd.FailOnError(err, "Unable to create WFE")
+		rac, sac, closeChan := setupWFE(c, auditlogger)
 		wfe.RA = &rac
 		wfe.SA = &sac
 		wfe.Stats = stats
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
+
+		wfe.CertCacheDuration, err = time.ParseDuration(c.WFE.CertCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse certificate caching duration")
+		wfe.CertNoCacheExpirationWindow, err = time.ParseDuration(c.WFE.CertNoCacheExpirationWindow)
+		cmd.FailOnError(err, "Couldn't parse certificate expiration no-cache window")
+		wfe.IndexCacheDuration, err = time.ParseDuration(c.WFE.IndexCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse index caching duration")
+		wfe.IssuerCacheDuration, err = time.ParseDuration(c.WFE.IssuerCacheDuration)
+		cmd.FailOnError(err, "Couldn't parse issuer caching duration")
 
 		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
@@ -105,25 +118,25 @@ func main() {
 			// with new RA and SA rpc clients.
 			for {
 				for err := range closeChan {
-					auditlogger.Warning(fmt.Sprintf("AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
+					auditlogger.Warning(fmt.Sprintf(" [!] AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
 					time.Sleep(time.Second * 5)
-					rac, sac, closeChan = setupWFE(c)
+					rac, sac, closeChan = setupWFE(c, auditlogger)
 					wfe.RA = &rac
 					wfe.SA = &sac
-					auditlogger.Warning("Reconnected to AMQP")
 				}
 			}
 		}()
 
 		// Set up paths
 		wfe.BaseURL = c.Common.BaseURL
-		wfe.HandlePaths()
+		h, err := wfe.Handler()
+		cmd.FailOnError(err, "Problem setting up HTTP handlers")
 
 		auditlogger.Info(app.VersionString())
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
-		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(http.DefaultServeMux, stats))
+		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(h, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

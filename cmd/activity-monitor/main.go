@@ -16,6 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/rpc"
 
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
@@ -71,19 +72,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 		cmd.FailOnError(err, "Could not determine hostname")
 	}
 
-	err = rpcCh.ExchangeDeclare(
-		AmqpExchange,
-		AmqpExchangeType,
-		AmqpDurable,
-		AmqpDeleteUnused,
-		AmqpInternal,
-		AmqpNoWait,
-		nil)
-	if err != nil {
-		cmd.FailOnError(err, "Could not declare exchange")
-	}
-
-	_, err = rpcCh.QueueDeclare(
+	_, err = rpcCh.QueueDeclarePassive(
 		QueueName,
 		AmqpDurable,
 		AmqpDeleteUnused,
@@ -91,17 +80,32 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		cmd.FailOnError(err, "Could not declare queue")
-	}
+		logger.Info(fmt.Sprintf("Queue %s does not exist on AMQP server, attempting to create.", QueueName))
 
-	err = rpcCh.QueueBind(
-		QueueName,
-		"#", //wildcard
-		AmqpExchange,
-		false,
-		nil)
-	if err != nil {
-		cmd.FailOnError(err, "Could not bind queue")
+		// Attempt to create the Queue if not exists
+		_, err = rpcCh.QueueDeclare(
+			QueueName,
+			AmqpDurable,
+			AmqpDeleteUnused,
+			AmqpExclusive,
+			AmqpNoWait,
+			nil)
+		if err != nil {
+			cmd.FailOnError(err, "Could not declare queue")
+		}
+
+		routingKey := "#" //wildcard
+
+		err = rpcCh.QueueBind(
+			QueueName,
+			routingKey,
+			AmqpExchange,
+			false,
+			nil)
+		if err != nil {
+			txt := fmt.Sprintf("Could not bind to queue [%s]. NOTE: You may need to delete %s to re-trigger the bind attempt after fixing permissions, or manually bind the queue to %s.", QueueName, QueueName, routingKey)
+			cmd.FailOnError(err, txt)
+		}
 	}
 
 	deliveries, err := rpcCh.Consume(
@@ -148,7 +152,9 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
-		ch, err := cmd.AmqpChannel(c)
+		go cmd.DebugServer(c.ActivityMonitor.DebugAddr)
+
+		ch, err := rpc.AmqpChannel(c)
 
 		cmd.FailOnError(err, "Could not connect to AMQP")
 

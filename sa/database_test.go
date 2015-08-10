@@ -30,3 +30,8 @@ func TestForgottenDialect(t *testing.T) {
 	_, err := NewDbMap("sqlite3", ":memory:")
 	test.AssertError(t, err, "Shouldn't have found the dialect")
 }
+
+func TestInvalidDSN(t *testing.T) {
+	_, err := NewDbMap("mysql", "invalid")
+	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
+}

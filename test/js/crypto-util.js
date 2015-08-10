@@ -139,17 +139,14 @@ module.exports = {
 
   ///// SIGNATURE GENERATION / VERIFICATION
 
-  generateSignature: function(keyPair, payload, nonceIn) {
-    var nonce = nonceIn
-    if (!nonce) {
-      nonce = util.b64enc(bytesToBuffer(forge.random.getBytesSync(NONCE_SIZE)));
-    }
+  generateSignature: function(keyPair, payload, nonce) {
     var privateKey = importPrivateKey(keyPair.privateKey);
 
     // Compute JWS signature
-    var protectedHeader = JSON.stringify({
-      nonce: nonce
-    });
+    var protectedHeader = "";
+    if (nonce) {
+      protectedHeader = JSON.stringify({nonce: nonce});
+    }
     var protected64 = util.b64enc(new Buffer(protectedHeader));
     var payload64 = util.b64enc(payload);
     var signatureInputBuf = new Buffer(protected64 + "." + payload64);
@@ -244,7 +241,7 @@ module.exports = {
       extensions: [{name: 'subjectAltName', altNames: sans}]
     }]);
 
-    csr.sign(privateKey);
+    csr.sign(privateKey, forge.md.sha256.create());
 
     // Convert CSR -> DER -> Base64
     var der = forge.asn1.toDer(forge.pki.certificationRequestToAsn1(csr));
