@@ -37,17 +37,13 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(policyDB policy.Config) (RegistrationAuthorityImpl, error) {
+func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Registration Authority Starting")
 
 	ra := RegistrationAuthorityImpl{log: logger}
-	pa, err := policy.NewPolicyAuthorityImpl(policyDB)
-	if err != nil {
-		return RegistrationAuthorityImpl{}, err
-	}
-	ra.PA = pa
-	return RegistrationAuthorityImpl{}, nil
+	ra.PA = policy.NewPolicyAuthorityImpl()
+	return ra
 }
 
 var allButLastPathSegment = regexp.MustCompile("^.*/")

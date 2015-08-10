@@ -6,74 +6,34 @@
 package policy
 
 import (
-	"crypto/rsa"
-	"crypto/x509"
-	"fmt"
 	"net"
 	"regexp"
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/sa"
-
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// The Policy Authority has a separate, read-only DB that contains information
-// about existing certificates issued by other CAs, used to restrict issuance
-// for the names in those certificates.
-// The Policy Authority code is embedded in both the RA and the CA, and so
-// its config is in the Common struct.
-type Config struct {
-	Driver string
-	Name   string
-}
-
 // PolicyAuthorityImpl enforces CA policy decisions.
 type PolicyAuthorityImpl struct {
-	log  *blog.AuditLogger
-	padb PADB
+	log *blog.AuditLogger
 
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
 	Blacklist        map[string]bool // A blacklist of denied names
 }
 
-type PADB interface {
-	externalCertDataForFQDN(fqdn string) ([]core.ExternalCert, error)
-}
-type PADBImpl struct {
-	dbMap *gorp.DbMap
-}
-
-func (padb PADBImpl) externalCertDataForFQDN(fqdn string) ([]core.ExternalCert, error) {
-	return []core.ExternalCert{}, nil
-}
-
 // NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl(config Config) (*PolicyAuthorityImpl, error) {
+func NewPolicyAuthorityImpl() *PolicyAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
 	pa := PolicyAuthorityImpl{log: logger}
 
-	dbMap, err := sa.NewDbMap(config.Driver, config.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	dbMap.AddTableWithName(core.IdentifierData{}, "identifierData")
-	dbMap.AddTableWithName(core.ExternalCert{}, "externalCerts")
-	pa.padb = PADBImpl{
-		dbMap: dbMap,
-	}
-
 	// TODO: Add configurability
 	pa.PublicSuffixList = PublicSuffixList
 	pa.Blacklist = blacklist
 
-	return &pa, nil
+	return &pa
 }
 
 const maxLabels = 10
@@ -202,13 +162,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
-// TODO: When parsing SPKI, check for key type.
 func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
-	if identifier.Type != core.IdentifierDNS {
-		// TODO: Add error return type
-		pa.log.Debug("Invalid identifier type")
-		return nil, nil
-	}
 	challenges = []core.Challenge{
 		core.SimpleHTTPChallenge(),
 		core.DvsniChallenge(),
@@ -219,52 +173,5 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (cha
 		[]int{1},
 		[]int{2},
 	}
-	certs, err := pa.padb.externalCertDataForFQDN(identifier.Value)
-	if err != nil {
-		pa.log.Debug("Failure looking up external certs")
-		return nil, nil
-	}
-	if len(certs) == 0 {
-		pa.log.Debug(fmt.Sprintf("No external certs for %s", identifier.Value))
-		return challenges, combinations
-	}
-
-	var hints core.POPChallengeHints
-	// TODO: Double-check sanity of input data because it originally came from the Internet
-	// TODO: Maintain sets of each data type and de-duplicate them.
-	for _, cert := range certs {
-		hints.CertFingerprints = append(hints.CertFingerprints, cert.SHA1)
-		hints.Issuers = append(hints.Issuers, cert.Issuer)
-		pubKey, err := x509.ParsePKIXPublicKey(cert.SPKI)
-		if err != nil {
-			pa.log.Debug(fmt.Sprintf("Failure parsing pubkey: %s", err))
-			return nil, nil
-		}
-		switch pk := pubKey.(type) {
-		case *rsa.PublicKey:
-			hints.JWKs = append(hints.JWKs, jose.JsonWebKey{
-				Key: pk,
-				// TODO: core.ProofOfPosessionChallenge should check the algorithms on
-				// JWKs and propagate up to the Alg field on the challenge. Alternately,
-				// remove the Alg field from the challenge and depend on the JWKs.
-				Algorithm: "RS256",
-			})
-		default:
-			// If any of the returned certs has a non-RSA key, return error.
-			pa.log.Debug("ExternalCerts provided a cert with non-RSA key")
-			return nil, nil
-		}
-	}
-
-	// Create the proofOfPosession challenge, add it to the list of challenges,
-	// and add its index to each of the existing combinations (so proofOfPosession
-	// is required in combination with a DV challenge).
-	popChallenge := core.ProofOfPosessionChallenge(hints)
-	popChallengeIndex := len(challenges)
-	challenges = append(challenges, popChallenge)
-	for _, combo := range combinations {
-		combo = append(combo, popChallengeIndex)
-	}
-
-	return challenges, combinations
+	return
 }

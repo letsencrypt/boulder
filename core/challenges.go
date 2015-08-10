@@ -33,23 +33,3 @@ func DNSChallenge() Challenge {
 		Token:  NewToken(),
 	}
 }
-
-// ProofOfPosessionChallenge constructs a ProofOfPosession challenge
-func ProofOfPosessionChallenge(hints POPChallengeHints) Challenge {
-	nonce := make([]byte, 16)
-	_, err := rand.Read(nonce)
-
-	if err != nil {
-		audit := blog.GetAuditLogger()
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		audit.EmergencyExit(err.Error())
-	}
-
-	return Challenge{
-		Type:   ChallengeTypeProofOfPosession,
-		Status: StatusPending,
-		Nonce:  hex.EncodeToString(nonce),
-		Alg:    "RS256",
-		Hints:  hints,
-	}
-}
