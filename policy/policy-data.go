@@ -82,6 +82,7 @@ func (padb *PolicyAuthorityDatabaseImpl) AddRule(rule string, rType string) erro
 	return err
 }
 
+// DeleteRule will delete a rule matching rule
 func (padb *PolicyAuthorityDatabaseImpl) DeleteRule(rule string) error {
 	obj, err := padb.dbMap.Get(&domainRule{}, rule)
 	if err != nil {
@@ -92,6 +93,8 @@ func (padb *PolicyAuthorityDatabaseImpl) DeleteRule(rule string) error {
 	return nil
 }
 
+// GetRules will return all the rules that match typeFilter ('whitelist' or
+// 'blacklist')
 func (padb *PolicyAuthorityDatabaseImpl) GetRules(typeFilter string) ([]string, error) {
 	var dR []domainRule
 	_, err := padb.dbMap.Select(&dR, "SELECT * FROM ruleList WHERE type = :rType", map[string]interface{}{"rType": typeFilter})
