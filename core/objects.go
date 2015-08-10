@@ -222,35 +222,17 @@ func (r *Registration) MergeUpdate(input Registration) {
 	}
 }
 
-// SimpleHTTPValidationRecord represents a slice of validation records since
-// SimpleHTTP will follow redirects so there may be multiple attempts. The order
-// of this slice is the order in which they were encountered.
-type SimpleHTTPValidationRecord []SimpleHTTPFetch
+// ValidationRecord represents a validation attempt against a specific URL/hostname
+// and the IP addresses that were resolved and used
+type ValidationRecord struct {
+	// SimpleHTTP only
+	URL string `json:"url,omitempty"`
 
-// SimpleHTTPFetch represents a single URL we attempted to connect to and the
-// addresses we resolved and used to do so
-type SimpleHTTPFetch struct {
-	URL               string   `json:"url"`
+	// Shared
 	Hostname          string   `json:"hostname"`
 	Port              string   `json:"port"`
 	AddressesResolved []net.IP `json:"addressesResolved"`
 	AddressUsed       net.IP   `json:"addressUsed"`
-}
-
-// DvsniValidationRecord represents a single hostname we attempted to connect to
-// and the addresses we resolved and used to do so.
-type DvsniValidationRecord struct {
-	Hostname          string   `json:"hostname"`
-	Port              string   `json:"port"`
-	AddressesResolved []net.IP `json:"AddressesResolved"`
-	AddressUsed       net.IP   `json:"AddressUsed"`
-}
-
-// ValidationRecord holds all possible validation record types, only the one
-// corresponding to the challenge type being attempted should be filled
-type ValidationRecord struct {
-	SimpleHTTP SimpleHTTPValidationRecord `json:"simpleHTTP,omitempty"`
-	Dvsni      *DvsniValidationRecord     `json:"dnsvi,omitempty"`
 }
 
 // Challenge is an aggregate of all data needed for any challenges.
@@ -286,32 +268,33 @@ type Challenge struct {
 
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
-	ValidationRecord *ValidationRecord `json:"validationRecord,omitempty"`
+	ValidationRecord []ValidationRecord `json:"validationRecord,omitempty"`
 }
 
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
 // back to the RA to be stored.
 func (ch Challenge) RecordsSane() bool {
-	if ch.ValidationRecord == nil {
+	if ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0 {
 		return false
 	}
 
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP:
-		if ch.ValidationRecord.Dvsni != nil || ch.ValidationRecord.SimpleHTTP == nil {
-			return false
-		}
-		for _, r := range ch.ValidationRecord.SimpleHTTP {
-			if r.URL == "" || r.Hostname == "" || r.Port == "" || len(r.AddressesResolved) == 0 || r.AddressUsed == nil {
+		for _, rec := range ch.ValidationRecord {
+			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
+				len(rec.AddressesResolved) == 0 {
 				return false
 			}
 		}
 	case ChallengeTypeDVSNI:
-		if ch.ValidationRecord.SimpleHTTP != nil || ch.ValidationRecord.Dvsni == nil {
+		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
-		if ch.ValidationRecord.Dvsni.Hostname == "" || ch.ValidationRecord.Dvsni.Port == "" ||
-			len(ch.ValidationRecord.Dvsni.AddressesResolved) == 0 || ch.ValidationRecord.Dvsni.AddressUsed == nil {
+		if ch.ValidationRecord[0].URL != "" {
+			return false
+		}
+		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
+			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
 	case ChallengeTypeDNS:

@@ -41,31 +41,28 @@ func TestRegistrationUpdate(t *testing.T) {
 }
 
 func TestRecordSanityCheck(t *testing.T) {
-	simpleRec := &ValidationRecord{SimpleHTTP: SimpleHTTPValidationRecord{SimpleHTTPFetch{
-		URL:               "http://localhost/test",
-		Hostname:          "localhost",
-		Port:              "80",
-		AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
-		AddressUsed:       net.IP{127, 0, 0, 1},
-	}}}
-	dvsniRec := &ValidationRecord{Dvsni: &DvsniValidationRecord{
-		Hostname:          "localhost",
-		Port:              "80",
-		AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
-		AddressUsed:       net.IP{127, 0, 0, 1},
-	}}
+	rec := []ValidationRecord{
+		ValidationRecord{
+			URL:               "http://localhost/test",
+			Hostname:          "localhost",
+			Port:              "80",
+			AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
+			AddressUsed:       net.IP{127, 0, 0, 1},
+		},
+	}
 
-	chall := Challenge{Type: ChallengeTypeSimpleHTTP, ValidationRecord: simpleRec}
+	chall := Challenge{Type: ChallengeTypeSimpleHTTP, ValidationRecord: rec}
 	test.Assert(t, chall.RecordsSane(), "Record should be sane")
-	chall.ValidationRecord = dvsniRec
+	chall.ValidationRecord[0].URL = ""
 	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
 
-	chall = Challenge{Type: ChallengeTypeDVSNI, ValidationRecord: dvsniRec}
+	chall = Challenge{Type: ChallengeTypeDVSNI, ValidationRecord: rec}
+	chall.ValidationRecord[0].URL = ""
 	test.Assert(t, chall.RecordsSane(), "Record should be sane")
-	chall.ValidationRecord = simpleRec
+	chall.ValidationRecord[0].Hostname = ""
 	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
 
-	chall.ValidationRecord.Dvsni = simpleRec.Dvsni
+	chall.ValidationRecord = append(chall.ValidationRecord, rec...)
 	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
 }
 
@@ -88,25 +85,25 @@ func TestChallengeSanityCheck(t *testing.T) {
 		if challengeType == ChallengeTypeSimpleHTTP {
 			tls := true
 			chall.TLS = &tls
-			chall.ValidationRecord = &ValidationRecord{SimpleHTTP: SimpleHTTPValidationRecord{SimpleHTTPFetch{
+			chall.ValidationRecord = []ValidationRecord{ValidationRecord{
 				URL:               "",
 				Hostname:          "localhost",
 				Port:              "80",
 				AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
 				AddressUsed:       net.IP{127, 0, 0, 1},
-			}}}
+			}}
 			test.Assert(t, chall.IsSane(false), "IsSane should be true")
 		} else if challengeType == ChallengeTypeDVSNI || challengeType == ChallengeTypeDNS {
 			chall.Validation = new(jose.JsonWebSignature)
 			if challengeType == ChallengeTypeDVSNI {
-				chall.ValidationRecord = &ValidationRecord{Dvsni: &DvsniValidationRecord{
+				chall.ValidationRecord = []ValidationRecord{ValidationRecord{
 					Hostname:          "localhost",
 					Port:              "80",
 					AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
 					AddressUsed:       net.IP{127, 0, 0, 1},
 				}}
 			} else {
-				chall.ValidationRecord = &ValidationRecord{}
+				chall.ValidationRecord = []ValidationRecord{}
 			}
 			test.Assert(t, chall.IsSane(true), "IsSane should be true")
 		}

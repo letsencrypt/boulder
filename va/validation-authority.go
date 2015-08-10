@@ -143,7 +143,7 @@ func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs [
 }
 
 type dialer struct {
-	record core.SimpleHTTPFetch
+	record core.ValidationRecord
 }
 
 func (d *dialer) Dial(_, _ string) (net.Conn, error) {
@@ -159,7 +159,7 @@ func (va ValidationAuthorityImpl) resolveAndConstructDialer(name, port string) (
 		return dialer{}, err
 	}
 	d := dialer{
-		record: core.SimpleHTTPFetch{
+		record: core.ValidationRecord{
 			Hostname:          name,
 			Port:              port,
 			AddressesResolved: allAddrs,
@@ -225,7 +225,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 	dialer, prob := va.resolveAndConstructDialer(hostName, port)
 	dialer.record.URL = url.String()
-	challenge.ValidationRecord.SimpleHTTP = core.SimpleHTTPValidationRecord{dialer.record}
+	challenge.ValidationRecord = append(challenge.ValidationRecord, dialer.record)
 	if prob != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
@@ -245,7 +245,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	logRedirect := func(req *http.Request, via []*http.Request) error {
-		if len(challenge.ValidationRecord.SimpleHTTP) >= maxRedirect {
+		if len(challenge.ValidationRecord) >= maxRedirect {
 			return fmt.Errorf("Too many redirects")
 		}
 
@@ -265,7 +265,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		}
 		dialer, err := va.resolveAndConstructDialer(host, port)
 		dialer.record.URL = req.URL.String()
-		challenge.ValidationRecord.SimpleHTTP = append(challenge.ValidationRecord.SimpleHTTP, dialer.record)
+		challenge.ValidationRecord = append(challenge.ValidationRecord, dialer.record)
 		if err != nil {
 			return err
 		}
@@ -387,8 +387,8 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.DVSNISuffix)
 
 	addr, allAddrs, problem := va.getAddr(identifier.Value)
-	challenge.ValidationRecord = &core.ValidationRecord{
-		Dvsni: &core.DvsniValidationRecord{
+	challenge.ValidationRecord = []core.ValidationRecord{
+		core.ValidationRecord{
 			Hostname:          identifier.Value,
 			AddressesResolved: allAddrs,
 			AddressUsed:       addr,
@@ -402,10 +402,10 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 
 	// Make a connection with SNI = nonceName
 	hostPort := net.JoinHostPort(addr.String(), "443")
-	challenge.ValidationRecord.Dvsni.Port = "443"
+	challenge.ValidationRecord[0].Port = "443"
 	if va.TestMode {
 		hostPort = net.JoinHostPort(addr.String(), "5001")
-		challenge.ValidationRecord.Dvsni.Port = "5001"
+		challenge.ValidationRecord[0].Port = "5001"
 	}
 	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
 		identifier, hostPort, ZName))
@@ -548,7 +548,6 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 	} else {
 		var err error
 
-		authz.Challenges[challengeIndex].ValidationRecord = &core.ValidationRecord{}
 		switch authz.Challenges[challengeIndex].Type {
 		case core.ChallengeTypeSimpleHTTP:
 			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex], accountKey)

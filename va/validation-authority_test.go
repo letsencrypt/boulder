@@ -261,7 +261,7 @@ func TestSimpleHttpTLS(t *testing.T) {
 	va := NewValidationAuthorityImpl(true)
 	va.DNSResolver = &mocks.MockDNS{}
 
-	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, ValidationRecord: &core.ValidationRecord{}}
+	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, ValidationRecord: []core.ValidationRecord{}}
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
@@ -283,7 +283,7 @@ func TestSimpleHttp(t *testing.T) {
 	va.DNSResolver = &mocks.MockDNS{}
 
 	tls := false
-	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, TLS: &tls, ValidationRecord: &core.ValidationRecord{}}
+	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, TLS: &tls, ValidationRecord: []core.ValidationRecord{}}
 
 	invalidChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -365,7 +365,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	va.DNSResolver = &mocks.MockDNS{}
 
 	tls := false
-	chall := core.Challenge{Token: expectedToken, TLS: &tls, ValidationRecord: &core.ValidationRecord{}}
+	chall := core.Challenge{Token: expectedToken, TLS: &tls, ValidationRecord: []core.ValidationRecord{}}
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
@@ -422,7 +422,7 @@ func TestSimpleHttpRedirectLoop(t *testing.T) {
 	va.DNSResolver = &mocks.MockDNS{}
 
 	tls := false
-	chall := core.Challenge{Token: "looper", TLS: &tls, ValidationRecord: &core.ValidationRecord{}}
+	chall := core.Challenge{Token: "looper", TLS: &tls, ValidationRecord: []core.ValidationRecord{}}
 
 	stopChan := make(chan bool, 1)
 	waitChan := make(chan bool, 1)
@@ -525,7 +525,7 @@ func TestValidateHTTP(t *testing.T) {
 	tls := false
 	challHTTP := core.SimpleHTTPChallenge()
 	challHTTP.TLS = &tls
-	challHTTP.ValidationRecord = &core.ValidationRecord{}
+	challHTTP.ValidationRecord = []core.ValidationRecord{}
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
@@ -556,7 +556,7 @@ func createChallenge(challengeType string) core.Challenge {
 		Type:             challengeType,
 		Status:           core.StatusPending,
 		Token:            core.NewToken(),
-		ValidationRecord: &core.ValidationRecord{},
+		ValidationRecord: []core.ValidationRecord{},
 	}
 
 	validationPayload, _ := json.Marshal(map[string]interface{}{
@@ -640,7 +640,7 @@ func TestUpdateValidations(t *testing.T) {
 	tls := false
 	challHTTP := core.SimpleHTTPChallenge()
 	challHTTP.TLS = &tls
-	challHTTP.ValidationRecord = &core.ValidationRecord{}
+	challHTTP.ValidationRecord = []core.ValidationRecord{}
 
 	stopChanHTTP := make(chan bool, 1)
 	waitChanHTTP := make(chan bool, 1)
