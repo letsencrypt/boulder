@@ -59,7 +59,7 @@ func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 		return nil, err
 	}
 
-	logger.Debug(fmt.Sprintf("Connecting to database %s %s", driver, dbConnect))
+	logger.Debug("Connecting to database")
 
 	dialect, ok := dialectMap[driver].(gorp.Dialect)
 	if !ok {
@@ -67,7 +67,7 @@ func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 		return nil, err
 	}
 
-	logger.Info(fmt.Sprintf("Connected to database %s %s", driver, dbConnect))
+	logger.Info("Connected to database")
 
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
