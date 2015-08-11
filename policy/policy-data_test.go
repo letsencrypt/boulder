@@ -6,7 +6,6 @@
 package policy
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -53,7 +52,6 @@ func TestGet(t *testing.T) {
 	err = p.CheckRules("a.a.com", false)
 	test.AssertNotError(t, err, "Hostname should be whitelisted")
 
-	fmt.Println("break")
 	err = p.CheckRules("a.com", true)
 	test.AssertNotError(t, err, "Hostname should be whitelisted")
 	err = p.CheckRules("a.a.com", true)
