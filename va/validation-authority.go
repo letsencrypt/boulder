@@ -260,6 +260,9 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 				return fmt.Errorf("Malformed host")
 			}
 			host, port = splitHost[0], splitHost[1]
+			if port < 0 || port > 65535 {
+				return fmt.Errorf("Invalid port number in redirect")
+			}
 		} else if strings.ToLower(req.URL.Scheme) == "https" {
 			port = "443"
 		}
