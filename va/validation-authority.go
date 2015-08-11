@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -153,19 +154,26 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 
 // resolveAndConstructDialer gets the prefered address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
-func (va ValidationAuthorityImpl) resolveAndConstructDialer(name, port string) (dialer, *core.ProblemDetails) {
-	addr, allAddrs, err := va.getAddr(name)
-	if err != nil {
-		return dialer{}, err
+func (va ValidationAuthorityImpl) resolveAndConstructDialer(name, defaultPort string) (dialer, *core.ProblemDetails) {
+	port := "80"
+	if va.TestMode {
+		port = "5001"
+	} else if defaultPort != "" {
+		port = defaultPort
 	}
 	d := dialer{
 		record: core.ValidationRecord{
-			Hostname:          name,
-			Port:              port,
-			AddressesResolved: allAddrs,
-			AddressUsed:       addr,
+			Hostname: name,
+			Port:     port,
 		},
 	}
+
+	addr, allAddrs, err := va.getAddr(name)
+	if err != nil {
+		return d, err
+	}
+	d.record.AddressesResolved = allAddrs
+	d.record.AddressUsed = addr
 	return d, nil
 }
 
@@ -217,10 +225,8 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	}
 
 	httpRequest.Host = hostName
-	port := "80"
-	if va.TestMode {
-		port = "5001"
-	} else if strings.ToLower(scheme) == "https" {
+	var port string
+	if scheme == "https" {
 		port = "443"
 	}
 	dialer, prob := va.resolveAndConstructDialer(hostName, port)
@@ -250,22 +256,24 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		}
 
 		host := req.URL.Host
-		port = "80"
-		if va.TestMode {
-			port = "5001"
-		}
+		port = ""
 		if strings.Contains(host, ":") {
 			splitHost := strings.SplitN(host, ":", 2)
 			if len(splitHost) <= 1 {
 				return fmt.Errorf("Malformed host")
 			}
 			host, port = splitHost[0], splitHost[1]
-			if port < 0 || port > 65535 {
+			portNum, err := strconv.Atoi(port)
+			if err != nil {
+				return err
+			}
+			if portNum < 0 || portNum > 65535 {
 				return fmt.Errorf("Invalid port number in redirect")
 			}
 		} else if strings.ToLower(req.URL.Scheme) == "https" {
 			port = "443"
 		}
+
 		dialer, err := va.resolveAndConstructDialer(host, port)
 		dialer.record.URL = req.URL.String()
 		challenge.ValidationRecord = append(challenge.ValidationRecord, dialer.record)

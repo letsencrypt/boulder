@@ -87,7 +87,7 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 	currentToken := defaultToken
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Host != "localhost" && r.Host != "other.valid" {
+		if r.Host != "localhost" && r.Host != "other.valid" && r.Host != "other.valid:8080" {
 			t.Errorf("Bad Host header: " + r.Host)
 		}
 		if strings.HasSuffix(r.URL.Path, path404) {
@@ -410,6 +410,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	log.Clear()
 	chall.Token = pathRedirectPort
 	finChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
+	fmt.Println(finChall.ValidationRecord)
 	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/port-redirect" to ".*other.valid:8080/path"`)), 1)
