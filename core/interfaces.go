@@ -149,11 +149,3 @@ type DNSResolver interface {
 	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
 	LookupMX(string) ([]string, time.Duration, error)
 }
-
-// PolicyAuthorityDatabase is the public interface to the white/blacklists
-type PolicyAuthorityDatabase interface {
-	AddRule(string, string) error
-	DeleteRule(string) error
-	GetRules(string) ([]string, error)
-	CheckRules(string, bool) error
-}

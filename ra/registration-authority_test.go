@@ -173,7 +173,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	}
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
 	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
-	pa, _ := policy.NewPolicyAuthorityImpl("sqlite3", ":memory:")
+	pa, _ := policy.NewPolicyAuthorityImpl(cmd.CommonConfig{PolicyDBDriver: "sqlite3", PolicyDBConnect: ":memory:"})
 	cadb, _ := mocks.NewMockCertificateAuthorityDatabase()
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,

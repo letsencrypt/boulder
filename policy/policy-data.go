@@ -7,8 +7,8 @@ package policy
 
 import (
 	"fmt"
+	"strings"
 
-	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 
@@ -18,9 +18,18 @@ import (
 const whitelisted = "whitelist"
 const blacklisted = "blacklist"
 
-type domainRule struct {
+// DomainRule ...
+type DomainRule struct {
 	Rule string `db:"rule"`
 	Type string `db:"type"`
+}
+
+func reverseName(domain string) string {
+	labels := strings.Split(domain, ".")
+	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
+		labels[i], labels[j] = labels[j], labels[i]
+	}
+	return strings.Join(labels, ".")
 }
 
 // PolicyAuthorityDatabaseImpl enforces policy decisions based on various rule
@@ -32,14 +41,14 @@ type PolicyAuthorityDatabaseImpl struct {
 
 // NewPolicyAuthorityDatabaseImpl constructs a Policy Authority Database (and
 // creates tables if they are non-existent)
-func NewPolicyAuthorityDatabaseImpl(driver, name string) (padb core.PolicyAuthorityDatabase, err error) {
+func NewPolicyAuthorityDatabaseImpl(driver, name string) (padb *PolicyAuthorityDatabaseImpl, err error) {
 	logger := blog.GetAuditLogger()
 	dbMap, err := sa.NewDbMap(driver, name)
 	if err != nil {
 		return nil, err
 	}
 
-	dbMap.AddTableWithName(domainRule{}, "ruleList").SetKeys(false, "Rule")
+	dbMap.AddTableWithName(DomainRule{}, "ruleList").SetKeys(false, "Rule")
 
 	err = dbMap.CreateTablesIfNotExists()
 	if err != nil {
@@ -54,64 +63,49 @@ func NewPolicyAuthorityDatabaseImpl(driver, name string) (padb core.PolicyAuthor
 	return padb, nil
 }
 
-// AddRule will add a whitelist or blacklist rule to the database
-func (padb *PolicyAuthorityDatabaseImpl) AddRule(rule string, rType string) error {
+// LoadRules loads the whitelist and blacklist into the database in a transaction
+// deleting any previous content
+func (padb *PolicyAuthorityDatabaseImpl) LoadRules(rules []DomainRule) error {
 	tx, err := padb.dbMap.Begin()
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
-	r := domainRule{
-		Rule: rule,
-	}
-	switch rType {
-	case blacklisted:
-		r.Type = "blacklist"
-	case whitelisted:
-		r.Type = "whitelist"
-	default:
-		return fmt.Errorf("Unsupported rule type: %s", rType)
-	}
-	err = tx.Insert(&r)
+	_, err = tx.Exec("DELETE FROM ruleList")
 	if err != nil {
 		tx.Rollback()
 		return err
+	}
+
+	for _, r := range rules {
+		r.Rule = reverseName(r.Rule)
+		tx.Insert(&r)
 	}
 
 	err = tx.Commit()
 	return err
 }
 
-// DeleteRule will delete a rule matching rule
-func (padb *PolicyAuthorityDatabaseImpl) DeleteRule(rule string) error {
-	obj, err := padb.dbMap.Get(&domainRule{}, rule)
-	if err != nil {
-		return err
+// DumpRules retrieves all DomainRules in the database so they can be written to
+// disk
+func (padb *PolicyAuthorityDatabaseImpl) DumpRules() ([]DomainRule, error) {
+	var dR []DomainRule
+	_, err := padb.dbMap.Select(&dR, "SELECT * FROM ruleList")
+	for _, r := range dR {
+		r.Rule = reverseName(r.Rule)
 	}
-	dbRule := obj.(domainRule)
-	_, err = padb.dbMap.Delete(dbRule)
-	return nil
-}
 
-// GetRules will return all the rules that match typeFilter ('whitelist' or
-// 'blacklist')
-func (padb *PolicyAuthorityDatabaseImpl) GetRules(typeFilter string) ([]string, error) {
-	var dR []domainRule
-	_, err := padb.dbMap.Select(&dR, "SELECT * FROM ruleList WHERE type = :rType", map[string]interface{}{"rType": typeFilter})
-	rules := []string{}
-	for _, rule := range dR {
-		rules = append(rules, rule.Rule)
-	}
-	return rules, err
+	return dR, err
 }
 
 // CheckRules will query the database for white/blacklist rules that match host,
 // if both whitelist and blacklist rules are found the whitelist will always win
-func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string, requireWhitelist bool) error {
-	var rules []domainRule
+func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string, requireWhitelisted bool) error {
+	host = reverseName(host)
+	var rules []DomainRule
 	_, err := padb.dbMap.Select(
 		&rules,
-		`SELECT type,rule FROM ruleList WHERE :host LIKE rule`,
+		`SELECT type,rule FROM ruleList WHERE :host >= rule ORDER BY rule ASC`,
 		map[string]interface{}{"host": host},
 	)
 	if err != nil {
@@ -120,16 +114,22 @@ func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string, requireWhitelis
 
 	var wRules []string
 	var bRules []string
-	for _, rule := range rules {
-		switch rule.Type {
+	fmt.Println(host)
+	for _, r := range rules {
+		fmt.Println("!", r.Rule)
+		switch r.Type {
 		case blacklisted:
-			bRules = append(bRules, rule.Rule)
+			if strings.HasPrefix(host, r.Rule) {
+				bRules = append(bRules, r.Rule)
+			}
 		case whitelisted:
-			wRules = append(wRules, rule.Rule)
+			if r.Rule == host {
+				wRules = append(wRules, r.Rule)
+			}
 		}
 	}
 
-	if requireWhitelist && len(wRules) == 0 {
+	if requireWhitelisted && len(wRules) == 0 {
 		return fmt.Errorf("Domain name is not whitelisted for issuance")
 	} else if len(wRules)+len(bRules) > 0 {
 		padb.log.Info(fmt.Sprintf("Hostname [%s] matches rules, Whitelist: %s, Blacklist: %s", host, wRules, bRules))

@@ -8,8 +8,10 @@ package policy
 import (
 	"testing"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/test"
 )
 
 var log = mocks.UseMockLog()
@@ -90,14 +92,17 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zombo-.com",
 	}
 
-	pa, _ := NewPolicyAuthorityImpl("sqlite3", ":memory:")
+	pa, _ := NewPolicyAuthorityImpl(cmd.CommonConfig{PolicyDBDriver: "sqlite3", PolicyDBConnect: ":memory:"})
+	rules := []DomainRule{}
 	for _, b := range shouldBeBlacklisted {
-		pa.db.AddRule(b, blacklisted)
+		rules = append(rules, DomainRule{Rule: b, Type: blacklisted})
 	}
+	err := pa.Db.LoadRules(rules)
+	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
-	err := pa.WillingToIssue(identifier)
+	err = pa.WillingToIssue(identifier)
 	_, ok := err.(InvalidIdentifierError)
 	if !ok {
 		t.Error("Identifier was not correctly forbidden: ", identifier)
@@ -143,7 +148,7 @@ func TestWillingToIssue(t *testing.T) {
 }
 
 func TestChallengesFor(t *testing.T) {
-	pa, _ := NewPolicyAuthorityImpl("sqlite3", ":memory:")
+	pa, _ := NewPolicyAuthorityImpl(cmd.CommonConfig{PolicyDBDriver: "sqlite3", PolicyDBConnect: ":memory:"})
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 

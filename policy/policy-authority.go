@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -17,25 +18,25 @@ import (
 // PolicyAuthorityImpl enforces CA policy decisions.
 type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
-	db  core.PolicyAuthorityDatabase
+	Db  *PolicyAuthorityDatabaseImpl
 
 	EnforceWhitelist bool
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl(dbDriver, dbName string) (*PolicyAuthorityImpl, error) {
+func NewPolicyAuthorityImpl(common cmd.CommonConfig) (*PolicyAuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
 	pa := PolicyAuthorityImpl{log: logger}
 
 	// Setup policy db
-	padb, err := NewPolicyAuthorityDatabaseImpl(dbDriver, dbName)
+	padb, err := NewPolicyAuthorityDatabaseImpl(common.PolicyDBDriver, common.PolicyDBConnect)
 	if err != nil {
 		return nil, err
 	}
-	pa.db = padb
+	pa.Db = padb
 
 	// TODO: Add configurability
 	pa.PublicSuffixList = PublicSuffixList
@@ -159,7 +160,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 
 	// Require no match against blacklist (and if pa.EnforceWhitelist is true
 	// require domain to match a whitelist rule)
-	if err := pa.db.CheckRules(domain, pa.EnforceWhitelist); err != nil {
+	if err := pa.Db.CheckRules(domain, pa.EnforceWhitelist); err != nil {
 		return err
 	}
 

@@ -6,43 +6,56 @@
 package policy
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestAdd(t *testing.T) {
+var (
+	rA = DomainRule{
+		Rule: "a.com",
+		Type: whitelisted,
+	}
+	rB = DomainRule{
+		Rule: "b.com",
+		Type: blacklisted,
+	}
+)
+
+func TestLoadAndDump(t *testing.T) {
 	p, err := NewPolicyAuthorityDatabaseImpl("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Couldn't create PADB")
-	err = p.AddRule("a.bracewel.net", blacklisted)
-	test.AssertNotError(t, err, "Failed to add blacklist rule")
-	err = p.AddRule("b.bracewel.net", whitelisted)
-	test.AssertNotError(t, err, "Failed to add whitelist rule")
-	err = p.AddRule("b.bracewel.net", blacklisted)
-	test.AssertError(t, err, "Didn't error on duplicate rule")
+
+	err = p.LoadRules([]DomainRule{rA, rB})
+	test.AssertNotError(t, err, "Couldn't load rules")
+
+	r, err := p.DumpRules()
+	test.AssertNotError(t, err, "Couldn't dump rules")
+
+	test.AssertEquals(t, len(r), 2)
 }
 
 func TestGet(t *testing.T) {
 	p, err := NewPolicyAuthorityDatabaseImpl("sqlite3", ":memory:")
 	test.AssertNotError(t, err, "Couldn't create PADB")
-	err = p.AddRule("bracewel.net", blacklisted)
-	test.AssertNotError(t, err, "Failed to add blacklist rule")
-	err = p.AddRule("%a.bracewel.net", whitelisted)
-	test.AssertNotError(t, err, "Failed to add blacklist rule")
-	err = p.AddRule("%ba.bracewel.net", whitelisted)
-	test.AssertNotError(t, err, "Failed to add blacklist rule")
 
-	err = p.CheckRules("abba.bracewel.net", false)
-	test.AssertNotError(t, err, "Hostname should be whitelisted")
-	err = p.CheckRules("bracewel.net", false)
+	err = p.LoadRules([]DomainRule{rA, rB})
+	test.AssertNotError(t, err, "Couldn't load rules")
+
+	err = p.CheckRules("b.com", false)
+	test.AssertError(t, err, "Hostname should be blacklisted")
+	err = p.CheckRules("a.b.com", false)
 	test.AssertError(t, err, "Hostname should be blacklisted")
 
-	err = p.AddRule("%bracewel.net", blacklisted)
-	test.AssertNotError(t, err, "Failed to add blacklist rule")
-	err = p.CheckRules("abba.bracewel.net", false)
+	err = p.CheckRules("a.com", false)
+	test.AssertNotError(t, err, "Hostname should be whitelisted")
+	err = p.CheckRules("a.a.com", false)
 	test.AssertNotError(t, err, "Hostname should be whitelisted")
 
-	err = p.CheckRules("bracewel.net", true)
-	test.AssertError(t, err, "Hostname shouldn't be whitelisted")
-
+	fmt.Println("break")
+	err = p.CheckRules("a.com", true)
+	test.AssertNotError(t, err, "Hostname should be whitelisted")
+	err = p.CheckRules("a.a.com", true)
+	test.AssertError(t, err, "Hostname isn't explicitly whitelisted")
 }
