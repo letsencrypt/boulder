@@ -37,6 +37,7 @@ func NewPolicyAuthorityImpl(common cmd.CommonConfig) (*PolicyAuthorityImpl, erro
 		return nil, err
 	}
 	pa.Db = padb
+	pa.EnforceWhitelist = common.EnforcePolicyWhitelist
 
 	// TODO: Add configurability
 	pa.PublicSuffixList = PublicSuffixList
