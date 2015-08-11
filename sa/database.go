@@ -8,7 +8,7 @@ package sa
 import (
 	"database/sql"
 	"fmt"
-	"strings"
+	"net/url"
 
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
@@ -31,15 +31,27 @@ var dialectMap = map[string]interface{}{
 // It automatically maps the tables for the primary parts of Boulder around the
 // Storage Authority. This may require some further work when we use a disjoint
 // schema, like that for `certificate-authority-data.go`.
-func NewDbMap(driver string, name string) (*gorp.DbMap, error) {
+func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 	logger := blog.GetAuditLogger()
 
-	// We require this parameter for MySQL, so fail now if it is not present
-	if driver == "mysql" && !strings.Contains(name, "parseTime=true") {
-		return nil, fmt.Errorf("Database name must have parseTime=true")
+	if driver == "mysql" {
+		// Check the parseTime=true DSN is present
+		dbURI, err := url.Parse(dbConnect)
+		if err != nil {
+			return nil, err
+		}
+		dsnVals, err := url.ParseQuery(dbURI.RawQuery)
+		if err != nil {
+			return nil, err
+		}
+		if k := dsnVals.Get("parseTime"); k != "true" {
+			dsnVals.Set("parseTime", "true")
+			dbURI.RawQuery = dsnVals.Encode()
+		}
+		dbConnect = dbURI.String()
 	}
 
-	db, err := sql.Open(driver, name)
+	db, err := sql.Open(driver, dbConnect)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +59,7 @@ func NewDbMap(driver string, name string) (*gorp.DbMap, error) {
 		return nil, err
 	}
 
-	logger.Debug(fmt.Sprintf("Connecting to database %s %s", driver, name))
+	logger.Debug("Connecting to database")
 
 	dialect, ok := dialectMap[driver].(gorp.Dialect)
 	if !ok {
@@ -55,7 +67,7 @@ func NewDbMap(driver string, name string) (*gorp.DbMap, error) {
 		return nil, err
 	}
 
-	logger.Info(fmt.Sprintf("Connected to database %s %s", driver, name))
+	logger.Info("Connected to database")
 
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
@@ -87,10 +99,10 @@ func (log *SQLLogger) Printf(format string, v ...interface{}) {
 // initTables constructs the table map for the ORM. If you want to also create
 // the tables, call CreateTablesIfNotExists on the DbMap.
 func initTables(dbMap *gorp.DbMap) {
-	regTable := dbMap.AddTableWithName(core.Registration{}, "registrations").SetKeys(true, "ID")
+	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "ID")
 	regTable.SetVersionCol("LockCol")
-	regTable.ColMap("Key").SetMaxSize(1024).SetNotNull(true).SetUnique(true)
-
+	regTable.ColMap("Key").SetNotNull(true)
+	regTable.ColMap("KeySHA256").SetNotNull(true).SetUnique(true)
 	pendingAuthzTable := dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
 	pendingAuthzTable.SetVersionCol("LockCol")
 	pendingAuthzTable.ColMap("Challenges").SetMaxSize(1536)

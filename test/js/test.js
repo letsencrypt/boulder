@@ -200,6 +200,7 @@ function post(url, body, callback) {
     url: url,
     encoding: null // Return body as buffer, needed for certificate response
   }, function(error, response, body) {
+    console.log(("HTTP/1.1 " + response.statusCode).yellow)
     Object.keys(response.headers).forEach(function(key) {
       var value = response.headers[key];
       var upcased = key.charAt(0).toUpperCase() + key.slice(1);
@@ -308,6 +309,7 @@ function register(answers) {
 
   // Register public key
   post(state.newRegistrationURL, {
+    resource: "new-reg",
     contact: [ "mailto:" + email ]
   }, getTerms);
 }
@@ -367,6 +369,7 @@ function sendAgreement(answers) {
   console.log("Posting agreement to: " + state.registrationURL)
 
   state.registration = {
+    resource: "reg",
     agreement: state.termsURL
   }
   post(state.registrationURL, state.registration,
@@ -391,6 +394,7 @@ function getChallenges(answers) {
 
   // Register public key
   post(state.newAuthorizationURL, {
+    resource: "new-authz",
     identifier: {
       type: "dns",
       value: state.domain
@@ -424,9 +428,18 @@ function getReadyToValidate(err, resp, body) {
 
   var challenge = simpleHttp[0];
   var path = crypto.randomString(8) + ".txt";
-  var challengePath = ".well-known/acme-challenge/" + path;
+  var challengePath = ".well-known/acme-challenge/" + challenge.token;
   state.responseURL = challenge["uri"];
   state.path = path;
+
+  // Sign validation JWS
+  var validationObject = JSON.stringify({
+    type: "simpleHttp",
+    token: challenge.token,
+    tls: false
+  })
+  var validationJWS = crypto.generateSignature(state.accountPrivateKey,
+                                               new Buffer(validationObject))
 
   // For local, test-mode validation
   function httpResponder(req, response) {
@@ -435,8 +448,8 @@ function getReadyToValidate(err, resp, body) {
     if ((host === state.domain || /localhost/.test(state.newRegistrationURL)) &&
         req.method === "GET" &&
         req.url == "/" + challengePath) {
-      response.writeHead(200, {"Content-Type": "text/plain"});
-      response.end(challenge.token);
+      response.writeHead(200, {"Content-Type": "application/jose+json"});
+      response.end(JSON.stringify(validationJWS));
     } else {
       console.log("Got invalid request for", req.method, host, req.url);
       response.writeHead(404, {"Content-Type": "text/plain"});
@@ -456,6 +469,7 @@ function getReadyToValidate(err, resp, body) {
 
   cli.spinner("Validating domain");
   post(state.responseURL, {
+    resource: "challenge",
     path: state.path,
     tls: false
   }, ensureValidation);
@@ -516,6 +530,7 @@ function getCertificate() {
   cli.spinner("Requesting certificate");
   var csr = crypto.generateCSR(state.certPrivateKey, state.validatedDomains);
   post(state.newCertificateURL, {
+    resource: "new-cert",
     csr: csr,
     authorizations: state.validAuthorizationURLs
   }, downloadCertificate);

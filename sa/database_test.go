@@ -31,7 +31,7 @@ func TestForgottenDialect(t *testing.T) {
 	test.AssertError(t, err, "Shouldn't have found the dialect")
 }
 
-func TestParseTimeRequired(t *testing.T) {
+func TestInvalidDSN(t *testing.T) {
 	_, err := NewDbMap("mysql", "invalid")
-	test.AssertError(t, err, "DB name must have parseTime=true")
+	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
 }

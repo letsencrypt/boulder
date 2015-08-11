@@ -8,19 +8,21 @@ package core
 import (
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"net"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
 // AcmeStatus defines the state of a given authorization
 type AcmeStatus string
+
+// AcmeResource values identify different types of ACME resources
+type AcmeResource string
 
 // Buffer is a variable-length collection of bytes
 type Buffer []byte
@@ -56,6 +58,16 @@ const (
 	IdentifierDNS = IdentifierType("dns")
 )
 
+// The types of ACME resources
+const (
+	ResourceNewReg       = AcmeResource("new-reg")
+	ResourceNewAuthz     = AcmeResource("new-authz")
+	ResourceNewCert      = AcmeResource("new-cert")
+	ResourceRevokeCert   = AcmeResource("revoke-cert")
+	ResourceRegistration = AcmeResource("reg")
+	ResourceChallenge    = AcmeResource("challenge")
+)
+
 // These status are the states of OCSP
 const (
 	OCSPStatusGood    = OCSPStatus("good")
@@ -65,7 +77,6 @@ const (
 // Error types that can be used in ACME payloads
 const (
 	ConnectionProblem     = ProblemType("urn:acme:error:connection")
-	DNSSECProblem         = ProblemType("urn:acme:error:dnssec")
 	MalformedProblem      = ProblemType("urn:acme:error:malformed")
 	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
 	TLSProblem            = ProblemType("urn:acme:error:tls")
@@ -75,14 +86,19 @@ const (
 
 // These types are the available challenges
 const (
-	ChallengeTypeSimpleHTTP    = "simpleHttp"
-	ChallengeTypeDVSNI         = "dvsni"
-	ChallengeTypeDNS           = "dns"
-	ChallengeTypeRecoveryToken = "recoveryToken"
+	ChallengeTypeSimpleHTTP = "simpleHttp"
+	ChallengeTypeDVSNI      = "dvsni"
+	ChallengeTypeDNS        = "dns"
 )
 
+// The suffix appended to pseudo-domain names in DVSNI challenges
+const DVSNISuffix = "acme.invalid"
+
+// The label attached to DNS names in DNS challenges
+const DNSPrefix = "_acme-challenge"
+
 func (pd *ProblemDetails) Error() string {
-	return fmt.Sprintf("%v :: %v", pd.Type, pd.Detail)
+	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
 }
 
 func cmpStrSlice(a, b []string) bool {
@@ -141,22 +157,17 @@ type AcmeIdentifier struct {
 	Value string         `json:"value"` // The identifier itself
 }
 
-// CertificateRequest is just a CSR together with
-// URIs pointing to authorizations that should collectively
-// authorize the certificate being requsted.
+// CertificateRequest is just a CSR
 //
-// This type is never marshaled, since we only ever receive
-// it from the client.  So it carries some additional information
-// that is useful internally.  (We rely on Go's case-insensitive
-// JSON unmarshal to properly unmarshal client requests.)
+// This data is unmarshalled from JSON by way of rawCertificateRequest, which
+// represents the actual structure received from the client.
 type CertificateRequest struct {
-	CSR            *x509.CertificateRequest // The CSR
-	Authorizations []AcmeURL                // Links to Authorization over the account key
+	CSR   *x509.CertificateRequest // The CSR
+	Bytes []byte                   // The original bytes of the CSR, for logging.
 }
 
 type rawCertificateRequest struct {
-	CSR            JSONBuffer `json:"csr"`            // The encoded CSR
-	Authorizations []AcmeURL  `json:"authorizations"` // Authorizations
+	CSR JSONBuffer `json:"csr"` // The encoded CSR
 }
 
 // UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
@@ -172,15 +183,14 @@ func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 	}
 
 	cr.CSR = csr
-	cr.Authorizations = raw.Authorizations
+	cr.Bytes = raw.CSR
 	return nil
 }
 
 // MarshalJSON provides an implementation for encoding CertificateRequest objects.
 func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rawCertificateRequest{
-		CSR:            cr.CSR.Raw,
-		Authorizations: cr.Authorizations,
+		CSR: cr.CSR.Raw,
 	})
 }
 
@@ -193,16 +203,11 @@ type Registration struct {
 	// Account key to which the details are attached
 	Key jose.JsonWebKey `json:"key" db:"jwk"`
 
-	// Recovery Token is used to prove connection to an earlier transaction
-	RecoveryToken string `json:"recoveryToken" db:"recoveryToken"`
-
 	// Contact URIs
-	Contact []AcmeURL `json:"contact,omitempty" db:"contact"`
+	Contact []*AcmeURL `json:"contact,omitempty" db:"contact"`
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty" db:"agreement"`
-
-	LockCol int64 `json:"-"`
 }
 
 // MergeUpdate copies a subset of information from the input Registration
@@ -237,19 +242,16 @@ type Challenge struct {
 	Validated *time.Time `json:"validated,omitempty"`
 
 	// A URI to which a response can be POSTed
-	URI AcmeURL `json:"uri"`
+	URI *AcmeURL `json:"uri"`
 
-	// Used by simpleHTTP, recoveryToken, and dns challenges
+	// Used by simpleHttp, dvsni, and dns challenges
 	Token string `json:"token,omitempty"`
 
 	// Used by simpleHTTP challenges
-	Path string `json:"path,omitempty"`
-	TLS  *bool  `json:"tls,omitempty"`
+	TLS *bool `json:"tls,omitempty"`
 
-	// Used by dvsni challenges
-	R     string `json:"r,omitempty"`
-	S     string `json:"s,omitempty"`
-	Nonce string `json:"nonce,omitempty"`
+	// Used by dns and dvsni challenges
+	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
@@ -262,29 +264,12 @@ func (ch Challenge) IsSane(completed bool) bool {
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP:
 		// check extra fields aren't used
-		if ch.R != "" || ch.S != "" || ch.Nonce != "" {
+		if ch.Validation != nil {
 			return false
 		}
 
-		// If the client has marked the challenge as completed, there should be a
-		// non-empty path provided. Otherwise there should be no default path.
-		if completed {
-			if ch.Path == "" {
-				return false
-			}
-			// Composed path should be a clean filepath (i.e. no double slashes, dot segments, etc)
-			vaURL := fmt.Sprintf("/.well-known/acme-challenge/%s", ch.Path)
-			if vaURL != filepath.Clean(vaURL) {
-				return false
-			}
-		} else {
-			if ch.Path != "" {
-				return false
-			}
-			// TLS should set set to true by default
-			if ch.TLS == nil || !*ch.TLS {
-				return false
-			}
+		if completed && ch.TLS == nil {
+			return false
 		}
 
 		// check token is present, corrent length, and contains b64 encoded string
@@ -295,41 +280,11 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 	case ChallengeTypeDVSNI:
-		// check extra fields aren't used
-		if ch.Path != "" || ch.Token != "" || ch.TLS != nil {
-			return false
-		}
-
-		if ch.Nonce == "" || len(ch.Nonce) != 32 {
-			return false
-		}
-		if _, err := hex.DecodeString(ch.Nonce); err != nil {
-			return false
-		}
-
-		// Check R & S are sane
-		if ch.R == "" || len(ch.R) != 43 {
-			return false
-		}
-		if _, err := B64dec(ch.R); err != nil {
-			return false
-		}
-
-		if completed {
-			if ch.S == "" || len(ch.S) != 43 {
-				return false
-			}
-			if _, err := B64dec(ch.S); err != nil {
-				return false
-			}
-		} else {
-			if ch.S != "" {
-				return false
-			}
-		}
+		// Same as DNS
+		fallthrough
 	case ChallengeTypeDNS:
 		// check extra fields aren't used
-		if ch.R != "" || ch.S != "" || ch.Nonce != "" || ch.TLS != nil {
+		if ch.TLS != nil {
 			return false
 		}
 
@@ -338,6 +293,11 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 		if _, err := B64dec(ch.Token); err != nil {
+			return false
+		}
+
+		// If completed, check that there's a validation object
+		if completed && ch.Validation == nil {
 			return false
 		}
 
@@ -351,17 +311,24 @@ func (ch Challenge) IsSane(completed bool) bool {
 // MergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
-	// Only override fields that are supposed to be client-provided
-	if len(ch.Path) == 0 {
-		ch.Path = resp.Path
-	}
+	switch ch.Type {
+	case ChallengeTypeSimpleHTTP:
+		// For simpleHttp, only "tls" is client-provided
+		// If "tls" is not provided, default to "true"
+		if resp.TLS != nil {
+			ch.TLS = resp.TLS
+		} else {
+			ch.TLS = new(bool)
+			*ch.TLS = true
+		}
 
-	if len(ch.S) == 0 {
-		ch.S = resp.S
-	}
-
-	if resp.TLS != nil {
-		ch.TLS = resp.TLS
+	case ChallengeTypeDVSNI:
+		fallthrough
+	case ChallengeTypeDNS:
+		// For dvsni and dns, only "validation" is client-provided
+		if resp.Validation != nil {
+			ch.Validation = resp.Validation
+		}
 	}
 
 	return ch
@@ -444,11 +411,39 @@ type Certificate struct {
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`
 
-	Serial  string     `db:"serial"`
-	Digest  string     `db:"digest"`
-	DER     JSONBuffer `db:"der"`
-	Issued  time.Time  `db:"issued"`
-	Expires time.Time  `db:"expires"`
+	Serial  string    `db:"serial"`
+	Digest  string    `db:"digest"`
+	DER     []byte    `db:"der"`
+	Issued  time.Time `db:"issued"`
+	Expires time.Time `db:"expires"`
+}
+
+type IssuedCertIdentifierData struct {
+	ReversedName string
+	Serial       string
+}
+
+// IdentifierData holds information about what certificates are known for a
+// given identifier. This is used to present Proof of Posession challenges in
+// the case where a certificate already exists. The DB table holding
+// IdentifierData rows contains information about certs issued by Boulder and
+// also information about certs observed from third parties.
+type IdentifierData struct {
+	ReversedName string `db:"reversedName"` // The label-wise reverse of an identifier, e.g. com.example or com.example.*
+	CertSHA1     string `db:"certSHA1"`     // The hex encoding of the SHA-1 hash of a cert containing the identifier
+}
+
+// ExternalCert holds information about certificates issued by other CAs,
+// obtained through Certificate Transparency, the SSL Observatory, or scans.io.
+type ExternalCert struct {
+	SHA1     string    `db:"sha1"`       // The hex encoding of the SHA-1 hash of this cert
+	Issuer   string    `db:"issuer"`     // The Issuer field of this cert
+	Subject  string    `db:"subject"`    // The Subject field of this cert
+	NotAfter time.Time `db:"notAfter"`   // Date after which this cert should be considered invalid
+	SPKI     []byte    `db:"spki"`       // The hex encoding of the certificate's SubjectPublicKeyInfo in DER form
+	Valid    bool      `db:"valid"`      // Whether this certificate was valid at LastUpdated time
+	EV       bool      `db:"ev"`         // Whether this cert was EV valid
+	CertDER  []byte    `db:"rawDERCert"` // DER (binary) encoding of the raw certificate
 }
 
 // MatchesCSR tests the contents of a generated certificate to make sure
@@ -554,6 +549,8 @@ type CertificateStatus struct {
 	//   revocation. Otherwise it is zero (which happens to be the reason
 	//   code for 'unspecified').
 	RevokedReason int `db:"revokedReason"`
+
+	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
 	LockCol int64 `json:"-"`
 }

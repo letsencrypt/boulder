@@ -30,11 +30,19 @@ A quick-start method for running a Boulder instance is to use one of the example
 > docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro -p 4000:4000 quay.io/letsencrypt/boulder:latest boulder
 ```
 
+Alternatively, to run all services locally, using AMQP to pass messages between them, you can use:
+
+```
+> python start.py
+# start.py will use the configuration specified by BOULDER_CONFIG or test/boulder-config.json
+```
+
 To run a single module, specifying the AMQP server, you might use something more like:
 
 ```
 > docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:stable boulder-ra
 ```
+
 
 
 Quickstart
@@ -54,6 +62,8 @@ CentOS:
 
 OS X:
 `sudo port install libtool` or `brew install libtool`
+
+(On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
 
 ```
 > go get github.com/letsencrypt/boulder # Ignore errors about no buildable files
@@ -115,31 +125,22 @@ easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8)
 and to [avoid insecure fallback in go
 get](https://github.com/golang/go/issues/9637).
 
-We need to use the build tag 'pkcs11' to really pull in all our dependencies.
-To do this, you'll need to pull and install this godep branch, which supports
-build tags: https://github.com/tools/godep/pull/117/files. NOTE: If you skip
-this step, godep will delete some of the vendorized dependencies.
-
 To update dependencies:
 
 ```
 # Disable insecure fallback by blocking port 80.
 sudo /sbin/iptables -A OUTPUT -p tcp --dport 80 -j DROP
 # Fetch godep
-go get https://github.com/tools/godep.git
-# Pull in the tags branch and install
-cd $GOPATH/src/github.com/tools/godep
-git pull https://github.com/jnfeinstein/godep.git jnfeinstein
-go install
-
+go get -u https://github.com/tools/godep
 # Update to the latest version of a dependency. Alternately you can cd to the
-# directory under GOPATH and check out a specific revision.
+# directory under GOPATH and check out a specific revision. Here's an example
+# using cfssl:
 go get -u github.com/cloudflare/cfssl/...
 # Update the Godep config to the appropriate version.
 godep update github.com/cloudflare/cfssl/...
 # Save the dependencies, rewriting any internal or external dependencies that
 # may have been added.
-godep save -r -tags pkcs11 ./...
+godep save -r ./...
 git add Godeps
 git commit
 # Assuming you had no other iptables rules, re-enable port 80.

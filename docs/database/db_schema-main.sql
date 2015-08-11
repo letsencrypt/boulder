@@ -94,3 +94,20 @@ CREATE TABLE `pending_authz` (
   CONSTRAINT `regId_pending_authz` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+CREATE TABLE `identifierData` (
+  `reversedName` varchar(255) NOT NULL,
+  `certSHA1` varchar(40) NOT NULL,
+  UNIQUE INDEX (certSha1, reversedName)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `externalCerts` (
+  `sha1` varchar(40) NOT NULL,
+  `issuer` text DEFAULT NULL,
+  `subject` text DEFAULT NULL,
+  `notAfter` datetime DEFAULT NULL,
+  `spki` blob DEFAULT NULL,
+  `valid` tinyint(1) DEFAULT NULL,
+  `ev` tinyint(1) DEFAULT NULL,  
+  `rawDERCert` blob DEFAULT NULL,
+  UNIQUE INDEX (sha1)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;

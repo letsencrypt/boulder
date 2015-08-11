@@ -40,15 +40,14 @@ RUN ./bootstrap/debian.sh && \
     /tmp/* \
     /var/tmp/*
 RUN virtualenv --no-site-packages -p python2 venv && \
-  ./venv/bin/pip install -r requirements.txt -e .[dev,docs,testing]
+  ./venv/bin/pip install -r requirements.txt -e acme -e .[dev,docs,testing] -e letsencrypt-apache -e letsencrypt-nginx
 
 # Copy in the Boulder sources
 COPY . /go/src/github.com/letsencrypt/boulder
 
 # Build Boulder
-RUN go install -tags pkcs11 \
+RUN go install \
   github.com/letsencrypt/boulder/cmd/activity-monitor \
-  github.com/letsencrypt/boulder/cmd/boulder \
   github.com/letsencrypt/boulder/cmd/boulder-ca \
   github.com/letsencrypt/boulder/cmd/boulder-ra \
   github.com/letsencrypt/boulder/cmd/boulder-sa \

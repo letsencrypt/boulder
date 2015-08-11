@@ -18,6 +18,7 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+	"github.com/letsencrypt/boulder/mocks"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
@@ -331,6 +332,8 @@ var BadAlgorithmCSRhex = "308202aa30820192020100300d310b300906035504061302" +
 var FarFuture = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
 var FarPast = time.Date(1950, 1, 1, 0, 0, 0, 0, time.UTC)
 
+var log = mocks.UseMockLog()
+
 // CFSSL config
 const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"
@@ -348,7 +351,7 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 	ssa.CreateTablesIfNotExists()
 	storageAuthority = ssa
 
-	cadb, _ = test.NewMockCertificateAuthorityDatabase()
+	cadb, _ = mocks.NewMockCertificateAuthorityDatabase()
 
 	// Create a CA
 	caConfig = Config{
@@ -433,8 +436,9 @@ func TestRevoke(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get cert status")
 
 	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
-	test.Assert(t, time.Now().Sub(status.OCSPLastUpdated) > time.Second,
-		fmt.Sprintf("OCSP LastUpdated was wrong: %v", status.OCSPLastUpdated))
+	secondAgo := time.Now().Add(-time.Second)
+	test.Assert(t, status.OCSPLastUpdated.After(secondAgo),
+		fmt.Sprintf("OCSP LastUpdated was more than a second old: %v", status.OCSPLastUpdated))
 }
 
 func TestIssueCertificate(t *testing.T) {
