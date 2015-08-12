@@ -10,6 +10,6 @@
 --
 
 CREATE TABLE `ruleList` (
-  `rule` varchar(255) DEFAULT NULL,
-  `type` char(11) DEFAULT NULL
+  `rule` varchar(255) NOT NULL,
+  `type` char(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
