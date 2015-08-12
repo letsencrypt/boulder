@@ -2,7 +2,7 @@ package idn_test
 
 import (
 	"fmt"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns/idn"
+	"github.com/miekg/dns/idn"
 )
 
 func ExampleToPunycode() {

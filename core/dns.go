@@ -11,7 +11,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/dns"
 )
 
 // DNSResolverImpl represents a resolver system

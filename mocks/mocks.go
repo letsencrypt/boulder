@@ -13,8 +13,8 @@ import (
 	"time"
 
 	// Load SQLite3 for test purposes
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/dns"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 

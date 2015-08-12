@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/dns"
 )
 
 const TypeISBN uint16 = 0x0F01
