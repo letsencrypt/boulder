@@ -419,10 +419,10 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, 
 	response.WriteHeader(code)
 	response.Write(problemDoc)
 
-	wfe.Stats.Inc(fmt.Sprintf("HttpErrorCodes.%d", code), 1, 1.0)
+	wfe.Stats.Inc(fmt.Sprintf("WFE.HTTP.ErrorCodes.%d", code), 1, 1.0)
 	problemSegments := strings.Split(string(problem.Type), ":")
 	if len(problemSegments) > 0 {
-		wfe.Stats.Inc(fmt.Sprintf("HttpProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1, 1.0)
+		wfe.Stats.Inc(fmt.Sprintf("WFE.HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1, 1.0)
 	}
 }
 

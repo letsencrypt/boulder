@@ -8,7 +8,6 @@ package mocks
 import (
 	"database/sql"
 	"fmt"
-	"net"
 	"strings"
 	"time"
 
@@ -63,11 +62,6 @@ func (mock *MockDNS) LookupTXT(hostname string) ([]string, time.Duration, error)
 		return nil, 0, fmt.Errorf("SERVFAIL")
 	}
 	return []string{"hostname"}, 0, nil
-}
-
-// LookupHost is a mock
-func (mock *MockDNS) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
-	return nil, 0, 0, nil
 }
 
 // LookupCNAME is a mock

@@ -395,7 +395,8 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
 	txts, rtt, err := va.DNSResolver.LookupTXT(challengeSubdomain)
-	va.Stats.TimingDuration("DnsRtt.TXT", rtt, 1.0)
+	va.Stats.TimingDuration("VA.DNS.RTT.TXT", rtt, 1.0)
+	va.Stats.Inc("VA.DNS.Rate", 1, 1.0)
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
@@ -452,7 +453,7 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
 			break
 		}
-		va.Stats.TimingDuration(fmt.Sprintf("Validations.%s.%s", authz.Challenges[challengeIndex].Type, authz.Challenges[challengeIndex].Status), time.Since(vStart), 1.0)
+		va.Stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", authz.Challenges[challengeIndex].Type, authz.Challenges[challengeIndex].Status), time.Since(vStart), 1.0)
 
 		logEvent.Challenge = authz.Challenges[challengeIndex]
 		if err != nil {
@@ -533,7 +534,8 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 		if err != nil {
 			return nil, err
 		}
-		va.Stats.TimingDuration("DnsRtt.CAA", caaRtt, 1.0)
+		va.Stats.TimingDuration("VA.DNS.RTT.CAA", caaRtt, 1.0)
+		va.Stats.Inc("VA.DNS.Rate", 1, 1.0)
 		if len(CAAs) > 0 {
 			return newCAASet(CAAs), nil
 		}
@@ -541,12 +543,14 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 		if err != nil {
 			return nil, err
 		}
-		va.Stats.TimingDuration("DnsRtt.CNAME", cnameRtt, 1.0)
+		va.Stats.TimingDuration("VA.DNS.RTT.CNAME", cnameRtt, 1.0)
+		va.Stats.Inc("VA.DNS.Rate", 1, 1.0)
 		dname, dnameRtt, err := va.DNSResolver.LookupDNAME(label)
 		if err != nil {
 			return nil, err
 		}
-		va.Stats.TimingDuration("DnsRtt.DNAME", dnameRtt, 1.0)
+		va.Stats.TimingDuration("VA.DNS.RTT.DNAME", dnameRtt, 1.0)
+		va.Stats.Inc("VA.DNS.Rate", 1, 1.0)
 		if cname == "" && dname == "" {
 			// Try parent domain (note we confirmed
 			// earlier that label contains '.')

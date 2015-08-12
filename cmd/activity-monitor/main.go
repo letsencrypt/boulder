@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -40,40 +41,43 @@ const (
 	AmqpImmediate    = false
 )
 
-var openCalls int64
+var tMu sync.Mutex
 
 func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[string]time.Time) {
 	// If d is a call add to deliveryTimings and increment openCalls, if it is a
 	// response then get time.Since original call from deliveryTiming, send timing metric, and
 	// decrement openCalls, in both cases send the gauge RpcCallsWaiting and increment the counter
 	// RpcTraffic with the byte length of the RPC body.
-	stats.Inc("RpcTraffic", int64(len(d.Body)), 1.0)
-	stats.Gauge("RpcCallsWaiting", openCalls, 1.0)
+	stats.Inc("RPC.Traffic", int64(len(d.Body)), 1.0)
+	tMu.Lock()
+	stats.Gauge("RPC.CallsWaiting", int64(len(deliveryTimings)), 1.0)
+	tMu.Unlock()
 
 	if d.ReplyTo != "" {
-		openCalls++
+		tMu.Lock()
 		deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
+		tMu.Unlock()
 	} else {
-		openCalls--
+		tMu.Lock()
 		rpcSent := deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey)]
 		if rpcSent != *new(time.Time) {
 			respTime := time.Since(rpcSent)
 			delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
-			stats.TimingDuration(fmt.Sprintf("RpcResponseTime.%s", d.Type), respTime, 1.0)
+			stats.TimingDuration(fmt.Sprintf("RPC.ResponseTime.%s", d.Type), respTime, 1.0)
+			tMu.Unlock()
 
 			// Check if the call failed
-			// XXX: This is somewhat slow, if we parse a partial json object
-			// instead of the full RPCResponse we might save a bit of time.
 			state := "Success"
-			var resp rpc.RPCResponse
-			err := json.Unmarshal(d.Body, &resp)
-			if err != nil {
-				return
+			var resp struct {
+				Error rpc.RPCError
 			}
+			json.Unmarshal(d.Body, &resp)
 			if resp.Error.Value != "" {
 				state = "Error"
 			}
-			stats.Inc(fmt.Sprintf("RpcRate.%s", state), 1, 1.0)
+			stats.Inc(fmt.Sprintf("RPC.Rate.%s", state), 1, 1.0)
+		} else {
+			tMu.Unlock()
 		}
 	}
 

@@ -34,6 +34,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -270,17 +271,17 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 		var memoryStats runtime.MemStats
 		runtime.ReadMemStats(&memoryStats)
 
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
 
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0)
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0)
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0)
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0)
 
 		gcPauseAvg := int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))
 
-		stats.Timing(fmt.Sprintf("Gostats.%s.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
+		stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
 
 		time.Sleep(time.Second)
 	}
@@ -308,21 +309,26 @@ func LoadCert(path string) (cert []byte, err error) {
 	return
 }
 
+var ocMu sync.Mutex
 var openConnections int64
 
 // HandlerTimer monitors HTTP performance and sends the details to StatsD.
 func HandlerTimer(handler http.Handler, stats statsd.Statter, prefix string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		stats.Inc(fmt.Sprintf("%s.HttpRequests", prefix), 1, 1.0)
+		stats.Inc(fmt.Sprintf("%s.HTTP.Rate", prefix), 1, 1.0)
+		ocMu.Lock()
 		openConnections++
-		stats.Gauge(fmt.Sprintf("%s.HttpConnectionsOpen", prefix), openConnections, 1.0)
+		stats.Gauge(fmt.Sprintf("%s.HTTP.OpenConnections", prefix), openConnections, 1.0)
+		ocMu.Unlock()
 
 		cOpened := time.Now()
 		handler.ServeHTTP(w, r)
 		cClosed := time.Since(cOpened)
 
+		ocMu.Lock()
 		openConnections--
-		stats.Gauge(fmt.Sprintf("%s.HttpConnectionsOpen", prefix), openConnections, 1.0)
+		stats.Gauge(fmt.Sprintf("%s.HTTP.ConnectionsOpen", prefix), openConnections, 1.0)
+		ocMu.Unlock()
 
 		// Check if request failed
 		state := "Success"
@@ -337,7 +343,7 @@ func HandlerTimer(handler http.Handler, stats statsd.Statter, prefix string) htt
 		}
 		endpoint := strings.Join(segments, "/")
 
-		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.%s", endpoint, state), cClosed, 1.0)
+		stats.TimingDuration(fmt.Sprintf("%s.HTTP.ResponseTime.%s.%s", prefix, endpoint, state), cClosed, 1.0)
 	})
 }
 

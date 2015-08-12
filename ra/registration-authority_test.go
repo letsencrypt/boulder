@@ -224,38 +224,40 @@ func TestValidateContacts(t *testing.T) {
 	invalidEmail, _ := core.ParseAcmeURL("mailto:admin@example.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	err := validateContacts([]*core.AcmeURL{}, &mocks.MockDNS{})
+	nStats, _ := statsd.NewNoopClient()
+
+	err := validateContacts([]*core.AcmeURL{}, &mocks.MockDNS{}, nStats)
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = validateContacts([]*core.AcmeURL{tel}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{tel}, &mocks.MockDNS{}, nStats)
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.MockDNS{}, nStats)
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.MockDNS{}, nStats)
 	test.AssertError(t, err, "Invalid Email")
 
-	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.MockDNS{}, nStats)
 	test.AssertError(t, err, "Malformed Email")
 
-	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.MockDNS{}, nStats)
 	test.AssertError(t, err, "Unknown scehme")
 }
 
 func TestValidateEmail(t *testing.T) {
-	err := validateEmail("an email`", &mocks.MockDNS{})
+	_, err := validateEmail("an email`", &mocks.MockDNS{})
 	test.AssertError(t, err, "Malformed")
 
-	err = validateEmail("a@not.a.domain", &mocks.MockDNS{})
+	_, err = validateEmail("a@not.a.domain", &mocks.MockDNS{})
 	test.AssertError(t, err, "Cannot resolve")
 	t.Logf("No Resolve: %s", err)
 
-	err = validateEmail("a@example.com", &mocks.MockDNS{})
+	_, err = validateEmail("a@example.com", &mocks.MockDNS{})
 	test.AssertError(t, err, "No MX Record")
 	t.Logf("No MX: %s", err)
 
-	err = validateEmail("a@email.com", &mocks.MockDNS{})
+	_, err = validateEmail("a@email.com", &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Valid")
 }
 

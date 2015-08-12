@@ -55,7 +55,7 @@ func lastPathSegment(url *core.AcmeURL) string {
 	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
-func validateEmail(address string, resolver core.DNSResolver) (err error) {
+func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, err error) {
 	_, err = mail.ParseAddress(address)
 	if err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("%s is not a valid e-mail address", address))
@@ -64,28 +64,10 @@ func validateEmail(address string, resolver core.DNSResolver) (err error) {
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	var mx []string
-	mx, _, err = resolver.LookupMX(domain)
+	mx, rtt, err = resolver.LookupMX(domain)
 	if err != nil || len(mx) == 0 {
 		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
 		return
-	}
-	return
-}
-
-func validateContacts(contacts []*core.AcmeURL, resolver core.DNSResolver) (err error) {
-	for _, contact := range contacts {
-		switch contact.Scheme {
-		case "tel":
-			continue
-		case "mailto":
-			err = validateEmail(contact.Opaque, resolver)
-			if err != nil {
-				return
-			}
-		default:
-			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
-			return
-		}
 	}
 
 	return
@@ -117,7 +99,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	}
 	reg.MergeUpdate(init)
 
-	err = validateContacts(reg.Contact, ra.DNSResolver)
+	err = validateContacts(reg.Contact, ra.DNSResolver, ra.Stats)
 	if err != nil {
 		return
 	}
@@ -130,7 +112,28 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 		err = core.InternalServerError(err.Error())
 	}
 
-	ra.Stats.Inc("NewRegistrations", 1, 1.0)
+	ra.Stats.Inc("RA.NewRegistrations", 1, 1.0)
+	return
+}
+
+func validateContacts(contacts []*core.AcmeURL, resolver core.DNSResolver, stats statsd.Statter) (err error) {
+	for _, contact := range contacts {
+		switch contact.Scheme {
+		case "tel":
+			continue
+		case "mailto":
+			rtt, err := validateEmail(contact.Opaque, resolver)
+			stats.TimingDuration("RA.DNS.RTT.MX", rtt, 1.0)
+			stats.Inc("RA.DNS.Rate", 1, 1.0)
+			if err != nil {
+				return err
+			}
+		default:
+			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
+			return
+		}
+	}
+
 	return
 }
 
@@ -206,7 +209,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		err = core.InternalServerError(err.Error())
 	}
 
-	ra.Stats.Inc("NewPendingAuthorizations", 1, 1.0)
+	ra.Stats.Inc("RA.NewPendingAuthorizations", 1, 1.0)
 	return authz, err
 }
 
@@ -335,7 +338,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.ResponseTime = time.Now()
 	logEventResult = "successful"
 
-	ra.Stats.Inc("NewCertificates", 1, 1.0)
+	ra.Stats.Inc("RA.NewCertificates", 1, 1.0)
 	return cert, nil
 }
 
@@ -343,7 +346,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	err = validateContacts(base.Contact, ra.DNSResolver)
+	err = validateContacts(base.Contact, ra.DNSResolver, ra.Stats)
 	if err != nil {
 		return
 	}
@@ -356,7 +359,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 		err = core.InternalServerError(fmt.Sprintf("Could not update registration: %s", err))
 	}
 
-	ra.Stats.Inc("UpdatedRegistrations", 1, 1.0)
+	ra.Stats.Inc("RA.UpdatedRegistrations", 1, 1.0)
 	return
 }
 
@@ -388,7 +391,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	// Dispatch to the VA for service
 	ra.VA.UpdateValidations(authz, challengeIndex, reg.Key)
 
-	ra.Stats.Inc("UpdatedPendingAuthorizations", 1, 1.0)
+	ra.Stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	return
 }
 
@@ -404,7 +407,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) (e
 	}
 
 	ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
-	ra.Stats.Inc("RevokedCertificates", 1, 1.0)
+	ra.Stats.Inc("RA.RevokedCertificates", 1, 1.0)
 	return err
 }
 
@@ -447,6 +450,6 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 		return err
 	}
 
-	ra.Stats.Inc("FinalizedAuthorizations", 1, 1.0)
+	ra.Stats.Inc("RA.FinalizedAuthorizations", 1, 1.0)
 	return nil
 }

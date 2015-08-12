@@ -13,7 +13,7 @@ The prefix will be prepended to all sent metrics to differentiate different sets
 
 This list is split up into metric topics with the names of the clients that submit these metrics.
 
-* Logging (`cmd/boulder-*` + `cmd/boulder` + `cmd/ocsp-responder` + `cmd/ocsp-updater` + `cmd/admin-revoker`)
+* Logging (`cmd/boulder-*` + `cmd/ocsp-responder` + `cmd/ocsp-updater` + `cmd/admin-revoker`)
 
     ```
 	[counter] Boulder.Logging.Audit
@@ -29,69 +29,76 @@ This list is split up into metric topics with the names of the clients that subm
 * RPC activity (`cmd/activity-monitor`)
 
     ```
-	[counter] Boulder.RpcCalls
-	[counter] Boulder.RpcTraffic
+	[counter] Boulder.RPC.Rate.Success
+  [counter] Boulder.RPC.Rate.Error
+	[counter] Boulder.RPC.Traffic
 
-	[gauge]   Boulder.RpcCallsWaiting
+	[gauge]   Boulder.RPC.CallsWaiting
 
-	[timing]  Boulder.RpcResponseTime.{RPC method name}
+	[timing]  Boulder.RPC.ResponseTime.{RPC method name}
 	```
 
-* HTTP activity (`cmd/boulder-wfe` + `cmd/boulder` + `cmd/ocsp-responder`)
+* HTTP activity (`cmd/boulder-wfe` + `cmd/ocsp-responder`)
 
     ```
-	[gauge] Boulder.{cmd name}.HttpConnectionsOpen
-	[counter] Boulder.{cmd name}.HttpRequests
+	[counter] Boulder.{WFE/OCSP}.HTTP.Rate
 
-	[timing]  Boulder.HttpResponseTime.{http endpoint}.Success
-	[timing]  Boulder.HttpResponseTime.{http endpoint}.Error
+	[gauge]   Boulder.{WFE/OCSP}.HTTP.OpenConnections
+
+	[timing]  Boulder.{WFE/OCSP}.HTTP.ResponseTime.{http endpoint}.Success
+	[timing]  Boulder.{WFE/OCSP}.HTTP.ResponseTime.{http endpoint}.Error
     ```
 
-*  HTTP errors (`cmd/boulder-wfe` + `cmd/boulder`)
+*  HTTP errors (`cmd/boulder-wfe`)
 
     ```
-	[counter] Boulder.HttpErrorCodes.{3 digit code}
-	[counter] Boulder.HttpProblemTypes.{problem type}
+	[counter] Boulder.WFE.HTTP.ErrorCodes.{3 digit code}
+	[counter] Boulder.WFE.HTTP.ProblemTypes.{problem type}
     ```
 
-* DNS activity (`cmd/boulder-va` + `cmd/boulder`)
+* DNS activity (`cmd/boulder-va` + `cmd/boulder-ra`)
 
     ```
-	[timing]  Boulder.DnsRtt.A
-	[timing]  Boulder.DnsRtt.AAAA
-	[timing]  Boulder.DnsRtt.TXT
-	[timing]  Boulder.DnsRtt.CAA
-	[timing]  Boulder.DnsRtt.CNAME
+    (VA)
+  [counter] Boulder.VA.DNS.Rate
+
+	[timing]  Boulder.VA.DNS.RTT.TXT
+	[timing]  Boulder.VA.DNS.RTT.CAA
+	[timing]  Boulder.VA.DNS.RTT.CNAME
+
+    (RA)
+  [counter] Boulder.RA.DNS.Rate
+
+  [timing]  Boulder.RA.DNS.RTT.MX
     ```
 
-* Validation attempts (`cmd/boulder-va` + `cmd/boulder`)
+* Validation attempts (`cmd/boulder-va`)
 
     ```
-	[timing]  Boulder.Validations.{challenge type}.{challenge status}
+	[timing]  Boulder.VA.Validations.{challenge type}.{challenge status}
     ```
 
-* Registration authority activity (`cmd/boulder-ra` + `cmd/boulder`)
+* Registration authority activity (`cmd/boulder-ra`)
 
     ```
-	[counter] Boulder.NewRegistrations
-	[counter] Boulder.NewPendingAuthorizations
-	[counter] Boulder.NewCertificates
-	[counter] Boulder.UpdatedRegistrations
-	[counter] Boulder.UpdatedPendingAuthorizations
-	[counter] Boulder.RevokedCertificates
-	[counter] Boulder.FinalizedAuthorizations
+	[counter] Boulder.RA.NewRegistrations
+	[counter] Boulder.RA.NewPendingAuthorizations
+	[counter] Boulder.RA.NewCertificates
+	[counter] Boulder.RA.UpdatedRegistrations
+	[counter] Boulder.RA.UpdatedPendingAuthorizations
+	[counter] Boulder.RA.RevokedCertificates
+	[counter] Boulder.RA.FinalizedAuthorizations
     ```
 
-* Client performance profiling (`cmd/boulder-*` + `cmd/boulder`)
+* Client performance profiling (`cmd/boulder-*`)
 
     ```
-	[gauge]  Boulder.Gostats.{cmd-name}.Goroutines
+	[gauge]  Boulder.{cmd-name}.Gostats.Goroutines
+	[gauge]  Boulder.{cmd-name}.Gostats.Heap.Objects
+	[gauge]  Boulder.{cmd-name}.Gostats.Heap.Idle
+	[gauge]  Boulder.{cmd-name}.Gostats.Heap.InUse
+	[gauge]  Boulder.{cmd-name}.Gostats.Heap.Released
+	[gauge]  Boulder.{cmd-name}.Gostats.Gc.NextAt
 
-	[gauge]  Boulder.Gostats.{cmd-name}.Heap.Objects
-	[gauge]  Boulder.Gostats.{cmd-name}.Heap.Idle
-	[gauge]  Boulder.Gostats.{cmd-name}.Heap.InUse
-	[gauge]  Boulder.Gostats.{cmd-name}.Heap.Released
-
-	[timing] Boulder.Gostats.{cmd-name}.Gc.PauseAvg
-	[gauge]  Boulder.Gostats.{cmd-name}.Gc.NextAt
+	[timing] Boulder.{cmd-name}.Gostats.Gc.PauseAvg
 	```

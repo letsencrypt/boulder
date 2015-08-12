@@ -8,7 +8,6 @@ package core
 import (
 	"fmt"
 	"math/rand"
-	"net"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -77,49 +76,6 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 	}
 
 	return txt, rtt, err
-}
-
-// LookupHost sends a DNS query to find all A/AAAA records associated with
-// the provided hostname.
-func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
-	var addrs []net.IP
-	var answers []dns.RR
-
-	r, aRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeA)
-	if err != nil {
-		return addrs, 0, 0, err
-	}
-	if r.Rcode != dns.RcodeSuccess {
-		err = fmt.Errorf("DNS failure: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, aRtt, 0, err
-	}
-
-	answers = append(answers, r.Answer...)
-
-	r, aaaaRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeAAAA)
-	if err != nil {
-		return addrs, aRtt, 0, err
-	}
-	if r.Rcode != dns.RcodeSuccess {
-		err = fmt.Errorf("DNS failure: %d-%s for AAAA query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, aRtt, aaaaRtt, err
-	}
-
-	answers = append(answers, r.Answer...)
-
-	for _, answer := range answers {
-		if answer.Header().Rrtype == dns.TypeA {
-			if a, ok := answer.(*dns.A); ok {
-				addrs = append(addrs, a.A)
-			}
-		} else if answer.Header().Rrtype == dns.TypeAAAA {
-			if aaaa, ok := answer.(*dns.AAAA); ok {
-				addrs = append(addrs, aaaa.AAAA)
-			}
-		}
-	}
-
-	return addrs, aRtt, aaaaRtt, nil
 }
 
 // LookupCNAME returns the target name if a CNAME record exists for
