@@ -61,21 +61,21 @@ CREATE TABLE `certificateStatus` (
 
 CREATE TABLE `crls` (
   `serial` varchar(255) NOT NULL,
-  `createdAt` datetime DEFAULT NULL,
-  `crl` varchar(255) DEFAULT NULL,
+  `createdAt` datetime NOT NULL,
+  `crl` varchar(255) NOT NULL,
   PRIMARY KEY (`serial`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `deniedCSRs` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `names` varchar(255) DEFAULT NULL,
+  `names` varchar(255) NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `ocspResponses` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `serial` varchar(255) DEFAULT NULL,
-  `createdAt` datetime DEFAULT NULL,
+  `serial` varchar(255) NOT NULL,
+  `createdAt` datetime NOT NULL,
   `response` mediumblob,
   PRIMARY KEY (`id`),
   KEY `SERIAL` (`serial`) COMMENT 'Actual lookup mechanism'
