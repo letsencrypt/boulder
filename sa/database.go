@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"strings"
 
 	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
@@ -35,20 +36,11 @@ func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 	logger := blog.GetAuditLogger()
 
 	if driver == "mysql" {
-		// Check the parseTime=true DSN is present
-		dbURI, err := url.Parse(dbConnect)
+		var err error
+		dbConnect, err = recombineURLForDB(dbConnect)
 		if err != nil {
 			return nil, err
 		}
-		dsnVals, err := url.ParseQuery(dbURI.RawQuery)
-		if err != nil {
-			return nil, err
-		}
-		if k := dsnVals.Get("parseTime"); k != "true" {
-			dsnVals.Set("parseTime", "true")
-			dbURI.RawQuery = dsnVals.Encode()
-		}
-		dbConnect = dbURI.String()
 	}
 
 	db, err := sql.Open(driver, dbConnect)
@@ -74,6 +66,53 @@ func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 	initTables(dbmap)
 
 	return dbmap, err
+}
+
+// recombineURLForDB transforms a database URL to a URL-like string
+// that the mysql driver can use. The mysql driver needs the Host data
+// to be wrapped in "tcp()" but url.Parse will escape the parentheses
+// and the mysql driver doesn't understand them. So, we can't have
+// "tcp()" in the configs, but can't leave it out before passing it to
+// the mysql driver. Similarly, the driver needs the password and
+// username unescaped. Compromise by doing the leg work if the config
+// says the database URL's scheme is a fake one called
+// "mysqltcp://". See
+// https://github.com/go-sql-driver/mysql/issues/362 for why we have
+// to futz around and avoid URL.String.
+func recombineURLForDB(dbConnect string) (string, error) {
+	dbConnect = strings.TrimSpace(dbConnect)
+	dbURL, err := url.Parse(dbConnect)
+	if err != nil {
+		return "", err
+	}
+
+	if dbURL.Scheme != "mysql+tcp" {
+		format := "given database connection string was not a mysql+tcp:// URL, was %#v"
+		return "", fmt.Errorf(format, dbURL.Scheme)
+	}
+
+	dsnVals, err := url.ParseQuery(dbURL.RawQuery)
+	if err != nil {
+		return "", err
+	}
+
+	// Check the parseTime=true DSN is present
+	if k := dsnVals.Get("parseTime"); k != "true" {
+		dsnVals.Set("parseTime", "true")
+		dbURL.RawQuery = dsnVals.Encode()
+	}
+	user := dbURL.User.Username()
+	passwd, hasPass := dbURL.User.Password()
+	dbConn := ""
+	if user != "" {
+		dbConn = url.QueryEscape(user)
+	}
+	if hasPass {
+		dbConn += ":" + passwd
+	}
+	dbConn += "@tcp(" + dbURL.Host + ")"
+	// TODO(jmhodges): should be dbURL.EscapedPath() but Travis doesn't have 1.5
+	return dbConn + dbURL.Path + "?" + dsnVals.Encode(), nil
 }
 
 // SetSQLDebug enables/disables GORP SQL-level Debugging

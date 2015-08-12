@@ -53,7 +53,7 @@ update_status() {
   fi
 }
 
-run() {
+function run() {
   echo "$@"
   "$@" 2>&1
   local status=$?
@@ -70,7 +70,7 @@ run() {
   return ${status}
 }
 
-run_and_comment() {
+function run_and_comment() {
   if [ "x${TRAVIS}" = "x" ] || [ "${TRAVIS_PULL_REQUEST}" == "false" ] || [ ! -f "${GITHUB_SECRET_FILE}" ] ; then
     run "$@"
   else
@@ -206,6 +206,10 @@ fi
 if [ "${SKIP_INTEGRATION_TESTS}" = "1" ]; then
   echo "Skipping integration tests."
   exit ${FAILURE}
+fi
+
+if [ "${TRAVIS}" == "true" ]; then
+  ./test/create_db.sh || die "unable to create the boulder database with test/create_db.sh"
 fi
 
 #

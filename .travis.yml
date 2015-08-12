@@ -17,11 +17,13 @@ addons:
       - libffi-dev
       - ca-certificates
       - rsyslog
+  mariadb: "10.0"
 
 sudo: false
 
 services:
   - rabbitmq
+  - mysql
 
 matrix:
   fast_finish: true

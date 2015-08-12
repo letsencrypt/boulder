@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -75,6 +76,19 @@ func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 
 func main() {
 	app := cmd.NewAppShell("boulder-wfe")
+	addrFlag := cli.StringFlag{
+		Name:   "addr",
+		Value:  "",
+		Usage:  "if set, overrides the listenAddr setting in the WFE config",
+		EnvVar: "WFE_LISTEN_ADDR",
+	}
+	app.App.Flags = append(app.App.Flags, addrFlag)
+	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
+		if c.GlobalString("addr") != "" {
+			config.WFE.ListenAddress = c.GlobalString("addr")
+		}
+		return config
+	}
 	app.Action = func(c cmd.Config) {
 		// Set up logging
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
@@ -135,6 +149,7 @@ func main() {
 		auditlogger.Info(app.VersionString())
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
+
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
 		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(h, stats))
 		cmd.FailOnError(err, "Error starting HTTP server")
