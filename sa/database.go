@@ -81,13 +81,16 @@ func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 // to futz around and avoid URL.String.
 func recombineURLForDB(dbConnect string) (string, error) {
 	dbConnect = strings.TrimSpace(dbConnect)
-	if !strings.HasPrefix(dbConnect, "mysqltcp://") {
-		return dbConnect, nil
-	}
 	dbURL, err := url.Parse(dbConnect)
 	if err != nil {
 		return "", err
 	}
+
+	if dbURL.Scheme != "mysql+tcp" {
+		format := "given database connection string was not a mysql+tcp:// URL, was %#v"
+		return "", fmt.Errorf(format, dbURL.Scheme)
+	}
+
 	dsnVals, err := url.ParseQuery(dbURL.RawQuery)
 	if err != nil {
 		return "", err
