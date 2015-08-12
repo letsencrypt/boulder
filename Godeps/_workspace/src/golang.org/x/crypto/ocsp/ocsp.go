@@ -68,13 +68,6 @@ type responseBytes struct {
 	Response     []byte
 }
 
-type basicResponseForMarshal struct {
-	TBSResponseData    asn1.RawValue
-	SignatureAlgorithm pkix.AlgorithmIdentifier
-	Signature          asn1.BitString
-	Certificates       []asn1.RawValue `asn1:"explicit,tag:0,optional"`
-}
-
 type basicResponse struct {
 	TBSResponseData    responseData
 	SignatureAlgorithm pkix.AlgorithmIdentifier
@@ -82,7 +75,7 @@ type basicResponse struct {
 	Certificates       []asn1.RawValue `asn1:"explicit,tag:0,optional"`
 }
 
-type responseDataForMarshal struct {
+type responseData struct {
 	Raw              asn1.RawContent
 	Version          int           `asn1:"optional,default:1,explicit,tag:0"`
 	RawResponderName asn1.RawValue `asn1:"optional,explicit,tag:1"`
@@ -91,19 +84,10 @@ type responseDataForMarshal struct {
 	Responses        []singleResponse
 }
 
-type responseData struct {
-	Raw           asn1.RawContent
-	Version       int              `asn1:"optional,default:1,explicit,tag:0"`
-	ResponderName pkix.RDNSequence `asn1:"optional,explicit,tag:1"`
-	KeyHash       []byte           `asn1:"optional,explicit,tag:2"`
-	ProducedAt    time.Time        `asn1:"generalized"`
-	Responses     []singleResponse
-}
-
 type singleResponse struct {
 	CertID     certID
 	Good       asn1.Flag   `asn1:"tag:0,optional"`
-	Revoked    revokedInfo `asn1:"explicit,tag:1,optional"`
+	Revoked    revokedInfo `asn1:"tag:1,optional"`
 	Unknown    asn1.Flag   `asn1:"tag:2,optional"`
 	ThisUpdate time.Time   `asn1:"generalized"`
 	NextUpdate time.Time   `asn1:"generalized,explicit,tag:0,optional"`
@@ -414,13 +398,13 @@ func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
 		ret.Status = Unknown
 	default:
 		ret.Status = Revoked
-		ret.RevokedAt = time.Time(r.Revoked.RevocationTime)
+		ret.RevokedAt = r.Revoked.RevocationTime
 		ret.RevocationReason = r.Revoked.Reason
 	}
 
-	ret.ProducedAt = time.Time(basicResp.TBSResponseData.ProducedAt)
-	ret.ThisUpdate = time.Time(r.ThisUpdate)
-	ret.NextUpdate = time.Time(r.NextUpdate)
+	ret.ProducedAt = basicResp.TBSResponseData.ProducedAt
+	ret.ThisUpdate = r.ThisUpdate
+	ret.NextUpdate = r.NextUpdate
 
 	return ret, nil
 }
@@ -551,12 +535,12 @@ func CreateResponse(issuer, responderCert *x509.Certificate, template Response, 
 	}
 
 	responderName := asn1.RawValue{
-		Class:      2,
-		Tag:        1,
+		Class:      2, // context-specific
+		Tag:        1, // explicit tag
 		IsCompound: true,
 		Bytes:      responderCert.RawSubject,
 	}
-	tbsResponseData := responseDataForMarshal{
+	tbsResponseData := responseData{
 		Version:          0,
 		RawResponderName: responderName,
 		ProducedAt:       time.Now().Truncate(time.Minute).UTC(),
@@ -580,8 +564,8 @@ func CreateResponse(issuer, responderCert *x509.Certificate, template Response, 
 		return nil, err
 	}
 
-	response := basicResponseForMarshal{
-		TBSResponseData:    asn1.RawValue{FullBytes: tbsResponseDataDER},
+	response := basicResponse{
+		TBSResponseData:    tbsResponseData,
 		SignatureAlgorithm: signatureAlgorithm,
 		Signature: asn1.BitString{
 			Bytes:     signature,
