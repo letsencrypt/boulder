@@ -86,6 +86,7 @@ var invalidACEs = []string{
 	"xn--*",
 	"xn--",
 	"xn---",
+	"xn--a000000000",
 }
 
 func TestInvalidPunycode(t *testing.T) {

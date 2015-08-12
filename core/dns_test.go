@@ -15,7 +15,7 @@ import (
 
 	"github.com/letsencrypt/boulder/test"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/dns"
 )
 
 const dnsLoopbackAddr = "127.0.0.1:4053"

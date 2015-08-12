@@ -3,9 +3,10 @@ package dns_test
 import (
 	"errors"
 	"fmt"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"log"
 	"net"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/dns"
 )
 
 // Retrieve the MX records for miek.nl.

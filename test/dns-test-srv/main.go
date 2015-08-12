@@ -10,7 +10,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/dns"
 )
 
 func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
