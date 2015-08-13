@@ -7,20 +7,7 @@ fi
 
 FAILURE=0
 
-TESTDIRS="analysis \
-          ca \
-          core \
-          log \
-          policy \
-          ra \
-          rpc \
-          sa \
-          test \
-          va \
-          wfe \
-          cmd/expiration-mailer"
-          # cmd
-          # Godeps
+TESTPATHS=$(go list -f '{{ .ImportPath }}' ./...)
 
 # We need to know, for github-pr-status, what the triggering commit is.
 # Assume first it's the travis commit (for builds of master), unless we're
@@ -117,8 +104,9 @@ function build_letsencrypt() {
 function run_unit_tests() {
   if [ "${TRAVIS}" == "true" ]; then
     # Run each test by itself for Travis, so we can get coverage
-    for dir in ${TESTDIRS}; do
-      run go test -race -cover -coverprofile=${dir}.coverprofile ./${dir}/
+    for path in ${TESTPATHS}; do
+      dir=$(basename $path)
+      run go test -race -cover -coverprofile=${dir}.coverprofile ${path}
     done
 
     # Gather all the coverprofiles
