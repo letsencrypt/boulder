@@ -222,6 +222,19 @@ func (r *Registration) MergeUpdate(input Registration) {
 	}
 }
 
+// ValidationRecord represents a validation attempt against a specific URL/hostname
+// and the IP addresses that were resolved and used
+type ValidationRecord struct {
+	// SimpleHTTP only
+	URL string `json:"url,omitempty"`
+
+	// Shared
+	Hostname          string   `json:"hostname"`
+	Port              string   `json:"port"`
+	AddressesResolved []net.IP `json:"addressesResolved"`
+	AddressUsed       net.IP   `json:"addressUsed"`
+}
+
 // Challenge is an aggregate of all data needed for any challenges.
 //
 // Rather than define individual types for different types of
@@ -252,6 +265,43 @@ type Challenge struct {
 
 	// Used by dns and dvsni challenges
 	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
+
+	// Contains information about URLs used or redirected to and IPs resolved and
+	// used
+	ValidationRecord []ValidationRecord `json:"validationRecord,omitempty"`
+}
+
+// RecordsSane checks the sanity of a ValidationRecord object before sending it
+// back to the RA to be stored.
+func (ch Challenge) RecordsSane() bool {
+	if ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0 {
+		return false
+	}
+
+	switch ch.Type {
+	case ChallengeTypeSimpleHTTP:
+		for _, rec := range ch.ValidationRecord {
+			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
+				len(rec.AddressesResolved) == 0 {
+				return false
+			}
+		}
+	case ChallengeTypeDVSNI:
+		if len(ch.ValidationRecord) > 1 {
+			return false
+		}
+		if ch.ValidationRecord[0].URL != "" {
+			return false
+		}
+		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
+			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
+			return false
+		}
+	case ChallengeTypeDNS:
+		// Nothing for now
+	}
+
+	return true
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
@@ -300,7 +350,6 @@ func (ch Challenge) IsSane(completed bool) bool {
 		if completed && ch.Validation == nil {
 			return false
 		}
-
 	default:
 		return false
 	}
