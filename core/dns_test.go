@@ -91,6 +91,13 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.Flag = 1
 				appendAnswer(record)
 			}
+		case dns.TypeTXT:
+			if q.Name == "split-txt.letsencrypt.org." {
+				record := new(dns.TXT)
+				record.Hdr = dns.RR_Header{Name: "split-txt.letsencrypt.org.", Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 0}
+				record.Txt = []string{"a", "b", "c"}
+				appendAnswer(record)
+			}
 		}
 	}
 
@@ -193,9 +200,14 @@ func TestDNSLookupTXT(t *testing.T) {
 	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
 	a, rtt, err := obj.LookupTXT("letsencrypt.org")
-
 	t.Logf("A: %v RTT %s", a, rtt)
 	test.AssertNotError(t, err, "No message")
+
+	a, rtt, err = obj.LookupTXT("split-txt.letsencrypt.org")
+	t.Logf("A: %v RTT %s", a, rtt)
+	test.AssertNotError(t, err, "No message")
+	test.AssertEquals(t, len(a), 1)
+	test.AssertEquals(t, a[0], "abc")
 }
 
 func TestDNSLookupHost(t *testing.T) {
