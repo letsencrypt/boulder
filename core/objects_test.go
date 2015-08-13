@@ -7,7 +7,6 @@ package core
 
 import (
 	"encoding/json"
-	"net"
 	"testing"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -40,33 +39,7 @@ func TestRegistrationUpdate(t *testing.T) {
 	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
 }
 
-func TestRecordSanityCheck(t *testing.T) {
-	rec := []ValidationRecord{
-		ValidationRecord{
-			URL:               "http://localhost/test",
-			Hostname:          "localhost",
-			Port:              "80",
-			AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
-			AddressUsed:       net.IP{127, 0, 0, 1},
-		},
-	}
-
-	chall := Challenge{Type: ChallengeTypeSimpleHTTP, ValidationRecord: rec}
-	test.Assert(t, chall.RecordsSane(), "Record should be sane")
-	chall.ValidationRecord[0].URL = ""
-	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
-
-	chall = Challenge{Type: ChallengeTypeDVSNI, ValidationRecord: rec}
-	chall.ValidationRecord[0].URL = ""
-	test.Assert(t, chall.RecordsSane(), "Record should be sane")
-	chall.ValidationRecord[0].Hostname = ""
-	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
-
-	chall.ValidationRecord = append(chall.ValidationRecord, rec...)
-	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
-}
-
-func TestChallengeSanityCheck(t *testing.T) {
+func TestSanityCheck(t *testing.T) {
 	types := []string{ChallengeTypeSimpleHTTP, ChallengeTypeDVSNI, ChallengeTypeDNS}
 	for _, challengeType := range types {
 		chall := Challenge{Type: challengeType, Status: StatusInvalid}
@@ -85,26 +58,9 @@ func TestChallengeSanityCheck(t *testing.T) {
 		if challengeType == ChallengeTypeSimpleHTTP {
 			tls := true
 			chall.TLS = &tls
-			chall.ValidationRecord = []ValidationRecord{ValidationRecord{
-				URL:               "",
-				Hostname:          "localhost",
-				Port:              "80",
-				AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
-				AddressUsed:       net.IP{127, 0, 0, 1},
-			}}
 			test.Assert(t, chall.IsSane(false), "IsSane should be true")
 		} else if challengeType == ChallengeTypeDVSNI || challengeType == ChallengeTypeDNS {
 			chall.Validation = new(jose.JsonWebSignature)
-			if challengeType == ChallengeTypeDVSNI {
-				chall.ValidationRecord = []ValidationRecord{ValidationRecord{
-					Hostname:          "localhost",
-					Port:              "80",
-					AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
-					AddressUsed:       net.IP{127, 0, 0, 1},
-				}}
-			} else {
-				chall.ValidationRecord = []ValidationRecord{}
-			}
 			test.Assert(t, chall.IsSane(true), "IsSane should be true")
 		}
 	}
