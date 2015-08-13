@@ -15,26 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
 
-var (
-	// Private CIDRs to ignore per RFC1918
-	// 10.0.0.0/8
-	rfc1918_10 = net.IPNet{
-		IP:   []byte{10, 0, 0, 0},
-		Mask: []byte{255, 0, 0, 0},
-	}
-	// 172.16.0.0/12
-	rfc1918_172_16 = net.IPNet{
-		IP:   []byte{172, 16, 0, 0},
-		Mask: []byte{255, 240, 0, 0},
-	}
-	// 192.168.0.0/16
-	rfc1918_192_168 = net.IPNet{
-		IP:   []byte{192, 168, 0, 0},
-		Mask: []byte{255, 255, 0, 0},
-	}
-)
-
-// DNSResolverImpl represents a client that talks to an external resolver
+// DNSResolverImpl represents a resolver system
 type DNSResolverImpl struct {
 	DNSClient *dns.Client
 	Servers   []string
@@ -97,34 +78,47 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 	return txt, rtt, err
 }
 
-func isPrivateV4(ip net.IP) bool {
-	return rfc1918_10.Contains(ip) || rfc1918_172_16.Contains(ip) || rfc1918_192_168.Contains(ip)
-}
-
-// LookupHost sends a DNS query to find all A records associated with the provided
-// hostname. This method assumes that the external resolver will chase CNAME/DNAME
-// aliases and return relevant A records.
-func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
+// LookupHost sends a DNS query to find all A/AAAA records associated with
+// the provided hostname.
+func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.Duration, time.Duration, error) {
 	var addrs []net.IP
+	var answers []dns.RR
 
-	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeA)
+	r, aRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeA)
 	if err != nil {
-		return addrs, rtt, err
+		return addrs, 0, 0, err
 	}
 	if r.Rcode != dns.RcodeSuccess {
 		err = fmt.Errorf("DNS failure: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, rtt, err
+		return nil, aRtt, 0, err
 	}
 
-	for _, answer := range r.Answer {
+	answers = append(answers, r.Answer...)
+
+	r, aaaaRtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeAAAA)
+	if err != nil {
+		return addrs, aRtt, 0, err
+	}
+	if r.Rcode != dns.RcodeSuccess {
+		err = fmt.Errorf("DNS failure: %d-%s for AAAA query", r.Rcode, dns.RcodeToString[r.Rcode])
+		return nil, aRtt, aaaaRtt, err
+	}
+
+	answers = append(answers, r.Answer...)
+
+	for _, answer := range answers {
 		if answer.Header().Rrtype == dns.TypeA {
-			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && !isPrivateV4(a.A) {
+			if a, ok := answer.(*dns.A); ok {
 				addrs = append(addrs, a.A)
+			}
+		} else if answer.Header().Rrtype == dns.TypeAAAA {
+			if aaaa, ok := answer.(*dns.AAAA); ok {
+				addrs = append(addrs, aaaa.AAAA)
 			}
 		}
 	}
 
-	return addrs, rtt, nil
+	return addrs, aRtt, aaaaRtt, nil
 }
 
 // LookupCNAME returns the target name if a CNAME record exists for
