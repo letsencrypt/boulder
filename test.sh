@@ -116,9 +116,10 @@ function build_letsencrypt() {
 
 function run_unit_tests() {
   if [ "${TRAVIS}" == "true" ]; then
+    run go test -race ./...
     # Run each test by itself for Travis, so we can get coverage
     for dir in ${TESTDIRS}; do
-      run go test -race -covermode=count -coverprofile=${dir}.coverprofile ./${dir}/
+      run go test -covermode=count -coverprofile=${dir}.coverprofile ./${dir}/
     done
 
     # Gather all the coverprofiles
