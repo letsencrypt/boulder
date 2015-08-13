@@ -180,13 +180,14 @@ check_gofmt() {
 run_and_comment check_gofmt
 end_context #test/gofmt
 
+if [ "${TRAVIS}" == "true" ]; then
+  ./test/create_db.sh || die "unable to create the boulder database with test/create_db.sh"
+fi
+
 #
 # Unit Tests. These do not receive a context or status updates,
 # as they are reflected in our eventual exit code.
 #
-
-# Ensure SQLite is installed so we don't recompile it each time
-go install ./Godeps/_workspace/src/github.com/mattn/go-sqlite3
 
 if  [ "${SKIP_UNIT_TESTS}" == "1" ]; then
   echo "Skipping unit tests."
@@ -206,10 +207,6 @@ fi
 if [ "${SKIP_INTEGRATION_TESTS}" = "1" ]; then
   echo "Skipping integration tests."
   exit ${FAILURE}
-fi
-
-if [ "${TRAVIS}" == "true" ]; then
-  ./test/create_db.sh || die "unable to create the boulder database with test/create_db.sh"
 fi
 
 #

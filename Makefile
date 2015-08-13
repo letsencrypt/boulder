@@ -39,8 +39,6 @@ build: $(OBJECTS)
 
 pre:
 	@mkdir -p $(OBJDIR)
-	@echo [go] lib/github.com/mattn/go-sqlite3
-	@go install ./Godeps/_workspace/src/github.com/mattn/go-sqlite3
 
 # Compile each of the binaries
 $(OBJECTS): pre

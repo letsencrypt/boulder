@@ -7,11 +7,11 @@ package main
 
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
+	"github.com/letsencrypt/boulder/sa"
 )
 
 func main() {
@@ -31,8 +31,10 @@ func main() {
 
 		go cmd.DebugServer(c.CA.DebugAddr)
 
-		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(c.CA.DBDriver, c.CA.DBConnect)
+		dbMap, err := sa.NewDbMap(c.CA.DBConnect)
+		cmd.FailOnError(err, "Couldn't connect to CA database")
 
+		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(dbMap)
 		cmd.FailOnError(err, "Failed to create CA database")
 
 		if c.SQL.CreateTables {

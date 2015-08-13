@@ -11,39 +11,29 @@ import (
 	"net/url"
 	"strings"
 
-	// Load both drivers to allow configuring either
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
-
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
-
-var dialectMap = map[string]interface{}{
-	"sqlite3":  gorp.SqliteDialect{},
-	"mysql":    gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"},
-	"postgres": gorp.PostgresDialect{},
-}
 
 // NewDbMap creates the root gorp mapping object. Create one of these for each
 // database schema you wish to map. Each DbMap contains a list of mapped tables.
 // It automatically maps the tables for the primary parts of Boulder around the
 // Storage Authority. This may require some further work when we use a disjoint
 // schema, like that for `certificate-authority-data.go`.
-func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
+func NewDbMap(dbConnect string) (*gorp.DbMap, error) {
 	logger := blog.GetAuditLogger()
 
-	if driver == "mysql" {
-		var err error
-		dbConnect, err = recombineURLForDB(dbConnect)
-		if err != nil {
-			return nil, err
-		}
+	var err error
+	dbConnect, err = recombineURLForDB(dbConnect)
+	if err != nil {
+		return nil, err
 	}
 
-	db, err := sql.Open(driver, dbConnect)
+	logger.Debug("Connecting to database")
+
+	db, err := sql.Open("mysql", dbConnect)
 	if err != nil {
 		return nil, err
 	}
@@ -51,19 +41,12 @@ func NewDbMap(driver string, dbConnect string) (*gorp.DbMap, error) {
 		return nil, err
 	}
 
-	logger.Debug("Connecting to database")
-
-	dialect, ok := dialectMap[driver].(gorp.Dialect)
-	if !ok {
-		err = fmt.Errorf("Couldn't find dialect for %s", driver)
-		return nil, err
-	}
-
-	logger.Info("Connected to database")
-
+	dialect := gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 	initTables(dbmap)
+
+	logger.Debug("Connected to database")
 
 	return dbmap, err
 }
@@ -97,6 +80,10 @@ func recombineURLForDB(dbConnect string) (string, error) {
 	}
 
 	dsnVals.Set("parseTime", "true")
+
+	// Required to make UPDATE return the number of rows matched,
+	// instead of the number of rows changed by the UPDATE.
+	dsnVals.Set("clientFoundRows", "true")
 
 	user := dbURL.User.Username()
 	passwd, hasPass := dbURL.User.Password()
