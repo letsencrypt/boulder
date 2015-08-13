@@ -118,7 +118,7 @@ function run_unit_tests() {
   if [ "${TRAVIS}" == "true" ]; then
     # Run each test by itself for Travis, so we can get coverage
     for dir in ${TESTDIRS}; do
-      run go test -race -covermode=count -coverprofile=${dir}.coverprofile ./${dir}/
+      run go test -race -cover -coverprofile=${dir}.coverprofile ./${dir}/
     done
 
     # Gather all the coverprofiles
