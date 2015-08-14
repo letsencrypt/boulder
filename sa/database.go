@@ -96,11 +96,8 @@ func recombineURLForDB(dbConnect string) (string, error) {
 		return "", err
 	}
 
-	// Check the parseTime=true DSN is present
-	if k := dsnVals.Get("parseTime"); k != "true" {
-		dsnVals.Set("parseTime", "true")
-		dbURL.RawQuery = dsnVals.Encode()
-	}
+	dsnVals.Set("parseTime", "true")
+
 	user := dbURL.User.Username()
 	passwd, hasPass := dbURL.User.Password()
 	dbConn := ""
