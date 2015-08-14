@@ -142,7 +142,7 @@ func initTables(dbMap *gorp.DbMap) {
 	pendingAuthzTable := dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
 	pendingAuthzTable.SetVersionCol("LockCol")
 	dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
-	dbMap.AddTableWithName(core.Challenge{}, "challenges").SetKeys(true, "ID").ColMap("Validation").SetMaxSize(1536)
+	dbMap.AddTableWithName(challengeModel{}, "challenges").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.OCSPResponse{}, "ocspResponses").SetKeys(true, "ID")

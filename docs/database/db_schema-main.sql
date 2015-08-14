@@ -60,15 +60,16 @@ CREATE TABLE `certificateStatus` (
 
 CREATE TABLE `challenges` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
-  `authorizationID` varchar(255) DEFAULT NULL,
+  `authorizationID` char(43) NOT NULL,
+  `LockCol` bigint(20) DEFAULT NULL,
   `type` varchar(255) NOT NULL,
   `status` varchar(255) DEFAULT NULL,
   `error` varchar(255) DEFAULT NULL,
   `validated` datetime DEFAULT NULL,
   `uri` varchar(255) DEFAULT NULL,
-  `token` varchar(255) NOT NULL,
+  `token` char(43) NOT NULL,
   `tls` tinyint(1) DEFAULT NULL,
-  `validation` varchar(1536) DEFAULT NULL,
+  `validation` mediumblob,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 

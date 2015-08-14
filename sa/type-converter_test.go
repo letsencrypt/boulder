@@ -207,7 +207,7 @@ func TestJsonWebSignature(t *testing.T) {
 		return
 	}
 
-	marshaled := marshaledI.(string)
+	marshaled := marshaledI.([]byte)
 	err = scanner.Binder(&marshaled, &out)
 	test.AssertMarshaledEquals(t, jws, out)
 }
