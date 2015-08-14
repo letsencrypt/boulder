@@ -752,8 +752,6 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 	var challengeIndex int
 	for i, challenge := range authz.Challenges {
 		tempURL := challenge.URI
-		fmt.Println("A:", tempURL)
-		fmt.Println("B:", request)
 		if tempURL.Path == request.URL.Path && tempURL.RawQuery == request.URL.RawQuery {
 			found = true
 			challengeIndex = i

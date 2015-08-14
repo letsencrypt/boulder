@@ -9,7 +9,6 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"testing"
 
@@ -168,7 +167,6 @@ func TestAcmeURL(t *testing.T) {
 
 	marshaled := marshaledI.(string)
 	err = scanner.Binder(&marshaled, &out)
-	fmt.Println(au, out)
 	test.AssertMarshaledEquals(t, au, out)
 
 	aURL, _ := core.ParseAcmeURL("http://www.example.com/stuff?things=10")

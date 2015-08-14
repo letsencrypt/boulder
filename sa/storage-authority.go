@@ -152,19 +152,16 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 
 	authObj, err := tx.Get(pendingauthzModel{}, id)
 	if err != nil {
-		fmt.Println(">>>>> 0 <<<<<<<")
 		tx.Rollback()
 		return
 	}
 	if authObj == nil {
 		authObj, err = tx.Get(authzModel{}, id)
 		if err != nil {
-			fmt.Println(">>>>> 1 <<<<<<<")
 			tx.Rollback()
 			return
 		}
 		if authObj == nil {
-			fmt.Println(">>>>> 2 <<<<<<< ", id, " !")
 			err = fmt.Errorf("No pending_authz or authz with ID %s", id)
 			tx.Rollback()
 			return
@@ -179,7 +176,6 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	var challs []core.Challenge
 	_, err = tx.Select(&challs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
 	if err != nil {
-		fmt.Println(">>>>> 3 <<<<<<<", err)
 		tx.Rollback()
 		return
 	}
@@ -420,8 +416,6 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 		}
 	}
 
-	fmt.Println(authz.Challenges)
-
 	err = tx.Commit()
 	output = pendingAuthz.Authorization
 	output.Challenges = authz.Challenges
@@ -471,6 +465,9 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 	if err != nil {
 		tx.Rollback()
 		return
+	}
+	if len(challs) != len(authz.Challenges) {
+		return fmt.Errorf("Invalid number of challenges provided")
 	}
 	for i, authChall := range authz.Challenges {
 		chall := authChall
@@ -542,6 +539,9 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	if err != nil {
 		tx.Rollback()
 		return
+	}
+	if len(challs) != len(authz.Challenges) {
+		return fmt.Errorf("Invalid number of challenges provided")
 	}
 	for i, authChall := range authz.Challenges {
 		chall := authChall

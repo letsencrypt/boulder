@@ -363,7 +363,6 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
 		// This can pretty much only happen when the client corrupts the Challenge
 		// data.
-		fmt.Println("!!!!!", err.Error())
 		err = core.MalformedRequestError("Challenge data was corrupted")
 		return
 	}
