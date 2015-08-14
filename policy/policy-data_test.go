@@ -13,11 +13,11 @@ import (
 
 var (
 	rA = DomainRule{
-		Rule: "a.com",
+		Host: "a.com",
 		Type: whitelisted,
 	}
 	rB = DomainRule{
-		Rule: "b.com",
+		Host: "b.com",
 		Type: blacklisted,
 	}
 )

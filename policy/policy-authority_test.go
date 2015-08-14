@@ -95,7 +95,7 @@ func TestWillingToIssue(t *testing.T) {
 	pa, _ := NewPolicyAuthorityImpl(cmd.CommonConfig{PolicyDBDriver: "sqlite3", PolicyDBConnect: ":memory:"})
 	rules := []DomainRule{}
 	for _, b := range shouldBeBlacklisted {
-		rules = append(rules, DomainRule{Rule: b, Type: blacklisted})
+		rules = append(rules, DomainRule{Host: b, Type: blacklisted})
 	}
 	err := pa.Db.LoadRules(rules)
 	test.AssertNotError(t, err, "Couldn't load rules")

@@ -20,7 +20,7 @@ const blacklisted = "blacklist"
 
 // DomainRule ...
 type DomainRule struct {
-	Rule string `db:"rule"`
+	Host string `db:"rule"`
 	Type string `db:"type"`
 }
 
@@ -48,7 +48,7 @@ func NewPolicyAuthorityDatabaseImpl(driver, name string) (padb *PolicyAuthorityD
 		return nil, err
 	}
 
-	dbMap.AddTableWithName(DomainRule{}, "ruleList").SetKeys(false, "Rule")
+	dbMap.AddTableWithName(DomainRule{}, "ruleList").SetKeys(false, "Host")
 
 	err = dbMap.CreateTablesIfNotExists()
 	if err != nil {
@@ -78,7 +78,7 @@ func (padb *PolicyAuthorityDatabaseImpl) LoadRules(rules []DomainRule) error {
 	}
 
 	for _, r := range rules {
-		r.Rule = reverseName(r.Rule)
+		r.Host = reverseName(r.Host)
 		tx.Insert(&r)
 	}
 
@@ -92,7 +92,7 @@ func (padb *PolicyAuthorityDatabaseImpl) DumpRules() ([]DomainRule, error) {
 	var dR []DomainRule
 	_, err := padb.dbMap.Select(&dR, "SELECT * FROM ruleList")
 	for _, r := range dR {
-		r.Rule = reverseName(r.Rule)
+		r.Host = reverseName(r.Host)
 	}
 
 	return dR, err
@@ -117,12 +117,12 @@ func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string, requireWhitelis
 	for _, r := range rules {
 		switch r.Type {
 		case blacklisted:
-			if strings.HasPrefix(host, r.Rule) {
-				bRules = append(bRules, r.Rule)
+			if strings.HasPrefix(host, r.Host) {
+				bRules = append(bRules, r.Host)
 			}
 		case whitelisted:
-			if r.Rule == host {
-				wRules = append(wRules, r.Rule)
+			if host == r.Host {
+				wRules = append(wRules, r.Host)
 			}
 		}
 	}
