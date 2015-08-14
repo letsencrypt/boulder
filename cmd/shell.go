@@ -178,6 +178,9 @@ type Config struct {
 
 		DNSResolver string
 		DNSTimeout  string
+
+		DBDriver  string
+		DBConnect string
 	}
 
 	SubscriberAgreementURL string
