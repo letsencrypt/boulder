@@ -201,13 +201,13 @@ type Registration struct {
 	ID int64 `json:"id" db:"id"`
 
 	// Account key to which the details are attached
-	Key jose.JsonWebKey `json:"key" db:"jwk"`
+	Key jose.JsonWebKey `json:"key"`
 
 	// Contact URIs
-	Contact []*AcmeURL `json:"contact,omitempty" db:"contact"`
+	Contact []*AcmeURL `json:"contact,omitempty"`
 
 	// Agreement with terms of service
-	Agreement string `json:"agreement,omitempty" db:"agreement"`
+	Agreement string `json:"agreement,omitempty"`
 }
 
 // MergeUpdate copies a subset of information from the input Registration
