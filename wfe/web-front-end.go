@@ -752,6 +752,8 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 	var challengeIndex int
 	for i, challenge := range authz.Challenges {
 		tempURL := challenge.URI
+		fmt.Println("A:", tempURL)
+		fmt.Println("B:", request)
 		if tempURL.Path == request.URL.Path && tempURL.RawQuery == request.URL.RawQuery {
 			found = true
 			challengeIndex = i
@@ -768,6 +770,8 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 	switch request.Method {
 	case "GET":
 		challenge := authz.Challenges[challengeIndex]
+		challenge.ID = 0
+		challenge.AuthorizationID = ""
 		jsonReply, err := json.Marshal(challenge)
 		if err != nil {
 			logEvent.Error = err.Error()
@@ -838,6 +842,8 @@ func (wfe *WebFrontEndImpl) challenge(authz core.Authorization, response http.Re
 		}
 
 		challenge := updatedAuthz.Challenges[challengeIndex]
+		challenge.ID = 0
+		challenge.AuthorizationID = ""
 		// assumption: UpdateAuthorization does not modify order of challenges
 		jsonReply, err := json.Marshal(challenge)
 		if err != nil {

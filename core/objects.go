@@ -228,30 +228,34 @@ func (r *Registration) MergeUpdate(input Registration) {
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
 type Challenge struct {
+	ID int `json:"id,omitempty" db:"id"`
+
+	AuthorizationID string `json:"authorizationID,omitempty" db:"authorizationID"`
+
 	// The type of challenge
-	Type string `json:"type"`
+	Type string `json:"type" db:"type"`
 
 	// The status of this challenge
-	Status AcmeStatus `json:"status,omitempty"`
+	Status AcmeStatus `json:"status,omitempty" db:"status"`
 
 	// Contains the error that occured during challenge validation, if any
-	Error *ProblemDetails `json:"error,omitempty"`
+	Error *ProblemDetails `json:"error,omitempty" db:"error"`
 
 	// If successful, the time at which this challenge
 	// was completed by the server.
-	Validated *time.Time `json:"validated,omitempty"`
+	Validated *time.Time `json:"validated,omitempty" db:"validated"`
 
 	// A URI to which a response can be POSTed
-	URI *AcmeURL `json:"uri"`
+	URI *AcmeURL `json:"uri" db:"uri"`
 
 	// Used by simpleHttp, dvsni, and dns challenges
-	Token string `json:"token,omitempty"`
+	Token string `json:"token,omitempty" db:"token"`
 
 	// Used by simpleHTTP challenges
-	TLS *bool `json:"tls,omitempty"`
+	TLS *bool `json:"tls,omitempty"  db:"tls"`
 
 	// Used by dns and dvsni challenges
-	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
+	Validation *jose.JsonWebSignature `json:"validation,omitempty" db:"validation"`
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
@@ -361,7 +365,7 @@ type Authorization struct {
 	// in process, these are challenges to be fulfilled; for
 	// final authorizations, they describe the evidence that
 	// the server used in support of granting the authorization.
-	Challenges []Challenge `json:"challenges,omitempty" db:"challenges"`
+	Challenges []Challenge `json:"challenges,omitempty" db:"-"`
 
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.

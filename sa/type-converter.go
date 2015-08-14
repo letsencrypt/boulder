@@ -40,6 +40,16 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 		return string(t), nil
 	case core.JSONBuffer:
 		return []byte(t), nil
+	case *core.AcmeURL:
+		if t != nil {
+			return t.String(), nil
+		}
+		return "", nil
+	case *jose.JsonWebSignature:
+		if t != nil {
+			return t.FullSerialize(), nil
+		}
+		return "", nil
 	default:
 		return val, nil
 	}
@@ -56,6 +66,44 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			}
 			b := []byte(*s)
 			return json.Unmarshal(b, target)
+		}
+		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
+	case **core.AcmeURL:
+		binder := func(holder, target interface{}) error {
+			s, ok := holder.(*string)
+			if !ok {
+				return errors.New("FromDb: Unable to convert *string")
+			}
+			st, ok := target.(**core.AcmeURL)
+			if !ok {
+				return fmt.Errorf("FromDb: Unable to convert %T to **core.AcmeURL", target)
+			}
+			aURL, err := core.ParseAcmeURL(*s)
+			if err != nil {
+				return err
+			}
+			*st = &(*aURL)
+			return nil
+		}
+		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
+	case **jose.JsonWebSignature:
+		binder := func(holder, target interface{}) error {
+			s, ok := holder.(*string)
+			if !ok {
+				return errors.New("FromDb: Unable to convert *string")
+			}
+			st, ok := target.(**jose.JsonWebSignature)
+			if !ok {
+				return fmt.Errorf("FromDb: Unable to convert %T to **jose.JsonWebSignature", target)
+			}
+			if *s != "" {
+				sig, err := jose.ParseSigned(*s)
+				if err != nil {
+					return err
+				}
+				*st = &(*sig)
+			}
+			return nil
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
 	case *jose.JsonWebKey:

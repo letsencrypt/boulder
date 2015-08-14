@@ -349,7 +349,8 @@ func TestNewAuthorization(t *testing.T) {
 
 func TestUpdateAuthorization(t *testing.T) {
 	_, va, sa, ra := initAuthorities(t)
-	AuthzInitial, _ = sa.NewPendingAuthorization(AuthzInitial)
+	AuthzInitial, err := sa.NewPendingAuthorization(AuthzInitial)
+	test.AssertNotError(t, err, "NewPendingAuthorization failed")
 	sa.UpdatePendingAuthorization(AuthzInitial)
 
 	authz, err := ra.UpdateAuthorization(AuthzInitial, ResponseIndex, Response)

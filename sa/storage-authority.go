@@ -152,28 +152,38 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 
 	authObj, err := tx.Get(pendingauthzModel{}, id)
 	if err != nil {
+		fmt.Println(">>>>> 0 <<<<<<<")
 		tx.Rollback()
 		return
 	}
 	if authObj == nil {
 		authObj, err = tx.Get(authzModel{}, id)
 		if err != nil {
+			fmt.Println(">>>>> 1 <<<<<<<")
 			tx.Rollback()
 			return
 		}
 		if authObj == nil {
+			fmt.Println(">>>>> 2 <<<<<<< ", id, " !")
 			err = fmt.Errorf("No pending_authz or authz with ID %s", id)
 			tx.Rollback()
 			return
 		}
 		authD := authObj.(*authzModel)
 		authz = authD.Authorization
+	} else {
+		authD := *authObj.(*pendingauthzModel)
+		authz = authD.Authorization
+	}
 
-		err = tx.Commit()
+	var challs []core.Challenge
+	_, err = tx.Select(&challs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
+	if err != nil {
+		fmt.Println(">>>>> 3 <<<<<<<", err)
+		tx.Rollback()
 		return
 	}
-	authD := *authObj.(*pendingauthzModel)
-	authz = authD.Authorization
+	authz.Challenges = challs
 
 	err = tx.Commit()
 	return
@@ -185,11 +195,22 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	if err != nil {
 		return
 	}
-	err = ssa.dbMap.SelectOne(&authz, "SELECT id, identifier, registrationID, status, expires, challenges, combinations "+
+	err = ssa.dbMap.SelectOne(&authz, "SELECT id, identifier, registrationID, status, expires, combinations "+
 		"FROM authz "+
 		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
 		"ORDER BY expires DESC LIMIT 1",
 		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
+	if err != nil {
+		return
+	}
+
+	var challs []core.Challenge
+	_, err = ssa.dbMap.Select(&challs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
+	if err != nil {
+		return
+	}
+
+	authz.Challenges = challs
 	return
 }
 
@@ -389,8 +410,21 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 		return
 	}
 
+	for i := range authz.Challenges {
+
+		authz.Challenges[i].AuthorizationID = pendingAuthz.ID
+		err = tx.Insert(&authz.Challenges[i])
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+	}
+
+	fmt.Println(authz.Challenges)
+
 	err = tx.Commit()
 	output = pendingAuthz.Authorization
+	output.Challenges = authz.Challenges
 	return
 }
 
@@ -430,6 +464,22 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 	if err != nil {
 		tx.Rollback()
 		return
+	}
+
+	var challs []core.Challenge
+	_, err = tx.Select(&challs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+	for i, authChall := range authz.Challenges {
+		chall := authChall
+		chall.ID = challs[i].ID
+		_, err = tx.Update(&chall)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
 	}
 
 	err = tx.Commit()
@@ -485,6 +535,22 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	if err != nil {
 		tx.Rollback()
 		return
+	}
+
+	var challs []core.Challenge
+	_, err = tx.Select(&challs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+	for i, authChall := range authz.Challenges {
+		chall := authChall
+		chall.ID = challs[i].ID
+		_, err = tx.Update(&chall)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
 	}
 
 	err = tx.Commit()

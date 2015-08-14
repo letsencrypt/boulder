@@ -178,6 +178,11 @@ type Config struct {
 
 		DNSResolver string
 		DNSTimeout  string
+
+		PolicyDB struct {
+			Driver string
+			Name   string
+		}
 	}
 
 	SubscriberAgreementURL string
