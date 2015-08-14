@@ -200,15 +200,16 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	} else {
 		scheme = "http"
 	}
-	if va.TestMode {
-		hostName = "localhost:5001"
-	}
 
-	url := fmt.Sprintf("%s://%s/.well-known/acme-challenge/%s", scheme, hostName, challenge.Token)
+	url := url.URL{
+		Scheme: scheme,
+		Host:   hostName,
+		Path:   fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token),
+	}
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.Audit(fmt.Sprintf("Attempting to validate Simple%s for %s", strings.ToUpper(scheme), url))
-	httpRequest, err := http.NewRequest("GET", url, nil)
+	httpRequest, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		challenge.Error = &core.ProblemDetails{
 			Type:   core.MalformedProblem,

@@ -90,25 +90,25 @@ func simpleSrv(t *testing.T, token string, stopChan, waitChan chan bool, enableT
 		if r.Host != "localhost" && r.Host != "other.valid" && r.Host != "other.valid:8080" {
 			t.Errorf("Bad Host header: " + r.Host)
 		}
-		if strings.HasSuffix(r.URL.Token, path404) {
+		if strings.HasSuffix(r.URL.Path, path404) {
 			t.Logf("SIMPLESRV: Got a 404 req\n")
 			http.NotFound(w, r)
-		} else if strings.HasSuffix(r.URL.Token, pathMoved) {
+		} else if strings.HasSuffix(r.URL.Path, pathMoved) {
 			t.Logf("SIMPLESRV: Got a 301 redirect req\n")
 			if currentToken == defaultToken {
 				currentToken = pathMoved
 			}
 			http.Redirect(w, r, "valid", 301)
-		} else if strings.HasSuffix(r.URL.Token, pathFound) {
+		} else if strings.HasSuffix(r.URL.Path, pathFound) {
 			t.Logf("SIMPLESRV: Got a 302 redirect req\n")
 			if currentToken == defaultToken {
 				currentToken = pathFound
 			}
 			http.Redirect(w, r, pathMoved, 302)
-		} else if strings.HasSuffix(r.URL.Token, "wait") {
+		} else if strings.HasSuffix(r.URL.Path, "wait") {
 			t.Logf("SIMPLESRV: Got a wait req\n")
 			time.Sleep(time.Second * 3)
-		} else if strings.HasSuffix(r.URL.Token, "wait-long") {
+		} else if strings.HasSuffix(r.URL.Path, "wait-long") {
 			t.Logf("SIMPLESRV: Got a wait-long req\n")
 			time.Sleep(time.Second * 10)
 		} else if strings.HasSuffix(r.URL.Path, "re-lookup") {
@@ -303,8 +303,8 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
-	chall.Path = path404
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	chall.Token = path404
+	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Should have found a 404 for the challenge.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
