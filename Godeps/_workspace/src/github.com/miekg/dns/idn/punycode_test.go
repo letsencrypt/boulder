@@ -8,9 +8,9 @@ import (
 var testcases = [][2]string{
 	{"", ""},
 	{"a", "a"},
-	{"A-B", "a-b"},
-	{"A-B-C", "a-b-c"},
-	{"AbC", "abc"},
+	{"a-b", "a-b"},
+	{"a-b-c", "a-b-c"},
+	{"abc", "abc"},
 	{"я", "xn--41a"},
 	{"zя", "xn--z-0ub"},
 	{"яZ", "xn--z-zub"},
@@ -86,6 +86,7 @@ var invalidACEs = []string{
 	"xn--*",
 	"xn--",
 	"xn---",
+	"xn--a000000000",
 }
 
 func TestInvalidPunycode(t *testing.T) {

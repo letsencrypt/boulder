@@ -170,7 +170,21 @@ type Config struct {
 		StatsdRate                 float32
 	}
 
-	Common CommonConfig
+	PA struct {
+		DBDriver               string
+		DBConnect              string
+		EnforcePolicyWhitelist bool
+	}
+
+	Common struct {
+		BaseURL string
+		// Path to a PEM-encoded copy of the issuer certificate.
+		IssuerCert string
+		MaxKeySize int
+
+		DNSResolver string
+		DNSTimeout  string
+	}
 
 	SubscriberAgreementURL string
 }
@@ -209,20 +223,6 @@ type PKCS11Config struct {
 	Token  string
 	PIN    string
 	Label  string
-}
-
-type CommonConfig struct {
-	BaseURL string
-	// Path to a PEM-encoded copy of the issuer certificate.
-	IssuerCert string
-	MaxKeySize int
-
-	DNSResolver string
-	DNSTimeout  string
-
-	PolicyDBDriver         string
-	PolicyDBConnect        string
-	EnforcePolicyWhitelist bool
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.

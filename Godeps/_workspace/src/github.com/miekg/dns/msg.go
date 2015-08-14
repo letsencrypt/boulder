@@ -29,8 +29,6 @@ var (
 	ErrAuth error = &Error{err: "bad authentication"}
 	// ErrBuf indicates that the buffer used it too small for the message.
 	ErrBuf error = &Error{err: "buffer size too small"}
-	// ErrConn indicates that a connection has both a TCP and UDP socket.
-	ErrConn error = &Error{err: "conn holds both UDP and TCP connection"}
 	// ErrConnEmpty indicates a connection is being uses before it is initialized.
 	ErrConnEmpty error = &Error{err: "conn has no connection"}
 	// ErrExtendedRcode ...
@@ -51,8 +49,6 @@ var (
 	ErrShortRead error = &Error{err: "short read"}
 	// ErrSig indicates that a signature can not be cryptographically validated.
 	ErrSig error = &Error{err: "bad signature"}
-	// ErrSigGen indicates a faulure to generate a signature.
-	ErrSigGen error = &Error{err: "bad signature generation"}
 	// ErrSOA indicates that no SOA RR was seen when doing zone transfers.
 	ErrSoa error = &Error{err: "no SOA"}
 	// ErrTime indicates a timing error in TSIG authentication.
@@ -138,7 +134,6 @@ var TypeToString = map[uint16]string{
 	TypeNINFO:      "NINFO",
 	TypeNIMLOC:     "NIMLOC",
 	TypeNS:         "NS",
-	TypeNSAP:       "NSAP",
 	TypeNSAPPTR:    "NSAP-PTR",
 	TypeNSEC3:      "NSEC3",
 	TypeNSEC3PARAM: "NSEC3PARAM",
@@ -237,7 +232,7 @@ var RcodeToString = map[int]string{
 // PackDomainName packs a domain name s into msg[off:].
 // If compression is wanted compress must be true and the compression
 // map needs to hold a mapping between domain names and offsets
-// pointing into msg[].
+// pointing into msg.
 func PackDomainName(s string, msg []byte, off int, compression map[string]int, compress bool) (off1 int, err error) {
 	off1, _, err = packDomainName(s, msg, off, compression, compress)
 	return
@@ -413,9 +408,6 @@ Loop:
 		case 0x00:
 			if c == 0x00 {
 				// end of name
-				if len(s) == 0 {
-					return ".", off, nil
-				}
 				break Loop
 			}
 			// literal string
@@ -475,6 +467,9 @@ Loop:
 	}
 	if ptr == 0 {
 		off1 = off
+	}
+	if len(s) == 0 {
+		s = []byte(".")
 	}
 	return string(s), off1, nil
 }
@@ -573,17 +568,16 @@ func packOctetString(s string, msg []byte, offset int, tmp []byte) (int, error) 
 	return offset, nil
 }
 
-func unpackTxt(msg []byte, offset, rdend int) ([]string, int, error) {
-	var err error
-	var ss []string
+func unpackTxt(msg []byte, off0 int) (ss []string, off int, err error) {
+	off = off0
 	var s string
-	for offset < rdend && err == nil {
-		s, offset, err = unpackTxtString(msg, offset)
+	for off < len(msg) && err == nil {
+		s, off, err = unpackTxtString(msg, off)
 		if err == nil {
 			ss = append(ss, s)
 		}
 	}
-	return ss, offset, err
+	return
 }
 
 func unpackTxtString(msg []byte, offset int) (string, int, error) {
@@ -748,58 +742,49 @@ func packStructValue(val reflect.Value, msg []byte, off int, compression map[str
 				if val.Field(i).Len() == 0 {
 					break
 				}
-				var bitmapbyte uint16
+				off1 := off
 				for j := 0; j < val.Field(i).Len(); j++ {
-					serv := uint16((fv.Index(j).Uint()))
-					bitmapbyte = uint16(serv / 8)
-					if int(bitmapbyte) > lenmsg {
-						return lenmsg, &Error{err: "overflow packing wks"}
+					serv := int(fv.Index(j).Uint())
+					if off+serv/8+1 > len(msg) {
+						return len(msg), &Error{err: "overflow packing wks"}
 					}
-					bit := uint16(serv) - bitmapbyte*8
-					msg[bitmapbyte] = byte(1 << (7 - bit))
+					msg[off+serv/8] |= byte(1 << (7 - uint(serv%8)))
+					if off+serv/8+1 > off1 {
+						off1 = off + serv/8 + 1
+					}
 				}
-				off += int(bitmapbyte)
+				off = off1
 			case `dns:"nsec"`: // NSEC/NSEC3
 				// This is the uint16 type bitmap
 				if val.Field(i).Len() == 0 {
 					// Do absolutely nothing
 					break
 				}
-
-				lastwindow := uint16(0)
-				length := uint16(0)
-				if off+2 > lenmsg {
-					return lenmsg, &Error{err: "overflow packing nsecx"}
-				}
+				var lastwindow, lastlength uint16
 				for j := 0; j < val.Field(i).Len(); j++ {
-					t := uint16((fv.Index(j).Uint()))
-					window := uint16(t / 256)
-					if lastwindow != window {
+					t := uint16(fv.Index(j).Uint())
+					window := t / 256
+					length := (t-window*256)/8 + 1
+					if window > lastwindow && lastlength != 0 {
 						// New window, jump to the new offset
-						off += int(length) + 3
-						if off > lenmsg {
-							return lenmsg, &Error{err: "overflow packing nsecx bitmap"}
-						}
+						off += int(lastlength) + 2
+						lastlength = 0
 					}
-					length = (t - window*256) / 8
-					bit := t - (window * 256) - (length * 8)
-					if off+2+int(length) > lenmsg {
-						return lenmsg, &Error{err: "overflow packing nsecx bitmap"}
+					if window < lastwindow || length < lastlength {
+						return len(msg), &Error{err: "nsec bits out of order"}
 					}
-
+					if off+2+int(length) > len(msg) {
+						return len(msg), &Error{err: "overflow packing nsec"}
+					}
 					// Setting the window #
 					msg[off] = byte(window)
 					// Setting the octets length
-					msg[off+1] = byte(length + 1)
+					msg[off+1] = byte(length)
 					// Setting the bit value for the type in the right octet
-					msg[off+2+int(length)] |= byte(1 << (7 - bit))
-					lastwindow = window
+					msg[off+1+int(length)] |= byte(1 << (7 - (t % 8)))
+					lastwindow, lastlength = window, length
 				}
-				off += 2 + int(length)
-				off++
-				if off > lenmsg {
-					return lenmsg, &Error{err: "overflow packing nsecx bitmap"}
-				}
+				off += int(lastlength) + 2
 			}
 		case reflect.Struct:
 			off, err = packStructValue(fv, msg, off, compression, compress)
@@ -957,17 +942,11 @@ func packStructCompress(any interface{}, msg []byte, off int, compression map[st
 	return off, err
 }
 
-// TODO(miek): Fix use of rdlength here
-
 // Unpack a reflect.StructValue from msg.
 // Same restrictions as packStructValue.
 func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err error) {
-	var lenrd int
 	lenmsg := len(msg)
 	for i := 0; i < val.NumField(); i++ {
-		if lenrd != 0 && lenrd == off {
-			break
-		}
 		if off > lenmsg {
 			return lenmsg, &Error{"bad offset unpacking"}
 		}
@@ -979,7 +958,7 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 			// therefore it's expected that this interface would be PrivateRdata
 			switch data := fv.Interface().(type) {
 			case PrivateRdata:
-				n, err := data.Unpack(msg[off:lenrd])
+				n, err := data.Unpack(msg[off:])
 				if err != nil {
 					return lenmsg, err
 				}
@@ -995,7 +974,7 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 				// HIP record slice of name (or none)
 				var servers []string
 				var s string
-				for off < lenrd {
+				for off < lenmsg {
 					s, off, err = UnpackDomainName(msg, off)
 					if err != nil {
 						return lenmsg, err
@@ -1004,17 +983,17 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 				}
 				fv.Set(reflect.ValueOf(servers))
 			case `dns:"txt"`:
-				if off == lenmsg || lenrd == off {
+				if off == lenmsg {
 					break
 				}
 				var txt []string
-				txt, off, err = unpackTxt(msg, off, lenrd)
+				txt, off, err = unpackTxt(msg, off)
 				if err != nil {
 					return lenmsg, err
 				}
 				fv.Set(reflect.ValueOf(txt))
 			case `dns:"opt"`: // edns0
-				if off == lenrd {
+				if off == lenmsg {
 					// This is an EDNS0 (OPT Record) with no rdata
 					// We can safely return here.
 					break
@@ -1022,12 +1001,12 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 				var edns []EDNS0
 			Option:
 				code := uint16(0)
-				if off+2 > lenmsg {
+				if off+4 > lenmsg {
 					return lenmsg, &Error{err: "overflow unpacking opt"}
 				}
 				code, off = unpackUint16(msg, off)
 				optlen, off1 := unpackUint16(msg, off)
-				if off1+int(optlen) > lenrd {
+				if off1+int(optlen) > lenmsg {
 					return lenmsg, &Error{err: "overflow unpacking opt"}
 				}
 				switch code {
@@ -1092,7 +1071,7 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 					edns = append(edns, e)
 					off = off1 + int(optlen)
 				}
-				if off < lenrd {
+				if off < lenmsg {
 					goto Option
 				}
 				fv.Set(reflect.ValueOf(edns))
@@ -1103,10 +1082,10 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 						continue
 					}
 				}
-				if off == lenrd {
+				if off == lenmsg {
 					break // dyn. update
 				}
-				if off+net.IPv4len > lenrd || off+net.IPv4len > lenmsg {
+				if off+net.IPv4len > lenmsg {
 					return lenmsg, &Error{err: "overflow unpacking a"}
 				}
 				fv.Set(reflect.ValueOf(net.IPv4(msg[off], msg[off+1], msg[off+2], msg[off+3])))
@@ -1118,10 +1097,10 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 						continue
 					}
 				}
-				if off == lenrd {
+				if off == lenmsg {
 					break
 				}
-				if off+net.IPv6len > lenrd || off+net.IPv6len > lenmsg {
+				if off+net.IPv6len > lenmsg {
 					return lenmsg, &Error{err: "overflow unpacking aaaa"}
 				}
 				fv.Set(reflect.ValueOf(net.IP{msg[off], msg[off+1], msg[off+2], msg[off+3], msg[off+4],
@@ -1132,7 +1111,7 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 				// Rest of the record is the bitmap
 				var serv []uint16
 				j := 0
-				for off < lenrd {
+				for off < lenmsg {
 					if off+1 > lenmsg {
 						return lenmsg, &Error{err: "overflow unpacking wks"}
 					}
@@ -1167,36 +1146,39 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 				}
 				fv.Set(reflect.ValueOf(serv))
 			case `dns:"nsec"`: // NSEC/NSEC3
-				if off == lenrd {
+				if off == len(msg) {
 					break
 				}
 				// Rest of the record is the type bitmap
-				if off+2 > lenrd || off+2 > lenmsg {
-					return lenmsg, &Error{err: "overflow unpacking nsecx"}
-				}
 				var nsec []uint16
 				length := 0
 				window := 0
-				for off+2 < lenrd {
+				lastwindow := -1
+				for off < len(msg) {
+					if off+2 > len(msg) {
+						return len(msg), &Error{err: "overflow unpacking nsecx"}
+					}
 					window = int(msg[off])
 					length = int(msg[off+1])
-					//println("off, windows, length, end", off, window, length, endrr)
+					off += 2
+					if window <= lastwindow {
+						// RFC 4034: Blocks are present in the NSEC RR RDATA in
+						// increasing numerical order.
+						return len(msg), &Error{err: "out of order NSEC block"}
+					}
 					if length == 0 {
-						// A length window of zero is strange. If there
-						// the window should not have been specified. Bail out
-						// println("dns: length == 0 when unpacking NSEC")
-						return lenmsg, &Error{err: "overflow unpacking nsecx"}
+						// RFC 4034: Blocks with no types present MUST NOT be included.
+						return len(msg), &Error{err: "empty NSEC block"}
 					}
 					if length > 32 {
-						return lenmsg, &Error{err: "overflow unpacking nsecx"}
+						return len(msg), &Error{err: "NSEC block too long"}
+					}
+					if off+length > len(msg) {
+						return len(msg), &Error{err: "overflowing NSEC block"}
 					}
 
-					// Walk the bytes in the window - and check the bit settings...
-					off += 2
+					// Walk the bytes in the window and extract the type bits
 					for j := 0; j < length; j++ {
-						if off+j+1 > lenmsg {
-							return lenmsg, &Error{err: "overflow unpacking nsecx"}
-						}
 						b := msg[off+j]
 						// Check the bits one by one, and set the type
 						if b&0x80 == 0x80 {
@@ -1225,6 +1207,7 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 						}
 					}
 					off += length
+					lastwindow = window
 				}
 				fv.Set(reflect.ValueOf(nsec))
 			}
@@ -1234,7 +1217,12 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 				return lenmsg, err
 			}
 			if val.Type().Field(i).Name == "Hdr" {
-				lenrd = off + int(val.FieldByName("Hdr").FieldByName("Rdlength").Uint())
+				lenrd := off + int(val.FieldByName("Hdr").FieldByName("Rdlength").Uint())
+				if lenrd > lenmsg {
+					return lenmsg, &Error{err: "overflowing header size"}
+				}
+				msg = msg[:lenrd]
+				lenmsg = len(msg)
 			}
 		case reflect.Uint8:
 			if off == lenmsg {
@@ -1265,6 +1253,9 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 			fv.SetUint(uint64(uint32(msg[off])<<24 | uint32(msg[off+1])<<16 | uint32(msg[off+2])<<8 | uint32(msg[off+3])))
 			off += 4
 		case reflect.Uint64:
+			if off == lenmsg {
+				break
+			}
 			switch val.Type().Field(i).Tag {
 			default:
 				if off+8 > lenmsg {
@@ -1291,30 +1282,26 @@ func unpackStructValue(val reflect.Value, msg []byte, off int) (off1 int, err er
 			default:
 				return lenmsg, &Error{"bad tag unpacking string: " + val.Type().Field(i).Tag.Get("dns")}
 			case `dns:"octet"`:
-				strend := lenrd
-				if strend > lenmsg {
-					return lenmsg, &Error{err: "overflow unpacking octet"}
-				}
-				s = string(msg[off:strend])
-				off = strend
+				s = string(msg[off:])
+				off = lenmsg
 			case `dns:"hex"`:
-				hexend := lenrd
+				hexend := lenmsg
 				if val.FieldByName("Hdr").FieldByName("Rrtype").Uint() == uint64(TypeHIP) {
 					hexend = off + int(val.FieldByName("HitLength").Uint())
 				}
-				if hexend > lenrd || hexend > lenmsg {
-					return lenmsg, &Error{err: "overflow unpacking hex"}
+				if hexend > lenmsg {
+					return lenmsg, &Error{err: "overflow unpacking HIP hex"}
 				}
 				s = hex.EncodeToString(msg[off:hexend])
 				off = hexend
 			case `dns:"base64"`:
 				// Rest of the RR is base64 encoded value
-				b64end := lenrd
+				b64end := lenmsg
 				if val.FieldByName("Hdr").FieldByName("Rrtype").Uint() == uint64(TypeHIP) {
 					b64end = off + int(val.FieldByName("PublicKeyLength").Uint())
 				}
-				if b64end > lenrd || b64end > lenmsg {
-					return lenmsg, &Error{err: "overflow unpacking base64"}
+				if b64end > lenmsg {
+					return lenmsg, &Error{err: "overflow unpacking HIP base64"}
 				}
 				s = toBase64(msg[off:b64end])
 				off = b64end
@@ -1684,45 +1671,77 @@ func (dns *Msg) Unpack(msg []byte) (err error) {
 	dns.CheckingDisabled = (dh.Bits & _CD) != 0
 	dns.Rcode = int(dh.Bits & 0xF)
 
-	// Arrays.
-	dns.Question = make([]Question, dh.Qdcount)
-	dns.Answer = make([]RR, dh.Ancount)
-	dns.Ns = make([]RR, dh.Nscount)
-	dns.Extra = make([]RR, dh.Arcount)
+	// Don't pre-alloc these arrays, the incoming lengths are from the network.
+	dns.Question = make([]Question, 0, 1)
+	dns.Answer = make([]RR, 0, 10)
+	dns.Ns = make([]RR, 0, 10)
+	dns.Extra = make([]RR, 0, 10)
 
-	for i := 0; i < len(dns.Question); i++ {
-		off, err = UnpackStruct(&dns.Question[i], msg, off)
+	var q Question
+	for i := 0; i < int(dh.Qdcount); i++ {
+		off1 := off
+		off, err = UnpackStruct(&q, msg, off)
 		if err != nil {
 			return err
 		}
+		if off1 == off { // Offset does not increase anymore, dh.Qdcount is a lie!
+			dh.Qdcount = uint16(i)
+			break
+		}
+
+		dns.Question = append(dns.Question, q)
+
 	}
 	// If we see a TC bit being set we return here, without
 	// an error, because technically it isn't an error. So return
 	// without parsing the potentially corrupt packet and hitting an error.
 	// TODO(miek): this isn't the best strategy!
+	// Better stragey would be: set boolean indicating truncated message, go forth and parse
+	// until we hit an error, return the message without the latest parsed rr if this boolean
+	// is true.
 	if dns.Truncated {
 		dns.Answer = nil
 		dns.Ns = nil
 		dns.Extra = nil
 		return nil
 	}
-	for i := 0; i < len(dns.Answer); i++ {
-		dns.Answer[i], off, err = UnpackRR(msg, off)
+
+	var r RR
+	for i := 0; i < int(dh.Ancount); i++ {
+		off1 := off
+		r, off, err = UnpackRR(msg, off)
 		if err != nil {
 			return err
 		}
+		if off1 == off { // Offset does not increase anymore, dh.Ancount is a lie!
+			dh.Ancount = uint16(i)
+			break
+		}
+		dns.Answer = append(dns.Answer, r)
 	}
-	for i := 0; i < len(dns.Ns); i++ {
-		dns.Ns[i], off, err = UnpackRR(msg, off)
+	for i := 0; i < int(dh.Nscount); i++ {
+		off1 := off
+		r, off, err = UnpackRR(msg, off)
 		if err != nil {
 			return err
 		}
+		if off1 == off { // Offset does not increase anymore, dh.Nscount is a lie!
+			dh.Nscount = uint16(i)
+			break
+		}
+		dns.Ns = append(dns.Ns, r)
 	}
-	for i := 0; i < len(dns.Extra); i++ {
-		dns.Extra[i], off, err = UnpackRR(msg, off)
+	for i := 0; i < int(dh.Arcount); i++ {
+		off1 := off
+		r, off, err = UnpackRR(msg, off)
 		if err != nil {
 			return err
 		}
+		if off1 == off { // Offset does not increase anymore, dh.Arcount is a lie!
+			dh.Arcount = uint16(i)
+			break
+		}
+		dns.Extra = append(dns.Extra, r)
 	}
 	if off != len(msg) {
 		// TODO(miek) make this an error?

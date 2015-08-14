@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -69,9 +70,7 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeTXT {
 			if txtRec, ok := answer.(*dns.TXT); ok {
-				for _, field := range txtRec.Txt {
-					txt = append(txt, field)
-				}
+				txt = append(txt, strings.Join(txtRec.Txt, ""))
 			}
 		}
 	}
