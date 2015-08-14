@@ -38,8 +38,6 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 		return string(t), nil
 	case core.OCSPStatus:
 		return string(t), nil
-	case core.JSONBuffer:
-		return []byte(t), nil
 	default:
 		return val, nil
 	}
@@ -48,7 +46,7 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 // FromDb converts a DB representation back into a Boulder object.
 func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, bool) {
 	switch target.(type) {
-	case *core.AcmeIdentifier, *[]core.Challenge, *[]*core.AcmeURL, *[][]int, core.JSONBuffer:
+	case *core.AcmeIdentifier, *[]core.Challenge, *[]*core.AcmeURL, *[][]int:
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
 			if !ok {
