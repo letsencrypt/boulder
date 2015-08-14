@@ -170,6 +170,11 @@ type Config struct {
 		StatsdRate                 float32
 	}
 
+	PA struct {
+		DBDriver  string
+		DBConnect string
+	}
+
 	Common struct {
 		BaseURL string
 		// Path to a PEM-encoded copy of the issuer certificate.
@@ -178,9 +183,6 @@ type Config struct {
 
 		DNSResolver string
 		DNSTimeout  string
-
-		DBDriver  string
-		DBConnect string
 	}
 
 	SubscriberAgreementURL string
