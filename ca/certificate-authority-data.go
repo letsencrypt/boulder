@@ -11,7 +11,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/sa"
 
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
@@ -32,13 +31,8 @@ type SerialNumber struct {
 
 // NewCertificateAuthorityDatabaseImpl constructs a Database for the
 // Certificate Authority.
-func NewCertificateAuthorityDatabaseImpl(driver string, name string) (cadb core.CertificateAuthorityDatabase, err error) {
+func NewCertificateAuthorityDatabaseImpl(dbMap *gorp.DbMap) (cadb core.CertificateAuthorityDatabase, err error) {
 	logger := blog.GetAuditLogger()
-
-	dbMap, err := sa.NewDbMap(driver, name)
-	if err != nil {
-		return nil, err
-	}
 
 	dbMap.AddTableWithName(SerialNumber{}, "serialNumber").SetKeys(true, "ID")
 

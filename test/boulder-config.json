@@ -48,7 +48,6 @@
   "ca": {
     "serialPrefix": 255,
     "profile": "ee",
-    "dbDriver": "mysql",
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "debugAddr": "localhost:8001",
     "testMode": true,
@@ -115,7 +114,6 @@
   },
 
   "sa": {
-    "dbDriver": "mysql",
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "debugAddr": "localhost:8003"
   },
@@ -131,12 +129,10 @@
   },
 
   "revoker": {
-    "dbDriver": "mysql",
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test"
   },
 
   "ocspResponder": {
-    "dbDriver": "mysql",
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "path": "/",
     "listenAddress": "localhost:4001",
@@ -144,7 +140,6 @@
   },
 
   "ocspUpdater": {
-    "dbDriver": "mysql",
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "minTimeToExpiry": "72h",
     "debugAddr": "localhost:8006"
@@ -159,7 +154,6 @@
     "port": "25",
     "username": "cert-master@example.com",
     "password": "password",
-    "dbDriver": "mysql",
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],

@@ -7,20 +7,7 @@ fi
 
 FAILURE=0
 
-TESTDIRS="analysis \
-          ca \
-          core \
-          log \
-          policy \
-          ra \
-          rpc \
-          sa \
-          test \
-          va \
-          wfe \
-          cmd/expiration-mailer"
-          # cmd
-          # Godeps
+TESTPATHS=$(go list -f '{{ .ImportPath }}' ./...)
 
 # We need to know, for github-pr-status, what the triggering commit is.
 # Assume first it's the travis commit (for builds of master), unless we're
@@ -117,8 +104,9 @@ function build_letsencrypt() {
 function run_unit_tests() {
   if [ "${TRAVIS}" == "true" ]; then
     # Run each test by itself for Travis, so we can get coverage
-    for dir in ${TESTDIRS}; do
-      run go test -race -cover -coverprofile=${dir}.coverprofile ./${dir}/
+    for path in ${TESTPATHS}; do
+      dir=$(basename $path)
+      run go test -race -cover -coverprofile=${dir}.coverprofile ${path}
     done
 
     # Gather all the coverprofiles
@@ -180,13 +168,14 @@ check_gofmt() {
 run_and_comment check_gofmt
 end_context #test/gofmt
 
+if [ "${TRAVIS}" == "true" ]; then
+  ./test/create_db.sh || die "unable to create the boulder database with test/create_db.sh"
+fi
+
 #
 # Unit Tests. These do not receive a context or status updates,
 # as they are reflected in our eventual exit code.
 #
-
-# Ensure SQLite is installed so we don't recompile it each time
-go install ./Godeps/_workspace/src/github.com/mattn/go-sqlite3
 
 if  [ "${SKIP_UNIT_TESTS}" == "1" ]; then
   echo "Skipping unit tests."
@@ -206,10 +195,6 @@ fi
 if [ "${SKIP_INTEGRATION_TESTS}" = "1" ]; then
   echo "Skipping integration tests."
   exit ${FAILURE}
-fi
-
-if [ "${TRAVIS}" == "true" ]; then
-  ./test/create_db.sh || die "unable to create the boulder database with test/create_db.sh"
 fi
 
 #

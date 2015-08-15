@@ -90,7 +90,6 @@ type Config struct {
 	}
 
 	SA struct {
-		DBDriver  string
 		DBConnect string
 
 		// DebugAddr is the address to run the /debug handlers on.
@@ -121,7 +120,6 @@ type Config struct {
 	}
 
 	Revoker struct {
-		DBDriver  string
 		DBConnect string
 	}
 
@@ -131,7 +129,6 @@ type Config struct {
 		Username string
 		Password string
 
-		DBDriver  string
 		DBConnect string
 
 		CertLimit int
@@ -144,7 +141,6 @@ type Config struct {
 	}
 
 	OCSPResponder struct {
-		DBDriver      string
 		DBConnect     string
 		Path          string
 		ListenAddress string
@@ -154,7 +150,6 @@ type Config struct {
 	}
 
 	OCSPUpdater struct {
-		DBDriver        string
 		DBConnect       string
 		MinTimeToExpiry string
 		ResponseLimit   int
