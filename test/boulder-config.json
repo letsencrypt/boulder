@@ -110,8 +110,7 @@
   },
 
   "pa": {
-    "dbDriver": "sqlite3",
-    "dbConnect": ":memory:"
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test"
   },
 
   "ra": {
@@ -171,9 +170,7 @@
     "issuerCert": "test/test-ca.pem",
     "maxKeySize": 4096,
     "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
-    "policyDbDriver": "sqlite3",
-    "policyDbConnect": ":memory:"
+    "dnsTimeout": "10s"
   },
 
   "subscriberAgreementURL": "http://localhost:4000/terms/v1"
