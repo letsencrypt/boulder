@@ -4,8 +4,6 @@ go:
   - 1.4.1
 
 addons:
-  hosts:
-    - le.wtf
   apt:
     packages:
       - lsb-release
