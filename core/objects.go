@@ -228,34 +228,34 @@ func (r *Registration) MergeUpdate(input Registration) {
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
 type Challenge struct {
-	ID int `json:"id,omitempty" db:"id"`
+	ID int `json:"id,omitempty"`
 
-	AuthorizationID string `json:"authorizationID,omitempty" db:"authorizationID"`
+	AuthorizationID string `json:"authorizationID,omitempty"`
 
 	// The type of challenge
-	Type string `json:"type" db:"type"`
+	Type string `json:"type"`
 
 	// The status of this challenge
-	Status AcmeStatus `json:"status,omitempty" db:"status"`
+	Status AcmeStatus `json:"status,omitempty"`
 
 	// Contains the error that occured during challenge validation, if any
-	Error *ProblemDetails `json:"error,omitempty" db:"error"`
+	Error *ProblemDetails `json:"error,omitempty"`
 
 	// If successful, the time at which this challenge
 	// was completed by the server.
-	Validated *time.Time `json:"validated,omitempty" db:"validated"`
+	Validated *time.Time `json:"validated,omitempty"`
 
 	// A URI to which a response can be POSTed
-	URI *AcmeURL `json:"uri" db:"uri"`
+	URI *AcmeURL `json:"uri"`
 
 	// Used by simpleHttp, dvsni, and dns challenges
-	Token string `json:"token,omitempty" db:"token"`
+	Token string `json:"token,omitempty"`
 
 	// Used by simpleHTTP challenges
-	TLS *bool `json:"tls,omitempty"  db:"tls"`
+	TLS *bool `json:"tls,omitempty"`
 
 	// Used by dns and dvsni challenges
-	Validation *jose.JsonWebSignature `json:"validation,omitempty" db:"validation"`
+	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
