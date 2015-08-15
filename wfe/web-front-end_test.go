@@ -513,9 +513,9 @@ func TestIssueCertificate(t *testing.T) {
 	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	common := cmd.CommonConfig{
-		PolicyDBDriver:  "sqlite3",
-		PolicyDBConnect: ":memory:",
+	common := cmd.PAConfig{
+		DBDriver:  "sqlite3",
+		DBConnect: ":memory:",
 	}
 	ra, _ := ra.NewRegistrationAuthorityImpl(common)
 	ra.SA = &MockSA{}

@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -25,19 +24,19 @@ type PolicyAuthorityImpl struct {
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl(common cmd.CommonConfig) (*PolicyAuthorityImpl, error) {
+func NewPolicyAuthorityImpl(driver, connect string, enforceWhitelist bool) (*PolicyAuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
 	pa := PolicyAuthorityImpl{log: logger}
 
 	// Setup policy db
-	padb, err := NewPolicyAuthorityDatabaseImpl(common.PolicyDBDriver, common.PolicyDBConnect)
+	padb, err := NewPolicyAuthorityDatabaseImpl(driver, connect)
 	if err != nil {
 		return nil, err
 	}
 	pa.Db = padb
-	pa.EnforceWhitelist = common.EnforcePolicyWhitelist
+	pa.EnforceWhitelist = enforceWhitelist
 
 	// TODO: Add configurability
 	pa.PublicSuffixList = PublicSuffixList

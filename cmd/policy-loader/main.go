@@ -29,7 +29,7 @@ func setupContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl, st
 	err = json.Unmarshal(configJSON, &c)
 	cmd.FailOnError(err, "Couldn't unmarshal configuration object")
 
-	padb, err := policy.NewPolicyAuthorityDatabaseImpl(c.Common.PolicyDBDriver, c.Common.PolicyDBConnect)
+	padb, err := policy.NewPolicyAuthorityDatabaseImpl(c.PA.DBDriver, c.PA.DBConnect)
 	cmd.FailOnError(err, "Could not connect to PADB")
 	return padb, context.GlobalString("rule-file")
 }

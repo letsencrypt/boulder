@@ -40,7 +40,7 @@ func main() {
 			cmd.FailOnError(err, "Failed to create CA tables")
 		}
 
-		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common)
+		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert, c.PA)
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.MaxKeySize = c.Common.MaxKeySize
 

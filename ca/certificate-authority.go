@@ -67,7 +67,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config cmd.CAConfig, commonConfig cmd.CommonConfig) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config cmd.CAConfig, issuerCert string, paConfig cmd.PAConfig) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -95,7 +95,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	issuer, err := loadIssuer(commonConfig.IssuerCert)
+	issuer, err := loadIssuer(issuerCert)
 	if err != nil {
 		return nil, err
 	}
@@ -120,11 +120,10 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	pa, err := policy.NewPolicyAuthorityImpl(commonConfig)
+	pa, err := policy.NewPolicyAuthorityImpl(paConfig.DBDriver, paConfig.DBConnect, paConfig.EnforcePolicyWhitelist)
 	if err != nil {
 		return nil, err
 	}
-	pa.EnforceWhitelist = commonConfig.EnforcePolicyWhitelist
 
 	ca = &CertificateAuthorityImpl{
 		Signer:     signer,

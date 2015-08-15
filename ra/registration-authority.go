@@ -38,16 +38,15 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(commonConfig cmd.CommonConfig) (ra RegistrationAuthorityImpl, err error) {
+func NewRegistrationAuthorityImpl(paConfig cmd.PAConfig) (ra RegistrationAuthorityImpl, err error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Registration Authority Starting")
 
 	ra.log = logger
-	pa, err := policy.NewPolicyAuthorityImpl(commonConfig)
+	pa, err := policy.NewPolicyAuthorityImpl(paConfig.DBDriver, paConfig.DBConnect, paConfig.EnforcePolicyWhitelist)
 	if err != nil {
 		return RegistrationAuthorityImpl{}, err
 	}
-	pa.EnforceWhitelist = commonConfig.EnforcePolicyWhitelist
 	ra.PA = pa
 
 	return ra, nil

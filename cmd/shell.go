@@ -170,11 +170,7 @@ type Config struct {
 		StatsdRate                 float32
 	}
 
-	PA struct {
-		DBDriver               string
-		DBConnect              string
-		EnforcePolicyWhitelist bool
-	}
+	PA PAConfig
 
 	Common struct {
 		BaseURL string
@@ -208,6 +204,12 @@ type CAConfig struct {
 
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
+}
+
+type PAConfig struct {
+	DBDriver               string
+	DBConnect              string
+	EnforcePolicyWhitelist bool
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,

@@ -339,10 +339,11 @@ var log = mocks.UseMockLog()
 const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"
 
-var exCommon = cmd.CommonConfig{
-	IssuerCert:      "../test/test-ca.pem",
-	PolicyDBDriver:  "sqlite3",
-	PolicyDBConnect: ":memory:",
+const issuerCert = "../test/test-ca.pem"
+
+var exPA = cmd.PAConfig{
+	DBDriver:  "sqlite3",
+	DBConnect: ":memory:",
 }
 
 func TestMain(m *testing.M) {
@@ -399,8 +400,8 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 				},
 			},
 			OCSP: &ocspConfig.Config{
-				CACertFile:        exCommon.IssuerCert,
-				ResponderCertFile: exCommon.IssuerCert,
+				CACertFile:        issuerCert,
+				ResponderCertFile: issuerCert,
 				KeyFile:           caKeyFile,
 			},
 		},
@@ -411,13 +412,13 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 func TestFailNoSerial(t *testing.T) {
 	cadb, _, caConfig := setup(t)
 	caConfig.SerialPrefix = 0
-	_, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
+	_, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
 func TestRevoke(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	if err != nil {
 		return
@@ -449,7 +450,7 @@ func TestRevoke(t *testing.T) {
 
 func TestIssueCertificate(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -525,7 +526,7 @@ func TestIssueCertificate(t *testing.T) {
 
 func TestRejectNoName(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -541,7 +542,7 @@ func TestRejectNoName(t *testing.T) {
 
 func TestRejectTooManyNames(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 
@@ -554,7 +555,7 @@ func TestRejectTooManyNames(t *testing.T) {
 
 func TestDeduplication(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -583,7 +584,7 @@ func TestDeduplication(t *testing.T) {
 
 func TestRejectValidityTooLong(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -604,7 +605,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 
 func TestShortKey(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
 
@@ -617,7 +618,7 @@ func TestShortKey(t *testing.T) {
 
 func TestRejectBadAlgorithm(t *testing.T) {
 	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, exCommon)
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
 

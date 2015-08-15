@@ -8,7 +8,6 @@ package policy
 import (
 	"testing"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
@@ -92,7 +91,7 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zombo-.com",
 	}
 
-	pa, _ := NewPolicyAuthorityImpl(cmd.CommonConfig{PolicyDBDriver: "sqlite3", PolicyDBConnect: ":memory:"})
+	pa, _ := NewPolicyAuthorityImpl("sqlite3", ":memory:", false)
 	rules := []DomainRule{}
 	for _, b := range shouldBeBlacklisted {
 		rules = append(rules, DomainRule{Host: b, Type: blacklisted})
@@ -148,7 +147,7 @@ func TestWillingToIssue(t *testing.T) {
 }
 
 func TestChallengesFor(t *testing.T) {
-	pa, _ := NewPolicyAuthorityImpl(cmd.CommonConfig{PolicyDBDriver: "sqlite3", PolicyDBConnect: ":memory:"})
+	pa, _ := NewPolicyAuthorityImpl("sqlite3", ":memory:", true)
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 

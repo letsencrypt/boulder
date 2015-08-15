@@ -20,7 +20,7 @@ const blacklisted = "blacklist"
 
 // DomainRule ...
 type DomainRule struct {
-	Host string `db:"rule"`
+	Host string `db:"host"`
 	Type string `db:"type"`
 }
 
@@ -105,7 +105,7 @@ func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string, requireWhitelis
 	var rules []DomainRule
 	_, err := padb.dbMap.Select(
 		&rules,
-		`SELECT type,rule FROM ruleList WHERE :host >= rule ORDER BY rule ASC`,
+		`SELECT * FROM ruleList WHERE :host >= host ORDER BY host ASC`,
 		map[string]interface{}{"host": host},
 	)
 	if err != nil {
