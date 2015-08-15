@@ -233,6 +233,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 // all of our tests working without SQLite. We already had issues with
 // the RA here getting a real CertificateAuthority instead of a
 // CertificateAuthorityClient, so this is only marginally worse.
+// TODO(Issue #628): use a CAClient fake instead of a CAImpl instance
 func caDBImpl(t *testing.T) (core.CertificateAuthorityDatabase, func()) {
 	dbMap, err := sa.NewDbMap(dbConnStr)
 	if err != nil {
@@ -244,8 +245,14 @@ func caDBImpl(t *testing.T) (core.CertificateAuthorityDatabase, func()) {
 		t.Fatalf("Could not construct CA DB: %s", err)
 	}
 
-	// We intentionally call CreateTablesIfNotExists twice before returning
-	// because of the weird insert inside it.
+	// We intentionally call CreateTablesIfNotExists twice before
+	// returning because of the weird insert inside it. The
+	// CADatabaseImpl code expects the existence of a single row in
+	// its serialIds table or else it errors. CreateTablesIfNotExists
+	// currently inserts that row and TruncateTables will remove
+	// it. But we need to make sure the tables exist before
+	// TruncateTables can be called to reset the table. So, two calls
+	// to CreateTablesIfNotExists.
 
 	err = cadb.CreateTablesIfNotExists()
 	if err != nil {

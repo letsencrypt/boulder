@@ -57,8 +57,14 @@ func caDBImpl(t *testing.T) (core.CertificateAuthorityDatabase, func()) {
 		t.Fatalf("Could not construct CA DB: %s", err)
 	}
 
-	// We intentionally call CreateTablesIfNotExists twice before returning
-	// because of the weird insert inside it.
+	// We intentionally call CreateTablesIfNotExists twice before
+	// returning because of the weird insert inside it. The
+	// CADatabaseImpl code expects the existence of a single row in
+	// its serialIds table or else it errors. CreateTablesIfNotExists
+	// currently inserts that row and TruncateTables will remove
+	// it. But we need to make sure the tables exist before
+	// TruncateTables can be called to reset the table. So, two calls
+	// to CreateTablesIfNotExists.
 
 	err = cadb.CreateTablesIfNotExists()
 	if err != nil {
