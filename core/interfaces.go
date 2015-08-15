@@ -87,7 +87,7 @@ type ValidationAuthority interface {
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest, int64, time.Time) (Certificate, error)
+	IssueCertificate(x509.CertificateRequest, int64, string, time.Time) (Certificate, error)
 	RevokeCertificate(string, int) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
@@ -106,6 +106,7 @@ type StorageGetter interface {
 	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
 	GetCertificate(string) (Certificate, error)
 	GetCertificateByShortSerial(string) (Certificate, error)
+	GetCertificateByRequestID(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
 }
@@ -121,7 +122,8 @@ type StorageAdder interface {
 	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error
 	UpdateOCSP(serial string, ocspResponse []byte) error
 
-	AddCertificate([]byte, int64) (string, error)
+	NewPendingCertificate(Certificate) (Certificate, error)
+	FinalizeCertificate(Certificate) error
 }
 
 // StorageAuthority interface represents a simple key/value

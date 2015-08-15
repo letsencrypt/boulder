@@ -88,22 +88,6 @@ func validateContacts(contacts []*core.AcmeURL, resolver core.DNSResolver) (err 
 	return
 }
 
-type certificateRequestEvent struct {
-	ID                  string    `json:",omitempty"`
-	Requester           int64     `json:",omitempty"`
-	SerialNumber        string    `json:",omitempty"`
-	RequestMethod       string    `json:",omitempty"`
-	VerificationMethods []string  `json:",omitempty"`
-	VerifiedFields      []string  `json:",omitempty"`
-	CommonName          string    `json:",omitempty"`
-	Names               []string  `json:",omitempty"`
-	NotBefore           time.Time `json:",omitempty"`
-	NotAfter            time.Time `json:",omitempty"`
-	RequestTime         time.Time `json:",omitempty"`
-	ResponseTime        time.Time `json:",omitempty"`
-	Error               string    `json:",omitempty"`
-}
-
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
 	if err = core.GoodKey(init.Key.Key, ra.MaxKeySize); err != nil {
@@ -213,7 +197,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEventResult = "error"
 
 	// Construct the log event
-	logEvent := certificateRequestEvent{
+	logEvent := blog.CertificateRequestEvent{
 		ID:            core.NewToken(),
 		Requester:     regID,
 		RequestMethod: "online",
@@ -298,7 +282,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	if cert, err = ra.CA.IssueCertificate(*csr, regID, earliestExpiry); err != nil {
+	if cert, err = ra.CA.IssueCertificate(*csr, regID, logEvent.ID, earliestExpiry); err != nil {
 		// While this could be InternalServerError for certain conditions, most
 		// of the failure reasons (such as GoodKey failing) are caused by malformed
 		// requests.
@@ -307,28 +291,9 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	err = cert.MatchesCSR(csr, earliestExpiry)
-	if err != nil {
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-	if err != nil {
-		// InternalServerError because the certificate from the CA should be
-		// parseable.
-		err = core.InternalServerError(err.Error())
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
-	logEvent.SerialNumber = core.SerialToString(parsedCertificate.SerialNumber)
-	logEvent.CommonName = parsedCertificate.Subject.CommonName
-	logEvent.NotBefore = parsedCertificate.NotBefore
-	logEvent.NotAfter = parsedCertificate.NotAfter
-	logEvent.ResponseTime = time.Now()
-
+	// What we get back is just a pending certificate, so there are no checks to do
 	logEventResult = "successful"
+
 	return cert, nil
 }
 

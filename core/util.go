@@ -23,6 +23,7 @@ import (
 	"io"
 	"math/big"
 	"net/url"
+	"regexp"
 	"strings"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -75,6 +76,9 @@ type SignatureValidationError string
 // for some reason.
 type CertificateIssuanceError string
 
+// ServiceUnavailableError indicates that the CA cannot serve the request right now
+type ServiceUnavailableError string
+
 func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
 func (e MalformedRequestError) Error() string    { return string(e) }
@@ -83,6 +87,7 @@ func (e NotFoundError) Error() string            { return string(e) }
 func (e SyntaxError) Error() string              { return string(e) }
 func (e SignatureValidationError) Error() string { return string(e) }
 func (e CertificateIssuanceError) Error() string { return string(e) }
+func (e ServiceUnavailableError) Error() string  { return string(e) }
 
 // Base64 functions
 
@@ -127,6 +132,12 @@ func RandomString(byteLength int) string {
 // NewToken produces a random string for Challenges, etc.
 func NewToken() string {
 	return RandomString(32)
+}
+
+const tokenFormat = "^[\\w-]{43}$"
+
+func LooksLikeAToken(token string) bool {
+	return regexp.MustCompile(tokenFormat).MatchString(token)
 }
 
 // Fingerprints

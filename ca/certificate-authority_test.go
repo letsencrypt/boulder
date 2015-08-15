@@ -11,7 +11,6 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -339,9 +338,29 @@ const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
 
-func TestMain(m *testing.M) {
+// Use this function to wait for the IssueCertificate->sign->SA handoff
+//
+//   Note: No need to use this for negative tests ("Test that the CA
+//   rejects...").  If IssueCertificate() returns without an error, then
+//   the CA has agreed to issue the certificate, which is already a
+//   failure for these cases.
+func awaitIssuance(t *testing.T, sa core.StorageAuthority, id string) (cert core.Certificate, found bool) {
+	wait := 125 * time.Millisecond
+	for wait < 2*time.Second {
+		time.Sleep(wait)
+		wait = 2 * wait
 
-	os.Exit(m.Run())
+		cert, err := sa.GetCertificateByRequestID(id)
+		test.AssertNotError(t, err, "Unable to retrieve supposedly pending certificate")
+		if err != nil {
+			return cert, false
+		}
+		if cert.Status != core.StatusPending {
+			return cert, true
+		}
+	}
+	found = false
+	return
 }
 
 func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthority core.StorageAuthority, caConfig Config) {
@@ -421,14 +440,19 @@ func TestRevoke(t *testing.T) {
 
 	csrDER, _ := hex.DecodeString(CNandSANCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	certObj, err := ca.IssueCertificate(*csr, 1, FarFuture)
-	test.AssertNotError(t, err, "Failed to sign certificate")
+	pendingCert, err := ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
+	test.AssertNotError(t, err, "CA refused to issue")
 	if err != nil {
 		return
 	}
-	cert, err := x509.ParseCertificate(certObj.DER)
+
+	issuedCert, found := awaitIssuance(t, storageAuthority, pendingCert.RequestID)
+	test.Assert(t, found, "Timed out waiting for CA to issue certificate")
+
+	cert, err := x509.ParseCertificate(issuedCert.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	serialString := core.SerialToString(cert.SerialNumber)
+
 	err = ca.RevokeCertificate(serialString, 0)
 	test.AssertNotError(t, err, "Revocation failed")
 
@@ -457,17 +481,22 @@ func TestIssueCertificate(t *testing.T) {
 			}
 	*/
 
+	// then pull by RequestID
 	csrs := []string{CNandSANCSRhex, NoSANCSRhex, NoCNCSRhex}
 	for _, csrHEX := range csrs {
 		csrDER, _ := hex.DecodeString(csrHEX)
 		csr, _ := x509.ParseCertificateRequest(csrDER)
 
-		// Sign CSR
-		issuedCert, err := ca.IssueCertificate(*csr, 1, FarFuture)
+		// Dispatch signing
+		pendingCert, err := ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 		if err != nil {
 			continue
 		}
+
+		// Wait for sign() to happen
+		issuedCert, found := awaitIssuance(t, storageAuthority, pendingCert.RequestID)
+		test.Assert(t, found, "Timed out waiting for certificate to be issued")
 
 		// Verify cert contents
 		cert, err := x509.ParseCertificate(issuedCert.DER)
@@ -494,12 +523,8 @@ func TestIssueCertificate(t *testing.T) {
 			t.Errorf("Improper list of domain names %v", cert.DNSNames)
 		}
 
-		// Test is broken by CFSSL Issue #156
-		// https://github.com/cloudflare/cfssl/issues/156
 		if len(cert.Subject.Country) > 0 {
-			// Uncomment the Errorf as soon as upstream #156 is fixed
-			// t.Errorf("Subject contained unauthorized values: %v", cert.Subject)
-			t.Logf("Subject contained unauthorized values: %v", cert.Subject)
+			t.Errorf("Subject contained unauthorized values: %v", cert.Subject)
 		}
 
 		// Verify that the cert got stored in the DB
@@ -527,7 +552,7 @@ func TestRejectNoName(t *testing.T) {
 	// Test that the CA rejects CSRs with no names
 	csrDER, _ := hex.DecodeString(NoNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	if err == nil {
 		t.Errorf("CA improperly agreed to create a certificate with no name")
 	}
@@ -542,7 +567,7 @@ func TestRejectTooManyNames(t *testing.T) {
 	// Test that the CA rejects a CSR with too many names
 	csrDER, _ := hex.DecodeString(TooManyNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.Assert(t, err != nil, "Issued certificate with too many names")
 }
 
@@ -556,11 +581,14 @@ func TestDeduplication(t *testing.T) {
 	// Test that the CA collapses duplicate names
 	csrDER, _ := hex.DecodeString(DupeNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	cert, err := ca.IssueCertificate(*csr, 1, FarFuture)
+	cert, err := ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with duplicate names")
 	if err != nil {
 		return
 	}
+
+	cert, found := awaitIssuance(t, storageAuthority, cert.RequestID)
+	test.Assert(t, found, "Timed out waiting for CA to issue")
 
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
@@ -585,14 +613,14 @@ func TestRejectValidityTooLong(t *testing.T) {
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ := hex.DecodeString(NoCNCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarPast)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarPast)
 	test.Assert(t, err == nil, "Can issue a certificate that expires after the underlying authorization.")
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ = hex.DecodeString(NoCNCSRhex)
 	csr, _ = x509.ParseCertificateRequest(csrDER)
 	ca.NotAfter = time.Now()
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.AssertEquals(t, err.Error(), "Cannot issue a certificate that expires after the intermediate certificate.")
 }
 
@@ -605,7 +633,7 @@ func TestShortKey(t *testing.T) {
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ := hex.DecodeString(ShortKeyCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.Assert(t, err != nil, "Issued a certificate with too short a key.")
 }
 
@@ -618,6 +646,6 @@ func TestRejectBadAlgorithm(t *testing.T) {
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ := hex.DecodeString(BadAlgorithmCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1, "bogus", FarFuture)
 	test.Assert(t, err != nil, "Issued a certificate based on a CSR with a weak algorithm.")
 }

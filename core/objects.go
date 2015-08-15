@@ -273,7 +273,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 		}
 
 		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
+		if !LooksLikeAToken(ch.Token) {
 			return false
 		}
 		if _, err := B64dec(ch.Token); err != nil {
@@ -404,9 +404,12 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
-	RegistrationID int64 `db:"registrationID"`
+	RequestID      string `db:"requestID"`
+	RegistrationID int64  `db:"registrationID"`
 
 	// The revocation status of the certificate.
+	// * "pending" - awaiting issuance
+	// * "invalid" - never issued
 	// * "valid" - not revoked
 	// * "revoked" - revoked
 	Status AcmeStatus `db:"status"`

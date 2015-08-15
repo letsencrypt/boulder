@@ -19,6 +19,28 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 )
 
+// CertificateRequestEvent objects are used by the RA and the CA
+// to log certificate requests at various stages:
+//
+// * Approval of the request by the RA
+// * Approval of the request by the CA
+// * Issuance of the certificate
+type CertificateRequestEvent struct {
+	ID                  string    `json:",omitempty"`
+	Requester           int64     `json:",omitempty"`
+	SerialNumber        string    `json:",omitempty"`
+	RequestMethod       string    `json:",omitempty"`
+	VerificationMethods []string  `json:",omitempty"`
+	VerifiedFields      []string  `json:",omitempty"`
+	CommonName          string    `json:",omitempty"`
+	Names               []string  `json:",omitempty"`
+	NotBefore           time.Time `json:",omitempty"`
+	NotAfter            time.Time `json:",omitempty"`
+	RequestTime         time.Time `json:",omitempty"`
+	ResponseTime        time.Time `json:",omitempty"`
+	Error               string    `json:",omitempty"`
+}
+
 // A SyslogWriter logs messages with explicit priority levels. It is
 // implemented by a logging back-end like syslog.Writer or
 // mocks.SyslogWriter.

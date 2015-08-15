@@ -12,7 +12,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"testing"
 	"time"
 
@@ -284,51 +283,77 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 func TestAddCertificate(t *testing.T) {
 	sa := initSA(t)
 
-	// An example cert taken from EFF's website
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	// Create a new pending certificate
+	pendingCert := core.Certificate{RegistrationID: 1}
+	pendingCert, err := sa.NewPendingCertificate(pendingCert)
+	test.AssertNotError(t, err, "Couldn't create a new pending cert")
+	test.AssertEquals(t, pendingCert.RegistrationID, int64(1))
+	test.AssertEquals(t, pendingCert.Status, core.StatusPending)
+	test.AssertNotEquals(t, pendingCert.RequestID, "")
+	test.Assert(t, core.LooksLikeAToken(pendingCert.RequestID), "Bad request ID in pending cert")
 
-	digest, err := sa.AddCertificate(certDER, 1)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
-	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
+	// Try to retrieve the pending certificate
+	retrieved, err := sa.GetCertificateByRequestID(pendingCert.RequestID)
+	test.AssertNotError(t, err, "Couldn't retrieve pending certificate")
+	test.AssertEquals(t, retrieved.RequestID, pendingCert.RequestID)
+	test.AssertEquals(t, retrieved.Status, pendingCert.Status)
 
-	// Example cert serial is 0x21bd4, so a prefix of all zeroes should fetch it.
-	retrievedCert, err := sa.GetCertificateByShortSerial("0000000000000000")
-	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by short serial")
-	test.AssertByteEquals(t, certDER, retrievedCert.DER)
+	// Try to finalize a certificate with non-final status
+	err = sa.FinalizeCertificate(pendingCert)
+	test.AssertError(t, err, "Finalized a cert that was still pending")
 
-	retrievedCert, err = sa.GetCertificate("00000000000000000000000000021bd4")
-	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
-	test.AssertByteEquals(t, certDER, retrievedCert.DER)
+	// Try to finalize a certificate for which there is no pending cert
+	novelCert := core.Certificate{RegistrationID: 1, RequestID: "unknown"}
+	err = sa.FinalizeCertificate(novelCert)
+	test.AssertError(t, err, "Finalized a cert that was not pending")
 
-	certificateStatus, err := sa.GetCertificateStatus("00000000000000000000000000021bd4")
-	test.AssertNotError(t, err, "Couldn't get status for www.eff.org.der")
+	// Try to finalize an (correctly) invalid cert
+	pendingCert.Status = core.StatusInvalid
+	err = sa.FinalizeCertificate(pendingCert)
+	test.AssertNotError(t, err, "Failed to finalize on a valid request")
+
+	// Try to retrieve the corresponding pending certificate (which
+	// should have been deleted)
+	tx, err := sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Could not get DB transaction to look for pending certificate")
+	pendingStillAround := existingPendingCert(tx, pendingCert.RequestID)
+	test.Assert(t, !pendingStillAround, "FinalizeCertificate failed to delete pending certificate")
+	tx.Rollback()
+
+	// Try to retrieve the finalized certificate
+	retrieved, err = sa.GetCertificateByRequestID(pendingCert.RequestID)
+	test.AssertNotError(t, err, "Couldn't retrieve finalized certificate")
+	test.AssertEquals(t, retrieved.RequestID, pendingCert.RequestID)
+	test.AssertEquals(t, retrieved.Status, pendingCert.Status)
+
+	// Try to finalize the same certificate twice
+	err = sa.FinalizeCertificate(pendingCert)
+	test.AssertError(t, err, "Allowed the same cert to finalize twice")
+
+	// Insert a certificate with a serial number and test retrieval
+	pendingCert = core.Certificate{RegistrationID: 1}
+	pendingCert, err = sa.NewPendingCertificate(pendingCert)
+	test.AssertNotError(t, err, "Failed to create new pending cert")
+
+	pendingCert.Status = core.StatusValid
+	pendingCert.Serial = "ff00000000000002238054509817da5a"
+	pendingCert.DER = []byte{0x30, 0x00}
+	err = sa.FinalizeCertificate(pendingCert)
+	test.AssertNotError(t, err, "Failed to finalize pending cert")
+
+	retrieved, err = sa.GetCertificateByShortSerial("ff00000000000002")
+	test.AssertNotError(t, err, "Couldn't get certificate by short serial")
+	test.AssertByteEquals(t, pendingCert.DER, retrieved.DER)
+
+	retrieved, err = sa.GetCertificate("ff00000000000002238054509817da5a")
+	test.AssertNotError(t, err, "Couldn't get certificate by short serial")
+	test.AssertByteEquals(t, pendingCert.DER, retrieved.DER)
+
+	certificateStatus, err := sa.GetCertificateStatus("ff00000000000002238054509817da5a")
+	test.AssertNotError(t, err, "Couldn't get status for known valid certificate")
 	test.Assert(t, !certificateStatus.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
-
-	// Test cert generated locally by Boulder / CFSSL, serial "ff00000000000002238054509817da5a"
-	certDER2, err := ioutil.ReadFile("test-cert.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-
-	digest2, err := sa.AddCertificate(certDER2, 1)
-	test.AssertNotError(t, err, "Couldn't add test-cert.der")
-	test.AssertEquals(t, digest2, "CMVYqWzyqUW7pfBF2CxL0Uk6I0Upsk7p4EWSnd_vYx4")
-
-	// Example cert serial is 0x21bd4, so a prefix of all zeroes should fetch it.
-	retrievedCert2, err := sa.GetCertificateByShortSerial("ff00000000000002")
-	test.AssertNotError(t, err, "Couldn't get test-cert.der")
-	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
-
-	retrievedCert2, err = sa.GetCertificate("ff00000000000002238054509817da5a")
-	test.AssertNotError(t, err, "Couldn't get test-cert.der")
-	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
-
-	certificateStatus2, err := sa.GetCertificateStatus("ff00000000000002238054509817da5a")
-	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
-	test.Assert(t, !certificateStatus2.SubscriberApproved, "SubscriberApproved should be false")
-	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
-	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 }
 
 // TestGetCertificateByShortSerial tests some failure conditions for GetCertificate.
@@ -362,17 +387,20 @@ func TestUpdateOCSP(t *testing.T) {
 	sa := initSA(t)
 
 	// Add a cert to the DB to test with.
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(certDER, 1)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	cert := core.Certificate{RegistrationID: 1}
+	cert, err := sa.NewPendingCertificate(cert)
+	test.AssertNotError(t, err, "Failed to create new pending cert")
+	cert.Status = core.StatusValid
+	cert.Serial = "ff00000000000002238054509817da5a"
+	cert.DER = []byte{0x30, 0x00}
+	err = sa.FinalizeCertificate(cert)
+	test.AssertNotError(t, err, "Failed to finalize pending cert")
 
-	serial := "00000000000000000000000000021bd4"
 	const ocspResponse = "this is a fake OCSP response"
-	err = sa.UpdateOCSP(serial, []byte(ocspResponse))
+	err = sa.UpdateOCSP(cert.Serial, []byte(ocspResponse))
 	test.AssertNotError(t, err, "UpdateOCSP failed")
 
-	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
+	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, cert.Serial)
 	certificateStatus := certificateStatusObj.(*core.CertificateStatus)
 	test.AssertNotError(t, err, "Failed to fetch certificate status")
 	test.Assert(t,
@@ -382,7 +410,7 @@ func TestUpdateOCSP(t *testing.T) {
 	var fetchedOcspResponse core.OCSPResponse
 	err = sa.dbMap.SelectOne(&fetchedOcspResponse,
 		`SELECT * from ocspResponses where serial = ? order by createdAt DESC limit 1;`,
-		serial)
+		cert.Serial)
 	test.AssertNotError(t, err, "Failed to fetch OCSP response")
 	test.AssertEquals(t, ocspResponse, string(fetchedOcspResponse.Response))
 }

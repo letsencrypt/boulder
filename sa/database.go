@@ -135,20 +135,23 @@ func (log *SQLLogger) Printf(format string, v ...interface{}) {
 // initTables constructs the table map for the ORM. If you want to also create
 // the tables, call CreateTablesIfNotExists on the DbMap.
 func initTables(dbMap *gorp.DbMap) {
-	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "ID")
+	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "id")
 	regTable.SetVersionCol("LockCol")
 	regTable.ColMap("Key").SetNotNull(true)
 	regTable.ColMap("KeySHA256").SetNotNull(true).SetUnique(true)
-	pendingAuthzTable := dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
+	pendingAuthzTable := dbMap.AddTableWithName(pendingAuthzModel{}, "pending_authz").SetKeys(false, "id")
 	pendingAuthzTable.SetVersionCol("LockCol")
 	pendingAuthzTable.ColMap("Challenges").SetMaxSize(1536)
 
 	authzTable := dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
 	authzTable.ColMap("Challenges").SetMaxSize(1536)
 
-	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
-	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
-	dbMap.AddTableWithName(core.OCSPResponse{}, "ocspResponses").SetKeys(true, "ID")
-	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "Serial")
-	dbMap.AddTableWithName(core.DeniedCSR{}, "deniedCSRs").SetKeys(true, "ID")
+	dbMap.AddTableWithName(pendingCertModel{}, "pending_cert").SetKeys(false, "registrationID")
+	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "serial")
+
+	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "serial").SetVersionCol("LockCol")
+
+	dbMap.AddTableWithName(core.OCSPResponse{}, "ocspResponses").SetKeys(true, "id")
+	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "serial")
+	dbMap.AddTableWithName(core.DeniedCSR{}, "deniedCSRs").SetKeys(true, "id")
 }

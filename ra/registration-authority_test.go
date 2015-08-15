@@ -6,23 +6,16 @@
 package ra
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
-	"fmt"
 	"net/url"
 	"testing"
 	"time"
 
-	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
-	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
@@ -43,6 +36,20 @@ func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization,
 
 func (dva *DummyValidationAuthority) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	return false, true, nil
+}
+
+type DummyCertificateAuthority struct{}
+
+func (dca *DummyCertificateAuthority) IssueCertificate(x509.CertificateRequest, int64, string, time.Time) (core.Certificate, error) {
+	return core.Certificate{RequestID: core.NewToken()}, nil
+}
+
+func (dca *DummyCertificateAuthority) RevokeCertificate(string, int) error {
+	return nil
+}
+
+func (dca *DummyCertificateAuthority) GenerateOCSP(core.OCSPSigningRequest) ([]byte, error) {
+	return nil, nil
 }
 
 var (
@@ -125,7 +132,7 @@ var (
 	log = mocks.UseMockLog()
 )
 
-func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
+func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -148,37 +155,6 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 
 	va := &DummyValidationAuthority{}
 
-	// PEM files in certificate-authority_test.go
-	caKeyPEM, _ := pem.Decode([]byte(CAkeyPEM))
-	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
-	caCertPEM, _ := pem.Decode([]byte(CAcertPEM))
-	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
-	basicPolicy := &cfsslConfig.Signing{
-		Default: &cfsslConfig.SigningProfile{
-			Usage:  []string{"server auth", "client auth"},
-			Expiry: 1 * time.Hour,
-			CSRWhitelist: &cfsslConfig.CSRWhitelist{
-				PublicKey:          true,
-				PublicKeyAlgorithm: true,
-				SignatureAlgorithm: true,
-				DNSNames:           true,
-			},
-		},
-	}
-	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
-	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
-	pa := policy.NewPolicyAuthorityImpl()
-	cadb, _ := mocks.NewMockCertificateAuthorityDatabase()
-	ca := ca.CertificateAuthorityImpl{
-		Signer:         signer,
-		OCSPSigner:     ocspSigner,
-		SA:             sa,
-		PA:             pa,
-		DB:             cadb,
-		ValidityPeriod: time.Hour * 2190,
-		NotAfter:       time.Now().Add(time.Hour * 8761),
-		MaxKeySize:     4096,
-	}
 	csrDER, _ := hex.DecodeString(CSRhex)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 
@@ -188,8 +164,8 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	ra := NewRegistrationAuthorityImpl()
 	ra.SA = sa
 	ra.VA = va
-	ra.CA = &ca
-	ra.PA = pa
+	ra.CA = &DummyCertificateAuthority{}
+	ra.PA = policy.NewPolicyAuthorityImpl()
 	ra.AuthzBase = "http://acme.invalid/authz/"
 	ra.MaxKeySize = 4096
 	ra.DNSResolver = &mocks.MockDNS{}
@@ -204,7 +180,7 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	AuthzFinal.Expires = &exp
 	AuthzFinal.Challenges[0].Status = "valid"
 
-	return &ca, va, sa, &ra
+	return va, sa, &ra
 }
 
 func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
@@ -258,7 +234,7 @@ func TestValidateEmail(t *testing.T) {
 }
 
 func TestNewRegistration(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, sa, ra := initAuthorities(t)
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
 		Contact: []*core.AcmeURL{mailto},
@@ -282,7 +258,7 @@ func TestNewRegistration(t *testing.T) {
 }
 
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
-	_, _, _, ra := initAuthorities(t)
+	_, _, ra := initAuthorities(t)
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
 		ID:        23,
@@ -308,7 +284,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
-	_, _, _, ra := initAuthorities(t)
+	_, _, ra := initAuthorities(t)
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
 		Contact: []*core.AcmeURL{mailto},
@@ -320,7 +296,7 @@ func TestNewRegistrationBadKey(t *testing.T) {
 }
 
 func TestNewAuthorization(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, sa, ra := initAuthorities(t)
 
 	_, err := ra.NewAuthorization(AuthzRequest, 0)
 	test.AssertError(t, err, "Authorization cannot have registrationID == 0")
@@ -348,7 +324,7 @@ func TestNewAuthorization(t *testing.T) {
 }
 
 func TestUpdateAuthorization(t *testing.T) {
-	_, va, sa, ra := initAuthorities(t)
+	va, sa, ra := initAuthorities(t)
 	AuthzInitial, _ = sa.NewPendingAuthorization(AuthzInitial)
 	sa.UpdatePendingAuthorization(AuthzInitial)
 
@@ -371,7 +347,7 @@ func TestUpdateAuthorization(t *testing.T) {
 }
 
 func TestOnValidationUpdate(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, sa, ra := initAuthorities(t)
 	AuthzUpdated, _ = sa.NewPendingAuthorization(AuthzUpdated)
 	sa.UpdatePendingAuthorization(AuthzUpdated)
 
@@ -393,7 +369,7 @@ func TestOnValidationUpdate(t *testing.T) {
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, sa, ra := initAuthorities(t)
 	authz := core.Authorization{}
 	authz, _ = sa.NewPendingAuthorization(authz)
 	authz.Identifier = core.AcmeIdentifier{
@@ -424,7 +400,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 }
 
 func TestAuthorizationRequired(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, sa, ra := initAuthorities(t)
 	AuthzFinal.RegistrationID = 1
 	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
 	sa.UpdatePendingAuthorization(AuthzFinal)
@@ -443,7 +419,7 @@ func TestAuthorizationRequired(t *testing.T) {
 }
 
 func TestNewCertificate(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, sa, ra := initAuthorities(t)
 	AuthzFinal.RegistrationID = 1
 	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
 	sa.UpdatePendingAuthorization(AuthzFinal)
@@ -464,23 +440,8 @@ func TestNewCertificate(t *testing.T) {
 	if err != nil {
 		return
 	}
-
-	parsedCert, err := x509.ParseCertificate(cert.DER)
-	test.AssertNotError(t, err, "Failed to parse certificate")
-	if err != nil {
-		return
-	}
-
-	// Verify that cert shows up and is as expected
-	dbCert, err := sa.GetCertificate(core.SerialToString(parsedCert.SerialNumber))
-	test.AssertNotError(t, err, fmt.Sprintf("Could not fetch certificate %032x from database",
-		parsedCert.SerialNumber))
-	if err != nil {
-		return
-	}
-	test.Assert(t, bytes.Compare(cert.DER, dbCert.DER) == 0, "Certificates differ")
-
-	t.Log("DONE TestOnValidationUpdate")
+	test.Assert(t, core.LooksLikeAToken(cert.RequestID), "Request ID not passed through")
+	t.Log("DONE TestNewCertificate")
 }
 
 var CAkeyPEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
