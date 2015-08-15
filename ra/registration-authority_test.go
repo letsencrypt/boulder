@@ -21,7 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
@@ -123,9 +122,12 @@ var (
 	AuthzFinal   = core.Authorization{}
 
 	log = mocks.UseMockLog()
+
+	// TODO(jmhodges): Turn this into boulder_sa_test
+	dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
 )
 
-func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, core.RegistrationAuthority) {
+func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -139,11 +141,22 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
 	test.AssertNotError(t, err, "Failed to unmarshall JWK")
 
-	sa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
-	test.AssertNotError(t, err, "Failed to create SA")
-	err = sa.CreateTablesIfNotExists()
+	dbMap, err := sa.NewDbMap(dbConnStr)
 	if err != nil {
-		t.Fatalf("unable to create tables: %s", err)
+		t.Fatalf("Failed to create dbMap: %s", err)
+	}
+	ssa, err := sa.NewSQLStorageAuthority(dbMap)
+	if err != nil {
+		t.Fatalf("Failed to create SA: %s", err)
+	}
+
+	err = ssa.CreateTablesIfNotExists()
+	if err != nil {
+		t.Fatalf("Failed to create SA tables: %s", err)
+	}
+
+	if err = dbMap.TruncateTables(); err != nil {
+		t.Fatalf("Failed to truncate SA tables: %s", err)
 	}
 
 	va := &DummyValidationAuthority{}
@@ -168,25 +181,33 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
 	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
 	pa := policy.NewPolicyAuthorityImpl()
-	cadb, _ := mocks.NewMockCertificateAuthorityDatabase()
+	cadb, caDBCleanUp := caDBImpl(t)
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
 		OCSPSigner:     ocspSigner,
-		SA:             sa,
+		SA:             ssa,
 		PA:             pa,
 		DB:             cadb,
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
 		MaxKeySize:     4096,
 	}
+	cleanUp := func() {
+		if err = dbMap.TruncateTables(); err != nil {
+			t.Fatalf("Failed to truncate tables after the test: %s", err)
+		}
+		dbMap.Db.Close()
+		caDBCleanUp()
+	}
+
 	csrDER, _ := hex.DecodeString(CSRhex)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 
 	// This registration implicitly gets ID = 1
-	Registration, _ = sa.NewRegistration(core.Registration{Key: AccountKeyA})
+	Registration, _ = ssa.NewRegistration(core.Registration{Key: AccountKeyA})
 
 	ra := NewRegistrationAuthorityImpl()
-	ra.SA = sa
+	ra.SA = ssa
 	ra.VA = va
 	ra.CA = &ca
 	ra.PA = pa
@@ -204,7 +225,55 @@ func initAuthorities(t *testing.T) (core.CertificateAuthority, *DummyValidationA
 	AuthzFinal.Expires = &exp
 	AuthzFinal.Challenges[0].Status = "valid"
 
-	return &ca, va, sa, &ra
+	return &ca, va, ssa, &ra, cleanUp
+}
+
+// This is an unfortunate bit of tech debt that is being taken on in
+// order to get the more important change of using MySQL/MariaDB in
+// all of our tests working without SQLite. We already had issues with
+// the RA here getting a real CertificateAuthority instead of a
+// CertificateAuthorityClient, so this is only marginally worse.
+// TODO(Issue #628): use a CAClient fake instead of a CAImpl instance
+func caDBImpl(t *testing.T) (core.CertificateAuthorityDatabase, func()) {
+	dbMap, err := sa.NewDbMap(dbConnStr)
+	if err != nil {
+		t.Fatalf("Could not construct dbMap: %s", err)
+	}
+
+	cadb, err := ca.NewCertificateAuthorityDatabaseImpl(dbMap)
+	if err != nil {
+		t.Fatalf("Could not construct CA DB: %s", err)
+	}
+
+	// We intentionally call CreateTablesIfNotExists twice before
+	// returning because of the weird insert inside it. The
+	// CADatabaseImpl code expects the existence of a single row in
+	// its serialIds table or else it errors. CreateTablesIfNotExists
+	// currently inserts that row and TruncateTables will remove
+	// it. But we need to make sure the tables exist before
+	// TruncateTables can be called to reset the table. So, two calls
+	// to CreateTablesIfNotExists.
+
+	err = cadb.CreateTablesIfNotExists()
+	if err != nil {
+		t.Fatalf("Could not construct tables: %s", err)
+	}
+	err = dbMap.TruncateTables()
+	if err != nil {
+		t.Fatalf("Could not truncate tables: %s", err)
+	}
+	err = cadb.CreateTablesIfNotExists()
+	if err != nil {
+		t.Fatalf("Could not construct tables: %s", err)
+	}
+	cleanUp := func() {
+		if err := dbMap.TruncateTables(); err != nil {
+			t.Fatalf("Could not truncate tables after the test: %s", err)
+		}
+		dbMap.Db.Close()
+	}
+
+	return cadb, cleanUp
 }
 
 func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
@@ -258,7 +327,8 @@ func TestValidateEmail(t *testing.T) {
 }
 
 func TestNewRegistration(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, _, sa, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
 		Contact: []*core.AcmeURL{mailto},
@@ -282,7 +352,8 @@ func TestNewRegistration(t *testing.T) {
 }
 
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
-	_, _, _, ra := initAuthorities(t)
+	_, _, _, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
 		ID:        23,
@@ -298,17 +369,19 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	// TODO: Enable this test case once we validate terms agreement.
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
 
+	id := result.ID
 	result2, err := ra.UpdateRegistration(result, core.Registration{
 		ID:  33,
 		Key: ShortKey,
 	})
 	test.AssertNotError(t, err, "Could not update registration")
-	test.Assert(t, result2.ID != 33, "ID shouldn't be overwritten.")
+	test.Assert(t, result2.ID != 33, fmt.Sprintf("ID shouldn't be overwritten. expected %d, got %d", id, result2.ID))
 	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
-	_, _, _, ra := initAuthorities(t)
+	_, _, _, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
 		Contact: []*core.AcmeURL{mailto},
@@ -320,8 +393,8 @@ func TestNewRegistrationBadKey(t *testing.T) {
 }
 
 func TestNewAuthorization(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
-
+	_, _, sa, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
 	_, err := ra.NewAuthorization(AuthzRequest, 0)
 	test.AssertError(t, err, "Authorization cannot have registrationID == 0")
 
@@ -348,7 +421,8 @@ func TestNewAuthorization(t *testing.T) {
 }
 
 func TestUpdateAuthorization(t *testing.T) {
-	_, va, sa, ra := initAuthorities(t)
+	_, va, sa, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
 	AuthzInitial, _ = sa.NewPendingAuthorization(AuthzInitial)
 	sa.UpdatePendingAuthorization(AuthzInitial)
 
@@ -371,7 +445,8 @@ func TestUpdateAuthorization(t *testing.T) {
 }
 
 func TestOnValidationUpdate(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, _, sa, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
 	AuthzUpdated, _ = sa.NewPendingAuthorization(AuthzUpdated)
 	sa.UpdatePendingAuthorization(AuthzUpdated)
 
@@ -393,7 +468,8 @@ func TestOnValidationUpdate(t *testing.T) {
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, _, sa, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
 	authz := core.Authorization{}
 	authz, _ = sa.NewPendingAuthorization(authz)
 	authz.Identifier = core.AcmeIdentifier{
@@ -424,7 +500,8 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 }
 
 func TestAuthorizationRequired(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, _, sa, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
 	AuthzFinal.RegistrationID = 1
 	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
 	sa.UpdatePendingAuthorization(AuthzFinal)
@@ -443,7 +520,8 @@ func TestAuthorizationRequired(t *testing.T) {
 }
 
 func TestNewCertificate(t *testing.T) {
-	_, _, sa, ra := initAuthorities(t)
+	_, _, sa, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
 	AuthzFinal.RegistrationID = 1
 	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
 	sa.UpdatePendingAuthorization(AuthzFinal)

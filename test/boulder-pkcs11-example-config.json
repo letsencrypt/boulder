@@ -42,8 +42,7 @@
   "ca": {
     "serialPrefix": 255,
     "profile": "ee",
-    "dbDriver": "sqlite3",
-    "dbConnect": ":memory:",
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "debugAddr": "localhost:8001",
     "testMode": true,
     "_comment": "This should only be present in testMode. In prod use an HSM.",
@@ -105,8 +104,7 @@
   },
 
   "sa": {
-    "dbDriver": "sqlite3",
-    "dbConnect": ":memory:",
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "debugAddr": "localhost:8003"
   },
 
@@ -121,21 +119,18 @@
   },
 
   "revoker": {
-    "dbDriver": "sqlite3",
-    "dbConnect": ":memory:"
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test"
   },
 
   "ocspResponder": {
-    "dbDriver": "sqlite3",
-    "dbConnect": ":memory:",
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "debugAddr": "localhost:8004",
     "path": "/",
     "listenAddress": "localhost:4001"
   },
 
   "ocspUpdater": {
-    "dbDriver": "sqlite3",
-    "dbConnect": ":memory:",
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "debugAddr": "localhost:8005",
     "minTimeToExpiry": "72h"
   },
@@ -149,8 +144,7 @@
     "port": "25",
     "username": "cert-master@example.com",
     "password": "password",
-    "dbDriver": "sqlite3",
-    "dbConnect": ":memory:",
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "emailTemplate": "test/example-expiration-template",
