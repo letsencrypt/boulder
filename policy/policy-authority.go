@@ -24,14 +24,14 @@ type PolicyAuthorityImpl struct {
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl(driver, connect string, enforceWhitelist bool) (*PolicyAuthorityImpl, error) {
+func NewPolicyAuthorityImpl(connect string, enforceWhitelist bool) (*PolicyAuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
 	pa := PolicyAuthorityImpl{log: logger}
 
 	// Setup policy db
-	padb, err := NewPolicyAuthorityDatabaseImpl(driver, connect)
+	padb, err := NewPolicyAuthorityDatabaseImpl(connect)
 	if err != nil {
 		return nil, err
 	}

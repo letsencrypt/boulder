@@ -120,7 +120,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	pa, err := policy.NewPolicyAuthorityImpl(paConfig.DBDriver, paConfig.DBConnect, paConfig.EnforcePolicyWhitelist)
+	pa, err := policy.NewPolicyAuthorityImpl(paConfig.DBConnect, paConfig.EnforcePolicyWhitelist)
 	if err != nil {
 		return nil, err
 	}

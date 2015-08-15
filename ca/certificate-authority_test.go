@@ -11,13 +11,11 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/mocks"
 
@@ -338,30 +336,44 @@ var log = mocks.UseMockLog()
 // CFSSL config
 const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"
+const caCertFile = "../test/test-ca.pem"
 
 const issuerCert = "../test/test-ca.pem"
 
+// TODO(jmhodges): change this to boulder_ca_test database
+var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
 var exPA = cmd.PAConfig{
-	DBDriver:  "sqlite3",
-	DBConnect: ":memory:",
+	DBConnect: dbConnStr,
 }
 
-func TestMain(m *testing.M) {
-
-	os.Exit(m.Run())
-}
-
-func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthority core.StorageAuthority, caConfig cmd.CAConfig) {
+func setup(t *testing.T) (core.CertificateAuthorityDatabase, core.StorageAuthority, cmd.CAConfig, func()) {
 	// Create an SA
-	ssa, err := sa.NewSQLStorageAuthority("sqlite3", ":memory:")
-	test.AssertNotError(t, err, "Failed to create SA")
-	ssa.CreateTablesIfNotExists()
-	storageAuthority = ssa
+	dbMap, err := sa.NewDbMap(dbConnStr)
+	if err != nil {
+		t.Fatalf("Failed to create dbMap: %s", err)
+	}
+	ssa, err := sa.NewSQLStorageAuthority(dbMap)
+	if err != nil {
+		t.Fatalf("Failed to create SA: %s", err)
+	}
+	if err = ssa.CreateTablesIfNotExists(); err != nil {
+		t.Fatalf("Failed to create tables: %s", err)
+	}
+	if err = dbMap.TruncateTables(); err != nil {
+		t.Fatalf("Failed to truncate tables: %s", err)
+	}
 
-	cadb, _ = mocks.NewMockCertificateAuthorityDatabase()
+	cadb, caDBCleanUp := caDBImpl(t)
+	cleanUp := func() {
+		if err = dbMap.TruncateTables(); err != nil {
+			t.Fatalf("Failed to truncate tables after the test: %s", err)
+		}
+		dbMap.Db.Close()
+		caDBCleanUp()
+	}
 
 	// Create a CA
-	caConfig = cmd.CAConfig{
+	caConfig := cmd.CAConfig{
 		Profile:      profileName,
 		SerialPrefix: 17,
 		Key: cmd.KeyConfig{
@@ -406,19 +418,22 @@ func setup(t *testing.T) (cadb core.CertificateAuthorityDatabase, storageAuthori
 			},
 		},
 	}
-	return cadb, storageAuthority, caConfig
+	return cadb, ssa, caConfig, cleanUp
 }
 
 func TestFailNoSerial(t *testing.T) {
-	cadb, _, caConfig := setup(t)
+	cadb, _, caConfig, cleanUp := setup(t)
+	defer cleanUp()
+
 	caConfig.SerialPrefix = 0
 	_, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
 func TestRevoke(t *testing.T) {
-	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
+	cadb, storageAuthority, caConfig, cleanUp := setup(t)
+	defer cleanUp()
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	if err != nil {
 		return
@@ -449,8 +464,9 @@ func TestRevoke(t *testing.T) {
 }
 
 func TestIssueCertificate(t *testing.T) {
-	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
+	cadb, storageAuthority, caConfig, cleanUp := setup(t)
+	defer cleanUp()
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -525,8 +541,9 @@ func TestIssueCertificate(t *testing.T) {
 }
 
 func TestRejectNoName(t *testing.T) {
-	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
+	cadb, storageAuthority, caConfig, cleanUp := setup(t)
+	defer cleanUp()
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -541,8 +558,9 @@ func TestRejectNoName(t *testing.T) {
 }
 
 func TestRejectTooManyNames(t *testing.T) {
-	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
+	cadb, storageAuthority, caConfig, cleanUp := setup(t)
+	defer cleanUp()
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 
@@ -554,8 +572,9 @@ func TestRejectTooManyNames(t *testing.T) {
 }
 
 func TestDeduplication(t *testing.T) {
-	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
+	cadb, storageAuthority, caConfig, cleanUp := setup(t)
+	defer cleanUp()
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -583,8 +602,9 @@ func TestDeduplication(t *testing.T) {
 }
 
 func TestRejectValidityTooLong(t *testing.T) {
-	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
+	cadb, storageAuthority, caConfig, cleanUp := setup(t)
+	defer cleanUp()
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile, exPA)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
@@ -604,8 +624,9 @@ func TestRejectValidityTooLong(t *testing.T) {
 }
 
 func TestShortKey(t *testing.T) {
-	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
+	cadb, storageAuthority, caConfig, cleanUp := setup(t)
+	defer cleanUp()
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile, exPA)
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
 
@@ -617,8 +638,9 @@ func TestShortKey(t *testing.T) {
 }
 
 func TestRejectBadAlgorithm(t *testing.T) {
-	cadb, storageAuthority, caConfig := setup(t)
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, issuerCert, exPA)
+	cadb, storageAuthority, caConfig, cleanUp := setup(t)
+	defer cleanUp()
+	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile, exPA)
 	ca.SA = storageAuthority
 	ca.MaxKeySize = 4096
 

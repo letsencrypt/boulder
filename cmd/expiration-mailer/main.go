@@ -240,7 +240,7 @@ func main() {
 		go cmd.DebugServer(c.Mailer.DebugAddr)
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.Mailer.DBDriver, c.Mailer.DBConnect)
+		dbMap, err := sa.NewDbMap(c.Mailer.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		ch, err := rpc.AmqpChannel(c)

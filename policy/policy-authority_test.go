@@ -14,6 +14,7 @@ import (
 )
 
 var log = mocks.UseMockLog()
+var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
 
 func TestWillingToIssue(t *testing.T) {
 	shouldBeSyntaxError := []string{
@@ -91,7 +92,7 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zombo-.com",
 	}
 
-	pa, _ := NewPolicyAuthorityImpl("sqlite3", ":memory:", false)
+	pa, _ := NewPolicyAuthorityImpl(dbConnStr, false)
 	rules := []DomainRule{}
 	for _, b := range shouldBeBlacklisted {
 		rules = append(rules, DomainRule{Host: b, Type: blacklisted})
@@ -147,7 +148,7 @@ func TestWillingToIssue(t *testing.T) {
 }
 
 func TestChallengesFor(t *testing.T) {
-	pa, _ := NewPolicyAuthorityImpl("sqlite3", ":memory:", true)
+	pa, _ := NewPolicyAuthorityImpl(dbConnStr, true)
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 

@@ -128,6 +128,8 @@ wk6Oiadty3eQqSBJv0HnpmiEdQVffIK5Pg4M8Dd+aOBnEkbopAJOuA==
 		"d616e2d6578616d706c652e636f6d300b06092a864886f70d01010b0341008cf8" +
 		"f349efa6d2fadbaf8ed9ba67e5a9b98c3d5a13c06297c4cf36dc76f494e8887e3" +
 		"5dd9c885526136d810fc7640f5ba56281e2b75fa3ff7c91a7d23bab7fd4"
+
+	dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
 )
 
 type MockSA struct {
@@ -514,8 +516,7 @@ func TestIssueCertificate(t *testing.T) {
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
 	common := cmd.PAConfig{
-		DBDriver:  "sqlite3",
-		DBConnect: ":memory:",
+		DBConnect: dbConnStr,
 	}
 	ra, _ := ra.NewRegistrationAuthorityImpl(common)
 	ra.SA = &MockSA{}

@@ -23,7 +23,7 @@ var (
 )
 
 func TestLoadAndDump(t *testing.T) {
-	p, err := NewPolicyAuthorityDatabaseImpl("sqlite3", ":memory:")
+	p, err := NewPolicyAuthorityDatabaseImpl(dbConnStr)
 	test.AssertNotError(t, err, "Couldn't create PADB")
 
 	err = p.LoadRules([]DomainRule{rA, rB})
@@ -36,7 +36,7 @@ func TestLoadAndDump(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	p, err := NewPolicyAuthorityDatabaseImpl("sqlite3", ":memory:")
+	p, err := NewPolicyAuthorityDatabaseImpl(dbConnStr)
 	test.AssertNotError(t, err, "Couldn't create PADB")
 
 	err = p.LoadRules([]DomainRule{rA, rB})

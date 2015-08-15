@@ -41,9 +41,9 @@ type PolicyAuthorityDatabaseImpl struct {
 
 // NewPolicyAuthorityDatabaseImpl constructs a Policy Authority Database (and
 // creates tables if they are non-existent)
-func NewPolicyAuthorityDatabaseImpl(driver, name string) (padb *PolicyAuthorityDatabaseImpl, err error) {
+func NewPolicyAuthorityDatabaseImpl(name string) (padb *PolicyAuthorityDatabaseImpl, err error) {
 	logger := blog.GetAuditLogger()
-	dbMap, err := sa.NewDbMap(driver, name)
+	dbMap, err := sa.NewDbMap(name)
 	if err != nil {
 		return nil, err
 	}

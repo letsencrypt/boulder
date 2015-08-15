@@ -43,7 +43,7 @@ func NewRegistrationAuthorityImpl(paConfig cmd.PAConfig) (ra RegistrationAuthori
 	logger.Notice("Registration Authority Starting")
 
 	ra.log = logger
-	pa, err := policy.NewPolicyAuthorityImpl(paConfig.DBDriver, paConfig.DBConnect, paConfig.EnforcePolicyWhitelist)
+	pa, err := policy.NewPolicyAuthorityImpl(paConfig.DBConnect, paConfig.EnforcePolicyWhitelist)
 	if err != nil {
 		return RegistrationAuthorityImpl{}, err
 	}
