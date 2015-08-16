@@ -10,11 +10,8 @@ package main
 // broker to look for anomalies.
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"sync"
-	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
@@ -22,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -40,70 +38,6 @@ const (
 	AmqpMandatory    = false
 	AmqpImmediate    = false
 )
-
-type timings struct {
-	deliveryTimings map[string]time.Time
-	dtMu            sync.Mutex
-
-	stats statsd.Statter
-}
-
-func (t *timings) size() int {
-	t.dtMu.Lock()
-	defer t.dtMu.Unlock()
-	return len(t.deliveryTimings)
-}
-
-func (t *timings) get(id string) time.Time {
-	t.dtMu.Lock()
-	defer t.dtMu.Unlock()
-	return t.deliveryTimings[id]
-}
-
-func (t *timings) add(id string) {
-	t.dtMu.Lock()
-	defer t.dtMu.Unlock()
-	t.deliveryTimings[id] = time.Now()
-}
-
-func (t *timings) delete(id string) {
-	t.dtMu.Lock()
-	defer t.dtMu.Unlock()
-	delete(t.deliveryTimings, id)
-}
-
-func (t *timings) timeDelivery(d amqp.Delivery) {
-	// If d is a call add to deliveryTimings and increment openCalls, if it is a
-	// response then get time.Since original call from deliveryTiming, send timing metric, and
-	// decrement openCalls, in both cases send the gauge RpcCallsWaiting and increment the counter
-	// RpcTraffic with the byte length of the RPC body.
-	t.stats.Inc("RPC.Traffic", int64(len(d.Body)), 1.0)
-	t.stats.Gauge("RPC.CallsWaiting", int64(t.size()), 1.0)
-
-	if d.ReplyTo != "" {
-		t.add(fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo))
-	} else {
-		rpcSent := t.get(fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
-		if rpcSent != *new(time.Time) {
-			respTime := time.Since(rpcSent)
-			t.delete(fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
-
-			// Check if the call failed
-			state := "Success"
-			var resp struct {
-				Error rpc.RPCError
-			}
-			json.Unmarshal(d.Body, &resp)
-			if resp.Error.Value != "" {
-				state = "Error"
-			}
-			t.stats.Inc(fmt.Sprintf("RPC.Rate.%s", state), 1, 1.0)
-			t.stats.TimingDuration(fmt.Sprintf("RPC.ResponseTime.%s.%s", d.Type, state), respTime, 1.0)
-		} else {
-		}
-	}
-
-}
 
 func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.Statter) {
 	ae := analysisengine.NewLoggingAnalysisEngine()
@@ -162,14 +96,11 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 		cmd.FailOnError(err, "Could not subscribe to queue")
 	}
 
-	timings := timings{
-		deliveryTimings: make(map[string]time.Time),
-		stats:           stats,
-	}
+	rpcMonitor := metrics.NewRPCMonitor(stats)
 
 	// Run forever.
 	for d := range deliveries {
-		go timings.timeDelivery(d)
+		go rpcMonitor.TimeDelivery(d)
 
 		// Pass each message to the Analysis Engine
 		err = ae.ProcessMessage(d)

@@ -6,13 +6,18 @@
 package metrics
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+
+	"github.com/letsencrypt/boulder/rpc"
 )
 
 // HTTPMonitor stores some server state
@@ -61,4 +66,74 @@ func (h *HTTPMonitor) watchAndServe(w http.ResponseWriter, r *http.Request) {
 	endpoint := strings.Join(segments, "/")
 
 	h.stats.TimingDuration(fmt.Sprintf("%s.HTTP.ResponseTime.%s.%s", h.statsPrefix, endpoint, state), cClosed, 1.0)
+}
+
+// RPCMonitor stores rpc delivery state
+type RPCMonitor struct {
+	deliveryTimings map[string]time.Time
+	dtMu            *sync.Mutex
+
+	stats statsd.Statter
+}
+
+// NewRPCMonitor returns a new initialized RPCMonitor
+func NewRPCMonitor(stats statsd.Statter) RPCMonitor {
+	return RPCMonitor{stats: stats, deliveryTimings: make(map[string]time.Time), dtMu: &sync.Mutex{}}
+}
+
+func (r *RPCMonitor) size() int {
+	r.dtMu.Lock()
+	defer r.dtMu.Unlock()
+	return len(r.deliveryTimings)
+}
+
+func (r *RPCMonitor) get(id string) time.Time {
+	r.dtMu.Lock()
+	defer r.dtMu.Unlock()
+	return r.deliveryTimings[id]
+}
+
+func (r *RPCMonitor) add(id string) {
+	r.dtMu.Lock()
+	defer r.dtMu.Unlock()
+	r.deliveryTimings[id] = time.Now()
+}
+
+func (r *RPCMonitor) delete(id string) {
+	r.dtMu.Lock()
+	defer r.dtMu.Unlock()
+	delete(r.deliveryTimings, id)
+}
+
+// TimeDelivery takes a single RPC delivery and provides metrics to StatsD about it
+func (r *RPCMonitor) TimeDelivery(d amqp.Delivery) {
+	// If d is a call add to deliveryTimings and increment openCalls, if it is a
+	// response then get time.Since original call from deliveryTiming, send timing metric, and
+	// decrement openCalls, in both cases send the gauge RpcCallsWaiting and increment the counter
+	// RpcTraffic with the byte length of the RPC body.
+	r.stats.Inc("RPC.Traffic", int64(len(d.Body)), 1.0)
+	r.stats.Gauge("RPC.CallsWaiting", int64(r.size()), 1.0)
+
+	if d.ReplyTo != "" {
+		r.add(fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo))
+	} else {
+		rpcSent := r.get(fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
+		if rpcSent != *new(time.Time) {
+			respTime := time.Since(rpcSent)
+			r.delete(fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
+
+			// Check if the call failed
+			state := "Success"
+			var resp struct {
+				Error rpc.RPCError
+			}
+			json.Unmarshal(d.Body, &resp)
+			if resp.Error.Value != "" {
+				state = "Error"
+			}
+			r.stats.Inc(fmt.Sprintf("RPC.Rate.%s", state), 1, 1.0)
+			r.stats.TimingDuration(fmt.Sprintf("RPC.ResponseTime.%s.%s", d.Type, state), respTime, 1.0)
+		} else {
+		}
+	}
 }
