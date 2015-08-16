@@ -13,7 +13,8 @@ The prefix will be prepended to all sent metrics to differentiate different sets
 
 This list is split up into metric topics with the names of the clients that submit these metrics.
 
-* Logging (`cmd/boulder-*` + `cmd/ocsp-responder` + `cmd/ocsp-updater` + `cmd/admin-revoker`)
+* Logging (`cmd/boulder-*` + `cmd/ocsp-responder` + `cmd/ocsp-updater` + `cmd/admin-revoker`
+  + `cmd/activity-monitor` + `cmd/expiration-mailer` + `cmd/external-cert-importer`)
 
     ```
 	[counter] Boulder.Logging.Audit
@@ -30,7 +31,7 @@ This list is split up into metric topics with the names of the clients that subm
 
     ```
 	[counter] Boulder.RPC.Rate.Success
-  [counter] Boulder.RPC.Rate.Error
+  	[counter] Boulder.RPC.Rate.Error
 	[counter] Boulder.RPC.Traffic
 
 	[gauge]   Boulder.RPC.CallsWaiting
@@ -60,16 +61,16 @@ This list is split up into metric topics with the names of the clients that subm
 
     ```
     (VA)
-  [counter] Boulder.VA.DNS.Rate
+  	[counter] Boulder.VA.DNS.Rate
 
 	[timing]  Boulder.VA.DNS.RTT.TXT
 	[timing]  Boulder.VA.DNS.RTT.CAA
 	[timing]  Boulder.VA.DNS.RTT.CNAME
 
     (RA)
-  [counter] Boulder.RA.DNS.Rate
+  	[counter] Boulder.RA.DNS.Rate
 
-  [timing]  Boulder.RA.DNS.RTT.MX
+  	[timing]  Boulder.RA.DNS.RTT.MX
     ```
 
 * Validation attempts (`cmd/boulder-va`)
@@ -101,4 +102,42 @@ This list is split up into metric topics with the names of the clients that subm
 	[gauge]  Boulder.{cmd-name}.Gostats.Gc.NextAt
 
 	[timing] Boulder.{cmd-name}.Gostats.Gc.PauseAvg
-	```
+	  ```
+
+* External certificate store loading (`cmd/external-cert-importer`)
+
+    ```
+  [counter] Boulder.ExistingCert.Certs.Imported
+  [counter] Boulder.ExistingCert.Domains.Imported
+  [counter] Boulder.ExistingCert.Removed
+
+  [timing]  Boulder.ExistingCert.Certs.ImportTook
+  [timing]  Boulder.ExistingCert.Domains.ImportTook
+  [timing]  Boulder.ExistingCert.Certs.DeleteTook
+  [timing]  Boulder.ExistingCert.Domains.DeleteTook
+    ```
+
+* OCSP response updating (`cmd/ocsp-updater`)
+
+    ```
+  [counter] Boulder.OCSP.Updates.Processed
+  [counter] Boulder.OCSP.Updates.Failed
+  [counter] Boulder.OCSP.Updates.BatchesProcessed
+
+  [timing]  Boulder.OCSP.Updates.UpdateTook
+  [timing]  Boulder.OCSP.Updates.BatchTook
+    ```
+
+* Certificate expiration mailing (`cmd/expiration-mailer`)
+
+    ```
+  [counter] Boulder.Mailer.Expiration.Sent
+  [counter] Boulder.Mailer.Expiration.Errors.SendingNag.TemplateFailure
+  [counter] Boulder.Mailer.Expiration.Errors.SendingNag.SendFailure
+  [counter] Boulder.Mailer.Expiration.Errors.GetRegistration
+  [counter] Boulder.Mailer.Expiration.Errors.ParseCertificate
+  [counter] Boulder.Mailer.Expiration.Errors.UpdateCertificateStatus
+
+  [timing]  Boulder.Mailer.Expiration.SendingTook
+  [timing]  Boulder.Mailer.Expiration.ProcessingCertificatesTook
+    ```

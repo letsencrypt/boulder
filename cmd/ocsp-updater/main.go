@@ -119,7 +119,7 @@ func (updater *OCSPUpdater) updateOneSerial(serial string) error {
 	tx, err := updater.dbMap.Begin()
 	if err != nil {
 		updater.log.Err(fmt.Sprintf("OCSP %s: Error starting transaction, aborting: %s", serial, err))
-		updater.stats.Inc("OCSP.UpdatesFailed", 1, 1.0)
+		updater.stats.Inc("OCSP.Updates.Failed", 1, 1.0)
 		tx.Rollback()
 		// Failure to begin transaction is a fatal error.
 		return FatalError(err.Error())
@@ -127,7 +127,7 @@ func (updater *OCSPUpdater) updateOneSerial(serial string) error {
 
 	if err := updater.processResponse(tx, serial); err != nil {
 		updater.log.Err(fmt.Sprintf("OCSP %s: Could not process OCSP Response, skipping: %s", serial, err))
-		updater.stats.Inc("OCSP.UpdatesFailed", 1, 1.0)
+		updater.stats.Inc("OCSP.Updates.Failed", 1, 1.0)
 		tx.Rollback()
 		return err
 	}
@@ -135,14 +135,14 @@ func (updater *OCSPUpdater) updateOneSerial(serial string) error {
 	err = tx.Commit()
 	if err != nil {
 		updater.log.Err(fmt.Sprintf("OCSP %s: Error committing transaction, skipping: %s", serial, err))
-		updater.stats.Inc("OCSP.UpdatesFailed", 1, 1.0)
+		updater.stats.Inc("OCSP.Updates.Failed", 1, 1.0)
 		tx.Rollback()
 		return err
 	}
 
 	updater.log.Info(fmt.Sprintf("OCSP %s: OK", serial))
-	updater.stats.Inc("OCSP.UpdatesProcessed", 1, 1.0)
-	updater.stats.TimingDuration("OCSP.UpdateTime", time.Since(innerStart), 1.0)
+	updater.stats.Inc("OCSP.Updates.Processed", 1, 1.0)
+	updater.stats.TimingDuration("OCSP.Updates.UpdateTook", time.Since(innerStart), 1.0)
 	return nil
 }
 
@@ -176,8 +176,8 @@ func (updater *OCSPUpdater) findStaleResponses(oldestLastUpdatedTime time.Time, 
 			}
 		}
 
-		updater.stats.TimingDuration("OCSP.BatchTime", time.Since(outerStart), 1.0)
-		updater.stats.Inc("OCSP.BatchesProcessed", 1, 1.0)
+		updater.stats.TimingDuration("OCSP.Updates.BatchTook", time.Since(outerStart), 1.0)
+		updater.stats.Inc("OCSP.Updates.BatchesProcessed", 1, 1.0)
 	}
 
 	return err

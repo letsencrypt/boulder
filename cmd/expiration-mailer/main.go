@@ -73,7 +73,7 @@ func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []*core.AcmeURL
 			m.stats.Inc("Mailer.Expiration.Errors.SendingNag.SendFailure", 1, 1.0)
 			return err
 		}
-		m.stats.TimingDuration("Mailer.Expiration.Sending", time.Since(startSending), 1.0)
+		m.stats.TimingDuration("Mailer.Expiration.SendingTook", time.Since(startSending), 1.0)
 		m.stats.Inc("Mailer.Expiration.Sent", int64(len(emails)), 1.0)
 	}
 	return nil
@@ -133,7 +133,6 @@ func (m *mailer) processCerts(certs []core.Certificate) {
 		err = m.sendNags(parsedCert, reg.Contact)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error sending nag emails: %s", err))
-			m.stats.Inc("Mailer.Expiration.Errors.SendingNags", 1, 1.0)
 			continue
 		}
 		err = m.updateCertStatus(cert.Serial)
@@ -184,7 +183,7 @@ func (m *mailer) findExpiringCertificates() error {
 		if len(certs) > 0 {
 			processingStarted := time.Now()
 			m.processCerts(certs)
-			m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificates", time.Since(processingStarted), 1.0)
+			m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificatesTook", time.Since(processingStarted), 1.0)
 		}
 	}
 
