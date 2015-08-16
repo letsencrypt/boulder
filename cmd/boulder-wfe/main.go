@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/metrics"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -116,10 +117,10 @@ func main() {
 
 		auditlogger.Info(app.VersionString())
 
-		// Add HandlerTimer to output resp time + success/failure stats to statsd
+		httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
 
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
-		err = http.ListenAndServe(c.WFE.ListenAddress, cmd.HandlerTimer(h, stats, "WFE"))
+		err = http.ListenAndServe(c.WFE.ListenAddress, httpMonitor.Handle())
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

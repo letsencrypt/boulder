@@ -41,30 +41,52 @@ const (
 	AmqpImmediate    = false
 )
 
-var tMu sync.Mutex
+type timings struct {
+	deliveryTimings map[string]time.Time
+	dtMu            sync.Mutex
 
-func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[string]time.Time) {
+	stats statsd.Statter
+}
+
+func (t *timings) size() int {
+	t.dtMu.Lock()
+	defer t.dtMu.Unlock()
+	return len(t.deliveryTimings)
+}
+
+func (t *timings) get(id string) time.Time {
+	t.dtMu.Lock()
+	defer t.dtMu.Unlock()
+	return t.deliveryTimings[id]
+}
+
+func (t *timings) add(id string) {
+	t.dtMu.Lock()
+	defer t.dtMu.Unlock()
+	t.deliveryTimings[id] = time.Now()
+}
+
+func (t *timings) delete(id string) {
+	t.dtMu.Lock()
+	defer t.dtMu.Unlock()
+	delete(t.deliveryTimings, id)
+}
+
+func (t *timings) timeDelivery(d amqp.Delivery) {
 	// If d is a call add to deliveryTimings and increment openCalls, if it is a
 	// response then get time.Since original call from deliveryTiming, send timing metric, and
 	// decrement openCalls, in both cases send the gauge RpcCallsWaiting and increment the counter
 	// RpcTraffic with the byte length of the RPC body.
-	stats.Inc("RPC.Traffic", int64(len(d.Body)), 1.0)
-	tMu.Lock()
-	stats.Gauge("RPC.CallsWaiting", int64(len(deliveryTimings)), 1.0)
-	tMu.Unlock()
+	t.stats.Inc("RPC.Traffic", int64(len(d.Body)), 1.0)
+	t.stats.Gauge("RPC.CallsWaiting", int64(t.size()), 1.0)
 
 	if d.ReplyTo != "" {
-		tMu.Lock()
-		deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
-		tMu.Unlock()
+		t.add(fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo))
 	} else {
-		tMu.Lock()
-		rpcSent := deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey)]
+		rpcSent := t.get(fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
 		if rpcSent != *new(time.Time) {
 			respTime := time.Since(rpcSent)
-			delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
-			stats.TimingDuration(fmt.Sprintf("RPC.ResponseTime.%s", d.Type), respTime, 1.0)
-			tMu.Unlock()
+			t.delete(fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
 
 			// Check if the call failed
 			state := "Success"
@@ -75,9 +97,9 @@ func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[str
 			if resp.Error.Value != "" {
 				state = "Error"
 			}
-			stats.Inc(fmt.Sprintf("RPC.Rate.%s", state), 1, 1.0)
+			t.stats.Inc(fmt.Sprintf("RPC.Rate.%s", state), 1, 1.0)
+			t.stats.TimingDuration(fmt.Sprintf("RPC.ResponseTime.%s.%s", d.Type, state), respTime, 1.0)
 		} else {
-			tMu.Unlock()
 		}
 	}
 
@@ -140,11 +162,14 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 		cmd.FailOnError(err, "Could not subscribe to queue")
 	}
 
-	deliveryTimings := make(map[string]time.Time)
+	timings := timings{
+		deliveryTimings: make(map[string]time.Time),
+		stats:           stats,
+	}
 
 	// Run forever.
 	for d := range deliveries {
-		go timeDelivery(d, stats, deliveryTimings)
+		go timings.timeDelivery(d)
 
 		// Pass each message to the Analysis Engine
 		err = ae.ProcessMessage(d)

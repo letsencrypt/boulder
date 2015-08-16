@@ -33,8 +33,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"runtime"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -307,44 +305,6 @@ func LoadCert(path string) (cert []byte, err error) {
 
 	cert = block.Bytes
 	return
-}
-
-var ocMu sync.Mutex
-var openConnections int64
-
-// HandlerTimer monitors HTTP performance and sends the details to StatsD.
-func HandlerTimer(handler http.Handler, stats statsd.Statter, prefix string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		stats.Inc(fmt.Sprintf("%s.HTTP.Rate", prefix), 1, 1.0)
-		ocMu.Lock()
-		openConnections++
-		stats.Gauge(fmt.Sprintf("%s.HTTP.OpenConnections", prefix), openConnections, 1.0)
-		ocMu.Unlock()
-
-		cOpened := time.Now()
-		handler.ServeHTTP(w, r)
-		cClosed := time.Since(cOpened)
-
-		ocMu.Lock()
-		openConnections--
-		stats.Gauge(fmt.Sprintf("%s.HTTP.ConnectionsOpen", prefix), openConnections, 1.0)
-		ocMu.Unlock()
-
-		// Check if request failed
-		state := "Success"
-		if w.Header().Get("Content-Type") == "application/problem+json" {
-			state = "Error"
-		}
-
-		// If r.URL has more than two segments throw the rest away to simplify metrics
-		segments := strings.Split(r.URL.Path, "/")
-		if len(segments) > 3 {
-			segments = segments[:3]
-		}
-		endpoint := strings.Join(segments, "/")
-
-		stats.TimingDuration(fmt.Sprintf("%s.HTTP.ResponseTime.%s.%s", prefix, endpoint, state), cClosed, 1.0)
-	})
 }
 
 func DebugServer(addr string) {

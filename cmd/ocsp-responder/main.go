@@ -16,6 +16,7 @@ import (
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/letsencrypt/boulder/metrics"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -120,9 +121,11 @@ func main() {
 		m := http.NewServeMux()
 		m.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
 
+		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
+
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.OCSPResponder.ListenAddress))
-		err = http.ListenAndServe(c.OCSPResponder.ListenAddress, cmd.HandlerTimer(m, stats, "OCSP"))
+		err = http.ListenAndServe(c.OCSPResponder.ListenAddress, httpMonitor.Handle())
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 
