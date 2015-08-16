@@ -1,4 +1,4 @@
-FROM golang:1.4.2
+FROM golang:1.5rc1
 
 MAINTAINER J.C. Jones "jjones@letsencrypt.org"
 MAINTAINER William Budington "bill@eff.org"
@@ -13,12 +13,13 @@ RUN apt-get update && \
     apt-transport-https && \
   echo deb https://deb.nodesource.com/node_0.12 jessie main > /etc/apt/sources.list.d/nodesource.list && \
   apt-get update && \
-  apt-get install -y --no-install-recommends \
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     libltdl-dev \
     rsyslog \
     nodejs \
     lsb-release \
     rabbitmq-server \
+    mariadb-server \
     git-core && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/* \
@@ -42,6 +43,8 @@ RUN ./bootstrap/debian.sh && \
 RUN virtualenv --no-site-packages -p python2 venv && \
   ./venv/bin/pip install -r requirements.txt -e acme -e .[dev,docs,testing] -e letsencrypt-apache -e letsencrypt-nginx
 
+ENV LETSENCRYPT_PATH /letsencrypt
+
 # Copy in the Boulder sources
 COPY . /go/src/github.com/letsencrypt/boulder
 
@@ -55,4 +58,9 @@ RUN go install \
   github.com/letsencrypt/boulder/cmd/boulder-wfe
 
 WORKDIR /go/src/github.com/letsencrypt/boulder
-CMD ["bash", "-c", "rsyslogd && /go/bin/boulder"]
+CMD ["bash", "-c", "service mysql start && \
+service rsyslog start && \
+service rabbitmq-server start && \
+cd /go/src/github.com/letsencrypt/boulder/ && \
+./test/create_db.sh && \
+WFE_LISTEN_ADDR=0.0.0.0:4000 ./start.py"]

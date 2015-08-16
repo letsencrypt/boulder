@@ -17,7 +17,6 @@ import (
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
@@ -25,15 +24,33 @@ import (
 
 var log = mocks.UseMockLog()
 
-func initSA(t *testing.T) *SQLStorageAuthority {
-	sa, err := NewSQLStorageAuthority("sqlite3", ":memory:")
+// TODO(jmhodges): change this to boulder_sa_test database
+var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
+
+// initSA constructs a SQLStorageAuthority and a clean up function
+// that should be defer'ed to the end of the test.
+func initSA(t *testing.T) (*SQLStorageAuthority, func()) {
+	dbMap, err := NewDbMap(dbConnStr)
 	if err != nil {
-		t.Fatalf("Failed to create SA")
+		t.Fatalf("Failed to create dbMap: %s", err)
+	}
+
+	sa, err := NewSQLStorageAuthority(dbMap)
+	if err != nil {
+		t.Fatalf("Failed to create SA: %s", err)
 	}
 	if err = sa.CreateTablesIfNotExists(); err != nil {
-		t.Fatalf("Failed to create SA")
+		t.Fatalf("Failed to create tables: %s", err)
 	}
-	return sa
+	if err = sa.dbMap.TruncateTables(); err != nil {
+		t.Fatalf("Failed to truncate tables: %s", err)
+	}
+	return sa, func() {
+		if err = sa.dbMap.TruncateTables(); err != nil {
+			t.Fatalf("Failed to truncate tables after the test: %s", err)
+		}
+		sa.dbMap.Db.Close()
+	}
 }
 
 var (
@@ -50,7 +67,8 @@ var (
 )
 
 func TestAddRegistration(t *testing.T) {
-	sa := initSA(t)
+	sa, cleanUp := initSA(t)
+	defer cleanUp()
 
 	var jwk jose.JsonWebKey
 	err := json.Unmarshal([]byte(theKey), &jwk)
@@ -106,7 +124,8 @@ func TestAddRegistration(t *testing.T) {
 }
 
 func TestNoSuchRegistrationErrors(t *testing.T) {
-	sa := initSA(t)
+	sa, cleanUp := initSA(t)
+	defer cleanUp()
 
 	_, err := sa.GetRegistration(100)
 	if _, ok := err.(NoSuchRegistrationError); !ok {
@@ -128,7 +147,8 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 }
 
 func TestAddAuthorization(t *testing.T) {
-	sa := initSA(t)
+	sa, cleanUp := initSA(t)
+	defer cleanUp()
 
 	PA := core.Authorization{}
 
@@ -200,7 +220,8 @@ func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) 
 
 // Ensure we get only valid authorization with correct RegID
 func TestGetLatestValidAuthorizationBasic(t *testing.T) {
-	sa := initSA(t)
+	sa, cleanUp := initSA(t)
+	defer cleanUp()
 
 	// attempt to get unauthorized domain
 	authz, err := sa.GetLatestValidAuthorization(0, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
@@ -229,7 +250,9 @@ func TestGetLatestValidAuthorizationBasic(t *testing.T) {
 
 // Ensure we get the latest valid authorization for an ident
 func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
-	sa := initSA(t)
+	sa, cleanUp := initSA(t)
+	defer cleanUp()
+
 	domain := "example.org"
 	ident := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
 	regID := int64(42)
@@ -282,7 +305,8 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 }
 
 func TestAddCertificate(t *testing.T) {
-	sa := initSA(t)
+	sa, cleanUp := initSA(t)
+	defer cleanUp()
 
 	// An example cert taken from EFF's website
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
@@ -334,7 +358,8 @@ func TestAddCertificate(t *testing.T) {
 // TestGetCertificateByShortSerial tests some failure conditions for GetCertificate.
 // Success conditions are tested above in TestAddCertificate.
 func TestGetCertificateByShortSerial(t *testing.T) {
-	sa := initSA(t)
+	sa, cleanUp := initSA(t)
+	defer cleanUp()
 
 	_, err := sa.GetCertificateByShortSerial("")
 	test.AssertError(t, err, "Should've failed on empty serial")
@@ -352,14 +377,17 @@ func TestDeniedCSR(t *testing.T) {
 	csrBytes, _ := x509.CreateCertificateRequest(rand.Reader, template, key)
 	csr, _ := x509.ParseCertificateRequest(csrBytes)
 
-	sa := initSA(t)
+	sa, cleanUp := initSA(t)
+	defer cleanUp()
+
 	exists, err := sa.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
 	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
 	test.Assert(t, !exists, "Found non-existent CSR")
 }
 
 func TestUpdateOCSP(t *testing.T) {
-	sa := initSA(t)
+	sa, cleanUp := initSA(t)
+	defer cleanUp()
 
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")

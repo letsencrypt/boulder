@@ -82,7 +82,7 @@
 		},
 		{
 			"ImportPath": "github.com/miekg/dns",
-			"Rev": "259969e797348d20e8c144a7573c23f06fa962f5"
+			"Rev": "7ff8d29c8b70b10f383a11f03b7bf5b7408bf41a"
 		},
 		{
 			"ImportPath": "github.com/miekg/pkcs11",
@@ -98,8 +98,7 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
-			"Comment": "ocsp-unauthorized.mailed",
-			"Rev": "88aa4b6881d17665db91c95982b2feda28140f9d"
+			"Rev": "173ce04bfaf66c7bb0fa9d5c0bfd93e773909dbd"
 		},
 		{
 			"ImportPath": "gopkg.in/gorp.v1",

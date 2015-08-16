@@ -140,11 +140,30 @@ var testKey = rsa.PrivateKey{
 	Primes:    []*big.Int{p, q},
 }
 
+// TODO(jmhodges): Turn this into boulder_sa_test
+var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
+
 func TestFindExpiringCertificates(t *testing.T) {
-	dbMap, err := sa.NewDbMap("sqlite3", ":memory:")
-	test.AssertNotError(t, err, "Couldn't connect to SQLite")
+	dbMap, err := sa.NewDbMap(dbConnStr)
+	if err != nil {
+		t.Fatalf("Couldn't connect the database: %s", err)
+	}
 	err = dbMap.CreateTablesIfNotExists()
-	test.AssertNotError(t, err, "Couldn't create tables")
+	if err != nil {
+		t.Fatalf("Couldn't create tables: %s", err)
+	}
+	err = dbMap.TruncateTables()
+	if err != nil {
+		t.Fatalf("Couldn't truncate tables: %s", err)
+	}
+	defer func() {
+		err = dbMap.TruncateTables()
+		if err != nil {
+			t.Fatalf("Couldn't truncate tables after the test: %s", err)
+		}
+		dbMap.Db.Close()
+	}()
+
 	tmpl, err := template.New("expiry-email").Parse(testTmpl)
 	test.AssertNotError(t, err, "Couldn't parse test email template")
 	stats, _ := statsd.NewNoopClient(nil)

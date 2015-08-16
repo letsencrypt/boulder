@@ -9,16 +9,7 @@ VERSION ?= 1.0.0
 EPOCH ?= 1
 MAINTAINER ?= "Community"
 
-OBJECTS = activity-monitor \
-	admin-revoker \
-	boulder-ca \
-	boulder-ra \
-	boulder-sa \
-	boulder-va \
-	boulder-wfe \
-	expiration-mailer \
-	ocsp-updater \
-	ocsp-responder
+OBJECTS = $(shell find ./cmd -type d -maxdepth 1 -mindepth 1 | xargs basename)
 
 # Build environment variables (referencing core/util.go)
 COMMIT_ID = $(shell git rev-parse --short HEAD)
@@ -39,8 +30,6 @@ build: $(OBJECTS)
 
 pre:
 	@mkdir -p $(OBJDIR)
-	@echo [go] lib/github.com/mattn/go-sqlite3
-	@go install ./Godeps/_workspace/src/github.com/mattn/go-sqlite3
 
 # Compile each of the binaries
 $(OBJECTS): pre
@@ -48,7 +37,7 @@ $(OBJECTS): pre
 	@go build -o ./bin/$@ -ldflags \
 		"-X $(BUILD_ID_VAR) '$(BUILD_ID)' -X $(BUILD_TIME_VAR) '$(BUILD_TIME)' \
 		 -X $(BUILD_HOST_VAR) '$(BUILD_HOST)'" \
-		cmd/$@/main.go
+		./cmd/$@/
 
 clean:
 	rm -f $(OBJDIR)/*
