@@ -105,29 +105,28 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 }
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
-	var val *jose.JsonWebSignature
-	var problem core.ProblemDetails
-	var err error
+	c := core.Challenge{
+		Type:      cm.Type,
+		Status:    cm.Status,
+		Validated: cm.Validated,
+		URI:       cm.URI,
+		Token:     cm.Token,
+		TLS:       cm.TLS,
+	}
 	if len(cm.Validation) > 0 {
-		val, err = jose.ParseSigned(string(cm.Validation))
+		val, err := jose.ParseSigned(string(cm.Validation))
 		if err != nil {
 			return core.Challenge{}, err
 		}
+		c.Validation = val
 	}
 	if len(cm.Error) > 0 {
+		var problem core.ProblemDetails
 		err := json.Unmarshal(cm.Error, &problem)
 		if err != nil {
 			return core.Challenge{}, err
 		}
+		c.Error = &problem
 	}
-	return core.Challenge{
-		Type:       cm.Type,
-		Status:     cm.Status,
-		Error:      &problem,
-		Validated:  cm.Validated,
-		URI:        cm.URI,
-		Token:      cm.Token,
-		TLS:        cm.TLS,
-		Validation: val,
-	}, nil
+	return c, nil
 }
