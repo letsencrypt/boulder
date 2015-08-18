@@ -17,7 +17,7 @@ import (
 // PolicyAuthorityImpl enforces CA policy decisions.
 type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
-	Db  *PolicyAuthorityDatabaseImpl
+	DB  *PolicyAuthorityDatabaseImpl
 
 	EnforceWhitelist bool
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
@@ -28,18 +28,17 @@ func NewPolicyAuthorityImpl(connect string, enforceWhitelist bool) (*PolicyAutho
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
-	pa := PolicyAuthorityImpl{log: logger}
-
 	// Setup policy db
 	padb, err := NewPolicyAuthorityDatabaseImpl(connect)
 	if err != nil {
 		return nil, err
 	}
-	pa.Db = padb
-	pa.EnforceWhitelist = enforceWhitelist
-
-	// TODO: Add configurability
-	pa.PublicSuffixList = PublicSuffixList
+	pa := PolicyAuthorityImpl{
+		log:              logger,
+		DB:               padb,
+		EnforceWhitelist: enforceWhitelist,
+		PublicSuffixList: PublicSuffixList,
+	}
 
 	return &pa, nil
 }
@@ -160,7 +159,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 
 	// Require no match against blacklist (and if pa.EnforceWhitelist is true
 	// require domain to match a whitelist rule)
-	if err := pa.Db.CheckRules(domain, pa.EnforceWhitelist); err != nil {
+	if err := pa.DB.CheckRules(domain, pa.EnforceWhitelist); err != nil {
 		return err
 	}
 

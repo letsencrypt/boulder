@@ -97,7 +97,7 @@ func TestWillingToIssue(t *testing.T) {
 	for _, b := range shouldBeBlacklisted {
 		rules = append(rules, DomainRule{Host: b, Type: blacklisted})
 	}
-	err := pa.Db.LoadRules(rules)
+	err := pa.DB.LoadRules(rules)
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Test for invalid identifier type
