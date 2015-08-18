@@ -185,29 +185,3 @@ func TestAcmeURL(t *testing.T) {
 	err = scanner.Binder(&marshaled, &out)
 	test.AssertMarshaledEquals(t, au, out)
 }
-
-func TestJsonWebSignature(t *testing.T) {
-	tc := BoulderTypeConverter{}
-
-	var out *jose.JsonWebSignature
-	validationPayload, _ := json.Marshal(map[string]interface{}{
-		"type":  "type",
-		"token": "token",
-	})
-	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	jws, _ := signer.Sign(validationPayload, "")
-
-	marshaledI, err := tc.ToDb(jws)
-	test.AssertNotError(t, err, "Could not ToDb")
-
-	scanner, ok := tc.FromDb(&out)
-	test.Assert(t, ok, "FromDb failed")
-	if !ok {
-		t.FailNow()
-		return
-	}
-
-	marshaled := marshaledI.([]byte)
-	err = scanner.Binder(&marshaled, &out)
-	test.AssertMarshaledEquals(t, jws, out)
-}

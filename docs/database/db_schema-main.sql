@@ -21,7 +21,7 @@ CREATE TABLE `registrations` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `authz` (
-  `id` varchar(255) NOT NULL,
+  `id` varchar(43) NOT NULL,
   `identifier` varchar(255) DEFAULT NULL,
   `registrationID` bigint(20) DEFAULT NULL,
   `status` varchar(255) DEFAULT NULL,
@@ -59,11 +59,11 @@ CREATE TABLE `certificateStatus` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `challenges` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `authorizationID` char(43) NOT NULL,
   `LockCol` bigint(20) DEFAULT NULL,
   `type` varchar(255) NOT NULL,
-  `status` varchar(255) DEFAULT NULL,
+  `status` varchar(255) NOT NULL,
   `error` varchar(255) DEFAULT NULL,
   `validated` datetime DEFAULT NULL,
   `uri` varchar(255) DEFAULT NULL,
@@ -96,7 +96,7 @@ CREATE TABLE `ocspResponses` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 CREATE TABLE `pending_authz` (
-  `id` varchar(255) NOT NULL,
+  `id` varchar(43) NOT NULL,
   `identifier` varchar(255) DEFAULT NULL,
   `registrationID` bigint(20) DEFAULT NULL,
   `status` varchar(255) DEFAULT NULL,

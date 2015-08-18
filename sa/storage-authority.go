@@ -47,14 +47,6 @@ type authzModel struct {
 	Sequence int64 `db:"sequence"`
 }
 
-type challengeModel struct {
-	ID              int    `json:"id,omitempty" db:"id"`
-	AuthorizationID string `json:"authorizationID,omitempty" db:"authorizationID"`
-	LockCol         int64
-
-	core.Challenge
-}
-
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevent tables.
 func NewSQLStorageAuthority(dbMap *gorp.DbMap) (*SQLStorageAuthority, error) {
@@ -178,7 +170,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 		authz = authD.Authorization
 	}
 
-	var challObjs []challengeModel
+	var challObjs []challModel
 	_, err = tx.Select(&challObjs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
 	if err != nil {
 		tx.Rollback()
@@ -186,7 +178,12 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	}
 	var challs []core.Challenge
 	for _, c := range challObjs {
-		challs = append(challs, c.Challenge)
+		chall, err := modelToChallenge(&c)
+		if err != nil {
+			tx.Rollback()
+			return core.Authorization{}, err
+		}
+		challs = append(challs, chall)
 	}
 	authz.Challenges = challs
 
@@ -209,13 +206,17 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 		return
 	}
 
-	var challObjs []challengeModel
+	var challObjs []challModel
 	_, err = ssa.dbMap.Select(&challObjs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
 	if err != nil {
 		return
 	}
 	for _, c := range challObjs {
-		authz.Challenges = append(authz.Challenges, c.Challenge)
+		chall, err := modelToChallenge(&c)
+		if err != nil {
+			return core.Authorization{}, err
+		}
+		authz.Challenges = append(authz.Challenges, chall)
 	}
 
 	return
@@ -418,14 +419,15 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 	}
 
 	for _, c := range authz.Challenges {
-		chall := challengeModel{
-			AuthorizationID: pendingAuthz.ID,
-			Challenge:       c,
-		}
-		err = tx.Insert(&chall)
+		chall, err := challengeToModel(&c, pendingAuthz.ID)
 		if err != nil {
 			tx.Rollback()
-			return
+			return core.Authorization{}, err
+		}
+		err = tx.Insert(chall)
+		if err != nil {
+			tx.Rollback()
+			return core.Authorization{}, err
 		}
 	}
 
@@ -473,7 +475,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 		return
 	}
 
-	var challs []challengeModel
+	var challs []challModel
 	_, err = tx.Select(
 		&challs,
 		"SELECT * FROM challenges WHERE authorizationID = :authID",
@@ -487,15 +489,13 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 		return fmt.Errorf("Invalid number of challenges provided")
 	}
 	for i, authChall := range authz.Challenges {
-		chall := challengeModel{
-			ID:              challs[i].ID,
-			Challenge:       authChall,
-			AuthorizationID: challs[i].AuthorizationID,
+		chall, err := challengeToModel(&authChall, challs[i].AuthorizationID)
+		if err != nil {
+			tx.Rollback()
+			return err
 		}
-		chall.Challenge = authChall
 		chall.ID = challs[i].ID
-		chall.AuthorizationID = challs[i].AuthorizationID
-		_, err = tx.Update(&chall)
+		_, err = tx.Update(chall)
 		if err != nil {
 			tx.Rollback()
 			return err
@@ -557,7 +557,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		return
 	}
 
-	var challs []challengeModel
+	var challs []challModel
 	_, err = tx.Select(
 		&challs,
 		"SELECT * FROM challenges WHERE authorizationID = :authID",
@@ -571,12 +571,13 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		return fmt.Errorf("Invalid number of challenges provided")
 	}
 	for i, authChall := range authz.Challenges {
-		chall := challengeModel{
-			Challenge:       authChall,
-			ID:              challs[i].ID,
-			AuthorizationID: challs[i].AuthorizationID,
+		chall, err := challengeToModel(&authChall, challs[i].AuthorizationID)
+		if err != nil {
+			tx.Rollback()
+			return err
 		}
-		_, err = tx.Update(&chall)
+		chall.ID = challs[i].ID
+		_, err = tx.Update(chall)
 		if err != nil {
 			tx.Rollback()
 			return err

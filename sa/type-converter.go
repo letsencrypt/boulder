@@ -43,11 +43,6 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 			return t.String(), nil
 		}
 		return "", nil
-	case *jose.JsonWebSignature:
-		if t != nil {
-			return []byte(t.FullSerialize()), nil
-		}
-		return []byte{}, nil
 	default:
 		return val, nil
 	}
@@ -84,26 +79,6 @@ func (tc BoulderTypeConverter) FromDb(target interface{}) (gorp.CustomScanner, b
 			return nil
 		}
 		return gorp.CustomScanner{Holder: new(string), Target: target, Binder: binder}, true
-	case **jose.JsonWebSignature:
-		binder := func(holder, target interface{}) error {
-			s, ok := holder.(*[]byte)
-			if !ok {
-				return errors.New("FromDb: Unable to convert *string")
-			}
-			st, ok := target.(**jose.JsonWebSignature)
-			if !ok {
-				return fmt.Errorf("FromDb: Unable to convert %T to **jose.JsonWebSignature", target)
-			}
-			if len(*s) != 0 {
-				sig, err := jose.ParseSigned(string(*s))
-				if err != nil {
-					return err
-				}
-				*st = &(*sig)
-			}
-			return nil
-		}
-		return gorp.CustomScanner{Holder: new([]byte), Target: target, Binder: binder}, true
 	case *jose.JsonWebKey:
 		binder := func(holder, target interface{}) error {
 			s, ok := holder.(*string)
