@@ -117,7 +117,7 @@ func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string, requireWhitelis
 	for _, r := range rules {
 		switch r.Type {
 		case blacklisted:
-			if strings.HasPrefix(host, r.Host) {
+			if strings.HasPrefix(host, r.Host+".") || host == r.Host {
 				bRules = append(bRules, r.Host)
 			}
 		case whitelisted:

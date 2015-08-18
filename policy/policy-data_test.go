@@ -56,4 +56,9 @@ func TestGet(t *testing.T) {
 	test.AssertNotError(t, err, "Hostname should be whitelisted")
 	err = p.CheckRules("a.a.com", true)
 	test.AssertError(t, err, "Hostname isn't explicitly whitelisted")
+
+	err = p.CheckRules("ab.com", false)
+	test.AssertNotError(t, err, "Hostname should not be blacklisted")
+	err = p.CheckRules(".b.com", false)
+	test.AssertError(t, err, "Hostname should be blacklisted")
 }
