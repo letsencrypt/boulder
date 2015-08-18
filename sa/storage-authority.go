@@ -487,7 +487,11 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 		return fmt.Errorf("Invalid number of challenges provided")
 	}
 	for i, authChall := range authz.Challenges {
-		chall := challengeModel{}
+		chall := challengeModel{
+			ID:              challs[i].ID,
+			Challenge:       authChall,
+			AuthorizationID: challs[i].AuthorizationID,
+		}
 		chall.Challenge = authChall
 		chall.ID = challs[i].ID
 		chall.AuthorizationID = challs[i].AuthorizationID
@@ -554,7 +558,11 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	}
 
 	var challs []challengeModel
-	_, err = tx.Select(&challs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
+	_, err = tx.Select(
+		&challs,
+		"SELECT * FROM challenges WHERE authorizationID = :authID",
+		map[string]interface{}{"authID": authz.ID},
+	)
 	if err != nil {
 		tx.Rollback()
 		return

@@ -228,10 +228,6 @@ func (r *Registration) MergeUpdate(input Registration) {
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
 type Challenge struct {
-	ID int `json:"id,omitempty"`
-
-	AuthorizationID string `json:"authorizationID,omitempty"`
-
 	// The type of challenge
 	Type string `json:"type"`
 
