@@ -214,11 +214,9 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	if err != nil {
 		return
 	}
-	var challs []core.Challenge
 	for _, c := range challObjs {
-		challs = append(challs, c.Challenge)
+		authz.Challenges = append(authz.Challenges, c.Challenge)
 	}
-	authz.Challenges = challs
 
 	return
 }
@@ -420,7 +418,10 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 	}
 
 	for _, c := range authz.Challenges {
-		chall := challengeModel{AuthorizationID: pendingAuthz.ID, Challenge: c}
+		chall := challengeModel{
+			AuthorizationID: pendingAuthz.ID,
+			Challenge:       c,
+		}
 		err = tx.Insert(&chall)
 		if err != nil {
 			tx.Rollback()
@@ -473,7 +474,11 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 	}
 
 	var challs []challengeModel
-	_, err = tx.Select(&challs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
+	_, err = tx.Select(
+		&challs,
+		"SELECT * FROM challenges WHERE authorizationID = :authID",
+		map[string]interface{}{"authID": authz.ID},
+	)
 	if err != nil {
 		tx.Rollback()
 		return
@@ -494,8 +499,6 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 	}
 
 	err = tx.Commit()
-	if err != nil {
-	}
 	return
 }
 
@@ -560,10 +563,11 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		return fmt.Errorf("Invalid number of challenges provided")
 	}
 	for i, authChall := range authz.Challenges {
-		chall := challengeModel{}
-		chall.Challenge = authChall
-		chall.ID = challs[i].ID
-		chall.AuthorizationID = challs[i].AuthorizationID
+		chall := challengeModel{
+			Challenge:       authChall,
+			ID:              challs[i].ID,
+			AuthorizationID: challs[i].AuthorizationID,
+		}
 		_, err = tx.Update(&chall)
 		if err != nil {
 			tx.Rollback()
