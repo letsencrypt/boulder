@@ -20,26 +20,30 @@ var (
 		Host: "b.com",
 		Type: blacklisted,
 	}
+	rC = DomainRule{
+		Host: "d.c.com",
+		Type: blacklisted,
+	}
 )
 
 func TestLoadAndDump(t *testing.T) {
 	p, err := NewPolicyAuthorityDatabaseImpl(dbConnStr)
 	test.AssertNotError(t, err, "Couldn't create PADB")
 
-	err = p.LoadRules([]DomainRule{rA, rB})
+	err = p.LoadRules([]DomainRule{rA, rB, rC})
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	r, err := p.DumpRules()
 	test.AssertNotError(t, err, "Couldn't dump rules")
 
-	test.AssertEquals(t, len(r), 2)
+	test.AssertEquals(t, len(r), 3)
 }
 
 func TestGet(t *testing.T) {
 	p, err := NewPolicyAuthorityDatabaseImpl(dbConnStr)
 	test.AssertNotError(t, err, "Couldn't create PADB")
 
-	err = p.LoadRules([]DomainRule{rA, rB})
+	err = p.LoadRules([]DomainRule{rA, rB, rC})
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	err = p.CheckRules("b.com", false)
@@ -60,5 +64,8 @@ func TestGet(t *testing.T) {
 	err = p.CheckRules("ab.com", false)
 	test.AssertNotError(t, err, "Hostname should not be blacklisted")
 	err = p.CheckRules(".b.com", false)
+	test.AssertError(t, err, "Hostname should be blacklisted")
+
+	err = p.CheckRules("e.d.c.com", false)
 	test.AssertError(t, err, "Hostname should be blacklisted")
 }
