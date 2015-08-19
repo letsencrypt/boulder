@@ -1,7 +1,8 @@
 language: go
 
 go:
-  - 1.4.1
+  - 1.4.2
+  - tip
 
 addons:
   hosts:
