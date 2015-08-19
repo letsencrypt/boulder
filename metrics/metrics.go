@@ -76,9 +76,19 @@ type RPCMonitor struct {
 	stats statsd.Statter
 }
 
-// NewRPCMonitor returns a new initialized RPCMonitor
+// NewRPCMonitor returns a new initialized RPCMonitor and starts a goroutine
+// to cleanup timeouts from the delivery map
 func NewRPCMonitor(stats statsd.Statter) RPCMonitor {
-	return RPCMonitor{stats: stats, deliveryTimings: make(map[string]time.Time), dtMu: &sync.Mutex{}}
+	r := RPCMonitor{stats: stats, deliveryTimings: make(map[string]time.Time), dtMu: &sync.Mutex{}}
+	go func() {
+		c := time.Tick(time.Second * 5)
+		for _ = range c {
+			if t := r.cleanup(); t > 0 {
+				stats.Inc("RPC.Timeouts", t, 1.0)
+			}
+		}
+	}()
+	return r
 }
 
 func (r *RPCMonitor) size() int {
@@ -103,6 +113,20 @@ func (r *RPCMonitor) delete(id string) {
 	r.dtMu.Lock()
 	defer r.dtMu.Unlock()
 	delete(r.deliveryTimings, id)
+}
+
+func (r *RPCMonitor) cleanup() (removed int64) {
+	r.dtMu.Lock()
+	defer r.dtMu.Unlock()
+	for k, v := range r.deliveryTimings {
+		if time.Now().Add(-time.Second * 10).After(v) {
+			// If the delivery has been in the map for more than 10 seconds
+			// it has timed out, delete it so the map doesn't get cluttered
+			delete(r.deliveryTimings, k)
+			removed++
+		}
+	}
+	return removed
 }
 
 // TimeDelivery takes a single RPC delivery and provides metrics to StatsD about it

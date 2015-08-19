@@ -33,6 +33,7 @@ This list is split up into metric topics with the names of the clients that subm
 	[counter] Boulder.RPC.Rate.Success
   	[counter] Boulder.RPC.Rate.Error
 	[counter] Boulder.RPC.Traffic
+	[counter] Boulder.RPC.Timeouts
 
 	[gauge]   Boulder.RPC.CallsWaiting
 
