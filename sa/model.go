@@ -10,6 +10,8 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
+var mediumBlobSize = int(math.Pow(2, 24))
+
 // regModel is the description of a core.Registration in the database.
 type regModel struct {
 	ID        int64           `db:"id"`
@@ -83,11 +85,10 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		URI:             c.URI,
 		Token:           c.Token,
 		TLS:             c.TLS,
-		// Validation:      []byte(c.Validation.FullSerialize()),
 	}
 	if c.Validation != nil {
 		cm.Validation = []byte(c.Validation.FullSerialize())
-		if len(cm.Validation) > int(math.Pow(2, 24)) {
+		if len(cm.Validation) > mediumBlobSize {
 			return nil, fmt.Errorf("Validation object is too large to store in the database")
 		}
 	}
@@ -96,10 +97,13 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		if err != nil {
 			return nil, err
 		}
+		if len(errJSON) > mediumBlobSize {
+			return nil, fmt.Errorf("Error object is too large to store in the database")
+		}
 		cm.Error = errJSON
 	}
 	if cm.URI != nil && len(cm.URI.String()) > 255 {
-		return nil, fmt.Errorf("URI is too long")
+		return nil, fmt.Errorf("URI is too long to store in the database")
 	}
 	return &cm, nil
 }
