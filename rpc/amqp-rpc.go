@@ -355,9 +355,8 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	}
 	if response.Error.Value != "" {
 		rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] %s failed, replying: %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, response.Error.Value, msg.CorrelationId))
-	} else {
-		rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(jsonResponse), msg.CorrelationId))
 	}
+	rpc.log.Debug(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(jsonResponse), msg.CorrelationId))
 	rpc.Channel.Publish(
 		AmqpExchange,
 		msg.ReplyTo,
