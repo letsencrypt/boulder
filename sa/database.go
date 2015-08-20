@@ -128,10 +128,10 @@ func initTables(dbMap *gorp.DbMap) {
 	regTable.ColMap("KeySHA256").SetNotNull(true).SetUnique(true)
 	pendingAuthzTable := dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
 	pendingAuthzTable.SetVersionCol("LockCol")
-	pendingAuthzTable.ColMap("Challenges").SetMaxSize(1536)
+	pendingAuthzTable.ColMap("Challenges").SetMaxSize(4096)
 
 	authzTable := dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
-	authzTable.ColMap("Challenges").SetMaxSize(1536)
+	authzTable.ColMap("Challenges").SetMaxSize(4096)
 
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
