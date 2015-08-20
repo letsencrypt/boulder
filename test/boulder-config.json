@@ -71,10 +71,10 @@
             "backdate": "1h",
             "is_ca": false,
             "issuer_urls": [
-              "http://int-x1.letsencrypt.org/cert"
+              "http://localhost:4000/acme/issuer-cert"
             ],
-            "ocsp_url": "http://int-x1.letsencrypt.org/ocsp",
-            "crl_url": "http://int-x1.letsencrypt.org/crl",
+            "ocsp_url": "http://localhost:4002/ocsp",
+            "crl_url": "http://example.com/crl",
             "policies": [
               {
                 "ID": "2.23.140.1.2.1"
@@ -133,9 +133,13 @@
   },
 
   "ocspResponder": {
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test"
+  },
+
+  "ocspResponder": {
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "path": "/",
-    "listenAddress": "localhost:4001",
+    "listenAddress": "localhost:4002",
     "debugAddr": "localhost:8005"
   },
 
@@ -169,5 +173,5 @@
     "dnsTimeout": "10s"
   },
 
-  "subscriberAgreementURL": "http://localhost:4000/terms/v1"
+  "subscriberAgreementURL": "http://localhost:4001/terms/v1"
 }
