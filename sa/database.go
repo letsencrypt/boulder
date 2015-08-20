@@ -59,7 +59,7 @@ func NewDbMap(dbConnect string) (*gorp.DbMap, error) {
 // the mysql driver. Similarly, the driver needs the password and
 // username unescaped. Compromise by doing the leg work if the config
 // says the database URL's scheme is a fake one called
-// "mysqltcp://". See
+// "mysql+tcp://". See
 // https://github.com/go-sql-driver/mysql/issues/362 for why we have
 // to futz around and avoid URL.String.
 func recombineURLForDB(dbConnect string) (string, error) {
@@ -95,8 +95,7 @@ func recombineURLForDB(dbConnect string) (string, error) {
 		dbConn += ":" + passwd
 	}
 	dbConn += "@tcp(" + dbURL.Host + ")"
-	// TODO(jmhodges): should be dbURL.EscapedPath() but Travis doesn't have 1.5
-	return dbConn + dbURL.Path + "?" + dsnVals.Encode(), nil
+	return dbConn + dbURL.EscapedPath() + "?" + dsnVals.Encode(), nil
 }
 
 // SetSQLDebug enables/disables GORP SQL-level Debugging
