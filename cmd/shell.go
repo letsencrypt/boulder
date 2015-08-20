@@ -181,11 +181,9 @@ type Config struct {
 	}
 
 	CertChecker struct {
-		SampleFraction float64
-		Workers        int
-		LastCheck      *time.Time
-		ReportPath     string
-		DBConnect      string
+		Workers             int
+		ReportDirectoryPath string
+		DBConnect           string
 	}
 
 	SubscriberAgreementURL string

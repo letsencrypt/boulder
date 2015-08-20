@@ -6,9 +6,8 @@
 package main
 
 import (
+	"crypto/x509"
 	"fmt"
-	"math/rand"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/letsencrypt/boulder/policy"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -29,11 +29,12 @@ const (
 )
 
 type report struct {
-	Validity string `json:"validity"`
-	Problem  string `json:"problem,omitempty"`
+	Valid    bool     `json:"validity"`
+	Problems []string `json:"problem,omitempty"`
 }
 
 type certChecker struct {
+	pa           core.PolicyAuthority
 	dbMap        *gorp.DbMap
 	certs        chan core.Certificate
 	sampleReport map[string]report
@@ -43,49 +44,18 @@ type certChecker struct {
 
 func newChecker(dbMap *gorp.DbMap) certChecker {
 	return certChecker{
+		pa:           policy.NewPolicyAuthorityImpl(),
 		dbMap:        dbMap,
 		sampleReport: make(map[string]report),
 	}
 }
 
-func (c *certChecker) getSerials(lastScan *time.Time) ([]string, error) {
-	query := "SELECT serial FROM certificates"
-	queryArgs := make(map[string]interface{})
-	if lastScan != nil {
-		query = query + " WHERE issued > :issued"
-		queryArgs["issued"] = *lastScan
-	} else {
-		// should probably log this
-	}
-	var serials []string
-	_, err := c.dbMap.Select(&serials, query, queryArgs)
-	return serials, err
-}
-
-func (c *certChecker) pickSerials(sampleFraction float64, lastScan *time.Time) ([]string, error) {
-	serials, err := c.getSerials(lastScan)
-	if err != nil {
-		return nil, err
-	}
-	// shuffle serials
-	rand.Seed(time.Now().UTC().UnixNano())
-	for i := range serials {
-		j := rand.Intn(i + 1)
-		serials[i], serials[j] = serials[j], serials[i]
-	}
-	sampleSize := int(float64(len(serials)) * sampleFraction)
-	if sampleSize == 0 || sampleSize > len(serials) {
-		// probably log this fact
-		sampleSize = len(serials)
-	}
-	return serials[0:sampleSize], nil
-}
-
-func (c *certChecker) getCerts(serials []string) error {
+func (c *certChecker) getCerts() error {
 	var certs []core.Certificate
 	_, err := c.dbMap.Select(
 		&certs,
-		fmt.Sprintf("SELECT * FROM certificates WHERE serial IN ('%s')", strings.Join(serials, "','")),
+		"SELECT * FROM certificates WHERE issued > :issued",
+		map[string]interface{}{"issued": time.Now().Add(-time.Hour * 24 * 90)},
 	)
 	if err != nil {
 		return err
@@ -101,28 +71,68 @@ func (c *certChecker) getCerts(serials []string) error {
 
 func (c *certChecker) processCerts(wg *sync.WaitGroup) {
 	for cert := range c.certs {
-		// ???
+		// DEBUG
 		fmt.Println("CERT:", cert.Serial)
 
-		c.sampleReport[cert.Serial] = report{Validity: good}
-		atomic.AddInt64(&c.goodCerts, 1)
+		problems := c.checkCert(cert)
+		valid := len(problems) == 0
+		c.sampleReport[cert.Serial] = report{Valid: valid, Problems: problems}
+		if !valid {
+			atomic.AddInt64(&c.badCerts, 1)
+		} else {
+			atomic.AddInt64(&c.goodCerts, 1)
+		}
 	}
 	wg.Done()
 }
 
+func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
+	// Check digests match
+	if cert.Digest != core.Fingerprint256(cert.DER) {
+		problems = append(problems, "Stored digest doesn't match certificate digest")
+	}
+
+	// Parse certificate
+	parsedCert, err := x509.ParseCertificate(cert.DER)
+	if err != nil {
+		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
+	} else {
+		// Check we have the right expiration time
+		if parsedCert.NotAfter != cert.Expires {
+			problems = append(problems, "Stored expiration doesn't match certificate NotAfter")
+		}
+		// Check basic constraints are set
+		if !parsedCert.BasicConstraintsValid {
+			problems = append(problems, "Certificate doesn't have basic constraints set")
+		}
+		// Check the cert isn't able to sign other certificates
+		if parsedCert.IsCA {
+			problems = append(problems, "Certificate can sign other certificates")
+		}
+		// Check the cert has the correct validity period
+		if parsedCert.NotAfter.Sub(cert.Issued) > (time.Hour * 24 * 90) {
+			problems = append(problems, "Certificate has a validity period longer than 90 days")
+		}
+		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
+		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
+			if err = c.pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}); err != nil {
+				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for %s: %s", name, err))
+			}
+		}
+		// Check the cert has the correct key usage extensions
+		if !core.CmpExtKeyUsageSlice(parsedCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+			problems = append(problems, "Certificate has incorrect key usage extensions")
+		}
+	}
+	return problems
+}
+
 func main() {
 	app := cmd.NewAppShell("cert-checker")
-	app.App.Flags = append(app.App.Flags, cli.StringFlag{
-		Name:  "last-check",
-		Usage: "The date of the last scan in the format DDMMYY",
-	}, cli.IntFlag{
+	app.App.Flags = append(app.App.Flags, cli.IntFlag{
 		Name:  "workers",
 		Value: 5,
 		Usage: "The number of cocurrent workers used to process certificates",
-	}, cli.Float64Flag{
-		Name:  "sample-fraction",
-		Value: 0.03,
-		Usage: "A positive floating point number indicating the fraction of certificates to check",
 	}, cli.StringFlag{
 		Name:  "report-path",
 		Usage: "The path to write a JSON report on the certificates checks to (if no path is provided the report will not be written out)",
@@ -132,18 +142,12 @@ func main() {
 	})
 
 	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
-		lastCheck := c.GlobalString("last-check")
-		if lastCheck != "" {
-			t, err := time.Parse("layout", lastCheck)
-			cmd.FailOnError(err, "Couldn't parse last check date")
-			config.CertChecker.LastCheck = &t
-		}
-		config.CertChecker.ReportPath = c.GlobalString("report-path")
+		config.CertChecker.ReportDirectoryPath = c.GlobalString("report-dir-path")
+
 		if connect := c.GlobalString("sql-uri"); connect != "" {
 			config.CertChecker.DBConnect = connect
 		}
-		config.CertChecker.SampleFraction = c.Float64("sample-fraction")
-		config.CertChecker.Workers = c.Int("workers")
+
 		return config
 	}
 
@@ -161,12 +165,8 @@ func main() {
 		cmd.FailOnError(err, "Could not connect to database")
 
 		checker := newChecker(dbMap)
-		auditlogger.Info("# Picking certificate sample")
-		sampleSerials, err := checker.pickSerials(c.CertChecker.SampleFraction, c.CertChecker.LastCheck)
-		cmd.FailOnError(err, "Failed to pick serial sample")
-
-		auditlogger.Info("# Getting sample")
-		err = checker.getCerts(sampleSerials)
+		auditlogger.Info("# Getting certificates issued in the last 90 days")
+		err = checker.getCerts()
 		cmd.FailOnError(err, "Failed to get sample certificates")
 
 		if c.CertChecker.Workers > len(checker.certs) {
