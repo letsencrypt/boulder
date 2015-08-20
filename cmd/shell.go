@@ -180,6 +180,14 @@ type Config struct {
 		DNSTimeout  string
 	}
 
+	CertChecker struct {
+		SampleFraction float64
+		Workers        int
+		LastCheck      *time.Time
+		ReportPath     string
+		DBConnect      string
+	}
+
 	SubscriberAgreementURL string
 }
 

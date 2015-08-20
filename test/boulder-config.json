@@ -169,5 +169,9 @@
     "dnsTimeout": "10s"
   },
 
+  "certChecker": {
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test"
+  },
+
   "subscriberAgreementURL": "http://localhost:4000/terms/v1"
 }
