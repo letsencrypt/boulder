@@ -171,7 +171,11 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	}
 
 	var challObjs []challModel
-	_, err = tx.Select(&challObjs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
+	_, err = tx.Select(
+		&challObjs,
+		"SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC",
+		map[string]interface{}{"authID": authz.ID},
+	)
 	if err != nil {
 		tx.Rollback()
 		return
@@ -197,8 +201,8 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	if err != nil {
 		return
 	}
-	err = ssa.dbMap.SelectOne(&authz, "SELECT id, identifier, registrationID, status, expires, combinations "+
-		"FROM authz "+
+	var auth core.Authorization
+	err = ssa.dbMap.SelectOne(&auth, "SELECT id FROM authz "+
 		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
 		"ORDER BY expires DESC LIMIT 1",
 		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
@@ -206,20 +210,7 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 		return
 	}
 
-	var challObjs []challModel
-	_, err = ssa.dbMap.Select(&challObjs, "SELECT * FROM challenges WHERE authorizationID = :authID", map[string]interface{}{"authID": authz.ID})
-	if err != nil {
-		return
-	}
-	for _, c := range challObjs {
-		chall, err := modelToChallenge(&c)
-		if err != nil {
-			return core.Authorization{}, err
-		}
-		authz.Challenges = append(authz.Challenges, chall)
-	}
-
-	return
+	return ssa.GetAuthorization(auth.ID)
 }
 
 // GetCertificateByShortSerial takes an id consisting of the first, sequential half of a
