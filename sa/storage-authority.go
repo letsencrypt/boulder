@@ -469,7 +469,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 	var challs []challModel
 	_, err = tx.Select(
 		&challs,
-		"SELECT * FROM challenges WHERE authorizationID = :authID",
+		"SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC",
 		map[string]interface{}{"authID": authz.ID},
 	)
 	if err != nil {
@@ -551,7 +551,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	var challs []challModel
 	_, err = tx.Select(
 		&challs,
-		"SELECT * FROM challenges WHERE authorizationID = :authID",
+		"SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC",
 		map[string]interface{}{"authID": authz.ID},
 	)
 	if err != nil {
