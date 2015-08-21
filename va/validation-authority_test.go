@@ -273,7 +273,10 @@ func TestSimpleHttp(t *testing.T) {
 
 	// Attempt to fail a challenge by telling the VA to connect to a port we are
 	// not listening on.
-	va.simpleHTTPPort = (port + 1) % 65536
+	va.simpleHTTPPort = port + 1
+	if va.simpleHTTPPort == 65536 {
+		va.simpleHTTPPort = port - 1
+	}
 	invalidChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Server's down; expected refusal. Where did we connect?")
