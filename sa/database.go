@@ -115,7 +115,7 @@ type SQLLogger struct {
 
 // Printf adapts the AuditLogger to GORP's interface
 func (log *SQLLogger) Printf(format string, v ...interface{}) {
-	log.log.Debug(fmt.Sprintf(format, v))
+	log.log.Debug(fmt.Sprintf(format, v...))
 }
 
 // initTables constructs the table map for the ORM. If you want to also create
