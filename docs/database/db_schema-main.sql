@@ -70,6 +70,7 @@ CREATE TABLE `challenges` (
   `token` varchar(255) NOT NULL,
   `tls` tinyint(1) DEFAULT NULL,
   `validation` mediumblob,
+  `validationRecord` mediumblob,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
