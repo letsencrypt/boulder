@@ -36,7 +36,7 @@ type challModel struct {
 	Status     core.AcmeStatus `db:"status"`
 	Error      []byte          `db:"error"`
 	Validated  *time.Time      `db:"validated"`
-	URI        *core.AcmeURL   `db:"uri"`
+	URI        string          `db:"uri"`
 	Token      string          `db:"token"`
 	TLS        *bool           `db:"tls"`
 	Validation []byte          `db:"validation"`
@@ -87,7 +87,6 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		Type:            c.Type,
 		Status:          c.Status,
 		Validated:       c.Validated,
-		URI:             c.URI,
 		Token:           c.Token,
 		TLS:             c.TLS,
 	}
@@ -107,8 +106,11 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		}
 		cm.Error = errJSON
 	}
-	if cm.URI != nil && len(cm.URI.String()) > 255 {
-		return nil, fmt.Errorf("URI is too long to store in the database")
+	if c.URI != nil {
+		cm.URI = c.URI.String()
+		if len(cm.URI) > 255 {
+			return nil, fmt.Errorf("URI is too long to store in the database")
+		}
 	}
 	return &cm, nil
 }
@@ -118,9 +120,15 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		Type:      cm.Type,
 		Status:    cm.Status,
 		Validated: cm.Validated,
-		URI:       cm.URI,
 		Token:     cm.Token,
 		TLS:       cm.TLS,
+	}
+	if len(cm.URI) > 0 {
+		uri, err := core.ParseAcmeURL(cm.URI)
+		if err != nil {
+			return core.Challenge{}, err
+		}
+		c.URI = uri
 	}
 	if len(cm.Validation) > 0 {
 		val, err := jose.ParseSigned(string(cm.Validation))

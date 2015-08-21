@@ -123,39 +123,3 @@ func TestAcmeURLSlice(t *testing.T) {
 	err = scanner.Binder(&marshaled, &out)
 	test.AssertMarshaledEquals(t, au, out)
 }
-
-func TestAcmeURL(t *testing.T) {
-	tc := BoulderTypeConverter{}
-	var au, out *core.AcmeURL
-	au = &core.AcmeURL{}
-
-	marshaledI, err := tc.ToDb(au)
-	test.AssertNotError(t, err, "Could not ToDb")
-
-	scanner, ok := tc.FromDb(&out)
-	test.Assert(t, ok, "FromDb failed")
-	if !ok {
-		t.FailNow()
-		return
-	}
-
-	marshaled := marshaledI.(string)
-	err = scanner.Binder(&marshaled, &out)
-	test.AssertMarshaledEquals(t, au, out)
-
-	aURL, _ := core.ParseAcmeURL("http://www.example.com/stuff?things=10")
-	*au = *aURL
-	marshaledI, err = tc.ToDb(au)
-	test.AssertNotError(t, err, "Could not ToDb")
-
-	scanner, ok = tc.FromDb(&out)
-	test.Assert(t, ok, "FromDb failed")
-	if !ok {
-		t.FailNow()
-		return
-	}
-
-	marshaled = marshaledI.(string)
-	err = scanner.Binder(&marshaled, &out)
-	test.AssertMarshaledEquals(t, au, out)
-}
