@@ -22,6 +22,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC"
+
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
@@ -93,6 +95,33 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	var count int64
 	_ = tx.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
+}
+
+func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Transaction) error {
+	var challs []challModel
+	_, err := tx.Select(
+		&challs,
+		getChallengesQuery,
+		map[string]interface{}{"authID": authID},
+	)
+	if err != nil {
+		return err
+	}
+	if len(challs) != len(challenges) {
+		return fmt.Errorf("Invalid number of challenges provided")
+	}
+	for i, authChall := range challenges {
+		chall, err := challengeToModel(&authChall, challs[i].AuthorizationID)
+		if err != nil {
+			return err
+		}
+		chall.ID = challs[i].ID
+		_, err = tx.Update(chall)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type NoSuchRegistrationError struct {
@@ -173,7 +202,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	var challObjs []challModel
 	_, err = tx.Select(
 		&challObjs,
-		"SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC",
+		getChallengesQuery,
 		map[string]interface{}{"authID": authz.ID},
 	)
 	if err != nil {
@@ -466,31 +495,10 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 		return
 	}
 
-	var challs []challModel
-	_, err = tx.Select(
-		&challs,
-		"SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC",
-		map[string]interface{}{"authID": authz.ID},
-	)
+	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
 		tx.Rollback()
 		return
-	}
-	if len(challs) != len(authz.Challenges) {
-		return fmt.Errorf("Invalid number of challenges provided")
-	}
-	for i, authChall := range authz.Challenges {
-		chall, err := challengeToModel(&authChall, challs[i].AuthorizationID)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
-		chall.ID = challs[i].ID
-		_, err = tx.Update(chall)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
 	}
 
 	err = tx.Commit()
@@ -548,31 +556,10 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		return
 	}
 
-	var challs []challModel
-	_, err = tx.Select(
-		&challs,
-		"SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC",
-		map[string]interface{}{"authID": authz.ID},
-	)
+	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
 		tx.Rollback()
 		return
-	}
-	if len(challs) != len(authz.Challenges) {
-		return fmt.Errorf("Invalid number of challenges provided")
-	}
-	for i, authChall := range authz.Challenges {
-		chall, err := challengeToModel(&authChall, challs[i].AuthorizationID)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
-		chall.ID = challs[i].ID
-		_, err = tx.Update(chall)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
 	}
 
 	err = tx.Commit()
