@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -24,12 +26,12 @@ type PolicyAuthorityImpl struct {
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl(connect string, enforceWhitelist bool) (*PolicyAuthorityImpl, error) {
+func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool) (*PolicyAuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
 	// Setup policy db
-	padb, err := NewPolicyAuthorityDatabaseImpl(connect)
+	padb, err := NewPolicyAuthorityDatabaseImpl(dbMap)
 	if err != nil {
 		return nil, err
 	}

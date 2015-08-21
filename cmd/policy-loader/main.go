@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
+	"github.com/letsencrypt/boulder/sa"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/policy"
@@ -29,7 +30,10 @@ func setupContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl, st
 	err = json.Unmarshal(configJSON, &c)
 	cmd.FailOnError(err, "Couldn't unmarshal configuration object")
 
-	padb, err := policy.NewPolicyAuthorityDatabaseImpl(c.PA.DBConnect)
+	dbMap, err := sa.NewDbMap(c.PA.DBConnect)
+	cmd.FailOnError(err, "Failed to create DB map")
+
+	padb, err := policy.NewPolicyAuthorityDatabaseImpl(dbMap)
 	cmd.FailOnError(err, "Could not connect to PADB")
 	return padb, context.GlobalString("rule-file")
 }

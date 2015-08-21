@@ -10,11 +10,29 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )
 
 var log = mocks.UseMockLog()
 var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
+
+func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
+	dbMap, err := sa.NewDbMap(dbConnStr)
+	test.AssertNotError(t, err, "Could not construct dbMap")
+
+	pa, err := NewPolicyAuthorityImpl(dbMap, false)
+	test.AssertNotError(t, err, "Couldn't create PADB")
+
+	cleanUp := func() {
+		if err := dbMap.TruncateTables(); err != nil {
+			t.Fatalf("Could not truncate tables after the test: %s", err)
+		}
+		dbMap.Db.Close()
+	}
+
+	return pa, cleanUp
+}
 
 func TestWillingToIssue(t *testing.T) {
 	shouldBeSyntaxError := []string{
@@ -92,7 +110,9 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zombo-.com",
 	}
 
-	pa, _ := NewPolicyAuthorityImpl(dbConnStr, false)
+	pa, cleanup := paImpl(t)
+	defer cleanup()
+
 	rules := []DomainRule{}
 	for _, b := range shouldBeBlacklisted {
 		rules = append(rules, DomainRule{Host: b, Type: blacklisted})
@@ -148,7 +168,8 @@ func TestWillingToIssue(t *testing.T) {
 }
 
 func TestChallengesFor(t *testing.T) {
-	pa, _ := NewPolicyAuthorityImpl(dbConnStr, true)
+	pa, cleanup := paImpl(t)
+	defer cleanup()
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 

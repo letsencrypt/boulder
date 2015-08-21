@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/sa"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
@@ -120,7 +121,12 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	pa, err := policy.NewPolicyAuthorityImpl(paConfig.DBConnect, paConfig.EnforcePolicyWhitelist)
+	dbMap, err := sa.NewDbMap(paConfig.DBConnect)
+	if err != nil {
+		return nil, err
+	}
+
+	pa, err := policy.NewPolicyAuthorityImpl(dbMap, paConfig.EnforcePolicyWhitelist)
 	if err != nil {
 		return nil, err
 	}

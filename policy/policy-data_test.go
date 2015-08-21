@@ -8,6 +8,7 @@ package policy
 import (
 	"testing"
 
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -24,13 +25,21 @@ var (
 		Host: "d.c.com",
 		Type: blacklisted,
 	}
+	rD = DomainRule{
+		Host: "a.d.com",
+		Type: whitelisted,
+	}
+	rE = DomainRule{
+		Host: "d.com",
+		Type: blacklisted,
+	}
 )
 
 func TestLoadAndDump(t *testing.T) {
-	p, err := NewPolicyAuthorityDatabaseImpl(dbConnStr)
-	test.AssertNotError(t, err, "Couldn't create PADB")
+	p, cleanup := padbImpl(t)
+	defer cleanup()
 
-	err = p.LoadRules([]DomainRule{rA, rB, rC})
+	err := p.LoadRules([]DomainRule{rA, rB, rC})
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	r, err := p.DumpRules()
@@ -40,10 +49,10 @@ func TestLoadAndDump(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	p, err := NewPolicyAuthorityDatabaseImpl(dbConnStr)
-	test.AssertNotError(t, err, "Couldn't create PADB")
+	p, cleanup := padbImpl(t)
+	defer cleanup()
 
-	err = p.LoadRules([]DomainRule{rA, rB, rC})
+	err := p.LoadRules([]DomainRule{rA, rB, rC, rD, rE})
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	err = p.CheckRules("b.com", false)
@@ -66,6 +75,28 @@ func TestGet(t *testing.T) {
 	err = p.CheckRules(".b.com", false)
 	test.AssertError(t, err, "Hostname should be blacklisted")
 
+	err = p.CheckRules("a.d.com", false)
+	test.AssertNotError(t, err, "Hostname shouldn't be blacklisted")
+	err = p.CheckRules("d.com", false)
+	test.AssertError(t, err, "Hostname should be blacklisted")
+
 	err = p.CheckRules("e.d.c.com", false)
 	test.AssertError(t, err, "Hostname should be blacklisted")
+}
+
+func padbImpl(t *testing.T) (*PolicyAuthorityDatabaseImpl, func()) {
+	dbMap, err := sa.NewDbMap(dbConnStr)
+	test.AssertNotError(t, err, "Could not construct dbMap")
+
+	padb, err := NewPolicyAuthorityDatabaseImpl(dbMap)
+	test.AssertNotError(t, err, "Couldn't create PADB")
+
+	cleanUp := func() {
+		if err := dbMap.TruncateTables(); err != nil {
+			t.Fatalf("Could not truncate tables after the test: %s", err)
+		}
+		dbMap.Db.Close()
+	}
+
+	return padb, cleanUp
 }

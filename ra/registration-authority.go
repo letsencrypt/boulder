@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/sa"
 )
 
 // RegistrationAuthorityImpl defines an RA.
@@ -42,8 +43,13 @@ func NewRegistrationAuthorityImpl(paConfig cmd.PAConfig) (ra RegistrationAuthori
 	logger := blog.GetAuditLogger()
 	logger.Notice("Registration Authority Starting")
 
+	dbMap, err := sa.NewDbMap(paConfig.DBConnect)
+	if err != nil {
+		return RegistrationAuthorityImpl{}, err
+	}
+
 	ra.log = logger
-	pa, err := policy.NewPolicyAuthorityImpl(paConfig.DBConnect, paConfig.EnforcePolicyWhitelist)
+	pa, err := policy.NewPolicyAuthorityImpl(dbMap, paConfig.EnforcePolicyWhitelist)
 	if err != nil {
 		return RegistrationAuthorityImpl{}, err
 	}

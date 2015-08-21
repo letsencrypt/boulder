@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/sa"
 
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
@@ -41,12 +40,8 @@ type PolicyAuthorityDatabaseImpl struct {
 
 // NewPolicyAuthorityDatabaseImpl constructs a Policy Authority Database (and
 // creates tables if they are non-existent)
-func NewPolicyAuthorityDatabaseImpl(name string) (padb *PolicyAuthorityDatabaseImpl, err error) {
+func NewPolicyAuthorityDatabaseImpl(dbMap *gorp.DbMap) (padb *PolicyAuthorityDatabaseImpl, err error) {
 	logger := blog.GetAuditLogger()
-	dbMap, err := sa.NewDbMap(name)
-	if err != nil {
-		return nil, err
-	}
 
 	dbMap.AddTableWithName(DomainRule{}, "ruleList").SetKeys(false, "Host")
 
@@ -103,12 +98,15 @@ func (padb *PolicyAuthorityDatabaseImpl) DumpRules() ([]DomainRule, error) {
 func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string, requireWhitelisted bool) error {
 	host = reverseName(host)
 	var rules []DomainRule
+	// Because of how rules are sorted if there is a relevant whitelist AND blacklist
+	// rule we will catch them both, this query will return a maximum of two rules
 	_, err := padb.dbMap.Select(
 		&rules,
-		`SELECT * FROM ruleList WHERE :host >= host ORDER BY host ASC`,
+		`SELECT * FROM ruleList WHERE :host >= host ORDER BY host DESC LIMIT 2`,
 		map[string]interface{}{"host": host},
 	)
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
 
