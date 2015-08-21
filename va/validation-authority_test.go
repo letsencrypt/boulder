@@ -259,12 +259,27 @@ func TestSimpleHttp(t *testing.T) {
 	tls := false
 	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, TLS: &tls, ValidationRecord: []core.ValidationRecord{}}
 
+	// NOTE: We do not attempt to shut down the server. The problem is that the
+	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
+	// than that. So if we try to call hs.Close() at the end of the test, we'll be
+	// closing the test server while a request is still pending. Unfortunately,
+	// there appears to be an issue in httptest that trips Go's race detector when
+	// that happens, failing the test. So instead, we live with leaving the server
+	// around till the process exits.
 	hs := simpleSrv(t, expectedToken, tls)
 
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
-	va.simpleHTTPPort = port
 
+	// Attempt to fail a challenge by telling the VA to connect to a port we are
+	// not listening on.
+	va.simpleHTTPPort = (port + 1) % 65536
+	invalidChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Server's down; expected refusal. Where did we connect?")
+	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
+
+	va.simpleHTTPPort = port
 	log.Clear()
 	finChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
@@ -273,7 +288,7 @@ func TestSimpleHttp(t *testing.T) {
 
 	log.Clear()
 	chall.Token = path404
-	invalidChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
+	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Should have found a 404 for the challenge.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
@@ -322,19 +337,8 @@ func TestSimpleHttp(t *testing.T) {
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
 	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
-	// We've spent five seconds already, but the request will stay running on the
-	// httptest server for ten total. Sleep a bit longer to ensure the request is done
-	// before hs.Close, or we will trigger the race detector.
-	time.Sleep(7 * time.Second)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Connection should've timed out")
-	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
-
-	// Take down server and check that validation fails
-	hs.Close()
-	invalidChall, err = va.validateSimpleHTTP(ident, chall, AccountKey)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Server's down; expected refusal. Where did we connect?")
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 }
 
