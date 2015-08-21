@@ -26,7 +26,6 @@ CREATE TABLE `authz` (
   `registrationID` bigint(20) DEFAULT NULL,
   `status` varchar(255) DEFAULT NULL,
   `expires` datetime DEFAULT NULL,
-  `challenges` varchar(1536) DEFAULT NULL,
   `combinations` varchar(255) DEFAULT NULL,
   `sequence` bigint(20) DEFAULT NULL,
   PRIMARY KEY (`id`),
@@ -59,6 +58,21 @@ CREATE TABLE `certificateStatus` (
   PRIMARY KEY (`serial`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+CREATE TABLE `challenges` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `authorizationID` varchar(255) NOT NULL,
+  `LockCol` bigint(20) DEFAULT NULL,
+  `type` varchar(255) NOT NULL,
+  `status` varchar(255) NOT NULL,
+  `error` mediumblob DEFAULT NULL,
+  `validated` datetime DEFAULT NULL,
+  `uri` varchar(255) DEFAULT NULL,
+  `token` varchar(255) NOT NULL,
+  `tls` tinyint(1) DEFAULT NULL,
+  `validation` mediumblob,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
 CREATE TABLE `crls` (
   `serial` varchar(255) NOT NULL,
   `createdAt` datetime NOT NULL,
@@ -87,7 +101,6 @@ CREATE TABLE `pending_authz` (
   `registrationID` bigint(20) DEFAULT NULL,
   `status` varchar(255) DEFAULT NULL,
   `expires` datetime DEFAULT NULL,
-  `challenges` varchar(1536) DEFAULT NULL,
   `combinations` varchar(255) DEFAULT NULL,
   `LockCol` bigint(20) DEFAULT NULL,
   PRIMARY KEY (`id`),

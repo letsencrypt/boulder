@@ -214,7 +214,7 @@ func main() {
 		go cmd.DebugServer(c.OCSPUpdater.DebugAddr)
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBDriver, c.OCSPUpdater.DBConnect)
+		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		cac, closeChan := setupClients(c)

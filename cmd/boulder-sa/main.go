@@ -31,8 +31,10 @@ func main() {
 
 		go cmd.DebugServer(c.SA.DebugAddr)
 
-		sai, err := sa.NewSQLStorageAuthority(c.SA.DBDriver, c.SA.DBConnect)
+		dbMap, err := sa.NewDbMap(c.SA.DBConnect)
+		cmd.FailOnError(err, "Couldn't connect to SA database")
 
+		sai, err := sa.NewSQLStorageAuthority(dbMap)
 		cmd.FailOnError(err, "Failed to create SA impl")
 		sai.SetSQLDebug(c.SQL.SQLDebug)
 
