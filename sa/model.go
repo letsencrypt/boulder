@@ -32,14 +32,15 @@ type challModel struct {
 	ID              int64  `db:"id"`
 	AuthorizationID string `db:"authorizationID"`
 
-	Type       string          `db:"type"`
-	Status     core.AcmeStatus `db:"status"`
-	Error      []byte          `db:"error"`
-	Validated  *time.Time      `db:"validated"`
-	URI        string          `db:"uri"`
-	Token      string          `db:"token"`
-	TLS        *bool           `db:"tls"`
-	Validation []byte          `db:"validation"`
+	Type             string          `db:"type"`
+	Status           core.AcmeStatus `db:"status"`
+	Error            []byte          `db:"error"`
+	Validated        *time.Time      `db:"validated"`
+	URI              string          `db:"uri"`
+	Token            string          `db:"token"`
+	TLS              *bool           `db:"tls"`
+	Validation       []byte          `db:"validation"`
+	ValidationRecord []byte          `db:"validationRecord"`
 
 	LockCol int64
 }
@@ -107,10 +108,20 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		cm.Error = errJSON
 	}
 	if c.URI != nil {
-		cm.URI = c.URI.String()
-		if len(cm.URI) > 255 {
+		if len(c.URI.String()) > 255 {
 			return nil, fmt.Errorf("URI is too long to store in the database")
 		}
+		cm.URI = c.URI.String()
+	}
+	if len(c.ValidationRecord) > 0 {
+		vrJSON, err := json.Marshal(c.ValidationRecord)
+		if err != nil {
+			return nil, err
+		}
+		if len(vrJSON) > mediumBlobSize {
+			return nil, fmt.Errorf("Validation Record object is too large to store in the database")
+		}
+		cm.ValidationRecord = vrJSON
 	}
 	return &cm, nil
 }
@@ -144,6 +155,14 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 			return core.Challenge{}, err
 		}
 		c.Error = &problem
+	}
+	if len(cm.ValidationRecord) > 0 {
+		var vr []core.ValidationRecord
+		err := json.Unmarshal(cm.ValidationRecord, &vr)
+		if err != nil {
+			return core.Challenge{}, err
+		}
+		c.ValidationRecord = vr
 	}
 	return c, nil
 }
