@@ -7,7 +7,11 @@ package main
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,9 +30,30 @@ import (
 const (
 	good = "valid"
 	bad  = "invalid"
+
+	filenameLayout = "02012006"
 )
 
 type report struct {
+	GoodCerts int64
+	BadCerts  int64
+	Entries   map[string]reportEntry
+}
+
+func (r *report) save(directory string) error {
+	filename := path.Join(directory, fmt.Sprintf(
+		"%s-%s-report.json",
+		time.Now().Add(-time.Hour*24*90).Format(filenameLayout),
+		time.Now().Format(filenameLayout),
+	))
+	content, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(filename, content, os.ModePerm)
+}
+
+type reportEntry struct {
 	Valid    bool     `json:"validity"`
 	Problems []string `json:"problem,omitempty"`
 }
@@ -37,17 +62,16 @@ type certChecker struct {
 	pa           core.PolicyAuthority
 	dbMap        *gorp.DbMap
 	certs        chan core.Certificate
-	sampleReport map[string]report
-	goodCerts    int64
-	badCerts     int64
+	issuedReport report
 }
 
 func newChecker(dbMap *gorp.DbMap) certChecker {
-	return certChecker{
-		pa:           policy.NewPolicyAuthorityImpl(),
-		dbMap:        dbMap,
-		sampleReport: make(map[string]report),
+	c := certChecker{
+		pa:    policy.NewPolicyAuthorityImpl(),
+		dbMap: dbMap,
 	}
+	c.issuedReport.Entries = make(map[string]reportEntry)
+	return c
 }
 
 func (c *certChecker) getCerts() error {
@@ -76,11 +100,11 @@ func (c *certChecker) processCerts(wg *sync.WaitGroup) {
 
 		problems := c.checkCert(cert)
 		valid := len(problems) == 0
-		c.sampleReport[cert.Serial] = report{Valid: valid, Problems: problems}
+		c.issuedReport.Entries[cert.Serial] = reportEntry{Valid: valid, Problems: problems}
 		if !valid {
-			atomic.AddInt64(&c.badCerts, 1)
+			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
 		} else {
-			atomic.AddInt64(&c.goodCerts, 1)
+			atomic.AddInt64(&c.issuedReport.GoodCerts, 1)
 		}
 	}
 	wg.Done()
@@ -181,10 +205,12 @@ func main() {
 		wg.Wait()
 		auditlogger.Info(fmt.Sprintf(
 			"# Finished processing certificates, sample: %d, good: %d, bad: %d",
-			len(checker.sampleReport),
-			checker.goodCerts,
-			checker.badCerts,
+			len(checker.issuedReport.Entries),
+			checker.issuedReport.GoodCerts,
+			checker.issuedReport.BadCerts,
 		))
+		err = checker.issuedReport.save(c.CertChecker.ReportDirectoryPath)
+		cmd.FailOnError(err, "Couldn't save issued certificate report")
 	}
 
 	app.Run()

@@ -29,7 +29,7 @@ func BenchmarkCheckCert(b *testing.B) {
 	}
 
 	checker := newChecker(dbMap)
-	testKey, _ := rsa.GenerateKey(rand.Reader, 512)
+	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
 	rawCert := x509.Certificate{
