@@ -69,12 +69,6 @@ func (ssa *SQLStorageAuthority) SetSQLDebug(state bool) {
 	SetSQLDebug(ssa.dbMap, state)
 }
 
-// CreateTablesIfNotExists instructs the ORM to create any missing tables.
-func (ssa *SQLStorageAuthority) CreateTablesIfNotExists() (err error) {
-	err = ssa.dbMap.CreateTablesIfNotExists()
-	return
-}
-
 func statusIsPending(status core.AcmeStatus) bool {
 	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
 }

@@ -45,33 +45,40 @@ To run a single module, specifying the AMQP server, you might use something more
 Quickstart
 ----------
 
-Install RabbitMQ from https://rabbitmq.com/download.html. It's required to run
-tests.
-
-Install libtool-ltdl dev libraries, which are required for Boulder's PKCS11
-support.
+Boulder requires an installation of RabbitMQ, libtool-ltdl, and
+MariaDB 10 to work correctly. On Ubuntu and CentOS, you may have to
+install RabbitMQ from https://rabbitmq.com/download.html to get a
+recent version.
 
 Ubuntu:
-`sudo apt-get install libltdl3-dev`
+
+    sudo apt-get install libltdl3-dev mariadb-server rabbitmq-server
 
 CentOS:
-`sudo yum install libtool-ltdl-devel`
+
+    sudo yum install libtool-ltdl-devel MariaDB-server MariaDB-client rabbitmq-server
 
 OS X:
-`sudo port install libtool` or `brew install libtool`
+
+    brew install libtool mariadb rabbitmq
+
+or
+
+    sudo port install libtool mariadb-server rabbitmq-server
 
 (On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
 
 ```
-> go get github.com/letsencrypt/boulder # Ignore errors about no buildable files
+> go get github.com/letsencrypt/boulder/ # Ignore errors about no buildable files
 > cd $GOPATH/src/github.com/letsencrypt/boulder
 # This starts each Boulder component with test configs. Ctrl-C kills all.
-> python ./start.py
-> cd test/js
-> npm install
-> nodejs test.js
 > ./test.sh
 ```
+
+The databases that boulder requires to operate in development and
+testing can be created using test/create\_db.sh. It uses the root
+MariaDB user, so if you have disabled that account you may have to
+adjust the file or recreate the commands.
 
 You can also check out the official client from
 https://github.com/letsencrypt/lets-encrypt-preview/ and follow the setup

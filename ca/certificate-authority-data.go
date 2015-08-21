@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
@@ -31,7 +30,7 @@ type SerialNumber struct {
 
 // NewCertificateAuthorityDatabaseImpl constructs a Database for the
 // Certificate Authority.
-func NewCertificateAuthorityDatabaseImpl(dbMap *gorp.DbMap) (cadb core.CertificateAuthorityDatabase, err error) {
+func NewCertificateAuthorityDatabaseImpl(dbMap *gorp.DbMap) (cadb *CertificateAuthorityDatabaseImpl, err error) {
 	logger := blog.GetAuditLogger()
 
 	dbMap.AddTableWithName(SerialNumber{}, "serialNumber").SetKeys(true, "ID")
@@ -41,21 +40,6 @@ func NewCertificateAuthorityDatabaseImpl(dbMap *gorp.DbMap) (cadb core.Certifica
 		log:   logger,
 	}
 	return cadb, nil
-}
-
-// CreateTablesIfNotExists builds the database tables and inserts the initial
-// state, if the tables do not already exist. It is not an error for the tables
-// to already exist.
-func (cadb *CertificateAuthorityDatabaseImpl) CreateTablesIfNotExists() (err error) {
-	// Create serial number table
-	err = cadb.dbMap.CreateTablesIfNotExists()
-	if err != nil {
-		return
-	}
-
-	// Initialize the serial number
-	err = cadb.dbMap.Insert(&SerialNumber{ID: 1, Number: 1, LastUpdated: time.Now()})
-	return
 }
 
 // Begin starts a transaction at the GORP wrapper.

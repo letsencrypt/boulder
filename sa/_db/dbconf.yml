@@ -1,0 +1,9 @@
+development:
+  driver: mysql
+  open: boulder@tcp(localhost:3306)/boulder_sa_development
+test:
+  driver: mysql
+  open: boulder@tcp(localhost:3306)/boulder_sa_test
+integration:
+  driver: mysql
+  open: boulder@tcp(localhost:3306)/boulder_sa_integration
