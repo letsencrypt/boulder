@@ -322,6 +322,10 @@ func TestSimpleHttp(t *testing.T) {
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
 	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
+	// We've spent five seconds already, but the request will stay running on the
+	// httptest server for ten total. Sleep a bit longer to ensure the request is done
+	// before hs.Close, or we will trigger the race detector.
+	time.Sleep(7 * time.Second)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Connection should've timed out")
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
