@@ -166,6 +166,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		RegistrationID: regID,
 		Status:         core.StatusPending,
 		Combinations:   combinations,
+		Challenges:     challenges,
 	}
 
 	// Get a pending Auth first so we can get our ID back, then update with challenges
@@ -178,21 +179,18 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Construct all the challenge URIs
-	for i := range challenges {
+	for i := range authz.Challenges {
 		// Ignoring these errors because we construct the URLs to be correct
 		challengeURI, _ := core.ParseAcmeURL(ra.AuthzBase + authz.ID + "?challenge=" + strconv.Itoa(i))
-		challenges[i].URI = challengeURI
+		authz.Challenges[i].URI = challengeURI
 
-		if !challenges[i].IsSane(false) {
+		if !authz.Challenges[i].IsSane(false) {
 			// InternalServerError because we generated these challenges, they should
 			// be OK.
-			err = core.InternalServerError(fmt.Sprintf("Challenge didn't pass sanity check: %+v", challenges[i]))
+			err = core.InternalServerError(fmt.Sprintf("Challenge didn't pass sanity check: %+v", authz.Challenges[i]))
 			return authz, err
 		}
 	}
-
-	// Update object
-	authz.Challenges = challenges
 
 	// Store the authorization object, then return it
 	err = ra.SA.UpdatePendingAuthorization(authz)

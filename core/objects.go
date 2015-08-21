@@ -361,7 +361,7 @@ type Authorization struct {
 	// in process, these are challenges to be fulfilled; for
 	// final authorizations, they describe the evidence that
 	// the server used in support of granting the authorization.
-	Challenges []Challenge `json:"challenges,omitempty" db:"challenges"`
+	Challenges []Challenge `json:"challenges,omitempty" db:"-"`
 
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
