@@ -127,12 +127,15 @@ func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 // net/http, except we only send A queries and accept IPv4 addresses.
 // TODO(#593): Add IPv6 support
 func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
-	addrs, _, err := va.DNSResolver.LookupHost(hostname)
+	addrs, rtt, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
 		problem = problemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
 		return
 	}
+	va.Stats.TimingDuration("VA.DNS.RTT.A", rtt, 1.0)
+	va.Stats.Inc("VA.DNS.Rate", 1, 1.0)
+
 	if len(addrs) == 0 {
 		problem = &core.ProblemDetails{
 			Type:   core.UnknownHostProblem,

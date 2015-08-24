@@ -31,7 +31,7 @@ This list is split up into metric topics with the names of the clients that subm
 
     ```
 	[counter] Boulder.RPC.Rate.Success
-  	[counter] Boulder.RPC.Rate.Error
+  [counter] Boulder.RPC.Rate.Error
 	[counter] Boulder.RPC.Traffic
 	[counter] Boulder.RPC.Timeouts
 
@@ -62,16 +62,17 @@ This list is split up into metric topics with the names of the clients that subm
 
     ```
     (VA)
-  	[counter] Boulder.VA.DNS.Rate
+	[counter] Boulder.VA.DNS.Rate
 
-	[timing]  Boulder.VA.DNS.RTT.TXT
-	[timing]  Boulder.VA.DNS.RTT.CAA
-	[timing]  Boulder.VA.DNS.RTT.CNAME
+  [timing]  Boulder.VA.DNS.RTT.A
+  [timing]  Boulder.VA.DNS.RTT.CAA
+  [timing]  Boulder.VA.DNS.RTT.CNAME
+  [timing]  Boulder.VA.DNS.RTT.TXT
 
     (RA)
-  	[counter] Boulder.RA.DNS.Rate
+  [counter] Boulder.RA.DNS.Rate
 
-  	[timing]  Boulder.RA.DNS.RTT.MX
+  [timing]  Boulder.RA.DNS.RTT.MX
     ```
 
 * Validation attempts (`cmd/boulder-va`)
