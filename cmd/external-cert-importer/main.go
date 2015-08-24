@@ -119,7 +119,7 @@ func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Stat
 }
 
 func main() {
-	app := cmd.NewAppShell("external-cert-importer")
+	app := cmd.NewAppShell("external-cert-importer", "Imports external certificates for POP checks")
 
 	app.App.Flags = append(app.App.Flags, cli.StringFlag{
 		Name:  "a, valid-certs-file",

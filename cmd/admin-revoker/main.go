@@ -143,12 +143,13 @@ func revokeByReg(regID int64, reasonCode int, deny bool, cac rpc.CertificateAuth
 	return
 }
 
-var version = "0.0.1"
-
 func main() {
 	app := cli.NewApp()
 	app.Name = "admin-revoker"
-	app.Version = version
+	app.Usage = "Revokes issued certificates"
+	app.Version = cmd.Version()
+	app.Author = "Boulder contributors"
+	app.Email = "ca-dev@letsencrypt.org"
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{

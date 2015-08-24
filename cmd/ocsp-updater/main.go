@@ -184,7 +184,7 @@ func (updater *OCSPUpdater) findStaleResponses(oldestLastUpdatedTime time.Time, 
 }
 
 func main() {
-	app := cmd.NewAppShell("ocsp-updater")
+	app := cmd.NewAppShell("ocsp-updater", "Generates and updates OCSP responses")
 
 	app.App.Flags = append(app.App.Flags, cli.IntFlag{
 		Name:   "limit",

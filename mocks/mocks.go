@@ -7,6 +7,7 @@ package mocks
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -28,6 +29,15 @@ func (mock *MockDNS) LookupTXT(hostname string) ([]string, time.Duration, error)
 		return nil, 0, fmt.Errorf("SERVFAIL")
 	}
 	return []string{"hostname"}, 0, nil
+}
+
+// LookupHost is a mock
+func (mock *MockDNS) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
+	if hostname == "always.invalid" || hostname == "invalid.invalid" {
+		return []net.IP{}, 0, nil
+	}
+	ip := net.ParseIP("127.0.0.1")
+	return []net.IP{ip}, 0, nil
 }
 
 // LookupCNAME is a mock

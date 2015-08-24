@@ -59,7 +59,7 @@ func NewDbMap(dbConnect string) (*gorp.DbMap, error) {
 // the mysql driver. Similarly, the driver needs the password and
 // username unescaped. Compromise by doing the leg work if the config
 // says the database URL's scheme is a fake one called
-// "mysqltcp://". See
+// "mysql+tcp://". See
 // https://github.com/go-sql-driver/mysql/issues/362 for why we have
 // to futz around and avoid URL.String.
 func recombineURLForDB(dbConnect string) (string, error) {
@@ -95,8 +95,7 @@ func recombineURLForDB(dbConnect string) (string, error) {
 		dbConn += ":" + passwd
 	}
 	dbConn += "@tcp(" + dbURL.Host + ")"
-	// TODO(jmhodges): should be dbURL.EscapedPath() but Travis doesn't have 1.5
-	return dbConn + dbURL.Path + "?" + dsnVals.Encode(), nil
+	return dbConn + dbURL.EscapedPath() + "?" + dsnVals.Encode(), nil
 }
 
 // SetSQLDebug enables/disables GORP SQL-level Debugging
@@ -116,7 +115,7 @@ type SQLLogger struct {
 
 // Printf adapts the AuditLogger to GORP's interface
 func (log *SQLLogger) Printf(format string, v ...interface{}) {
-	log.log.Debug(fmt.Sprintf(format, v))
+	log.log.Debug(fmt.Sprintf(format, v...))
 }
 
 // initTables constructs the table map for the ORM. If you want to also create
@@ -128,11 +127,8 @@ func initTables(dbMap *gorp.DbMap) {
 	regTable.ColMap("KeySHA256").SetNotNull(true).SetUnique(true)
 	pendingAuthzTable := dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
 	pendingAuthzTable.SetVersionCol("LockCol")
-	pendingAuthzTable.ColMap("Challenges").SetMaxSize(1536)
-
-	authzTable := dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
-	authzTable.ColMap("Challenges").SetMaxSize(1536)
-
+	dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
+	dbMap.AddTableWithName(challModel{}, "challenges").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.OCSPResponse{}, "ocspResponses").SetKeys(true, "ID")

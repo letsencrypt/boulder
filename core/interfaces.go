@@ -7,6 +7,7 @@ package core
 
 import (
 	"crypto/x509"
+	"net"
 	"net/http"
 	"time"
 
@@ -142,6 +143,7 @@ type CertificateAuthorityDatabase interface {
 type DNSResolver interface {
 	ExchangeOne(string, uint16) (*dns.Msg, time.Duration, error)
 	LookupTXT(string) ([]string, time.Duration, error)
+	LookupHost(string) ([]net.IP, time.Duration, error)
 	LookupCNAME(string) (string, time.Duration, error)
 	LookupDNAME(string) (string, time.Duration, error)
 	LookupCAA(string) ([]*dns.CAA, time.Duration, error)

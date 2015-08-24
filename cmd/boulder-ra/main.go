@@ -19,7 +19,7 @@ import (
 )
 
 func main() {
-	app := cmd.NewAppShell("boulder-ra")
+	app := cmd.NewAppShell("boulder-ra", "Handles service orchestration")
 	app.Action = func(c cmd.Config) {
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 		cmd.FailOnError(err, "Couldn't connect to statsd")
