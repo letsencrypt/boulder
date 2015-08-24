@@ -79,7 +79,11 @@ type RPCMonitor struct {
 // NewRPCMonitor returns a new initialized RPCMonitor and starts a goroutine
 // to cleanup timeouts from the delivery map
 func NewRPCMonitor(stats statsd.Statter) RPCMonitor {
-	r := RPCMonitor{stats: stats, deliveryTimings: make(map[string]time.Time), dtMu: &sync.Mutex{}}
+	r := RPCMonitor{
+		stats:           stats,
+		deliveryTimings: make(map[string]time.Time),
+		dtMu:            &sync.Mutex{},
+	}
 	go func() {
 		c := time.Tick(time.Second * 5)
 		for _ = range c {
@@ -158,7 +162,6 @@ func (r *RPCMonitor) TimeDelivery(d amqp.Delivery) {
 			}
 			r.stats.Inc(fmt.Sprintf("RPC.Rate.%s", state), 1, 1.0)
 			r.stats.TimingDuration(fmt.Sprintf("RPC.ResponseTime.%s.%s", d.Type, state), respTime, 1.0)
-		} else {
 		}
 	}
 }
