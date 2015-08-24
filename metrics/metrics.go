@@ -121,7 +121,8 @@ func (r *RPCMonitor) cleanup() (removed int64) {
 	for k, v := range r.deliveryTimings {
 		if time.Now().Add(-time.Second * 10).After(v) {
 			// If the delivery has been in the map for more than 10 seconds
-			// it has timed out, delete it so the map doesn't get cluttered
+			// it has timed out, delete it so the map doesn't grow
+			// indefinitely.
 			delete(r.deliveryTimings, k)
 			removed++
 		}
