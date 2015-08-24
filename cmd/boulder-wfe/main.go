@@ -75,7 +75,7 @@ func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
 }
 
 func main() {
-	app := cmd.NewAppShell("boulder-wfe")
+	app := cmd.NewAppShell("boulder-wfe", "Handles HTTP API requests")
 	addrFlag := cli.StringFlag{
 		Name:   "addr",
 		Value:  "",
