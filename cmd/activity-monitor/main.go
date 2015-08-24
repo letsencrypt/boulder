@@ -139,7 +139,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 }
 
 func main() {
-	app := cmd.NewAppShell("activity-monitor")
+	app := cmd.NewAppShell("activity-monitor", "RPC activity monitor")
 
 	app.Action = func(c cmd.Config) {
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)

@@ -206,7 +206,7 @@ func (ds durationSlice) Swap(a, b int) {
 }
 
 func main() {
-	app := cmd.NewAppShell("expiration-mailer")
+	app := cmd.NewAppShell("expiration-mailer", "Sends certificate expiration emails")
 
 	app.App.Flags = append(app.App.Flags, cli.IntFlag{
 		Name:   "cert_limit",

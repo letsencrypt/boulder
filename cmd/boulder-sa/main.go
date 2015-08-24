@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	app := cmd.NewAppShell("boulder-sa")
+	app := cmd.NewAppShell("boulder-sa", "Handles SQL operations")
 	app.Action = func(c cmd.Config) {
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 		cmd.FailOnError(err, "Couldn't connect to statsd")
