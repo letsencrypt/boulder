@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,6 +33,8 @@ const (
 	bad  = "invalid"
 
 	filenameLayout = "02012006"
+
+	checkPeriod = time.Hour * 24 * 90
 )
 
 type report struct {
@@ -79,7 +82,7 @@ func (c *certChecker) getCerts() error {
 	_, err := c.dbMap.Select(
 		&certs,
 		"SELECT * FROM certificates WHERE issued > :issued",
-		map[string]interface{}{"issued": time.Now().Add(-time.Hour * 24 * 90)},
+		map[string]interface{}{"issued": time.Now().Add(-checkPeriod)},
 	)
 	if err != nil {
 		return err
@@ -134,7 +137,7 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			problems = append(problems, "Certificate can sign other certificates")
 		}
 		// Check the cert has the correct validity period
-		if parsedCert.NotAfter.Sub(cert.Issued) > (time.Hour * 24 * 90) {
+		if parsedCert.NotAfter.Sub(cert.Issued) > (checkPeriod) {
 			problems = append(problems, "Certificate has a validity period longer than 90 days")
 		}
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
@@ -155,20 +158,20 @@ func main() {
 	app := cmd.NewAppShell("cert-checker")
 	app.App.Flags = append(app.App.Flags, cli.IntFlag{
 		Name:  "workers",
-		Value: 5,
-		Usage: "The number of cocurrent workers used to process certificates",
+		Value: runtime.NumCPU(),
+		Usage: "The number of concurrent workers used to process certificates",
 	}, cli.StringFlag{
-		Name:  "report-path",
+		Name:  "report-dir-path",
 		Usage: "The path to write a JSON report on the certificates checks to (if no path is provided the report will not be written out)",
 	}, cli.StringFlag{
-		Name:  "sql-uri",
+		Name:  "db-connect",
 		Usage: "SQL URI if not provided in the configuration file",
 	})
 
 	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
 		config.CertChecker.ReportDirectoryPath = c.GlobalString("report-dir-path")
 
-		if connect := c.GlobalString("sql-uri"); connect != "" {
+		if connect := c.GlobalString("db-connect"); connect != "" {
 			config.CertChecker.DBConnect = connect
 		}
 
@@ -193,9 +196,6 @@ func main() {
 		err = checker.getCerts()
 		cmd.FailOnError(err, "Failed to get sample certificates")
 
-		if c.CertChecker.Workers > len(checker.certs) {
-			c.CertChecker.Workers = len(checker.certs)
-		}
 		auditlogger.Info(fmt.Sprintf("# Processing sample, %d certificates using %d workers", len(checker.certs), c.CertChecker.Workers))
 		wg := new(sync.WaitGroup)
 		for i := 0; i < c.CertChecker.Workers; i++ {
