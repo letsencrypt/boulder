@@ -32,7 +32,7 @@ const (
 	good = "valid"
 	bad  = "invalid"
 
-	filenameLayout = "02012006"
+	filenameLayout = "20060102"
 
 	checkPeriod = time.Hour * 24 * 90
 )
@@ -98,12 +98,12 @@ func (c *certChecker) getCerts() error {
 
 func (c *certChecker) processCerts(wg *sync.WaitGroup) {
 	for cert := range c.certs {
-		// DEBUG
-		fmt.Println("CERT:", cert.Serial)
-
 		problems := c.checkCert(cert)
 		valid := len(problems) == 0
-		c.issuedReport.Entries[cert.Serial] = reportEntry{Valid: valid, Problems: problems}
+		c.issuedReport.Entries[cert.Serial] = reportEntry{
+			Valid:    valid,
+			Problems: problems,
+		}
 		if !valid {
 			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
 		} else {
@@ -155,7 +155,7 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 }
 
 func main() {
-	app := cmd.NewAppShell("cert-checker")
+	app := cmd.NewAppShell("cert-checker", "Checks validity of certificates issued in the last 90 days")
 	app.App.Flags = append(app.App.Flags, cli.IntFlag{
 		Name:  "workers",
 		Value: runtime.NumCPU(),
