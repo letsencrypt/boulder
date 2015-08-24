@@ -9,7 +9,7 @@ VERSION ?= 1.0.0
 EPOCH ?= 1
 MAINTAINER ?= "Community"
 
-OBJECTS = $(shell find ./cmd -type d -maxdepth 1 -mindepth 1 | xargs basename)
+OBJECTS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d -exec basename '{}' \;)
 
 # Build environment variables (referencing core/util.go)
 COMMIT_ID = $(shell git rev-parse --short HEAD)

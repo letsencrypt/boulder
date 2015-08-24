@@ -22,6 +22,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC"
+
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
@@ -95,6 +97,33 @@ func existingRegistration(tx *gorp.Transaction, id int64) bool {
 	return count > 0
 }
 
+func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Transaction) error {
+	var challs []challModel
+	_, err := tx.Select(
+		&challs,
+		getChallengesQuery,
+		map[string]interface{}{"authID": authID},
+	)
+	if err != nil {
+		return err
+	}
+	if len(challs) != len(challenges) {
+		return fmt.Errorf("Invalid number of challenges provided")
+	}
+	for i, authChall := range challenges {
+		chall, err := challengeToModel(&authChall, challs[i].AuthorizationID)
+		if err != nil {
+			return err
+		}
+		chall.ID = challs[i].ID
+		_, err = tx.Update(chall)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type NoSuchRegistrationError struct {
 	Msg string
 }
@@ -152,7 +181,10 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 		tx.Rollback()
 		return
 	}
-	if authObj == nil {
+	if authObj != nil {
+		authD := *authObj.(*pendingauthzModel)
+		authz = authD.Authorization
+	} else {
 		authObj, err = tx.Get(authzModel{}, id)
 		if err != nil {
 			tx.Rollback()
@@ -165,29 +197,49 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 		}
 		authD := authObj.(*authzModel)
 		authz = authD.Authorization
+	}
 
-		err = tx.Commit()
+	var challObjs []challModel
+	_, err = tx.Select(
+		&challObjs,
+		getChallengesQuery,
+		map[string]interface{}{"authID": authz.ID},
+	)
+	if err != nil {
+		tx.Rollback()
 		return
 	}
-	authD := *authObj.(*pendingauthzModel)
-	authz = authD.Authorization
+	var challs []core.Challenge
+	for _, c := range challObjs {
+		chall, err := modelToChallenge(&c)
+		if err != nil {
+			tx.Rollback()
+			return core.Authorization{}, err
+		}
+		challs = append(challs, chall)
+	}
+	authz.Challenges = challs
 
 	err = tx.Commit()
 	return
 }
 
-// Get the valid authorization with biggest expire date for a given domain and registrationId
+// GetLatestValidAuthorization gets the valid authorization with biggest expire date for a given domain and registrationId
 func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	ident, err := json.Marshal(identifier)
 	if err != nil {
 		return
 	}
-	err = ssa.dbMap.SelectOne(&authz, "SELECT id, identifier, registrationID, status, expires, challenges, combinations "+
-		"FROM authz "+
+	var auth core.Authorization
+	err = ssa.dbMap.SelectOne(&auth, "SELECT id FROM authz "+
 		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
 		"ORDER BY expires DESC LIMIT 1",
 		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
-	return
+	if err != nil {
+		return
+	}
+
+	return ssa.GetAuthorization(auth.ID)
 }
 
 // GetCertificateByShortSerial takes an id consisting of the first, sequential half of a
@@ -386,8 +438,22 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 		return
 	}
 
+	for _, c := range authz.Challenges {
+		chall, err := challengeToModel(&c, pendingAuthz.ID)
+		if err != nil {
+			tx.Rollback()
+			return core.Authorization{}, err
+		}
+		err = tx.Insert(chall)
+		if err != nil {
+			tx.Rollback()
+			return core.Authorization{}, err
+		}
+	}
+
 	err = tx.Commit()
 	output = pendingAuthz.Authorization
+	output.Challenges = authz.Challenges
 	return
 }
 
@@ -424,6 +490,12 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 	auth := authObj.(*pendingauthzModel)
 	auth.Authorization = authz
 	_, err = tx.Update(auth)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
 		tx.Rollback()
 		return
@@ -479,6 +551,12 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	}
 
 	_, err = tx.Delete(oldAuth)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
 		tx.Rollback()
 		return

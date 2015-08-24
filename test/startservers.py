@@ -62,6 +62,7 @@ def start(race_detection):
             'cmd/boulder-sa',
             'cmd/boulder-ca',
             'cmd/boulder-va',
+            'cmd/ocsp-responder',
             'test/dns-test-srv']:
         try:
             processes.append(run(prog, race_detection))

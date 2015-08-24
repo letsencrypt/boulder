@@ -170,14 +170,12 @@ func TestAddAuthorization(t *testing.T) {
 		return
 	}
 
-	chall := core.SimpleHTTPChallenge()
-
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}
 
 	exp := time.Now().AddDate(0, 0, 1)
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
-	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: 0, Status: core.StatusPending, Expires: &exp, Challenges: []core.Challenge{chall}, Combinations: combos}
+	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: 0, Status: core.StatusPending, Expires: &exp, Combinations: combos}
 	err = sa.UpdatePendingAuthorization(newPa)
 	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 
@@ -191,7 +189,7 @@ func TestAddAuthorization(t *testing.T) {
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
 	// create pending auth
-	authz, err := sa.NewPendingAuthorization(core.Authorization{})
+	authz, err := sa.NewPendingAuthorization(core.Authorization{Challenges: []core.Challenge{core.Challenge{}}})
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, authz.ID != "", "ID shouldn't be blank")
 

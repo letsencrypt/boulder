@@ -113,7 +113,7 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 }
 
 func main() {
-	app := cmd.NewAppShell("boulder-ocsp-responder")
+	app := cmd.NewAppShell("boulder-ocsp-responder", "Handles OCSP requests")
 	app.Action = func(c cmd.Config) {
 		// Set up logging
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)

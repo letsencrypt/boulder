@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	app := cmd.NewAppShell("boulder-ca")
+	app := cmd.NewAppShell("boulder-ca", "Handles issuance operations")
 	app.Action = func(c cmd.Config) {
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 		cmd.FailOnError(err, "Couldn't connect to statsd")
