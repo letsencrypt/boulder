@@ -132,7 +132,8 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 
 // NewAuthorization constuct a new Authz from a request.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
-	if regID <= 0 {
+	reg, err := ra.SA.GetRegistration(regID)
+	if err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", regID))
 		return authz, err
 	}
@@ -158,7 +159,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Create validations, but we have to update them with URIs later
-	challenges, combinations := ra.PA.ChallengesFor(identifier)
+	challenges, combinations := ra.PA.ChallengesFor(identifier, reg.Key)
 
 	// Partially-filled object
 	authz = core.Authorization{
@@ -183,6 +184,9 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		// Ignoring these errors because we construct the URLs to be correct
 		challengeURI, _ := core.ParseAcmeURL(ra.AuthzBase + authz.ID + "?challenge=" + strconv.Itoa(i))
 		authz.Challenges[i].URI = challengeURI
+
+		// Add the account key used to generate the challenge
+		authz.Challenges[i].AccountKey = reg.Key
 
 		if !authz.Challenges[i].IsSane(false) {
 			// InternalServerError because we generated these challenges, they should
