@@ -104,8 +104,7 @@ type Config struct {
 	}
 
 	SQL struct {
-		CreateTables bool
-		SQLDebug     bool
+		SQLDebug bool
 	}
 
 	Statsd struct {

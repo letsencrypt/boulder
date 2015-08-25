@@ -43,6 +43,7 @@ before_install:
   - go get github.com/mattn/goveralls
   - go get github.com/modocache/gover
   - go get github.com/jcjones/github-pr-status
+  - go get bitbucket.org/liamstask/goose/cmd/goose
 
   # Boulder consists of multiple Go packages, which
   # refer to each other by their absolute GitHub path,

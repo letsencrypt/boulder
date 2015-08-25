@@ -7,8 +7,8 @@ package ca
 
 import (
 	"testing"
+	"time"
 
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -46,8 +46,8 @@ func TestGetSetSequenceNumber(t *testing.T) {
 	test.AssertNotError(t, err, "Could not commit")
 }
 
-func caDBImpl(t *testing.T) (core.CertificateAuthorityDatabase, func()) {
-	dbMap, err := sa.NewDbMap(dbConnStr)
+func caDBImpl(t *testing.T) (*CertificateAuthorityDatabaseImpl, func()) {
+	dbMap, err := sa.NewDbMap(caDBConnStr)
 	if err != nil {
 		t.Fatalf("Could not construct dbMap: %s", err)
 	}
@@ -57,33 +57,16 @@ func caDBImpl(t *testing.T) (core.CertificateAuthorityDatabase, func()) {
 		t.Fatalf("Could not construct CA DB: %s", err)
 	}
 
-	// We intentionally call CreateTablesIfNotExists twice before
-	// returning because of the weird insert inside it. The
-	// CADatabaseImpl code expects the existence of a single row in
-	// its serialIds table or else it errors. CreateTablesIfNotExists
-	// currently inserts that row and TruncateTables will remove
-	// it. But we need to make sure the tables exist before
-	// TruncateTables can be called to reset the table. So, two calls
-	// to CreateTablesIfNotExists.
+	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
 
-	err = cadb.CreateTablesIfNotExists()
+	// This row is required to exist for caDBImpl to work correctly. We
+	// can no longer use dbMap.Insert(&SerialNumber{...}) for this
+	// because gorp will ignore the ID and insert a new row at a new
+	// autoincrement id.
+	// TODO(jmhodges): gen ids flickr-style, no row needed a head of time
+	_, err = dbMap.Db.Exec("insert into serialNumber (id, number, lastUpdated) VALUES (?, ?, ?)", 1, 1, time.Now())
 	if err != nil {
-		t.Fatalf("Could not construct tables: %s", err)
+		t.Fatalf("unable to create the serial number row: %s", err)
 	}
-	err = dbMap.TruncateTables()
-	if err != nil {
-		t.Fatalf("Could not truncate tables: %s", err)
-	}
-	err = cadb.CreateTablesIfNotExists()
-	if err != nil {
-		t.Fatalf("Could not construct tables: %s", err)
-	}
-	cleanUp := func() {
-		if err := dbMap.TruncateTables(); err != nil {
-			t.Fatalf("Could not truncate tables after the test: %s", err)
-		}
-		dbMap.Db.Close()
-	}
-
 	return cadb, cleanUp
 }

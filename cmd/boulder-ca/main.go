@@ -37,11 +37,6 @@ func main() {
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(dbMap)
 		cmd.FailOnError(err, "Failed to create CA database")
 
-		if c.SQL.CreateTables {
-			err = cadb.CreateTablesIfNotExists()
-			cmd.FailOnError(err, "Failed to create CA tables")
-		}
-
 		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert)
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.MaxKeySize = c.Common.MaxKeySize

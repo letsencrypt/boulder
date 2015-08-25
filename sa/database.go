@@ -118,8 +118,7 @@ func (log *SQLLogger) Printf(format string, v ...interface{}) {
 	log.log.Debug(fmt.Sprintf(format, v...))
 }
 
-// initTables constructs the table map for the ORM. If you want to also create
-// the tables, call CreateTablesIfNotExists on the DbMap.
+// initTables constructs the table map for the ORM.
 func initTables(dbMap *gorp.DbMap) {
 	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "ID")
 	regTable.SetVersionCol("LockCol")

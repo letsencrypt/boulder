@@ -140,42 +140,30 @@ var testKey = rsa.PrivateKey{
 	Primes:    []*big.Int{p, q},
 }
 
-// TODO(jmhodges): Turn this into boulder_sa_test
-var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
+const dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 
 func TestFindExpiringCertificates(t *testing.T) {
 	dbMap, err := sa.NewDbMap(dbConnStr)
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}
-	err = dbMap.CreateTablesIfNotExists()
+	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap)
 	if err != nil {
-		t.Fatalf("Couldn't create tables: %s", err)
+		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
-	err = dbMap.TruncateTables()
-	if err != nil {
-		t.Fatalf("Couldn't truncate tables: %s", err)
-	}
-	defer func() {
-		err = dbMap.TruncateTables()
-		if err != nil {
-			t.Fatalf("Couldn't truncate tables after the test: %s", err)
-		}
-		dbMap.Db.Close()
-	}()
-
+	defer cleanUp()
 	tmpl, err := template.New("expiry-email").Parse(testTmpl)
 	test.AssertNotError(t, err, "Couldn't parse test email template")
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
-	rs := newFakeRegStore()
 	m := mailer{
 		log:           blog.GetAuditLogger(),
 		stats:         stats,
 		mailer:        &mc,
 		emailTemplate: tmpl,
 		dbMap:         dbMap,
-		rs:            rs,
+		rs:            ssa,
 		nagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
 		limit:         100,
 	}
@@ -208,6 +196,15 @@ func TestFindExpiringCertificates(t *testing.T) {
 		},
 		Key: keyB,
 	}
+	regA, err = ssa.NewRegistration(regA)
+	if err != nil {
+		t.Fatalf("Couldn't store regA: %s", err)
+	}
+	regB, err = ssa.NewRegistration(regB)
+	if err != nil {
+		t.Fatalf("Couldn't store regB: %s", err)
+	}
+
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy A",
@@ -218,7 +215,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
-		RegistrationID: 1,
+		RegistrationID: regA.ID,
 		Status:         core.StatusValid,
 		Serial:         "001",
 		Expires:        time.Now().AddDate(0, 0, 1),
@@ -236,7 +233,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	}
 	certDerB, _ := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, &testKey)
 	certB := &core.Certificate{
-		RegistrationID: 1,
+		RegistrationID: regA.ID,
 		Status:         core.StatusValid,
 		Serial:         "002",
 		Expires:        time.Now().AddDate(0, 0, 3),
@@ -254,15 +251,13 @@ func TestFindExpiringCertificates(t *testing.T) {
 	}
 	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
 	certC := &core.Certificate{
-		RegistrationID: 2,
+		RegistrationID: regB.ID,
 		Status:         core.StatusValid,
 		Serial:         "003",
 		Expires:        time.Now().AddDate(0, 0, 7),
 		DER:            certDerC,
 	}
 	certStatusC := &core.CertificateStatus{Serial: "003"}
-	rs.RegById[regA.ID] = regA
-	rs.RegById[regB.ID] = regB
 
 	err = dbMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")

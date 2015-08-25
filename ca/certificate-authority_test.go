@@ -17,6 +17,7 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/sa/satest"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
@@ -337,12 +338,22 @@ const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
 
-// TODO(jmhodges): change this to boulder_ca_test database
-var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
+const (
+	caDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_ca_test"
+	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+)
 
-func setup(t *testing.T) (core.CertificateAuthorityDatabase, core.StorageAuthority, Config, func()) {
+type testCtx struct {
+	caDB     core.CertificateAuthorityDatabase
+	sa       core.StorageAuthority
+	caConfig Config
+	reg      core.Registration
+	cleanUp  func()
+}
+
+func setup(t *testing.T) *testCtx {
 	// Create an SA
-	dbMap, err := sa.NewDbMap(dbConnStr)
+	dbMap, err := sa.NewDbMap(saDBConnStr)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
@@ -350,21 +361,15 @@ func setup(t *testing.T) (core.CertificateAuthorityDatabase, core.StorageAuthori
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	if err = ssa.CreateTablesIfNotExists(); err != nil {
-		t.Fatalf("Failed to create tables: %s", err)
-	}
-	if err = dbMap.TruncateTables(); err != nil {
-		t.Fatalf("Failed to truncate tables: %s", err)
-	}
-
+	saDBCleanUp := test.ResetTestDatabase(t, dbMap.Db)
 	cadb, caDBCleanUp := caDBImpl(t)
 	cleanUp := func() {
-		if err = dbMap.TruncateTables(); err != nil {
-			t.Fatalf("Failed to truncate tables after the test: %s", err)
-		}
-		dbMap.Db.Close()
+		saDBCleanUp()
 		caDBCleanUp()
 	}
+
+	// TODO(jmhodges): use of this pkg here is a bug caused by using a real SA
+	reg := satest.CreateWorkingRegistration(t, ssa)
 
 	// Create a CA
 	caConfig := Config{
@@ -412,32 +417,32 @@ func setup(t *testing.T) (core.CertificateAuthorityDatabase, core.StorageAuthori
 			},
 		},
 	}
-	return cadb, ssa, caConfig, cleanUp
+	return &testCtx{cadb, ssa, caConfig, reg, cleanUp}
 }
 
 func TestFailNoSerial(t *testing.T) {
-	cadb, _, caConfig, cleanUp := setup(t)
-	defer cleanUp()
+	ctx := setup(t)
+	defer ctx.cleanUp()
 
-	caConfig.SerialPrefix = 0
-	_, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ctx.caConfig.SerialPrefix = 0
+	_, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
 func TestRevoke(t *testing.T) {
-	cadb, storageAuthority, caConfig, cleanUp := setup(t)
-	defer cleanUp()
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ctx := setup(t)
+	defer ctx.cleanUp()
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	if err != nil {
 		return
 	}
-	ca.SA = storageAuthority
+	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
 	csrDER, _ := hex.DecodeString(CNandSANCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	certObj, err := ca.IssueCertificate(*csr, 1, FarFuture)
+	certObj, err := ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
 	test.AssertNotError(t, err, "Failed to sign certificate")
 	if err != nil {
 		return
@@ -448,7 +453,7 @@ func TestRevoke(t *testing.T) {
 	err = ca.RevokeCertificate(serialString, 0)
 	test.AssertNotError(t, err, "Revocation failed")
 
-	status, err := storageAuthority.GetCertificateStatus(serialString)
+	status, err := ctx.sa.GetCertificateStatus(serialString)
 	test.AssertNotError(t, err, "Failed to get cert status")
 
 	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
@@ -458,11 +463,11 @@ func TestRevoke(t *testing.T) {
 }
 
 func TestIssueCertificate(t *testing.T) {
-	cadb, storageAuthority, caConfig, cleanUp := setup(t)
-	defer cleanUp()
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ctx := setup(t)
+	defer ctx.cleanUp()
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.SA = storageAuthority
+	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
 	/*
@@ -480,7 +485,7 @@ func TestIssueCertificate(t *testing.T) {
 		csr, _ := x509.ParseCertificateRequest(csrDER)
 
 		// Sign CSR
-		issuedCert, err := ca.IssueCertificate(*csr, 1, FarFuture)
+		issuedCert, err := ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 		if err != nil {
 			continue
@@ -521,12 +526,12 @@ func TestIssueCertificate(t *testing.T) {
 
 		// Verify that the cert got stored in the DB
 		serialString := core.SerialToString(cert.SerialNumber)
-		storedCert, err := storageAuthority.GetCertificate(serialString)
+		storedCert, err := ctx.sa.GetCertificate(serialString)
 		test.AssertNotError(t, err,
 			fmt.Sprintf("Certificate %s not found in database", serialString))
 		test.Assert(t, bytes.Equal(issuedCert.DER, storedCert.DER), "Retrieved cert not equal to issued cert.")
 
-		certStatus, err := storageAuthority.GetCertificateStatus(serialString)
+		certStatus, err := ctx.sa.GetCertificateStatus(serialString)
 		test.AssertNotError(t, err,
 			fmt.Sprintf("Error fetching status for certificate %s", serialString))
 		test.Assert(t, certStatus.Status == core.OCSPStatusGood, "Certificate status was not good")
@@ -535,48 +540,48 @@ func TestIssueCertificate(t *testing.T) {
 }
 
 func TestRejectNoName(t *testing.T) {
-	cadb, storageAuthority, caConfig, cleanUp := setup(t)
-	defer cleanUp()
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ctx := setup(t)
+	defer ctx.cleanUp()
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.SA = storageAuthority
+	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs with no names
 	csrDER, _ := hex.DecodeString(NoNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
 	if err == nil {
 		t.Errorf("CA improperly agreed to create a certificate with no name")
 	}
 }
 
 func TestRejectTooManyNames(t *testing.T) {
-	cadb, storageAuthority, caConfig, cleanUp := setup(t)
-	defer cleanUp()
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ctx := setup(t)
+	defer ctx.cleanUp()
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.SA = storageAuthority
+	ca.SA = ctx.sa
 
 	// Test that the CA rejects a CSR with too many names
 	csrDER, _ := hex.DecodeString(TooManyNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
 	test.Assert(t, err != nil, "Issued certificate with too many names")
 }
 
 func TestDeduplication(t *testing.T) {
-	cadb, storageAuthority, caConfig, cleanUp := setup(t)
-	defer cleanUp()
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ctx := setup(t)
+	defer ctx.cleanUp()
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.SA = storageAuthority
+	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
 	// Test that the CA collapses duplicate names
 	csrDER, _ := hex.DecodeString(DupeNameCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	cert, err := ca.IssueCertificate(*csr, 1, FarFuture)
+	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with duplicate names")
 	if err != nil {
 		return
@@ -596,17 +601,17 @@ func TestDeduplication(t *testing.T) {
 }
 
 func TestRejectValidityTooLong(t *testing.T) {
-	cadb, storageAuthority, caConfig, cleanUp := setup(t)
-	defer cleanUp()
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
+	ctx := setup(t)
+	defer ctx.cleanUp()
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
-	ca.SA = storageAuthority
+	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ := hex.DecodeString(NoCNCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarPast)
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID, FarPast)
 	test.Assert(t, err == nil, "Can issue a certificate that expires after the underlying authorization.")
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
@@ -618,29 +623,29 @@ func TestRejectValidityTooLong(t *testing.T) {
 }
 
 func TestShortKey(t *testing.T) {
-	cadb, storageAuthority, caConfig, cleanUp := setup(t)
-	defer cleanUp()
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
-	ca.SA = storageAuthority
+	ctx := setup(t)
+	defer ctx.cleanUp()
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ := hex.DecodeString(ShortKeyCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
 	test.Assert(t, err != nil, "Issued a certificate with too short a key.")
 }
 
 func TestRejectBadAlgorithm(t *testing.T) {
-	cadb, storageAuthority, caConfig, cleanUp := setup(t)
-	defer cleanUp()
-	ca, err := NewCertificateAuthorityImpl(cadb, caConfig, caCertFile)
-	ca.SA = storageAuthority
+	ctx := setup(t)
+	defer ctx.cleanUp()
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csrDER, _ := hex.DecodeString(BadAlgorithmCSRhex)
 	csr, _ := x509.ParseCertificateRequest(csrDER)
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
 	test.Assert(t, err != nil, "Issued a certificate based on a CSR with a weak algorithm.")
 }
