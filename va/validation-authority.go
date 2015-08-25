@@ -48,12 +48,6 @@ type ValidationAuthorityImpl struct {
 	simpleHTTPSPort int
 	dvsniPort       int
 	UserAgent       string
-
-	// If true, VA tries to contact localhost rather than provided identifier.
-	// Used in integration testing.
-	// Note: Once https://github.com/letsencrypt/boulder/pull/621 lands, we can
-	// remove this, since it will be handled by dns-test-srv returning 127.0.0.1.
-	hostnameOverride bool
 }
 
 // NewValidationAuthorityImpl constructs a new VA, and may place it
@@ -65,11 +59,10 @@ func NewValidationAuthorityImpl(tm bool) ValidationAuthorityImpl {
 	// should be exported, so the cmd file can set them based on a config.
 	if tm {
 		return ValidationAuthorityImpl{
-			log:              logger,
-			simpleHTTPPort:   5001,
-			simpleHTTPSPort:  5001,
-			dvsniPort:        5001,
-			hostnameOverride: true,
+			log:             logger,
+			simpleHTTPPort:  5001,
+			simpleHTTPSPort: 5001,
+			dvsniPort:       5001,
 		}
 	} else {
 		return ValidationAuthorityImpl{
