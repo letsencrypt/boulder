@@ -231,7 +231,7 @@ func brokenTLSSrv() *httptest.Server {
 }
 
 func TestSimpleHttpTLS(t *testing.T) {
-	va := NewValidationAuthorityImpl(true)
+	va := NewValidationAuthorityImpl(false)
 	va.DNSResolver = &mocks.MockDNS{}
 
 	chall := core.Challenge{Type: core.ChallengeTypeSimpleHTTP, Token: expectedToken, ValidationRecord: []core.ValidationRecord{}}
@@ -346,7 +346,7 @@ func TestSimpleHttp(t *testing.T) {
 }
 
 func TestSimpleHttpRedirectLookup(t *testing.T) {
-	va := NewValidationAuthorityImpl(true)
+	va := NewValidationAuthorityImpl(false)
 	va.DNSResolver = &mocks.MockDNS{}
 
 	tls := false
@@ -404,7 +404,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 }
 
 func TestSimpleHttpRedirectLoop(t *testing.T) {
-	va := NewValidationAuthorityImpl(true)
+	va := NewValidationAuthorityImpl(false)
 	va.DNSResolver = &mocks.MockDNS{}
 
 	tls := false
