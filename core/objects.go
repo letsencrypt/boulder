@@ -269,6 +269,11 @@ type Challenge struct {
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
 	ValidationRecord []ValidationRecord `json:"validationRecord,omitempty"`
+
+	// The account key used to create this challenge.  This is not part of the
+	// spec, but clients are required to ignore unknown fields, so it's harmless
+	// to include.
+	AccountKey *jose.JsonWebKey `json:"accountKey,omitempty"`
 }
 
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
@@ -308,6 +313,10 @@ func (ch Challenge) RecordsSane() bool {
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
 	if ch.Status != StatusPending {
+		return false
+	}
+
+	if ch.AccountKey == nil {
 		return false
 	}
 
