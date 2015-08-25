@@ -371,6 +371,20 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 
+	// Look up the account key for this authorization
+	reg, err := ra.SA.GetRegistration(authz.RegistrationID)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		return
+	}
+
+	// Reject the update if the challenge in question was created
+	// with a different account key
+	if !core.KeyDigestEquals(reg.Key, authz.Challenges[challengeIndex].AccountKey) {
+		err = core.UnauthorizedError("Challenge cannot be updated with a different key")
+		return
+	}
+
 	// Dispatch to the VA for service
 	ra.VA.UpdateValidations(authz, challengeIndex)
 

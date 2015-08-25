@@ -416,6 +416,9 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
 	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
 	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeDNS, "Challenge 2 not DNS")
+	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
+	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 0 is not sane")
+	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 0 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
 }
@@ -423,10 +426,12 @@ func TestNewAuthorization(t *testing.T) {
 func TestUpdateAuthorization(t *testing.T) {
 	_, va, sa, ra, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	AuthzInitial, _ = sa.NewPendingAuthorization(AuthzInitial)
-	sa.UpdatePendingAuthorization(AuthzInitial)
 
-	authz, err := ra.UpdateAuthorization(AuthzInitial, ResponseIndex, Response)
+	// We know this is OK because of TestNewAuthorization
+	authz, err := ra.NewAuthorization(AuthzRequest, 1)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
 	// Verify that returned authz same as DB
