@@ -1,0 +1,38 @@
+[
+    {
+      "host": "in-addr.arpa",
+      "type": "blacklist"
+    },
+    {
+      "host": "example",
+      "type": "blacklist"
+    },
+    {
+      "host": "example.com",
+      "type": "blacklist"
+    },
+    {
+      "host": "example.net",
+      "type": "blacklist"
+    },
+    {
+      "host": "example.org",
+      "type": "blacklist"
+    },
+    {
+      "host": "invalid",
+      "type": "blacklist"
+    },
+    {
+      "host": "local",
+      "type": "blacklist"
+    },
+    {
+      "host": "localhost",
+      "type": "blacklist"
+    },
+    {
+      "host": "test",
+      "type": "blacklist"
+    }
+  ]

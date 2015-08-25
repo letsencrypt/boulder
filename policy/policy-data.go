@@ -93,47 +93,59 @@ func (padb *PolicyAuthorityDatabaseImpl) DumpRules() ([]DomainRule, error) {
 	return dR, err
 }
 
-// CheckRules will query the database for white/blacklist rules that match host,
-// if both whitelist and blacklist rules are found the whitelist will always win
-func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string, requireWhitelisted bool) error {
-	host = reverseName(host)
-	var rules []DomainRule
-	// Because of how rules are sorted if there is a relevant whitelist AND blacklist
-	// rule we will catch them both, this query will return a maximum of two rules
+func (padb *PolicyAuthorityDatabaseImpl) checkBlacklist(host string) error {
+	var rule *DomainRule
+	// Use lexical odering to quickly find blacklisted root domains
 	_, err := padb.dbMap.Select(
-		&rules,
-		`SELECT * FROM ruleList WHERE :host >= host ORDER BY host DESC LIMIT 2`,
+		rule,
+		`SELECT * FROM ruleList WHERE :host >= host AND type = 'blacklist' ORDER BY host DESC LIMIT 1`,
 		map[string]interface{}{"host": host},
 	)
 	if err != nil {
-		fmt.Println(err)
+		return err
+	}
+	if rule == nil {
+		return nil
+	}
+
+	if host == rule.Host || strings.HasPrefix(host, rule.Host+".") {
+		return BlacklistedError{}
+	}
+	return nil
+}
+
+func (padb *PolicyAuthorityDatabaseImpl) checkWhitelist(host string) error {
+	var rule *DomainRule
+	// Because of how rules are sorted if there is a relevant whitelist AND blacklist
+	// rule we will catch them both, this query will return a maximum of two rules
+	_, err := padb.dbMap.Select(
+		rule,
+		`SELECT * FROM ruleList WHERE :host = host AND type = 'whitelist' DESC LIMIT 1`,
+		map[string]interface{}{"host": host},
+	)
+	if err != nil {
+		fmt.Println("BAD", err)
 		return err
 	}
 
-	var wRules []string
-	var bRules []string
-	for _, r := range rules {
-		switch r.Type {
-		case blacklisted:
-			if strings.HasPrefix(host, r.Host+".") || host == r.Host {
-				bRules = append(bRules, r.Host)
-			}
-		case whitelisted:
-			if host == r.Host {
-				wRules = append(wRules, r.Host)
-			}
-		}
-	}
-
-	if requireWhitelisted && len(wRules) == 0 {
+	if rule == nil {
 		return fmt.Errorf("Domain name is not whitelisted for issuance")
-	} else if len(wRules)+len(bRules) > 0 {
-		padb.log.Info(fmt.Sprintf("Hostname [%s] matches rules, Whitelist: %s, Blacklist: %s", host, wRules, bRules))
-		if len(wRules) > 0 {
-			return nil
-		}
-		return BlacklistedError{}
 	}
 
 	return nil
+}
+
+// CheckRules will query the database for white/blacklist rules that match host,
+// if both whitelist and blacklist rules are found the blacklist will always win
+func (padb *PolicyAuthorityDatabaseImpl) CheckRules(host string, requireWhitelisted bool) error {
+	host = reverseName(host)
+	if requireWhitelisted {
+		err := padb.checkWhitelist(host)
+		if err != nil {
+			return err
+		}
+	}
+
+	// This overrides the whitelist if a blacklist rule is found
+	return padb.checkBlacklist(host)
 }

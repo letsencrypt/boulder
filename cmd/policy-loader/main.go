@@ -11,18 +11,15 @@ import (
 	"io/ioutil"
 	"os"
 
-	// Load both drivers to allow configuring either
-
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/mattn/go-sqlite3"
 	"github.com/letsencrypt/boulder/sa"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/policy"
 )
 
-func setupContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl, string) {
+func setupFromContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl, string) {
 	configFileName := context.GlobalString("config")
 	configJSON, err := ioutil.ReadFile(configFileName)
 	cmd.FailOnError(err, "Couldn't read configuration file")
@@ -35,7 +32,14 @@ func setupContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl, st
 
 	padb, err := policy.NewPolicyAuthorityDatabaseImpl(dbMap)
 	cmd.FailOnError(err, "Could not connect to PADB")
-	return padb, context.GlobalString("rule-file")
+
+	ruleFile := context.GlobalString("rule-file")
+	if ruleFile == "" {
+		fmt.Println("rule-file argument is required")
+		os.Exit(1)
+	}
+
+	return padb, ruleFile
 }
 
 func main() {
@@ -63,12 +67,13 @@ func main() {
 			Name:  "dump-rules",
 			Usage: "Write out whitelist and blacklist from database to a rule file",
 			Action: func(c *cli.Context) {
-				padb, ruleFile := setupContext(c)
+				padb, ruleFile := setupFromContext(c)
 				rules, err := padb.DumpRules()
 				cmd.FailOnError(err, "Couldn't retrieve whitelist rules")
 				rulesJSON, err := json.Marshal(rules)
 				cmd.FailOnError(err, "Couldn't marshal rule list")
-				ioutil.WriteFile(ruleFile, rulesJSON, os.ModePerm)
+				err = ioutil.WriteFile(ruleFile, rulesJSON, os.ModePerm)
+				cmd.FailOnError(err, "Failed to write the rule file")
 				fmt.Printf("# Saved rule list to %s\n", ruleFile)
 			},
 		},
@@ -76,7 +81,7 @@ func main() {
 			Name:  "load-rules",
 			Usage: "Load whitelist and blacklist into database from a rule file",
 			Action: func(c *cli.Context) {
-				padb, ruleFile := setupContext(c)
+				padb, ruleFile := setupFromContext(c)
 
 				rulesJSON, err := ioutil.ReadFile(ruleFile)
 				cmd.FailOnError(err, "Couldn't read configuration file")
