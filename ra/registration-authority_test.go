@@ -449,6 +449,28 @@ func TestUpdateAuthorization(t *testing.T) {
 	t.Log("DONE TestUpdateAuthorization")
 }
 
+func TestUpdateAuthorizationReject(t *testing.T) {
+	_, _, sa, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// We know this is OK because of TestNewAuthorization
+	authz, err := ra.NewAuthorization(AuthzRequest, 1)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	// Change the account key
+	reg, err := sa.GetRegistration(authz.RegistrationID)
+	test.AssertNotError(t, err, "GetRegistration failed")
+	reg.Key = AccountKeyC // was AccountKeyA
+	err = sa.UpdateRegistration(reg)
+	test.AssertNotError(t, err, "UpdateRegistration failed")
+
+	// Verify that the RA rejected the authorization request
+	_, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
+	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
+
+	t.Log("DONE TestUpdateAuthorizationReject")
+}
+
 func TestOnValidationUpdate(t *testing.T) {
 	_, _, sa, ra, cleanUp := initAuthorities(t)
 	defer cleanUp()
