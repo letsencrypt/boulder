@@ -85,6 +85,15 @@ func recombineURLForDB(dbConnect string) (string, error) {
 	// instead of the number of rows changed by the UPDATE.
 	dsnVals.Set("clientFoundRows", "true")
 
+	// Ensures that MySQL/MariaDB warnings are treated as errors. This
+	// avoids a number of nasty edge conditions we could wander
+	// into. Common things this discovers includes places where data
+	// being sent had a different type than what is in the schema,
+	// strings being truncated, writing null to a NOT NULL column, and
+	// so on. See
+	// <https://dev.mysql.com/doc/refman/5.0/en/sql-mode.html#sql-mode-strict>.
+	dsnVals.Set("strict", "true")
+
 	user := dbURL.User.Username()
 	passwd, hasPass := dbURL.User.Password()
 	dbConn := ""
@@ -118,8 +127,7 @@ func (log *SQLLogger) Printf(format string, v ...interface{}) {
 	log.log.Debug(fmt.Sprintf(format, v...))
 }
 
-// initTables constructs the table map for the ORM. If you want to also create
-// the tables, call CreateTablesIfNotExists on the DbMap.
+// initTables constructs the table map for the ORM.
 func initTables(dbMap *gorp.DbMap) {
 	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "ID")
 	regTable.SetVersionCol("LockCol")
