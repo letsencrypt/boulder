@@ -213,20 +213,6 @@ func loadIssuer(filename string) (issuerCert *x509.Certificate, err error) {
 	return
 }
 
-func loadIssuerKey(filename string) (issuerKey crypto.Signer, err error) {
-	if filename == "" {
-		err = errors.New("IssuerKey must be provided in test mode.")
-		return
-	}
-
-	pem, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return
-	}
-	issuerKey, err = helpers.ParsePrivateKeyPEM(pem)
-	return
-}
-
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
