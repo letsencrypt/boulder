@@ -179,7 +179,7 @@ func (va ValidationAuthorityImpl) resolveAndConstructDialer(name, defaultPort st
 
 // Validation methods
 
-func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
+func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
@@ -344,7 +344,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		"token": challenge.Token,
 		"tls":   (challenge.TLS == nil) || *challenge.TLS,
 	}
-	err = verifyValidationJWS(parsedJws, &accountKey, target)
+	err = verifyValidationJWS(parsedJws, challenge.AccountKey, target)
 	if err != nil {
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
@@ -359,7 +359,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	return challenge, nil
 }
 
-func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
+func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != "dns" {
@@ -379,7 +379,7 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 		"type":  core.ChallengeTypeDVSNI,
 		"token": challenge.Token,
 	}
-	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), &accountKey, target)
+	err := verifyValidationJWS(challenge.Validation, challenge.AccountKey, target)
 	if err != nil {
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
@@ -483,7 +483,7 @@ func parseHTTPConnError(err error) core.ProblemType {
 	return core.ConnectionProblem
 }
 
-func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge, accountKey jose.JsonWebKey) (core.Challenge, error) {
+func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
@@ -503,7 +503,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 		"type":  core.ChallengeTypeDNS,
 		"token": challenge.Token,
 	}
-	err := verifyValidationJWS((*jose.JsonWebSignature)(challenge.Validation), &accountKey, target)
+	err := verifyValidationJWS(challenge.Validation, challenge.AccountKey, target)
 	if err != nil {
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
@@ -543,7 +543,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 
 // Overall validation process
 
-func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int, accountKey jose.JsonWebKey) {
+func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int) {
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
@@ -561,11 +561,11 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 
 		switch authz.Challenges[challengeIndex].Type {
 		case core.ChallengeTypeSimpleHTTP:
-			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
+			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
 		case core.ChallengeTypeDVSNI:
-			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
+			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
 		case core.ChallengeTypeDNS:
-			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
+			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex])
 		}
 
 		if err != nil {
@@ -589,8 +589,8 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 }
 
 // UpdateValidations runs the validate() method asynchronously using goroutines.
-func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int, accountKey jose.JsonWebKey) error {
-	go va.validate(authz, challengeIndex, accountKey)
+func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
+	go va.validate(authz, challengeIndex)
 	return nil
 }
 

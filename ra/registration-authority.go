@@ -159,7 +159,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Create validations, but we have to update them with URIs later
-	challenges, combinations := ra.PA.ChallengesFor(identifier, reg.Key)
+	challenges, combinations := ra.PA.ChallengesFor(identifier)
 
 	// Partially-filled object
 	authz = core.Authorization{
@@ -186,7 +186,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		authz.Challenges[i].URI = challengeURI
 
 		// Add the account key used to generate the challenge
-		authz.Challenges[i].AccountKey = reg.Key
+		authz.Challenges[i].AccountKey = &reg.Key
 
 		if !authz.Challenges[i].IsSane(false) {
 			// InternalServerError because we generated these challenges, they should
@@ -371,15 +371,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 
-	// Look up the account key for this authorization
-	reg, err := ra.SA.GetRegistration(authz.RegistrationID)
-	if err != nil {
-		err = core.InternalServerError(err.Error())
-		return
-	}
-
 	// Dispatch to the VA for service
-	ra.VA.UpdateValidations(authz, challengeIndex, reg.Key)
+	ra.VA.UpdateValidations(authz, challengeIndex)
 
 	return
 }

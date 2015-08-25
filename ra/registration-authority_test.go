@@ -34,7 +34,7 @@ type DummyValidationAuthority struct {
 	Argument core.Authorization
 }
 
-func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int, key jose.JsonWebKey) (err error) {
+func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
 	dva.Called = true
 	dva.Argument = authz
 	return
