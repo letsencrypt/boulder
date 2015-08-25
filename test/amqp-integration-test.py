@@ -1,6 +1,7 @@
 #!/usr/bin/env python2.7
 import atexit
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -11,7 +12,7 @@ import startservers
 
 
 class ExitStatus:
-    OK, PythonFailure, NodeFailure, Error = range(4)
+    OK, PythonFailure, NodeFailure, Error, OCSPFailure = range(5)
 
 
 class ProcInfo:
@@ -32,6 +33,34 @@ def die(status):
     exit_status = status
     sys.exit(exit_status)
 
+def get_ocsp(certFile):
+    openssl_ocsp_cmd = ("""
+      openssl x509 -in %s -out %s.pem -inform der -outform pem;
+      openssl ocsp -no_nonce -issuer ../test-ca.pem -CAfile ../test-ca.pem -cert %s.pem -url http://localhost:4002
+    """ % (certFile, certFile, certFile))
+    try:
+        print openssl_ocsp_cmd
+        output = subprocess.check_output(openssl_ocsp_cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        output = e.output
+        print output
+        print "OpenSSL returned non-zero: %s" % e
+        die(ExitStatus.OCSPFailure)
+    print output
+    return output
+
+def verify_ocsp_good(certFile):
+    output = get_ocsp(certFile)
+    if not re.search(": good", output):
+        print "Expected OCSP response 'good', got something else."
+        die(ExitStatus.OCSPFailure)
+
+def verify_ocsp_revoked(certFile):
+    output = get_ocsp(certFile)
+    if not re.search(": revoked", output):
+        print "Expected OCSP response 'revoked', got something else."
+        die(ExitStatus.OCSPFailure)
+    pass
 
 def run_node_test():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -46,18 +75,25 @@ def run_node_test():
     if subprocess.Popen('npm install', shell=True).wait() != 0:
         print("\n Installing NPM modules failed")
         die(ExitStatus.Error)
+    certFile = os.path.join(tempdir, "cert.der")
+    keyFile = os.path.join(tempdir, "key.pem")
     if subprocess.Popen('''
         node test.js --email foo@letsencrypt.org --agree true \
           --domains foo.com --new-reg http://localhost:4000/acme/new-reg \
-          --certKey %s/key.pem --cert %s/cert.der
-        ''' % (tempdir, tempdir), shell=True).wait() != 0:
+          --certKey %s --cert %s
+        ''' % (keyFile, certFile), shell=True).wait() != 0:
         print("\nIssuing failed")
         die(ExitStatus.NodeFailure)
+
+    verify_ocsp_good(certFile)
+
     if subprocess.Popen('''
-        node revoke.js %s/cert.der %s/key.pem http://localhost:4000/acme/revoke-cert
-        ''' % (tempdir, tempdir), shell=True).wait() != 0:
+        node revoke.js %s %s http://localhost:4000/acme/revoke-cert
+        ''' % (certFile, keyFile), shell=True).wait() != 0:
         print("\nRevoking failed")
         die(ExitStatus.NodeFailure)
+
+    verify_ocsp_revoked(certFile)
 
     return 0
 
@@ -80,7 +116,7 @@ def cleanup():
     if exit_status == ExitStatus.OK:
         print("\n\nSUCCESS")
     else:
-        print("\n\nFAILURE")
+        print("\n\nFAILURE %d" % exit_status)
 
 
 exit_status = ExitStatus.OK

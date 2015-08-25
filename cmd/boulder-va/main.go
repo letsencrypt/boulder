@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	app := cmd.NewAppShell("boulder-va")
+	app := cmd.NewAppShell("boulder-va", "Handles challenge validation")
 	app.Action = func(c cmd.Config) {
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 		cmd.FailOnError(err, "Couldn't connect to statsd")

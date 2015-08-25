@@ -19,8 +19,10 @@ function main() {
     console.log('Usage: js revoke.js cert.der key.pem REVOKE_URL');
     process.exit(1);
   }
+  var certFile = process.argv[2];
+  console.log('Attempting to revoke', certFile);
   var key = crypto.importPemPrivateKey(fs.readFileSync(process.argv[3]));
-  var certDER = fs.readFileSync(process.argv[2])
+  var certDER = fs.readFileSync(certFile)
   var revokeUrl = process.argv[4];
   var certDERB64URL = util.b64enc(new Buffer(certDER))
   var revokeMessage = JSON.stringify({
@@ -34,9 +36,8 @@ function main() {
       console.log(error);
       process.exit(1);
     } else if (response.statusCode != 200) {
-      console.log("Got non-200 response: ", response.statusCode);
+      console.log("Got non-200 response asking for nonce (non-fatal):", response.statusCode);
     }
-    console.log(response.headers);
     var nonce = response.headers["replay-nonce"];
     if (!nonce) {
       console.log("Server HEAD response did not include a replay nonce");
@@ -45,16 +46,14 @@ function main() {
 
     var jws = crypto.generateSignature(key, new Buffer(revokeMessage), nonce);
     var payload = JSON.stringify(jws);
-    console.log(payload);
 
     var req = request.post(revokeUrl, function(error, response) {
-      if (error) {
+      if (error || Math.floor(response.statusCode / 100) != 2) {
         console.log('Error: ', error);
         process.exit(1);
+      } else {
+        console.log("Revocation request successful.");
       }
-      console.log(response.statusCode);
-      console.log(response.headers);
-      console.log(response.body);
     });
     req.write(payload);
     req.end();

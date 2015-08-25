@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	app := cmd.NewAppShell("boulder-sa")
+	app := cmd.NewAppShell("boulder-sa", "Handles SQL operations")
 	app.Action = func(c cmd.Config) {
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 		cmd.FailOnError(err, "Couldn't connect to statsd")
@@ -37,11 +37,6 @@ func main() {
 		sai, err := sa.NewSQLStorageAuthority(dbMap)
 		cmd.FailOnError(err, "Failed to create SA impl")
 		sai.SetSQLDebug(c.SQL.SQLDebug)
-
-		if c.SQL.CreateTables {
-			err = sai.CreateTablesIfNotExists()
-			cmd.FailOnError(err, "Failed to create tables")
-		}
 
 		go cmd.ProfileCmd("SA", stats)
 

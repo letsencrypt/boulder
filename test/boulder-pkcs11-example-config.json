@@ -114,8 +114,7 @@
   },
 
   "sql": {
-    "SQLDebug": true,
-    "CreateTables": true
+    "SQLDebug": true
   },
 
   "revoker": {

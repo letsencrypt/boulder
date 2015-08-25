@@ -119,7 +119,7 @@ func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Stat
 }
 
 func main() {
-	app := cmd.NewAppShell("external-cert-importer")
+	app := cmd.NewAppShell("external-cert-importer", "Imports external certificates for POP checks")
 
 	app.App.Flags = append(app.App.Flags, cli.StringFlag{
 		Name:  "a, valid-certs-file",
@@ -164,8 +164,6 @@ func main() {
 
 		dbMap.AddTableWithName(core.ExternalCert{}, "externalCerts").SetKeys(false, "SHA1")
 		dbMap.AddTableWithName(core.IdentifierData{}, "identifierData").SetKeys(false, "CertSHA1")
-		err = dbMap.CreateTablesIfNotExists()
-		cmd.FailOnError(err, "Could not create the tables")
 
 		// Note that this order of operations is intentional: we first add
 		// new certs to the database. Then, since certs are identified by

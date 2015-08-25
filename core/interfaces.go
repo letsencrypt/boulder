@@ -134,7 +134,6 @@ type StorageAuthority interface {
 
 // CertificateAuthorityDatabase represents an atomic sequence source
 type CertificateAuthorityDatabase interface {
-	CreateTablesIfNotExists() error
 	IncrementAndGetSerial(*gorp.Transaction) (int64, error)
 	Begin() (*gorp.Transaction, error)
 }
@@ -143,7 +142,7 @@ type CertificateAuthorityDatabase interface {
 type DNSResolver interface {
 	ExchangeOne(string, uint16) (*dns.Msg, time.Duration, error)
 	LookupTXT(string) ([]string, time.Duration, error)
-	LookupHost(string) ([]net.IP, time.Duration, time.Duration, error)
+	LookupHost(string) ([]net.IP, time.Duration, error)
 	LookupCNAME(string) (string, time.Duration, error)
 	LookupDNAME(string) (string, time.Duration, error)
 	LookupCAA(string) ([]*dns.CAA, time.Duration, error)

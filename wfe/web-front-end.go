@@ -971,12 +971,11 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 		return
 	}
 
-	// Blank out ID and regID
 	switch request.Method {
 	case "GET":
+		// Blank out ID and regID
 		authz.ID = ""
 		authz.RegistrationID = 0
-
 		jsonReply, err := json.Marshal(authz)
 		if err != nil {
 			logEvent.Error = err.Error()

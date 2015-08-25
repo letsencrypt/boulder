@@ -104,8 +104,7 @@ type Config struct {
 	}
 
 	SQL struct {
-		CreateTables bool
-		SQLDebug     bool
+		SQLDebug bool
 	}
 
 	Statsd struct {
@@ -239,12 +238,19 @@ type AppShell struct {
 	App    *cli.App
 }
 
+func Version() string {
+	return fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
+}
+
 // NewAppShell creates a basic AppShell object containing CLI metadata
-func NewAppShell(name string) (shell *AppShell) {
+func NewAppShell(name, usage string) (shell *AppShell) {
 	app := cli.NewApp()
 
 	app.Name = name
-	app.Version = fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
+	app.Usage = usage
+	app.Version = Version()
+	app.Author = "Boulder contributors"
+	app.Email = "ca-dev@letsencrypt.org"
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{

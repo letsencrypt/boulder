@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	app := cmd.NewAppShell("boulder-ca")
+	app := cmd.NewAppShell("boulder-ca", "Handles issuance operations")
 	app.Action = func(c cmd.Config) {
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 		cmd.FailOnError(err, "Couldn't connect to statsd")
@@ -36,11 +36,6 @@ func main() {
 
 		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(dbMap)
 		cmd.FailOnError(err, "Failed to create CA database")
-
-		if c.SQL.CreateTables {
-			err = cadb.CreateTablesIfNotExists()
-			cmd.FailOnError(err, "Failed to create CA tables")
-		}
 
 		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert, c.PA)
 		cmd.FailOnError(err, "Failed to create CA impl")

@@ -98,7 +98,10 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 	log.Debug(fmt.Sprintf("Searching for OCSP issued by us for serial %s", serialString))
 
 	var ocspResponse core.OCSPResponse
-	err := src.dbMap.SelectOne(&ocspResponse, "SELECT * from ocspResponses WHERE serial = :serial ORDER BY createdAt DESC LIMIT 1;",
+	// Note: we order by id rather than createdAt, because otherwise we sometimes
+	// get the wrong result if a certificate is revoked in the same second as its
+	// last update (e.g. client issues and instant revokes).
+	err := src.dbMap.SelectOne(&ocspResponse, "SELECT * from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
 		map[string]interface{}{"serial": serialString})
 	if err != nil {
 		present = false
@@ -113,7 +116,7 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 }
 
 func main() {
-	app := cmd.NewAppShell("boulder-ocsp-responder")
+	app := cmd.NewAppShell("boulder-ocsp-responder", "Handles OCSP requests")
 	app.Action = func(c cmd.Config) {
 		// Set up logging
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
