@@ -40,12 +40,20 @@ var ErrTooManyCNAME = errors.New("too many CNAME/DNAME lookups")
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	RA           core.RegistrationAuthority
-	log          *blog.AuditLogger
-	DNSResolver  core.DNSResolver
-	IssuerDomain string
-	TestMode     bool
-	UserAgent    string
+	RA              core.RegistrationAuthority
+	log             *blog.AuditLogger
+	DNSResolver     core.DNSResolver
+	IssuerDomain    string
+	simpleHTTPPort  int
+	simpleHTTPSPort int
+	dvsniPort       int
+	UserAgent       string
+
+	// If true, VA tries to contact localhost rather than provided identifier.
+	// Used in integration testing.
+	// Note: Once https://github.com/letsencrypt/boulder/pull/621 lands, we can
+	// remove this, since it will be handled by dns-test-srv returning 127.0.0.1.
+	hostnameOverride bool
 }
 
 // NewValidationAuthorityImpl constructs a new VA, and may place it
@@ -53,7 +61,24 @@ type ValidationAuthorityImpl struct {
 func NewValidationAuthorityImpl(tm bool) ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
-	return ValidationAuthorityImpl{log: logger, TestMode: tm}
+	// TODO(jsha): Remove TestMode entirely. Instead, the various validation ports
+	// should be exported, so the cmd file can set them based on a config.
+	if tm {
+		return ValidationAuthorityImpl{
+			log:              logger,
+			simpleHTTPPort:   5001,
+			simpleHTTPSPort:  5001,
+			dvsniPort:        5001,
+			hostnameOverride: true,
+		}
+	} else {
+		return ValidationAuthorityImpl{
+			log:             logger,
+			simpleHTTPPort:  80,
+			simpleHTTPSPort: 443,
+			dvsniPort:       443,
+		}
+	}
 }
 
 // Used for audit logging
@@ -155,10 +180,8 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 // resolveAndConstructDialer gets the prefered address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
 func (va ValidationAuthorityImpl) resolveAndConstructDialer(name, defaultPort string) (dialer, *core.ProblemDetails) {
-	port := "80"
-	if va.TestMode {
-		port = "5001"
-	} else if defaultPort != "" {
+	port := fmt.Sprintf("%d", va.simpleHTTPPort)
+	if defaultPort != "" {
 		port = defaultPort
 	}
 	d := dialer{
@@ -192,18 +215,23 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] Identifier failure", identifier))
 		return challenge, challenge.Error
 	}
-	hostName := identifier.Value
 
+	host := identifier.Value
 	var scheme string
+	var port int
 	if input.TLS == nil || (input.TLS != nil && *input.TLS) {
 		scheme = "https"
+		port = va.simpleHTTPSPort
 	} else {
 		scheme = "http"
+		port = va.simpleHTTPPort
 	}
+	portString := fmt.Sprintf("%d", port)
+	hostPort := net.JoinHostPort(host, portString)
 
 	url := url.URL{
 		Scheme: scheme,
-		Host:   hostName,
+		Host:   hostPort,
 		Path:   fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token),
 	}
 
@@ -224,12 +252,8 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 		httpRequest.Header["User-Agent"] = []string{va.UserAgent}
 	}
 
-	httpRequest.Host = hostName
-	var port string
-	if scheme == "https" {
-		port = "443"
-	}
-	dialer, prob := va.resolveAndConstructDialer(hostName, port)
+	httpRequest.Host = hostPort
+	dialer, prob := va.resolveAndConstructDialer(host, portString)
 	dialer.record.URL = url.String()
 	challenge.ValidationRecord = append(challenge.ValidationRecord, dialer.record)
 	if prob != nil {
@@ -255,15 +279,15 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 			return fmt.Errorf("Too many redirects")
 		}
 
-		host := req.URL.Host
-		port = ""
-		if strings.Contains(host, ":") {
-			splitHost := strings.SplitN(host, ":", 2)
+		reqHost := req.URL.Host
+		reqPort := ""
+		if strings.Contains(reqHost, ":") {
+			splitHost := strings.SplitN(reqHost, ":", 2)
 			if len(splitHost) <= 1 {
 				return fmt.Errorf("Malformed host")
 			}
-			host, port = splitHost[0], splitHost[1]
-			portNum, err := strconv.Atoi(port)
+			reqHost, reqPort = splitHost[0], splitHost[1]
+			portNum, err := strconv.Atoi(reqPort)
 			if err != nil {
 				return err
 			}
@@ -271,10 +295,10 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 				return fmt.Errorf("Invalid port number in redirect")
 			}
 		} else if strings.ToLower(req.URL.Scheme) == "https" {
-			port = "443"
+			reqPort = "443"
 		}
 
-		dialer, err := va.resolveAndConstructDialer(host, port)
+		dialer, err := va.resolveAndConstructDialer(reqHost, reqPort)
 		dialer.record.URL = req.URL.String()
 		challenge.ValidationRecord = append(challenge.ValidationRecord, dialer.record)
 		if err != nil {
@@ -412,12 +436,9 @@ func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, 
 	}
 
 	// Make a connection with SNI = nonceName
-	hostPort := net.JoinHostPort(addr.String(), "443")
-	challenge.ValidationRecord[0].Port = "443"
-	if va.TestMode {
-		hostPort = net.JoinHostPort(addr.String(), "5001")
-		challenge.ValidationRecord[0].Port = "5001"
-	}
+	portString := fmt.Sprintf("%d", va.dvsniPort)
+	hostPort := net.JoinHostPort(addr.String(), portString)
+	challenge.ValidationRecord[0].Port = portString
 	va.log.Notice(fmt.Sprintf("DVSNI [%s] Attempting to validate DVSNI for %s %s",
 		identifier, hostPort, ZName))
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, &tls.Config{
