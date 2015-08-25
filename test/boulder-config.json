@@ -133,10 +133,6 @@
   },
 
   "ocspResponder": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test"
-  },
-
-  "ocspResponder": {
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
     "path": "/",
     "listenAddress": "localhost:4002",
