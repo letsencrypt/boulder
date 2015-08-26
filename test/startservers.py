@@ -33,13 +33,13 @@ processes = []
 
 
 def install(progs, race_detection):
-    install = "go install"
+    cmd = "go install"
     if race_detection:
-        install = """go install -race"""
-    cmd = install
+        cmd = """go install -race"""
+
     for prog in progs:
         cmd += " ./" + prog
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(cmd, shell=True)
     out, err = p.communicate()
     if p.returncode != 0:
         sys.stderr.write("unable to run go install: %s\n" % cmd)
