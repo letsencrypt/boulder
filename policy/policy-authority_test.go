@@ -15,7 +15,7 @@ import (
 )
 
 var log = mocks.UseMockLog()
-var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
+var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
 
 func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
 	dbMap, err := sa.NewDbMap(dbConnStr)
@@ -24,12 +24,7 @@ func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
 	pa, err := NewPolicyAuthorityImpl(dbMap, false)
 	test.AssertNotError(t, err, "Couldn't create PADB")
 
-	cleanUp := func() {
-		if err := dbMap.TruncateTables(); err != nil {
-			t.Fatalf("Could not truncate tables after the test: %s", err)
-		}
-		dbMap.Db.Close()
-	}
+	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
 
 	return pa, cleanUp
 }

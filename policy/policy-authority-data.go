@@ -6,6 +6,7 @@
 package policy
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -44,11 +45,6 @@ func NewPolicyAuthorityDatabaseImpl(dbMap *gorp.DbMap) (padb *PolicyAuthorityDat
 	logger := blog.GetAuditLogger()
 
 	dbMap.AddTableWithName(DomainRule{}, "ruleList").SetKeys(false, "Host")
-
-	err = dbMap.CreateTablesIfNotExists()
-	if err != nil {
-		return
-	}
 
 	padb = &PolicyAuthorityDatabaseImpl{
 		dbMap: dbMap,
@@ -94,18 +90,18 @@ func (padb *PolicyAuthorityDatabaseImpl) DumpRules() ([]DomainRule, error) {
 }
 
 func (padb *PolicyAuthorityDatabaseImpl) checkBlacklist(host string) error {
-	var rule *DomainRule
+	var rule DomainRule
 	// Use lexical odering to quickly find blacklisted root domains
-	_, err := padb.dbMap.Select(
-		rule,
+	err := padb.dbMap.SelectOne(
+		&rule,
 		`SELECT * FROM ruleList WHERE :host >= host AND type = 'blacklist' ORDER BY host DESC LIMIT 1`,
 		map[string]interface{}{"host": host},
 	)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil
+		}
 		return err
-	}
-	if rule == nil {
-		return nil
 	}
 
 	if host == rule.Host || strings.HasPrefix(host, rule.Host+".") {
@@ -115,21 +111,19 @@ func (padb *PolicyAuthorityDatabaseImpl) checkBlacklist(host string) error {
 }
 
 func (padb *PolicyAuthorityDatabaseImpl) checkWhitelist(host string) error {
-	var rule *DomainRule
+	var rule DomainRule
 	// Because of how rules are sorted if there is a relevant whitelist AND blacklist
 	// rule we will catch them both, this query will return a maximum of two rules
-	_, err := padb.dbMap.Select(
-		rule,
-		`SELECT * FROM ruleList WHERE :host = host AND type = 'whitelist' DESC LIMIT 1`,
+	err := padb.dbMap.SelectOne(
+		&rule,
+		`SELECT * FROM ruleList WHERE :host = host AND type = 'whitelist' LIMIT 1`,
 		map[string]interface{}{"host": host},
 	)
 	if err != nil {
-		fmt.Println("BAD", err)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("Domain name is not whitelisted for issuance")
+		}
 		return err
-	}
-
-	if rule == nil {
-		return fmt.Errorf("Domain name is not whitelisted for issuance")
 	}
 
 	return nil

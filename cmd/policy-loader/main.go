@@ -45,7 +45,10 @@ func setupFromContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl
 func main() {
 	app := cli.NewApp()
 	app.Name = "policy-loader"
-	app.Version = "0.0.1"
+	app.Usage = "Loads/dumps rules into/from the policy database"
+	app.Version = cmd.Version()
+	app.Author = "Boulder contributors"
+	app.Email = "ca-dev@letsencrypt.org"
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{

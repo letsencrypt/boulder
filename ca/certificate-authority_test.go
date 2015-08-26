@@ -344,7 +344,7 @@ const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
 
 const (
-	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_pa_test"
+	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
 	caDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_ca_test"
 	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 )
