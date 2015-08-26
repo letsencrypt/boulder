@@ -43,8 +43,10 @@ def install(progs, race_detection):
     out, err = p.communicate()
     if p.returncode != 0:
         sys.stderr.write("unable to run go install: %s\n" % cmd)
-        sys.stderr.write("stdout:\n" + out + "\n")
-        sys.stderr.write("stderr: \n" + err + "\n")
+        if out:
+            sys.stderr.write("stdout:\n" + out + "\n")
+        if err:
+            sys.stderr.write("stderr: \n" + err + "\n")
         return False
     print('installed %s with pid %d' % (cmd, p.pid))
     return True
