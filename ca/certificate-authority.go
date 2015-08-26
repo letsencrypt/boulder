@@ -30,8 +30,6 @@ import (
 // Config defines the JSON configuration file schema
 type Config struct {
 	Profile      string
-	TestMode     bool
-	DBDriver     string
 	DBConnect    string
 	SerialPrefix int
 	Key          KeyConfig
@@ -210,20 +208,6 @@ func loadIssuer(filename string) (issuerCert *x509.Certificate, err error) {
 		return
 	}
 	issuerCert, err = helpers.ParseCertificatePEM(issuerCertPEM)
-	return
-}
-
-func loadIssuerKey(filename string) (issuerKey crypto.Signer, err error) {
-	if filename == "" {
-		err = errors.New("IssuerKey must be provided in test mode.")
-		return
-	}
-
-	pem, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return
-	}
-	issuerKey, err = helpers.ParsePrivateKeyPEM(pem)
 	return
 }
 

@@ -50,27 +50,23 @@ type ValidationAuthorityImpl struct {
 	UserAgent       string
 }
 
-// NewValidationAuthorityImpl constructs a new VA, and may place it
-// into Test Mode (tm)
-func NewValidationAuthorityImpl(tm bool) ValidationAuthorityImpl {
+// PortConfig specifies what ports the VA should call to on the remote
+// host when performing its checks.
+type PortConfig struct {
+	SimpleHTTPPort  int
+	SimpleHTTPSPort int
+	DVSNIPort       int
+}
+
+// NewValidationAuthorityImpl constructs a new VA
+func NewValidationAuthorityImpl(pc *PortConfig) *ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
-	// TODO(jsha): Remove TestMode entirely. Instead, the various validation ports
-	// should be exported, so the cmd file can set them based on a config.
-	if tm {
-		return ValidationAuthorityImpl{
-			log:             logger,
-			simpleHTTPPort:  5001,
-			simpleHTTPSPort: 5001,
-			dvsniPort:       5001,
-		}
-	} else {
-		return ValidationAuthorityImpl{
-			log:             logger,
-			simpleHTTPPort:  80,
-			simpleHTTPSPort: 443,
-			dvsniPort:       443,
-		}
+	return &ValidationAuthorityImpl{
+		log:             logger,
+		simpleHTTPPort:  pc.SimpleHTTPPort,
+		simpleHTTPSPort: pc.SimpleHTTPSPort,
+		dvsniPort:       pc.DVSNIPort,
 	}
 }
 
@@ -142,7 +138,7 @@ func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 // This is the same choice made by the Go internal resolution library used by
 // net/http, except we only send A queries and accept IPv4 addresses.
 // TODO(#593): Add IPv6 support
-func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
+func (va *ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
 	addrs, _, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
 		problem = problemDetailsFromDNSError(err)
@@ -172,7 +168,7 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 
 // resolveAndConstructDialer gets the prefered address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
-func (va ValidationAuthorityImpl) resolveAndConstructDialer(name, defaultPort string) (dialer, *core.ProblemDetails) {
+func (va *ValidationAuthorityImpl) resolveAndConstructDialer(name, defaultPort string) (dialer, *core.ProblemDetails) {
 	port := fmt.Sprintf("%d", va.simpleHTTPPort)
 	if defaultPort != "" {
 		port = defaultPort
@@ -195,7 +191,7 @@ func (va ValidationAuthorityImpl) resolveAndConstructDialer(name, defaultPort st
 
 // Validation methods
 
-func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
@@ -376,7 +372,7 @@ func (va ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentif
 	return challenge, nil
 }
 
-func (va ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != "dns" {
@@ -497,7 +493,7 @@ func parseHTTPConnError(err error) core.ProblemType {
 	return core.ConnectionProblem
 }
 
-func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va *ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
@@ -557,7 +553,7 @@ func (va ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, in
 
 // Overall validation process
 
-func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int) {
+func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int) {
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
@@ -603,7 +599,7 @@ func (va ValidationAuthorityImpl) validate(authz core.Authorization, challengeIn
 }
 
 // UpdateValidations runs the validate() method asynchronously using goroutines.
-func (va ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
+func (va *ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
 	go va.validate(authz, challengeIndex)
 	return nil
 }
