@@ -30,8 +30,6 @@ import (
 // Config defines the JSON configuration file schema
 type Config struct {
 	Profile      string
-	TestMode     bool
-	DBDriver     string
 	DBConnect    string
 	SerialPrefix int
 	Key          KeyConfig
