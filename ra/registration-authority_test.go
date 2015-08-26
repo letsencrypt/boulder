@@ -402,7 +402,7 @@ func TestUpdateAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(AuthzRequest, 1)
+	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
@@ -428,7 +428,7 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(AuthzRequest, 1)
+	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Change the account key

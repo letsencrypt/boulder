@@ -510,7 +510,7 @@ func TestDvsni(t *testing.T) {
 
 	// Take down DVSNI validation server and check that validation fails.
 	hs.Close()
-	invalidChall, err = va.validateDvsni(ident, chall, AccountKey)
+	invalidChall, err = va.validateDvsni(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Server's down; expected refusal. Where did we connect?")
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
