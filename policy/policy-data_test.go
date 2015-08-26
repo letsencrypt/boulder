@@ -33,18 +33,6 @@ var (
 		Host: "d.com",
 		Type: blacklisted,
 	}
-	rM1 = DomainRule{
-		Host: "mail.com",
-		Type: whitelisted,
-	}
-	rM2 = DomainRule{
-		Host: "mailthing.com",
-		Type: blacklisted,
-	}
-	rM3 = DomainRule{
-		Host: "mailbox.com",
-		Type: blacklisted,
-	}
 )
 
 func TestLoadAndDump(t *testing.T) {
@@ -58,17 +46,6 @@ func TestLoadAndDump(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't dump rules")
 
 	test.AssertEquals(t, len(r), 3)
-}
-
-func TestBoring(t *testing.T) {
-	p, cleanup := padbImpl(t)
-	defer cleanup()
-
-	err := p.LoadRules([]DomainRule{rM1})
-	test.AssertNotError(t, err, "Couldn't load rules")
-
-	err = p.CheckWhitelist("mailbox.com")
-	test.AssertNotError(t, err, "BAD")
 }
 
 func TestGet(t *testing.T) {
