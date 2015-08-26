@@ -378,7 +378,6 @@ func setup(t *testing.T) *testCtx {
 		Key: KeyConfig{
 			File: caKeyFile,
 		},
-		TestMode:     true,
 		Expiry:       "8760h",
 		LifespanOCSP: "45m",
 		MaxNames:     2,

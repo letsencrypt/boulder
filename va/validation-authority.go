@@ -50,27 +50,23 @@ type ValidationAuthorityImpl struct {
 	UserAgent       string
 }
 
-// NewValidationAuthorityImpl constructs a new VA, and may place it
-// into Test Mode (tm)
-func NewValidationAuthorityImpl(tm bool) *ValidationAuthorityImpl {
+// PortConfig specifies what ports the VA should call to on the remote
+// host when performing its checks.
+type PortConfig struct {
+	SimpleHTTPPort  int
+	SimpleHTTPSPort int
+	DVSNIPort       int
+}
+
+// NewValidationAuthorityImpl constructs a new VA
+func NewValidationAuthorityImpl(pc *PortConfig) *ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
-	// TODO(jsha): Remove TestMode entirely. Instead, the various validation ports
-	// should be exported, so the cmd file can set them based on a config.
-	if tm {
-		return &ValidationAuthorityImpl{
-			log:             logger,
-			simpleHTTPPort:  5001,
-			simpleHTTPSPort: 5001,
-			dvsniPort:       5001,
-		}
-	} else {
-		return &ValidationAuthorityImpl{
-			log:             logger,
-			simpleHTTPPort:  80,
-			simpleHTTPSPort: 443,
-			dvsniPort:       443,
-		}
+	return &ValidationAuthorityImpl{
+		log:             logger,
+		simpleHTTPPort:  pc.SimpleHTTPPort,
+		simpleHTTPSPort: pc.SimpleHTTPSPort,
+		dvsniPort:       pc.DVSNIPort,
 	}
 }
 

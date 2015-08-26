@@ -50,8 +50,6 @@
     "profile": "ee",
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_ca_integration",
     "debugAddr": "localhost:8001",
-    "testMode": true,
-    "_comment": "This should only be present in testMode. In prod use an HSM.",
     "Key": {
       "File": "test/test-ca.key"
     },
@@ -120,7 +118,12 @@
 
   "va": {
     "userAgent": "boulder",
-    "debugAddr": "localhost:8004"
+    "debugAddr": "localhost:8004",
+    "portConfig": {
+      "simpleHTTPPort": 5001,
+      "simpleHTTPSPort": 5001,
+      "dvsniPort": 5001
+    }
   },
 
   "sql": {
