@@ -424,7 +424,7 @@ func TestUpdateAuthorization(t *testing.T) {
 }
 
 func TestUpdateAuthorizationReject(t *testing.T) {
-	_, _, sa, ra, cleanUp := initAuthorities(t)
+	_, sa, ra, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
