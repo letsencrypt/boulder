@@ -1,4 +1,4 @@
-FROM golang:1.5rc1
+FROM golang:1.5
 
 MAINTAINER J.C. Jones "jjones@letsencrypt.org"
 MAINTAINER William Budington "bill@eff.org"
