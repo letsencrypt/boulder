@@ -892,7 +892,7 @@ func (ra *MockRegistrationAuthority) UpdateAuthorization(authz core.Authorizatio
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate) error {
+func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate, reason int, reg *int64) error {
 	return nil
 }
 

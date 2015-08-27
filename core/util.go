@@ -41,6 +41,22 @@ var BuildHost string
 // BuildTime is set by the compiler and is used by GetBuildTime
 var BuildTime string
 
+// RevocationReasons provides a map from reason code to string explaining the
+// code
+var RevocationReasons = map[int]string{
+	0: "unspecified",
+	1: "keyCompromise",
+	2: "cACompromise",
+	3: "affiliationChanged",
+	4: "superseded",
+	5: "cessationOfOperation",
+	6: "certificateHold",
+	// 7 is unused
+	8:  "removeFromCRL", // needed?
+	9:  "privilegeWithdrawn",
+	10: "aAcompromise",
+}
+
 // Errors
 
 // InternalServerError indicates that something has gone wrong unrelated to the
@@ -341,19 +357,4 @@ func UniqueNames(names []string) (unique []string) {
 		unique = append(unique, name)
 	}
 	return
-}
-
-
-var RevocationReasons = map[int]string{
-	0: "unspecified",
-	1: "keyCompromise",
-	2: "cACompromise",
-	3: "affiliationChanged",
-	4: "superseded",
-	5: "cessationOfOperation",
-	6: "certificateHold",
-	// 7 is unused
-	8:  "removeFromCRL", // needed?
-	9:  "privilegeWithdrawn",
-	10: "aAcompromise",
 }
