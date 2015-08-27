@@ -52,11 +52,6 @@ before_install:
   # we add a symlink.
   - mkdir -p $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt
   - test ! -d $GOPATH/src/github.com/letsencrypt/boulder && ln -s $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt/boulder || true
-  - git clone https://www.github.com/letsencrypt/lets-encrypt-preview.git "$LETSENCRYPT_PATH"
-  - cd "$LETSENCRYPT_PATH"
-  - virtualenv --no-site-packages -p python2 ./venv
-  - travis_retry ./venv/bin/pip install -r requirements.txt -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
-  - "cd -"
 
 env:
   global:
