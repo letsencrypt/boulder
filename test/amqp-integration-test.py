@@ -52,11 +52,13 @@ def get_ocsp(certFile):
 def verify_ocsp_good(certFile):
     output = get_ocsp(certFile)
     if not re.search(": good", output):
+        print "Expected OCSP response 'good', got something else."
         die(ExitStatus.OCSPFailure)
 
 def verify_ocsp_revoked(certFile):
     output = get_ocsp(certFile)
     if not re.search(": revoked", output):
+        print "Expected OCSP response 'revoked', got something else."
         die(ExitStatus.OCSPFailure)
     pass
 
