@@ -285,6 +285,7 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 
 	va = NewValidationAuthorityImpl(&PortConfig{SimpleHTTPPort: goodPort})
+	va.Stats, _ = statsd.NewNoopClient()
 	va.DNSResolver = &mocks.MockDNS{}
 	log.Clear()
 	finChall, err := va.validateSimpleHTTP(ident, chall, AccountKey)
