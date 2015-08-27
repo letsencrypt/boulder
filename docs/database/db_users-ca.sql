@@ -11,4 +11,4 @@
 
 -- Certificate Authority
 CREATE USER `ca`@`%` IDENTIFIED BY 'password';
-GRANT SELECT,UPDATE ON serialNumber TO `ca`@`%`;
+GRANT INSERT,DELETE,SELECT,UPDATE ON serialNumber TO `ca`@`%`;
