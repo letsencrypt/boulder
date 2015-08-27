@@ -640,7 +640,8 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 		return
 	}
 
-	err = wfe.RA.RevokeCertificate(*parsedCertificate)
+	fmt.Println("HIHI!", registration.ID)
+	err = wfe.RA.RevokeCertificate(*parsedCertificate, 0, &registration.ID)
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, "Failed to revoke certificate", err, statusCodeFromError(err))

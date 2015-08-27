@@ -71,7 +71,7 @@ type RegistrationAuthority interface {
 	UpdateAuthorization(Authorization, int, Challenge) (Authorization, error)
 
 	// [WebFrontEnd]
-	RevokeCertificate(x509.Certificate) error
+	RevokeCertificate(x509.Certificate, int, *int64) error
 
 	// [ValidationAuthority]
 	OnValidationUpdate(Authorization) error
