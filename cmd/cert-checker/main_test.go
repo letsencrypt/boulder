@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -60,8 +61,13 @@ func BenchmarkCheckCert(b *testing.B) {
 
 func TestCheckCert(t *testing.T) {
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
-	now := time.Now()
-	expiry := now.Add(checkPeriod)
+	checker := newChecker(nil)
+	fc := clock.NewFake()
+	fc.Add(time.Hour * 24 * 90)
+	checker.clock = fc
+
+	issued := checker.clock.Now().Add(-time.Hour * 24 * 45)
+	goodExpiry := issued.Add(checkPeriod)
 	serial := big.NewInt(1337)
 	// Problems
 	//   Blacklsited common name
@@ -72,7 +78,7 @@ func TestCheckCert(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "example.com",
 		},
-		NotAfter:              expiry.AddDate(0, 0, 1),
+		NotAfter:              goodExpiry.AddDate(0, 0, 1), // Period too long
 		DNSNames:              []string{"example-a.com"},
 		SerialNumber:          serial,
 		BasicConstraintsValid: false,
@@ -86,18 +92,16 @@ func TestCheckCert(t *testing.T) {
 	cert := core.Certificate{
 		Status:  core.StatusValid,
 		DER:     brokenCertDer,
-		Issued:  now,
-		Expires: expiry.AddDate(0, 0, 2),
+		Issued:  issued,
+		Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match
 	}
-
-	checker := newChecker(nil)
 
 	problems := checker.checkCert(cert)
 	test.AssertEquals(t, len(problems), 7)
 
 	// Fix the problems
 	rawCert.Subject.CommonName = "example-a.com"
-	rawCert.NotAfter = expiry
+	rawCert.NotAfter = goodExpiry
 	rawCert.BasicConstraintsValid = true
 	rawCert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
 	goodCertDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
@@ -125,10 +129,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	// Problems
-	//   Blacklsited common name
 	//   Expiry period is too long
-	//   Basic Constraints aren't set
-	//   Wrong key usage (none)
 	rawCert := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "not-blacklisted.com",
@@ -139,6 +140,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	reg, err := sa.NewRegistration(core.Registration{
 		Key: satest.GoodJWK(),
 	})
+	fmt.Println(err)
 	test.AssertNotError(t, err, "Couldn't create registration")
 	for i := int64(0); i < 5; i++ {
 		rawCert.SerialNumber = big.NewInt(i)

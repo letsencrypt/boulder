@@ -17,14 +17,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-	"github.com/letsencrypt/boulder/policy"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -36,7 +37,7 @@ const (
 
 	checkPeriod = time.Hour * 24 * 90
 
-	batchSize = 100000
+	batchSize = 1000
 )
 
 type report struct {
@@ -46,10 +47,11 @@ type report struct {
 }
 
 func (r *report) save(directory string) error {
+	now := time.Now()
 	filename := path.Join(directory, fmt.Sprintf(
 		"%s-%s-report.json",
-		time.Now().Add(-checkPeriod).Format(filenameLayout),
-		time.Now().Format(filenameLayout),
+		now.Add(-checkPeriod).Format(filenameLayout),
+		now.Format(filenameLayout),
 	))
 	content, err := json.Marshal(r)
 	if err != nil {
@@ -68,6 +70,7 @@ type certChecker struct {
 	dbMap        *gorp.DbMap
 	certs        chan core.Certificate
 	issuedReport report
+	clock        clock.Clock
 }
 
 func newChecker(dbMap *gorp.DbMap) certChecker {
@@ -75,41 +78,37 @@ func newChecker(dbMap *gorp.DbMap) certChecker {
 		pa:    policy.NewPolicyAuthorityImpl(),
 		dbMap: dbMap,
 		certs: make(chan core.Certificate, batchSize),
+		clock: clock.Default(),
 	}
 	c.issuedReport.Entries = make(map[string]reportEntry)
 	return c
 }
 
 func (c *certChecker) getCerts() error {
-	tx, err := c.dbMap.Begin()
-	if err != nil {
-		return err
-	}
-
-	cp := time.Now().Add(-checkPeriod)
+	earliestIssued := c.clock.Now().Add(-checkPeriod)
 
 	var count int
-	err = c.dbMap.SelectOne(
+	err := c.dbMap.SelectOne(
 		&count,
 		"SELECT count(*) FROM certificates WHERE issued >= :issued",
-		map[string]interface{}{"issued": cp},
+		map[string]interface{}{"issued": earliestIssued},
 	)
 	if err != nil {
-		tx.Rollback()
 		return err
 	}
 
-	// Retrieve certs in batches of 100000 (the size of the certificate channel)
-	// so that we don't eat unnecessary amounts of memory
+	// Retrieve certs in batches of 1000 (the size of the certificate channel)
+	// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
+	// packet limit.
+	// TODO(#701): This query needs to make better use of indexes
 	for offset := 0; offset < count; {
 		var certs []core.Certificate
 		_, err = c.dbMap.Select(
 			&certs,
 			"SELECT * FROM certificates WHERE issued >= :issued ORDER BY issued ASC LIMIT :limit OFFSET :offset",
-			map[string]interface{}{"issued": cp, "limit": batchSize, "offset": offset},
+			map[string]interface{}{"issued": earliestIssued, "limit": batchSize, "offset": offset},
 		)
 		if err != nil {
-			tx.Rollback()
 			return err
 		}
 		for _, cert := range certs {
@@ -120,7 +119,7 @@ func (c *certChecker) getCerts() error {
 
 	// Close channel so range operations won't block once the channel empties out
 	close(c.certs)
-	return tx.Commit()
+	return nil
 }
 
 func (c *certChecker) processCerts(wg *sync.WaitGroup) {
