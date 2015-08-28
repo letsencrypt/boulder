@@ -45,8 +45,6 @@ type pendingauthzModel struct {
 
 type authzModel struct {
 	core.Authorization
-
-	Sequence int64 `db:"sequence"`
 }
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
@@ -518,19 +516,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		return
 	}
 
-	// Manually set the index, to avoid AUTOINCREMENT issues
-	var sequence int64
-	sequenceObj, err := tx.SelectNullInt("SELECT max(sequence) FROM authz")
-	switch {
-	case !sequenceObj.Valid:
-		sequence = 0
-	case err != nil:
-		return
-	default:
-		sequence += sequenceObj.Int64 + 1
-	}
-
-	auth := &authzModel{authz, sequence}
+	auth := &authzModel{authz}
 	authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
 	if err != nil {
 		tx.Rollback()
