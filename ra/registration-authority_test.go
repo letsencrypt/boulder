@@ -381,8 +381,8 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
 	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeDNS, "Challenge 2 not DNS")
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
-	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 0 is not sane")
-	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 0 is not sane")
+	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
+	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 2 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
 }
