@@ -6,7 +6,6 @@
 package ca
 
 import (
-	"fmt"
 	"time"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -51,30 +50,11 @@ func (cadb *CertificateAuthorityDatabaseImpl) Begin() (*gorp.Transaction, error)
 // it in the database before returning. There must be an active transaction to
 // call this method. Callers should Begin the transaction, call this method,
 // perform any other work, and Commit at the end once the certificate is issued.
-func (cadb *CertificateAuthorityDatabaseImpl) IncrementAndGetSerial(tx *gorp.Transaction) (val int64, err error) {
-	if tx == nil {
-		err = fmt.Errorf("No transaction given")
-		return
-	}
-
-	rowObj, err := tx.Get(SerialNumber{}, 1)
+func (cadb *CertificateAuthorityDatabaseImpl) IncrementAndGetSerial(tx *gorp.Transaction) (int64, error) {
+	r, err := tx.Exec("REPLACE INTO serialNumber (stub) VALUES ('a');")
 	if err != nil {
-		return
+		return -1, err
 	}
 
-	row, ok := rowObj.(*SerialNumber)
-	if !ok {
-		err = fmt.Errorf("No serial number found. This is a serious issue")
-		return
-	}
-
-	val = row.Number
-	row.Number = val + 1
-
-	_, err = tx.Update(row)
-	if err != nil {
-		return
-	}
-
-	return
+	return r.LastInsertId()
 }

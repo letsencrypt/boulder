@@ -59,7 +59,11 @@ before_install:
   - "cd -"
 
 env:
-  - LETSENCRYPT_PATH=/tmp/letsencrypt
+  global:
+    - LETSENCRYPT_PATH=/tmp/letsencrypt
+  matrix:
+    - SKIP_INTEGRATION_TESTS=1
+    - SKIP_UNIT_TESTS=1
 
 script:
   - make -j4 # Travis has 2 cores per build instance
