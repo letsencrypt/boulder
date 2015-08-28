@@ -80,12 +80,12 @@ var questions = {
     type: "input",
     name: "keyFile",
     message: "Name for key file",
-    default: "key.pem"
+    default: "key.pem",
   },{
     type: "input",
     name: "certFile",
     message: "Name for certificate file",
-    default: "cert.der"
+    default: "cert.der",
   }],
 };
 
@@ -239,7 +239,7 @@ function register(answers) {
   // Register public key
   post(state.newRegistrationURL, {
     resource: "new-reg",
-    contact: [ "mailto:" + email ]
+    contact: [ "mailto:" + email ],
   }, getTerms);
 }
 
@@ -325,7 +325,7 @@ function getChallenges(answers) {
     resource: "new-authz",
     identifier: {
       type: "dns",
-      value: state.domain
+      value: state.domain,
     }
   }, getReadyToValidate);
 }
@@ -398,7 +398,7 @@ function getReadyToValidate(err, resp, body) {
   post(state.responseURL, {
     resource: "challenge",
     path: state.path,
-    tls: true
+    tls: true,
   }, ensureValidation);
 }
 
@@ -459,7 +459,7 @@ function getCertificate() {
   post(state.newCertificateURL, {
     resource: "new-cert",
     csr: csr,
-    authorizations: state.validAuthorizationURLs
+    authorizations: state.validAuthorizationURLs,
   }, downloadCertificate);
 }
 

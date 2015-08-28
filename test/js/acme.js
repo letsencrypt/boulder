@@ -51,7 +51,8 @@ Acme.prototype.post = function(url, body, callback) {
   var req = request.post({
     url: url,
     body: signed,
-    encoding: null // Return body as buffer, needed for certificate response
+    // Return body as buffer, needed for certificate response
+    encoding: null,
   }, function(error, response, body) {
     if (error) {
       console.error(error);
