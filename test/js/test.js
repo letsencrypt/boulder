@@ -25,6 +25,7 @@ var inquirer = require("inquirer");
 var request = require('request');
 var url = require('url');
 var util = require("./acme-util");
+var Acme = require("./acme");
 
 var questions = {
   email: [{
@@ -156,81 +157,8 @@ function parseLink(link) {
   }
 }
 
-function getNonce(url, callback) {
-  var req = request.head({
-    url: url,
-  }, function(error, response, body) {
-    if (error) {
-      console.log(error);
-      process.exit(1);
-    }
-    if (response && "replay-nonce" in response.headers) {
-      console.log("Storing nonce: " + response.headers["replay-nonce"]);
-      state.nonces.push(response.headers["replay-nonce"]);
-      callback();
-      return;
-    }
-
-    console.log("Failed to get nonce for request");
-    process.exit(1);
-  });
-}
-
-function post(url, body, callback) {
-  // Pre-flight with HEAD if we don't have a nonce
-  if (state.nonces.length == 0) {
-    getNonce(url, function() {
-      post(url, body, callback);
-    })
-    return;
-  }
-
-  console.log("Using nonce: " + state.nonces[0]);
-  var payload = JSON.stringify(body, null, 2);
-  var jws = crypto.generateSignature(state.accountPrivateKey,
-                                     new Buffer(payload),
-                                     state.nonces.shift());
-  var signed = JSON.stringify(jws, null, 2);
-
-  console.log('Posting to', url, ':');
-  console.log(signed.green);
-  console.log('Payload:')
-  console.log(payload.blue);
-  var req = request.post({
-    url: url,
-    encoding: null // Return body as buffer, needed for certificate response
-  }, function(error, response, body) {
-    console.log(("HTTP/1.1 " + response.statusCode).yellow)
-    Object.keys(response.headers).forEach(function(key) {
-      var value = response.headers[key];
-      var upcased = key.charAt(0).toUpperCase() + key.slice(1);
-      console.log((upcased + ": " + value).yellow)
-    });
-    console.log()
-
-    // Don't print non-ASCII characters (like DER-encoded cert) to the terminal
-    if (body && !body.toString().match(/[^\x00-\x7F]/)) {
-      try {
-        var parsed = JSON.parse(body);
-        console.log(JSON.stringify(parsed, null, 2).cyan);
-      } catch (e) {
-        console.log(body.toString().cyan);
-      }
-    }
-
-    // Remember the nonce provided by the server
-    if ("replay-nonce" in response.headers) {
-      console.log("Storing nonce: " + response.headers["replay-nonce"]);
-      state.nonces.push(response.headers["replay-nonce"]);
-    }
-
-    callback(error, response, body)
-  });
-  req.on('response', function(response) {
-  })
-  req.write(signed)
-  req.end();
-  return req;
+var post = function(url, body, callback) {
+  return state.acme.post(url, body, callback);
 }
 
 /*
@@ -294,6 +222,7 @@ function makeAccountKeyPair(answers) {
       process.exit(1);
     }
     state.accountPrivateKey = crypto.importPemPrivateKey(fs.readFileSync("account-key.pem"));
+    state.acme = new Acme(state.accountPrivateKey);
 
     console.log();
     if (cliOptions.email) {
@@ -347,8 +276,7 @@ function getAgreement(err, resp, body) {
   }
   // TODO: Check content-type
   console.log("The CA requires your agreement to terms.");
-  console.log();
-  console.log(body);
+  console.log(state.termsURL);
   console.log();
 
   if (!cliOptions.agreeTerms) {
@@ -436,7 +364,7 @@ function getReadyToValidate(err, resp, body) {
   var validationObject = JSON.stringify({
     type: "simpleHttp",
     token: challenge.token,
-    tls: false
+    tls: true
   })
   var validationJWS = crypto.generateSignature(state.accountPrivateKey,
                                                new Buffer(validationObject))
@@ -445,7 +373,7 @@ function getReadyToValidate(err, resp, body) {
   function httpResponder(req, response) {
     console.log("\nGot request for", req.url);
     var host = req.headers["host"];
-    if ((host === state.domain || /localhost/.test(state.newRegistrationURL)) &&
+    if ((host.split(/:/)[0] === state.domain || /localhost/.test(state.newRegistrationURL)) &&
         req.method === "GET" &&
         req.url == "/" + challengePath) {
       response.writeHead(200, {"Content-Type": "application/jose+json"});
@@ -456,14 +384,13 @@ function getReadyToValidate(err, resp, body) {
       response.end("");
     }
   }
+  state.httpServer = https.createServer({
+    cert: fs.readFileSync("temp-cert.pem"),
+    key: fs.readFileSync(state.keyFile)
+  }, httpResponder)
   if (/localhost/.test(state.newRegistrationURL)) {
-    state.httpServer = http.createServer(httpResponder)
     state.httpServer.listen(5001)
   } else {
-    state.httpServer = https.createServer({
-      cert: fs.readFileSync("temp-cert.pem"),
-      key: fs.readFileSync(state.keyFile)
-    }, httpResponder)
     state.httpServer.listen(443)
   }
 
@@ -471,7 +398,7 @@ function getReadyToValidate(err, resp, body) {
   post(state.responseURL, {
     resource: "challenge",
     path: state.path,
-    tls: false
+    tls: true
   }, ensureValidation);
 }
 
