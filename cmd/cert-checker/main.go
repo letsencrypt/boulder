@@ -35,6 +35,8 @@ const (
 	filenameLayout = "20060102"
 
 	checkPeriod = time.Hour * 24 * 90
+
+	batchSize = 100000
 )
 
 type report struct {
@@ -72,28 +74,53 @@ func newChecker(dbMap *gorp.DbMap) certChecker {
 	c := certChecker{
 		pa:    policy.NewPolicyAuthorityImpl(),
 		dbMap: dbMap,
+		certs: make(chan core.Certificate, batchSize),
 	}
 	c.issuedReport.Entries = make(map[string]reportEntry)
 	return c
 }
 
 func (c *certChecker) getCerts() error {
-	var certs []core.Certificate
-	_, err := c.dbMap.Select(
-		&certs,
-		"SELECT * FROM certificates WHERE issued > :issued",
-		map[string]interface{}{"issued": time.Now().Add(-checkPeriod)},
-	)
+	tx, err := c.dbMap.Begin()
 	if err != nil {
 		return err
 	}
-	c.certs = make(chan core.Certificate, len(certs))
-	for _, cert := range certs {
-		c.certs <- cert
+
+	cp := time.Now().Add(-checkPeriod)
+
+	var count int
+	err = c.dbMap.SelectOne(
+		&count,
+		"SELECT count(*) FROM certificates WHERE issued >= :issued",
+		map[string]interface{}{"issued": cp},
+	)
+	if err != nil {
+		tx.Rollback()
+		return err
 	}
-	// Close channel so range operations won't block when the channel empties out
+
+	// Retrieve certs in batches of 100000 (the size of the certificate channel)
+	// so that we don't eat unnecessary amounts of memory
+	for offset := 0; offset < count; {
+		var certs []core.Certificate
+		_, err = c.dbMap.Select(
+			&certs,
+			"SELECT * FROM certificates WHERE issued >= :issued ORDER BY issued ASC LIMIT :limit OFFSET :offset",
+			map[string]interface{}{"issued": cp, "limit": batchSize, "offset": offset},
+		)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		for _, cert := range certs {
+			c.certs <- cert
+		}
+		offset += len(certs)
+	}
+
+	// Close channel so range operations won't block once the channel empties out
 	close(c.certs)
-	return nil
+	return tx.Commit()
 }
 
 func (c *certChecker) processCerts(wg *sync.WaitGroup) {
@@ -175,6 +202,10 @@ func main() {
 			config.CertChecker.DBConnect = connect
 		}
 
+		if workers := c.GlobalInt("workers"); workers != 0 {
+			config.CertChecker.Workers = workers
+		}
+
 		return config
 	}
 
@@ -193,10 +224,16 @@ func main() {
 
 		checker := newChecker(dbMap)
 		auditlogger.Info("# Getting certificates issued in the last 90 days")
-		err = checker.getCerts()
-		cmd.FailOnError(err, "Failed to get sample certificates")
 
-		auditlogger.Info(fmt.Sprintf("# Processing sample, %d certificates using %d workers", len(checker.certs), c.CertChecker.Workers))
+		// Since we grab certificates in batches we don't want this to block, when it
+		// is finished it will close the certificate channel which allows the range
+		// loops in checker.processCerts to break
+		go func() {
+			err = checker.getCerts()
+			cmd.FailOnError(err, "Batch retrieval of certificates failed")
+		}()
+
+		auditlogger.Info(fmt.Sprintf("# Processing certificates using %d workers", c.CertChecker.Workers))
 		wg := new(sync.WaitGroup)
 		for i := 0; i < c.CertChecker.Workers; i++ {
 			wg.Add(1)
