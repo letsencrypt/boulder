@@ -1,5 +1,7 @@
+"use strict";
+
 var colors = require("colors");
-var crypto = require("./crypto-util");
+var cryptoUtil = require("./crypto-util");
 var request = require('request');
 function Acme(privateKey) {
   this.privateKey = privateKey;
@@ -11,7 +13,7 @@ Acme.prototype.getNonce = function(url, callback) {
     url: url,
   }, function(error, response, body) {
     if (error) {
-      console.log(error);
+      console.error(error);
       process.exit(1);
     }
     if (response && "replay-nonce" in response.headers) {
@@ -37,9 +39,9 @@ Acme.prototype.post = function(url, body, callback) {
 
   console.log("Using nonce: " + this.nonces[0]);
   var payload = JSON.stringify(body, null, 2);
-  var jws = crypto.generateSignature(this.privateKey,
-                                     new Buffer(payload),
-                                     this.nonces.shift());
+  var jws = cryptoUtil.generateSignature(this.privateKey,
+                                         new Buffer(payload),
+                                         this.nonces.shift());
   var signed = JSON.stringify(jws, null, 2);
 
   console.log('Posting to', url, ':');
@@ -48,12 +50,16 @@ Acme.prototype.post = function(url, body, callback) {
   console.log(payload.blue);
   var req = request.post({
     url: url,
-    headers: {
-      'Content-Length': signed.length
-    },
+    body: signed,
     encoding: null // Return body as buffer, needed for certificate response
   }, function(error, response, body) {
-    console.log(("HTTP/1.1 " + response.statusCode).yellow)
+    if (error) {
+      console.error(error);
+      process.exit(1);
+    }
+    if (response) {
+      console.log(("HTTP/1.1 " + response.statusCode).yellow)
+    }
     Object.keys(response.headers).forEach(function(key) {
       var value = response.headers[key];
       var upcased = key.charAt(0).toUpperCase() + key.slice(1);
@@ -81,8 +87,6 @@ Acme.prototype.post = function(url, body, callback) {
   }.bind(this));
   req.on('response', function(response) {
   })
-  req.write(signed)
-  req.end();
   return req;
 }
 

@@ -16,7 +16,7 @@
 
 var colors = require("colors");
 var cli = require("cli");
-var crypto = require("./crypto-util");
+var cryptoUtil = require("./crypto-util");
 var child_process = require('child_process');
 var fs = require('fs');
 var http = require('http');
@@ -207,7 +207,7 @@ function makeKeyPair() {
       console.log(error);
       process.exit(1);
     }
-    state.certPrivateKey = crypto.importPemPrivateKey(fs.readFileSync(state.keyFile));
+    state.certPrivateKey = cryptoUtil.importPemPrivateKey(fs.readFileSync(state.keyFile));
 
     console.log();
     makeAccountKeyPair()
@@ -221,7 +221,7 @@ function makeAccountKeyPair(answers) {
       console.log(error);
       process.exit(1);
     }
-    state.accountPrivateKey = crypto.importPemPrivateKey(fs.readFileSync("account-key.pem"));
+    state.accountPrivateKey = cryptoUtil.importPemPrivateKey(fs.readFileSync("account-key.pem"));
     state.acme = new Acme(state.accountPrivateKey);
 
     console.log();
@@ -355,7 +355,7 @@ function getReadyToValidate(err, resp, body) {
   }
 
   var challenge = simpleHttp[0];
-  var path = crypto.randomString(8) + ".txt";
+  var path = cryptoUtil.randomString(8) + ".txt";
   var challengePath = ".well-known/acme-challenge/" + challenge.token;
   state.responseURL = challenge["uri"];
   state.path = path;
@@ -366,7 +366,7 @@ function getReadyToValidate(err, resp, body) {
     token: challenge.token,
     tls: true
   })
-  var validationJWS = crypto.generateSignature(state.accountPrivateKey,
+  var validationJWS = cryptoUtil.generateSignature(state.accountPrivateKey,
                                                new Buffer(validationObject))
 
   // For local, test-mode validation
@@ -455,7 +455,7 @@ function ensureValidation(err, resp, body) {
 
 function getCertificate() {
   cli.spinner("Requesting certificate");
-  var csr = crypto.generateCSR(state.certPrivateKey, state.validatedDomains);
+  var csr = cryptoUtil.generateCSR(state.certPrivateKey, state.validatedDomains);
   post(state.newCertificateURL, {
     resource: "new-cert",
     csr: csr,
