@@ -115,7 +115,7 @@ func cmpStrSlice(a, b []string) bool {
 	return true
 }
 
-func cmpExtKeyUsageSlice(a, b []x509.ExtKeyUsage) bool {
+func CmpExtKeyUsageSlice(a, b []x509.ExtKeyUsage) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -563,7 +563,7 @@ func (cert Certificate) MatchesCSR(csr *x509.CertificateRequest, earliestExpiry 
 		err = InternalServerError("Generated certificate can sign other certificates")
 		return
 	}
-	if !cmpExtKeyUsageSlice(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+	if !CmpExtKeyUsageSlice(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
 		err = InternalServerError("Generated certificate doesn't have correct key usage extensions")
 		return
 	}
