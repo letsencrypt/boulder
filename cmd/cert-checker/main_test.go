@@ -141,7 +141,6 @@ func TestGetAndProcessCerts(t *testing.T) {
 	reg, err := sa.NewRegistration(core.Registration{
 		Key: satest.GoodJWK(),
 	})
-	fmt.Println(err)
 	test.AssertNotError(t, err, "Couldn't create registration")
 	for i := int64(0); i < 5; i++ {
 		rawCert.SerialNumber = big.NewInt(i)
