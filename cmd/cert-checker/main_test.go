@@ -21,7 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
+var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 
 func BenchmarkCheckCert(b *testing.B) {
 	dbMap, err := sa.NewDbMap(dbConnStr)
