@@ -108,13 +108,13 @@ type addCertificateRequest struct {
 
 type revokeCertificateRequest struct {
 	Serial     string
-	ReasonCode int
+	ReasonCode core.RevocationCode
 }
 
 type markCertificateRevokedRequest struct {
 	Serial       string
 	OCSPResponse []byte
-	ReasonCode   int
+	ReasonCode   core.RevocationCode
 }
 
 type caaRequest struct {
@@ -274,7 +274,7 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 	rpc.Handle(MethodRevokeCertificate, func(req []byte) (response []byte, err error) {
 		var revReq struct {
 			Cert   []byte
-			Reason int
+			Reason core.RevocationCode
 			RegID  *int64
 		}
 		if err = json.Unmarshal(req, &revReq); err != nil {
@@ -408,10 +408,10 @@ func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorizat
 }
 
 // RevokeCertificate sends a Revoke Certificate request
-func (rac RegistrationAuthorityClient) RevokeCertificate(cert x509.Certificate, reason int, regID *int64) (err error) {
+func (rac RegistrationAuthorityClient) RevokeCertificate(cert x509.Certificate, reason core.RevocationCode, regID *int64) (err error) {
 	var revReq struct {
 		Cert   []byte
-		Reason int
+		Reason core.RevocationCode
 		RegID  *int64
 	}
 	revReq.Cert = cert.Raw
@@ -634,7 +634,7 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 }
 
 // RevokeCertificate sends a request to revoke a certificate
-func (cac CertificateAuthorityClient) RevokeCertificate(serial string, reasonCode int) (err error) {
+func (cac CertificateAuthorityClient) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
 	var revokeReq revokeCertificateRequest
 	revokeReq.Serial = serial
 	revokeReq.ReasonCode = reasonCode
@@ -1065,7 +1065,7 @@ func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.C
 }
 
 // MarkCertificateRevoked sends a request to mark a certificate as revoked
-func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
+func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
 	var mcrReq markCertificateRevokedRequest
 
 	mcrReq.Serial = serial

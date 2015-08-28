@@ -76,7 +76,7 @@ func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
 	return
 }
 
-func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
+func revokeBySerial(serial string, reasonCode core.RevocationCode, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
@@ -112,7 +112,7 @@ func revokeBySerial(serial string, reasonCode int, deny bool, cac rpc.Certificat
 	return
 }
 
-func revokeByReg(regID int64, reasonCode int, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
+func revokeByReg(regID int64, reasonCode core.RevocationCode, deny bool, cac rpc.CertificateAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
 	var certs []core.Certificate
 	_, err = tx.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
@@ -168,7 +168,7 @@ func main() {
 				}
 				cmd.FailOnError(err, "Couldn't begin transaction")
 
-				err = revokeBySerial(serial, reasonCode, deny, cac, auditlogger, tx)
+				err = revokeBySerial(serial, core.RevocationCode(reasonCode), deny, cac, auditlogger, tx)
 				if err != nil {
 					tx.Rollback()
 				}
@@ -204,7 +204,7 @@ func main() {
 					cmd.FailOnError(err, "Couldn't fetch registration")
 				}
 
-				err = revokeByReg(regID, reasonCode, deny, cac, auditlogger, tx)
+				err = revokeByReg(regID, core.RevocationCode(reasonCode), deny, cac, auditlogger, tx)
 				if err != nil {
 					tx.Rollback()
 				}
@@ -218,11 +218,11 @@ func main() {
 			Name:  "list-reasons",
 			Usage: "List all revocation reason codes",
 			Action: func(c *cli.Context) {
-				var codes []int
+				var codes core.RevocationCodes
 				for k := range core.RevocationReasons {
 					codes = append(codes, k)
 				}
-				sort.Ints(codes)
+				sort.Sort(codes)
 				fmt.Printf("Revocation reason codes\n-----------------------\n\n")
 				for _, k := range codes {
 					fmt.Printf("%d: %s\n", k, core.RevocationReasons[k])

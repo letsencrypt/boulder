@@ -381,9 +381,9 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 }
 
 // RevokeCertificate terminates trust in the certificate provided.
-func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate, reasonCode int, regID *int64) (err error) {
+func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate, revocationCode core.RevocationCode, regID *int64) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err = ra.CA.RevokeCertificate(serialString, reasonCode)
+	err = ra.CA.RevokeCertificate(serialString, revocationCode)
 
 	state := "Failure"
 	defer func() {
@@ -399,7 +399,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate, re
 			serialString,
 			cert.Subject.CommonName,
 			cert.DNSNames,
-			core.RevocationReasons[reasonCode],
+			core.RevocationReasons[revocationCode],
 		)
 		// Check regID is set, if not revocation came from the admin-revoker tool
 		if regID != nil {

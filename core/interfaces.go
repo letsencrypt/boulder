@@ -71,7 +71,7 @@ type RegistrationAuthority interface {
 	UpdateAuthorization(Authorization, int, Challenge) (Authorization, error)
 
 	// [WebFrontEnd]
-	RevokeCertificate(x509.Certificate, int, *int64) error
+	RevokeCertificate(x509.Certificate, RevocationCode, *int64) error
 
 	// [ValidationAuthority]
 	OnValidationUpdate(Authorization) error
@@ -88,7 +88,7 @@ type ValidationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest, int64, time.Time) (Certificate, error)
-	RevokeCertificate(string, int) error
+	RevokeCertificate(string, RevocationCode) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
 
@@ -118,7 +118,7 @@ type StorageAdder interface {
 	NewPendingAuthorization(Authorization) (Authorization, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
-	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) error
+	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode RevocationCode) error
 	UpdateOCSP(serial string, ocspResponse []byte) error
 
 	AddCertificate([]byte, int64) (string, error)
