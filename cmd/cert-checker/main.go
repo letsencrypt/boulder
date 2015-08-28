@@ -41,17 +41,18 @@ const (
 )
 
 type report struct {
+	begin     time.Time
+	end       time.Time
 	GoodCerts int64
 	BadCerts  int64
 	Entries   map[string]reportEntry
 }
 
 func (r *report) save(directory string) error {
-	now := time.Now()
 	filename := path.Join(directory, fmt.Sprintf(
 		"%s-%s-report.json",
-		now.Add(-checkPeriod).Format(filenameLayout),
-		now.Format(filenameLayout),
+		r.begin.Format(filenameLayout),
+		r.end.Format(filenameLayout),
 	))
 	content, err := json.Marshal(r)
 	if err != nil {
@@ -85,13 +86,14 @@ func newChecker(dbMap *gorp.DbMap) certChecker {
 }
 
 func (c *certChecker) getCerts() error {
-	earliestIssued := c.clock.Now().Add(-checkPeriod)
+	c.issuedReport.begin = c.clock.Now()
+	c.issuedReport.end = c.issuedReport.begin.Add(-checkPeriod)
 
 	var count int
 	err := c.dbMap.SelectOne(
 		&count,
 		"SELECT count(*) FROM certificates WHERE issued >= :issued",
-		map[string]interface{}{"issued": earliestIssued},
+		map[string]interface{}{"issued": c.issuedReport.end},
 	)
 	if err != nil {
 		return err
@@ -106,7 +108,7 @@ func (c *certChecker) getCerts() error {
 		_, err = c.dbMap.Select(
 			&certs,
 			"SELECT * FROM certificates WHERE issued >= :issued ORDER BY issued ASC LIMIT :limit OFFSET :offset",
-			map[string]interface{}{"issued": earliestIssued, "limit": batchSize, "offset": offset},
+			map[string]interface{}{"issued": c.issuedReport.end, "limit": batchSize, "offset": offset},
 		)
 		if err != nil {
 			return err
