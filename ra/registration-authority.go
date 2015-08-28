@@ -391,8 +391,8 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode core.R
 	)
 }
 
-// RevokeCertificate terminates trust in the certificate provided.
-func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate, revocationCode core.RevocationCode, regID *int64) (err error) {
+// RevokeCertificateWithReg terminates trust in the certificate provided.
+func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(cert x509.Certificate, revocationCode core.RevocationCode, regID int64) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
 	err = ra.CA.RevokeCertificate(serialString, revocationCode)
 
@@ -409,7 +409,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate, re
 		ra.log.Audit(fmt.Sprintf(
 			"%s, Request by registration ID: %d",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
-			*regID,
+			regID,
 		))
 	}()
 
@@ -422,10 +422,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate, re
 	return nil
 }
 
-// RevokeCertificateWithoutReg terminates trust in the certificate provided and
+// RevokeCertificateWithUser terminates trust in the certificate provided and
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
-func (ra *RegistrationAuthorityImpl) RevokeCertificateWithoutReg(cert x509.Certificate, revocationCode core.RevocationCode, user string) error {
+func (ra *RegistrationAuthorityImpl) RevokeCertificateWithUser(cert x509.Certificate, revocationCode core.RevocationCode, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
 	err := ra.CA.RevokeCertificate(serialString, revocationCode)
 

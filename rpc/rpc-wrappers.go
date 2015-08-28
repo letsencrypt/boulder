@@ -39,7 +39,9 @@ const (
 	MethodNewCertificate              = "NewCertificate"              // RA
 	MethodUpdateRegistration          = "UpdateRegistration"          // RA, SA
 	MethodUpdateAuthorization         = "UpdateAuthorization"         // RA
-	MethodRevokeCertificate           = "RevokeCertificate"           // RA, CA
+	MethodRevokeCertificate           = "RevokeCertificate"           // CA
+	MethodRevokeCertificateWithReg    = "RevokeCertificateWithReg"    // RA
+	MethodRevokeCertificateWithUser   = "RevokeCertificateWithUser"   // RA
 	MethodOnValidationUpdate          = "OnValidationUpdate"          // RA
 	MethodUpdateValidations           = "UpdateValidations"           // VA
 	MethodCheckCAARecords             = "CheckCAARecords"             // VA
@@ -271,15 +273,15 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 		return
 	})
 
-	rpc.Handle(MethodRevokeCertificate, func(req []byte) (response []byte, err error) {
+	rpc.Handle(MethodRevokeCertificateWithReg, func(req []byte) (response []byte, err error) {
 		var revReq struct {
 			Cert   []byte
 			Reason core.RevocationCode
-			RegID  *int64
+			RegID  int64
 		}
 		if err = json.Unmarshal(req, &revReq); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodRevokeCertificate, err, req)
+			improperMessage(MethodRevokeCertificateWithReg, err, req)
 			return
 		}
 		cert, err := x509.ParseCertificate(revReq.Cert)
@@ -288,7 +290,28 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 			return
 		}
 
-		err = impl.RevokeCertificate(*cert, revReq.Reason, revReq.RegID)
+		err = impl.RevokeCertificateWithReg(*cert, revReq.Reason, revReq.RegID)
+		return
+	})
+
+	rpc.Handle(MethodRevokeCertificateWithUser, func(req []byte) (response []byte, err error) {
+		var revReq struct {
+			Cert   []byte
+			Reason core.RevocationCode
+			User   string
+		}
+		if err = json.Unmarshal(req, &revReq); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodRevokeCertificateWithUser, err, req)
+			return
+		}
+		cert, err := x509.ParseCertificate(revReq.Cert)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			return
+		}
+
+		err = impl.RevokeCertificateWithUser(*cert, revReq.Reason, revReq.User)
 		return
 	})
 
@@ -407,12 +430,13 @@ func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorizat
 	return
 }
 
-// RevokeCertificate sends a Revoke Certificate request
-func (rac RegistrationAuthorityClient) RevokeCertificate(cert x509.Certificate, reason core.RevocationCode, regID *int64) (err error) {
+// RevokeCertificateWithReg sends a Revoke Certificate request initiated by the
+// WFE
+func (rac RegistrationAuthorityClient) RevokeCertificateWithReg(cert x509.Certificate, reason core.RevocationCode, regID int64) (err error) {
 	var revReq struct {
 		Cert   []byte
 		Reason core.RevocationCode
-		RegID  *int64
+		RegID  int64
 	}
 	revReq.Cert = cert.Raw
 	revReq.Reason = reason
@@ -421,7 +445,26 @@ func (rac RegistrationAuthorityClient) RevokeCertificate(cert x509.Certificate, 
 	if err != nil {
 		return
 	}
-	_, err = rac.rpc.DispatchSync(MethodRevokeCertificate, data)
+	_, err = rac.rpc.DispatchSync(MethodRevokeCertificateWithReg, data)
+	return
+}
+
+// RevokeCertificateWithUser sends a Revoke Certificate request initiated by the
+// admin-revoker
+func (rac RegistrationAuthorityClient) RevokeCertificateWithUser(cert x509.Certificate, reason core.RevocationCode, user string) (err error) {
+	var revReq struct {
+		Cert   []byte
+		Reason core.RevocationCode
+		User   string
+	}
+	revReq.Cert = cert.Raw
+	revReq.Reason = reason
+	revReq.User = user
+	data, err := json.Marshal(revReq)
+	if err != nil {
+		return
+	}
+	_, err = rac.rpc.DispatchSync(MethodRevokeCertificateWithUser, data)
 	return
 }
 
