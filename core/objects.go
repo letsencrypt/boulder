@@ -597,7 +597,7 @@ type CertificateStatus struct {
 	// revokedReason: If status is 'revoked', this is the reason code for the
 	//   revocation. Otherwise it is zero (which happens to be the reason
 	//   code for 'unspecified').
-	RevokedReason int `db:"revokedReason"`
+	RevokedReason RevocationCode `db:"revokedReason"`
 
 	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
@@ -646,6 +646,39 @@ type DeniedCSR struct {
 type OCSPSigningRequest struct {
 	CertDER   []byte
 	Status    string
-	Reason    int
+	Reason    RevocationCode
 	RevokedAt time.Time
+}
+
+// RevocationCode is used to specify a certificate revocation reason
+type RevocationCode int
+
+type RevocationCodes []RevocationCode
+
+func (rc RevocationCodes) Len() int {
+	return len(rc)
+}
+
+func (rc RevocationCodes) Less(i, j int) bool {
+	return rc[i] < rc[j]
+}
+
+func (rc RevocationCodes) Swap(i, j int) {
+	rc[i], rc[j] = rc[j], rc[i]
+}
+
+// RevocationReasons provides a map from reason code to string explaining the
+// code
+var RevocationReasons = map[RevocationCode]string{
+	0: "unspecified",
+	1: "keyCompromise",
+	2: "cACompromise",
+	3: "affiliationChanged",
+	4: "superseded",
+	5: "cessationOfOperation",
+	6: "certificateHold",
+	// 7 is unused
+	8:  "removeFromCRL", // needed?
+	9:  "privilegeWithdrawn",
+	10: "aAcompromise",
 }

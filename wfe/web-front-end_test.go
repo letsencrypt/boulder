@@ -241,7 +241,7 @@ func (sa *MockSA) FinalizeAuthorization(authz core.Authorization) (err error) {
 	return
 }
 
-func (sa *MockSA) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
+func (sa *MockSA) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
 	return
 }
 
@@ -289,7 +289,7 @@ func (ra *MockRegistrationAuthority) UpdateAuthorization(authz core.Authorizatio
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate) error {
+func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate, reason core.RevocationCode, reg *int64) error {
 	return nil
 }
 
@@ -310,7 +310,7 @@ func (ca *MockCA) GenerateOCSP(xferObj core.OCSPSigningRequest) (ocsp []byte, er
 	return
 }
 
-func (ca *MockCA) RevokeCertificate(serial string, reasonCode int) (err error) {
+func (ca *MockCA) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
 	return
 }
 

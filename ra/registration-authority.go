@@ -394,19 +394,44 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 }
 
 // RevokeCertificate terminates trust in the certificate provided.
-func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate) (err error) {
+func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate, revocationCode core.RevocationCode, regID *int64) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err = ra.CA.RevokeCertificate(serialString, 0)
+	err = ra.CA.RevokeCertificate(serialString, revocationCode)
 
-	// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
+	state := "Failure"
+	defer func() {
+		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
+		// Needed:
+		//   Serial
+		//   CN
+		//   Revocation reason
+		//   Error (if there was one)
+		revMsg := fmt.Sprintf(
+			"Revocation - State: %s, Serial: %s, CN: %s, DNS Names: %s, Reason: %s",
+			state,
+			serialString,
+			cert.Subject.CommonName,
+			cert.DNSNames,
+			core.RevocationReasons[revocationCode],
+		)
+		// Check regID is set, if not revocation came from the admin-revoker tool
+		if regID != nil {
+			revMsg = fmt.Sprintf("%s, Requested by registration ID: %d", revMsg, *regID)
+		} else {
+			revMsg = fmt.Sprintf("%s, Revoked using admin tool", revMsg)
+		}
+		ra.log.Audit(revMsg)
+	}()
+
 	if err != nil {
-		ra.log.Audit(fmt.Sprintf("Revocation error - %s - %s", serialString, err))
+		state = fmt.Sprintf("Failure -- %s", err)
 		return err
 	}
+	state = "Success"
 
 	ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
 	ra.Stats.Inc("RA.RevokedCertificates", 1, 1.0)
-	return err
+	return nil
 }
 
 // OnValidationUpdate is called when a given Authorization is updated by the VA.

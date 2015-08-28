@@ -132,6 +132,7 @@ DROP TABLE `registrations`;
 DROP TABLE `authz`;
 DROP TABLE `certificates`;
 DROP TABLE `certificateStatus`;
+DROP TABLE `challenges`;
 DROP TABLE `crls`;
 DROP TABLE `deniedCSRs`;
 DROP TABLE `ocspResponses`;

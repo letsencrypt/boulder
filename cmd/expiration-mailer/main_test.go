@@ -209,7 +209,8 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "happy A",
 		},
-		NotAfter:     time.Now().AddDate(0, 0, 1),
+		// This is slightly within the ultime nag window (one day)
+		NotAfter:     time.Now().AddDate(0, 0, 1).Add(-time.Hour),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -218,7 +219,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		RegistrationID: regA.ID,
 		Status:         core.StatusValid,
 		Serial:         "001",
-		Expires:        time.Now().AddDate(0, 0, 1),
+		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
 	// Already sent a nag but too long ago
@@ -236,7 +237,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		RegistrationID: regA.ID,
 		Status:         core.StatusValid,
 		Serial:         "002",
-		Expires:        time.Now().AddDate(0, 0, 3),
+		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
 	// Already sent a nag for this period
@@ -245,7 +246,8 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "happy C",
 		},
-		NotAfter:     time.Now().AddDate(0, 0, 7),
+		// This is within the earliest nag window (7 days)
+		NotAfter:     time.Now().AddDate(0, 0, 6),
 		DNSNames:     []string{"example-c.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -254,7 +256,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		RegistrationID: regB.ID,
 		Status:         core.StatusValid,
 		Serial:         "003",
-		Expires:        time.Now().AddDate(0, 0, 7),
+		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
 	}
 	certStatusC := &core.CertificateStatus{Serial: "003"}
@@ -279,7 +281,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertEquals(t, len(mc.Messages), 2)
 
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 1 days (%s)`, rawCertA.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), mc.Messages[0])
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (%s)`, rawCertC.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), mc.Messages[1])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 6 days (%s)`, rawCertC.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), mc.Messages[1])
 
 	// A consecutive run shouldn't find anything
 	mc.Clear()
