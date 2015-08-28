@@ -43,7 +43,7 @@ const (
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
-	Stats statsd.Statter
+	stats statsd.Statter
 	log   *blog.AuditLogger
 
 	// URL configuration parameters
@@ -112,7 +112,7 @@ type requestEvent struct {
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
-func NewWebFrontEndImpl() (WebFrontEndImpl, error) {
+func NewWebFrontEndImpl(stats statsd.Statter) (WebFrontEndImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 
@@ -124,6 +124,7 @@ func NewWebFrontEndImpl() (WebFrontEndImpl, error) {
 	return WebFrontEndImpl{
 		log:          logger,
 		nonceService: nonceService,
+		stats:        stats,
 	}, nil
 }
 
@@ -419,10 +420,10 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, 
 	response.WriteHeader(code)
 	response.Write(problemDoc)
 
-	wfe.Stats.Inc(fmt.Sprintf("WFE.HTTP.ErrorCodes.%d", code), 1, 1.0)
+	wfe.stats.Inc(fmt.Sprintf("WFE.HTTP.ErrorCodes.%d", code), 1, 1.0)
 	problemSegments := strings.Split(string(problem.Type), ":")
 	if len(problemSegments) > 0 {
-		wfe.Stats.Inc(fmt.Sprintf("WFE.HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1, 1.0)
+		wfe.stats.Inc(fmt.Sprintf("WFE.HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1, 1.0)
 	}
 }
 

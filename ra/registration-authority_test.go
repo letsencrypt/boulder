@@ -198,14 +198,14 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	Registration, _ = ssa.NewRegistration(core.Registration{Key: AccountKeyA})
 
-	ra := NewRegistrationAuthorityImpl()
+	stats, _ := statsd.NewNoopClient()
+	ra := NewRegistrationAuthorityImpl(stats)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = &ca
 	ra.PA = pa
 	ra.AuthzBase = "http://acme.invalid/authz/"
 	ra.MaxKeySize = 4096
-	ra.Stats, _ = statsd.NewNoopClient()
 	ra.DNSResolver = &mocks.MockDNS{}
 
 	AuthzInitial.RegistrationID = Registration.ID

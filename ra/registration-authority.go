@@ -31,7 +31,7 @@ type RegistrationAuthorityImpl struct {
 	VA          core.ValidationAuthority
 	SA          core.StorageAuthority
 	PA          core.PolicyAuthority
-	Stats       statsd.Statter
+	stats       statsd.Statter
 	DNSResolver core.DNSResolver
 	log         *blog.AuditLogger
 
@@ -40,11 +40,11 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(stats statsd.Statter) RegistrationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Registration Authority Starting")
 
-	ra := RegistrationAuthorityImpl{log: logger}
+	ra := RegistrationAuthorityImpl{log: logger, stats: stats}
 	ra.PA = policy.NewPolicyAuthorityImpl()
 	return ra
 }
@@ -99,7 +99,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	}
 	reg.MergeUpdate(init)
 
-	err = validateContacts(reg.Contact, ra.DNSResolver, ra.Stats)
+	err = validateContacts(reg.Contact, ra.DNSResolver, ra.stats)
 	if err != nil {
 		return
 	}
@@ -112,7 +112,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 		err = core.InternalServerError(err.Error())
 	}
 
-	ra.Stats.Inc("RA.NewRegistrations", 1, 1.0)
+	ra.stats.Inc("RA.NewRegistrations", 1, 1.0)
 	return
 }
 
@@ -207,7 +207,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		err = core.InternalServerError(err.Error())
 	}
 
-	ra.Stats.Inc("RA.NewPendingAuthorizations", 1, 1.0)
+	ra.stats.Inc("RA.NewPendingAuthorizations", 1, 1.0)
 	return authz, err
 }
 
@@ -336,7 +336,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.ResponseTime = time.Now()
 	logEventResult = "successful"
 
-	ra.Stats.Inc("RA.NewCertificates", 1, 1.0)
+	ra.stats.Inc("RA.NewCertificates", 1, 1.0)
 	return cert, nil
 }
 
@@ -344,7 +344,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	err = validateContacts(base.Contact, ra.DNSResolver, ra.Stats)
+	err = validateContacts(base.Contact, ra.DNSResolver, ra.stats)
 	if err != nil {
 		return
 	}
@@ -357,7 +357,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 		err = core.InternalServerError(fmt.Sprintf("Could not update registration: %s", err))
 	}
 
-	ra.Stats.Inc("RA.UpdatedRegistrations", 1, 1.0)
+	ra.stats.Inc("RA.UpdatedRegistrations", 1, 1.0)
 	return
 }
 
@@ -389,7 +389,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	// Dispatch to the VA for service
 	ra.VA.UpdateValidations(authz, challengeIndex, reg.Key)
 
-	ra.Stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
+	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	return
 }
 
@@ -430,7 +430,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificate(cert x509.Certificate, re
 	state = "Success"
 
 	ra.log.Audit(fmt.Sprintf("Revocation - %s", serialString))
-	ra.Stats.Inc("RA.RevokedCertificates", 1, 1.0)
+	ra.stats.Inc("RA.RevokedCertificates", 1, 1.0)
 	return nil
 }
 
@@ -473,6 +473,6 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 		return err
 	}
 
-	ra.Stats.Inc("RA.FinalizedAuthorizations", 1, 1.0)
+	ra.stats.Inc("RA.FinalizedAuthorizations", 1, 1.0)
 	return nil
 }

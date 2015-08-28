@@ -49,7 +49,7 @@ type ValidationAuthorityImpl struct {
 	simpleHTTPSPort int
 	dvsniPort       int
 	UserAgent       string
-	Stats           statsd.Statter
+	stats           statsd.Statter
 }
 
 // PortConfig specifies what ports the VA should call to on the remote
@@ -61,7 +61,7 @@ type PortConfig struct {
 }
 
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *PortConfig) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *PortConfig, stats statsd.Statter) *ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
 	return &ValidationAuthorityImpl{
@@ -69,6 +69,7 @@ func NewValidationAuthorityImpl(pc *PortConfig) *ValidationAuthorityImpl {
 		simpleHTTPPort:  pc.SimpleHTTPPort,
 		simpleHTTPSPort: pc.SimpleHTTPSPort,
 		dvsniPort:       pc.DVSNIPort,
+		stats:           stats,
 	}
 }
 
@@ -147,8 +148,8 @@ func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs [
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
 		return
 	}
-	va.Stats.TimingDuration("VA.DNS.RTT.A", rtt, 1.0)
-	va.Stats.Inc("VA.DNS.Rate", 1, 1.0)
+	va.stats.TimingDuration("VA.DNS.RTT.A", rtt, 1.0)
+	va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 
 	if len(addrs) == 0 {
 		problem = &core.ProblemDetails{
@@ -533,8 +534,8 @@ func (va *ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, i
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
 	txts, rtt, err := va.DNSResolver.LookupTXT(challengeSubdomain)
-	va.Stats.TimingDuration("VA.DNS.RTT.TXT", rtt, 1.0)
-	va.Stats.Inc("VA.DNS.Rate", 1, 1.0)
+	va.stats.TimingDuration("VA.DNS.RTT.TXT", rtt, 1.0)
+	va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
@@ -585,7 +586,7 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 		case core.ChallengeTypeDNS:
 			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex], accountKey)
 		}
-		va.Stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", authz.Challenges[challengeIndex].Type, authz.Challenges[challengeIndex].Status), time.Since(vStart), 1.0)
+		va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", authz.Challenges[challengeIndex].Type, authz.Challenges[challengeIndex].Status), time.Since(vStart), 1.0)
 
 		if err != nil {
 			logEvent.Error = err.Error()
@@ -672,8 +673,8 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 		if err != nil {
 			return nil, err
 		}
-		va.Stats.TimingDuration("VA.DNS.RTT.CAA", caaRtt, 1.0)
-		va.Stats.Inc("VA.DNS.Rate", 1, 1.0)
+		va.stats.TimingDuration("VA.DNS.RTT.CAA", caaRtt, 1.0)
+		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 		if len(CAAs) > 0 {
 			return newCAASet(CAAs), nil
 		}
@@ -681,14 +682,14 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 		if err != nil {
 			return nil, err
 		}
-		va.Stats.TimingDuration("VA.DNS.RTT.CNAME", cnameRtt, 1.0)
-		va.Stats.Inc("VA.DNS.Rate", 1, 1.0)
+		va.stats.TimingDuration("VA.DNS.RTT.CNAME", cnameRtt, 1.0)
+		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 		dname, dnameRtt, err := va.DNSResolver.LookupDNAME(label)
 		if err != nil {
 			return nil, err
 		}
-		va.Stats.TimingDuration("VA.DNS.RTT.DNAME", dnameRtt, 1.0)
-		va.Stats.Inc("VA.DNS.Rate", 1, 1.0)
+		va.stats.TimingDuration("VA.DNS.RTT.DNAME", dnameRtt, 1.0)
+		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 		if cname == "" && dname == "" {
 			// Try parent domain (note we confirmed
 			// earlier that label contains '.')

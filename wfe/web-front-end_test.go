@@ -334,7 +334,8 @@ func signRequest(t *testing.T, req string, nonceService *core.NonceService) stri
 }
 
 func setupWFE(t *testing.T) WebFrontEndImpl {
-	wfe, err := NewWebFrontEndImpl()
+	stats, _ := statsd.NewNoopClient()
+	wfe, err := NewWebFrontEndImpl(stats)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.NewReg = wfe.BaseURL + NewRegPath
@@ -345,8 +346,6 @@ func setupWFE(t *testing.T) WebFrontEndImpl {
 	wfe.CertBase = wfe.BaseURL + CertPath
 	wfe.SubscriberAgreementURL = agreementURL
 	wfe.log.SyslogWriter = mocks.NewSyslogWriter()
-
-	wfe.Stats, _ = statsd.NewNoopClient()
 
 	return wfe
 }
@@ -514,10 +513,10 @@ func TestIssueCertificate(t *testing.T) {
 	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl()
+	stats, _ := statsd.NewNoopClient(nil)
+	ra := ra.NewRegistrationAuthorityImpl(stats)
 	ra.SA = &MockSA{}
 	ra.CA = &MockCA{}
-	ra.Stats, _ = statsd.NewNoopClient()
 	wfe.SA = &MockSA{}
 	wfe.RA = &ra
 	responseWriter := httptest.NewRecorder()
@@ -1175,7 +1174,6 @@ func TestTermsRedirect(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 
 	responseWriter := httptest.NewRecorder()

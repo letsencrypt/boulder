@@ -35,10 +35,9 @@ func main() {
 
 		go cmd.DebugServer(c.RA.DebugAddr)
 
-		rai := ra.NewRegistrationAuthorityImpl()
+		rai := ra.NewRegistrationAuthorityImpl(stats)
 		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize
-		rai.Stats = stats
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
 		rai.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})

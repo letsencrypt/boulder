@@ -50,8 +50,7 @@ func main() {
 		if c.VA.PortConfig.DVSNIPort != 0 {
 			pc.DVSNIPort = c.VA.PortConfig.DVSNIPort
 		}
-		vai := va.NewValidationAuthorityImpl(pc)
-		vai.Stats = stats
+		vai := va.NewValidationAuthorityImpl(pc, stats)
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
