@@ -41,6 +41,7 @@ type challModel struct {
 	TLS              *bool           `db:"tls"`
 	Validation       []byte          `db:"validation"`
 	ValidationRecord []byte          `db:"validationRecord"`
+	AccountKey       []byte          `db:"accountKey"`
 
 	LockCol int64
 }
@@ -123,6 +124,16 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		}
 		cm.ValidationRecord = vrJSON
 	}
+	if c.AccountKey != nil {
+		akJSON, err := json.Marshal(c.AccountKey)
+		if err != nil {
+			return nil, err
+		}
+		if len(akJSON) > mediumBlobSize {
+			return nil, fmt.Errorf("Account key object is too large to store in the database")
+		}
+		cm.AccountKey = akJSON
+	}
 	return &cm, nil
 }
 
@@ -163,6 +174,14 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 			return core.Challenge{}, err
 		}
 		c.ValidationRecord = vr
+	}
+	if len(cm.AccountKey) > 0 {
+		var ak jose.JsonWebKey
+		err := json.Unmarshal(cm.AccountKey, &ak)
+		if err != nil {
+			return core.Challenge{}, err
+		}
+		c.AccountKey = &ak
 	}
 	return c, nil
 }
