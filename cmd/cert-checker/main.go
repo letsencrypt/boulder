@@ -151,8 +151,12 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 	if err != nil {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 	} else {
+		// Check stored serial is correct
+		if core.SerialToString(parsedCert.SerialNumber) != cert.Serial {
+			problems = append(problems, "Stored serial doesn't match certificate serial")
+		}
 		// Check we have the right expiration time
-		if parsedCert.NotAfter != cert.Expires {
+		if !parsedCert.NotAfter.Equal(cert.Expires) {
 			problems = append(problems, "Stored expiration doesn't match certificate NotAfter")
 		}
 		// Check basic constraints are set
@@ -163,9 +167,11 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		if parsedCert.IsCA {
 			problems = append(problems, "Certificate can sign other certificates")
 		}
-		// Check the cert has the correct validity period
-		if parsedCert.NotAfter.Sub(cert.Issued) > (checkPeriod) {
+		// Check the cert has the correct validity period +/- an hour
+		if parsedCert.NotAfter.Sub(cert.Issued) > checkPeriod+time.Hour {
 			problems = append(problems, "Certificate has a validity period longer than 90 days")
+		} else if parsedCert.NotAfter.Sub(cert.Issued) < checkPeriod-time.Hour {
+			problems = append(problems, "Certificate has a validity period shorter than 90 days")
 		}
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {

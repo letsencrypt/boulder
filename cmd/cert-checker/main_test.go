@@ -12,11 +12,13 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"math/big"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/test"
 )
 
 var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_test"
@@ -53,4 +55,100 @@ func BenchmarkCheckCert(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		checker.checkCert(cert)
 	}
+}
+
+func TestCheckCert(t *testing.T) {
+	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	now := time.Now()
+	expiry := now.Add(checkPeriod)
+	serial := big.NewInt(1337)
+	// Problems
+	//   Blacklsited common name
+	//   Expiry period is too long
+	//   Basic Constraints aren't set
+	//   Wrong key usage (none)
+	rawCert := x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "example.com",
+		},
+		NotAfter:              expiry.AddDate(0, 0, 1),
+		DNSNames:              []string{"example-a.com"},
+		SerialNumber:          serial,
+		BasicConstraintsValid: false,
+	}
+	brokenCertDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "Couldn't create certificate")
+	// Problems
+	//   Digest doesn't match
+	//   Serial doesn't match
+	//   Expiry doesn't match
+	cert := core.Certificate{
+		Status:  core.StatusValid,
+		DER:     brokenCertDer,
+		Issued:  now,
+		Expires: expiry.AddDate(0, 0, 2),
+	}
+
+	checker := newChecker(nil)
+
+	problems := checker.checkCert(cert)
+	test.AssertEquals(t, len(problems), 7)
+
+	// Fix the problems
+	rawCert.Subject.CommonName = "example-a.com"
+	rawCert.NotAfter = expiry
+	rawCert.BasicConstraintsValid = true
+	rawCert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+	goodCertDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "Couldn't create certificate")
+	parsed, err := x509.ParseCertificate(goodCertDer)
+	test.AssertNotError(t, err, "Couldn't parse created certificate")
+	cert.Serial = core.SerialToString(serial)
+	cert.Digest = core.Fingerprint256(goodCertDer)
+	cert.DER = goodCertDer
+	cert.Expires = parsed.NotAfter
+	problems = checker.checkCert(cert)
+	test.AssertEquals(t, len(problems), 0)
+}
+
+func TestGetAndProcessCerts(t *testing.T) {
+	dbMap, err := sa.NewDbMap(dbConnStr)
+	test.AssertNotError(t, err, "Couldn't connect to database")
+	checker := newChecker(dbMap)
+	sa, err := sa.NewSQLStorageAuthority(dbMap)
+	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
+	defer func() {
+		dbMap.TruncateTables()
+		test.AssertNotError(t, err, "Failed to truncate tables")
+	}()
+
+	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	// Problems
+	//   Blacklsited common name
+	//   Expiry period is too long
+	//   Basic Constraints aren't set
+	//   Wrong key usage (none)
+	rawCert := x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "not-blacklisted.com",
+		},
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+	for i := int64(0); i < 5; i++ {
+		rawCert.SerialNumber = big.NewInt(i)
+		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
+		test.AssertNotError(t, err, "Couldn't create certificate")
+		_, err = sa.AddCertificate(certDER, 0)
+		test.AssertNotError(t, err, "Couldn't add certificate")
+	}
+
+	err = checker.getCerts()
+	test.AssertNotError(t, err, "Failed to retrieve certificates")
+	test.AssertEquals(t, len(checker.certs), 5)
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	checker.processCerts(wg)
+	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
+	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
 }
