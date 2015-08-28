@@ -67,9 +67,22 @@ func TestRecordSanityCheck(t *testing.T) {
 }
 
 func TestChallengeSanityCheck(t *testing.T) {
+	// Make a temporary account key
+	var accountKey *jose.JsonWebKey
+	err := json.Unmarshal([]byte(`{
+    "kty":"RSA",
+    "n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
+    "e":"AQAB"
+  }`), &accountKey)
+	test.AssertNotError(t, err, "Error unmarshaling JWK")
+
 	types := []string{ChallengeTypeSimpleHTTP, ChallengeTypeDVSNI, ChallengeTypeDNS}
 	for _, challengeType := range types {
-		chall := Challenge{Type: challengeType, Status: StatusInvalid}
+		chall := Challenge{
+			Type:       challengeType,
+			Status:     StatusInvalid,
+			AccountKey: accountKey,
+		}
 		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 		chall.Status = StatusPending
 		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
@@ -80,6 +93,7 @@ func TestChallengeSanityCheck(t *testing.T) {
 		chall.Token = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ+PCt92wr+o!"
 		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 		chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
+		test.Assert(t, chall.IsSane(false), "IsSane should be true")
 
 		// Post-completion tests differ by type
 		if challengeType == ChallengeTypeSimpleHTTP {
@@ -92,7 +106,7 @@ func TestChallengeSanityCheck(t *testing.T) {
 				AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
 				AddressUsed:       net.IP{127, 0, 0, 1},
 			}}
-			test.Assert(t, chall.IsSane(false), "IsSane should be true")
+			test.Assert(t, chall.IsSane(true), "IsSane should be true")
 		} else if challengeType == ChallengeTypeDVSNI || challengeType == ChallengeTypeDNS {
 			chall.Validation = new(jose.JsonWebSignature)
 			if challengeType == ChallengeTypeDVSNI {

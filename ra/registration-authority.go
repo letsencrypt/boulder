@@ -139,7 +139,8 @@ func validateContacts(contacts []*core.AcmeURL, resolver core.DNSResolver, stats
 
 // NewAuthorization constuct a new Authz from a request.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
-	if regID <= 0 {
+	reg, err := ra.SA.GetRegistration(regID)
+	if err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", regID))
 		return authz, err
 	}
@@ -190,6 +191,9 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		// Ignoring these errors because we construct the URLs to be correct
 		challengeURI, _ := core.ParseAcmeURL(ra.AuthzBase + authz.ID + "?challenge=" + strconv.Itoa(i))
 		authz.Challenges[i].URI = challengeURI
+
+		// Add the account key used to generate the challenge
+		authz.Challenges[i].AccountKey = &reg.Key
 
 		if !authz.Challenges[i].IsSane(false) {
 			// InternalServerError because we generated these challenges, they should
@@ -386,8 +390,15 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 
+	// Reject the update if the challenge in question was created
+	// with a different account key
+	if !core.KeyDigestEquals(reg.Key, authz.Challenges[challengeIndex].AccountKey) {
+		err = core.UnauthorizedError("Challenge cannot be updated with a different key")
+		return
+	}
+
 	// Dispatch to the VA for service
-	ra.VA.UpdateValidations(authz, challengeIndex, reg.Key)
+	ra.VA.UpdateValidations(authz, challengeIndex)
 
 	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	return
