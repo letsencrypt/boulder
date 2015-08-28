@@ -103,7 +103,7 @@ func revokeBySerial(serial string, reasonCode core.RevocationCode, deny bool, ca
 		}
 	}
 
-	err = cac.RevokeCertificate(certificate.Serial, reasonCode)
+	err = cac.RevokeCertificateWithoutReg(certificate.Serial, reasonCode, "")
 	if err != nil {
 		return
 	}
