@@ -47,7 +47,6 @@ func BenchmarkCheckCert(b *testing.B) {
 	}
 	certDer, _ := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 	cert := core.Certificate{
-		Status:  core.StatusValid,
 		Serial:  core.SerialToString(serial),
 		Digest:  core.Fingerprint256(certDer),
 		DER:     certDer,
@@ -91,7 +90,6 @@ func TestCheckCert(t *testing.T) {
 	//   Serial doesn't match
 	//   Expiry doesn't match
 	cert := core.Certificate{
-		Status:  core.StatusValid,
 		DER:     brokenCertDer,
 		Issued:  issued,
 		Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match

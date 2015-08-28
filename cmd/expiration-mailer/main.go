@@ -168,7 +168,7 @@ func (m *mailer) findExpiringCertificates() error {
 			 ON cs.serial = cert.serial
 			 AND cert.expires > :cutoffA
 			 AND cert.expires <= :cutoffB
-			 AND cert.status != "revoked"
+			 AND cs.status != "revoked"
 			 AND cs.lastExpirationNagSent <= :nagCutoff
 			 ORDER BY cert.expires ASC
 			 LIMIT :limit`,

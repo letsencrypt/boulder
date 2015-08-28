@@ -408,8 +408,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	certDER := block.Bytes
 
 	cert := core.Certificate{
-		DER:    certDER,
-		Status: core.StatusValid,
+		DER: certDER,
 	}
 
 	// This is one last check for uncaught errors
