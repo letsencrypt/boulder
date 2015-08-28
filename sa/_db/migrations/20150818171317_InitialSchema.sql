@@ -1,13 +1,6 @@
---
--- Copyright 2015 ISRG.  All rights reserved
--- This Source Code Form is subject to the terms of the Mozilla Public
--- License, v. 2.0. If a copy of the MPL was not distributed with this
--- file, You can obtain one at http://mozilla.org/MPL/2.0/.
---
--- This file defines the table schema, foreign keys and indicies of the
--- primary database, used by all the parts of Boulder except the Certificate
--- Authority module, which utilizes its own database.
---
+
+-- +goose Up
+-- SQL in section 'Up' is executed when this migration is applied
 
 CREATE TABLE `registrations` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -127,3 +120,21 @@ CREATE TABLE `externalCerts` (
   `rawDERCert` blob DEFAULT NULL,
   UNIQUE INDEX (sha1)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+
+-- +goose Down
+-- SQL section 'Down' is executed when this migration is rolled back
+
+ALTER TABLE `pending_authz` DROP FOREIGN KEY `regId_pending_authz`;
+ALTER TABLE `certificates` DROP FOREIGN KEY `regId_certificates`;
+ALTER TABLE `authz` DROP FOREIGN KEY `regId_authz`;
+DROP TABLE `registrations`;
+DROP TABLE `authz`;
+DROP TABLE `certificates`;
+DROP TABLE `certificateStatus`;
+DROP TABLE `crls`;
+DROP TABLE `deniedCSRs`;
+DROP TABLE `ocspResponses`;
+DROP TABLE `pending_authz`;
+DROP TABLE `identifierData`;
+DROP TABLE `externalCerts`;

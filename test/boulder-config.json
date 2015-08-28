@@ -48,10 +48,8 @@
   "ca": {
     "serialPrefix": 255,
     "profile": "ee",
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_ca_integration",
     "debugAddr": "localhost:8001",
-    "testMode": true,
-    "_comment": "This should only be present in testMode. In prod use an HSM.",
     "Key": {
       "File": "test/test-ca.key"
     },
@@ -114,37 +112,37 @@
   },
 
   "sa": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
     "debugAddr": "localhost:8003"
   },
 
   "va": {
     "userAgent": "boulder",
-    "debugAddr": "localhost:8004"
+    "debugAddr": "localhost:8004",
+    "portConfig": {
+      "simpleHTTPPort": 5001,
+      "simpleHTTPSPort": 5001,
+      "dvsniPort": 5001
+    }
   },
 
   "sql": {
-    "SQLDebug": true,
-    "CreateTables": true
+    "SQLDebug": true
   },
 
   "revoker": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test"
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration"
   },
 
   "ocspResponder": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test"
-  },
-
-  "ocspResponder": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
     "path": "/",
     "listenAddress": "localhost:4002",
     "debugAddr": "localhost:8005"
   },
 
   "ocspUpdater": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
     "minTimeToExpiry": "72h",
     "debugAddr": "localhost:8006"
   },
@@ -158,7 +156,7 @@
     "port": "25",
     "username": "cert-master@example.com",
     "password": "password",
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test",
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "emailTemplate": "test/example-expiration-template",

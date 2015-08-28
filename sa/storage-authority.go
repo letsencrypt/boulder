@@ -69,12 +69,6 @@ func (ssa *SQLStorageAuthority) SetSQLDebug(state bool) {
 	SetSQLDebug(ssa.dbMap, state)
 }
 
-// CreateTablesIfNotExists instructs the ORM to create any missing tables.
-func (ssa *SQLStorageAuthority) CreateTablesIfNotExists() (err error) {
-	err = ssa.dbMap.CreateTablesIfNotExists()
-	return
-}
-
 func statusIsPending(status core.AcmeStatus) bool {
 	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
 }
@@ -350,7 +344,7 @@ func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (
 
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
 // with a timestamp and a reason.
-func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
+func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
 	if _, err = ssa.GetCertificate(serial); err != nil {
 		return fmt.Errorf(
 			"Unable to mark certificate %s revoked: cert not found.", serial)

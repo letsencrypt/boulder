@@ -38,11 +38,6 @@ func main() {
 		cmd.FailOnError(err, "Failed to create SA impl")
 		sai.SetSQLDebug(c.SQL.SQLDebug)
 
-		if c.SQL.CreateTables {
-			err = sai.CreateTablesIfNotExists()
-			cmd.FailOnError(err, "Failed to create tables")
-		}
-
 		go cmd.ProfileCmd("SA", stats)
 
 		connectionHandler := func(*rpc.AmqpRPCServer) {}

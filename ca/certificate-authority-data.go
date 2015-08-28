@@ -6,10 +6,8 @@
 package ca
 
 import (
-	"fmt"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
@@ -31,7 +29,7 @@ type SerialNumber struct {
 
 // NewCertificateAuthorityDatabaseImpl constructs a Database for the
 // Certificate Authority.
-func NewCertificateAuthorityDatabaseImpl(dbMap *gorp.DbMap) (cadb core.CertificateAuthorityDatabase, err error) {
+func NewCertificateAuthorityDatabaseImpl(dbMap *gorp.DbMap) (cadb *CertificateAuthorityDatabaseImpl, err error) {
 	logger := blog.GetAuditLogger()
 
 	dbMap.AddTableWithName(SerialNumber{}, "serialNumber").SetKeys(true, "ID")
@@ -43,21 +41,6 @@ func NewCertificateAuthorityDatabaseImpl(dbMap *gorp.DbMap) (cadb core.Certifica
 	return cadb, nil
 }
 
-// CreateTablesIfNotExists builds the database tables and inserts the initial
-// state, if the tables do not already exist. It is not an error for the tables
-// to already exist.
-func (cadb *CertificateAuthorityDatabaseImpl) CreateTablesIfNotExists() (err error) {
-	// Create serial number table
-	err = cadb.dbMap.CreateTablesIfNotExists()
-	if err != nil {
-		return
-	}
-
-	// Initialize the serial number
-	err = cadb.dbMap.Insert(&SerialNumber{ID: 1, Number: 1, LastUpdated: time.Now()})
-	return
-}
-
 // Begin starts a transaction at the GORP wrapper.
 func (cadb *CertificateAuthorityDatabaseImpl) Begin() (*gorp.Transaction, error) {
 	return cadb.dbMap.Begin()
@@ -67,30 +50,11 @@ func (cadb *CertificateAuthorityDatabaseImpl) Begin() (*gorp.Transaction, error)
 // it in the database before returning. There must be an active transaction to
 // call this method. Callers should Begin the transaction, call this method,
 // perform any other work, and Commit at the end once the certificate is issued.
-func (cadb *CertificateAuthorityDatabaseImpl) IncrementAndGetSerial(tx *gorp.Transaction) (val int64, err error) {
-	if tx == nil {
-		err = fmt.Errorf("No transaction given")
-		return
-	}
-
-	rowObj, err := tx.Get(SerialNumber{}, 1)
+func (cadb *CertificateAuthorityDatabaseImpl) IncrementAndGetSerial(tx *gorp.Transaction) (int64, error) {
+	r, err := tx.Exec("REPLACE INTO serialNumber (stub) VALUES ('a');")
 	if err != nil {
-		return
+		return -1, err
 	}
 
-	row, ok := rowObj.(*SerialNumber)
-	if !ok {
-		err = fmt.Errorf("No serial number found. This is a serious issue")
-		return
-	}
-
-	val = row.Number
-	row.Number = val + 1
-
-	_, err = tx.Update(row)
-	if err != nil {
-		return
-	}
-
-	return
+	return r.LastInsertId()
 }

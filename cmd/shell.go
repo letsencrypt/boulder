@@ -99,13 +99,17 @@ type Config struct {
 	VA struct {
 		UserAgent string
 
+		PortConfig struct {
+			SimpleHTTPPort  int
+			SimpleHTTPSPort int
+			DVSNIPort       int
+		}
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
 
 	SQL struct {
-		CreateTables bool
-		SQLDebug     bool
+		SQLDebug bool
 	}
 
 	Statsd struct {

@@ -30,8 +30,6 @@ import (
 // Config defines the JSON configuration file schema
 type Config struct {
 	Profile      string
-	TestMode     bool
-	DBDriver     string
 	DBConnect    string
 	SerialPrefix int
 	Key          KeyConfig
@@ -213,20 +211,6 @@ func loadIssuer(filename string) (issuerCert *x509.Certificate, err error) {
 	return
 }
 
-func loadIssuerKey(filename string) (issuerKey crypto.Signer, err error) {
-	if filename == "" {
-		err = errors.New("IssuerKey must be provided in test mode.")
-		return
-	}
-
-	pem, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return
-	}
-	issuerKey, err = helpers.ParsePrivateKeyPEM(pem)
-	return
-}
-
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
@@ -239,7 +223,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 	signRequest := ocsp.SignRequest{
 		Certificate: cert,
 		Status:      xferObj.Status,
-		Reason:      xferObj.Reason,
+		Reason:      int(xferObj.Reason),
 		RevokedAt:   xferObj.RevokedAt,
 	}
 
@@ -248,7 +232,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 }
 
 // RevokeCertificate revokes the trust of the Cert referred to by the provided Serial.
-func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode int) (err error) {
+func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
 	coreCert, err := ca.SA.GetCertificate(serial)
 	if err != nil {
 		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
@@ -265,7 +249,7 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 	signRequest := ocsp.SignRequest{
 		Certificate: cert,
 		Status:      string(core.OCSPStatusRevoked),
-		Reason:      reasonCode,
+		Reason:      int(reasonCode),
 		RevokedAt:   time.Now(),
 	}
 	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)

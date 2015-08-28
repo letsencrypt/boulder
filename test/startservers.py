@@ -32,18 +32,33 @@ if config is None:
 processes = []
 
 
-def run(path, race_detection):
-    install = "go install"
+def install(progs, race_detection):
+    cmd = "go install"
     if race_detection:
-        install = """GORACE="halt_on_error=1" go install -race"""
+        cmd = """go install -race"""
 
+    for prog in progs:
+        cmd += " ./" + prog
+    p = subprocess.Popen(cmd, shell=True)
+    out, err = p.communicate()
+    if p.returncode != 0:
+        sys.stderr.write("unable to run go install: %s\n" % cmd)
+        if out:
+            sys.stderr.write("stdout:\n" + out + "\n")
+        if err:
+            sys.stderr.write("stderr: \n" + err + "\n")
+        return False
+    print('installed %s with pid %d' % (cmd, p.pid))
+    return True
+
+def run(path, race_detection):
     binary = os.path.basename(path)
-    cmd = """%s ./%s && exec %s --config %s""" % (install, path, binary, config)
+    # Note: Must use exec here so that killing this process kills the command.
+    cmd = """GORACE="halt_on_error=1" exec %s --config %s""" % (binary, config)
     p = subprocess.Popen(cmd, shell=True)
     p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))
     return p
-
 
 def start(race_detection):
     """Return True if everything builds and starts.
@@ -56,14 +71,18 @@ def start(race_detection):
     t = ToSServerThread()
     t.daemon = True
     t.start()
-    for prog in [
-            'cmd/boulder-wfe',
-            'cmd/boulder-ra',
-            'cmd/boulder-sa',
-            'cmd/boulder-ca',
-            'cmd/boulder-va',
-            'cmd/ocsp-responder',
-            'test/dns-test-srv']:
+    progs = [
+        'cmd/boulder-wfe',
+        'cmd/boulder-ra',
+        'cmd/boulder-sa',
+        'cmd/boulder-ca',
+        'cmd/boulder-va',
+        'cmd/ocsp-responder',
+        'test/dns-test-srv'
+    ]
+    if not install(progs, race_detection):
+        return False
+    for prog in progs:
         try:
             processes.append(run(prog, race_detection))
         except Exception as e:
