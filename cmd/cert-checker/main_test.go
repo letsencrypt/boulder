@@ -16,7 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
