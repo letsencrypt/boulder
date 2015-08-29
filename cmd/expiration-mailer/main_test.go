@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
@@ -92,18 +93,22 @@ func TestSendNags(t *testing.T) {
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
 	rs := newFakeRegStore()
+	fc := clock.NewFake()
+	fc.Add(7 * 24 * time.Hour)
+
 	m := mailer{
 		stats:         stats,
 		mailer:        &mc,
 		emailTemplate: tmpl,
 		rs:            rs,
+		clk:           fc,
 	}
 
 	cert := &x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy",
 		},
-		NotAfter: time.Now().AddDate(0, 0, 2),
+		NotAfter: fc.Now().AddDate(0, 0, 2),
 		DNSNames: []string{"example.com"},
 	}
 
@@ -113,14 +118,14 @@ func TestSendNags(t *testing.T) {
 	err = m.sendNags(cert, []*core.AcmeURL{email})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 3 days (%s)`, cert.NotAfter), mc.Messages[0])
 
 	mc.Clear()
 	err = m.sendNags(cert, []*core.AcmeURL{email, emailB})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[1])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 3 days (%s)`, cert.NotAfter), mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 3 days (%s)`, cert.NotAfter), mc.Messages[1])
 
 	mc.Clear()
 	err = m.sendNags(cert, []*core.AcmeURL{})
@@ -157,6 +162,8 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't parse test email template")
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
+	fc := clock.NewFake()
+	fc.Add(7 * 24 * time.Hour)
 	m := mailer{
 		log:           blog.GetAuditLogger(),
 		stats:         stats,
@@ -166,6 +173,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		rs:            ssa,
 		nagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
 		limit:         100,
+		clk:           fc,
 	}
 
 	log.Clear()
@@ -210,7 +218,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 			CommonName: "happy A",
 		},
 		// This is slightly within the ultime nag window (one day)
-		NotAfter:     time.Now().AddDate(0, 0, 1).Add(-time.Hour),
+		NotAfter:     fc.Now().AddDate(0, 0, 1).Add(-time.Hour),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -223,12 +231,15 @@ func TestFindExpiringCertificates(t *testing.T) {
 		DER:            certDerA,
 	}
 	// Already sent a nag but too long ago
-	certStatusA := &core.CertificateStatus{Serial: "001", LastExpirationNagSent: time.Now().Add(-time.Hour * 24 * 3)}
+	certStatusA := &core.CertificateStatus{
+		Serial:                "001",
+		LastExpirationNagSent: fc.Now().Add(-time.Hour * 24 * 3),
+	}
 	rawCertB := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy B",
 		},
-		NotAfter:     time.Now().AddDate(0, 0, 3),
+		NotAfter:     fc.Now().AddDate(0, 0, 3),
 		DNSNames:     []string{"example-b.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -241,13 +252,16 @@ func TestFindExpiringCertificates(t *testing.T) {
 		DER:            certDerB,
 	}
 	// Already sent a nag for this period
-	certStatusB := &core.CertificateStatus{Serial: "002", LastExpirationNagSent: time.Now().Add(-time.Hour * 24 * 3)}
+	certStatusB := &core.CertificateStatus{
+		Serial:                "002",
+		LastExpirationNagSent: fc.Now().Add(-time.Hour * 24 * 3),
+	}
 	rawCertC := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy C",
 		},
 		// This is within the earliest nag window (7 days)
-		NotAfter:     time.Now().AddDate(0, 0, 6),
+		NotAfter:     fc.Now().AddDate(0, 0, 6),
 		DNSNames:     []string{"example-c.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -281,7 +295,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertEquals(t, len(mc.Messages), 2)
 
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 1 days (%s)`, rawCertA.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), mc.Messages[0])
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 6 days (%s)`, rawCertC.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), mc.Messages[1])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (%s)`, rawCertC.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), mc.Messages[1])
 
 	// A consecutive run shouldn't find anything
 	mc.Clear()
