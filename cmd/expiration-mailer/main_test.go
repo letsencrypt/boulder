@@ -74,22 +74,22 @@ func newFakeRegStore() fakeRegStore {
 
 const testTmpl = `hi, cert for DNS names {{.DNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`
 
-var jsonKeyA = []byte(`{
+var (
+	jsonKeyA = []byte(`{
   "kty":"RSA",
   "n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
   "e":"AQAB"
 }`)
-var jsonKeyB = []byte(`{
+	jsonKeyB = []byte(`{
   "kty":"RSA",
   "n":"z8bp-jPtHt4lKBqepeKF28g_QAEOuEsCIou6sZ9ndsQsEjxEOQxQ0xNOQezsKa63eogw8YS3vzjUcPP5BJuVzfPfGd5NVUdT-vSSwxk3wvk_jtNqhrpcoG0elRPQfMVsQWmxCAXCVRz3xbcFI8GTe-syynG3l-g1IzYIIZVNI6jdljCZML1HOMTTW4f7uJJ8mM-08oQCeHbr5ejK7O2yMSSYxW03zY-Tj1iVEebROeMv6IEEJNFSS4yM-hLpNAqVuQxFGetwtwjDMC1Drs1dTWrPuUAAjKGrP151z1_dE74M5evpAhZUmpKv1hY-x85DC6N0hFPgowsanmTNNiV75w",
   "e":"AAEAAQ"
 }`)
-
-var log = mocks.UseMockLog()
+	log  = mocks.UseMockLog()
+	tmpl = template.Must(template.New("expiry-email").Parse(testTmpl))
+)
 
 func TestSendNags(t *testing.T) {
-	tmpl, err := template.New("expiry-email").Parse(testTmpl)
-	test.AssertNotError(t, err, "Couldn't parse test email template")
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
 	rs := newFakeRegStore()
@@ -115,7 +115,7 @@ func TestSendNags(t *testing.T) {
 	email, _ := core.ParseAcmeURL("mailto:rolandshoemaker@gmail.com")
 	emailB, _ := core.ParseAcmeURL("mailto:test@gmail.com")
 
-	err = m.sendNags(cert, []*core.AcmeURL{email})
+	err := m.sendNags(cert, []*core.AcmeURL{email})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 3 days (%s)`, cert.NotAfter), mc.Messages[0])
@@ -158,8 +158,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
 	defer cleanUp()
-	tmpl, err := template.New("expiry-email").Parse(testTmpl)
-	test.AssertNotError(t, err, "Couldn't parse test email template")
+
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
 	fc := clock.NewFake()
@@ -303,4 +302,131 @@ func TestFindExpiringCertificates(t *testing.T) {
 	err = m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	test.AssertEquals(t, len(mc.Messages), 0)
+}
+
+func TestLifetimeOfACert(t *testing.T) {
+	dbMap, err := sa.NewDbMap(dbConnStr)
+	if err != nil {
+		t.Fatalf("Couldn't connect the database: %s", err)
+	}
+	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap)
+	if err != nil {
+		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
+	}
+	defer cleanUp()
+
+	stats, _ := statsd.NewNoopClient(nil)
+	mc := mockMail{}
+	fc := clock.NewFake()
+
+	m := mailer{
+		log:           blog.GetAuditLogger(),
+		stats:         stats,
+		mailer:        &mc,
+		emailTemplate: tmpl,
+		dbMap:         dbMap,
+		rs:            ssa,
+		nagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
+		limit:         100,
+		clk:           fc,
+	}
+
+	var keyA jose.JsonWebKey
+	err = json.Unmarshal(jsonKeyA, &keyA)
+	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
+
+	emailA, _ := core.ParseAcmeURL("mailto:one@mail.com")
+
+	regA := core.Registration{
+		ID: 1,
+		Contact: []*core.AcmeURL{
+			emailA,
+		},
+		Key: keyA,
+	}
+	regA, err = ssa.NewRegistration(regA)
+	if err != nil {
+		t.Fatalf("Couldn't store regA: %s", err)
+	}
+	rawCertA := x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "happy A",
+		},
+
+		NotAfter:     fc.Now(),
+		DNSNames:     []string{"example-a.com"},
+		SerialNumber: big.NewInt(1337),
+	}
+	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
+	certA := &core.Certificate{
+		RegistrationID: regA.ID,
+		Status:         core.StatusValid,
+		Serial:         "001",
+		Expires:        rawCertA.NotAfter,
+		DER:            certDerA,
+	}
+
+	certStatusA := &core.CertificateStatus{
+		Serial: "001",
+	}
+
+	err = dbMap.Insert(certA)
+	test.AssertNotError(t, err, "unable to insert Certificate")
+	err = dbMap.Insert(certStatusA)
+	test.AssertNotError(t, err, "unable to insert CertificateStatus")
+
+	type lifeTest struct {
+		timeLeft time.Duration
+		numMsgs  int
+		context  string
+	}
+	tests := []lifeTest{
+		{
+			timeLeft: 8 * 24 * time.Hour, // 8 days before expiration
+
+			numMsgs: 0,
+			context: "Expected no emails sent because we are more than 7 days out.",
+		},
+		{
+			7 * 24 * time.Hour, // 7 days before
+			1,
+			"Sent 1 for 7 day notice.",
+		},
+		{
+			5 * 24 * time.Hour,
+			1,
+			"The 7 day email was already sent.",
+		},
+		{
+			3 * 24 * time.Hour, // 3 days before, the mailer wasn't run the day before
+			2,
+			"Sent 1 for the 7 day notice, and 1 for the 4 day notice.",
+		},
+		{
+			1 * 24 * time.Hour,
+			3,
+			"Sent 1 for the 7 day notice, 1 for the 4 day notice, and 1 for the 1 day notice.",
+		},
+		{
+			12 * time.Hour,
+			3,
+			"The 1 day before email was already sent.",
+		},
+		{
+			-2 * 24 * time.Hour, // 2 days after expiration
+			3,
+			"No expiration warning emails are sent after expiration",
+		},
+	}
+
+	for _, tt := range tests {
+		fc.Add(-tt.timeLeft)
+		err = m.findExpiringCertificates()
+		test.AssertNotError(t, err, "error calling findExpiringCertificates")
+		if len(mc.Messages) != tt.numMsgs {
+			t.Errorf(tt.context+" number of messages: expected %d, got %d", tt.numMsgs, len(mc.Messages))
+		}
+		fc.Add(tt.timeLeft)
+	}
 }
