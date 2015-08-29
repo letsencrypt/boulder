@@ -697,11 +697,11 @@ func TestChallenge(t *testing.T) {
 	}
 
 	challengeURL := url.URL(*challengeAcme)
-	wfe.challenge(authz, responseWriter, &http.Request{
+	wfe.challenge(responseWriter, &http.Request{
 		Method: "POST",
 		URL:    &challengeURL,
 		Body:   makeBody(signRequest(t, `{"resource":"challenge"}`, &wfe.nonceService)),
-	}, requestEvent{})
+	}, authz, &requestEvent{})
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
