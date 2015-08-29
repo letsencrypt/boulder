@@ -94,8 +94,8 @@ type singleResponse struct {
 }
 
 type revokedInfo struct {
-	RevocationTime time.Time `asn1:"generalized"`
-	Reason         int       `asn1:"explicit,tag:0,optional"`
+	RevocationTime time.Time       `asn1:"generalized"`
+	Reason         asn1.Enumerated `asn1:"explicit,tag:0,optional"`
 }
 
 var (
@@ -230,6 +230,7 @@ func getHashAlgorithmFromOID(target asn1.ObjectIdentifier) crypto.Hash {
 
 // This is the exposed reflection of the internal OCSP structures.
 
+// The status values that can be expressed in OCSP.  See RFC 6960.
 const (
 	// Good means that the certificate is valid.
 	Good = iota
@@ -239,6 +240,21 @@ const (
 	Unknown = iota
 	// ServerFailed means that the OCSP responder failed to process the request.
 	ServerFailed = iota
+)
+
+// The enumerated reasons for revoking a certificate.  See RFC 5280.
+const (
+	Unspecified          = iota
+	KeyCompromise        = iota
+	CACompromise         = iota
+	AffiliationChanged   = iota
+	Superseded           = iota
+	CessationOfOperation = iota
+	CertificateHold      = iota
+	_                    = iota
+	RemoveFromCRL        = iota
+	PrivilegeWithdrawn   = iota
+	AACompromise         = iota
 )
 
 // Request represents an OCSP request. See RFC 2560.
@@ -399,7 +415,7 @@ func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
 	default:
 		ret.Status = Revoked
 		ret.RevokedAt = r.Revoked.RevocationTime
-		ret.RevocationReason = r.Revoked.Reason
+		ret.RevocationReason = int(r.Revoked.Reason)
 	}
 
 	ret.ProducedAt = basicResp.TBSResponseData.ProducedAt
@@ -530,7 +546,7 @@ func CreateResponse(issuer, responderCert *x509.Certificate, template Response, 
 	case Revoked:
 		innerResponse.Revoked = revokedInfo{
 			RevocationTime: template.RevokedAt.UTC(),
-			Reason:         template.RevocationReason,
+			Reason:         asn1.Enumerated(template.RevocationReason),
 		}
 	}
 
