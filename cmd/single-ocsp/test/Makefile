@@ -1,8 +1,8 @@
 single-ocsp: ../main.go
-	go build -tags pkcs11 ..
+	go build ..
 
 gentest: gentest.go
-	go run -tags pkcs11 gentest.go
+	go run gentest.go
 	openssl verify -CAfile ca-cert.pem ee-cert.pem
 	openssl verify -CAfile ca-cert.pem ocsp-cert.pem
 
@@ -12,7 +12,7 @@ ocsp-good.der: single-ocsp gentest template-good.json pkcs11.json
 		      -target ee-cert.der \
 		      -template template-good.json \
 		      -pkcs11 pkcs11.json \
-		      >ocsp-good.der
+		      -out ocsp-good.der
 
 ocsp-revoked.der: single-ocsp gentest template-revoked.json pkcs11.json
 	./single-ocsp -issuer ca-cert.der \
@@ -20,7 +20,7 @@ ocsp-revoked.der: single-ocsp gentest template-revoked.json pkcs11.json
 		      -target ee-cert.der \
 		      -template template-revoked.json \
 		      -pkcs11 pkcs11.json \
-		      >ocsp-revoked.der
+		      -out ocsp-revoked.der
 
 test: ocsp-good.der ocsp-revoked.der
 	openssl ocsp -respin ocsp-good.der -CAfile ca-cert.pem -resp_text | grep "Cert Status"

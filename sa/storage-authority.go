@@ -45,8 +45,6 @@ type pendingauthzModel struct {
 
 type authzModel struct {
 	core.Authorization
-
-	Sequence int64 `db:"sequence"`
 }
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
@@ -344,7 +342,7 @@ func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (
 
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
 // with a timestamp and a reason.
-func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
+func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
 	if _, err = ssa.GetCertificate(serial); err != nil {
 		return fmt.Errorf(
 			"Unable to mark certificate %s revoked: cert not found.", serial)
@@ -518,19 +516,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 		return
 	}
 
-	// Manually set the index, to avoid AUTOINCREMENT issues
-	var sequence int64
-	sequenceObj, err := tx.SelectNullInt("SELECT max(sequence) FROM authz")
-	switch {
-	case !sequenceObj.Valid:
-		sequence = 0
-	case err != nil:
-		return
-	default:
-		sequence += sequenceObj.Int64 + 1
-	}
-
-	auth := &authzModel{authz, sequence}
+	auth := &authzModel{authz}
 	authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
 	if err != nil {
 		tx.Rollback()

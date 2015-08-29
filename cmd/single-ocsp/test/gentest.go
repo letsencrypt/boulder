@@ -12,7 +12,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/cloudflare/cfssl/crypto/pkcs11key"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
 )
 
 const pkcs11FileName = "pkcs11.json"
@@ -30,11 +30,6 @@ func panicOnError(err error) {
 }
 
 func makeCert(template, issuer *x509.Certificate, pub interface{}, priv crypto.Signer) *x509.Certificate {
-	// Always use pretty much the same notBefore and notAfter
-	now := time.Now().Round(time.Hour)
-	template.NotBefore = now.Add(-1 * time.Hour)
-	template.NotAfter = template.NotBefore.AddDate(1, 0, 0)
-
 	// Set a random serial number
 	serialNumber, err := rand.Int(rand.Reader, big.NewInt(1000))
 	panicOnError(err)
@@ -69,6 +64,10 @@ func main() {
 	p11key, err := pkcs11key.New(pkcs11.Module, pkcs11.Token, pkcs11.PIN, pkcs11.Label)
 	panicOnError(err)
 
+	// All of the certificates start and end at the same time
+	notBefore := time.Now().Truncate(time.Hour).Add(-1 * time.Hour)
+	notAfter := notBefore.AddDate(1, 0, 0)
+
 	// Make some keys for the CA and EE
 	caKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	panicOnError(err)
@@ -77,6 +76,8 @@ func main() {
 
 	// Make CA cert with ephemeral key
 	template := &x509.Certificate{
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
 		Subject:               pkix.Name{CommonName: "Happy Hacker Fake CA"},
 		BasicConstraintsValid: true,
 		IsCA: true,
@@ -84,11 +85,17 @@ func main() {
 	caCert := makeCert(template, template, caKey.Public(), caKey)
 
 	// Make EE cert with ephemeral key and print
-	template = &x509.Certificate{Subject: pkix.Name{CommonName: "example.com"}}
+	template = &x509.Certificate{
+		NotBefore: notBefore,
+		NotAfter:  notAfter,
+		Subject:   pkix.Name{CommonName: "example.com"},
+	}
 	eeCert := makeCert(template, caCert, eeKey.Public(), caKey)
 
 	// Make OCSP responder cert with PKCS#11 key
 	template = &x509.Certificate{
+		NotBefore:   notBefore,
+		NotAfter:    notAfter,
 		Subject:     pkix.Name{CommonName: "Happy Hacker OCSP Signer"},
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning},
 	}
