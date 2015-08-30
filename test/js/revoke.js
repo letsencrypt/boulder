@@ -47,7 +47,14 @@ function main() {
     var jws = crypto.generateSignature(key, new Buffer(revokeMessage), nonce);
     var payload = JSON.stringify(jws);
 
-    var req = request.post(revokeUrl, function(error, response) {
+    var revokeOpts = {
+      url: revokeUrl,
+      headers: {
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    }
+
+    var req = request.post(revokeOpts, function(error, response) {
       if (error || Math.floor(response.statusCode / 100) != 2) {
         console.log('Error: ', error);
         process.exit(1);
