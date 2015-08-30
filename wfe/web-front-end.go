@@ -90,7 +90,7 @@ func statusCodeFromError(err interface{}) int {
 	case core.LengthRequiredError:
 		return http.StatusLengthRequired
 	case core.SignatureValidationError:
-		return http.StatusPreconditionFailed
+		return http.StatusBadRequest
 	case core.InternalServerError:
 		return http.StatusInternalServerError
 	default:
