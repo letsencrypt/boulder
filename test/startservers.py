@@ -43,15 +43,18 @@ def install(progs, race_detection):
     out, err = p.communicate()
     if p.returncode != 0:
         sys.stderr.write("unable to run go install: %s\n" % cmd)
-        sys.stderr.write("stdout:\n" + out + "\n")
-        sys.stderr.write("stderr: \n" + err + "\n")
+        if out:
+            sys.stderr.write("stdout:\n" + out + "\n")
+        if err:
+            sys.stderr.write("stderr: \n" + err + "\n")
         return False
     print('installed %s with pid %d' % (cmd, p.pid))
     return True
 
 def run(path, race_detection):
     binary = os.path.basename(path)
-    cmd = """GORACE="halt_on_error=1" %s --config %s""" % (binary, config)
+    # Note: Must use exec here so that killing this process kills the command.
+    cmd = """GORACE="halt_on_error=1" exec %s --config %s""" % (binary, config)
     p = subprocess.Popen(cmd, shell=True)
     p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))

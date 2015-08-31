@@ -34,7 +34,7 @@ type DummyValidationAuthority struct {
 	Argument core.Authorization
 }
 
-func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int, key jose.JsonWebKey) (err error) {
+func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
 	dva.Called = true
 	dva.Argument = authz
 	return
@@ -245,16 +245,6 @@ func caDBImpl(t *testing.T) (core.CertificateAuthorityDatabase, func()) {
 	}
 
 	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
-
-	// This row is required to exist for caDBImpl to work
-	// correctly. We can no longer use
-	// dbMap.Insert(&SerialNumber{...}) for this because gorp will
-	// ignore the ID and insert a new row at a new autoincrement id.
-	// TODO(jmhodges): gen ids flickr-style, no row needed a head of time
-	_, err = dbMap.Db.Exec("insert into serialNumber (id, number, lastUpdated) VALUES (?, ?, ?)", 1, 1, time.Now())
-	if err != nil {
-		t.Fatalf("unable to create the serial number row: %s", err)
-	}
 	return cadb, cleanUp
 }
 
@@ -398,6 +388,9 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
 	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
 	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeDNS, "Challenge 2 not DNS")
+	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
+	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
+	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 2 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
 }
@@ -405,10 +398,12 @@ func TestNewAuthorization(t *testing.T) {
 func TestUpdateAuthorization(t *testing.T) {
 	va, sa, ra, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	AuthzInitial, _ = sa.NewPendingAuthorization(AuthzInitial)
-	sa.UpdatePendingAuthorization(AuthzInitial)
 
-	authz, err := ra.UpdateAuthorization(AuthzInitial, ResponseIndex, Response)
+	// We know this is OK because of TestNewAuthorization
+	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
 	// Verify that returned authz same as DB
@@ -424,6 +419,28 @@ func TestUpdateAuthorization(t *testing.T) {
 	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
 
 	t.Log("DONE TestUpdateAuthorization")
+}
+
+func TestUpdateAuthorizationReject(t *testing.T) {
+	_, sa, ra, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// We know this is OK because of TestNewAuthorization
+	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	// Change the account key
+	reg, err := sa.GetRegistration(authz.RegistrationID)
+	test.AssertNotError(t, err, "GetRegistration failed")
+	reg.Key = AccountKeyC // was AccountKeyA
+	err = sa.UpdateRegistration(reg)
+	test.AssertNotError(t, err, "UpdateRegistration failed")
+
+	// Verify that the RA rejected the authorization request
+	_, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
+	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
+
+	t.Log("DONE TestUpdateAuthorizationReject")
 }
 
 func TestOnValidationUpdate(t *testing.T) {

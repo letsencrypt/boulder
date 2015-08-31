@@ -7,7 +7,6 @@ package ca
 
 import (
 	"testing"
-	"time"
 
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
@@ -58,15 +57,5 @@ func caDBImpl(t *testing.T) (*CertificateAuthorityDatabaseImpl, func()) {
 	}
 
 	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
-
-	// This row is required to exist for caDBImpl to work correctly. We
-	// can no longer use dbMap.Insert(&SerialNumber{...}) for this
-	// because gorp will ignore the ID and insert a new row at a new
-	// autoincrement id.
-	// TODO(jmhodges): gen ids flickr-style, no row needed a head of time
-	_, err = dbMap.Db.Exec("insert into serialNumber (id, number, lastUpdated) VALUES (?, ?, ?)", 1, 1, time.Now())
-	if err != nil {
-		t.Fatalf("unable to create the serial number row: %s", err)
-	}
 	return cadb, cleanUp
 }

@@ -29,42 +29,42 @@ func caller() string {
 // Assert a boolean
 func Assert(t *testing.T, result bool, message string) {
 	if !result {
-		t.Error(caller(), message)
+		t.Fatalf("%s %s", caller(), message)
 	}
 }
 
 // AssertNotNil checks an object to be non-nil
 func AssertNotNil(t *testing.T, obj interface{}, message string) {
 	if obj == nil {
-		t.Error(caller(), message)
+		t.Fatalf("%s %s", caller(), message)
 	}
 }
 
 // AssertNotError checks that err is nil
 func AssertNotError(t *testing.T, err error, message string) {
 	if err != nil {
-		t.Error(caller(), message, ":", err)
+		t.Fatalf("%s %s", caller(), message)
 	}
 }
 
 // AssertError checks that err is non-nil
 func AssertError(t *testing.T, err error, message string) {
 	if err == nil {
-		t.Error(caller(), message, ":", err)
+		t.Fatalf("%s %s: %s", caller(), message, err)
 	}
 }
 
 // AssertEquals uses the equality operator (==) to measure one and two
 func AssertEquals(t *testing.T, one interface{}, two interface{}) {
 	if one != two {
-		t.Errorf("%s [%v] != [%v]", caller(), one, two)
+		t.Fatalf("%s [%v] != [%v]", caller(), one, two)
 	}
 }
 
 // AssertDeepEquals uses the reflect.DeepEqual method to measure one and two
 func AssertDeepEquals(t *testing.T, one interface{}, two interface{}) {
 	if !reflect.DeepEqual(one, two) {
-		t.Errorf("%s [%+v] !(deep)= [%+v]", caller(), one, two)
+		t.Fatalf("%s [%+v] !(deep)= [%+v]", caller(), one, two)
 	}
 }
 
@@ -77,7 +77,7 @@ func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
 	AssertNotError(t, err, "Could not marshal 2nd argument")
 
 	if !bytes.Equal(oneJSON, twoJSON) {
-		t.Errorf("%s [%s] !(json)= [%s]", caller(), oneJSON, twoJSON)
+		t.Fatalf("%s [%s] !(json)= [%s]", caller(), oneJSON, twoJSON)
 	}
 }
 
@@ -85,14 +85,14 @@ func AssertMarshaledEquals(t *testing.T, one interface{}, two interface{}) {
 // are different
 func AssertNotEquals(t *testing.T, one interface{}, two interface{}) {
 	if one == two {
-		t.Errorf("%s [%v] == [%v]", caller(), one, two)
+		t.Fatalf("%s [%v] == [%v]", caller(), one, two)
 	}
 }
 
 // AssertByteEquals uses bytes.Equal to measure one and two for equality.
 func AssertByteEquals(t *testing.T, one []byte, two []byte) {
 	if !bytes.Equal(one, two) {
-		t.Errorf("%s Byte [%s] != [%s]",
+		t.Fatalf("%s Byte [%s] != [%s]",
 			caller(),
 			base64.StdEncoding.EncodeToString(one),
 			base64.StdEncoding.EncodeToString(two))
@@ -102,7 +102,7 @@ func AssertByteEquals(t *testing.T, one []byte, two []byte) {
 // AssertIntEquals uses the equality operator to measure one and two.
 func AssertIntEquals(t *testing.T, one int, two int) {
 	if one != two {
-		t.Errorf("%s Int [%d] != [%d]", caller(), one, two)
+		t.Fatalf("%s Int [%d] != [%d]", caller(), one, two)
 	}
 }
 
@@ -110,21 +110,21 @@ func AssertIntEquals(t *testing.T, one int, two int) {
 // one and two are equal
 func AssertBigIntEquals(t *testing.T, one *big.Int, two *big.Int) {
 	if one.Cmp(two) != 0 {
-		t.Errorf("%s Int [%d] != [%d]", caller(), one, two)
+		t.Fatalf("%s Int [%d] != [%d]", caller(), one, two)
 	}
 }
 
 // AssertContains determines whether needle can be found in haystack
 func AssertContains(t *testing.T, haystack string, needle string) {
 	if !strings.Contains(haystack, needle) {
-		t.Errorf("%s String [%s] does not contain [%s]", caller(), haystack, needle)
+		t.Fatalf("%s String [%s] does not contain [%s]", caller(), haystack, needle)
 	}
 }
 
 // AssertNotContains determines if needle is not found in haystack
 func AssertNotContains(t *testing.T, haystack string, needle string) {
 	if strings.Contains(haystack, needle) {
-		t.Errorf("%s String [%s] contains [%s]", caller(), haystack, needle)
+		t.Fatalf("%s String [%s] contains [%s]", caller(), haystack, needle)
 	}
 }
 

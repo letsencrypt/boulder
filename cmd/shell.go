@@ -181,6 +181,12 @@ type Config struct {
 		DNSTimeout  string
 	}
 
+	CertChecker struct {
+		Workers             int
+		ReportDirectoryPath string
+		DBConnect           string
+	}
+
 	SubscriberAgreementURL string
 }
 

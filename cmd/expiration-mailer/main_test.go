@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
@@ -73,54 +74,58 @@ func newFakeRegStore() fakeRegStore {
 
 const testTmpl = `hi, cert for DNS names {{.DNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`
 
-var jsonKeyA = []byte(`{
+var (
+	jsonKeyA = []byte(`{
   "kty":"RSA",
   "n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
   "e":"AQAB"
 }`)
-var jsonKeyB = []byte(`{
+	jsonKeyB = []byte(`{
   "kty":"RSA",
   "n":"z8bp-jPtHt4lKBqepeKF28g_QAEOuEsCIou6sZ9ndsQsEjxEOQxQ0xNOQezsKa63eogw8YS3vzjUcPP5BJuVzfPfGd5NVUdT-vSSwxk3wvk_jtNqhrpcoG0elRPQfMVsQWmxCAXCVRz3xbcFI8GTe-syynG3l-g1IzYIIZVNI6jdljCZML1HOMTTW4f7uJJ8mM-08oQCeHbr5ejK7O2yMSSYxW03zY-Tj1iVEebROeMv6IEEJNFSS4yM-hLpNAqVuQxFGetwtwjDMC1Drs1dTWrPuUAAjKGrP151z1_dE74M5evpAhZUmpKv1hY-x85DC6N0hFPgowsanmTNNiV75w",
   "e":"AAEAAQ"
 }`)
-
-var log = mocks.UseMockLog()
+	log  = mocks.UseMockLog()
+	tmpl = template.Must(template.New("expiry-email").Parse(testTmpl))
+)
 
 func TestSendNags(t *testing.T) {
-	tmpl, err := template.New("expiry-email").Parse(testTmpl)
-	test.AssertNotError(t, err, "Couldn't parse test email template")
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
 	rs := newFakeRegStore()
+	fc := clock.NewFake()
+	fc.Add(7 * 24 * time.Hour)
+
 	m := mailer{
 		stats:         stats,
 		mailer:        &mc,
 		emailTemplate: tmpl,
 		rs:            rs,
+		clk:           fc,
 	}
 
 	cert := &x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy",
 		},
-		NotAfter: time.Now().AddDate(0, 0, 2),
+		NotAfter: fc.Now().AddDate(0, 0, 2),
 		DNSNames: []string{"example.com"},
 	}
 
 	email, _ := core.ParseAcmeURL("mailto:rolandshoemaker@gmail.com")
 	emailB, _ := core.ParseAcmeURL("mailto:test@gmail.com")
 
-	err = m.sendNags(cert, []*core.AcmeURL{email})
+	err := m.sendNags(cert, []*core.AcmeURL{email})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 3 days (%s)`, cert.NotAfter), mc.Messages[0])
 
 	mc.Clear()
 	err = m.sendNags(cert, []*core.AcmeURL{email, emailB})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[1])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 3 days (%s)`, cert.NotAfter), mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 3 days (%s)`, cert.NotAfter), mc.Messages[1])
 
 	mc.Clear()
 	err = m.sendNags(cert, []*core.AcmeURL{})
@@ -153,10 +158,11 @@ func TestFindExpiringCertificates(t *testing.T) {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
 	defer cleanUp()
-	tmpl, err := template.New("expiry-email").Parse(testTmpl)
-	test.AssertNotError(t, err, "Couldn't parse test email template")
+
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
+	fc := clock.NewFake()
+	fc.Add(7 * 24 * time.Hour)
 	m := mailer{
 		log:           blog.GetAuditLogger(),
 		stats:         stats,
@@ -166,6 +172,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		rs:            ssa,
 		nagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
 		limit:         100,
+		clk:           fc,
 	}
 
 	log.Clear()
@@ -209,7 +216,8 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "happy A",
 		},
-		NotAfter:     time.Now().AddDate(0, 0, 1),
+		// This is slightly within the ultime nag window (one day)
+		NotAfter:     fc.Now().AddDate(0, 0, 1).Add(-time.Hour),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -218,16 +226,19 @@ func TestFindExpiringCertificates(t *testing.T) {
 		RegistrationID: regA.ID,
 		Status:         core.StatusValid,
 		Serial:         "001",
-		Expires:        time.Now().AddDate(0, 0, 1),
+		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
 	// Already sent a nag but too long ago
-	certStatusA := &core.CertificateStatus{Serial: "001", LastExpirationNagSent: time.Now().Add(-time.Hour * 24 * 3)}
+	certStatusA := &core.CertificateStatus{
+		Serial:                "001",
+		LastExpirationNagSent: fc.Now().Add(-time.Hour * 24 * 3),
+	}
 	rawCertB := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy B",
 		},
-		NotAfter:     time.Now().AddDate(0, 0, 3),
+		NotAfter:     fc.Now().AddDate(0, 0, 3),
 		DNSNames:     []string{"example-b.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -236,16 +247,20 @@ func TestFindExpiringCertificates(t *testing.T) {
 		RegistrationID: regA.ID,
 		Status:         core.StatusValid,
 		Serial:         "002",
-		Expires:        time.Now().AddDate(0, 0, 3),
+		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
 	// Already sent a nag for this period
-	certStatusB := &core.CertificateStatus{Serial: "002", LastExpirationNagSent: time.Now().Add(-time.Hour * 24 * 3)}
+	certStatusB := &core.CertificateStatus{
+		Serial:                "002",
+		LastExpirationNagSent: fc.Now().Add(-time.Hour * 24 * 3),
+	}
 	rawCertC := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy C",
 		},
-		NotAfter:     time.Now().AddDate(0, 0, 7),
+		// This is within the earliest nag window (7 days)
+		NotAfter:     fc.Now().AddDate(0, 0, 6),
 		DNSNames:     []string{"example-c.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -254,7 +269,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		RegistrationID: regB.ID,
 		Status:         core.StatusValid,
 		Serial:         "003",
-		Expires:        time.Now().AddDate(0, 0, 7),
+		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
 	}
 	certStatusC := &core.CertificateStatus{Serial: "003"}
@@ -287,4 +302,131 @@ func TestFindExpiringCertificates(t *testing.T) {
 	err = m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	test.AssertEquals(t, len(mc.Messages), 0)
+}
+
+func TestLifetimeOfACert(t *testing.T) {
+	dbMap, err := sa.NewDbMap(dbConnStr)
+	if err != nil {
+		t.Fatalf("Couldn't connect the database: %s", err)
+	}
+	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap)
+	if err != nil {
+		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
+	}
+	defer cleanUp()
+
+	stats, _ := statsd.NewNoopClient(nil)
+	mc := mockMail{}
+	fc := clock.NewFake()
+
+	m := mailer{
+		log:           blog.GetAuditLogger(),
+		stats:         stats,
+		mailer:        &mc,
+		emailTemplate: tmpl,
+		dbMap:         dbMap,
+		rs:            ssa,
+		nagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
+		limit:         100,
+		clk:           fc,
+	}
+
+	var keyA jose.JsonWebKey
+	err = json.Unmarshal(jsonKeyA, &keyA)
+	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
+
+	emailA, _ := core.ParseAcmeURL("mailto:one@mail.com")
+
+	regA := core.Registration{
+		ID: 1,
+		Contact: []*core.AcmeURL{
+			emailA,
+		},
+		Key: keyA,
+	}
+	regA, err = ssa.NewRegistration(regA)
+	if err != nil {
+		t.Fatalf("Couldn't store regA: %s", err)
+	}
+	rawCertA := x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "happy A",
+		},
+
+		NotAfter:     fc.Now(),
+		DNSNames:     []string{"example-a.com"},
+		SerialNumber: big.NewInt(1337),
+	}
+	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
+	certA := &core.Certificate{
+		RegistrationID: regA.ID,
+		Status:         core.StatusValid,
+		Serial:         "001",
+		Expires:        rawCertA.NotAfter,
+		DER:            certDerA,
+	}
+
+	certStatusA := &core.CertificateStatus{
+		Serial: "001",
+	}
+
+	err = dbMap.Insert(certA)
+	test.AssertNotError(t, err, "unable to insert Certificate")
+	err = dbMap.Insert(certStatusA)
+	test.AssertNotError(t, err, "unable to insert CertificateStatus")
+
+	type lifeTest struct {
+		timeLeft time.Duration
+		numMsgs  int
+		context  string
+	}
+	tests := []lifeTest{
+		{
+			timeLeft: 8 * 24 * time.Hour, // 8 days before expiration
+
+			numMsgs: 0,
+			context: "Expected no emails sent because we are more than 7 days out.",
+		},
+		{
+			7 * 24 * time.Hour, // 7 days before
+			1,
+			"Sent 1 for 7 day notice.",
+		},
+		{
+			5 * 24 * time.Hour,
+			1,
+			"The 7 day email was already sent.",
+		},
+		{
+			3 * 24 * time.Hour, // 3 days before, the mailer wasn't run the day before
+			2,
+			"Sent 1 for the 7 day notice, and 1 for the 4 day notice.",
+		},
+		{
+			1 * 24 * time.Hour,
+			3,
+			"Sent 1 for the 7 day notice, 1 for the 4 day notice, and 1 for the 1 day notice.",
+		},
+		{
+			12 * time.Hour,
+			3,
+			"The 1 day before email was already sent.",
+		},
+		{
+			-2 * 24 * time.Hour, // 2 days after expiration
+			3,
+			"No expiration warning emails are sent after expiration",
+		},
+	}
+
+	for _, tt := range tests {
+		fc.Add(-tt.timeLeft)
+		err = m.findExpiringCertificates()
+		test.AssertNotError(t, err, "error calling findExpiringCertificates")
+		if len(mc.Messages) != tt.numMsgs {
+			t.Errorf(tt.context+" number of messages: expected %d, got %d", tt.numMsgs, len(mc.Messages))
+		}
+		fc.Add(tt.timeLeft)
+	}
 }

@@ -26,9 +26,9 @@ func TestOCSPDecode(t *testing.T) {
 	}
 
 	expected := Response{
-		Status:           0,
+		Status:           Good,
 		SerialNumber:     big.NewInt(0x1d0fa),
-		RevocationReason: 0,
+		RevocationReason: Unspecified,
 		ThisUpdate:       time.Date(2010, 7, 7, 15, 1, 5, 0, time.UTC),
 		NextUpdate:       time.Date(2010, 7, 7, 18, 35, 17, 0, time.UTC),
 	}
@@ -171,7 +171,7 @@ func TestOCSPResponse(t *testing.T) {
 		ThisUpdate:       thisUpdate,
 		NextUpdate:       nextUpdate,
 		RevokedAt:        thisUpdate,
-		RevocationReason: 1, // keyCompromise
+		RevocationReason: KeyCompromise,
 		Certificate:      responder,
 	}
 

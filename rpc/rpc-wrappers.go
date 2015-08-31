@@ -108,13 +108,13 @@ type addCertificateRequest struct {
 
 type revokeCertificateRequest struct {
 	Serial     string
-	ReasonCode int
+	ReasonCode core.RevocationCode
 }
 
 type markCertificateRevokedRequest struct {
 	Serial       string
 	OCSPResponse []byte
-	ReasonCode   int
+	ReasonCode   core.RevocationCode
 }
 
 type caaRequest struct {
@@ -124,7 +124,6 @@ type caaRequest struct {
 type validationRequest struct {
 	Authz core.Authorization
 	Index int
-	Key   jose.JsonWebKey
 }
 
 type alreadyDeniedCSRReq struct {
@@ -272,14 +271,23 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 	})
 
 	rpc.Handle(MethodRevokeCertificate, func(req []byte) (response []byte, err error) {
-		certs, err := x509.ParseCertificates(req)
-		if err != nil || len(certs) == 0 {
+		var revReq struct {
+			Cert   []byte
+			Reason core.RevocationCode
+			RegID  *int64
+		}
+		if err = json.Unmarshal(req, &revReq); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodRevokeCertificate, err, req)
 			return
 		}
+		cert, err := x509.ParseCertificate(revReq.Cert)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			return
+		}
 
-		err = impl.RevokeCertificate(*certs[0])
+		err = impl.RevokeCertificate(*cert, revReq.Reason, revReq.RegID)
 		return
 	})
 
@@ -399,8 +407,20 @@ func (rac RegistrationAuthorityClient) UpdateAuthorization(authz core.Authorizat
 }
 
 // RevokeCertificate sends a Revoke Certificate request
-func (rac RegistrationAuthorityClient) RevokeCertificate(cert x509.Certificate) (err error) {
-	_, err = rac.rpc.DispatchSync(MethodRevokeCertificate, cert.Raw)
+func (rac RegistrationAuthorityClient) RevokeCertificate(cert x509.Certificate, reason core.RevocationCode, regID *int64) (err error) {
+	var revReq struct {
+		Cert   []byte
+		Reason core.RevocationCode
+		RegID  *int64
+	}
+	revReq.Cert = cert.Raw
+	revReq.Reason = reason
+	revReq.RegID = regID
+	data, err := json.Marshal(revReq)
+	if err != nil {
+		return
+	}
+	_, err = rac.rpc.DispatchSync(MethodRevokeCertificate, data)
 	return
 }
 
@@ -428,7 +448,7 @@ func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) 
 			return
 		}
 
-		err = impl.UpdateValidations(vaReq.Authz, vaReq.Index, vaReq.Key)
+		err = impl.UpdateValidations(vaReq.Authz, vaReq.Index)
 		return
 	})
 
@@ -473,11 +493,10 @@ func NewValidationAuthorityClient(client RPCClient) (vac ValidationAuthorityClie
 }
 
 // UpdateValidations sends an Update Validations request
-func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization, index int, key jose.JsonWebKey) error {
+func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization, index int) error {
 	vaReq := validationRequest{
 		Authz: authz,
 		Index: index,
-		Key:   key,
 	}
 	data, err := json.Marshal(vaReq)
 	if err != nil {
@@ -613,7 +632,7 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 }
 
 // RevokeCertificate sends a request to revoke a certificate
-func (cac CertificateAuthorityClient) RevokeCertificate(serial string, reasonCode int) (err error) {
+func (cac CertificateAuthorityClient) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
 	var revokeReq revokeCertificateRequest
 	revokeReq.Serial = serial
 	revokeReq.ReasonCode = reasonCode
@@ -1044,7 +1063,7 @@ func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.C
 }
 
 // MarkCertificateRevoked sends a request to mark a certificate as revoked
-func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode int) (err error) {
+func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
 	var mcrReq markCertificateRevokedRequest
 
 	mcrReq.Serial = serial

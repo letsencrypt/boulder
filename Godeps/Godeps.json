@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
-	"GoVersion": "go1.4.2",
+	"GoVersion": "go1.5",
 	"Packages": [
 		"./..."
 	],
@@ -73,12 +73,12 @@
 			"Rev": "a197e5d40516f2e9f74dcee085a5f2d4604e94df"
 		},
 		{
-			"ImportPath": "github.com/letsencrypt/go-jose",
-			"Rev": "e7bd87a386998d423741e8e370af1a22638767e0"
+			"ImportPath": "github.com/jmhodges/clock",
+			"Rev": "c560df7e034994569e9742f6e7716c173f6286eb"
 		},
 		{
-			"ImportPath": "github.com/mattn/go-sqlite3",
-			"Rev": "308067797b0fcce4ca06362580dc6db77c1bfeda"
+			"ImportPath": "github.com/letsencrypt/go-jose",
+			"Rev": "e7bd87a386998d423741e8e370af1a22638767e0"
 		},
 		{
 			"ImportPath": "github.com/miekg/dns",
@@ -98,7 +98,7 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
-			"Rev": "173ce04bfaf66c7bb0fa9d5c0bfd93e773909dbd"
+			"Rev": "287a1d87db5d649b01d6193bd9d07e909f08094c"
 		},
 		{
 			"ImportPath": "gopkg.in/gorp.v1",

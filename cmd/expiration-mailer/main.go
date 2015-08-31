@@ -17,6 +17,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -45,10 +46,11 @@ type mailer struct {
 	emailTemplate *template.Template
 	nagTimes      []time.Duration
 	limit         int
+	clk           clock.Clock
 }
 
 func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []*core.AcmeURL) error {
-	expiresIn := int(parsedCert.NotAfter.Sub(time.Now()).Hours()/24) + 1
+	expiresIn := int(parsedCert.NotAfter.Sub(m.clk.Now()).Hours()/24) + 1
 	emails := []string{}
 	for _, contact := range contacts {
 		if contact.Scheme == "mailto" {
@@ -67,7 +69,7 @@ func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []*core.AcmeURL
 			m.stats.Inc("Mailer.Expiration.Errors.SendingNag.TemplateFailure", 1, 1.0)
 			return err
 		}
-		startSending := time.Now()
+		startSending := m.clk.Now()
 		err = m.mailer.SendMail(emails, msgBuf.String())
 		if err != nil {
 			m.stats.Inc("Mailer.Expiration.Errors.SendingNag.SendFailure", 1, 1.0)
@@ -95,7 +97,7 @@ func (m *mailer) updateCertStatus(serial string) error {
 		return err
 	}
 	certStatus := csObj.(*core.CertificateStatus)
-	certStatus.LastExpirationNagSent = time.Now()
+	certStatus.LastExpirationNagSent = m.clk.Now()
 
 	_, err = tx.Update(certStatus)
 	if err != nil {
@@ -148,7 +150,7 @@ func (m *mailer) processCerts(certs []core.Certificate) {
 }
 
 func (m *mailer) findExpiringCertificates() error {
-	now := time.Now()
+	now := m.clk.Now()
 	// E.g. m.NagTimes = [1, 3, 7, 14] days from expiration
 	for i, expiresIn := range m.nagTimes {
 		left := now
@@ -165,7 +167,7 @@ func (m *mailer) findExpiringCertificates() error {
 			 JOIN certificateStatus AS cs
 			 ON cs.serial = cert.serial
 			 AND cert.expires > :cutoffA
-			 AND cert.expires < :cutoffB
+			 AND cert.expires <= :cutoffB
 			 AND cert.status != "revoked"
 			 AND cs.lastExpirationNagSent <= :nagCutoff
 			 ORDER BY cert.expires ASC
@@ -173,7 +175,7 @@ func (m *mailer) findExpiringCertificates() error {
 			map[string]interface{}{
 				"cutoffA":   left,
 				"cutoffB":   right,
-				"nagCutoff": time.Now().Add(-expiresIn),
+				"nagCutoff": m.clk.Now().Add(-expiresIn),
 				"limit":     m.limit,
 			},
 		)
@@ -182,7 +184,7 @@ func (m *mailer) findExpiringCertificates() error {
 			return err // fatal
 		}
 		if len(certs) > 0 {
-			processingStarted := time.Now()
+			processingStarted := m.clk.Now()
 			m.processCerts(certs)
 			m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificates", time.Since(processingStarted), 1.0)
 		}
@@ -281,6 +283,7 @@ func main() {
 			emailTemplate: tmpl,
 			nagTimes:      nags,
 			limit:         c.Mailer.CertLimit,
+			clk:           clock.Default(),
 		}
 
 		auditlogger.Info("expiration-mailer: Starting")
