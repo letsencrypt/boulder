@@ -15,11 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/policy"
-	"github.com/letsencrypt/boulder/sa"
 )
 
 // RegistrationAuthorityImpl defines an RA.
@@ -39,23 +36,11 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(paConfig cmd.PAConfig) (ra RegistrationAuthorityImpl, err error) {
+func NewRegistrationAuthorityImpl() (ra RegistrationAuthorityImpl) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Registration Authority Starting")
-
-	dbMap, err := sa.NewDbMap(paConfig.DBConnect)
-	if err != nil {
-		return RegistrationAuthorityImpl{}, err
-	}
-
 	ra.log = logger
-	pa, err := policy.NewPolicyAuthorityImpl(dbMap, paConfig.EnforcePolicyWhitelist)
-	if err != nil {
-		return RegistrationAuthorityImpl{}, err
-	}
-	ra.PA = pa
-
-	return ra, nil
+	return ra
 }
 
 var allButLastPathSegment = regexp.MustCompile("^.*/")

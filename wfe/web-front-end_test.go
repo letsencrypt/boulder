@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/cmd"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
@@ -315,6 +314,16 @@ func (ca *MockCA) RevokeCertificate(serial string, reasonCode int) (err error) {
 	return
 }
 
+type MockPA struct{}
+
+func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
+	return
+}
+
+func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier) error {
+	return nil
+}
+
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
@@ -513,12 +522,10 @@ func TestIssueCertificate(t *testing.T) {
 	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	common := cmd.PAConfig{
-		DBConnect: "mysql+tcp://boulder@localhost:3306/boulder_policy_test",
-	}
-	ra, _ := ra.NewRegistrationAuthorityImpl(common)
+	ra := ra.NewRegistrationAuthorityImpl()
 	ra.SA = &MockSA{}
 	ra.CA = &MockCA{}
+	ra.PA = &MockPA{}
 	wfe.SA = &MockSA{}
 	wfe.RA = &ra
 	wfe.Stats, _ = statsd.NewNoopClient()

@@ -22,7 +22,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/ca"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
@@ -123,10 +122,6 @@ var (
 	AuthzFinal   = core.Authorization{}
 
 	log = mocks.UseMockLog()
-
-	common = cmd.PAConfig{
-		DBConnect: paDBConnStr,
-	}
 )
 
 const (
@@ -210,8 +205,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	Registration, _ = ssa.NewRegistration(core.Registration{Key: AccountKeyA})
 
-	ra, err := NewRegistrationAuthorityImpl(common)
-	test.AssertNotError(t, err, "Couldn't create RA")
+	ra := NewRegistrationAuthorityImpl()
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = &ca

@@ -18,8 +18,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/policy"
-	"github.com/letsencrypt/boulder/sa"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
@@ -68,7 +66,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config cmd.CAConfig, issuerCert string, paConfig cmd.PAConfig) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config cmd.CAConfig, issuerCert string) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -121,21 +119,10 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	dbMap, err := sa.NewDbMap(paConfig.DBConnect)
-	if err != nil {
-		return nil, err
-	}
-
-	pa, err := policy.NewPolicyAuthorityImpl(dbMap, paConfig.EnforcePolicyWhitelist)
-	if err != nil {
-		return nil, err
-	}
-
 	ca = &CertificateAuthorityImpl{
 		Signer:     signer,
 		OCSPSigner: ocspSigner,
 		profile:    config.Profile,
-		PA:         pa,
 		DB:         cadb,
 		Prefix:     config.SerialPrefix,
 		log:        logger,

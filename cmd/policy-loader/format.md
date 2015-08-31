@@ -7,14 +7,8 @@ a number of blacklist rules for special-use domains but this should be built upo
 further with high-value domains.
 
 ```
-[
-  {
-    "host": "example.com",
-    "type": "blacklist"
-  },
-  {
-    "host": "another-example.com",
-    "type": "whitelist"
-  }
-]
+{
+  "Blacklist": ["example.com", ...],
+  "Whitelist:" ["another-example.com", ...]
+}
 ```
