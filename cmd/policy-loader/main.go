@@ -19,29 +19,6 @@ import (
 	"github.com/letsencrypt/boulder/policy"
 )
 
-func setupFromContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl, string) {
-	configFileName := context.GlobalString("config")
-	configJSON, err := ioutil.ReadFile(configFileName)
-	cmd.FailOnError(err, "Couldn't read configuration file")
-	var c cmd.Config
-	err = json.Unmarshal(configJSON, &c)
-	cmd.FailOnError(err, "Couldn't unmarshal configuration object")
-
-	dbMap, err := sa.NewDbMap(c.PA.DBConnect)
-	cmd.FailOnError(err, "Failed to create DB map")
-
-	padb, err := policy.NewPolicyAuthorityDatabaseImpl(dbMap)
-	cmd.FailOnError(err, "Could not connect to PADB")
-
-	ruleFile := context.GlobalString("rule-file")
-	if ruleFile == "" {
-		fmt.Println("rule-file argument is required")
-		os.Exit(1)
-	}
-
-	return padb, ruleFile
-}
-
 func main() {
 	app := cli.NewApp()
 	app.Name = "policy-loader"
@@ -88,11 +65,22 @@ func main() {
 
 				rulesJSON, err := ioutil.ReadFile(ruleFile)
 				cmd.FailOnError(err, "Couldn't read configuration file")
-				var r []policy.DomainRule
-				err = json.Unmarshal(rulesJSON, &r)
+				var rules struct {
+					Blacklist []string
+					Whitelist []policy.WhitelistRule
+				}
+				bList := []policy.BlacklistRule{}
+				for _, r := range rules.Blacklist {
+					bList = append(bList, policy.BlacklistRule{Host: r})
+				}
+				wList := []policy.WhitelistRule{}
+				for _, r := range rules.Blacklist {
+					wList = append(wList, policy.WhitelistRule{Host: r})
+				}
+				err = json.Unmarshal(rulesJSON, &rules)
 				cmd.FailOnError(err, "Couldn't unmarshal rules list")
 
-				err = padb.LoadRules(r)
+				err = padb.LoadRules(bList, wList)
 				cmd.FailOnError(err, "Couldn't load rules")
 
 				fmt.Println("# Loaded whitelist and blacklist into database")
@@ -101,4 +89,27 @@ func main() {
 	}...)
 
 	app.Run(os.Args)
+}
+
+func setupFromContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl, string) {
+	configFileName := context.GlobalString("config")
+	configJSON, err := ioutil.ReadFile(configFileName)
+	cmd.FailOnError(err, "Couldn't read configuration file")
+	var c cmd.Config
+	err = json.Unmarshal(configJSON, &c)
+	cmd.FailOnError(err, "Couldn't unmarshal configuration object")
+
+	dbMap, err := sa.NewDbMap(c.PA.DBConnect)
+	cmd.FailOnError(err, "Failed to create DB map")
+
+	padb, err := policy.NewPolicyAuthorityDatabaseImpl(dbMap)
+	cmd.FailOnError(err, "Could not connect to PADB")
+
+	ruleFile := context.GlobalString("rule-file")
+	if ruleFile == "" {
+		fmt.Println("rule-file argument is required")
+		os.Exit(1)
+	}
+
+	return padb, ruleFile
 }

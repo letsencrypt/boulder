@@ -85,10 +85,14 @@ type NonPublicError struct{}
 // BlacklistedError indicates we have blacklisted one or more of these identifiers.
 type BlacklistedError struct{}
 
+// WhitelistedError indicates we have not whitelisted one or more of these identifiers.
+type WhitelistedError struct{}
+
 func (e InvalidIdentifierError) Error() string { return "Invalid identifier type" }
 func (e SyntaxError) Error() string            { return "Syntax error" }
 func (e NonPublicError) Error() string         { return "Name does not end in a public suffix" }
 func (e BlacklistedError) Error() string       { return "Name is blacklisted" }
+func (e WhitelistedError) Error() string       { return "Name is not whitelisted" }
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier.
@@ -161,7 +165,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 
 	// Require no match against blacklist (and if pa.EnforceWhitelist is true
 	// require domain to match a whitelist rule)
-	if err := pa.DB.CheckRules(domain, pa.EnforceWhitelist); err != nil {
+	if err := pa.DB.CheckHostLists(domain, pa.EnforceWhitelist); err != nil {
 		return err
 	}
 
