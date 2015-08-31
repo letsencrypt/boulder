@@ -119,7 +119,12 @@ func main() {
 		httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
 
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
-		err = http.ListenAndServe(c.WFE.ListenAddress, httpMonitor.Handle())
+		srv := http.Server{
+			Addr:      c.WFE.ListenAddress,
+			ConnState: httpMonitor.ConnectionMonitor,
+			Handler:   httpMonitor.Handle(),
+		}
+		err = srv.ListenAndServe()
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

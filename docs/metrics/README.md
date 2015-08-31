@@ -45,10 +45,11 @@ This list is split up into metric topics with the names of the clients that subm
     ```
 	[counter] Boulder.{WFE/OCSP}.HTTP.Rate
 
+  [gauge]   Boulder.{WFE/OCSP}.HTTP.ConnectionsInFlight
 	[gauge]   Boulder.{WFE/OCSP}.HTTP.OpenConnections
 
-	[timing]  Boulder.{WFE/OCSP}.HTTP.ResponseTime.{http endpoint}.Success
-	[timing]  Boulder.{WFE/OCSP}.HTTP.ResponseTime.{http endpoint}.Error
+	[timing]  Boulder.{WFE/OCSP}.HTTP.ResponseTime.{http endpoint}
+	[timing]  Boulder.{WFE/OCSP}.HTTP.ResponseTime.Failed
     ```
 
 *  HTTP errors (`cmd/boulder-wfe`)
@@ -97,11 +98,13 @@ This list is split up into metric topics with the names of the clients that subm
 
     ```
 	[gauge]  Boulder.{cmd-name}.Gostats.Goroutines
+  [gauge]  Boulder.{cmd-name}.Gostats.Heap.Alloc
 	[gauge]  Boulder.{cmd-name}.Gostats.Heap.Objects
 	[gauge]  Boulder.{cmd-name}.Gostats.Heap.Idle
 	[gauge]  Boulder.{cmd-name}.Gostats.Heap.InUse
 	[gauge]  Boulder.{cmd-name}.Gostats.Heap.Released
-	[gauge]  Boulder.{cmd-name}.Gostats.Gc.NextAt
+  [gauge]  Boulder.{cmd-name}.Gostats.Gc.NextAt
+	[gauge]  Boulder.{cmd-name}.Gostats.Gc.LastPauseTook
 
 	[timing] Boulder.{cmd-name}.Gostats.Gc.PauseAvg
 	  ```

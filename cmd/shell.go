@@ -277,23 +277,25 @@ func FailOnError(err error, msg string) {
 
 // ProfileCmd runs forever, sending Go runtime statistics to StatsD.
 func ProfileCmd(profileName string, stats statsd.Statter) {
-	for {
+	c := time.Tick(1 * time.Second)
+	for range c {
 		var memoryStats runtime.MemStats
 		runtime.ReadMemStats(&memoryStats)
 
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
 
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Alloc", profileName), int64(memoryStats.HeapAlloc), 1.0)
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0)
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0)
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0)
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0)
 
-		gcPauseAvg := int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))
-
+		// Calculate average and last and convert from nanoseconds to milliseconds
+		gcPauseAvg := (int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))) / 1000000
+		lastGC := int64(memoryStats.PauseNs[(memoryStats.NumGC+255)%256]) / 1000000
 		stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPauseTook", profileName), lastGC, 1.0)
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
-
-		time.Sleep(time.Second)
 	}
 }
 

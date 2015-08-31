@@ -239,6 +239,7 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 	if request.URL.Path != "/" {
 		logEvent.Error = "Resource not found"
 		http.NotFound(response, request)
+		response.Header().Set("Content-Type", "application/problem+json")
 		return
 	}
 

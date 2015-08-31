@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
@@ -18,20 +19,24 @@ import (
 
 func TestRPCMonitor(t *testing.T) {
 	stats, _ := statsd.NewNoopClient(nil)
+	fc := clock.NewFake()
 	rm := RPCMonitor{
 		stats:           stats,
 		deliveryTimings: make(map[string]time.Time),
-		dtMu:            &sync.Mutex{},
+		dtMu:            &sync.RWMutex{},
+		clock:           fc,
 	}
 
 	rm.add("test-a")
 	test.AssertEquals(t, rm.size(), 1)
-	test.Assert(t, time.Now().After(rm.get("test-a")), "Delivery time was in the future")
+	dTime, present := rm.get("test-a")
+	test.Assert(t, present, "Couldn't find delivery timing")
+	test.Assert(t, dTime.Equal(rm.clock.Now()), "Delivery time was in the future")
 	rm.delete("test-a")
 	test.AssertEquals(t, rm.size(), 0)
 	// Wait for test-b to timeout and manually call cleanup
 	rm.add("test-b")
-	time.Sleep(time.Second * 10)
+	fc.Add(time.Second * 11)
 	test.AssertEquals(t, int(rm.cleanup()), 1)
 	test.AssertEquals(t, rm.size(), 0)
 

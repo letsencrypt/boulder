@@ -125,10 +125,15 @@ func main() {
 		m.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
+		srv := http.Server{
+			Addr:      c.OCSPResponder.ListenAddress,
+			ConnState: httpMonitor.ConnectionMonitor,
+			Handler:   httpMonitor.Handle(),
+		}
 
 		// Add HandlerTimer to output resp time + success/failure stats to statsd
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.OCSPResponder.ListenAddress))
-		err = http.ListenAndServe(c.OCSPResponder.ListenAddress, httpMonitor.Handle())
+		err = srv.ListenAndServe()
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 
