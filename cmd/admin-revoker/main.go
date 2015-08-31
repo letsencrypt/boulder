@@ -104,7 +104,7 @@ func revokeBySerial(serial string, reasonCode core.RevocationCode, deny bool, ra
 	}
 
 	u, err := user.Current()
-	err = rac.RevokeCertificateWithUser(*cert, reasonCode, u.Username)
+	err = rac.AdministrativelyRevokeCertificate(*cert, reasonCode, u.Username)
 	if err != nil {
 		return
 	}

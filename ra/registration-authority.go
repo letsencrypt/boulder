@@ -422,10 +422,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(cert x509.Certific
 	return nil
 }
 
-// RevokeCertificateWithUser terminates trust in the certificate provided and
+// AdministrativelyRevokeCertificate terminates trust in the certificate provided and
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
-func (ra *RegistrationAuthorityImpl) RevokeCertificateWithUser(cert x509.Certificate, revocationCode core.RevocationCode, user string) error {
+func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(cert x509.Certificate, revocationCode core.RevocationCode, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
 	err := ra.CA.RevokeCertificate(serialString, revocationCode)
 

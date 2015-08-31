@@ -34,33 +34,33 @@ import (
 
 // These strings are used by the RPC layer to identify function points.
 const (
-	MethodNewRegistration             = "NewRegistration"             // RA, SA
-	MethodNewAuthorization            = "NewAuthorization"            // RA
-	MethodNewCertificate              = "NewCertificate"              // RA
-	MethodUpdateRegistration          = "UpdateRegistration"          // RA, SA
-	MethodUpdateAuthorization         = "UpdateAuthorization"         // RA
-	MethodRevokeCertificate           = "RevokeCertificate"           // CA
-	MethodRevokeCertificateWithReg    = "RevokeCertificateWithReg"    // RA
-	MethodRevokeCertificateWithUser   = "RevokeCertificateWithUser"   // RA
-	MethodOnValidationUpdate          = "OnValidationUpdate"          // RA
-	MethodUpdateValidations           = "UpdateValidations"           // VA
-	MethodCheckCAARecords             = "CheckCAARecords"             // VA
-	MethodIssueCertificate            = "IssueCertificate"            // CA
-	MethodGenerateOCSP                = "GenerateOCSP"                // CA
-	MethodGetRegistration             = "GetRegistration"             // SA
-	MethodGetRegistrationByKey        = "GetRegistrationByKey"        // RA, SA
-	MethodGetAuthorization            = "GetAuthorization"            // SA
-	MethodGetLatestValidAuthorization = "GetLatestValidAuthorization" // SA
-	MethodGetCertificate              = "GetCertificate"              // SA
-	MethodGetCertificateByShortSerial = "GetCertificateByShortSerial" // SA
-	MethodGetCertificateStatus        = "GetCertificateStatus"        // SA
-	MethodMarkCertificateRevoked      = "MarkCertificateRevoked"      // SA
-	MethodUpdateOCSP                  = "UpdateOCSP"                  // SA
-	MethodNewPendingAuthorization     = "NewPendingAuthorization"     // SA
-	MethodUpdatePendingAuthorization  = "UpdatePendingAuthorization"  // SA
-	MethodFinalizeAuthorization       = "FinalizeAuthorization"       // SA
-	MethodAddCertificate              = "AddCertificate"              // SA
-	MethodAlreadyDeniedCSR            = "AlreadyDeniedCSR"            // SA
+	MethodNewRegistration                   = "NewRegistration"                   // RA, SA
+	MethodNewAuthorization                  = "NewAuthorization"                  // RA
+	MethodNewCertificate                    = "NewCertificate"                    // RA
+	MethodUpdateRegistration                = "UpdateRegistration"                // RA, SA
+	MethodUpdateAuthorization               = "UpdateAuthorization"               // RA
+	MethodRevokeCertificate                 = "RevokeCertificate"                 // CA
+	MethodRevokeCertificateWithReg          = "RevokeCertificateWithReg"          // RA
+	MethodAdministrativelyRevokeCertificate = "AdministrativelyRevokeCertificate" // RA
+	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
+	MethodUpdateValidations                 = "UpdateValidations"                 // VA
+	MethodCheckCAARecords                   = "CheckCAARecords"                   // VA
+	MethodIssueCertificate                  = "IssueCertificate"                  // CA
+	MethodGenerateOCSP                      = "GenerateOCSP"                      // CA
+	MethodGetRegistration                   = "GetRegistration"                   // SA
+	MethodGetRegistrationByKey              = "GetRegistrationByKey"              // RA, SA
+	MethodGetAuthorization                  = "GetAuthorization"                  // SA
+	MethodGetLatestValidAuthorization       = "GetLatestValidAuthorization"       // SA
+	MethodGetCertificate                    = "GetCertificate"                    // SA
+	MethodGetCertificateByShortSerial       = "GetCertificateByShortSerial"       // SA
+	MethodGetCertificateStatus              = "GetCertificateStatus"              // SA
+	MethodMarkCertificateRevoked            = "MarkCertificateRevoked"            // SA
+	MethodUpdateOCSP                        = "UpdateOCSP"                        // SA
+	MethodNewPendingAuthorization           = "NewPendingAuthorization"           // SA
+	MethodUpdatePendingAuthorization        = "UpdatePendingAuthorization"        // SA
+	MethodFinalizeAuthorization             = "FinalizeAuthorization"             // SA
+	MethodAddCertificate                    = "AddCertificate"                    // SA
+	MethodAlreadyDeniedCSR                  = "AlreadyDeniedCSR"                  // SA
 )
 
 // Request structs
@@ -294,7 +294,7 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 		return
 	})
 
-	rpc.Handle(MethodRevokeCertificateWithUser, func(req []byte) (response []byte, err error) {
+	rpc.Handle(MethodAdministrativelyRevokeCertificate, func(req []byte) (response []byte, err error) {
 		var revReq struct {
 			Cert   []byte
 			Reason core.RevocationCode
@@ -302,7 +302,7 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 		}
 		if err = json.Unmarshal(req, &revReq); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodRevokeCertificateWithUser, err, req)
+			improperMessage(MethodAdministrativelyRevokeCertificate, err, req)
 			return
 		}
 		cert, err := x509.ParseCertificate(revReq.Cert)
@@ -311,7 +311,7 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 			return
 		}
 
-		err = impl.RevokeCertificateWithUser(*cert, revReq.Reason, revReq.User)
+		err = impl.AdministrativelyRevokeCertificate(*cert, revReq.Reason, revReq.User)
 		return
 	})
 
@@ -449,9 +449,9 @@ func (rac RegistrationAuthorityClient) RevokeCertificateWithReg(cert x509.Certif
 	return
 }
 
-// RevokeCertificateWithUser sends a Revoke Certificate request initiated by the
+// AdministrativelyRevokeCertificate sends a Revoke Certificate request initiated by the
 // admin-revoker
-func (rac RegistrationAuthorityClient) RevokeCertificateWithUser(cert x509.Certificate, reason core.RevocationCode, user string) (err error) {
+func (rac RegistrationAuthorityClient) AdministrativelyRevokeCertificate(cert x509.Certificate, reason core.RevocationCode, user string) (err error) {
 	var revReq struct {
 		Cert   []byte
 		Reason core.RevocationCode
@@ -464,7 +464,7 @@ func (rac RegistrationAuthorityClient) RevokeCertificateWithUser(cert x509.Certi
 	if err != nil {
 		return
 	}
-	_, err = rac.rpc.DispatchSync(MethodRevokeCertificateWithUser, data)
+	_, err = rac.rpc.DispatchSync(MethodAdministrativelyRevokeCertificate, data)
 	return
 }
 

@@ -74,7 +74,7 @@ type RegistrationAuthority interface {
 	RevokeCertificateWithReg(x509.Certificate, RevocationCode, int64) error
 
 	// [AdminRevoker]
-	RevokeCertificateWithUser(x509.Certificate, RevocationCode, string) error
+	AdministrativelyRevokeCertificate(x509.Certificate, RevocationCode, string) error
 
 	// [ValidationAuthority]
 	OnValidationUpdate(Authorization) error

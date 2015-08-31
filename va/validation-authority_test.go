@@ -896,7 +896,7 @@ func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(cert x509.Certific
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificateWithUser(cert x509.Certificate, reason core.RevocationCode, user string) error {
+func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(cert x509.Certificate, reason core.RevocationCode, user string) error {
 	return nil
 }
 
