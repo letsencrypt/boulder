@@ -87,14 +87,16 @@ func (padb *PolicyAuthorityDatabaseImpl) LoadRules(bRules []BlacklistRule, wRule
 
 // DumpRules retrieves all domainRules in the database so they can be written to
 // disk
-func (padb *PolicyAuthorityDatabaseImpl) DumpRules() ([]domainRule, error) {
-	var dR []domainRule
-	_, err := padb.dbMap.Select(&dR, "SELECT * FROM ruleList")
-	for _, r := range dR {
+func (padb *PolicyAuthorityDatabaseImpl) DumpRules() (bList []BlacklistRule, wList []WhitelistRule, err error) {
+	_, err = padb.dbMap.Select(&bList, "SELECT * FROM blacklist")
+	if err != nil {
+		return
+	}
+	for _, r := range bList {
 		r.Host = reverseName(r.Host)
 	}
-
-	return dR, err
+	_, err = padb.dbMap.Select(&wList, "SELECT * FROM whitelist")
+	return bList, wList, err
 }
 
 func (padb *PolicyAuthorityDatabaseImpl) allowedByBlacklist(host string) bool {

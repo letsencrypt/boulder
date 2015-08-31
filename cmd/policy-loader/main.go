@@ -48,8 +48,18 @@ func main() {
 			Usage: "Write out whitelist and blacklist from database to a rule file",
 			Action: func(c *cli.Context) {
 				padb, ruleFile := setupFromContext(c)
-				rules, err := padb.DumpRules()
+				bList, wList, err := padb.DumpRules()
 				cmd.FailOnError(err, "Couldn't retrieve whitelist rules")
+				var rules struct {
+					Blacklist []string
+					Whitelist []string
+				}
+				for _, r := range bList {
+					rules.Blacklist = append(rules.Blacklist, r.Host)
+				}
+				for _, r := range wList {
+					rules.Whitelist = append(rules.Whitelist, r.Host)
+				}
 				rulesJSON, err := json.Marshal(rules)
 				cmd.FailOnError(err, "Couldn't marshal rule list")
 				err = ioutil.WriteFile(ruleFile, rulesJSON, os.ModePerm)
@@ -67,7 +77,7 @@ func main() {
 				cmd.FailOnError(err, "Couldn't read configuration file")
 				var rules struct {
 					Blacklist []string
-					Whitelist []policy.WhitelistRule
+					Whitelist []string
 				}
 				bList := []policy.BlacklistRule{}
 				for _, r := range rules.Blacklist {
