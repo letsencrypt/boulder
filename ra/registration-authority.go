@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -47,12 +46,6 @@ func NewRegistrationAuthorityImpl(stats statsd.Statter) RegistrationAuthorityImp
 	ra := RegistrationAuthorityImpl{log: logger, stats: stats}
 	ra.PA = policy.NewPolicyAuthorityImpl()
 	return ra
-}
-
-var allButLastPathSegment = regexp.MustCompile("^.*/")
-
-func lastPathSegment(url *core.AcmeURL) string {
-	return allButLastPathSegment.ReplaceAllString(url.Path, "")
 }
 
 func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, err error) {

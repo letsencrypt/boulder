@@ -1,0 +1,6 @@
+{
+  "Module": "/Library/OpenSC/lib/opensc-pkcs11.so",
+  "Token": "Yubico Yubikey NEO CCID",
+  "Label": "PIV AUTH key",
+  "PIN": "123456"
+}
