@@ -7,7 +7,6 @@ package policy
 
 import (
 	"database/sql"
-	"fmt"
 	"strings"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -106,7 +105,6 @@ func (padb *PolicyAuthorityDatabaseImpl) allowedByBlacklist(host string) bool {
 		`SELECT * FROM blacklist WHERE :host >= host ORDER BY host DESC LIMIT 1`,
 		map[string]interface{}{"host": host},
 	)
-	fmt.Println(host, rule, err)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return true
