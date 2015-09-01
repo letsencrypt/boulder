@@ -696,10 +696,10 @@ func TestChallenge(t *testing.T) {
 		RegistrationID: 1,
 	}
 
-	challengeURL := url.URL(*challengeAcme)
+	challengeURL := (*url.URL)(challengeAcme)
 	wfe.challenge(responseWriter, &http.Request{
 		Method: "POST",
-		URL:    &challengeURL,
+		URL:    challengeURL,
 		Body:   makeBody(signRequest(t, `{"resource":"challenge"}`, &wfe.nonceService)),
 	}, authz, &requestEvent{})
 
