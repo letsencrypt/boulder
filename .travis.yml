@@ -59,7 +59,8 @@ env:
   matrix:
     - SKIP_INTEGRATION_TESTS=1
     - SKIP_UNIT_TESTS=1
+    - RUN_MAKE=1 SKIP_UNIT_TESTS=1 SKIP_INTEGRATION_TESTS=1
 
 script:
-  - make -j4 # Travis has 2 cores per build instance
+  - bash test/travis_make.sh
   - bash test.sh
