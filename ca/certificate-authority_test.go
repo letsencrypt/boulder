@@ -16,6 +16,7 @@ import (
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
@@ -112,6 +113,7 @@ type testCtx struct {
 	caConfig cmd.CAConfig
 	reg      core.Registration
 	pa       core.PolicyAuthority
+	fc       clock.FakeClock
 	cleanUp  func()
 }
 
@@ -121,7 +123,9 @@ func setup(t *testing.T) *testCtx {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap)
+	fc := clock.NewFake()
+	fc.Add(1 * time.Hour)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -188,7 +192,7 @@ func setup(t *testing.T) *testCtx {
 			},
 		},
 	}
-	return &testCtx{cadb, ssa, caConfig, reg, pa, cleanUp}
+	return &testCtx{cadb, ssa, caConfig, reg, pa, fc, cleanUp}
 }
 
 func TestFailNoSerial(t *testing.T) {
@@ -196,31 +200,33 @@ func TestFailNoSerial(t *testing.T) {
 	defer ctx.cleanUp()
 
 	ctx.caConfig.SerialPrefix = 0
-	_, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	_, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
 func TestRevoke(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
-	ca.PA = ctx.pa
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
-	if err != nil {
-		return
-	}
+
+	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
 	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
 	certObj, err := ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
 	test.AssertNotError(t, err, "Failed to sign certificate")
-	if err != nil {
-		return
-	}
+
 	cert, err := x509.ParseCertificate(certObj.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	serialString := core.SerialToString(cert.SerialNumber)
+
+	beforeRevoke, err := ctx.sa.GetCertificateStatus(serialString)
+	test.AssertNotError(t, err, "Failed to get cert status")
+
+	ctx.fc.Add(1 * time.Hour)
+
 	err = ca.RevokeCertificate(serialString, 0)
 	test.AssertNotError(t, err, "Revocation failed")
 
@@ -228,15 +234,22 @@ func TestRevoke(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get cert status")
 
 	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
-	secondAgo := time.Now().Add(-time.Second)
-	test.Assert(t, status.OCSPLastUpdated.After(secondAgo),
-		fmt.Sprintf("OCSP LastUpdated was more than a second old: %v", status.OCSPLastUpdated))
+
+	if !ctx.fc.Now().Equal(status.OCSPLastUpdated) {
+		t.Errorf("OCSPLastUpdated, expected %s, got %s",
+			ctx.fc.Now(),
+			status.OCSPLastUpdated)
+	}
+	if !status.OCSPLastUpdated.After(beforeRevoke.OCSPLastUpdated) {
+		t.Errorf("OCSPLastUpdated, before revocation: %s; after: %s", beforeRevoke.OCSPLastUpdated, status.OCSPLastUpdated)
+	}
+
 }
 
 func TestIssueCertificate(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -313,7 +326,7 @@ func TestIssueCertificate(t *testing.T) {
 func TestRejectNoName(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -330,7 +343,7 @@ func TestRejectNoName(t *testing.T) {
 func TestRejectTooManyNames(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -344,7 +357,7 @@ func TestRejectTooManyNames(t *testing.T) {
 func TestDeduplication(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -374,7 +387,7 @@ func TestDeduplication(t *testing.T) {
 func TestRejectValidityTooLong(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -387,7 +400,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csr, _ = x509.ParseCertificateRequest(NoCNCSR)
-	ca.NotAfter = time.Now()
+	ca.NotAfter = ctx.fc.Now()
 	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
 	test.AssertEquals(t, err.Error(), "Cannot issue a certificate that expires after the intermediate certificate.")
 }
@@ -395,7 +408,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 func TestShortKey(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
@@ -409,7 +422,7 @@ func TestShortKey(t *testing.T) {
 func TestRejectBadAlgorithm(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096

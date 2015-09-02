@@ -7,7 +7,7 @@ package main
 
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
@@ -34,7 +34,7 @@ func main() {
 		dbMap, err := sa.NewDbMap(c.SA.DBConnect)
 		cmd.FailOnError(err, "Couldn't connect to SA database")
 
-		sai, err := sa.NewSQLStorageAuthority(dbMap)
+		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default())
 		cmd.FailOnError(err, "Failed to create SA impl")
 		sai.SetSQLDebug(c.SQL.SQLDebug)
 
