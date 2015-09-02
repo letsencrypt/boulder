@@ -28,13 +28,16 @@ func TestBlacklist(t *testing.T) {
 	p, cleanup := padbImpl(t)
 	defer cleanup()
 
-	err := p.LoadRules([]BlacklistRule{
-		BlacklistRule{
-			Host: "bad.com",
+	err := p.LoadRules(RuleSet{
+		Blacklist: []BlacklistRule{
+			BlacklistRule{
+				Host: "bad.com",
+			},
 		},
-	}, []WhitelistRule{
-		WhitelistRule{
-			Host: "good.bad.com",
+		Whitelist: []WhitelistRule{
+			WhitelistRule{
+				Host: "good.bad.com",
+			},
 		},
 	})
 	test.AssertNotError(t, err, "Couldn't load rules")
@@ -57,16 +60,19 @@ func TestWhitelist(t *testing.T) {
 	p, cleanup := padbImpl(t)
 	defer cleanup()
 
-	err := p.LoadRules([]BlacklistRule{
-		BlacklistRule{
-			Host: "bad.com",
+	err := p.LoadRules(RuleSet{
+		Blacklist: []BlacklistRule{
+			BlacklistRule{
+				Host: "bad.com",
+			},
 		},
-	}, []WhitelistRule{
-		WhitelistRule{
-			Host: "good.bad.com",
-		},
-		WhitelistRule{
-			Host: "good.com",
+		Whitelist: []WhitelistRule{
+			WhitelistRule{
+				Host: "good.bad.com",
+			},
+			WhitelistRule{
+				Host: "good.com",
+			},
 		},
 	})
 	test.AssertNotError(t, err, "Couldn't load rules")

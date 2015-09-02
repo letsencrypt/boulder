@@ -85,14 +85,14 @@ type NonPublicError struct{}
 // BlacklistedError indicates we have blacklisted one or more of these identifiers.
 type BlacklistedError struct{}
 
-// WhitelistedError indicates we have not whitelisted one or more of these identifiers.
-type WhitelistedError struct{}
+// NotWhitelistedError indicates we have not whitelisted one or more of these identifiers.
+type NotWhitelistedError struct{}
 
 func (e InvalidIdentifierError) Error() string { return "Invalid identifier type" }
 func (e SyntaxError) Error() string            { return "Syntax error" }
 func (e NonPublicError) Error() string         { return "Name does not end in a public suffix" }
 func (e BlacklistedError) Error() string       { return "Name is blacklisted" }
-func (e WhitelistedError) Error() string       { return "Name is not whitelisted" }
+func (e NotWhitelistedError) Error() string    { return "Name is not whitelisted" }
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier.

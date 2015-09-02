@@ -48,16 +48,16 @@ func main() {
 			Usage: "Write out whitelist and blacklist from database to a rule file",
 			Action: func(c *cli.Context) {
 				padb, ruleFile := setupFromContext(c)
-				bList, wList, err := padb.DumpRules()
+				ruleSet, err := padb.DumpRules()
 				cmd.FailOnError(err, "Couldn't retrieve whitelist rules")
 				var rules struct {
 					Blacklist []string
 					Whitelist []string
 				}
-				for _, r := range bList {
+				for _, r := range ruleSet.Blacklist {
 					rules.Blacklist = append(rules.Blacklist, r.Host)
 				}
-				for _, r := range wList {
+				for _, r := range ruleSet.Whitelist {
 					rules.Whitelist = append(rules.Whitelist, r.Host)
 				}
 				rulesJSON, err := json.Marshal(rules)
@@ -75,22 +75,18 @@ func main() {
 
 				rulesJSON, err := ioutil.ReadFile(ruleFile)
 				cmd.FailOnError(err, "Couldn't read configuration file")
-				var rules struct {
-					Blacklist []string
-					Whitelist []string
-				}
-				bList := []policy.BlacklistRule{}
-				for _, r := range rules.Blacklist {
-					bList = append(bList, policy.BlacklistRule{Host: r})
-				}
-				wList := []policy.WhitelistRule{}
-				for _, r := range rules.Blacklist {
-					wList = append(wList, policy.WhitelistRule{Host: r})
-				}
+				rules := policy.RawRuleSet{}
 				err = json.Unmarshal(rulesJSON, &rules)
 				cmd.FailOnError(err, "Couldn't unmarshal rules list")
+				rs := policy.RuleSet{}
+				for _, r := range rules.Blacklist {
+					rs.Blacklist = append(rs.Blacklist, policy.BlacklistRule{Host: r})
+				}
+				for _, r := range rules.Whitelist {
+					rs.Whitelist = append(rs.Whitelist, policy.WhitelistRule{Host: r})
+				}
 
-				err = padb.LoadRules(bList, wList)
+				err = padb.LoadRules(rs)
 				cmd.FailOnError(err, "Couldn't load rules")
 
 				fmt.Println("# Loaded whitelist and blacklist into database")

@@ -21,8 +21,23 @@ type domainRule struct {
 	Host string `db:"host"`
 }
 
+// BlacklistRule is used to hold rules blacklisting a DNS name
 type BlacklistRule domainRule
+
+// WhitelistRule is used to hold rules whitelisting a DNS name
 type WhitelistRule domainRule
+
+// RawRuleSet describes the rule set file format
+type RawRuleSet struct {
+	Blacklist []string
+	Whitelist []string
+}
+
+// RuleSet describes the rules to load into the policy database
+type RuleSet struct {
+	Blacklist []BlacklistRule
+	Whitelist []WhitelistRule
+}
 
 func reverseName(domain string) string {
 	labels := strings.Split(domain, ".")
@@ -57,7 +72,7 @@ func NewPolicyAuthorityDatabaseImpl(dbMap *gorp.DbMap) (padb *PolicyAuthorityDat
 
 // LoadRules loads the whitelist and blacklist into the database in a transaction
 // deleting any previous content
-func (padb *PolicyAuthorityDatabaseImpl) LoadRules(bRules []BlacklistRule, wRules []WhitelistRule) error {
+func (padb *PolicyAuthorityDatabaseImpl) LoadRules(rs RuleSet) error {
 	tx, err := padb.dbMap.Begin()
 	if err != nil {
 		tx.Rollback()
@@ -68,7 +83,7 @@ func (padb *PolicyAuthorityDatabaseImpl) LoadRules(bRules []BlacklistRule, wRule
 		tx.Rollback()
 		return err
 	}
-	for _, r := range bRules {
+	for _, r := range rs.Blacklist {
 		r.Host = reverseName(r.Host)
 		tx.Insert(&r)
 	}
@@ -77,7 +92,7 @@ func (padb *PolicyAuthorityDatabaseImpl) LoadRules(bRules []BlacklistRule, wRule
 		tx.Rollback()
 		return err
 	}
-	for _, r := range wRules {
+	for _, r := range rs.Whitelist {
 		tx.Insert(&r)
 	}
 
@@ -87,7 +102,8 @@ func (padb *PolicyAuthorityDatabaseImpl) LoadRules(bRules []BlacklistRule, wRule
 
 // DumpRules retrieves all domainRules in the database so they can be written to
 // disk
-func (padb *PolicyAuthorityDatabaseImpl) DumpRules() (bList []BlacklistRule, wList []WhitelistRule, err error) {
+func (padb *PolicyAuthorityDatabaseImpl) DumpRules() (rs RuleSet, err error) {
+	var bList []BlacklistRule
 	_, err = padb.dbMap.Select(&bList, "SELECT * FROM blacklist")
 	if err != nil {
 		return
@@ -95,8 +111,14 @@ func (padb *PolicyAuthorityDatabaseImpl) DumpRules() (bList []BlacklistRule, wLi
 	for _, r := range bList {
 		r.Host = reverseName(r.Host)
 	}
+	rs.Blacklist = bList
+	var wList []WhitelistRule
 	_, err = padb.dbMap.Select(&wList, "SELECT * FROM whitelist")
-	return bList, wList, err
+	if err != nil {
+		return
+	}
+	rs.Whitelist = wList
+	return rs, err
 }
 
 func (padb *PolicyAuthorityDatabaseImpl) allowedByBlacklist(host string) bool {
@@ -141,7 +163,7 @@ func (padb *PolicyAuthorityDatabaseImpl) CheckHostLists(host string, requireWhit
 	if requireWhitelisted {
 		if !padb.allowedByWhitelist(host) {
 			// return fmt.Errorf("Domain is not whitelisted for issuance")
-			return WhitelistedError{}
+			return NotWhitelistedError{}
 		}
 	}
 	// Overrides the whitelist if a blacklist rule is found
