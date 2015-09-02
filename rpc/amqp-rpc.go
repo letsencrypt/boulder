@@ -486,7 +486,12 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 		return nil, err
 	}
 
-	clientQueue := fmt.Sprintf("%s.%s", clientQueuePrefix, hostname)
+	randID := make([]byte, 3)
+	_, err = rand.Read(randID)
+	if err != nil {
+		return nil, err
+	}
+	clientQueue := fmt.Sprintf("%s.%s.%x", clientQueuePrefix, hostname, randID)
 
 	rpc = &AmqpRPCCLient{
 		serverQueue: serverQueue,
