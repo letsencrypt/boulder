@@ -318,6 +318,16 @@ func (ca *MockCA) RevokeCertificate(serial string, reasonCode core.RevocationCod
 	return
 }
 
+type MockPA struct{}
+
+func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
+	return
+}
+
+func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier) error {
+	return nil
+}
+
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
@@ -519,6 +529,7 @@ func TestIssueCertificate(t *testing.T) {
 	ra := ra.NewRegistrationAuthorityImpl()
 	ra.SA = &MockSA{}
 	ra.CA = &MockCA{}
+	ra.PA = &MockPA{}
 	wfe.SA = &MockSA{}
 	wfe.RA = &ra
 	wfe.Stats, _ = statsd.NewNoopClient()

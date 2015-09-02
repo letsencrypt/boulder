@@ -16,7 +16,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/policy"
 )
 
 // RegistrationAuthorityImpl defines an RA.
@@ -36,12 +35,10 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl() RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl() (ra RegistrationAuthorityImpl) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Registration Authority Starting")
-
-	ra := RegistrationAuthorityImpl{log: logger}
-	ra.PA = policy.NewPolicyAuthorityImpl()
+	ra.log = logger
 	return ra
 }
 

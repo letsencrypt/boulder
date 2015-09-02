@@ -10,9 +10,24 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/test"
 )
 
 var log = mocks.UseMockLog()
+var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
+
+func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
+	dbMap, err := sa.NewDbMap(dbConnStr)
+	test.AssertNotError(t, err, "Could not construct dbMap")
+
+	pa, err := NewPolicyAuthorityImpl(dbMap, false)
+	test.AssertNotError(t, err, "Couldn't create PADB")
+
+	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+
+	return pa, cleanUp
+}
 
 func TestWillingToIssue(t *testing.T) {
 	shouldBeSyntaxError := []string{
@@ -90,11 +105,19 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zombo-.com",
 	}
 
-	pa := NewPolicyAuthorityImpl()
+	pa, cleanup := paImpl(t)
+	defer cleanup()
+
+	rules := RuleSet{}
+	for _, b := range shouldBeBlacklisted {
+		rules.Blacklist = append(rules.Blacklist, BlacklistRule{Host: b})
+	}
+	err := pa.DB.LoadRules(rules)
+	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
-	err := pa.WillingToIssue(identifier)
+	err = pa.WillingToIssue(identifier)
 	_, ok := err.(InvalidIdentifierError)
 	if !ok {
 		t.Error("Identifier was not correctly forbidden: ", identifier)
@@ -140,7 +163,8 @@ func TestWillingToIssue(t *testing.T) {
 }
 
 func TestChallengesFor(t *testing.T) {
-	pa := NewPolicyAuthorityImpl()
+	pa, cleanup := paImpl(t)
+	defer cleanup()
 
 	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
 

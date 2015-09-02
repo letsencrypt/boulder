@@ -12,6 +12,8 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"math/big"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,16 +26,30 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+var (
+	saDbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+	paDbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
+)
 
 func BenchmarkCheckCert(b *testing.B) {
-	dbMap, err := sa.NewDbMap(dbConnStr)
+	saDbMap, err := sa.NewDbMap(saDbConnStr)
 	if err != nil {
 		fmt.Println("Couldn't connect to database")
 		return
 	}
+	paDbMap, err := sa.NewDbMap(paDbConnStr)
+	if err != nil {
+		fmt.Println("Couldn't connect to database")
+		return
+	}
+	defer func() {
+		saDbMap.TruncateTables()
+		paDbMap.TruncateTables()
+		fmt.Printf("Failed to truncate tables: %s\n", err)
+		os.Exit(1)
+	}()
 
-	checker := newChecker(dbMap)
+	checker := newChecker(saDbMap, paDbMap, false)
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
@@ -60,8 +76,18 @@ func BenchmarkCheckCert(b *testing.B) {
 }
 
 func TestCheckCert(t *testing.T) {
+	saDbMap, err := sa.NewDbMap(saDbConnStr)
+	test.AssertNotError(t, err, "Couldn't connect to database")
+	paDbMap, err := sa.NewDbMap(paDbConnStr)
+	test.AssertNotError(t, err, "Couldn't connect to policy database")
+	defer func() {
+		saDbMap.TruncateTables()
+		paDbMap.TruncateTables()
+		test.AssertNotError(t, err, "Failed to truncate tables")
+	}()
+
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
-	checker := newChecker(nil)
+	checker := newChecker(saDbMap, paDbMap, false)
 	fc := clock.NewFake()
 	fc.Add(time.Hour * 24 * 90)
 	checker.clock = fc
@@ -70,7 +96,6 @@ func TestCheckCert(t *testing.T) {
 	goodExpiry := issued.Add(checkPeriod)
 	serial := big.NewInt(1337)
 	// Problems
-	//   Blacklsited common name
 	//   Expiry period is too long
 	//   Basic Constraints aren't set
 	//   Wrong key usage (none)
@@ -96,7 +121,8 @@ func TestCheckCert(t *testing.T) {
 	}
 
 	problems := checker.checkCert(cert)
-	test.AssertEquals(t, len(problems), 7)
+	fmt.Println(strings.Join(problems, "\n"))
+	test.AssertEquals(t, len(problems), 6)
 
 	// Fix the problems
 	rawCert.Subject.CommonName = "example-a.com"
@@ -116,13 +142,16 @@ func TestCheckCert(t *testing.T) {
 }
 
 func TestGetAndProcessCerts(t *testing.T) {
-	dbMap, err := sa.NewDbMap(dbConnStr)
+	saDbMap, err := sa.NewDbMap(saDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	checker := newChecker(dbMap)
-	sa, err := sa.NewSQLStorageAuthority(dbMap)
+	paDbMap, err := sa.NewDbMap(paDbConnStr)
+	test.AssertNotError(t, err, "Couldn't connect to policy database")
+	checker := newChecker(saDbMap, paDbMap, false)
+	sa, err := sa.NewSQLStorageAuthority(saDbMap)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	defer func() {
-		dbMap.TruncateTables()
+		saDbMap.TruncateTables()
+		paDbMap.TruncateTables()
 		test.AssertNotError(t, err, "Failed to truncate tables")
 	}()
 
