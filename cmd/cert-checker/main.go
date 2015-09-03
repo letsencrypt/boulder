@@ -70,8 +70,9 @@ type certChecker struct {
 	pa           core.PolicyAuthority
 	dbMap        *gorp.DbMap
 	certs        chan core.Certificate
-	issuedReport report
 	clock        clock.Clock
+	rMu          *sync.Mutex
+	issuedReport report
 }
 
 func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, enforceWhitelist bool) certChecker {
@@ -82,8 +83,10 @@ func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, enforceWhitelist bool)
 		dbMap: saDbMap,
 		certs: make(chan core.Certificate, batchSize),
 		clock: clock.Default(),
+		rMu:   new(sync.Mutex),
 	}
 	c.issuedReport.Entries = make(map[string]reportEntry)
+
 	return c
 }
 
@@ -130,10 +133,12 @@ func (c *certChecker) processCerts(wg *sync.WaitGroup) {
 	for cert := range c.certs {
 		problems := c.checkCert(cert)
 		valid := len(problems) == 0
+		c.rMu.Lock()
 		c.issuedReport.Entries[cert.Serial] = reportEntry{
 			Valid:    valid,
 			Problems: problems,
 		}
+		c.rMu.Unlock()
 		if !valid {
 			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
 		} else {
