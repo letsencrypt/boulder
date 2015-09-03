@@ -469,11 +469,6 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 type Certificate struct {
 	RegistrationID int64 `db:"registrationID"`
 
-	// The revocation status of the certificate.
-	// * "valid" - not revoked
-	// * "revoked" - revoked
-	Status AcmeStatus `db:"status"`
-
 	Serial  string    `db:"serial"`
 	Digest  string    `db:"digest"`
 	DER     []byte    `db:"der"`

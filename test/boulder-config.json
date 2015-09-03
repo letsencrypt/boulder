@@ -107,6 +107,10 @@
     }
   },
 
+  "pa": {
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
+  },
+
   "ra": {
     "debugAddr": "localhost:8002"
   },

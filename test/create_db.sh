@@ -8,7 +8,8 @@ function die() {
 }
 
 SERVICES="ca
-sa"
+sa
+policy"
 DBENVS="development
 test
 integration"

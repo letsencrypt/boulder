@@ -43,7 +43,7 @@ func AssertNotNil(t *testing.T, obj interface{}, message string) {
 // AssertNotError checks that err is nil
 func AssertNotError(t *testing.T, err error, message string) {
 	if err != nil {
-		t.Fatalf("%s %s", caller(), message)
+		t.Fatalf("%s %s: %s", caller(), message, err)
 	}
 }
 

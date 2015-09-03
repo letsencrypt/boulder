@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -17,23 +19,30 @@ import (
 // PolicyAuthorityImpl enforces CA policy decisions.
 type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
+	DB  *PolicyAuthorityDatabaseImpl
 
+	EnforceWhitelist bool
 	PublicSuffixList map[string]bool // A copy of the DNS root zone
-	Blacklist        map[string]bool // A blacklist of denied names
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl() *PolicyAuthorityImpl {
+func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool) (*PolicyAuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
-	pa := PolicyAuthorityImpl{log: logger}
+	// Setup policy db
+	padb, err := NewPolicyAuthorityDatabaseImpl(dbMap)
+	if err != nil {
+		return nil, err
+	}
+	pa := PolicyAuthorityImpl{
+		log:              logger,
+		DB:               padb,
+		EnforceWhitelist: enforceWhitelist,
+		PublicSuffixList: PublicSuffixList,
+	}
 
-	// TODO: Add configurability
-	pa.PublicSuffixList = PublicSuffixList
-	pa.Blacklist = blacklist
-
-	return &pa
+	return &pa, nil
 }
 
 const maxLabels = 10
@@ -76,10 +85,14 @@ type NonPublicError struct{}
 // BlacklistedError indicates we have blacklisted one or more of these identifiers.
 type BlacklistedError struct{}
 
+// NotWhitelistedError indicates we have not whitelisted one or more of these identifiers.
+type NotWhitelistedError struct{}
+
 func (e InvalidIdentifierError) Error() string { return "Invalid identifier type" }
 func (e SyntaxError) Error() string            { return "Syntax error" }
 func (e NonPublicError) Error() string         { return "Name does not end in a public suffix" }
 func (e BlacklistedError) Error() string       { return "Name is blacklisted" }
+func (e NotWhitelistedError) Error() string    { return "Name is not whitelisted" }
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier.
@@ -150,9 +163,10 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		return NonPublicError{}
 	}
 
-	// Require no match against blacklist
-	if suffixMatch(labels, pa.Blacklist, false) {
-		return BlacklistedError{}
+	// Require no match against blacklist (and if pa.EnforceWhitelist is true
+	// require domain to match a whitelist rule)
+	if err := pa.DB.CheckHostLists(domain, pa.EnforceWhitelist); err != nil {
+		return err
 	}
 
 	return nil
@@ -166,12 +180,10 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (cha
 	challenges = []core.Challenge{
 		core.SimpleHTTPChallenge(),
 		core.DvsniChallenge(),
-		core.DNSChallenge(),
 	}
 	combinations = [][]int{
 		[]int{0},
 		[]int{1},
-		[]int{2},
 	}
 	return
 }

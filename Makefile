@@ -35,8 +35,8 @@ pre:
 $(OBJECTS): pre
 	@echo [go] bin/$@
 	@go build -o ./bin/$@ -ldflags \
-		"-X $(BUILD_ID_VAR) '$(BUILD_ID)' -X $(BUILD_TIME_VAR) '$(BUILD_TIME)' \
-		 -X $(BUILD_HOST_VAR) '$(BUILD_HOST)'" \
+		"-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" \
+		-X \"$(BUILD_HOST_VAR)=$(BUILD_HOST)\"" \
 		./cmd/$@/
 
 clean:
@@ -71,4 +71,5 @@ rpm:
 		--package $(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.rpm \
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
 		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
-		test/boulder-config.json $(foreach var,$(OBJECTS), $(OBJDIR)/$(var))
+		test/boulder-config.json sa/_db ca/_db $(foreach var,$(OBJECTS), $(OBJDIR)/$(var))
+

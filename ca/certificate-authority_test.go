@@ -16,7 +16,9 @@ import (
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa/satest"
 
 	"github.com/letsencrypt/boulder/core"
@@ -339,6 +341,7 @@ const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
 
 const (
+	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
 	caDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_ca_test"
 	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 )
@@ -346,8 +349,9 @@ const (
 type testCtx struct {
 	caDB     core.CertificateAuthorityDatabase
 	sa       core.StorageAuthority
-	caConfig Config
+	caConfig cmd.CAConfig
 	reg      core.Registration
+	pa       core.PolicyAuthority
 	cleanUp  func()
 }
 
@@ -363,19 +367,27 @@ func setup(t *testing.T) *testCtx {
 	}
 	saDBCleanUp := test.ResetTestDatabase(t, dbMap.Db)
 	cadb, caDBCleanUp := caDBImpl(t)
+
+	paDbMap, err := sa.NewDbMap(paDBConnStr)
+	test.AssertNotError(t, err, "Could not construct dbMap")
+	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
+	test.AssertNotError(t, err, "Couldn't create PADB")
+	paDBCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
+
 	cleanUp := func() {
 		saDBCleanUp()
 		caDBCleanUp()
+		paDBCleanUp()
 	}
 
 	// TODO(jmhodges): use of this pkg here is a bug caused by using a real SA
 	reg := satest.CreateWorkingRegistration(t, ssa)
 
 	// Create a CA
-	caConfig := Config{
+	caConfig := cmd.CAConfig{
 		Profile:      profileName,
 		SerialPrefix: 17,
-		Key: KeyConfig{
+		Key: cmd.KeyConfig{
 			File: caKeyFile,
 		},
 		Expiry:       "8760h",
@@ -416,7 +428,7 @@ func setup(t *testing.T) *testCtx {
 			},
 		},
 	}
-	return &testCtx{cadb, ssa, caConfig, reg, cleanUp}
+	return &testCtx{cadb, ssa, caConfig, reg, pa, cleanUp}
 }
 
 func TestFailNoSerial(t *testing.T) {
@@ -432,6 +444,7 @@ func TestRevoke(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca.PA = ctx.pa
 	test.AssertNotError(t, err, "Failed to create CA")
 	if err != nil {
 		return
@@ -466,6 +479,7 @@ func TestIssueCertificate(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
@@ -543,6 +557,7 @@ func TestRejectNoName(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
@@ -560,6 +575,7 @@ func TestRejectTooManyNames(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects a CSR with too many names
@@ -574,6 +590,7 @@ func TestDeduplication(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
@@ -604,6 +621,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
@@ -625,6 +643,7 @@ func TestShortKey(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 
@@ -639,6 +658,7 @@ func TestRejectBadAlgorithm(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, caCertFile)
+	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 	ca.MaxKeySize = 4096
 

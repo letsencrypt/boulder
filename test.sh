@@ -103,6 +103,16 @@ function build_letsencrypt() {
 
 function run_unit_tests() {
   if [ "${TRAVIS}" == "true" ]; then
+
+    # The deps variable is the imports of the packages under test that
+    # are not stdlib packages. We can then install them with the race
+    # detector enabled to prevent our individual `go test` calls from
+    # building them multiple times.
+    all_shared_imports=$(go list -f '{{ join .Imports "\n" }}' $TESTPATHS | sort | uniq)
+    deps=$(go list -f '{{ if not .Standard }}{{ .ImportPath }}{{ end }}' ${all_shared_imports})
+    echo "go installing race detector enabled dependencies"
+    go install -v -race $deps
+
     # Run each test by itself for Travis, so we can get coverage
     for path in ${TESTPATHS}; do
       dir=$(basename $path)

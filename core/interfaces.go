@@ -71,7 +71,10 @@ type RegistrationAuthority interface {
 	UpdateAuthorization(Authorization, int, Challenge) (Authorization, error)
 
 	// [WebFrontEnd]
-	RevokeCertificate(x509.Certificate, RevocationCode, *int64) error
+	RevokeCertificateWithReg(x509.Certificate, RevocationCode, int64) error
+
+	// [AdminRevoker]
+	AdministrativelyRevokeCertificate(x509.Certificate, RevocationCode, string) error
 
 	// [ValidationAuthority]
 	OnValidationUpdate(Authorization) error
