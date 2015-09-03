@@ -37,13 +37,13 @@ before_install:
   # Github-PR-Status secret
   - openssl aes-256-cbc -K $encrypted_53b2630f0fb4_key -iv $encrypted_53b2630f0fb4_iv -in test/github-secret.json.enc -out test/github-secret.json -d || true
 
-  - go get golang.org/x/tools/cmd/vet
-  - go get golang.org/x/tools/cmd/cover
-  - go get github.com/golang/lint/golint
-  - go get github.com/mattn/goveralls
-  - go get github.com/modocache/gover
-  - go get github.com/jcjones/github-pr-status
-  - go get bitbucket.org/liamstask/goose/cmd/goose
+  - travis_retry go get golang.org/x/tools/cmd/vet
+  - travis_retry go get golang.org/x/tools/cmd/cover
+  - travis_retry go get github.com/golang/lint/golint
+  - travis_retry go get github.com/mattn/goveralls
+  - travis_retry go get github.com/modocache/gover
+  - travis_retry go get github.com/jcjones/github-pr-status
+  - travis_retry go get bitbucket.org/liamstask/goose/cmd/goose
 
   # Boulder consists of multiple Go packages, which
   # refer to each other by their absolute GitHub path,
@@ -52,11 +52,6 @@ before_install:
   # we add a symlink.
   - mkdir -p $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt
   - test ! -d $GOPATH/src/github.com/letsencrypt/boulder && ln -s $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt/boulder || true
-  - git clone https://www.github.com/letsencrypt/lets-encrypt-preview.git "$LETSENCRYPT_PATH"
-  - cd "$LETSENCRYPT_PATH"
-  - virtualenv --no-site-packages -p python2 ./venv
-  - travis_retry ./venv/bin/pip install -r requirements.txt -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
-  - "cd -"
 
 env:
   global:
@@ -64,7 +59,8 @@ env:
   matrix:
     - SKIP_INTEGRATION_TESTS=1
     - SKIP_UNIT_TESTS=1
+    - RUN_MAKE=1 SKIP_UNIT_TESTS=1 SKIP_INTEGRATION_TESTS=1
 
 script:
-  - make -j4 # Travis has 2 cores per build instance
+  - bash test/travis_make.sh
   - bash test.sh

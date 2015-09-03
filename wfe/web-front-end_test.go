@@ -289,7 +289,11 @@ func (ra *MockRegistrationAuthority) UpdateAuthorization(authz core.Authorizatio
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificate(cert x509.Certificate, reason core.RevocationCode, reg *int64) error {
+func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(cert x509.Certificate, reason core.RevocationCode, reg int64) error {
+	return nil
+}
+
+func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(cert x509.Certificate, reason core.RevocationCode, user string) error {
 	return nil
 }
 
@@ -312,6 +316,16 @@ func (ca *MockCA) GenerateOCSP(xferObj core.OCSPSigningRequest) (ocsp []byte, er
 
 func (ca *MockCA) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
 	return
+}
+
+type MockPA struct{}
+
+func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
+	return
+}
+
+func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier) error {
+	return nil
 }
 
 func makeBody(s string) io.ReadCloser {
@@ -517,6 +531,7 @@ func TestIssueCertificate(t *testing.T) {
 	ra := ra.NewRegistrationAuthorityImpl(stats)
 	ra.SA = &MockSA{}
 	ra.CA = &MockCA{}
+	ra.PA = &MockPA{}
 	wfe.SA = &MockSA{}
 	wfe.RA = &ra
 	responseWriter := httptest.NewRecorder()
@@ -697,10 +712,10 @@ func TestChallenge(t *testing.T) {
 		RegistrationID: 1,
 	}
 
-	challengeURL := url.URL(*challengeAcme)
+	challengeURL := (*url.URL)(challengeAcme)
 	wfe.challenge(responseWriter, &http.Request{
 		Method: "POST",
-		URL:    &challengeURL,
+		URL:    challengeURL,
 		Body:   makeBody(signRequest(t, `{"resource":"challenge"}`, &wfe.nonceService)),
 	}, authz, &requestEvent{})
 

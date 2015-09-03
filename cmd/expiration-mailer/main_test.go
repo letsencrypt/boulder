@@ -21,7 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
@@ -148,35 +148,12 @@ var testKey = rsa.PrivateKey{
 const dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 
 func TestFindExpiringCertificates(t *testing.T) {
-	dbMap, err := sa.NewDbMap(dbConnStr)
-	if err != nil {
-		t.Fatalf("Couldn't connect the database: %s", err)
-	}
-	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap)
-	if err != nil {
-		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
-	}
-	defer cleanUp()
+	ctx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
 
-	stats, _ := statsd.NewNoopClient(nil)
-	mc := mockMail{}
-	fc := clock.NewFake()
-	fc.Add(7 * 24 * time.Hour)
-	m := mailer{
-		log:           blog.GetAuditLogger(),
-		stats:         stats,
-		mailer:        &mc,
-		emailTemplate: tmpl,
-		dbMap:         dbMap,
-		rs:            ssa,
-		nagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
-		limit:         100,
-		clk:           fc,
-	}
+	ctx.fc.Add(7 * 24 * time.Hour)
 
 	log.Clear()
-	err = m.findExpiringCertificates()
+	err := ctx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed on no certificates")
 	test.AssertEquals(t, len(log.GetAllMatching("Searching for certificates that expire between.*")), 3)
 
@@ -203,11 +180,11 @@ func TestFindExpiringCertificates(t *testing.T) {
 		},
 		Key: keyB,
 	}
-	regA, err = ssa.NewRegistration(regA)
+	regA, err = ctx.ssa.NewRegistration(regA)
 	if err != nil {
 		t.Fatalf("Couldn't store regA: %s", err)
 	}
-	regB, err = ssa.NewRegistration(regB)
+	regB, err = ctx.ssa.NewRegistration(regB)
 	if err != nil {
 		t.Fatalf("Couldn't store regB: %s", err)
 	}
@@ -217,14 +194,13 @@ func TestFindExpiringCertificates(t *testing.T) {
 			CommonName: "happy A",
 		},
 		// This is slightly within the ultime nag window (one day)
-		NotAfter:     fc.Now().AddDate(0, 0, 1).Add(-time.Hour),
+		NotAfter:     ctx.fc.Now().AddDate(0, 0, 1).Add(-time.Hour),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: big.NewInt(1337),
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
 		RegistrationID: regA.ID,
-		Status:         core.StatusValid,
 		Serial:         "001",
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
@@ -232,20 +208,20 @@ func TestFindExpiringCertificates(t *testing.T) {
 	// Already sent a nag but too long ago
 	certStatusA := &core.CertificateStatus{
 		Serial:                "001",
-		LastExpirationNagSent: fc.Now().Add(-time.Hour * 24 * 3),
+		LastExpirationNagSent: ctx.fc.Now().Add(-time.Hour * 24 * 3),
+		Status:                core.OCSPStatusGood,
 	}
 	rawCertB := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy B",
 		},
-		NotAfter:     fc.Now().AddDate(0, 0, 3),
+		NotAfter:     ctx.fc.Now().AddDate(0, 0, 3),
 		DNSNames:     []string{"example-b.com"},
 		SerialNumber: big.NewInt(1337),
 	}
 	certDerB, _ := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, &testKey)
 	certB := &core.Certificate{
 		RegistrationID: regA.ID,
-		Status:         core.StatusValid,
 		Serial:         "002",
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
@@ -253,87 +229,66 @@ func TestFindExpiringCertificates(t *testing.T) {
 	// Already sent a nag for this period
 	certStatusB := &core.CertificateStatus{
 		Serial:                "002",
-		LastExpirationNagSent: fc.Now().Add(-time.Hour * 24 * 3),
+		LastExpirationNagSent: ctx.fc.Now().Add(-time.Hour * 24 * 3),
+		Status:                core.OCSPStatusGood,
 	}
 	rawCertC := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy C",
 		},
 		// This is within the earliest nag window (7 days)
-		NotAfter:     fc.Now().AddDate(0, 0, 6),
+		NotAfter:     ctx.fc.Now().AddDate(0, 0, 6),
 		DNSNames:     []string{"example-c.com"},
 		SerialNumber: big.NewInt(1337),
 	}
 	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
 	certC := &core.Certificate{
 		RegistrationID: regB.ID,
-		Status:         core.StatusValid,
 		Serial:         "003",
 		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
 	}
-	certStatusC := &core.CertificateStatus{Serial: "003"}
+	certStatusC := &core.CertificateStatus{
+		Serial: "003",
+		Status: core.OCSPStatusGood,
+	}
 
-	err = dbMap.Insert(certA)
+	err = ctx.dbMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
-	err = dbMap.Insert(certB)
+	err = ctx.dbMap.Insert(certB)
 	test.AssertNotError(t, err, "Couldn't add certB")
-	err = dbMap.Insert(certC)
+	err = ctx.dbMap.Insert(certC)
 	test.AssertNotError(t, err, "Couldn't add certC")
-	err = dbMap.Insert(certStatusA)
+	err = ctx.dbMap.Insert(certStatusA)
 	test.AssertNotError(t, err, "Couldn't add certStatusA")
-	err = dbMap.Insert(certStatusB)
+	err = ctx.dbMap.Insert(certStatusB)
 	test.AssertNotError(t, err, "Couldn't add certStatusB")
-	err = dbMap.Insert(certStatusC)
+	err = ctx.dbMap.Insert(certStatusC)
 	test.AssertNotError(t, err, "Couldn't add certStatusC")
 
 	log.Clear()
-	err = m.findExpiringCertificates()
+	err = ctx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	// Should get 001 and 003
-	test.AssertEquals(t, len(mc.Messages), 2)
+	test.AssertEquals(t, len(ctx.mc.Messages), 2)
 
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 1 days (%s)`, rawCertA.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), mc.Messages[0])
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (%s)`, rawCertC.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), mc.Messages[1])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 1 days (%s)`, rawCertA.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), ctx.mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (%s)`, rawCertC.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), ctx.mc.Messages[1])
 
 	// A consecutive run shouldn't find anything
-	mc.Clear()
+	ctx.mc.Clear()
 	log.Clear()
-	err = m.findExpiringCertificates()
+	err = ctx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
-	test.AssertEquals(t, len(mc.Messages), 0)
+	test.AssertEquals(t, len(ctx.mc.Messages), 0)
 }
 
 func TestLifetimeOfACert(t *testing.T) {
-	dbMap, err := sa.NewDbMap(dbConnStr)
-	if err != nil {
-		t.Fatalf("Couldn't connect the database: %s", err)
-	}
-	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap)
-	if err != nil {
-		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
-	}
-	defer cleanUp()
-
-	stats, _ := statsd.NewNoopClient(nil)
-	mc := mockMail{}
-	fc := clock.NewFake()
-
-	m := mailer{
-		log:           blog.GetAuditLogger(),
-		stats:         stats,
-		mailer:        &mc,
-		emailTemplate: tmpl,
-		dbMap:         dbMap,
-		rs:            ssa,
-		nagTimes:      []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7},
-		limit:         100,
-		clk:           fc,
-	}
+	ctx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
+	defer ctx.cleanUp()
 
 	var keyA jose.JsonWebKey
-	err = json.Unmarshal(jsonKeyA, &keyA)
+	err := json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 
 	emailA, _ := core.ParseAcmeURL("mailto:one@mail.com")
@@ -345,7 +300,7 @@ func TestLifetimeOfACert(t *testing.T) {
 		},
 		Key: keyA,
 	}
-	regA, err = ssa.NewRegistration(regA)
+	regA, err = ctx.ssa.NewRegistration(regA)
 	if err != nil {
 		t.Fatalf("Couldn't store regA: %s", err)
 	}
@@ -354,14 +309,13 @@ func TestLifetimeOfACert(t *testing.T) {
 			CommonName: "happy A",
 		},
 
-		NotAfter:     fc.Now(),
+		NotAfter:     ctx.fc.Now(),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: big.NewInt(1337),
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
 		RegistrationID: regA.ID,
-		Status:         core.StatusValid,
 		Serial:         "001",
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
@@ -369,11 +323,12 @@ func TestLifetimeOfACert(t *testing.T) {
 
 	certStatusA := &core.CertificateStatus{
 		Serial: "001",
+		Status: core.OCSPStatusGood,
 	}
 
-	err = dbMap.Insert(certA)
+	err = ctx.dbMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
-	err = dbMap.Insert(certStatusA)
+	err = ctx.dbMap.Insert(certStatusA)
 	test.AssertNotError(t, err, "unable to insert CertificateStatus")
 
 	type lifeTest struct {
@@ -421,12 +376,113 @@ func TestLifetimeOfACert(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		fc.Add(-tt.timeLeft)
-		err = m.findExpiringCertificates()
+		ctx.fc.Add(-tt.timeLeft)
+		err = ctx.m.findExpiringCertificates()
 		test.AssertNotError(t, err, "error calling findExpiringCertificates")
-		if len(mc.Messages) != tt.numMsgs {
-			t.Errorf(tt.context+" number of messages: expected %d, got %d", tt.numMsgs, len(mc.Messages))
+		if len(ctx.mc.Messages) != tt.numMsgs {
+			t.Errorf(tt.context+" number of messages: expected %d, got %d", tt.numMsgs, len(ctx.mc.Messages))
 		}
-		fc.Add(tt.timeLeft)
+		ctx.fc.Add(tt.timeLeft)
+	}
+}
+
+func TestDontFindRevokedCert(t *testing.T) {
+	expiresIn := 24 * time.Hour
+	ctx := setup(t, []time.Duration{expiresIn})
+
+	var keyA jose.JsonWebKey
+	err := json.Unmarshal(jsonKeyA, &keyA)
+	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
+
+	emailA, _ := core.ParseAcmeURL("mailto:one@mail.com")
+
+	regA := core.Registration{
+		ID: 1,
+		Contact: []*core.AcmeURL{
+			emailA,
+		},
+		Key: keyA,
+	}
+	regA, err = ctx.ssa.NewRegistration(regA)
+	if err != nil {
+		t.Fatalf("Couldn't store regA: %s", err)
+	}
+	rawCertA := x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "happy A",
+		},
+
+		NotAfter:     ctx.fc.Now().Add(expiresIn),
+		DNSNames:     []string{"example-a.com"},
+		SerialNumber: big.NewInt(1337),
+	}
+	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
+	certA := &core.Certificate{
+		RegistrationID: regA.ID,
+		Serial:         "001",
+		Expires:        rawCertA.NotAfter,
+		DER:            certDerA,
+	}
+
+	certStatusA := &core.CertificateStatus{
+		Serial: "001",
+		Status: core.OCSPStatusRevoked,
+	}
+
+	err = ctx.dbMap.Insert(certA)
+	test.AssertNotError(t, err, "unable to insert Certificate")
+	err = ctx.dbMap.Insert(certStatusA)
+	test.AssertNotError(t, err, "unable to insert CertificateStatus")
+
+	err = ctx.m.findExpiringCertificates()
+	test.AssertNotError(t, err, "err from findExpiringCertificates")
+
+	if len(ctx.mc.Messages) != 0 {
+		t.Errorf("no emails should have been sent, but sent %d", len(ctx.mc.Messages))
+	}
+}
+
+type testCtx struct {
+	dbMap   *gorp.DbMap
+	ssa     *sa.SQLStorageAuthority
+	mc      *mockMail
+	fc      clock.FakeClock
+	m       *mailer
+	cleanUp func()
+}
+
+func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
+	dbMap, err := sa.NewDbMap(dbConnStr)
+	if err != nil {
+		t.Fatalf("Couldn't connect the database: %s", err)
+	}
+	ssa, err := sa.NewSQLStorageAuthority(dbMap)
+	if err != nil {
+		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
+	}
+	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+
+	stats, _ := statsd.NewNoopClient(nil)
+	mc := &mockMail{}
+	fc := clock.NewFake()
+
+	m := &mailer{
+		log:           blog.GetAuditLogger(),
+		stats:         stats,
+		mailer:        mc,
+		emailTemplate: tmpl,
+		dbMap:         dbMap,
+		rs:            ssa,
+		nagTimes:      nagTimes,
+		limit:         100,
+		clk:           fc,
+	}
+	return &testCtx{
+		dbMap:   dbMap,
+		ssa:     ssa,
+		mc:      mc,
+		fc:      fc,
+		m:       m,
+		cleanUp: cleanUp,
 	}
 }

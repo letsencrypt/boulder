@@ -74,10 +74,12 @@ type certChecker struct {
 	clock        clock.Clock
 }
 
-func newChecker(dbMap *gorp.DbMap) certChecker {
+func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, enforceWhitelist bool) certChecker {
+	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, enforceWhitelist)
+	cmd.FailOnError(err, "Failed to create PA")
 	c := certChecker{
-		pa:    policy.NewPolicyAuthorityImpl(),
-		dbMap: dbMap,
+		pa:    pa,
+		dbMap: saDbMap,
 		certs: make(chan core.Certificate, batchSize),
 		clock: clock.Default(),
 	}
@@ -226,10 +228,13 @@ func main() {
 		blog.SetAuditLogger(auditlogger)
 		auditlogger.Info(app.VersionString())
 
-		dbMap, err := sa.NewDbMap(c.CertChecker.DBConnect)
+		saDbMap, err := sa.NewDbMap(c.CertChecker.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		checker := newChecker(dbMap)
+		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
+		cmd.FailOnError(err, "Could not connect to policy database")
+
+		checker := newChecker(saDbMap, paDbMap, c.PA.EnforcePolicyWhitelist)
 		auditlogger.Info("# Getting certificates issued in the last 90 days")
 
 		// Since we grab certificates in batches we don't want this to block, when it

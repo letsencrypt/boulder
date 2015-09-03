@@ -1,0 +1,13 @@
+{
+  "Blacklist": [
+    "in-addr.arpa",
+    "example",
+    "example.com",
+    "example.net",
+    "example.org",
+    "invalid",
+    "local",
+    "localhost",
+    "test"
+  ]
+}

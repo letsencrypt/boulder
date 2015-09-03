@@ -36,9 +36,11 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/ca"
+
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // Config stores configuration parameters that applications
@@ -77,7 +79,7 @@ type Config struct {
 		DebugAddr string
 	}
 
-	CA ca.Config
+	CA CAConfig
 
 	Monolith struct {
 		// DebugAddr is the address to run the /debug handlers on.
@@ -169,10 +171,7 @@ type Config struct {
 		StatsdRate                 float32
 	}
 
-	PA struct {
-		DBDriver  string
-		DBConnect string
-	}
+	PA PAConfig
 
 	Common struct {
 		BaseURL string
@@ -191,6 +190,46 @@ type Config struct {
 	}
 
 	SubscriberAgreementURL string
+}
+
+type CAConfig struct {
+	Profile      string
+	TestMode     bool
+	DBConnect    string
+	SerialPrefix int
+	Key          KeyConfig
+	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
+	// than the minTimeToExpiry field for the OCSP Updater.
+	LifespanOCSP string
+	// How long issued certificates are valid for, should match expiry field
+	// in cfssl config.
+	Expiry string
+	// The maximum number of subjectAltNames in a single certificate
+	MaxNames int
+	CFSSL    cfsslConfig.Config
+
+	// DebugAddr is the address to run the /debug handlers on.
+	DebugAddr string
+}
+
+type PAConfig struct {
+	DBConnect              string
+	EnforcePolicyWhitelist bool
+}
+
+// KeyConfig should contain either a File path to a PEM-format private key,
+// or a PKCS11Config defining how to load a module for an HSM.
+type KeyConfig struct {
+	File   string
+	PKCS11 PKCS11Config
+}
+
+// PKCS11Config defines how to load a module for an HSM.
+type PKCS11Config struct {
+	Module string
+	Token  string
+	PIN    string
+	Label  string
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.
@@ -270,6 +309,8 @@ func (as *AppShell) VersionString() string {
 func FailOnError(err error, msg string) {
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		logger := blog.GetAuditLogger()
+		logger.Err(fmt.Sprintf("%s: %s", msg, err))
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
 		os.Exit(1)
 	}

@@ -8,12 +8,13 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	"github.com/letsencrypt/boulder/test"
 	"math"
 	"math/big"
 	"net/url"
 	"testing"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/test"
 )
 
 // challenges.go
@@ -93,6 +94,6 @@ func TestKeyDigestEquals(t *testing.T) {
 func TestAcmeURL(t *testing.T) {
 	s := "http://example.invalid"
 	u, _ := url.Parse(s)
-	a := AcmeURL(*u)
+	a := (*AcmeURL)(u)
 	test.AssertEquals(t, s, a.String())
 }

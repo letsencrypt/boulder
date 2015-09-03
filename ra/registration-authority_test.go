@@ -126,6 +126,7 @@ var (
 )
 
 const (
+	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
 	caDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_ca_test"
 	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 )
@@ -176,7 +177,13 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	}
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
 	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
-	pa := policy.NewPolicyAuthorityImpl()
+	paDbMap, err := sa.NewDbMap(paDBConnStr)
+	if err != nil {
+		t.Fatalf("Failed to create dbMap: %s", err)
+	}
+	policyDBCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
+	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
+	test.AssertNotError(t, err, "Couldn't create PA")
 	cadb, caDBCleanUp := caDBImpl(t)
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
@@ -191,6 +198,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	cleanUp := func() {
 		saDBCleanUp()
 		caDBCleanUp()
+		policyDBCleanUp()
 	}
 
 	csrDER, _ := hex.DecodeString(CSRhex)
@@ -380,13 +388,11 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	test.Assert(t, len(authz.Challenges) == 3, "Incorrect number of challenges returned")
+	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
 	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
 	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
-	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeDNS, "Challenge 2 not DNS")
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
-	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 2 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
 }
