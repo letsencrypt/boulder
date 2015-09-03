@@ -51,8 +51,8 @@ type report struct {
 func (r *report) save(directory string) error {
 	filename := path.Join(directory, fmt.Sprintf(
 		"%s-%s-report.json",
-		r.begin.Format(filenameLayout),
 		r.end.Format(filenameLayout),
+		r.begin.Format(filenameLayout),
 	))
 	content, err := json.Marshal(r)
 	if err != nil {
