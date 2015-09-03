@@ -171,9 +171,10 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			problems = append(problems, "Certificate can sign other certificates")
 		}
 		// Check the cert has the correct validity period +/- an hour
-		if parsedCert.NotAfter.Sub(cert.Issued) > checkPeriod+time.Hour {
+		expiryPeriod := parsedCert.NotAfter.Sub(parsedCert.NotBefore)
+		if expiryPeriod > checkPeriod {
 			problems = append(problems, "Certificate has a validity period longer than 90 days")
-		} else if parsedCert.NotAfter.Sub(cert.Issued) < checkPeriod-time.Hour {
+		} else if expiryPeriod < checkPeriod {
 			problems = append(problems, "Certificate has a validity period shorter than 90 days")
 		}
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName

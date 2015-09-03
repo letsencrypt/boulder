@@ -103,6 +103,7 @@ func TestCheckCert(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "example.com",
 		},
+		NotBefore:             issued,
 		NotAfter:              goodExpiry.AddDate(0, 0, 1), // Period too long
 		DNSNames:              []string{"example-a.com"},
 		SerialNumber:          serial,
