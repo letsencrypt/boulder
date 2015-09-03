@@ -175,7 +175,7 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		if parsedCert.IsCA {
 			problems = append(problems, "Certificate can sign other certificates")
 		}
-		// Check the cert has the correct validity period +/- an hour
+		// Check the cert has the correct validity period
 		expiryPeriod := parsedCert.NotAfter.Sub(parsedCert.NotBefore)
 		if expiryPeriod > checkPeriod {
 			problems = append(problems, "Certificate has a validity period longer than 90 days")
