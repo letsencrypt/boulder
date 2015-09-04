@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -545,7 +546,7 @@ func TestIssueCertificate(t *testing.T) {
 	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl()
+	ra := ra.NewRegistrationAuthorityImpl(clock.NewFake(), wfe.log)
 	ra.SA = &MockSA{}
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}

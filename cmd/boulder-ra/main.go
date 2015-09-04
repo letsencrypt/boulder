@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
@@ -42,7 +43,7 @@ func main() {
 		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		rai := ra.NewRegistrationAuthorityImpl()
+		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger)
 		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize
 		rai.PA = pa
