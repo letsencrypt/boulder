@@ -52,7 +52,7 @@ type DNSResolverImpl struct {
 
 // NewDNSResolverImpl constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution.
-func NewDNSResolverImpl(dialTimeout time.Duration, servers []string, allowLoopback bool) *DNSResolverImpl {
+func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolverImpl {
 	dnsClient := new(dns.Client)
 
 	// Set timeout for underlying net.Conn
@@ -61,8 +61,17 @@ func NewDNSResolverImpl(dialTimeout time.Duration, servers []string, allowLoopba
 	return &DNSResolverImpl{
 		DNSClient:              dnsClient,
 		Servers:                servers,
-		allowLoopbackAddresses: allowLoopback,
+		allowLoopbackAddresses: false,
 	}
+}
+
+// NewTestDNSResolverImpl constructs a new DNS resolver object that utilizes the
+// provided list of DNS servers for resolution and will allow loopback addresses.
+// This constructor should *only* be called from tests (unit or integration).
+func NewTestDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolverImpl {
+	resolver := NewDNSResolverImpl(dialTimeout, servers)
+	resolver.allowLoopbackAddresses = true
+	return resolver
 }
 
 // ExchangeOne performs a single DNS exchange with a randomly chosen server
