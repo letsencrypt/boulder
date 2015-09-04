@@ -51,8 +51,8 @@ type report struct {
 func (r *report) save(directory string) error {
 	filename := path.Join(directory, fmt.Sprintf(
 		"%s-%s-report.json",
-		r.end.Format(filenameLayout),
 		r.begin.Format(filenameLayout),
+		r.end.Format(filenameLayout),
 	))
 	content, err := json.Marshal(r)
 	if err != nil {
@@ -62,7 +62,7 @@ func (r *report) save(directory string) error {
 }
 
 type reportEntry struct {
-	Valid    bool     `json:"validity"`
+	Valid    bool     `json:"valid"`
 	Problems []string `json:"problem,omitempty"`
 }
 
@@ -91,15 +91,16 @@ func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, enforceWhitelist bool)
 }
 
 func (c *certChecker) getCerts() error {
-	c.issuedReport.begin = c.clock.Now()
-	c.issuedReport.end = c.issuedReport.begin.Add(-checkPeriod)
+	c.issuedReport.end = c.clock.Now()
+	c.issuedReport.begin = c.issuedReport.end.Add(-checkPeriod)
 
 	var count int
 	err := c.dbMap.SelectOne(
 		&count,
 		"SELECT count(*) FROM certificates WHERE issued >= :issued",
-		map[string]interface{}{"issued": c.issuedReport.end},
+		map[string]interface{}{"issued": c.issuedReport.begin},
 	)
+	fmt.Println(count, err)
 	if err != nil {
 		return err
 	}
@@ -113,8 +114,9 @@ func (c *certChecker) getCerts() error {
 		_, err = c.dbMap.Select(
 			&certs,
 			"SELECT * FROM certificates WHERE issued >= :issued ORDER BY issued ASC LIMIT :limit OFFSET :offset",
-			map[string]interface{}{"issued": c.issuedReport.end, "limit": batchSize, "offset": offset},
+			map[string]interface{}{"issued": c.issuedReport.begin, "limit": batchSize, "offset": offset},
 		)
+		fmt.Println(certs, err)
 		if err != nil {
 			return err
 		}
@@ -178,9 +180,9 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		// Check the cert has the correct validity period
 		expiryPeriod := parsedCert.NotAfter.Sub(parsedCert.NotBefore)
 		if expiryPeriod > checkPeriod {
-			problems = append(problems, "Certificate has a validity period longer than 90 days")
+			problems = append(problems, fmt.Sprintf("Certificate has a validity period longer than %s", checkPeriod))
 		} else if expiryPeriod < checkPeriod {
-			problems = append(problems, "Certificate has a validity period shorter than 90 days")
+			problems = append(problems, fmt.Sprintf("Certificate has a validity period shorter than %s", checkPeriod))
 		}
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {

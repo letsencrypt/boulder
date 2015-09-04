@@ -10,9 +10,12 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"testing"
@@ -43,10 +46,10 @@ func BenchmarkCheckCert(b *testing.B) {
 		return
 	}
 	defer func() {
-		saDbMap.TruncateTables()
-		paDbMap.TruncateTables()
+		err = saDbMap.TruncateTables()
 		fmt.Printf("Failed to truncate tables: %s\n", err)
-		os.Exit(1)
+		err = paDbMap.TruncateTables()
+		fmt.Printf("Failed to truncate tables: %s\n", err)
 	}()
 
 	checker := newChecker(saDbMap, paDbMap, false)
@@ -78,12 +81,13 @@ func BenchmarkCheckCert(b *testing.B) {
 func TestCheckCert(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(saDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to database")
+	saCleanup := test.ResetTestDatabase(t, saDbMap.Db)
 	paDbMap, err := sa.NewDbMap(paDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to policy database")
+	paCleanup := test.ResetTestDatabase(t, paDbMap.Db)
 	defer func() {
-		saDbMap.TruncateTables()
-		paDbMap.TruncateTables()
-		test.AssertNotError(t, err, "Failed to truncate tables")
+		saCleanup()
+		paCleanup()
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
@@ -145,15 +149,15 @@ func TestCheckCert(t *testing.T) {
 func TestGetAndProcessCerts(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(saDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to database")
+	saCleanup := test.ResetTestDatabase(t, saDbMap.Db)
 	paDbMap, err := sa.NewDbMap(paDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to policy database")
+	paCleanup := test.ResetTestDatabase(t, paDbMap.Db)
 	checker := newChecker(saDbMap, paDbMap, false)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap)
-	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	defer func() {
-		saDbMap.TruncateTables()
-		paDbMap.TruncateTables()
-		test.AssertNotError(t, err, "Failed to truncate tables")
+		saCleanup()
+		paCleanup()
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
@@ -186,4 +190,38 @@ func TestGetAndProcessCerts(t *testing.T) {
 	checker.processCerts(wg)
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
 	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
+}
+
+func TestSaveReport(t *testing.T) {
+	r := report{
+		begin:     time.Time{},
+		end:       time.Time{},
+		GoodCerts: 2,
+		BadCerts:  1,
+		Entries: map[string]reportEntry{
+			"020000000000004b475da49b91da5c17": reportEntry{
+				Valid: true,
+			},
+			"020000000000004d1613e581432cba7e": reportEntry{
+				Valid: true,
+			},
+			"020000000000004e402bc21035c6634a": reportEntry{
+				Valid:    false,
+				Problems: []string{"None really..."},
+			},
+		},
+	}
+
+	tmpRoot := os.TempDir()
+	test.Assert(t, tmpRoot != "", "Couldn't find the system temporary directory")
+	tmpDir, err := ioutil.TempDir(tmpRoot, "cert-checker")
+	test.AssertNotError(t, err, "Couldn't create temporary directory")
+	defer os.RemoveAll(tmpDir)
+	err = r.save(tmpDir)
+	test.AssertNotError(t, err, "Couldn't save report")
+	reportContent, err := ioutil.ReadFile(path.Join(tmpDir, "00010101-00010101-report.json"))
+	test.AssertNotError(t, err, "Couldn't read report file")
+	expectedContent, err := json.Marshal(r)
+	test.AssertNotError(t, err, "Couldn't unmarshal report file")
+	test.AssertByteEquals(t, expectedContent, reportContent)
 }
