@@ -456,7 +456,8 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap)
+	fc := clock.NewFake()
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
@@ -464,7 +465,6 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := &mockMail{}
-	fc := clock.NewFake()
 
 	m := &mailer{
 		log:           blog.GetAuditLogger(),

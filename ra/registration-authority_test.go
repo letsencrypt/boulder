@@ -20,6 +20,7 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/core"
@@ -144,11 +145,13 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
 	test.AssertNotError(t, err, "Failed to unmarshall JWK")
 
+	fc := clock.NewFake()
+
 	dbMap, err := sa.NewDbMap(saDBConnStr)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -193,6 +196,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
 		MaxKeySize:     4096,
+		Clk:            fc,
 	}
 	cleanUp := func() {
 		saDBCleanUp()
