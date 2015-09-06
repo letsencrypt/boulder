@@ -52,7 +52,7 @@ func BenchmarkCheckCert(b *testing.B) {
 		fmt.Printf("Failed to truncate tables: %s\n", err)
 	}()
 
-	checker := newChecker(saDbMap, paDbMap, false)
+	checker := newChecker(saDbMap, paDbMap, clock.Default(), false)
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
@@ -91,10 +91,10 @@ func TestCheckCert(t *testing.T) {
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
-	checker := newChecker(saDbMap, paDbMap, false)
 	fc := clock.NewFake()
 	fc.Add(time.Hour * 24 * 90)
-	checker.clock = fc
+
+	checker := newChecker(saDbMap, paDbMap, fc, false)
 
 	issued := checker.clock.Now().Add(-time.Hour * 24 * 45)
 	goodExpiry := issued.Add(checkPeriod)
@@ -151,15 +151,18 @@ func TestCheckCert(t *testing.T) {
 func TestGetAndProcessCerts(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(saDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	saCleanup := test.ResetTestDatabase(t, saDbMap.Db)
 	paDbMap, err := sa.NewDbMap(paDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to policy database")
-	paCleanup := test.ResetTestDatabase(t, paDbMap.Db)
-	checker := newChecker(saDbMap, paDbMap, false)
-	sa, err := sa.NewSQLStorageAuthority(saDbMap)
+	fc := clock.NewFake()
+
+	checker := newChecker(saDbMap, paDbMap, fc, false)
+	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc)
+	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
+	saCleanUp := test.ResetTestDatabase(t, saDbMap.Db)
+	paCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
 	defer func() {
-		saCleanup()
-		paCleanup()
+		saCleanUp()
+		paCleanUp()
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
