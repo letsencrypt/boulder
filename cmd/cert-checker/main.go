@@ -100,7 +100,6 @@ func (c *certChecker) getCerts() error {
 		"SELECT count(*) FROM certificates WHERE issued >= :issued",
 		map[string]interface{}{"issued": c.issuedReport.begin},
 	)
-	fmt.Println(count, err)
 	if err != nil {
 		return err
 	}
@@ -116,7 +115,6 @@ func (c *certChecker) getCerts() error {
 			"SELECT * FROM certificates WHERE issued >= :issued ORDER BY issued ASC LIMIT :limit OFFSET :offset",
 			map[string]interface{}{"issued": c.issuedReport.begin, "limit": batchSize, "offset": offset},
 		)
-		fmt.Println(certs, err)
 		if err != nil {
 			return err
 		}
@@ -178,12 +176,17 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			problems = append(problems, "Certificate can sign other certificates")
 		}
 		// Check the cert has the correct validity period
-		expiryPeriod := parsedCert.NotAfter.Sub(parsedCert.NotBefore)
-		if expiryPeriod > checkPeriod {
+		validityPeriod := parsedCert.NotAfter.Sub(parsedCert.NotBefore)
+		if validityPeriod > checkPeriod {
 			problems = append(problems, fmt.Sprintf("Certificate has a validity period longer than %s", checkPeriod))
-		} else if expiryPeriod < checkPeriod {
+		} else if validityPeriod < checkPeriod {
 			problems = append(problems, fmt.Sprintf("Certificate has a validity period shorter than %s", checkPeriod))
 		}
+
+		if parsedCert.NotBefore.Before(cert.Issued.Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.Add(6*time.Hour)) {
+			problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
+		}
+
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			if err = c.pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}); err != nil {

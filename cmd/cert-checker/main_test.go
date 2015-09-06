@@ -119,15 +119,16 @@ func TestCheckCert(t *testing.T) {
 	//   Digest doesn't match
 	//   Serial doesn't match
 	//   Expiry doesn't match
+	//   Issued doesn't match
 	cert := core.Certificate{
 		DER:     brokenCertDer,
-		Issued:  issued,
+		Issued:  issued.Add(12 * time.Hour),
 		Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match
 	}
 
 	problems := checker.checkCert(cert)
 	fmt.Println(strings.Join(problems, "\n"))
-	test.AssertEquals(t, len(problems), 6)
+	test.AssertEquals(t, len(problems), 7)
 
 	// Fix the problems
 	rawCert.Subject.CommonName = "example-a.com"
@@ -142,6 +143,7 @@ func TestCheckCert(t *testing.T) {
 	cert.Digest = core.Fingerprint256(goodCertDer)
 	cert.DER = goodCertDer
 	cert.Expires = parsed.NotAfter
+	cert.Issued = parsed.NotBefore
 	problems = checker.checkCert(cert)
 	test.AssertEquals(t, len(problems), 0)
 }
@@ -212,9 +214,7 @@ func TestSaveReport(t *testing.T) {
 		},
 	}
 
-	tmpRoot := os.TempDir()
-	test.Assert(t, tmpRoot != "", "Couldn't find the system temporary directory")
-	tmpDir, err := ioutil.TempDir(tmpRoot, "cert-checker")
+	tmpDir, err := ioutil.TempDir("", "cert-checker")
 	test.AssertNotError(t, err, "Couldn't create temporary directory")
 	defer os.RemoveAll(tmpDir)
 	err = r.save(tmpDir)
