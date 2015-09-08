@@ -133,7 +133,7 @@ func initTables(dbMap *gorp.DbMap) {
 	regTable.SetVersionCol("LockCol")
 	regTable.ColMap("Key").SetNotNull(true)
 	regTable.ColMap("KeySHA256").SetNotNull(true).SetUnique(true)
-	pendingAuthzTable := dbMap.AddTableWithName(pendingauthzModel{}, "pending_authz").SetKeys(false, "ID")
+	pendingAuthzTable := dbMap.AddTableWithName(pendingauthzModel{}, "pendingAuthorizations").SetKeys(false, "ID")
 	pendingAuthzTable.SetVersionCol("LockCol")
 	dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
 	dbMap.AddTableWithName(challModel{}, "challenges").SetKeys(true, "ID").SetVersionCol("LockCol")

@@ -76,7 +76,7 @@ func statusIsPending(status core.AcmeStatus) bool {
 
 func existingPending(tx *gorp.Transaction, id string) bool {
 	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM pending_authz WHERE id = :id", map[string]interface{}{"id": id})
+	_ = tx.SelectOne(&count, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
 }
 
@@ -186,7 +186,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 			return
 		}
 		if authObj == nil {
-			err = fmt.Errorf("No pending_authz or authz with ID %s", id)
+			err = fmt.Errorf("No pendingAuthorization or authz with ID %s", id)
 			tx.Rollback()
 			return
 		}
