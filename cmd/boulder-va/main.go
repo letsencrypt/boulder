@@ -53,7 +53,11 @@ func main() {
 		vai := va.NewValidationAuthorityImpl(pc)
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
-		vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+		if !c.Common.DNSAllowLoopbackAddresses {
+			vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+		} else {
+			vai.DNSResolver = core.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+		}
 		vai.UserAgent = c.VA.UserAgent
 
 		connectionHandler := func(srv *rpc.AmqpRPCServer) {
