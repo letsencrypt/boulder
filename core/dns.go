@@ -45,9 +45,9 @@ var (
 
 // DNSResolverImpl represents a client that talks to an external resolver
 type DNSResolverImpl struct {
-	DNSClient              *dns.Client
-	Servers                []string
-	allowLoopbackAddresses bool
+	DNSClient                *dns.Client
+	Servers                  []string
+	allowRestrictedAddresses bool
 }
 
 // NewDNSResolverImpl constructs a new DNS resolver object that utilizes the
@@ -59,9 +59,9 @@ func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolve
 	dnsClient.DialTimeout = dialTimeout
 
 	return &DNSResolverImpl{
-		DNSClient:              dnsClient,
-		Servers:                servers,
-		allowLoopbackAddresses: false,
+		DNSClient:                dnsClient,
+		Servers:                  servers,
+		allowRestrictedAddresses: false,
 	}
 }
 
@@ -70,7 +70,7 @@ func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolve
 // This constructor should *only* be called from tests (unit or integration).
 func NewTestDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolverImpl {
 	resolver := NewDNSResolverImpl(dialTimeout, servers)
-	resolver.allowLoopbackAddresses = true
+	resolver.allowRestrictedAddresses = true
 	return resolver
 }
 
@@ -120,8 +120,8 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, time.D
 	return txt, rtt, err
 }
 
-func isPrivateV4(ip net.IP, allowLoopback bool) bool {
-	return rfc1918_10.Contains(ip) || rfc1918_172_16.Contains(ip) || rfc1918_192_168.Contains(ip) || (!allowLoopback && rfc5735_127.Contains(ip))
+func isPrivateV4(ip net.IP) bool {
+	return rfc1918_10.Contains(ip) || rfc1918_172_16.Contains(ip) || rfc1918_192_168.Contains(ip) || rfc5735_127.Contains(ip)
 }
 
 // LookupHost sends a DNS query to find all A records associated with the provided
@@ -141,7 +141,7 @@ func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.
 
 	for _, answer := range r.Answer {
 		if answer.Header().Rrtype == dns.TypeA {
-			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && !isPrivateV4(a.A, dnsResolver.allowLoopbackAddresses) {
+			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && (!isPrivateV4(a.A) || dnsResolver.allowRestrictedAddresses) {
 				addrs = append(addrs, a.A)
 			}
 		}
