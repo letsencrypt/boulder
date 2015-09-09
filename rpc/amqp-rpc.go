@@ -366,6 +366,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 			CorrelationId: msg.CorrelationId,
 			Type:          msg.Type,
 			Body:          jsonResponse, // XXX-JWS: jws.Sign(privKey, body)
+			Expiration:    "30000",
 		})
 }
 
@@ -563,6 +564,7 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 			ReplyTo:       rpc.clientQueue,
 			Type:          method,
 			Body:          body, // XXX-JWS: jws.Sign(privKey, body)
+			Expiration:    "30000",
 		})
 
 	return responseChan
