@@ -212,7 +212,6 @@ func TestRevoke(t *testing.T) {
 
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
-	ca.MaxKeySize = 4096
 
 	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
 	certObj, err := ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
@@ -253,7 +252,6 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
-	ca.MaxKeySize = 4096
 
 	/*
 		  // Uncomment to test with a local signer
@@ -330,7 +328,6 @@ func TestRejectNoName(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
-	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs with no names
 	csr, _ := x509.ParseCertificateRequest(NoNameCSR)
@@ -361,7 +358,6 @@ func TestDeduplication(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
-	ca.MaxKeySize = 4096
 
 	// Test that the CA collapses duplicate names
 	csr, _ := x509.ParseCertificateRequest(DupeNameCSR)
@@ -391,7 +387,6 @@ func TestRejectValidityTooLong(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
-	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csr, _ := x509.ParseCertificateRequest(NoCNCSR)
@@ -411,7 +406,6 @@ func TestShortKey(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
-	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csr, _ := x509.ParseCertificateRequest(ShortKeyCSR)
@@ -425,7 +419,6 @@ func TestRejectBadAlgorithm(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
-	ca.MaxKeySize = 4096
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csr, _ := x509.ParseCertificateRequest(BadAlgorithmCSR)

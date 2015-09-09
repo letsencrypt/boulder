@@ -202,16 +202,18 @@ function main() {
 
 function makeKeyPair() {
   console.log("Generating cert key pair...");
-  child_process.exec("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=foo -nodes -x509 -out temp-cert.pem", function (error, stdout, stderr) {
-    if (error) {
-      console.log(error);
-      process.exit(1);
+  try {
+    fs.statSync(state.keyFile);
+    child_process.execSync("openssl req -new -key " + state.keyFile + " -days 3650 -subj /CN=foo -nodes -x509 -out temp-cert.pem");
+  } catch (e) {
+    if (e.code == 'ENOENT') {
+      child_process.execSync("openssl req -newkey rsa:2048 -keyout " + state.keyFile + " -days 3650 -subj /CN=foo -nodes -x509 -out temp-cert.pem");
+    } else {
+      throw(e);
     }
-    state.certPrivateKey = cryptoUtil.importPemPrivateKey(fs.readFileSync(state.keyFile));
-
-    console.log();
-    makeAccountKeyPair()
-  });
+  }
+  state.certPrivateKey = cryptoUtil.importPemPrivateKey(fs.readFileSync(state.keyFile));
+  makeAccountKeyPair()
 }
 
 function makeAccountKeyPair(answers) {
