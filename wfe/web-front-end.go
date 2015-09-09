@@ -641,7 +641,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	// TODO: Implement method of revocation by authorizations on account.
 	if !(core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) ||
 		registration.ID == cert.RegistrationID) {
-		logEvent.Error = "Revocation request must be signed by private key of cert to be revoked"
+		logEvent.Error = "Revocation request must be signed by private key of cert to be revoked, or by the account key of the account that issued it."
 		wfe.log.Debug("Key mismatch for revoke")
 		wfe.sendError(response,
 			logEvent.Error,
