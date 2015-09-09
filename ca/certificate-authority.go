@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -52,6 +53,7 @@ type CertificateAuthorityImpl struct {
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
 	DB             core.CertificateAuthorityDatabase
+	Clk            clock.Clock // TODO(jmhodges): should be private, like log
 	log            *blog.AuditLogger
 	Prefix         int // Prepended to the serial number
 	ValidityPeriod time.Duration
@@ -66,7 +68,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config cmd.CAConfig, issuerCert string) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config cmd.CAConfig, clk clock.Clock, issuerCert string) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -125,6 +127,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		profile:    config.Profile,
 		DB:         cadb,
 		Prefix:     config.SerialPrefix,
+		Clk:        clk,
 		log:        logger,
 		NotAfter:   issuer.NotAfter,
 	}
@@ -212,7 +215,7 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 		Certificate: cert,
 		Status:      string(core.OCSPStatusRevoked),
 		Reason:      int(reasonCode),
-		RevokedAt:   time.Now(),
+		RevokedAt:   ca.Clk.Now(),
 	}
 	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
 	if err != nil {
@@ -292,7 +295,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		}
 	}
 
-	notAfter := time.Now().Add(ca.ValidityPeriod)
+	notAfter := ca.Clk.Now().Add(ca.ValidityPeriod)
 
 	if ca.NotAfter.Before(notAfter) {
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c

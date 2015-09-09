@@ -144,7 +144,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestDNSNoServers(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Hour, []string{})
+	obj := NewTestDNSResolverImpl(time.Hour, []string{})
 
 	_, _, err := obj.ExchangeOne("letsencrypt.org", dns.TypeA)
 
@@ -152,7 +152,7 @@ func TestDNSNoServers(t *testing.T) {
 }
 
 func TestDNSOneServer(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
 	_, _, err := obj.ExchangeOne("letsencrypt.org", dns.TypeSOA)
 
@@ -160,7 +160,7 @@ func TestDNSOneServer(t *testing.T) {
 }
 
 func TestDNSDuplicateServers(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr, dnsLoopbackAddr})
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr, dnsLoopbackAddr})
 
 	_, _, err := obj.ExchangeOne("letsencrypt.org", dns.TypeSOA)
 
@@ -168,7 +168,7 @@ func TestDNSDuplicateServers(t *testing.T) {
 }
 
 func TestDNSLookupsNoServer(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{})
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{})
 
 	_, _, err := obj.LookupTXT("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
@@ -184,7 +184,7 @@ func TestDNSLookupsNoServer(t *testing.T) {
 }
 
 func TestDNSServFail(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 	bad := "servfail.com"
 
 	_, _, err := obj.LookupTXT(bad)
@@ -204,7 +204,7 @@ func TestDNSServFail(t *testing.T) {
 }
 
 func TestDNSLookupTXT(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
 	a, rtt, err := obj.LookupTXT("letsencrypt.org")
 	t.Logf("A: %v RTT %s", a, rtt)
@@ -218,7 +218,7 @@ func TestDNSLookupTXT(t *testing.T) {
 }
 
 func TestDNSLookupHost(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
 	ip, _, err := obj.LookupHost("servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
@@ -248,7 +248,7 @@ func TestDNSLookupHost(t *testing.T) {
 }
 
 func TestDNSLookupCAA(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
 
 	caas, _, err := obj.LookupCAA("bracewel.net")
 	test.AssertNotError(t, err, "CAA lookup failed")

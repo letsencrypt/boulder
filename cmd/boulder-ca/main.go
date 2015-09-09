@@ -7,6 +7,7 @@ package main
 
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -43,7 +44,7 @@ func main() {
 		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, c.Common.IssuerCert)
+		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, clock.Default(), c.Common.IssuerCert)
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.MaxKeySize = c.Common.MaxKeySize
 		cai.PA = pa

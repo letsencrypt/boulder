@@ -10,9 +10,12 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"testing"
@@ -43,13 +46,13 @@ func BenchmarkCheckCert(b *testing.B) {
 		return
 	}
 	defer func() {
-		saDbMap.TruncateTables()
-		paDbMap.TruncateTables()
+		err = saDbMap.TruncateTables()
 		fmt.Printf("Failed to truncate tables: %s\n", err)
-		os.Exit(1)
+		err = paDbMap.TruncateTables()
+		fmt.Printf("Failed to truncate tables: %s\n", err)
 	}()
 
-	checker := newChecker(saDbMap, paDbMap, false)
+	checker := newChecker(saDbMap, paDbMap, clock.Default(), false)
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
@@ -78,19 +81,20 @@ func BenchmarkCheckCert(b *testing.B) {
 func TestCheckCert(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(saDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to database")
+	saCleanup := test.ResetTestDatabase(t, saDbMap.Db)
 	paDbMap, err := sa.NewDbMap(paDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to policy database")
+	paCleanup := test.ResetTestDatabase(t, paDbMap.Db)
 	defer func() {
-		saDbMap.TruncateTables()
-		paDbMap.TruncateTables()
-		test.AssertNotError(t, err, "Failed to truncate tables")
+		saCleanup()
+		paCleanup()
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
-	checker := newChecker(saDbMap, paDbMap, false)
 	fc := clock.NewFake()
 	fc.Add(time.Hour * 24 * 90)
-	checker.clock = fc
+
+	checker := newChecker(saDbMap, paDbMap, fc, false)
 
 	issued := checker.clock.Now().Add(-time.Hour * 24 * 45)
 	goodExpiry := issued.Add(checkPeriod)
@@ -103,6 +107,7 @@ func TestCheckCert(t *testing.T) {
 		Subject: pkix.Name{
 			CommonName: "example.com",
 		},
+		NotBefore:             issued,
 		NotAfter:              goodExpiry.AddDate(0, 0, 1), // Period too long
 		DNSNames:              []string{"example-a.com"},
 		SerialNumber:          serial,
@@ -114,15 +119,16 @@ func TestCheckCert(t *testing.T) {
 	//   Digest doesn't match
 	//   Serial doesn't match
 	//   Expiry doesn't match
+	//   Issued doesn't match
 	cert := core.Certificate{
 		DER:     brokenCertDer,
-		Issued:  issued,
+		Issued:  issued.Add(12 * time.Hour),
 		Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match
 	}
 
 	problems := checker.checkCert(cert)
 	fmt.Println(strings.Join(problems, "\n"))
-	test.AssertEquals(t, len(problems), 6)
+	test.AssertEquals(t, len(problems), 7)
 
 	// Fix the problems
 	rawCert.Subject.CommonName = "example-a.com"
@@ -137,6 +143,7 @@ func TestCheckCert(t *testing.T) {
 	cert.Digest = core.Fingerprint256(goodCertDer)
 	cert.DER = goodCertDer
 	cert.Expires = parsed.NotAfter
+	cert.Issued = parsed.NotBefore
 	problems = checker.checkCert(cert)
 	test.AssertEquals(t, len(problems), 0)
 }
@@ -146,13 +153,16 @@ func TestGetAndProcessCerts(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	paDbMap, err := sa.NewDbMap(paDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to policy database")
-	checker := newChecker(saDbMap, paDbMap, false)
-	sa, err := sa.NewSQLStorageAuthority(saDbMap)
+	fc := clock.NewFake()
+
+	checker := newChecker(saDbMap, paDbMap, fc, false)
+	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
+	saCleanUp := test.ResetTestDatabase(t, saDbMap.Db)
+	paCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
 	defer func() {
-		saDbMap.TruncateTables()
-		paDbMap.TruncateTables()
-		test.AssertNotError(t, err, "Failed to truncate tables")
+		saCleanUp()
+		paCleanUp()
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
@@ -185,4 +195,36 @@ func TestGetAndProcessCerts(t *testing.T) {
 	checker.processCerts(wg)
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
 	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
+}
+
+func TestSaveReport(t *testing.T) {
+	r := report{
+		begin:     time.Time{},
+		end:       time.Time{},
+		GoodCerts: 2,
+		BadCerts:  1,
+		Entries: map[string]reportEntry{
+			"020000000000004b475da49b91da5c17": reportEntry{
+				Valid: true,
+			},
+			"020000000000004d1613e581432cba7e": reportEntry{
+				Valid: true,
+			},
+			"020000000000004e402bc21035c6634a": reportEntry{
+				Valid:    false,
+				Problems: []string{"None really..."},
+			},
+		},
+	}
+
+	tmpDir, err := ioutil.TempDir("", "cert-checker")
+	test.AssertNotError(t, err, "Couldn't create temporary directory")
+	defer os.RemoveAll(tmpDir)
+	err = r.save(tmpDir)
+	test.AssertNotError(t, err, "Couldn't save report")
+	reportContent, err := ioutil.ReadFile(path.Join(tmpDir, "00010101-00010101-report.json"))
+	test.AssertNotError(t, err, "Couldn't read report file")
+	expectedContent, err := json.Marshal(r)
+	test.AssertNotError(t, err, "Couldn't unmarshal report file")
+	test.AssertByteEquals(t, expectedContent, reportContent)
 }

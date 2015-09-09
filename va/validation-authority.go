@@ -218,7 +218,7 @@ func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdenti
 	portString := fmt.Sprintf("%d", port)
 	hostPort := net.JoinHostPort(host, portString)
 
-	url := url.URL{
+	url := &url.URL{
 		Scheme: scheme,
 		Host:   hostPort,
 		Path:   fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token),

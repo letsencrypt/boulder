@@ -12,7 +12,7 @@
 -- Storage Authority
 CREATE USER `sa`@`%` IDENTIFIED BY 'password';
 GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'%';
-GRANT SELECT,INSERT,UPDATE,DELETE ON pending_authz TO 'sa'@'%';
+GRANT SELECT,INSERT,UPDATE,DELETE ON pendingAuthorizations TO 'sa'@'%';
 GRANT SELECT,INSERT ON certificates TO 'sa'@'%';
 GRANT SELECT,INSERT,UPDATE ON certificateStatus TO 'sa'@'%';
 GRANT SELECT,INSERT ON deniedCSRs TO 'sa'@'%';
