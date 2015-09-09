@@ -18,7 +18,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/rpc"
-	"github.com/letsencrypt/boulder/wfe"
 )
 
 func main() {
@@ -44,7 +43,6 @@ func main() {
 		cmd.FailOnError(err, "Couldn't create PA")
 
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger)
-		rai.AuthzBase = c.Common.BaseURL + wfe.AuthzPath
 		rai.MaxKeySize = c.Common.MaxKeySize
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)

@@ -32,6 +32,7 @@ const (
 	RegPath        = "/acme/reg/"
 	NewAuthzPath   = "/acme/new-authz"
 	AuthzPath      = "/acme/authz/"
+	ChallengePath  = "/acme/challenge/"
 	NewCertPath    = "/acme/new-cert"
 	CertPath       = "/acme/cert/"
 	RevokeCertPath = "/acme/revoke-cert"
@@ -47,13 +48,14 @@ type WebFrontEndImpl struct {
 	log   *blog.AuditLogger
 
 	// URL configuration parameters
-	BaseURL   string
-	NewReg    string
-	RegBase   string
-	NewAuthz  string
-	AuthzBase string
-	NewCert   string
-	CertBase  string
+	BaseURL       string
+	NewReg        string
+	RegBase       string
+	NewAuthz      string
+	AuthzBase     string
+	ChallengeBase string
+	NewCert       string
+	CertBase      string
 
 	// JSON encoded endpoint directory
 	DirectoryJSON []byte
@@ -195,6 +197,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.RegBase = wfe.BaseURL + RegPath
 	wfe.NewAuthz = wfe.BaseURL + NewAuthzPath
 	wfe.AuthzBase = wfe.BaseURL + AuthzPath
+	wfe.ChallengeBase = wfe.BaseURL + ChallengePath
 	wfe.NewCert = wfe.BaseURL + NewCertPath
 	wfe.CertBase = wfe.BaseURL + CertPath
 
@@ -218,7 +221,8 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.HandleFunc(m, NewAuthzPath, wfe.NewAuthorization, "POST")
 	wfe.HandleFunc(m, NewCertPath, wfe.NewCertificate, "POST")
 	wfe.HandleFunc(m, RegPath, wfe.Registration, "POST")
-	wfe.HandleFunc(m, AuthzPath, wfe.Authorization, "GET", "POST")
+	wfe.HandleFunc(m, AuthzPath, wfe.Authorization, "GET")
+	wfe.HandleFunc(m, ChallengePath, wfe.Challenge, "GET", "POST")
 	wfe.HandleFunc(m, CertPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, RevokeCertPath, wfe.RevokeCertificate, "POST")
 	wfe.HandleFunc(m, TermsPath, wfe.Terms, "GET")
@@ -549,8 +553,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
 	authzURL := wfe.AuthzBase + string(authz.ID)
-	authz.ID = ""
-	authz.RegistrationID = 0
+	wfe.prepAuthorizationForDisplay(&authz)
 	responseBody, err := json.Marshal(authz)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -757,38 +760,82 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	wfe.Stats.Inc("Certificates", 1, 1.0)
 }
 
-func (wfe *WebFrontEndImpl) challenge(
+func (wfe *WebFrontEndImpl) Challenge(
 	response http.ResponseWriter,
-	request *http.Request,
-	authz core.Authorization,
-	logEvent *requestEvent) {
+	request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
 
-	// Check that the requested challenge exists within the authorization
-	found := false
-	var challengeIndex int
-	var challenge core.Challenge
-	for i, challenge := range authz.Challenges {
-		tempURL := challenge.URI
-		if tempURL.Path == request.URL.Path && tempURL.RawQuery == request.URL.RawQuery {
-			found = true
-			challengeIndex = i
-			break
-		}
+	notFound := func() {
+		wfe.sendError(response, "No such registration", request.URL.Path, http.StatusNotFound)
 	}
 
-	if !found {
-		logEvent.Error = "Unable to find challenge"
-		wfe.sendError(response, logEvent.Error, request.URL.RawQuery, http.StatusNotFound)
+	// Challenge URIs are of the form /acme/challenge/<auth id>/<challenge id>.
+	// Here we parse out the id components. TODO: Use a better tool to parse out
+	// URL structure: https://github.com/letsencrypt/boulder/issues/437
+	slug := strings.Split(request.URL.Path[len(ChallengePath):], "/")
+	if len(slug) != 2 {
+		notFound()
 		return
 	}
+	authorizationID := slug[0]
+	challengeID, err := strconv.ParseInt(slug[1], 10, 64)
+	if err != nil {
+		notFound()
+		return
+	}
+	logEvent.Extra["AuthorizationID"] = authorizationID
+	logEvent.Extra["ChallengeID"] = challengeID
+
+	authz, err := wfe.SA.GetAuthorization(authorizationID)
+	if err != nil {
+		notFound()
+		return
+	}
+	// Check that the requested challenge exists within the authorization
+	challengeIndex := authz.FindChallenge(challengeID)
+	if challengeIndex == -1 {
+		notFound()
+		return
+	}
+	challenge := authz.Challenges[challengeIndex]
+
+	logEvent.Extra["ChallengeType"] = challenge.Type
+	logEvent.Extra["AuthorizationRegistrationID"] = authz.RegistrationID
+	logEvent.Extra["AuthorizationIdentifier"] = authz.Identifier
+	logEvent.Extra["AuthorizationStatus"] = authz.Status
+	logEvent.Extra["AuthorizationExpires"] = authz.Expires
 
 	switch request.Method {
 	case "GET":
-		wfe.getChallenge(response, request, authz, challenge, logEvent)
+		wfe.getChallenge(response, request, authz, challenge, &logEvent)
 
 	case "POST":
-		wfe.postChallenge(response, request, authz, challengeIndex, logEvent)
+		wfe.postChallenge(response, request, authz, challengeIndex, &logEvent)
 	}
+}
+
+// prepChallengeForDisplay takes a core.Challenge and prepares it for display to
+// the client by filling in its URI field and clearing its AccountKey and ID
+// fields.
+// TODO: Come up with a cleaner way to do this.
+// https://github.com/letsencrypt/boulder/issues/761
+func (wfe *WebFrontEndImpl) prepChallengeForDisplay(authz core.Authorization, challenge *core.Challenge) {
+	challenge.URI = fmt.Sprintf("%s%s/%d", wfe.ChallengeBase, authz.ID, challenge.ID)
+	challenge.AccountKey = nil
+	// 0 is considered "empty" for the purpose of the JSON omitempty tag.
+	challenge.ID = 0
+}
+
+// prepAuthorizationForDisplay takes a core.Authorization and prepares it for
+// display to the client by clearing its ID and RegistrationID fields, and
+// preparing all its challenges.
+func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(authz *core.Authorization) {
+	for i, _ := range authz.Challenges {
+		wfe.prepChallengeForDisplay(*authz, &authz.Challenges[i])
+	}
+	authz.ID = ""
+	authz.RegistrationID = 0
 }
 
 func (wfe *WebFrontEndImpl) getChallenge(
@@ -797,6 +844,9 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	authz core.Authorization,
 	challenge core.Challenge,
 	logEvent *requestEvent) {
+
+	wfe.prepChallengeForDisplay(authz, &challenge)
+
 	jsonReply, err := json.Marshal(challenge)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -807,7 +857,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	}
 
 	authzURL := wfe.AuthzBase + string(authz.ID)
-	response.Header().Add("Location", challenge.URI.String())
+	response.Header().Add("Location", challenge.URI)
 	response.Header().Set("Content-Type", "application/json")
 	response.Header().Add("Link", link(authzURL, "up"))
 	response.WriteHeader(http.StatusAccepted)
@@ -874,6 +924,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 	// assumption: UpdateAuthorization does not modify order of challenges
 	challenge := updatedAuthorization.Challenges[challengeIndex]
+	wfe.prepChallengeForDisplay(authz, &challenge)
 	jsonReply, err := json.Marshal(challenge)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -883,7 +934,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	}
 
 	authzURL := wfe.AuthzBase + string(authz.ID)
-	response.Header().Add("Location", challenge.URI.String())
+	response.Header().Add("Location", challenge.URI)
 	response.Header().Set("Content-Type", "application/json")
 	response.Header().Add("Link", link(authzURL, "up"))
 	response.WriteHeader(http.StatusAccepted)
@@ -997,31 +1048,8 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 	logEvent.Extra["AuthorizationStatus"] = authz.Status
 	logEvent.Extra["AuthorizationExpires"] = authz.Expires
 
-	// If there is a fragment, then this is actually a request to a challenge URI
-	if len(request.URL.RawQuery) != 0 {
-		wfe.challenge(response, request, authz, &logEvent)
-	} else if request.Method == "GET" {
-		wfe.GetAuthorization(response, request, authz, &logEvent)
-	} else {
-		// For challenges, POST and GET are allowed. For authorizations only GET is
-		// allowed.
-		// TODO(jsha): Split challenge updates into a different path so we can use
-		// the HandleFunc functionality for declaring allowed methods.
-		// https://github.com/letsencrypt/boulder/issues/638
-		logEvent.Error = "Method not allowed"
-		response.Header().Set("Allow", "GET")
-		wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
-	}
-}
+	wfe.prepAuthorizationForDisplay(&authz)
 
-func (wfe *WebFrontEndImpl) GetAuthorization(
-	response http.ResponseWriter,
-	request *http.Request,
-	authz core.Authorization,
-	logEvent *requestEvent) {
-	// Blank out ID and regID
-	authz.ID = ""
-	authz.RegistrationID = 0
 	jsonReply, err := json.Marshal(authz)
 	if err != nil {
 		logEvent.Error = err.Error()
