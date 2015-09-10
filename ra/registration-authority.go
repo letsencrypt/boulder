@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
-	"strconv"
 	"strings"
 	"time"
 
@@ -34,8 +33,6 @@ type RegistrationAuthorityImpl struct {
 	DNSResolver core.DNSResolver
 	clk         clock.Clock
 	log         *blog.AuditLogger
-
-	AuthzBase string
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -157,6 +154,11 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Create validations, but we have to update them with URIs later
 	challenges, combinations := ra.PA.ChallengesFor(identifier)
 
+	for i := range challenges {
+		// Add the account key used to generate the challenge
+		challenges[i].AccountKey = &reg.Key
+	}
+
 	// Partially-filled object
 	authz = core.Authorization{
 		Identifier:     identifier,
@@ -172,35 +174,19 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		// InternalServerError since the user-data was validated before being
 		// passed to the SA.
 		err = core.InternalServerError(fmt.Sprintf("Invalid authorization request: %s", err))
-		return authz, err
+		return core.Authorization{}, err
 	}
 
-	// Construct all the challenge URIs
-	for i := range authz.Challenges {
-		// Ignoring these errors because we construct the URLs to be correct
-		challengeURI, _ := core.ParseAcmeURL(ra.AuthzBase + authz.ID + "?challenge=" + strconv.Itoa(i))
-		authz.Challenges[i].URI = challengeURI
-
-		// Add the account key used to generate the challenge
-		authz.Challenges[i].AccountKey = &reg.Key
-
-		if !authz.Challenges[i].IsSane(false) {
+	// Check each challenge for sanity.
+	for _, challenge := range authz.Challenges {
+		if !challenge.IsSane(false) {
 			// InternalServerError because we generated these challenges, they should
 			// be OK.
-			err = core.InternalServerError(fmt.Sprintf("Challenge didn't pass sanity check: %+v", authz.Challenges[i]))
-			return authz, err
+			err = core.InternalServerError(fmt.Sprintf("Challenge didn't pass sanity check: %+v", challenge))
+			return core.Authorization{}, err
 		}
 	}
 
-	// Store the authorization object, then return it
-	err = ra.SA.UpdatePendingAuthorization(authz)
-	if err != nil {
-		// InternalServerError because we created the authorization just above,
-		// and adding Sane challenges should not break it.
-		err = core.InternalServerError(err.Error())
-	}
-
-	ra.stats.Inc("RA.NewPendingAuthorizations", 1, 1.0)
 	return authz, err
 }
 
@@ -372,6 +358,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		err = core.MalformedRequestError("Challenge data was corrupted")
 		return
 	}
+	ra.stats.Inc("RA.NewPendingAuthorizations", 1, 1.0)
 
 	// Look up the account key for this authorization
 	reg, err := ra.SA.GetRegistration(authz.RegistrationID)
