@@ -36,7 +36,6 @@ type challModel struct {
 	Status           core.AcmeStatus `db:"status"`
 	Error            []byte          `db:"error"`
 	Validated        *time.Time      `db:"validated"`
-	URI              string          `db:"uri"`
 	Token            string          `db:"token"`
 	TLS              *bool           `db:"tls"`
 	Validation       []byte          `db:"validation"`
@@ -85,6 +84,7 @@ func modelToRegistration(rm *regModel) (core.Registration, error) {
 
 func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 	cm := challModel{
+		ID:              c.ID,
 		AuthorizationID: authID,
 		Type:            c.Type,
 		Status:          c.Status,
@@ -107,12 +107,6 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 			return nil, fmt.Errorf("Error object is too large to store in the database")
 		}
 		cm.Error = errJSON
-	}
-	if c.URI != nil {
-		if len(c.URI.String()) > 255 {
-			return nil, fmt.Errorf("URI is too long to store in the database")
-		}
-		cm.URI = c.URI.String()
 	}
 	if len(c.ValidationRecord) > 0 {
 		vrJSON, err := json.Marshal(c.ValidationRecord)
@@ -139,18 +133,12 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
+		ID:        cm.ID,
 		Type:      cm.Type,
 		Status:    cm.Status,
 		Validated: cm.Validated,
 		Token:     cm.Token,
 		TLS:       cm.TLS,
-	}
-	if len(cm.URI) > 0 {
-		uri, err := core.ParseAcmeURL(cm.URI)
-		if err != nil {
-			return core.Challenge{}, err
-		}
-		c.URI = uri
 	}
 	if len(cm.Validation) > 0 {
 		val, err := jose.ParseSigned(string(cm.Validation))

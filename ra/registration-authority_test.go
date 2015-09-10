@@ -214,7 +214,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.VA = va
 	ra.CA = &ca
 	ra.PA = pa
-	ra.AuthzBase = "http://acme.invalid/authz/"
 	ra.DNSResolver = &mocks.MockDNS{}
 
 	AuthzInitial.RegistrationID = Registration.ID
