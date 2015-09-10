@@ -177,10 +177,10 @@ type Config struct {
 		BaseURL string
 		// Path to a PEM-encoded copy of the issuer certificate.
 		IssuerCert string
-		MaxKeySize int
 
-		DNSResolver string
-		DNSTimeout  string
+		DNSResolver               string
+		DNSTimeout                string
+		DNSAllowLoopbackAddresses bool
 	}
 
 	CertChecker struct {

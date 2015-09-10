@@ -16,6 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -31,18 +32,15 @@ type RegistrationAuthorityImpl struct {
 	PA          core.PolicyAuthority
 	stats       statsd.Statter
 	DNSResolver core.DNSResolver
+	clk         clock.Clock
 	log         *blog.AuditLogger
 
-	AuthzBase  string
-	MaxKeySize int
+	AuthzBase string
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(stats statsd.Statter) (ra RegistrationAuthorityImpl) {
-	logger := blog.GetAuditLogger()
-	logger.Notice("Registration Authority Starting")
-	ra.log = logger
-	ra.stats = stats
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter) RegistrationAuthorityImpl {
+	ra := RegistrationAuthorityImpl{clk: clk, log: logger, stats: stats}
 	return ra
 }
 
@@ -82,7 +80,7 @@ type certificateRequestEvent struct {
 
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
-	if err = core.GoodKey(init.Key.Key, ra.MaxKeySize); err != nil {
+	if err = core.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	reg = core.Registration{
@@ -219,7 +217,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		ID:            core.NewToken(),
 		Requester:     regID,
 		RequestMethod: "online",
-		RequestTime:   time.Now(),
+		RequestTime:   ra.clk.Now(),
 	}
 
 	// No matter what, log the request
@@ -280,7 +278,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}
 
 	// Check that each requested name has a valid authorization
-	now := time.Now()
+	now := ra.clk.Now()
 	earliestExpiry := time.Date(2100, 01, 01, 0, 0, 0, 0, time.UTC)
 	for _, name := range names {
 		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
@@ -328,7 +326,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.CommonName = parsedCertificate.Subject.CommonName
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	logEvent.NotAfter = parsedCertificate.NotAfter
-	logEvent.ResponseTime = time.Now()
+	logEvent.ResponseTime = ra.clk.Now()
+
 	logEventResult = "successful"
 
 	ra.stats.Inc("RA.NewCertificates", 1, 1.0)
@@ -500,7 +499,7 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 		authz.Status = core.StatusInvalid
 	} else {
 		// TODO: Enable configuration of expiry time
-		exp := time.Now().Add(365 * 24 * time.Hour)
+		exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 		authz.Expires = &exp
 	}
 

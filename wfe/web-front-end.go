@@ -87,8 +87,10 @@ func statusCodeFromError(err interface{}) int {
 		return http.StatusForbidden
 	case core.NotFoundError:
 		return http.StatusNotFound
+	case core.LengthRequiredError:
+		return http.StatusLengthRequired
 	case core.SignatureValidationError:
-		return http.StatusPreconditionFailed
+		return http.StatusBadRequest
 	case core.InternalServerError:
 		return http.StatusInternalServerError
 	default:
@@ -265,6 +267,7 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 }
 
 func (wfe *WebFrontEndImpl) Directory(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Content-Type", "application/json")
 	response.Write(wfe.DirectoryJSON)
 }
 
@@ -282,6 +285,12 @@ const (
 func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
 	var err error
 	var reg core.Registration
+
+	if _, ok := request.Header["Content-Length"]; !ok {
+		err = core.LengthRequiredError("Content-Length header is required for POST.")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
+	}
 
 	// Read body
 	if request.Body == nil {
@@ -329,6 +338,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 		wfe.log.Debug(string(body))
 		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
 		return nil, nil, reg, puberr
+	}
+	if key == nil {
+		err = core.SignatureValidationError("No JWK in JWS header")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
 	}
 
 	// Check that the request has a known anti-replay nonce
@@ -393,6 +407,8 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, 
 	case http.StatusNotFound:
 		fallthrough
 	case http.StatusBadRequest:
+		fallthrough
+	case http.StatusLengthRequired:
 		problem.Type = core.MalformedProblem
 	default: // Either http.StatusInternalServerError or an unexpected code
 		problem.Type = core.ServerInternalProblem
@@ -440,7 +456,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 	body, key, _, err := wfe.verifyPOST(request, false, core.ResourceNewReg)
 	if err != nil {
 		logEvent.Error = err.Error()
-		wfe.sendError(response, malformedJWS, err, http.StatusBadRequest)
+		wfe.sendError(response, malformedJWS, err, statusCodeFromError(err))
 		return
 	}
 
@@ -506,7 +522,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
-		respCode := http.StatusBadRequest
+		respCode := statusCodeFromError(err)
 		if err == sql.ErrNoRows {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
@@ -574,7 +590,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	body, requestKey, registration, err := wfe.verifyPOST(request, false, core.ResourceRevokeCert)
 	if err != nil {
 		logEvent.Error = err.Error()
-		wfe.sendError(response, malformedJWS, err, http.StatusBadRequest)
+		wfe.sendError(response, malformedJWS, err, statusCodeFromError(err))
 		return
 	}
 	logEvent.Requester = registration.ID
@@ -677,7 +693,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
-		respCode := http.StatusBadRequest
+		respCode := statusCodeFromError(err)
 		if err == sql.ErrNoRows {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
@@ -696,16 +712,27 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 
-	var init core.CertificateRequest
-	if err = json.Unmarshal(body, &init); err != nil {
+	var certificateRequest core.CertificateRequest
+	if err = json.Unmarshal(body, &certificateRequest); err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
-	wfe.logCsr(request.RemoteAddr, init, reg)
-	logEvent.Extra["CSRDNSNames"] = init.CSR.DNSNames
-	logEvent.Extra["CSREmailAddresses"] = init.CSR.EmailAddresses
-	logEvent.Extra["CSRIPAddresses"] = init.CSR.IPAddresses
+	wfe.logCsr(request.RemoteAddr, certificateRequest, reg)
+	// Check that the key in the CSR is good. This will also be checked in the CA
+	// component, but we want to discard CSRs with bad keys as early as possible
+	// because (a) it's an easy check and we can save unnecessary requests and
+	// bytes on the wire, and (b) the CA logs all rejections as audit events, but
+	// a bad key from the client is just a malformed request and doesn't need to
+	// be audited.
+	if err = core.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
+		logEvent.Error = err.Error()
+		wfe.sendError(response, "Invalid key in certificate request", err, http.StatusBadRequest)
+		return
+	}
+	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
+	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
+	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
 
 	// Create new certificate and return
 	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
@@ -713,7 +740,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// authorized for target site, they could cause issuance for that site by
 	// lying to the RA. We should probably pass a copy of the whole rquest to the
 	// RA for secondary validation.
-	cert, err := wfe.RA.NewCertificate(init, reg.ID)
+	cert, err := wfe.RA.NewCertificate(certificateRequest, reg.ID)
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error creating new cert", err, statusCodeFromError(err))
@@ -892,7 +919,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 	if err != nil {
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
-		respCode := http.StatusBadRequest
+		respCode := statusCodeFromError(err)
 		if err == sql.ErrNoRows {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden

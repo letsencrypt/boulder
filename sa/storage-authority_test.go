@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
@@ -29,18 +30,21 @@ var log = mocks.UseMockLog()
 
 // initSA constructs a SQLStorageAuthority and a clean up function
 // that should be defer'ed to the end of the test.
-func initSA(t *testing.T) (*SQLStorageAuthority, func()) {
+func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	dbMap, err := NewDbMap(dbConnStr)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 
-	sa, err := NewSQLStorageAuthority(dbMap)
+	fc := clock.NewFake()
+	fc.Add(1 * time.Hour)
+
+	sa, err := NewSQLStorageAuthority(dbMap, fc)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
-	return sa, cleanUp
+	return sa, fc, cleanUp
 }
 
 var (
@@ -52,7 +56,7 @@ var (
 )
 
 func TestAddRegistration(t *testing.T) {
-	sa, cleanUp := initSA(t)
+	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
 	jwk := satest.GoodJWK()
@@ -104,7 +108,7 @@ func TestAddRegistration(t *testing.T) {
 }
 
 func TestNoSuchRegistrationErrors(t *testing.T) {
-	sa, cleanUp := initSA(t)
+	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
 	_, err := sa.GetRegistration(100)
@@ -125,7 +129,7 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 }
 
 func TestAddAuthorization(t *testing.T) {
-	sa, cleanUp := initSA(t)
+	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -196,7 +200,7 @@ func CreateDomainAuthWithRegId(t *testing.T, domainName string, sa *SQLStorageAu
 
 // Ensure we get only valid authorization with correct RegID
 func TestGetLatestValidAuthorizationBasic(t *testing.T) {
-	sa, cleanUp := initSA(t)
+	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
 	// attempt to get unauthorized domain
@@ -228,7 +232,7 @@ func TestGetLatestValidAuthorizationBasic(t *testing.T) {
 
 // Ensure we get the latest valid authorization for an ident
 func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
-	sa, cleanUp := initSA(t)
+	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
 	domain := "example.org"
@@ -283,7 +287,7 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 }
 
 func TestAddCertificate(t *testing.T) {
-	sa, cleanUp := initSA(t)
+	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -338,7 +342,7 @@ func TestAddCertificate(t *testing.T) {
 // TestGetCertificateByShortSerial tests some failure conditions for GetCertificate.
 // Success conditions are tested above in TestAddCertificate.
 func TestGetCertificateByShortSerial(t *testing.T) {
-	sa, cleanUp := initSA(t)
+	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
 	_, err := sa.GetCertificateByShortSerial("")
@@ -357,7 +361,7 @@ func TestDeniedCSR(t *testing.T) {
 	csrBytes, _ := x509.CreateCertificateRequest(rand.Reader, template, key)
 	csr, _ := x509.ParseCertificateRequest(csrBytes)
 
-	sa, cleanUp := initSA(t)
+	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
 	exists, err := sa.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
@@ -366,7 +370,7 @@ func TestDeniedCSR(t *testing.T) {
 }
 
 func TestUpdateOCSP(t *testing.T) {
-	sa, cleanUp := initSA(t)
+	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -378,15 +382,21 @@ func TestUpdateOCSP(t *testing.T) {
 
 	serial := "00000000000000000000000000021bd4"
 	const ocspResponse = "this is a fake OCSP response"
+
+	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
+	beforeUpdate := certificateStatusObj.(*core.CertificateStatus)
+
+	fc.Add(1 * time.Hour)
+
 	err = sa.UpdateOCSP(serial, []byte(ocspResponse))
 	test.AssertNotError(t, err, "UpdateOCSP failed")
 
-	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
+	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
 	certificateStatus := certificateStatusObj.(*core.CertificateStatus)
 	test.AssertNotError(t, err, "Failed to fetch certificate status")
 	test.Assert(t,
-		certificateStatus.OCSPLastUpdated.After(time.Now().Add(-time.Second)),
-		"OCSP last updated too old.")
+		certificateStatus.OCSPLastUpdated.After(beforeUpdate.OCSPLastUpdated),
+		fmt.Sprintf("UpdateOCSP did not take. before: %s; after: %s", beforeUpdate.OCSPLastUpdated, certificateStatus.OCSPLastUpdated))
 
 	var fetchedOcspResponse core.OCSPResponse
 	err = sa.dbMap.SelectOne(&fetchedOcspResponse,
@@ -394,4 +404,56 @@ func TestUpdateOCSP(t *testing.T) {
 		serial)
 	test.AssertNotError(t, err, "Failed to fetch OCSP response")
 	test.AssertEquals(t, ocspResponse, string(fetchedOcspResponse.Response))
+}
+
+func TestMarkCertificateRevoked(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	// Add a cert to the DB to test with.
+	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	_, err = sa.AddCertificate(certDER, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	serial := "00000000000000000000000000021bd4"
+	const ocspResponse = "this is a fake OCSP response"
+
+	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
+	beforeStatus := certificateStatusObj.(*core.CertificateStatus)
+	test.AssertEquals(t, beforeStatus.Status, core.OCSPStatusGood)
+
+	fc.Add(1 * time.Hour)
+
+	code := core.RevocationCode(1)
+	err = sa.MarkCertificateRevoked(serial, []byte(ocspResponse), code)
+	test.AssertNotError(t, err, "MarkCertificateRevoked failed")
+
+	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
+	afterStatus := certificateStatusObj.(*core.CertificateStatus)
+	test.AssertNotError(t, err, "Failed to fetch certificate status")
+
+	if code != afterStatus.RevokedReason {
+		t.Errorf("RevokedReasons, expected %s, got %s", code, afterStatus.RevokedReason)
+	}
+	if !fc.Now().Equal(afterStatus.RevokedDate) {
+		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), afterStatus.RevokedDate)
+	}
+	if !fc.Now().Equal(afterStatus.OCSPLastUpdated) {
+		t.Errorf("OCSPLastUpdated, expected %s, got %s", fc.Now(), afterStatus.OCSPLastUpdated)
+	}
+
+	if !afterStatus.OCSPLastUpdated.After(beforeStatus.OCSPLastUpdated) {
+		t.Errorf("OCSPLastUpdated did not update correctly. before: %s; after: %s",
+			beforeStatus.OCSPLastUpdated, afterStatus.OCSPLastUpdated)
+	}
+	var fetched core.OCSPResponse
+	err = sa.dbMap.SelectOne(&fetched,
+		`SELECT * from ocspResponses where serial = ? order by createdAt DESC limit 1;`,
+		serial)
+	test.AssertNotError(t, err, "Failed to fetch OCSP response")
+	if ocspResponse != string(fetched.Response) {
+		t.Errorf("OCSPResponse response, expected %#v, got %#v", ocspResponse, string(fetched.Response))
+	}
 }

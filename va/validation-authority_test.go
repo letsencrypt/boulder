@@ -834,7 +834,7 @@ func TestDNSValidationServFail(t *testing.T) {
 func TestDNSValidationNoServer(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, stats)
-	va.DNSResolver = core.NewDNSResolverImpl(time.Second*5, []string{})
+	va.DNSResolver = core.NewTestDNSResolverImpl(time.Second*5, []string{})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 

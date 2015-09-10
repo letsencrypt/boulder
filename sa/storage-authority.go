@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
@@ -27,6 +28,7 @@ const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :au
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
+	clk   clock.Clock
 	log   *blog.AuditLogger
 }
 
@@ -49,13 +51,14 @@ type authzModel struct {
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevent tables.
-func NewSQLStorageAuthority(dbMap *gorp.DbMap) (*SQLStorageAuthority, error) {
+func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock) (*SQLStorageAuthority, error) {
 	logger := blog.GetAuditLogger()
 
 	logger.Notice("Storage Authority Starting")
 
 	ssa := &SQLStorageAuthority{
 		dbMap: dbMap,
+		clk:   clk,
 		log:   logger,
 	}
 
@@ -73,7 +76,7 @@ func statusIsPending(status core.AcmeStatus) bool {
 
 func existingPending(tx *gorp.Transaction, id string) bool {
 	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM pending_authz WHERE id = :id", map[string]interface{}{"id": id})
+	_ = tx.SelectOne(&count, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", map[string]interface{}{"id": id})
 	return count > 0
 }
 
@@ -183,7 +186,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 			return
 		}
 		if authObj == nil {
-			err = fmt.Errorf("No pending_authz or authz with ID %s", id)
+			err = fmt.Errorf("No pendingAuthorization or authz with ID %s", id)
 			tx.Rollback()
 			return
 		}
@@ -287,7 +290,6 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 	if err != nil {
 		return
 	}
-
 	status = *certificateStats.(*core.CertificateStatus)
 	return
 }
@@ -318,7 +320,7 @@ func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (
 		return
 	}
 
-	timeStamp := time.Now()
+	timeStamp := ssa.clk.Now()
 
 	// Record the response.
 	ocspResp := &core.OCSPResponse{Serial: serial, CreatedAt: timeStamp, Response: ocspResponse}
@@ -358,7 +360,8 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 		return
 	}
 
-	ocspResp := &core.OCSPResponse{Serial: serial, CreatedAt: time.Now(), Response: ocspResponse}
+	ocspResp := &core.OCSPResponse{Serial: serial, CreatedAt: ssa.clk.Now(), Response: ocspResponse}
+
 	err = tx.Insert(ocspResp)
 	if err != nil {
 		tx.Rollback()
@@ -375,18 +378,25 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 		tx.Rollback()
 		return
 	}
+	now := ssa.clk.Now()
 	status := statusObj.(*core.CertificateStatus)
 	status.Status = core.OCSPStatusRevoked
-	status.RevokedDate = time.Now()
+	status.RevokedDate = now
 	status.RevokedReason = reasonCode
+	status.OCSPLastUpdated = now
 
-	_, err = tx.Update(status)
+	n, err := tx.Update(status)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
-
+	if n == 0 {
+		tx.Rollback()
+		err = errors.New("No certificate updated. Maybe the lock column was off?")
+		return
+	}
 	err = tx.Commit()
+
 	return
 }
 
@@ -561,7 +571,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		Serial:         serial,
 		Digest:         digest,
 		DER:            certDER,
-		Issued:         time.Now(),
+		Issued:         ssa.clk.Now(),
 		Expires:        parsedCertificate.NotAfter,
 	}
 	certStatus := &core.CertificateStatus{

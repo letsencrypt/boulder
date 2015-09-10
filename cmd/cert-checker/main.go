@@ -62,7 +62,7 @@ func (r *report) save(directory string) error {
 }
 
 type reportEntry struct {
-	Valid    bool     `json:"validity"`
+	Valid    bool     `json:"valid"`
 	Problems []string `json:"problem,omitempty"`
 }
 
@@ -70,32 +70,35 @@ type certChecker struct {
 	pa           core.PolicyAuthority
 	dbMap        *gorp.DbMap
 	certs        chan core.Certificate
-	issuedReport report
 	clock        clock.Clock
+	rMu          *sync.Mutex
+	issuedReport report
 }
 
-func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, enforceWhitelist bool) certChecker {
+func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool) certChecker {
 	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, enforceWhitelist)
 	cmd.FailOnError(err, "Failed to create PA")
 	c := certChecker{
 		pa:    pa,
 		dbMap: saDbMap,
 		certs: make(chan core.Certificate, batchSize),
-		clock: clock.Default(),
+		rMu:   new(sync.Mutex),
+		clock: clk,
 	}
 	c.issuedReport.Entries = make(map[string]reportEntry)
+
 	return c
 }
 
 func (c *certChecker) getCerts() error {
-	c.issuedReport.begin = c.clock.Now()
-	c.issuedReport.end = c.issuedReport.begin.Add(-checkPeriod)
+	c.issuedReport.end = c.clock.Now()
+	c.issuedReport.begin = c.issuedReport.end.Add(-checkPeriod)
 
 	var count int
 	err := c.dbMap.SelectOne(
 		&count,
 		"SELECT count(*) FROM certificates WHERE issued >= :issued",
-		map[string]interface{}{"issued": c.issuedReport.end},
+		map[string]interface{}{"issued": c.issuedReport.begin},
 	)
 	if err != nil {
 		return err
@@ -110,7 +113,7 @@ func (c *certChecker) getCerts() error {
 		_, err = c.dbMap.Select(
 			&certs,
 			"SELECT * FROM certificates WHERE issued >= :issued ORDER BY issued ASC LIMIT :limit OFFSET :offset",
-			map[string]interface{}{"issued": c.issuedReport.end, "limit": batchSize, "offset": offset},
+			map[string]interface{}{"issued": c.issuedReport.begin, "limit": batchSize, "offset": offset},
 		)
 		if err != nil {
 			return err
@@ -130,10 +133,12 @@ func (c *certChecker) processCerts(wg *sync.WaitGroup) {
 	for cert := range c.certs {
 		problems := c.checkCert(cert)
 		valid := len(problems) == 0
+		c.rMu.Lock()
 		c.issuedReport.Entries[cert.Serial] = reportEntry{
 			Valid:    valid,
 			Problems: problems,
 		}
+		c.rMu.Unlock()
 		if !valid {
 			atomic.AddInt64(&c.issuedReport.BadCerts, 1)
 		} else {
@@ -170,12 +175,18 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		if parsedCert.IsCA {
 			problems = append(problems, "Certificate can sign other certificates")
 		}
-		// Check the cert has the correct validity period +/- an hour
-		if parsedCert.NotAfter.Sub(cert.Issued) > checkPeriod+time.Hour {
-			problems = append(problems, "Certificate has a validity period longer than 90 days")
-		} else if parsedCert.NotAfter.Sub(cert.Issued) < checkPeriod-time.Hour {
-			problems = append(problems, "Certificate has a validity period shorter than 90 days")
+		// Check the cert has the correct validity period
+		validityPeriod := parsedCert.NotAfter.Sub(parsedCert.NotBefore)
+		if validityPeriod > checkPeriod {
+			problems = append(problems, fmt.Sprintf("Certificate has a validity period longer than %s", checkPeriod))
+		} else if validityPeriod < checkPeriod {
+			problems = append(problems, fmt.Sprintf("Certificate has a validity period shorter than %s", checkPeriod))
 		}
+
+		if parsedCert.NotBefore.Before(cert.Issued.Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.Add(6*time.Hour)) {
+			problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
+		}
+
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			if err = c.pa.WillingToIssue(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}); err != nil {
@@ -234,7 +245,7 @@ func main() {
 		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
 		cmd.FailOnError(err, "Could not connect to policy database")
 
-		checker := newChecker(saDbMap, paDbMap, c.PA.EnforcePolicyWhitelist)
+		checker := newChecker(saDbMap, paDbMap, clock.Default(), c.PA.EnforcePolicyWhitelist)
 		auditlogger.Info("# Getting certificates issued in the last 90 days")
 
 		// Since we grab certificates in batches we don't want this to block, when it
