@@ -114,7 +114,7 @@ and to [avoid insecure fallback in go
 get](https://github.com/golang/go/issues/9637).
 
 Local development also requires a RabbitMQ installation and MariaDB
-10 or MySQL installation (see above). MariaDB should be run on port 3306 for the
+10 installation (see above). MariaDB should be run on port 3306 for the
 default integration tests.
 
 To update the Go dependencies:
