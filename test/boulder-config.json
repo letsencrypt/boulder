@@ -88,7 +88,7 @@
                 } ]
               }
             ],
-            "expiry": "8760h",
+            "expiry": "2160h",
             "CSRWhitelist": {
               "PublicKeyAlgorithm": true,
               "PublicKey": true,
@@ -170,14 +170,13 @@
   "common": {
     "baseURL": "http://localhost:4000",
     "issuerCert": "test/test-ca.pem",
-    "maxKeySize": 4096,
     "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "10s",
     "dnsAllowLoopbackAddresses": true
   },
 
   "certChecker": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_test"
+    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration"
   },
 
   "subscriberAgreementURL": "http://localhost:4001/terms/v1"

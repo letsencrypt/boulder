@@ -43,7 +43,6 @@ func main() {
 		cmd.FailOnError(err, "Couldn't create PA")
 
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger)
-		rai.MaxKeySize = c.Common.MaxKeySize
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")

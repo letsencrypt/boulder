@@ -340,6 +340,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
 		return nil, nil, reg, puberr
 	}
+	if key == nil {
+		err = core.SignatureValidationError("No JWK in JWS header")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
+	}
 
 	// Check that the request has a known anti-replay nonce
 	// i.e., Nonce is in protected header and
@@ -708,16 +713,27 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 
-	var init core.CertificateRequest
-	if err = json.Unmarshal(body, &init); err != nil {
+	var certificateRequest core.CertificateRequest
+	if err = json.Unmarshal(body, &certificateRequest); err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
-	wfe.logCsr(request.RemoteAddr, init, reg)
-	logEvent.Extra["CSRDNSNames"] = init.CSR.DNSNames
-	logEvent.Extra["CSREmailAddresses"] = init.CSR.EmailAddresses
-	logEvent.Extra["CSRIPAddresses"] = init.CSR.IPAddresses
+	wfe.logCsr(request.RemoteAddr, certificateRequest, reg)
+	// Check that the key in the CSR is good. This will also be checked in the CA
+	// component, but we want to discard CSRs with bad keys as early as possible
+	// because (a) it's an easy check and we can save unnecessary requests and
+	// bytes on the wire, and (b) the CA logs all rejections as audit events, but
+	// a bad key from the client is just a malformed request and doesn't need to
+	// be audited.
+	if err = core.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
+		logEvent.Error = err.Error()
+		wfe.sendError(response, "Invalid key in certificate request", err, http.StatusBadRequest)
+		return
+	}
+	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
+	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
+	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
 
 	// Create new certificate and return
 	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
@@ -725,7 +741,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// authorized for target site, they could cause issuance for that site by
 	// lying to the RA. We should probably pass a copy of the whole rquest to the
 	// RA for secondary validation.
-	cert, err := wfe.RA.NewCertificate(init, reg.ID)
+	cert, err := wfe.RA.NewCertificate(certificateRequest, reg.ID)
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error creating new cert", err, statusCodeFromError(err))
