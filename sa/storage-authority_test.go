@@ -177,9 +177,7 @@ func CreateDomainAuthWithRegId(t *testing.T, domainName string, sa *SQLStorageAu
 	test.Assert(t, authz.ID != "", "ID shouldn't be blank")
 
 	// prepare challenge for auth
-	u, err := core.ParseAcmeURL(domainName)
-	test.AssertNotError(t, err, "Couldn't parse domainName "+domainName)
-	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusValid, URI: u, Token: "THISWOULDNTBEAGOODTOKEN"}
+	chall := core.Challenge{Type: "simpleHttp", Status: core.StatusValid, URI: domainName, Token: "THISWOULDNTBEAGOODTOKEN"}
 	combos := make([][]int, 1)
 	combos[0] = []int{0, 1}
 	exp := time.Now().AddDate(0, 0, 1) // expire in 1 day
