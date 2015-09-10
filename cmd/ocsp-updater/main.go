@@ -36,13 +36,13 @@ type OCSPUpdater struct {
 	dbMap *gorp.DbMap
 }
 
-func setupClients(c cmd.Config) (rpc.CertificateAuthorityClient, chan *amqp.Error) {
+func setupClients(c cmd.Config, stats statsd.Statter) (rpc.CertificateAuthorityClient, chan *amqp.Error) {
 	ch, err := rpc.AmqpChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
 
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-	caRPC, err := rpc.NewAmqpRPCClient("OCSP->CA", c.AMQP.CA.Server, ch)
+	caRPC, err := rpc.NewAmqpRPCClient("OCSP->CA", c.AMQP.CA.Server, ch, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	cac, err := rpc.NewCertificateAuthorityClient(caRPC)
@@ -217,7 +217,7 @@ func main() {
 		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		cac, closeChan := setupClients(c)
+		cac, closeChan := setupClients(c, stats)
 
 		go func() {
 			// Abort if we disconnect from AMQP

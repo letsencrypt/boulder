@@ -19,7 +19,6 @@ import (
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -96,12 +95,8 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 		cmd.FailOnError(err, "Could not subscribe to queue")
 	}
 
-	rpcMonitor := metrics.NewRPCMonitor(stats)
-
 	// Run forever.
 	for d := range deliveries {
-		go rpcMonitor.TimeDelivery(d)
-
 		// Pass each message to the Analysis Engine
 		err = ae.ProcessMessage(d)
 		if err != nil {

@@ -37,7 +37,7 @@ This list is split up into metric topics with the names of the clients that subm
 
 	[gauge]   Boulder.RPC.CallsWaiting
 
-	[timing]  Boulder.RPC.ResponseTime.{RPC method name}
+	[timing]  Boulder.RPC.Latency.{RPC method name}
 	```
 
 * HTTP activity (`cmd/boulder-wfe` + `cmd/ocsp-responder`)

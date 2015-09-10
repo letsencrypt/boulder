@@ -6,7 +6,6 @@
 package metrics
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,9 +16,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-
-	"github.com/letsencrypt/boulder/rpc"
 )
 
 // HTTPMonitor stores some server state
@@ -99,104 +95,4 @@ type RPCMonitor struct {
 
 	stats statsd.Statter
 	clock clock.Clock
-}
-
-// NewRPCMonitor returns a new initialized RPCMonitor and starts a goroutine
-// to cleanup timeouts from the delivery map
-func NewRPCMonitor(stats statsd.Statter) RPCMonitor {
-	r := RPCMonitor{
-		clock:           clock.Default(),
-		stats:           stats,
-		deliveryTimings: make(map[string]time.Time),
-		dtMu:            &sync.RWMutex{},
-	}
-	go func() {
-		c := time.Tick(time.Second * 5)
-		for _ = range c {
-			if t := r.cleanup(); t > 0 {
-				stats.Inc("RPC.Timeouts", t, 1.0)
-			}
-		}
-	}()
-	return r
-}
-
-func (r *RPCMonitor) size() int {
-	r.dtMu.RLock()
-	defer r.dtMu.RUnlock()
-	return len(r.deliveryTimings)
-}
-
-func (r *RPCMonitor) get(id string) (time.Time, bool) {
-	r.dtMu.RLock()
-	defer r.dtMu.RUnlock()
-	timing, present := r.deliveryTimings[id]
-	return timing, present
-}
-
-func (r *RPCMonitor) add(id string) {
-	now := r.clock.Now()
-	r.dtMu.Lock()
-	defer r.dtMu.Unlock()
-	r.deliveryTimings[id] = now
-}
-
-func (r *RPCMonitor) delete(id string) {
-	r.dtMu.Lock()
-	defer r.dtMu.Unlock()
-	delete(r.deliveryTimings, id)
-}
-
-func (r *RPCMonitor) cleanup() (removed int64) {
-	checkTime := r.clock.Now().Add(-time.Second * 10)
-	r.dtMu.RLock()
-	defer r.dtMu.RUnlock()
-	for k, v := range r.deliveryTimings {
-		if checkTime.After(v) {
-			// Give up read lock in order to let delete acquire the write lock
-			r.dtMu.RUnlock()
-			// If the delivery has been in the map for more than 10 seconds
-			// it has timed out, delete it so the map doesn't grow
-			// indefinitely.
-			r.delete(k)
-			// Re-acuqire read lock
-			r.dtMu.RLock()
-			removed++
-		}
-	}
-	return removed
-}
-
-// TimeDelivery takes a single RPC delivery and provides metrics to StatsD about it
-func (r *RPCMonitor) TimeDelivery(d amqp.Delivery) {
-	// If d is a call add to deliveryTimings and increment openCalls, if it is a
-	// response then get time.Since original call from deliveryTiming, send timing metric, and
-	// decrement openCalls, in both cases send the gauge RpcCallsWaiting and increment the counter
-	// RpcTraffic with the byte length of the RPC body.
-	r.stats.Inc("RPC.Traffic", int64(len(d.Body)), 1.0)
-	r.stats.Gauge("RPC.CallsWaiting", int64(r.size()), 1.0)
-
-	if d.ReplyTo != "" {
-		r.add(fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo))
-	} else {
-		rpcSent, found := r.get(fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
-		if !found {
-			r.stats.Inc("RPC.Rate.Unknown", 1, 1.0)
-			return
-		}
-		respTime := time.Since(rpcSent)
-		r.delete(fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
-
-		// Check if the call failed
-		state := "Success"
-		var resp struct {
-			Error rpc.RPCError
-		}
-		json.Unmarshal(d.Body, &resp)
-		if resp.Error.Value != "" {
-			state = "Error"
-		}
-		r.stats.Inc(fmt.Sprintf("RPC.Rate.%s", state), 1, 1.0)
-		r.stats.TimingDuration(fmt.Sprintf("RPC.ResponseTime.%s.%s", d.Type, state), respTime, 1.0)
-	}
 }

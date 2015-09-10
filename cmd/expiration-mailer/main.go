@@ -247,7 +247,7 @@ func main() {
 		ch, err := rpc.AmqpChannel(c)
 		cmd.FailOnError(err, "Could not connect to AMQP")
 
-		saRPC, err := rpc.NewAmqpRPCClient("ExpirationMailer->SA", c.AMQP.SA.Server, ch)
+		saRPC, err := rpc.NewAmqpRPCClient("ExpirationMailer->SA", c.AMQP.SA.Server, ch, stats)
 		cmd.FailOnError(err, "Unable to create RPC client")
 
 		sac, err := rpc.NewStorageAuthorityClient(saRPC)

@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -276,12 +277,12 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 		log.Info("AMQPS: Loading TLS Options.")
 
 		if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
-			err = fmt.Errorf("AMQPS: Not using an AMQPS URL. To use AMQP instead of AMQPS, set insecure=true.")
+			err = fmt.Errorf("AMQPS: Not using an AMQPS URL. To use AMQP instead of AMQPS, set insecure=true")
 			return nil, err
 		}
 
 		if conf.AMQP.TLS == nil {
-			err = fmt.Errorf("AMQPS: No TLS configuration provided. To use AMQP instead of AMQPS, set insecure=true.")
+			err = fmt.Errorf("AMQPS: No TLS configuration provided. To use AMQP instead of AMQPS, set insecure=true")
 			return nil, err
 		}
 
@@ -477,10 +478,12 @@ type AmqpRPCCLient struct {
 
 	mu      sync.Mutex
 	pending map[string]chan []byte
+
+	stats statsd.Statter
 }
 
 // NewAmqpRPCClient constructs an RPC client using AMQP
-func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Channel) (rpc *AmqpRPCCLient, err error) {
+func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Channel, stats statsd.Statter) (rpc *AmqpRPCCLient, err error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -495,6 +498,7 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 		pending:     make(map[string]chan []byte),
 		timeout:     10 * time.Second,
 		log:         blog.GetAuditLogger(),
+		stats:       stats,
 	}
 
 	// Subscribe to the response queue and dispatch
@@ -565,6 +569,11 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 
 // DispatchSync sends a body to the destination, and blocks waiting on a response.
 func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []byte, err error) {
+	rpc.stats.Inc(fmt.Sprintf("RPC.Rate.%s", method), 1, 1.0)
+	rpc.stats.Inc("RPC.Traffic", int64(len(body)), 1.0)
+	rpc.stats.GaugeDelta("RPC.CallsWaiting", 1, 1.0)
+	defer rpc.stats.GaugeDelta("RPC.CallsWaiting", -1, 1.0)
+	callStarted := time.Now()
 	select {
 	case jsonResponse := <-rpc.Dispatch(method, body):
 		var rpcResponse RPCResponse
@@ -574,11 +583,15 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 		}
 		err = unwrapError(rpcResponse.Error)
 		if err != nil {
+			rpc.stats.Inc(fmt.Sprintf("RPC.Latency.%s.Error", method), 1, 1.0)
 			return
 		}
+		rpc.stats.Inc("RPC.Rate.Success", 1, 1.0)
+		rpc.stats.TimingDuration(fmt.Sprintf("RPC.Latency.%s.Success", method), time.Since(callStarted), 1.0)
 		response = rpcResponse.ReturnVal
 		return
 	case <-time.After(rpc.timeout):
+		rpc.stats.Inc("RPC.Rate.Timeouts", 1, 1.0)
 		rpc.log.Warning(fmt.Sprintf(" [c!][%s] AMQP-RPC timeout [%s]", rpc.clientQueue, method))
 		err = errors.New("AMQP-RPC timeout")
 		return

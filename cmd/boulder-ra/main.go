@@ -53,13 +53,13 @@ func main() {
 		go cmd.ProfileCmd("RA", stats)
 
 		connectionHandler := func(srv *rpc.AmqpRPCServer) {
-			vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, srv.Channel)
+			vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, srv.Channel, stats)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
-			caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, srv.Channel)
+			caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, srv.Channel, stats)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
-			saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, srv.Channel)
+			saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, srv.Channel, stats)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
 			vac, err := rpc.NewValidationAuthorityClient(vaRPC)
