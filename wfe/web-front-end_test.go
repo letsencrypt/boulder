@@ -525,6 +525,7 @@ func TestDirectory(t *testing.T) {
 		Method: "GET",
 		URL:    url,
 	})
+	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
 }
