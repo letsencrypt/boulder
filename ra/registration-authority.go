@@ -32,8 +32,7 @@ type RegistrationAuthorityImpl struct {
 	clk         clock.Clock
 	log         *blog.AuditLogger
 
-	AuthzBase  string
-	MaxKeySize int
+	AuthzBase string
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -96,7 +95,7 @@ type certificateRequestEvent struct {
 
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
-	if err = core.GoodKey(init.Key.Key, ra.MaxKeySize); err != nil {
+	if err = core.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	reg = core.Registration{
