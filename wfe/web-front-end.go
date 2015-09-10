@@ -11,7 +11,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io/ioutil"
 	"net/http"
 	"regexp"
@@ -215,7 +214,6 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.DirectoryJSON = directoryJSON
 
 	m := http.NewServeMux()
-	wfe.HandleFunc(m, "/", wfe.Index, "GET")
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	wfe.HandleFunc(m, NewRegPath, wfe.NewRegistration, "POST")
 	wfe.HandleFunc(m, NewAuthzPath, wfe.NewAuthorization, "POST")
@@ -228,6 +226,10 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.HandleFunc(m, TermsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, IssuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, BuildIDPath, wfe.BuildID, "GET")
+	// We don't use our special HandleFunc for "/" because it matches everything,
+	// meaning we can wind up returning 405 when we mean to return 404. See
+	// https://github.com/letsencrypt/boulder/issues/717
+	m.HandleFunc("/", wfe.Index)
 	return m, nil
 }
 
@@ -247,16 +249,22 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 		return
 	}
 
-	tmpl := template.Must(template.New("body").Parse(`<html>
-  <body>
-    This is an <a href="https://github.com/letsencrypt/acme-spec/">ACME</a>
-    Certificate Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>,
-    New registration is available at <a href="{{.NewReg}}">{{.NewReg}}</a>.
-  </body>
-</html>
-`))
-	tmpl.Execute(response, wfe)
+	if request.Method != "GET" {
+		logEvent.Error = "Bad method"
+		response.Header().Set("Allow", "GET")
+		response.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
 	response.Header().Set("Content-Type", "text/html")
+	response.Write([]byte(fmt.Sprintf(`<html>
+		<body>
+			This is an <a href="https://github.com/letsencrypt/acme-spec/">ACME</a>
+			Certificate Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>.
+			JSON directory is available at <a href="%s">%s</a>.
+		</body>
+	</html>
+	`, DirectoryPath, DirectoryPath)))
 	addCacheHeader(response, wfe.IndexCacheDuration.Seconds())
 }
 

@@ -472,7 +472,6 @@ func TestStandardHeaders(t *testing.T) {
 		path    string
 		allowed []string
 	}{
-		{"/", []string{"GET"}},
 		{wfe.NewReg, []string{"POST"}},
 		{wfe.RegBase, []string{"POST"}},
 		{wfe.NewAuthz, []string{"POST"}},
@@ -499,6 +498,28 @@ func TestStandardHeaders(t *testing.T) {
 	}
 }
 
+func TestIndexPOST(t *testing.T) {
+	wfe := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+	url, _ := url.Parse("/")
+	wfe.Index(responseWriter, &http.Request{
+		Method: "POST",
+		URL:    url,
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusMethodNotAllowed)
+}
+
+func TestPOST404(t *testing.T) {
+	wfe := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+	url, _ := url.Parse("/foobar")
+	wfe.Index(responseWriter, &http.Request{
+		Method: "POST",
+		URL:    url,
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
+}
+
 func TestIndex(t *testing.T) {
 	wfe := setupWFE(t)
 	wfe.IndexCacheDuration = time.Second * 10
@@ -512,8 +533,8 @@ func TestIndex(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertNotEquals(t, responseWriter.Body.String(), "404 page not found\n")
-	test.Assert(t, strings.Contains(responseWriter.Body.String(), wfe.NewReg),
-		"new-reg not found")
+	test.Assert(t, strings.Contains(responseWriter.Body.String(), DirectoryPath),
+		"directory path not found")
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
 
 	responseWriter.Body.Reset()
