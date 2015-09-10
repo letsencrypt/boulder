@@ -367,6 +367,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 			CorrelationId: msg.CorrelationId,
 			Type:          msg.Type,
 			Body:          jsonResponse, // XXX-JWS: jws.Sign(privKey, body)
+			Expiration:    "30000",
 		})
 }
 
@@ -489,7 +490,12 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 		return nil, err
 	}
 
-	clientQueue := fmt.Sprintf("%s.%s", clientQueuePrefix, hostname)
+	randID := make([]byte, 3)
+	_, err = rand.Read(randID)
+	if err != nil {
+		return nil, err
+	}
+	clientQueue := fmt.Sprintf("%s.%s.%x", clientQueuePrefix, hostname, randID)
 
 	rpc = &AmqpRPCCLient{
 		serverQueue: serverQueue,
@@ -562,6 +568,7 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 			ReplyTo:       rpc.clientQueue,
 			Type:          method,
 			Body:          body, // XXX-JWS: jws.Sign(privKey, body)
+			Expiration:    "30000",
 		})
 
 	return responseChan
