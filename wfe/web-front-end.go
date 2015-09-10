@@ -824,7 +824,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	switch request.Method {
 	case "GET":
-		wfe.getChallenge(response, request, authz, challenge, &logEvent)
+		wfe.getChallenge(response, request, authz, &challenge, &logEvent)
 
 	case "POST":
 		wfe.postChallenge(response, request, authz, challengeIndex, &logEvent)
@@ -858,10 +858,10 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	response http.ResponseWriter,
 	request *http.Request,
 	authz core.Authorization,
-	challenge core.Challenge,
+	challenge *core.Challenge,
 	logEvent *requestEvent) {
 
-	wfe.prepChallengeForDisplay(authz, &challenge)
+	wfe.prepChallengeForDisplay(authz, challenge)
 
 	jsonReply, err := json.Marshal(challenge)
 	if err != nil {
