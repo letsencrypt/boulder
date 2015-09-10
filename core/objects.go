@@ -241,6 +241,8 @@ type ValidationRecord struct {
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
 type Challenge struct {
+	ID int64 `json:"id,omitempty"`
+
 	// The type of challenge
 	Type string `json:"type"`
 
@@ -255,7 +257,7 @@ type Challenge struct {
 	Validated *time.Time `json:"validated,omitempty"`
 
 	// A URI to which a response can be POSTed
-	URI *AcmeURL `json:"uri"`
+	URI string `json:"uri"`
 
 	// Used by simpleHttp, dvsni, and dns challenges
 	Token string `json:"token,omitempty"`
@@ -429,6 +431,18 @@ type Authorization struct {
 	// The server may suggest combinations of challenges if it
 	// requires more than one challenge to be completed.
 	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
+}
+
+// FindChallenge will look for the given challenge inside this authorization. If
+// found, it will return the index of that challenge within the Authorization's
+// Challenges array. Otherwise it will return -1.
+func (authz *Authorization) FindChallenge(challengeID int64) int {
+	for i, c := range authz.Challenges {
+		if c.ID == challengeID {
+			return i
+		}
+	}
+	return -1
 }
 
 // JSONBuffer fields get encoded and decoded JOSE-style, in base64url encoding
