@@ -265,6 +265,7 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 }
 
 func (wfe *WebFrontEndImpl) Directory(response http.ResponseWriter, request *http.Request) {
+	response.Header().Set("Content-Type", "application/json")
 	response.Write(wfe.DirectoryJSON)
 }
 
