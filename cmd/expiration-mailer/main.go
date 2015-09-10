@@ -75,7 +75,7 @@ func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []*core.AcmeURL
 			m.stats.Inc("Mailer.Expiration.Errors.SendingNag.SendFailure", 1, 1.0)
 			return err
 		}
-		m.stats.TimingDuration("Mailer.Expiration.SendingTook", time.Since(startSending), 1.0)
+		m.stats.TimingDuration("Mailer.Expiration.SendLatency", time.Since(startSending), 1.0)
 		m.stats.Inc("Mailer.Expiration.Sent", int64(len(emails)), 1.0)
 	}
 	return nil
@@ -185,7 +185,7 @@ func (m *mailer) findExpiringCertificates() error {
 		if len(certs) > 0 {
 			processingStarted := m.clk.Now()
 			m.processCerts(certs)
-			m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificatesTook", time.Since(processingStarted), 1.0)
+			m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", time.Since(processingStarted), 1.0)
 		}
 	}
 

@@ -104,7 +104,7 @@ This list is split up into metric topics with the names of the clients that subm
 	[gauge]  Boulder.{cmd-name}.Gostats.Heap.InUse
 	[gauge]  Boulder.{cmd-name}.Gostats.Heap.Released
   [gauge]  Boulder.{cmd-name}.Gostats.Gc.NextAt
-	[gauge]  Boulder.{cmd-name}.Gostats.Gc.LastPauseTook
+	[gauge]  Boulder.{cmd-name}.Gostats.Gc.LastPauseLatency
 
 	[timing] Boulder.{cmd-name}.Gostats.Gc.PauseAvg
 	  ```
@@ -116,10 +116,10 @@ This list is split up into metric topics with the names of the clients that subm
   [counter] Boulder.ExistingCert.Domains.Imported
   [counter] Boulder.ExistingCert.Removed
 
-  [timing]  Boulder.ExistingCert.Certs.ImportTook
-  [timing]  Boulder.ExistingCert.Domains.ImportTook
-  [timing]  Boulder.ExistingCert.Certs.DeleteTook
-  [timing]  Boulder.ExistingCert.Domains.DeleteTook
+  [timing]  Boulder.ExistingCert.Certs.ImportLatency
+  [timing]  Boulder.ExistingCert.Domains.ImportLatency
+  [timing]  Boulder.ExistingCert.Certs.DeleteLatency
+  [timing]  Boulder.ExistingCert.Domains.DeleteLatency
     ```
 
 * OCSP response updating (`cmd/ocsp-updater`)
@@ -129,8 +129,8 @@ This list is split up into metric topics with the names of the clients that subm
   [counter] Boulder.OCSP.Updates.Failed
   [counter] Boulder.OCSP.Updates.BatchesProcessed
 
-  [timing]  Boulder.OCSP.Updates.UpdateTook
-  [timing]  Boulder.OCSP.Updates.BatchTook
+  [timing]  Boulder.OCSP.Updates.UpdateLatency
+  [timing]  Boulder.OCSP.Updates.BatchLatency
     ```
 
 * Certificate expiration mailing (`cmd/expiration-mailer`)
@@ -143,6 +143,6 @@ This list is split up into metric topics with the names of the clients that subm
   [counter] Boulder.Mailer.Expiration.Errors.ParseCertificate
   [counter] Boulder.Mailer.Expiration.Errors.UpdateCertificateStatus
 
-  [timing]  Boulder.Mailer.Expiration.SendingTook
-  [timing]  Boulder.Mailer.Expiration.ProcessingCertificatesTook
+  [timing]  Boulder.Mailer.Expiration.SendLatency
+  [timing]  Boulder.Mailer.Expiration.ProcessingCertificatesLatency
     ```

@@ -142,7 +142,7 @@ func (updater *OCSPUpdater) updateOneSerial(serial string) error {
 
 	updater.log.Info(fmt.Sprintf("OCSP %s: OK", serial))
 	updater.stats.Inc("OCSP.Updates.Processed", 1, 1.0)
-	updater.stats.TimingDuration("OCSP.Updates.UpdateTook", time.Since(innerStart), 1.0)
+	updater.stats.TimingDuration("OCSP.Updates.UpdateLatency", time.Since(innerStart), 1.0)
 	return nil
 }
 
@@ -176,7 +176,7 @@ func (updater *OCSPUpdater) findStaleResponses(oldestLastUpdatedTime time.Time, 
 			}
 		}
 
-		updater.stats.TimingDuration("OCSP.Updates.BatchTook", time.Since(outerStart), 1.0)
+		updater.stats.TimingDuration("OCSP.Updates.BatchLatency", time.Since(outerStart), 1.0)
 		updater.stats.Inc("OCSP.Updates.BatchesProcessed", 1, 1.0)
 	}
 

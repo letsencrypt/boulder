@@ -57,7 +57,7 @@ func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, stats
 
 		importStart := time.Now()
 		err = dbMap.Insert(&externalCert)
-		stats.TimingDuration("ExistingCert.Certs.ImportTook", time.Since(importStart), statsRate)
+		stats.TimingDuration("ExistingCert.Certs.ImportLatency", time.Since(importStart), statsRate)
 		stats.Inc("ExistingCert.Certs.Imported", 1, statsRate)
 	}
 }
@@ -83,7 +83,7 @@ func addIdentifiers(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter,
 
 		importStart := time.Now()
 		err = dbMap.Insert(&identifierData)
-		stats.TimingDuration("ExistingCert.Domains.ImportTook", time.Since(importStart), statsRate)
+		stats.TimingDuration("ExistingCert.Domains.ImportLatency", time.Since(importStart), statsRate)
 		stats.Inc("ExistingCert.Domains.Imported", 1, statsRate)
 	}
 }
@@ -111,9 +111,9 @@ func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Stat
 
 		deleteStart := time.Now()
 		_, err = dbMap.Delete(&identifierData)
-		stats.TimingDuration("ExistingCert.Domains.DeleteTook", time.Since(deleteStart), statsRate)
+		stats.TimingDuration("ExistingCert.Domains.DeleteLatency", time.Since(deleteStart), statsRate)
 		_, err = dbMap.Delete(&externalCert)
-		stats.TimingDuration("ExistingCert.Certs.DeleteTook", time.Since(deleteStart), statsRate)
+		stats.TimingDuration("ExistingCert.Certs.DeleteLatency", time.Since(deleteStart), statsRate)
 		stats.Inc("ExistingCert.Removed", 1, statsRate)
 	}
 }

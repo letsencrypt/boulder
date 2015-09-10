@@ -335,7 +335,7 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 		gcPauseAvg := (int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))) / 1000000
 		lastGC := int64(memoryStats.PauseNs[(memoryStats.NumGC+255)%256]) / 1000000
 		stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPauseTook", profileName), lastGC, 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPauseLatency", profileName), lastGC, 1.0)
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
 	}
 }
