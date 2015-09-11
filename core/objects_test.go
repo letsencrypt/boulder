@@ -6,6 +6,8 @@
 package core
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"net"
 	"testing"
@@ -38,6 +40,35 @@ func TestRegistrationUpdate(t *testing.T) {
 	reg.MergeUpdate(update)
 	test.Assert(t, len(reg.Contact) == 1 && reg.Contact[0] == update.Contact[0], "Contact was not updated %v != %v")
 	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
+}
+
+var testKey1, _ = rsa.GenerateKey(rand.Reader, 2048)
+var testKey2, _ = rsa.GenerateKey(rand.Reader, 2048)
+var testKey3, _ = rsa.GenerateKey(rand.Reader, 2048)
+
+func TestAuthorizedKeys(t *testing.T) {
+	ak1 := AuthorizedKey{
+		Token: "99DrlWuy-4Nc82olAy0cK7Shnm4uV32pJovyucGEWME",
+		Key:   &jose.JsonWebKey{Key: testKey1.Public()},
+	}
+	ak2 := AuthorizedKey{
+		Token: "Iy2_-2OA8lyD0lwhmD8dD3TIL3wlNpiUhLTXPJG5qOM",
+		Key:   &jose.JsonWebKey{Key: testKey2.Public()},
+	}
+	ak3 := AuthorizedKey{
+		Token: "WXC42qopdmqPcGncAVvaz0-q55X_hjmTgbCaQLT0epU",
+		Key:   &jose.JsonWebKey{Key: testKey3.Public()},
+	}
+	aks := AuthorizedKeys{ak1, ak2}
+
+	test.Assert(t, ak1.Match(ak1.Token, ak1.Key), "Authorized key should match itself")
+	test.Assert(t, !ak1.Match(ak1.Token, ak2.Key), "Authorized key should not match a different key")
+	test.Assert(t, !ak1.Match(ak2.Token, ak1.Key), "Authorized key should not match a different token")
+	test.Assert(t, !ak1.Match(ak2.Token, ak2.Key), "Authorized key should not match a completely different key")
+
+	test.Assert(t, aks.Match(ak1.Token, ak1.Key), "Authorized keys failed to match good token/key pair")
+	test.Assert(t, !aks.Match(ak1.Token, ak2.Key), "Authorized keys matched a bad mixed token/key pair")
+	test.Assert(t, !aks.Match(ak3.Token, ak3.Key), "Authorized keys matched a bad foreign token/key pair")
 }
 
 func TestRecordSanityCheck(t *testing.T) {
@@ -108,7 +139,7 @@ func TestChallengeSanityCheck(t *testing.T) {
 			}}
 			test.Assert(t, chall.IsSane(true), "IsSane should be true")
 		} else if challengeType == ChallengeTypeDVSNI || challengeType == ChallengeTypeDNS {
-			chall.Validation = new(jose.JsonWebSignature)
+			chall.AuthorizedKeys = []byte("8XA7vAwFqik-A_lMfa_Qug") // random
 			if challengeType == ChallengeTypeDVSNI {
 				chall.ValidationRecord = []ValidationRecord{ValidationRecord{
 					Hostname:          "localhost",

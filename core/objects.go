@@ -235,6 +235,35 @@ type ValidationRecord struct {
 	AddressUsed       net.IP   `json:"addressUsed"`
 }
 
+// AuthorizedKey represents a domain holder's authorization for a
+// specific account key to satisfy a specific challenge.
+type AuthorizedKey struct {
+	Token string           `json:"token"`
+	Key   *jose.JsonWebKey `json:"key,omitempty"`
+}
+
+// Determine whether this AuthorizedKey object matches the given token and key
+func (ak AuthorizedKey) Match(token string, key *jose.JsonWebKey) bool {
+	if ak.Key == nil {
+		return false
+	}
+	return token == ak.Token && KeyDigestEquals(key.Key, ak.Key.Key)
+}
+
+// AuthorizedKeys is simply a list of authorized key objects
+type AuthorizedKeys []AuthorizedKey
+
+// Determine whether there is an entry in this AuthorizedKeys object that
+// matches the indicated token and key
+func (aks AuthorizedKeys) Match(token string, key *jose.JsonWebKey) bool {
+	for _, ak := range aks {
+		if ak.Match(token, key) {
+			return true
+		}
+	}
+	return false
+}
+
 // Challenge is an aggregate of all data needed for any challenges.
 //
 // Rather than define individual types for different types of
@@ -266,7 +295,7 @@ type Challenge struct {
 	TLS *bool `json:"tls,omitempty"`
 
 	// Used by dns and dvsni challenges
-	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
+	AuthorizedKeys JSONBuffer `json:"authorizedKeys,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
@@ -330,7 +359,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP:
 		// check extra fields aren't used
-		if ch.Validation != nil {
+		if ch.AuthorizedKeys != nil {
 			return false
 		}
 
@@ -362,8 +391,8 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 
-		// If completed, check that there's a validation object
-		if completed && ch.Validation == nil {
+		// If completed, check that there's an authorized keys object
+		if completed && ch.AuthorizedKeys == nil {
 			return false
 		}
 	default:
@@ -391,8 +420,8 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 		fallthrough
 	case ChallengeTypeDNS:
 		// For dvsni and dns, only "validation" is client-provided
-		if resp.Validation != nil {
-			ch.Validation = resp.Validation
+		if resp.AuthorizedKeys != nil {
+			ch.AuthorizedKeys = resp.AuthorizedKeys
 		}
 	}
 
