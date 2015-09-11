@@ -875,7 +875,7 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
-func makeRevokeRequestJSON(t *testing.T) ([]byte, error) {
+func makeRevokeRequestJSON() ([]byte, error) {
 	certPemBytes, err := ioutil.ReadFile("test/238.crt")
 	if err != nil {
 		return nil, err
@@ -910,7 +910,7 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 
-	revokeRequestJSON, err := makeRevokeRequestJSON(t)
+	revokeRequestJSON, err := makeRevokeRequestJSON()
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	wfe := setupWFE(t)
@@ -928,7 +928,7 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 // Valid revocation request for existing, non-revoked cert, signed with account
 // key.
 func TestRevokeCertificateAccountKey(t *testing.T) {
-	revokeRequestJSON, err := makeRevokeRequestJSON(t)
+	revokeRequestJSON, err := makeRevokeRequestJSON()
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	wfe := setupWFE(t)
@@ -963,7 +963,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make signer")
 	nonce, err = wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
-	revokeRequestJSON, err := makeRevokeRequestJSON(t)
+	revokeRequestJSON, err := makeRevokeRequestJSON()
 	test.AssertNotError(t, err, "Unable to create revoke request")
 
 	result, _ := accountKeySigner2.Sign(revokeRequestJSON, nonce)
