@@ -574,7 +574,7 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
 
-	// We the mock CA we use always returns the same test certificate, with a Not
+	// The mock CA we use always returns the same test certificate, with a Not
 	// Before of 2015-09-22. Since we're currently using a real RA instead of a
 	// mock (see below), that date would trigger failures for excessive
 	// backdating. So we set the fakeClock's time to a time that matches that test
