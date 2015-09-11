@@ -28,6 +28,8 @@ type regModel struct {
 }
 
 // challModel is the description of a core.Challenge in the database
+//
+// The Validation field is a stub; the column is only there for backward compatibility.
 type challModel struct {
 	ID              int64  `db:"id"`
 	AuthorizationID string `db:"authorizationID"`
@@ -39,6 +41,7 @@ type challModel struct {
 	Token            string          `db:"token"`
 	TLS              *bool           `db:"tls"`
 	Validation       []byte          `db:"validation"`
+	AuthorizedKeys   []byte          `db:"authorizedKeys"`
 	ValidationRecord []byte          `db:"validationRecord"`
 	AccountKey       []byte          `db:"accountKey"`
 
@@ -92,10 +95,10 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		Token:           c.Token,
 		TLS:             c.TLS,
 	}
-	if c.Validation != nil {
-		cm.Validation = []byte(c.Validation.FullSerialize())
-		if len(cm.Validation) > mediumBlobSize {
-			return nil, fmt.Errorf("Validation object is too large to store in the database")
+	if c.AuthorizedKeys != nil {
+		cm.AuthorizedKeys = []byte(c.AuthorizedKeys)
+		if len(cm.AuthorizedKeys) > mediumBlobSize {
+			return nil, fmt.Errorf("AuthorizedKeys object is too large to store in the database")
 		}
 	}
 	if c.Error != nil {
@@ -133,19 +136,13 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
-		ID:        cm.ID,
-		Type:      cm.Type,
-		Status:    cm.Status,
-		Validated: cm.Validated,
-		Token:     cm.Token,
-		TLS:       cm.TLS,
-	}
-	if len(cm.Validation) > 0 {
-		val, err := jose.ParseSigned(string(cm.Validation))
-		if err != nil {
-			return core.Challenge{}, err
-		}
-		c.Validation = val
+		ID:             cm.ID,
+		Type:           cm.Type,
+		Status:         cm.Status,
+		Validated:      cm.Validated,
+		Token:          cm.Token,
+		TLS:            cm.TLS,
+		AuthorizedKeys: core.JSONBuffer(cm.AuthorizedKeys),
 	}
 	if len(cm.Error) > 0 {
 		var problem core.ProblemDetails
