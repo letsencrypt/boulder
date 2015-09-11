@@ -574,8 +574,18 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
 
-	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl(clock.NewFake(), wfe.log)
+	// We the mock CA we use always returns the same test certificate, with a Not
+	// Before of 2015-09-22. Since we're currently using a real RA instead of a
+	// mock (see below), that date would trigger failures for excessive
+	// backdating. So we set the fakeClock's time to a time that matches that test
+	// certificate.
+	fakeClock := clock.NewFake()
+	testTime := time.Date(2015, 9, 9, 22, 56, 0, 0, time.UTC)
+	fakeClock.Add(fakeClock.Now().Sub(testTime))
+
+	// TODO: Use a mock RA so we can test various conditions of authorized, not
+	// authorized, etc.
+	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log)
 	ra.SA = &MockSA{}
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}
