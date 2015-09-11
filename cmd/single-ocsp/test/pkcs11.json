@@ -1,6 +1,7 @@
 {
-  "Module": "/Library/OpenSC/lib/opensc-pkcs11.so",
-  "Token": "Yubico Yubikey NEO CCID",
-  "Label": "PIV AUTH key",
-  "PIN": "123456"
+  "Module": "/usr/local/Cellar/opensc/0.14.0_1/lib/opensc-pkcs11.so",
+  "TokenLabel": "PIV_II (PIV Card Holder pin)",
+  "SlotID": 1,
+  "PrivateKeyLabel": "SIGN key",
+  "PIN": "163246"
 }
