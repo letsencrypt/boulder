@@ -574,8 +574,18 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
 
-	// TODO: Use a mock RA so we can test various conditions of authorized, not authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl(clock.NewFake(), wfe.log)
+	// The mock CA we use always returns the same test certificate, with a Not
+	// Before of 2015-09-22. Since we're currently using a real RA instead of a
+	// mock (see below), that date would trigger failures for excessive
+	// backdating. So we set the fakeClock's time to a time that matches that test
+	// certificate.
+	fakeClock := clock.NewFake()
+	testTime := time.Date(2015, 9, 9, 22, 56, 0, 0, time.UTC)
+	fakeClock.Add(fakeClock.Now().Sub(testTime))
+
+	// TODO: Use a mock RA so we can test various conditions of authorized, not
+	// authorized, etc.
+	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log)
 	ra.SA = &MockSA{}
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}
@@ -866,8 +876,32 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
-// Valid revocation request for existing, non-revoked cert
-func TestRevokeCertificate(t *testing.T) {
+func makeRevokeRequestJSON() ([]byte, error) {
+	certPemBytes, err := ioutil.ReadFile("test/238.crt")
+	if err != nil {
+		return nil, err
+	}
+	certBlock, _ := pem.Decode(certPemBytes)
+	if err != nil {
+		return nil, err
+	}
+	revokeRequest := struct {
+		Resource       string          `json:"resource"`
+		CertificateDER core.JSONBuffer `json:"certificate"`
+	}{
+		Resource:       "revoke-cert",
+		CertificateDER: certBlock.Bytes,
+	}
+	revokeRequestJSON, err := json.Marshal(revokeRequest)
+	if err != nil {
+		return nil, err
+	}
+	return revokeRequestJSON, nil
+}
+
+// Valid revocation request for existing, non-revoked cert, signed with cert
+// key.
+func TestRevokeCertificateCertKey(t *testing.T) {
 	keyPemBytes, err := ioutil.ReadFile("test/238.key")
 	test.AssertNotError(t, err, "Failed to load key")
 	key, err := jose.LoadPrivateKey(keyPemBytes)
@@ -877,29 +911,12 @@ func TestRevokeCertificate(t *testing.T) {
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 
-	certPemBytes, err := ioutil.ReadFile("test/238.crt")
-	test.AssertNotError(t, err, "Failed to load cert")
-	certBlock, _ := pem.Decode(certPemBytes)
-	test.Assert(t, certBlock != nil, "Failed to decode PEM")
-	revokeRequest := struct {
-		Resource       string          `json:"resource"`
-		CertificateDER core.JSONBuffer `json:"certificate"`
-	}{
-		Resource:       "revoke-cert",
-		CertificateDER: certBlock.Bytes,
-	}
-	revokeRequestJSON, err := json.Marshal(revokeRequest)
-	test.AssertNotError(t, err, "Failed to marshal request")
+	revokeRequestJSON, err := makeRevokeRequestJSON()
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	wfe := setupWFE(t)
-
-	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
-	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
-	responseWriter.Body.Reset()
+
 	nonce, err := wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
 	result, _ := signer.Sign(revokeRequestJSON, nonce)
@@ -907,23 +924,55 @@ func TestRevokeCertificate(t *testing.T) {
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
+}
 
-	// Try the revoke request again, signed by account key associated with cert.
-	// Should also succeed.
-	responseWriter.Body.Reset()
+// Valid revocation request for existing, non-revoked cert, signed with account
+// key.
+func TestRevokeCertificateAccountKey(t *testing.T) {
+	revokeRequestJSON, err := makeRevokeRequestJSON()
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+
+	wfe := setupWFE(t)
+	responseWriter := httptest.NewRecorder()
+
 	test1JWK, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
 	test1Key, ok := test1JWK.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 	accountKeySigner, err := jose.NewSigner("RS256", test1Key)
 	test.AssertNotError(t, err, "Failed to make signer")
-	nonce, err = wfe.nonceService.Nonce()
+	nonce, err := wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
-	result, _ = accountKeySigner.Sign(revokeRequestJSON, nonce)
+	result, _ := accountKeySigner.Sign(revokeRequestJSON, nonce)
 	wfe.RevokeCertificate(responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
+}
+
+// A revocation request signed by an unauthorized key.
+func TestRevokeCertificateWrongKey(t *testing.T) {
+	wfe := setupWFE(t)
+	nonce, err := wfe.nonceService.Nonce()
+	test.AssertNotError(t, err, "Unable to create nonce")
+	responseWriter := httptest.NewRecorder()
+	test2JWK, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	test2Key, ok := test2JWK.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	accountKeySigner2, err := jose.NewSigner("RS256", test2Key)
+	test.AssertNotError(t, err, "Failed to make signer")
+	nonce, err = wfe.nonceService.Nonce()
+	test.AssertNotError(t, err, "Unable to create nonce")
+	revokeRequestJSON, err := makeRevokeRequestJSON()
+	test.AssertNotError(t, err, "Unable to create revoke request")
+
+	result, _ := accountKeySigner2.Sign(revokeRequestJSON, nonce)
+	wfe.RevokeCertificate(responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Code, 403)
+	test.AssertEquals(t, responseWriter.Body.String(),
+		`{"type":"urn:acme:error:unauthorized","detail":"Revocation request must be signed by private key of cert to be revoked, or by the account key of the account that issued it."}`)
 }
 
 // Valid revocation request for already-revoked cert

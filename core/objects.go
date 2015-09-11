@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"sort"
 	"strings"
 	"time"
 
@@ -99,52 +98,6 @@ const DNSPrefix = "_acme-challenge"
 
 func (pd *ProblemDetails) Error() string {
 	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
-}
-
-func cmpStrSlice(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	sort.Strings(a)
-	sort.Strings(b)
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func CmpExtKeyUsageSlice(a, b []x509.ExtKeyUsage) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	testMap := make(map[int]bool, len(a))
-	for i := range a {
-		testMap[int(a[i])] = true
-	}
-	for i := range b {
-		if !testMap[int(b[i])] {
-			return false
-		}
-	}
-	return true
-}
-
-func cmpIPSlice(a, b []net.IP) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	testMap := make(map[string]bool, len(a))
-	for i := range a {
-		testMap[a[i].String()] = true
-	}
-	for i := range b {
-		if !testMap[b[i].String()] {
-			return false
-		}
-	}
-	return true
 }
 
 // An AcmeIdentifier encodes an identifier that can
@@ -539,82 +492,6 @@ type ExternalCert struct {
 	Valid    bool      `db:"valid"`      // Whether this certificate was valid at LastUpdated time
 	EV       bool      `db:"ev"`         // Whether this cert was EV valid
 	CertDER  []byte    `db:"rawDERCert"` // DER (binary) encoding of the raw certificate
-}
-
-// MatchesCSR tests the contents of a generated certificate to make sure
-// that the PublicKey, CommonName, and DNSNames match those provided in
-// the CSR that was used to generate the certificate. It also checks the
-// following fields for:
-//		* notAfter is after earliestExpiry
-//		* notBefore is not more than 24 hours ago
-//		* BasicConstraintsValid is true
-//		* IsCA is false
-//		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
-//		* Subject only contains CommonName & Names
-func (cert Certificate) MatchesCSR(csr *x509.CertificateRequest, earliestExpiry time.Time) (err error) {
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-	if err != nil {
-		return
-	}
-
-	// Check issued certificate matches what was expected from the CSR
-	hostNames := make([]string, len(csr.DNSNames))
-	copy(hostNames, csr.DNSNames)
-	if len(csr.Subject.CommonName) > 0 {
-		hostNames = append(hostNames, csr.Subject.CommonName)
-	}
-	hostNames = UniqueNames(hostNames)
-
-	if !KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
-		err = InternalServerError("Generated certificate public key doesn't match CSR public key")
-		return
-	}
-	if len(csr.Subject.CommonName) > 0 && parsedCertificate.Subject.CommonName != csr.Subject.CommonName {
-		err = InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
-		return
-	}
-	if !cmpStrSlice(parsedCertificate.DNSNames, hostNames) {
-		err = InternalServerError("Generated certificate DNSNames don't match CSR DNSNames")
-		return
-	}
-	if !cmpIPSlice(parsedCertificate.IPAddresses, csr.IPAddresses) {
-		err = InternalServerError("Generated certificate IPAddresses don't match CSR IPAddresses")
-		return
-	}
-	if !cmpStrSlice(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
-		err = InternalServerError("Generated certificate EmailAddresses don't match CSR EmailAddresses")
-		return
-	}
-	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
-		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
-		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
-		len(parsedCertificate.Subject.PostalCode) > 0 || len(parsedCertificate.Subject.SerialNumber) > 0 {
-		err = InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
-		return
-	}
-	if parsedCertificate.NotAfter.After(earliestExpiry) {
-		err = InternalServerError("Generated certificate expires before earliest expiration")
-		return
-	}
-	now := time.Now()
-	if now.Sub(parsedCertificate.NotBefore) > time.Hour*24 {
-		err = InternalServerError(fmt.Sprintf("Generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore)))
-		return
-	}
-	if !parsedCertificate.BasicConstraintsValid {
-		err = InternalServerError("Generated certificate doesn't have basic constraints set")
-		return
-	}
-	if parsedCertificate.IsCA {
-		err = InternalServerError("Generated certificate can sign other certificates")
-		return
-	}
-	if !CmpExtKeyUsageSlice(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
-		err = InternalServerError("Generated certificate doesn't have correct key usage extensions")
-		return
-	}
-
-	return
 }
 
 // CertificateStatus structs are internal to the server. They represent the
