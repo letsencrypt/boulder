@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
@@ -78,41 +77,6 @@ type verificationRequestEvent struct {
 	RequestTime  time.Time      `json:",omitempty"`
 	ResponseTime time.Time      `json:",omitempty"`
 	Error        string         `json:",omitempty"`
-}
-
-func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
-	if len(validation.Signatures) > 1 {
-		return fmt.Errorf("Too many signatures on validation JWS")
-	}
-	if len(validation.Signatures) == 0 {
-		return fmt.Errorf("Validation JWS not signed")
-	}
-
-	payload, _, err := validation.Verify(accountKey)
-	if err != nil {
-		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
-	}
-
-	var parsedResponse map[string]interface{}
-	err = json.Unmarshal(payload, &parsedResponse)
-	if err != nil {
-		return fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
-	}
-
-	if len(parsedResponse) != len(target) {
-		return fmt.Errorf("Validation payload had an improper number of fields")
-	}
-
-	for key, targetValue := range target {
-		parsedValue, ok := parsedResponse[key]
-		if !ok {
-			return fmt.Errorf("Validation payload missing a field %s", key)
-		} else if parsedValue != targetValue {
-			return fmt.Errorf("Validation payload has improper value for field %s", key)
-		}
-	}
-
-	return nil
 }
 
 // problemDetailsFromDNSError checks the error returned from Lookup...
@@ -335,10 +299,11 @@ func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdenti
 		return challenge, readErr
 	}
 
-	// Parse and verify JWS
-	parsedJws, err := jose.ParseSigned(string(body))
+	// Parse body as an authorized keys object
+	var authorizedKeys core.AuthorizedKeys
+	err = json.Unmarshal(body, &authorizedKeys)
 	if err != nil {
-		err = fmt.Errorf("Validation response failed to parse as JWS: %s", err.Error())
+		err = fmt.Errorf("Error parsing authorized keys file: %s", err.Error())
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
@@ -348,18 +313,14 @@ func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdenti
 		return challenge, err
 	}
 
-	// Check that JWS body is as expected
-	// * "type" == "simpleHttp"
-	// * "token" == challenge.token
-	// * "tls" == challenge.tls || true
-	target := map[string]interface{}{
-		"type":  core.ChallengeTypeSimpleHTTP,
-		"token": challenge.Token,
-		"tls":   (challenge.TLS == nil) || *challenge.TLS,
-	}
-	err = verifyValidationJWS(parsedJws, challenge.AccountKey, target)
-	if err != nil {
+	// Check that the account key for this challenge is authorized by this object
+	if !authorizedKeys.Match(challenge.Token, challenge.AccountKey) {
+		err = fmt.Errorf("The authorizated keys file from the server did not match this challenge")
 		va.log.Debug(err.Error())
+		jwk, _ := json.Marshal(challenge.AccountKey)
+		va.log.Debug(challenge.Token)
+		va.log.Debug(string(jwk))
+		va.log.Debug(string(body))
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type:   core.UnauthorizedProblem,
@@ -385,15 +346,23 @@ func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier,
 		return challenge, challenge.Error
 	}
 
-	// Check that JWS body is as expected
-	// * "type" == "dvsni"
-	// * "token" == challenge.token
-	target := map[string]interface{}{
-		"type":  core.ChallengeTypeDVSNI,
-		"token": challenge.Token,
-	}
-	err := verifyValidationJWS(challenge.Validation, challenge.AccountKey, target)
+	// Parse the authorized keys object
+	var authorizedKeys core.AuthorizedKeys
+	err := json.Unmarshal(challenge.AuthorizedKeys, &authorizedKeys)
 	if err != nil {
+		err = fmt.Errorf("Error parsing authorized keys file: %s", err.Error())
+		va.log.Debug(err.Error())
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
+		return challenge, err
+	}
+
+	// Check that the account key for this challenge is authorized by this object
+	if !authorizedKeys.Match(challenge.Token, challenge.AccountKey) {
+		err = fmt.Errorf("The authorizated keys file provided did not match this challenge")
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
@@ -404,9 +373,8 @@ func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier,
 	}
 
 	// Compute the digest that will appear in the certificate
-	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
 	h := sha256.New()
-	h.Write([]byte(encodedSignature))
+	h.Write([]byte(challenge.AuthorizedKeys))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.DVSNISuffix)
 
@@ -506,15 +474,11 @@ func (va *ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, i
 		return challenge, challenge.Error
 	}
 
-	// Check that JWS body is as expected
-	// * "type" == "dvsni"
-	// * "token" == challenge.token
-	target := map[string]interface{}{
-		"type":  core.ChallengeTypeDNS,
-		"token": challenge.Token,
-	}
-	err := verifyValidationJWS(challenge.Validation, challenge.AccountKey, target)
+	// Parse the authorized keys object
+	var authorizedKeys core.AuthorizedKeys
+	err := json.Unmarshal(challenge.AuthorizedKeys, &authorizedKeys)
 	if err != nil {
+		err = fmt.Errorf("Error parsing authorized keys file: %s", err.Error())
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
@@ -523,7 +487,23 @@ func (va *ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, i
 		}
 		return challenge, err
 	}
-	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
+
+	// Check that the account key for this challenge is authorized by this object
+	if !authorizedKeys.Match(challenge.Token, challenge.AccountKey) {
+		err = fmt.Errorf("The authorizated keys file provided did not match this challenge")
+		va.log.Debug(err.Error())
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: err.Error(),
+		}
+		return challenge, err
+	}
+
+	// Compute the digest of the authorized keys file
+	h := sha256.New()
+	h.Write([]byte(challenge.AuthorizedKeys))
+	authorizedKeysDigest := hex.EncodeToString(h.Sum(nil))
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
@@ -537,7 +517,7 @@ func (va *ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, i
 	}
 
 	for _, element := range txts {
-		if subtle.ConstantTimeCompare([]byte(element), []byte(encodedSignature)) == 1 {
+		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			challenge.Status = core.StatusValid
 			return challenge, nil
 		}

@@ -72,17 +72,6 @@ const pathRedirectLookup = "re-lookup"
 const pathRedirectLookupInvalid = "re-lookup-invalid"
 const pathRedirectPort = "port-redirect"
 
-func createValidation(token string, enableTLS bool) string {
-	payload, _ := json.Marshal(map[string]interface{}{
-		"type":  "simpleHttp",
-		"token": token,
-		"tls":   enableTLS,
-	})
-	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	obj, _ := signer.Sign(payload, "")
-	return obj.FullSerialize()
-}
-
 func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 	m := http.NewServeMux()
 
@@ -131,7 +120,14 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 			http.Redirect(w, r, "http://other.valid:8080/path", 302)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
-			fmt.Fprint(w, createValidation(currentToken, enableTLS))
+			authzKeysJSON, _ := json.Marshal(core.AuthorizedKeys{
+				core.AuthorizedKey{
+					Token: currentToken,
+					Key:   accountKey,
+				},
+			})
+
+			fmt.Fprint(w, string(authzKeysJSON))
 			currentToken = defaultToken
 		}
 	})
@@ -173,9 +169,8 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 }
 
 func dvsniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
-	encodedSig := core.B64enc(chall.Validation.Signatures[0].Signature)
 	h := sha256.New()
-	h.Write([]byte(encodedSig))
+	h.Write([]byte(chall.AuthorizedKeys))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.acme.invalid", Z[:32], Z[32:])
 
@@ -487,14 +482,15 @@ func TestDvsni(t *testing.T) {
 	test.AssertError(t, err, "Domain name was supposed to be invalid.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 
-	// Need to re-sign to get an unknown SNI (from the signature value)
+	// Need to create a new authorized keys object to get an unknown SNI (from the signature value)
 	chall.Token = core.NewToken()
-	validationPayload, _ := json.Marshal(map[string]interface{}{
-		"type":  chall.Type,
-		"token": chall.Token,
+	authorizedKeys, _ := json.Marshal(core.AuthorizedKeys{
+		core.AuthorizedKey{
+			Token: chall.Token,
+			Key:   accountKey,
+		},
 	})
-	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	chall.Validation, _ = signer.Sign(validationPayload, "")
+	chall.AuthorizedKeys = core.JSONBuffer(authorizedKeys)
 
 	log.Clear()
 	started := time.Now()
@@ -569,13 +565,14 @@ func createChallenge(challengeType string) core.Challenge {
 		AccountKey:       accountKey,
 	}
 
-	validationPayload, _ := json.Marshal(map[string]interface{}{
-		"type":  chall.Type,
-		"token": chall.Token,
+	authorizedKeys, _ := json.Marshal(core.AuthorizedKeys{
+		core.AuthorizedKey{
+			Token: chall.Token,
+			Key:   accountKey,
+		},
 	})
+	chall.AuthorizedKeys = core.JSONBuffer(authorizedKeys)
 
-	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	chall.Validation, _ = signer.Sign(validationPayload, "")
 	return chall
 }
 
