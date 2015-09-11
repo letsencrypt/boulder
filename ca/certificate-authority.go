@@ -228,7 +228,7 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
 // enforcing all policies.
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
 	key, ok := csr.PublicKey.(crypto.PublicKey)
@@ -301,13 +301,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		err = errors.New("Cannot issue a certificate that expires after the intermediate certificate.")
 		ca.log.AuditErr(err)
 		return emptyCert, err
-	}
-
-	// Note: We do not current enforce that certificate lifetimes match
-	// authorization lifetimes, because it was breaking integration tests.
-	if earliestExpiry.Before(notAfter) {
-		message := fmt.Sprintf("Issuing a certificate that expires after the shortest underlying authorization. [%v] [%v]", earliestExpiry, notAfter)
-		ca.log.Notice(message)
 	}
 
 	// Convert the CSR to PEM

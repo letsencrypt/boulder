@@ -25,18 +25,23 @@ import (
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	CA          core.CertificateAuthority
-	VA          core.ValidationAuthority
-	SA          core.StorageAuthority
-	PA          core.PolicyAuthority
-	DNSResolver core.DNSResolver
-	clk         clock.Clock
-	log         *blog.AuditLogger
+	CA                       core.CertificateAuthority
+	VA                       core.ValidationAuthority
+	SA                       core.StorageAuthority
+	PA                       core.PolicyAuthority
+	DNSResolver              core.DNSResolver
+	clk                      clock.Clock
+	log                      *blog.AuditLogger
+	minAuthorizationLifetime time.Duration
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
 func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger) RegistrationAuthorityImpl {
-	ra := RegistrationAuthorityImpl{clk: clk, log: logger}
+	ra := RegistrationAuthorityImpl{
+		clk: clk,
+		log: logger,
+		minAuthorizationLifetime: 2159 * time.Hour,
+	}
 	return ra
 }
 
@@ -268,6 +273,26 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(
 	return
 }
 
+// checkAuthorizations checks that each requested name has a valid authorization
+// that won't expire before the certificate expires. Returns an error otherwise.
+func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registration *core.Registration) error {
+	latestAllowableExpiry := ra.clk.Now().Add(ra.minAuthorizationLifetime)
+	var badNames []string
+	for _, name := range names {
+		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
+		if err != nil || authz.Expires.Before(latestAllowableExpiry) {
+			badNames = append(badNames, name)
+		}
+	}
+
+	if len(badNames) > 0 {
+		return core.UnauthorizedError(fmt.Sprintf(
+			"Authorizations for these names not found or expired: %s",
+			strings.Join(badNames, ", ")))
+	}
+	return nil
+}
+
 // NewCertificate requests the issuance of a certificate.
 func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	emptyCert := core.Certificate{}
@@ -341,28 +366,17 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	// Check that each requested name has a valid authorization
-	now := ra.clk.Now()
-	earliestExpiry := time.Date(2100, 01, 01, 0, 0, 0, 0, time.UTC)
-	for _, name := range names {
-		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
-		if err != nil || authz.Expires.Before(now) {
-			// unable to find a valid authorization or authz is expired
-			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
-			logEvent.Error = err.Error()
-			return emptyCert, err
-		}
-
-		if authz.Expires.Before(earliestExpiry) {
-			earliestExpiry = *authz.Expires
-		}
+	err = ra.checkAuthorizations(names, &registration)
+	if err != nil {
+		logEvent.Error = err.Error()
+		return emptyCert, err
 	}
 
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	if cert, err = ra.CA.IssueCertificate(*csr, regID, earliestExpiry); err != nil {
+	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
 		// While this could be InternalServerError for certain conditions, most
 		// of the failure reasons (such as GoodKey failing) are caused by malformed
 		// requests.
@@ -371,7 +385,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	err = ra.MatchesCSR(cert, csr, earliestExpiry)
+	err = ra.MatchesCSR(cert, csr)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err

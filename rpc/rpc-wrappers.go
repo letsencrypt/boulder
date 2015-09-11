@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
@@ -98,9 +97,8 @@ type certificateRequest struct {
 }
 
 type issueCertificateRequest struct {
-	Bytes          []byte
-	RegID          int64
-	EarliestExpiry time.Time
+	Bytes []byte
+	RegID int64
 }
 
 type addCertificateRequest struct {
@@ -596,7 +594,7 @@ func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority
 			return
 		}
 
-		cert, err := impl.IssueCertificate(*csr, icReq.RegID, icReq.EarliestExpiry)
+		cert, err := impl.IssueCertificate(*csr, icReq.RegID)
 		if err != nil {
 			return
 		}
@@ -656,7 +654,7 @@ func NewCertificateAuthorityClient(client RPCClient) (cac CertificateAuthorityCl
 }
 
 // IssueCertificate sends a request to issue a certificate
-func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (cert core.Certificate, err error) {
+func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	var icReq issueCertificateRequest
 	icReq.Bytes = csr.Raw
 	icReq.RegID = regID
