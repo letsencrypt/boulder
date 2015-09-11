@@ -416,13 +416,7 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 			*ch.TLS = true
 		}
 
-	case ChallengeTypeDVSNI:
-		fallthrough
-	case ChallengeTypeDNS:
-		// For dvsni and dns, only "validation" is client-provided
-		if resp.AuthorizedKeys != nil {
-			ch.AuthorizedKeys = resp.AuthorizedKeys
-		}
+		// For dvsni and dns, there are no client-provided fields
 	}
 
 	return ch
