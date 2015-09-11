@@ -7,48 +7,29 @@ This is an initial implementation of an ACME-based CA. The [ACME protocol](https
 [![Build Status](https://travis-ci.org/letsencrypt/boulder.svg)](https://travis-ci.org/letsencrypt/boulder)
 [![Coverage Status](https://coveralls.io/repos/letsencrypt/boulder/badge.svg)](https://coveralls.io/r/letsencrypt/boulder)
 
-Docker
+Quickstart
 ------
 
-Boulder is available as a [Docker image from Quay.io](https://quay.io/repository/letsencrypt/boulder). The Docker image expects the `config.json` file to be located at `/boulder/config.json` within the container.
+Boulder has a Dockerfile to make it easy to install and set up all its
+dependencies. This approach is most suitable if you just need to set up Boulder
+for the purpose of testing client software against it. To start Boulder
+in a Docker container, run:
 
-(Note: You can override the `config.json` location by specifying a different BOULDER_CONFIG environment variable, such as with `-e BOULDER_CONFIG=mypath/myfile.config`.)
+./test/run-docker.sh
 
-There are no default commands; you must choose one of the executables from the `cmd` path.
-
-There are several tags available:
- - `stable` is maintained by the Let's Encrypt team as a fairly stable copy of Boulder.
- - `latest` is a more recent build of Boulder. It may lag behind the `master` ref, as automated builds are being reworked.
- - Tags for individual short-format git refs, representing those builds.
-
-
-A quick-start method for running a Boulder instance is to use one of the example configurations:
-
-    docker run -i --name=boulder --read-only=true --rm=true -p 4000:4000 quay.io/letsencrypt/boulder:latest
-
-
-Alternatively, to run all services locally, using AMQP to pass messages between them, you can use:
-
-```
-> python start.py
-# start.py will use the configuration specified by BOULDER_CONFIG or test/boulder-config.json
-```
-
-To run a single module, specifying the AMQP server, you might use something more like:
-
-```
-> docker run --name=boulder --read-only=true --rm=true -v $(pwd)/.boulder-config:/boulder:ro quay.io/letsencrypt/boulder:stable boulder-ra
-```
-
-
-
-Quickstart
+Slow start
 ----------
 
-Boulder requires an installation of RabbitMQ, libtool-ltdl, and
+This approach is better if you intend to develop on Boulder frequently, because
+it's challenging to develop inside the Docker container.
+
+Boulder requires an installation of RabbitMQ, libtool-ltdl, goose, and
 MariaDB 10 to work correctly. On Ubuntu and CentOS, you may have to
 install RabbitMQ from https://rabbitmq.com/download.html to get a
 recent version.
+
+Also, Boulder requires Go 1.5. As of September 2015 this version is not yet
+available in OS repostiories, so you will have to install from https://golang.org/dl/.
 
 Ubuntu:
 
@@ -69,19 +50,22 @@ or
 (On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
 
 ```
+> go get bitbucket.org/liamstask/goose/cmd/goose
 > go get github.com/letsencrypt/boulder/ # Ignore errors about no buildable files
 > cd $GOPATH/src/github.com/letsencrypt/boulder
+> ./test/create_db.sh
 # This starts each Boulder component with test configs. Ctrl-C kills all.
+> ./start.py
+# Run tests
 > ./test.sh
 ```
 
-The databases that boulder requires to operate in development and
-testing can be created using test/create\_db.sh. It uses the root
-MariaDB user, so if you have disabled that account you may have to
-adjust the file or recreate the commands.
+Note: create\_db.sh it uses the root MariaDB user, so if you
+have disabled that account you may have to adjust the file or
+recreate the commands.
 
 You can also check out the official client from
-https://github.com/letsencrypt/lets-encrypt-preview/ and follow the setup
+https://github.com/letsencrypt/letsencrypt/ and follow the setup
 instructions there.
 
 Component Model
@@ -130,7 +114,7 @@ and to [avoid insecure fallback in go
 get](https://github.com/golang/go/issues/9637).
 
 Local development also requires a RabbitMQ installation and MariaDB
-10 installation. MariaDB should be run on port 3306 for the
+10 installation (see above). MariaDB should be run on port 3306 for the
 default integration tests.
 
 To update the Go dependencies:

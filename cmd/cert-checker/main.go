@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"reflect"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -194,7 +195,7 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 			}
 		}
 		// Check the cert has the correct key usage extensions
-		if !core.CmpExtKeyUsageSlice(parsedCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+		if !reflect.DeepEqual(parsedCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
 			problems = append(problems, "Certificate has incorrect key usage extensions")
 		}
 	}

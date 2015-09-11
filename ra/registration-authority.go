@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -183,6 +185,89 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	return authz, err
 }
 
+// MatchesCSR tests the contents of a generated certificate to make sure
+// that the PublicKey, CommonName, and DNSNames match those provided in
+// the CSR that was used to generate the certificate. It also checks the
+// following fields for:
+//		* notAfter is after earliestExpiry
+//		* notBefore is not more than 24 hours ago
+//		* BasicConstraintsValid is true
+//		* IsCA is false
+//		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
+//		* Subject only contains CommonName & Names
+func (ra *RegistrationAuthorityImpl) MatchesCSR(
+	cert core.Certificate,
+	csr *x509.CertificateRequest,
+	earliestExpiry time.Time) (err error) {
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	if err != nil {
+		return
+	}
+
+	// Check issued certificate matches what was expected from the CSR
+	hostNames := make([]string, len(csr.DNSNames))
+	copy(hostNames, csr.DNSNames)
+	if len(csr.Subject.CommonName) > 0 {
+		hostNames = append(hostNames, csr.Subject.CommonName)
+	}
+	hostNames = core.UniqueNames(hostNames)
+
+	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
+		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
+		return
+	}
+	if len(csr.Subject.CommonName) > 0 && parsedCertificate.Subject.CommonName != csr.Subject.CommonName {
+		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
+		return
+	}
+	// Sort both slices of names before comparison.
+	parsedNames := parsedCertificate.DNSNames
+	sort.Strings(parsedNames)
+	sort.Strings(hostNames)
+	if !reflect.DeepEqual(parsedNames, hostNames) {
+		err = core.InternalServerError("Generated certificate DNSNames don't match CSR DNSNames")
+		return
+	}
+	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
+		err = core.InternalServerError("Generated certificate IPAddresses don't match CSR IPAddresses")
+		return
+	}
+	if !reflect.DeepEqual(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
+		err = core.InternalServerError("Generated certificate EmailAddresses don't match CSR EmailAddresses")
+		return
+	}
+	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
+		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
+		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
+		len(parsedCertificate.Subject.PostalCode) > 0 || len(parsedCertificate.Subject.SerialNumber) > 0 {
+		err = core.InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
+		return
+	}
+	if parsedCertificate.NotAfter.After(earliestExpiry) {
+		err = core.InternalServerError("Generated certificate expires before earliest expiration")
+		return
+	}
+	now := ra.clk.Now()
+	if now.Sub(parsedCertificate.NotBefore) > time.Hour*24 {
+		err = core.InternalServerError(fmt.Sprintf("Generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore)))
+		return
+	}
+	if !parsedCertificate.BasicConstraintsValid {
+		err = core.InternalServerError("Generated certificate doesn't have basic constraints set")
+		return
+	}
+	if parsedCertificate.IsCA {
+		err = core.InternalServerError("Generated certificate can sign other certificates")
+		return
+	}
+	if !reflect.DeepEqual(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+		err = core.InternalServerError("Generated certificate doesn't have correct key usage extensions")
+		return
+	}
+
+	return
+}
+
 // NewCertificate requests the issuance of a certificate.
 func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	emptyCert := core.Certificate{}
@@ -286,7 +371,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	err = cert.MatchesCSR(csr, earliestExpiry)
+	err = ra.MatchesCSR(cert, csr, earliestExpiry)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
