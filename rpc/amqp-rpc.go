@@ -477,7 +477,7 @@ type AmqpRPCCLient struct {
 	timeout     time.Duration
 	log         *blog.AuditLogger
 
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	pending map[string]chan []byte
 
 	stats statsd.Statter
@@ -517,9 +517,9 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 		for msg := range msgs {
 			// XXX-JWS: jws.Sign(privKey, body)
 			corrID := msg.CorrelationId
-			rpc.mu.Lock()
+			rpc.mu.RLock()
 			responseChan, present := rpc.pending[corrID]
-			rpc.mu.Unlock()
+			rpc.mu.RUnlock()
 
 			rpc.log.Debug(fmt.Sprintf(" [c<][%s] response %s(%s) [%s]", clientQueue, msg.Type, core.B64enc(msg.Body), corrID))
 			if !present {
