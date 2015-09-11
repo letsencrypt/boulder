@@ -15,31 +15,29 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var maxKeySize = 2048
-
 func TestUnknownKeyType(t *testing.T) {
 	notAKey := struct{}{}
-	test.AssertError(t, GoodKey(notAKey, maxKeySize), "Should have rejected a key of unknown type")
+	test.AssertError(t, GoodKey(notAKey), "Should have rejected a key of unknown type")
 }
 
 func TestWrongKeyType(t *testing.T) {
 	ecdsaKey := ecdsa.PublicKey{}
-	test.AssertError(t, GoodKey(&ecdsaKey, maxKeySize), "Should have rejected ECDSA key.")
-	test.AssertError(t, GoodKey(ecdsaKey, maxKeySize), "Should have rejected ECDSA key.")
+	test.AssertError(t, GoodKey(&ecdsaKey), "Should have rejected ECDSA key.")
+	test.AssertError(t, GoodKey(ecdsaKey), "Should have rejected ECDSA key.")
 }
 
 func TestSmallModulus(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2040)
 	test.AssertNotError(t, err, "Error generating key")
-	test.AssertError(t, GoodKey(&private.PublicKey, maxKeySize), "Should have rejected too-short key.")
-	test.AssertError(t, GoodKey(private.PublicKey, maxKeySize), "Should have rejected too-short key.")
+	test.AssertError(t, GoodKey(&private.PublicKey), "Should have rejected too-short key.")
+	test.AssertError(t, GoodKey(private.PublicKey), "Should have rejected too-short key.")
 }
 
 func TestLargeModulus(t *testing.T) {
-	private, err := rsa.GenerateKey(rand.Reader, maxKeySize+1)
+	private, err := rsa.GenerateKey(rand.Reader, 4097)
 	test.AssertNotError(t, err, "Error generating key")
-	test.AssertError(t, GoodKey(&private.PublicKey, maxKeySize), "Should have rejected too-long key.")
-	test.AssertError(t, GoodKey(private.PublicKey, maxKeySize), "Should have rejected too-long key.")
+	test.AssertError(t, GoodKey(&private.PublicKey), "Should have rejected too-long key.")
+	test.AssertError(t, GoodKey(private.PublicKey), "Should have rejected too-long key.")
 }
 
 func TestSmallExponent(t *testing.T) {
@@ -48,7 +46,7 @@ func TestSmallExponent(t *testing.T) {
 		N: bigOne.Lsh(bigOne, 2048),
 		E: 5,
 	}
-	test.AssertError(t, GoodKey(&key, maxKeySize), "Should have rejected small exponent.")
+	test.AssertError(t, GoodKey(&key), "Should have rejected small exponent.")
 }
 
 func TestEvenExponent(t *testing.T) {
@@ -57,7 +55,7 @@ func TestEvenExponent(t *testing.T) {
 		N: bigOne.Lsh(bigOne, 2048),
 		E: 1 << 17,
 	}
-	test.AssertError(t, GoodKey(&key, maxKeySize), "Should have rejected even exponent.")
+	test.AssertError(t, GoodKey(&key), "Should have rejected even exponent.")
 }
 
 func TestEvenModulus(t *testing.T) {
@@ -66,7 +64,7 @@ func TestEvenModulus(t *testing.T) {
 		N: bigOne.Lsh(bigOne, 2048),
 		E: (1 << 17) + 1,
 	}
-	test.AssertError(t, GoodKey(&key, maxKeySize), "Should have rejected even modulus.")
+	test.AssertError(t, GoodKey(&key), "Should have rejected even modulus.")
 }
 
 func TestModulusDivisibleBy752(t *testing.T) {
@@ -78,11 +76,11 @@ func TestModulusDivisibleBy752(t *testing.T) {
 		N: N,
 		E: (1 << 17) + 1,
 	}
-	test.AssertError(t, GoodKey(&key, maxKeySize), "Should have rejected modulus divisible by 751.")
+	test.AssertError(t, GoodKey(&key), "Should have rejected modulus divisible by 751.")
 }
 
 func TestGoodKey(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error generating key")
-	test.AssertNotError(t, GoodKey(&private.PublicKey, maxKeySize), "Should have accepted good key.")
+	test.AssertNotError(t, GoodKey(&private.PublicKey), "Should have accepted good key.")
 }

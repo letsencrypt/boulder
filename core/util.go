@@ -17,10 +17,12 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"hash"
 	"io"
+	"io/ioutil"
 	"math/big"
 	"net/url"
 	"strings"
@@ -345,5 +347,19 @@ func UniqueNames(names []string) (unique []string) {
 	for name := range nameMap {
 		unique = append(unique, name)
 	}
+	return
+}
+
+// LoadCert loads a PEM certificate specified by filename or returns a error
+func LoadCert(filename string) (cert *x509.Certificate, err error) {
+	certPEM, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return
+	}
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, fmt.Errorf("No data in cert PEM file %s", filename)
+	}
+	cert, err = x509.ParseCertificate(block.Bytes)
 	return
 }

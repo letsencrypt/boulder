@@ -42,17 +42,17 @@ var (
 // key use (our requirements are the same for either one), according to basic
 // strength and algorithm checking.
 // TODO: Support JsonWebKeys once go-jose migration is done.
-func GoodKey(key crypto.PublicKey, maxKeySize int) error {
+func GoodKey(key crypto.PublicKey) error {
 	log := blog.GetAuditLogger()
 	switch t := key.(type) {
 	case rsa.PublicKey:
-		return GoodKeyRSA(t, maxKeySize)
+		return GoodKeyRSA(t)
 	case *rsa.PublicKey:
-		return GoodKeyRSA(*t, maxKeySize)
+		return GoodKeyRSA(*t)
 	case ecdsa.PublicKey:
-		return GoodKeyECDSA(t, maxKeySize)
+		return GoodKeyECDSA(t)
 	case *ecdsa.PublicKey:
-		return GoodKeyECDSA(*t, maxKeySize)
+		return GoodKeyECDSA(*t)
 	default:
 		err := MalformedRequestError(fmt.Sprintf("Unknown key type %s", reflect.TypeOf(key)))
 		log.Debug(err.Error())
@@ -61,7 +61,7 @@ func GoodKey(key crypto.PublicKey, maxKeySize int) error {
 }
 
 // GoodKeyECDSA determines if an ECDSA pubkey meets our requirements
-func GoodKeyECDSA(key ecdsa.PublicKey, maxKeySize int) (err error) {
+func GoodKeyECDSA(key ecdsa.PublicKey) (err error) {
 	log := blog.GetAuditLogger()
 	err = NotSupportedError("ECDSA keys not yet supported")
 	log.Debug(err.Error())
@@ -69,12 +69,13 @@ func GoodKeyECDSA(key ecdsa.PublicKey, maxKeySize int) (err error) {
 }
 
 // GoodKeyRSA determines if a RSA pubkey meets our requirements
-func GoodKeyRSA(key rsa.PublicKey, maxKeySize int) (err error) {
+func GoodKeyRSA(key rsa.PublicKey) (err error) {
 	log := blog.GetAuditLogger()
 	// Baseline Requirements Appendix A
-	// Modulus must be >= 2048 bits and < maxKeySize
+	// Modulus must be >= 2048 bits and <= 4096 bits
 	modulus := key.N
 	modulusBitLen := modulus.BitLen()
+	const maxKeySize = 4096
 	if modulusBitLen < 2048 {
 		err = MalformedRequestError(fmt.Sprintf("Key too small: %d", modulusBitLen))
 		log.Debug(err.Error())

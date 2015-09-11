@@ -366,6 +366,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 			CorrelationId: msg.CorrelationId,
 			Type:          msg.Type,
 			Body:          jsonResponse, // XXX-JWS: jws.Sign(privKey, body)
+			Expiration:    "30000",
 		})
 }
 
@@ -475,7 +476,7 @@ type AmqpRPCCLient struct {
 	timeout     time.Duration
 	log         *blog.AuditLogger
 
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	pending map[string]chan []byte
 }
 
@@ -486,7 +487,12 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 		return nil, err
 	}
 
-	clientQueue := fmt.Sprintf("%s.%s", clientQueuePrefix, hostname)
+	randID := make([]byte, 3)
+	_, err = rand.Read(randID)
+	if err != nil {
+		return nil, err
+	}
+	clientQueue := fmt.Sprintf("%s.%s.%x", clientQueuePrefix, hostname, randID)
 
 	rpc = &AmqpRPCCLient{
 		serverQueue: serverQueue,
@@ -507,9 +513,9 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 		for msg := range msgs {
 			// XXX-JWS: jws.Sign(privKey, body)
 			corrID := msg.CorrelationId
-			rpc.mu.Lock()
+			rpc.mu.RLock()
 			responseChan, present := rpc.pending[corrID]
-			rpc.mu.Unlock()
+			rpc.mu.RUnlock()
 
 			rpc.log.Debug(fmt.Sprintf(" [c<][%s] response %s(%s) [%s]", clientQueue, msg.Type, core.B64enc(msg.Body), corrID))
 			if !present {
@@ -558,6 +564,7 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 			ReplyTo:       rpc.clientQueue,
 			Type:          method,
 			Body:          body, // XXX-JWS: jws.Sign(privKey, body)
+			Expiration:    "30000",
 		})
 
 	return responseChan
