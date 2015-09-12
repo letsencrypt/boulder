@@ -26,7 +26,7 @@ type PKCS11Config struct {
 	TokenLabel      string
 	PrivateKeyLabel string
 	PIN             string
-	SlotID          float64
+	SlotID          uint
 }
 
 func readFiles(c *cli.Context) (issuer, responder, target *x509.Certificate, template ocsp.Response, pkcs11 PKCS11Config, err error) {
