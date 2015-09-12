@@ -421,21 +421,22 @@ func TestHandleFunc(t *testing.T) {
 
 	// Plain requests (no CORS)
 	type testCase struct {
-		allowed       []string
-		reqMethod     string
-		shouldSucceed bool
+		allowed        []string
+		reqMethod      string
+		shouldCallStub bool
+		shouldSucceed  bool
 	}
 	var lastNonce string
 	for _, c := range []testCase{
-		{[]string{"GET", "POST"}, "GET", true},
-		{[]string{"GET", "POST"}, "POST", true},
-		{[]string{"GET"}, "", false},
-		{[]string{"GET"}, "POST", false},
-		{[]string{"GET"}, "OPTIONS", false},     // TODO, #469
-		{[]string{"GET"}, "MAKE-COFFEE", false}, // 405, or 418?
+		{[]string{"GET", "POST"}, "GET", true, true},
+		{[]string{"GET", "POST"}, "POST", true, true},
+		{[]string{"GET"}, "", false, false},
+		{[]string{"GET"}, "POST", false, false},
+		{[]string{"GET"}, "OPTIONS", false, true},
+		{[]string{"GET"}, "MAKE-COFFEE", false, false}, // 405, or 418?
 	} {
 		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.allowed...)
-		test.AssertEquals(t, stubCalled, c.shouldSucceed)
+		test.AssertEquals(t, stubCalled, c.shouldCallStub)
 		if c.shouldSucceed {
 			test.AssertEquals(t, rw.Code, http.StatusOK)
 		} else {
@@ -447,6 +448,7 @@ func TestHandleFunc(t *testing.T) {
 		}
 		nonce := rw.Header().Get("Replay-Nonce")
 		test.AssertNotEquals(t, nonce, lastNonce)
+		test.AssertNotEquals(t, nonce, "")
 		lastNonce = nonce
 	}
 
@@ -461,40 +463,86 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, stubCalled, false)
 	test.AssertEquals(t, rw.Body.String(), "")
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
-}
 
-func TestStandardHeaders(t *testing.T) {
-	wfe := setupWFE(t)
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	// CORS "actual" request for disallowed method
+	runWrappedHandler(&http.Request{
+		Method: "POST",
+		Header: map[string][]string{
+			"Origin": {"http://example.com"},
+		},
+	}, "GET")
+	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 
-	cases := []struct {
-		path    string
-		allowed []string
-	}{
-		{wfe.NewReg, []string{"POST"}},
-		{wfe.RegBase, []string{"POST"}},
-		{wfe.NewAuthz, []string{"POST"}},
-		{wfe.AuthzBase, []string{"GET"}},
-		{wfe.ChallengeBase, []string{"GET", "POST"}},
-		{wfe.NewCert, []string{"POST"}},
-		{wfe.CertBase, []string{"GET"}},
-		{wfe.SubscriberAgreementURL, []string{"GET"}},
-	}
+	// CORS "actual" request for allowed method
+	runWrappedHandler(&http.Request{
+		Method: "GET",
+		Header: map[string][]string{
+			"Origin": {"http://example.com"},
+		},
+	}, "GET", "POST")
+	test.AssertEquals(t, stubCalled, true)
+	test.AssertEquals(t, rw.Code, http.StatusOK)
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
 
-	for _, c := range cases {
-		responseWriter := httptest.NewRecorder()
-		mux.ServeHTTP(responseWriter, &http.Request{
-			Method: "BOGUS",
-			URL:    mustParseURL(c.path),
-		})
-		acao := responseWriter.Header().Get("Access-Control-Allow-Origin")
-		nonce := responseWriter.Header().Get("Replay-Nonce")
-		allow := responseWriter.Header().Get("Allow")
-		test.Assert(t, responseWriter.Code == http.StatusMethodNotAllowed, "Bogus method allowed")
-		test.Assert(t, acao == "*", "Bad CORS header")
-		test.Assert(t, len(nonce) > 0, "Bad Replay-Nonce header")
-		test.Assert(t, len(allow) > 0 && allow == strings.Join(c.allowed, ", "), "Bad Allow header")
+	// CORS preflight request for disallowed method
+	runWrappedHandler(&http.Request{
+		Method: "OPTIONS",
+		Header: map[string][]string{
+			"Origin":                        {"http://example.com"},
+			"Access-Control-Request-Method": {"POST"},
+		},
+	}, "GET")
+	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, rw.Code, http.StatusOK)
+	test.AssertEquals(t, rw.Header().Get("Allow"), "GET")
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
+
+	// CORS preflight request for allowed method
+	runWrappedHandler(&http.Request{
+		Method: "OPTIONS",
+		Header: map[string][]string{
+			"Origin":                         {"http://example.com"},
+			"Access-Control-Request-Method":  {"POST"},
+			"Access-Control-Request-Headers": {"X-Accept-Header1, X-Accept-Header2", "X-Accept-Header3"},
+		},
+	}, "GET", "POST")
+	test.AssertEquals(t, rw.Code, http.StatusOK)
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Max-Age"), "86400")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Allow-Methods")), "GET, POST")
+	test.AssertDeepEquals(t, rw.Header()["Access-Control-Allow-Headers"], []string{"X-Accept-Header1, X-Accept-Header2", "X-Accept-Header3"})
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
+
+	// OPTIONS request without an Origin header (i.e., not a CORS
+	// preflight request)
+	runWrappedHandler(&http.Request{
+		Method: "OPTIONS",
+		Header: map[string][]string{
+			"Access-Control-Request-Method": {"POST"},
+		},
+	}, "GET", "POST")
+	test.AssertEquals(t, rw.Code, http.StatusOK)
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
+
+	// CORS preflight request missing optional Request-Method
+	// header. The "actual" request will be GET.
+	for _, allowedMethod := range []string{"GET", "POST"} {
+		runWrappedHandler(&http.Request{
+			Method: "OPTIONS",
+			Header: map[string][]string{
+				"Origin": {"http://example.com"},
+			},
+		}, allowedMethod)
+		test.AssertEquals(t, rw.Code, http.StatusOK)
+		if allowedMethod == "GET" {
+			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
+			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "GET")
+		} else {
+			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
+		}
 	}
 }
 

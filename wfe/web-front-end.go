@@ -146,11 +146,15 @@ func (mrw BodylessResponseWriter) Write(buf []byte) (int, error) {
 //
 // * Set a Replay-Nonce header.
 //
+// * Respond to OPTIONS requests, including CORS preflight requests.
+//
 // * Respond http.StatusMethodNotAllowed for HTTP methods other than
-//   those listed.
+// those listed.
+//
+// * Set CORS headers when responding to CORS "actual" requests.
 //
 // * Never send a body in response to a HEAD request. (Anything
-//   written by the handler will be discarded if the method is HEAD.)
+// written by the handler will be discarded if the method is HEAD.)
 func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h func(http.ResponseWriter, *http.Request), methods ...string) {
 	methodsOK := make(map[string]bool)
 	for _, m := range methods {
@@ -163,7 +167,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 		if err == nil {
 			response.Header().Set("Replay-Nonce", nonce)
 		}
-		response.Header().Set("Access-Control-Allow-Origin", "*")
 
 		switch request.Method {
 		case "HEAD":
@@ -172,7 +175,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 			// sending a body.
 			response = BodylessResponseWriter{response}
 		case "OPTIONS":
-			// TODO, #469
+			wfe.Options(response, request, methodsOK)
+			return
 		}
 
 		if _, ok := methodsOK[request.Method]; !ok {
@@ -183,6 +187,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 			wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 			return
 		}
+
+		wfe.setCORSHeaders(response, request, strings.Join(methods, ", "))
 
 		// Call the wrapped handler.
 		h(response, request)
@@ -1180,6 +1186,55 @@ func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.
 		logEvent.Error = err.Error()
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
+}
+
+// Options responds to an HTTP OPTIONS request.
+func (wfe *WebFrontEndImpl) Options(response http.ResponseWriter, request *http.Request, methodsOK map[string]bool) {
+	allowMethods := ""
+	for method := range methodsOK {
+		if allowMethods != "" {
+			allowMethods += ", "
+		}
+		allowMethods += method
+	}
+
+	// Every OPTIONS request gets an Allow header with a list of supported methods.
+	response.Header().Set("Allow", allowMethods)
+
+	// CORS preflight requests get additional headers. See
+	// http://www.w3.org/TR/cors/#resource-preflight-requests
+	reqMethod := request.Header.Get("Access-Control-Request-Method")
+	if reqMethod == "" {
+		reqMethod = "GET"
+	}
+	if _, ok := methodsOK[reqMethod]; ok {
+		wfe.setCORSHeaders(response, request, allowMethods)
+	}
+}
+
+// setCORSHeaders() tells the client that CORS is acceptable for this
+// request. If allowMethods == "" the request is assumed to be a CORS
+// actual request and no Access-Control-Allow-Methods or -Headers
+// headers will be sent.
+func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request *http.Request, allowMethods string) {
+	if request.Header.Get("Origin") == "" {
+		// This is not a CORS request.
+		return
+	}
+	if allowMethods != "" {
+		// For an OPTIONS request: allow all methods handled at this URL.
+		response.Header().Set("Access-Control-Allow-Methods", allowMethods)
+
+		// Allow all requested headers.
+		if acrh, ok := request.Header["Access-Control-Request-Headers"]; ok {
+			for _, h := range acrh {
+				response.Header().Add("Access-Control-Allow-Headers", h)
+			}
+		}
+	}
+	response.Header().Set("Access-Control-Allow-Origin", "*")
+	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
+	response.Header().Set("Access-Control-Max-Age", "86400")
 }
 
 func (wfe *WebFrontEndImpl) logRequestDetails(logEvent *requestEvent) {
