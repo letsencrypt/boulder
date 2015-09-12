@@ -174,8 +174,8 @@ func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
 	return core.Authorization{}, nil
 }
 
-func (sa *MockSA) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
-	if registrationId == 1 && identifier.Type == "dns" {
+func (sa *MockSA) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+	if registrationID == 1 && identifier.Type == "dns" {
 		if sa.authorizedDomains[identifier.Value] || identifier.Value == "not-an-example.com" {
 			exp := time.Now().AddDate(100, 0, 0)
 			return core.Authorization{Status: core.StatusValid, RegistrationID: 1, Expires: &exp, Identifier: identifier}, nil
@@ -1396,12 +1396,12 @@ func assertCsrLogged(t *testing.T, mockLog *mocks.MockSyslogWriter) {
 }
 
 func TestLogCsrPem(t *testing.T) {
-	const certificateRequestJson = `{
+	const certificateRequestJSON = `{
 		"csr": "MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca-fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB-6dp48xkcX7Z_KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD-eeu8-z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7_C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT_DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq_Bbe7TBGVYZabUEh-LOskYwhgcOuThVN7tHnH5rhN-gb7cEdysjTb1QL-vOUwYgV75CB6PE5JVYK-cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub-fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G_W-Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd-L3IcyvHVKxNhIJXZVH0AOqh_1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY"
 	}`
 	wfe := setupWFE(t)
 	var certificateRequest core.CertificateRequest
-	err := json.Unmarshal([]byte(certificateRequestJson), &certificateRequest)
+	err := json.Unmarshal([]byte(certificateRequestJSON), &certificateRequest)
 	test.AssertNotError(t, err, "Unable to parse certificateRequest")
 
 	mockSA := MockSA{}

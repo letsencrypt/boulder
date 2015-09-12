@@ -865,7 +865,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(authz core.Authorization, ch
 // display to the client by clearing its ID and RegistrationID fields, and
 // preparing all its challenges.
 func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(authz *core.Authorization) {
-	for i, _ := range authz.Challenges {
+	for i := range authz.Challenges {
 		wfe.prepChallengeForDisplay(*authz, &authz.Challenges[i])
 	}
 	authz.ID = ""
