@@ -73,6 +73,9 @@ type WebFrontEndImpl struct {
 	CertNoCacheExpirationWindow time.Duration
 	IndexCacheDuration          time.Duration
 	IssuerCacheDuration         time.Duration
+
+	// CORS settings
+	AllowOrigins []string
 }
 
 func statusCodeFromError(err interface{}) int {
@@ -1217,10 +1220,32 @@ func (wfe *WebFrontEndImpl) Options(response http.ResponseWriter, request *http.
 // actual request and no Access-Control-Allow-Methods or -Headers
 // headers will be sent.
 func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request *http.Request, allowMethods string) {
-	if request.Header.Get("Origin") == "" {
+	reqOrigin := request.Header.Get("Origin")
+	if reqOrigin == "" {
 		// This is not a CORS request.
 		return
 	}
+
+	// Allow CORS if the current origin (or "*") is listed as an
+	// allowed origin in config. Otherwise, disallow by returning
+	// without setting any CORS headers.
+	allow := false
+	for _, ao := range wfe.AllowOrigins {
+		if ao == "*" {
+			response.Header().Set("Access-Control-Allow-Origin", "*")
+			allow = true
+			break
+		} else if ao == reqOrigin {
+			response.Header().Set("Vary", "Origin")
+			response.Header().Set("Access-Control-Allow-Origin", ao)
+			allow = true
+			break
+		}
+	}
+	if !allow {
+		return
+	}
+
 	if allowMethods != "" {
 		// For an OPTIONS request: allow all methods handled at this URL.
 		response.Header().Set("Access-Control-Allow-Methods", allowMethods)
@@ -1232,7 +1257,6 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 			}
 		}
 	}
-	response.Header().Set("Access-Control-Allow-Origin", "*")
 	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
 	response.Header().Set("Access-Control-Max-Age", "86400")
 }

@@ -32,6 +32,7 @@
 
   "wfe": {
     "listenAddress": "127.0.0.1:4000",
+    "allowOrigins": ["*"],
     "certCacheDuration": "6h",
     "certNoCacheExpirationWindow": "96h",
     "indexCacheDuration": "24h",

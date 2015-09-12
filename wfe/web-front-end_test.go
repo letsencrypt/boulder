@@ -464,11 +464,14 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Body.String(), "")
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
 
+	wfe.AllowOrigins = []string{"*"}
+	testOrigin := "https://example.com"
+
 	// CORS "actual" request for disallowed method
 	runWrappedHandler(&http.Request{
 		Method: "POST",
 		Header: map[string][]string{
-			"Origin": {"http://example.com"},
+			"Origin": {testOrigin},
 		},
 	}, "GET")
 	test.AssertEquals(t, stubCalled, false)
@@ -478,7 +481,7 @@ func TestHandleFunc(t *testing.T) {
 	runWrappedHandler(&http.Request{
 		Method: "GET",
 		Header: map[string][]string{
-			"Origin": {"http://example.com"},
+			"Origin": {testOrigin},
 		},
 	}, "GET", "POST")
 	test.AssertEquals(t, stubCalled, true)
@@ -490,7 +493,7 @@ func TestHandleFunc(t *testing.T) {
 	runWrappedHandler(&http.Request{
 		Method: "OPTIONS",
 		Header: map[string][]string{
-			"Origin":                        {"http://example.com"},
+			"Origin":                        {testOrigin},
 			"Access-Control-Request-Method": {"POST"},
 		},
 	}, "GET")
@@ -503,7 +506,7 @@ func TestHandleFunc(t *testing.T) {
 	runWrappedHandler(&http.Request{
 		Method: "OPTIONS",
 		Header: map[string][]string{
-			"Origin":                         {"http://example.com"},
+			"Origin":                         {testOrigin},
 			"Access-Control-Request-Method":  {"POST"},
 			"Access-Control-Request-Headers": {"X-Accept-Header1, X-Accept-Header2", "X-Accept-Header3"},
 		},
@@ -533,7 +536,7 @@ func TestHandleFunc(t *testing.T) {
 		runWrappedHandler(&http.Request{
 			Method: "OPTIONS",
 			Header: map[string][]string{
-				"Origin": {"http://example.com"},
+				"Origin": {testOrigin},
 			},
 		}, allowedMethod)
 		test.AssertEquals(t, rw.Code, http.StatusOK)
@@ -543,6 +546,50 @@ func TestHandleFunc(t *testing.T) {
 		} else {
 			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
 		}
+	}
+
+	// No CORS headers are given when configuration does not list
+	// "*" or the client-provided origin.
+	for _, wfe.AllowOrigins = range [][]string{
+		{},
+		{"http://example.com", "https://other.example"},
+		{""}, // Invalid origin is never matched
+	} {
+		runWrappedHandler(&http.Request{
+			Method: "OPTIONS",
+			Header: map[string][]string{
+				"Origin":                        {testOrigin},
+				"Access-Control-Request-Method": {"POST"},
+			},
+		}, "POST")
+		test.AssertEquals(t, rw.Code, http.StatusOK)
+		for _, h := range []string{
+			"Access-Control-Allow-Methods",
+			"Access-Control-Allow-Origin",
+			"Access-Control-Expose-Headers",
+			"Access-Control-Request-Headers",
+		} {
+			test.AssertEquals(t, rw.Header().Get(h), "")
+		}
+	}
+
+	// CORS headers are offered when configuration lists "*" or
+	// the client-provided origin.
+	for _, wfe.AllowOrigins = range [][]string{
+		{testOrigin, "http://example.org", "*"},
+		{"", "http://example.org", testOrigin}, // Invalid origin is harmless
+	} {
+		runWrappedHandler(&http.Request{
+			Method: "OPTIONS",
+			Header: map[string][]string{
+				"Origin":                        {testOrigin},
+				"Access-Control-Request-Method": {"POST"},
+			},
+		}, "POST")
+		test.AssertEquals(t, rw.Code, http.StatusOK)
+		test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), testOrigin)
+		// http://www.w3.org/TR/cors/ section 6.4:
+		test.AssertEquals(t, rw.Header().Get("Vary"), "Origin")
 	}
 }
 

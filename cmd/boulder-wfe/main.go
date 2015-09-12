@@ -112,6 +112,8 @@ func main() {
 		wfe.Stats = stats
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
 
+		wfe.AllowOrigins = c.WFE.AllowOrigins
+
 		wfe.CertCacheDuration, err = time.ParseDuration(c.WFE.CertCacheDuration)
 		cmd.FailOnError(err, "Couldn't parse certificate caching duration")
 		wfe.CertNoCacheExpirationWindow, err = time.ParseDuration(c.WFE.CertNoCacheExpirationWindow)
