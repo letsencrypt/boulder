@@ -165,8 +165,12 @@ func (ps *PKCS11Key) Destroy() {
 }
 
 func (ps *PKCS11Key) openSession() (session pkcs11.SessionHandle, err error) {
-	// Check if there is a PCKS11 token with slots. It has side-effects that
-	// allow the rest of the code here to work.
+	// Retrieve the list of valid slot IDs for this token
+	//
+	// XXX: According to the PKCS#11 specification, this call should not be
+	// necessary, since we already have a slot ID that we're looking for.
+	// However, some PKCS#11 devices will not return information from
+	// GetTokenInfo unless GetSlotList has been called first.
 	slotIDs, err = ps.module.GetSlotList(true)
 	if err != nil {
 		return
