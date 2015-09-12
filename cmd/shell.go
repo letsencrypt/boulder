@@ -226,10 +226,11 @@ type KeyConfig struct {
 
 // PKCS11Config defines how to load a module for an HSM.
 type PKCS11Config struct {
-	Module string
-	Token  string
-	PIN    string
-	Label  string
+	Module          string
+	TokenLabel      string
+	SlotID          *int
+	PIN             string
+	PrivateKeyLabel string
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.
