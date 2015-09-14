@@ -52,16 +52,18 @@ func toPEM(cert *x509.Certificate) []byte {
 func main() {
 	// Instantiate the PKCS11 key
 	var pkcs11 struct {
-		Module string
-		Token  string
-		PIN    string
-		Label  string
+		Module          string
+		TokenLabel      string
+		PIN             string
+		PrivateKeyLabel string
+		SlotID          float64
 	}
 	pkcs11Bytes, err := ioutil.ReadFile(pkcs11FileName)
 	panicOnError(err)
 	err = json.Unmarshal(pkcs11Bytes, &pkcs11)
 	panicOnError(err)
-	p11key, err := pkcs11key.New(pkcs11.Module, pkcs11.Token, pkcs11.PIN, pkcs11.Label)
+	slotID := int(pkcs11.SlotID)
+	p11key, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, pkcs11.PrivateKeyLabel, slotID)
 	panicOnError(err)
 
 	// All of the certificates start and end at the same time

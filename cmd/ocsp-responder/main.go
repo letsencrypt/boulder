@@ -141,15 +141,18 @@ func main() {
 		cmd.FailOnError(err, "Could not connect to database")
 		sa.SetSQLDebug(dbMap, c.SQL.SQLDebug)
 
-		// Load the CA's key so we can store its AuthorityKeyId in the DB
+		// Load the CA's key so we can store its SubjectKey in the DB
 		caCertDER, err := cmd.LoadCert(c.Common.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 		caCert, err := x509.ParseCertificate(caCertDER)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't parse cert read from [%s]", c.Common.IssuerCert))
+		if len(caCert.SubjectKeyId) == 0 {
+			cmd.FailOnError(fmt.Errorf("Empty subjectKeyID"), "Unable to use CA certificate")
+		}
 
 		// Construct source from DB
-		auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert ID: %s", hex.EncodeToString(caCert.AuthorityKeyId)))
-		src, err := NewSourceFromDatabase(dbMap, caCert.AuthorityKeyId)
+		auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert ID: %s", hex.EncodeToString(caCert.SubjectKeyId)))
+		src, err := NewSourceFromDatabase(dbMap, caCert.SubjectKeyId)
 		cmd.FailOnError(err, "Could not connect to OCSP database")
 
 		// Configure HTTP
