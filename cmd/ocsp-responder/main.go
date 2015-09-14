@@ -147,7 +147,7 @@ func main() {
 		caCert, err := x509.ParseCertificate(caCertDER)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't parse cert read from [%s]", c.Common.IssuerCert))
 		if len(caCert.SubjectKeyId) == 0 {
-			cmd.FailOnErr(fmt.Errorf("Empty subjectKeyID"), "Unable to use CA certificate")
+			cmd.FailOnError(fmt.Errorf("Empty subjectKeyID"), "Unable to use CA certificate")
 		}
 
 		// Construct source from DB
