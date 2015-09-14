@@ -103,7 +103,7 @@ var cliOptions = cli.parse({
 
 var state = {
   certPrivateKey: null,
-  accountPrivateKey: null,
+  accountKeyPair: null,
 
   newRegistrationURL: cliOptions.newReg,
   registrationURL: "",
@@ -221,8 +221,8 @@ function makeAccountKeyPair(answers) {
       console.log(error);
       process.exit(1);
     }
-    state.accountPrivateKey = cryptoUtil.importPemPrivateKey(fs.readFileSync("account-key.pem"));
-    state.acme = new Acme(state.accountPrivateKey);
+    state.accountKeyPair = cryptoUtil.importPemPrivateKey(fs.readFileSync("account-key.pem"));
+    state.acme = new Acme(state.accountKeyPair);
 
     console.log();
     if (cliOptions.email) {
@@ -360,14 +360,11 @@ function getReadyToValidate(err, resp, body) {
   state.responseURL = challenge["uri"];
   state.path = path;
 
-  // Sign validation JWS
-  var validationObject = JSON.stringify({
-    type: "simpleHttp",
+  // Create authorized keys object
+  var authorizedKeys = JSON.stringify([{
     token: challenge.token,
-    tls: true
-  })
-  var validationJWS = cryptoUtil.generateSignature(state.accountPrivateKey,
-                                               new Buffer(validationObject))
+    key: state.accountKeyPair.publicKey,
+  }]);
 
   // For local, test-mode validation
   function httpResponder(req, response) {
@@ -376,8 +373,9 @@ function getReadyToValidate(err, resp, body) {
     if ((host.split(/:/)[0] === state.domain || /localhost/.test(state.newRegistrationURL)) &&
         req.method === "GET" &&
         req.url == "/" + challengePath) {
-      response.writeHead(200, {"Content-Type": "application/jose+json"});
-      response.end(JSON.stringify(validationJWS));
+      console.log("\nRespodned with authorized key file:", authorizedKeys);
+      response.writeHead(200, {"Content-Type": "application/json"});
+      response.end(authorizedKeys);
     } else {
       console.log("Got invalid request for", req.method, host, req.url);
       response.writeHead(404, {"Content-Type": "text/plain"});
