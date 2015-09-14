@@ -22,10 +22,11 @@ import (
 // PKCS11Config defines how to load a module for an HSM.
 // XXX(rlb@ipv.sx) Copied from certificate-authority.go
 type PKCS11Config struct {
-	Module string
-	Token  string
-	PIN    string
-	Label  string
+	Module          string
+	TokenLabel      string
+	PrivateKeyLabel string
+	PIN             string
+	SlotID          float64
 }
 
 func readFiles(c *cli.Context) (issuer, responder, target *x509.Certificate, template ocsp.Response, pkcs11 PKCS11Config, err error) {
@@ -158,7 +159,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to read files")
 
 		// Instantiate the private key from PKCS11
-		priv, err := pkcs11key.New(pkcs11.Module, pkcs11.Token, pkcs11.PIN, pkcs11.Label)
+		priv, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, pkcs11.PrivateKeyLabel, int(pkcs11.SlotID))
 		cmd.FailOnError(err, "Failed to load PKCS#11 key")
 
 		// Populate the remaining fields in the template
