@@ -20,6 +20,12 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// 10 month default authorization lifetime. When used with a 90-day cert
+// lifetime, this allows creation of certs that will cover a whole year,
+// plus a grace period of a month.
+// TODO(jsha): Read from a config file.
+const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
+
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -41,11 +47,7 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger) Reg
 	ra := RegistrationAuthorityImpl{
 		clk: clk,
 		log: logger,
-		// 10 month default authorization lifetime. When used with a 90-day cert
-		// lifetime, this allows creation of certs that will cover a whole year,
-		// plus a grace period of a month.
-		// TODO(jsha): Read from a config file.
-		authorizationLifetime: 300 * 24 * time.Hour,
+		authorizationLifetime: DefaultAuthorizationLifetime,
 	}
 	return ra
 }
