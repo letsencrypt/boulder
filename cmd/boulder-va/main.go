@@ -8,6 +8,7 @@ package main
 import (
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -50,7 +51,7 @@ func main() {
 		if c.VA.PortConfig.DVSNIPort != 0 {
 			pc.DVSNIPort = c.VA.PortConfig.DVSNIPort
 		}
-		vai := va.NewValidationAuthorityImpl(pc, stats)
+		vai := va.NewValidationAuthorityImpl(pc, stats, clock.Default())
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		if !c.Common.DNSAllowLoopbackAddresses {

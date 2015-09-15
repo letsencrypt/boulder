@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -50,6 +51,7 @@ type ValidationAuthorityImpl struct {
 	dvsniPort       int
 	UserAgent       string
 	stats           statsd.Statter
+	clk             clock.Clock
 }
 
 // PortConfig specifies what ports the VA should call to on the remote
@@ -61,7 +63,7 @@ type PortConfig struct {
 }
 
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *PortConfig, stats statsd.Statter) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *PortConfig, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
 	return &ValidationAuthorityImpl{
@@ -70,6 +72,7 @@ func NewValidationAuthorityImpl(pc *PortConfig, stats statsd.Statter) *Validatio
 		simpleHTTPSPort: pc.SimpleHTTPSPort,
 		dvsniPort:       pc.DVSNIPort,
 		stats:           stats,
+		clk:             clk,
 	}
 }
 
@@ -565,7 +568,7 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
-		RequestTime: time.Now(),
+		RequestTime: va.clk.Now(),
 	}
 	if !authz.Challenges[challengeIndex].IsSane(true) {
 		chall := &authz.Challenges[challengeIndex]
@@ -577,7 +580,7 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 	} else {
 		var err error
 
-		vStart := time.Now()
+		vStart := va.clk.Now()
 		switch authz.Challenges[challengeIndex].Type {
 		case core.ChallengeTypeSimpleHTTP:
 			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
