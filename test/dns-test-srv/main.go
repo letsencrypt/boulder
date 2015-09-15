@@ -8,6 +8,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -19,6 +20,14 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m.SetReply(r)
 	m.Compress = false
 
+	// Normally this test DNS server will return 127.0.0.1 for everything.
+	// However, in some situations (for instance Docker), it's useful to return a
+	// different hardcoded host. You can do so by setting the FAKE_DNS environment
+	// variable.
+	fakeDNS := os.Getenv("FAKE_DNS")
+	if fakeDNS == "" {
+		fakeDNS = "127.0.0.1"
+	}
 	for _, q := range r.Question {
 		fmt.Printf("dns-srv: Query -- [%s] %s\n", q.Name, dns.TypeToString[q.Qtype])
 		switch q.Qtype {
@@ -30,7 +39,7 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 				Class:  dns.ClassINET,
 				Ttl:    0,
 			}
-			record.A = net.ParseIP("127.0.0.1")
+			record.A = net.ParseIP(fakeDNS)
 
 			m.Answer = append(m.Answer, record)
 		case dns.TypeMX:
