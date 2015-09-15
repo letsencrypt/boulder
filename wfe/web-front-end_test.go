@@ -300,7 +300,7 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization
 
 type MockCA struct{}
 
-func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (core.Certificate, error) {
+func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	// Return a basic certificate so NewCertificate can continue
 	certPtr, err := core.LoadCert("test/not-an-example.com.crt")
 	if err != nil {
@@ -672,7 +672,7 @@ func TestIssueCertificate(t *testing.T) {
 		}`, &wfe.nonceService)))
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Key not authorized for name meep.com"}`)
+		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Authorizations for these names not found or expired: meep.com"}`)
 	assertCsrLogged(t, mockLog)
 
 	mockLog.Clear()
