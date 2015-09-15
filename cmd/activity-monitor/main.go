@@ -124,7 +124,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 
 	// Run forever.
 	for d := range deliveries {
-		go timeDelivery(d, stats, deliveryTimings)
+		timeDelivery(d, stats, deliveryTimings)
 
 		// Pass each message to the Analysis Engine
 		err = ae.ProcessMessage(d)
