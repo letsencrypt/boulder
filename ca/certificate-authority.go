@@ -157,8 +157,16 @@ func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
 	}
 
 	pkcs11Config := keyConfig.PKCS11
+	if pkcs11Config.Module == "" ||
+		pkcs11Config.TokenLabel == "" ||
+		pkcs11Config.PIN == "" ||
+		pkcs11Config.PrivateKeyLabel == "" ||
+		pkcs11Config.SlotID == nil {
+		err = fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
+		return
+	}
 	priv, err = pkcs11key.New(pkcs11Config.Module,
-		pkcs11Config.Token, pkcs11Config.PIN, pkcs11Config.Label)
+		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel, *pkcs11Config.SlotID)
 	return
 }
 

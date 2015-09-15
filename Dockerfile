@@ -33,7 +33,7 @@ EXPOSE 4000
 ENV BOULDER_CONFIG /go/src/github.com/letsencrypt/boulder/test/boulder-config.json
 
 # Get the Let's Encrypt client
-RUN git clone https://www.github.com/letsencrypt/lets-encrypt-preview.git /letsencrypt
+RUN git clone https://www.github.com/letsencrypt/letsencrypt.git /letsencrypt
 WORKDIR /letsencrypt
 RUN ./bootstrap/debian.sh && \
   apt-get clean && \
@@ -43,19 +43,12 @@ RUN ./bootstrap/debian.sh && \
 RUN virtualenv --no-site-packages -p python2 venv && \
   ./venv/bin/pip install -r requirements.txt -e acme -e .[dev,docs,testing] -e letsencrypt-apache -e letsencrypt-nginx
 
+RUN go get bitbucket.org/liamstask/goose/cmd/goose
+
 ENV LETSENCRYPT_PATH /letsencrypt
 
 # Copy in the Boulder sources
 COPY . /go/src/github.com/letsencrypt/boulder
-
-# Build Boulder
-RUN go install \
-  github.com/letsencrypt/boulder/cmd/activity-monitor \
-  github.com/letsencrypt/boulder/cmd/boulder-ca \
-  github.com/letsencrypt/boulder/cmd/boulder-ra \
-  github.com/letsencrypt/boulder/cmd/boulder-sa \
-  github.com/letsencrypt/boulder/cmd/boulder-va \
-  github.com/letsencrypt/boulder/cmd/boulder-wfe
 
 WORKDIR /go/src/github.com/letsencrypt/boulder
 CMD ["bash", "-c", "service mysql start && \

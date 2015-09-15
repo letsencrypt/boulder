@@ -1,11 +1,10 @@
-Produced by setting backdate in test/boulder-config.json to -100000h and then:
-./start.py
+Produced by:
 js test.js --agree --email jsha@newview.org --domains not-an-example.com --certFile cert.der --certKey ../../wfe/test/178.key
 openssl x509 -text -inform der -in cert.der  -outform pem -out ../../wfe/test/not-an-example.com.crt
 -----BEGIN CERTIFICATE-----
-MIIEYzCCA0ugAwIBAgIRAP8AAAAAAAAOPJsa+Y2FCgowDQYJKoZIhvcNAQELBQAw
-HzEdMBsGA1UEAwwUaGFwcHkgaGFja2VyIGZha2UgQ0EwHhcNMjcwMjA3MDY0NzAw
-WhcNMjcwNTA4MDY0NzAwWjAdMRswGQYDVQQDExJub3QtYW4tZXhhbXBsZS5jb20w
+MIIEYzCCA0ugAwIBAgIRAP8AAAAAAAAOS09n2G6BjEYwDQYJKoZIhvcNAQELBQAw
+HzEdMBsGA1UEAwwUaGFwcHkgaGFja2VyIGZha2UgQ0EwHhcNMTUwOTA5MjI1NjAw
+WhcNMTUxMjA4MjI1NjAwWjAdMRswGQYDVQQDExJub3QtYW4tZXhhbXBsZS5jb20w
 ggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCaqzue57mgXEoGTZZoVkkC
 ZraebWgXI8irX2BgQB1A3iZa9onxGPMcWQMxhSuUisbEJi4UkMcVST12HX01rUwh
 j41UuBxJvI1w4wvdstssTAaa9c9tsQ5+UED2bFRL1MsyBdbmCF/+pu3i+ZIYqWgi
@@ -21,10 +20,10 @@ ci1jZXJ0MB0GA1UdEQQWMBSCEm5vdC1hbi1leGFtcGxlLmNvbTAnBgNVHR8EIDAe
 MBygGqAYhhZodHRwOi8vZXhhbXBsZS5jb20vY3JsMGMGA1UdIARcMFowCgYGZ4EM
 AQIBMAAwTAYDKgMEMEUwIgYIKwYBBQUHAgEWFmh0dHA6Ly9leGFtcGxlLmNvbS9j
 cHMwHwYIKwYBBQUHAgIwEwwRRG8gV2hhdCBUaG91IFdpbHQwDQYJKoZIhvcNAQEL
-BQADggEBACeK/WSzMh7lmLjNV7lLI1r6Z3Th4wUHHX7om3YaAK+Wxy0eHF8BWjB7
-h2vyLDcVHT5neAPcyEyr6cJnvoRvVnwxF0fs3pmY3l99TjymeT9GJEjutnNZe2ul
-lGvy5apwmlm804wtJGOYeMRc5e5e4DaWfPZYiLCJfdmKDrZTLSjK2wtzIyoJgBun
-knujo4pcHzqRPMmVZAFhcpHVXkV8MAWJvqUdAibD2MChRtSpYlKz3Xb9e/bB72c+
-7JTdlcW3u4yAS4R8j4NcNJuvwYxe+aoRMVcdmMuLhOk76SoLjgHh5OpuXDuiOtQV
-feI1qpDdi/CeIsP6x7u8LP5O60sZ3nc=
+BQADggEBAJTSscrGO1ymwZ+rMF+mfVeHfplfyMzZ/6SZyvaYgO9DLr42KIETdHBg
+Y9AZ6aOKboN/hY98kb9mQ0BpOCsSaCkgTsqCjw3szsRd/FMgUSVn36vFpbX2f5oD
+gF40N/51EN5Efbe7aN4Oxmcgijh4IY2sczcskJixAd9T/hjVtv160LJ0xcHRrfji
+u/Tc2E0q+E5k4V91D2HajwU6qcGbap02JI+pX/Oq4S36yfggIUyowmXQw4nm1cb0
+cFXwrMzg+XtDHj+Ex+yBlauq+MP1rjXiHrNIO2hIiyRU9jdxfITAE4DmqEzEBZKY
+NORfB6suv4wLnAlsLbPJEdsraq4/IiU=
 -----END CERTIFICATE-----
