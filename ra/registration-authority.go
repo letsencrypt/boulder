@@ -20,6 +20,12 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// 10 month default authorization lifetime. When used with a 90-day cert
+// lifetime, this allows creation of certs that will cover a whole year,
+// plus a grace period of a month.
+// TODO(jsha): Read from a config file.
+const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
+
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -32,11 +38,17 @@ type RegistrationAuthorityImpl struct {
 	DNSResolver core.DNSResolver
 	clk         clock.Clock
 	log         *blog.AuditLogger
+	// How long before a newly created authorization expires.
+	authorizationLifetime time.Duration
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
 func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger) RegistrationAuthorityImpl {
-	ra := RegistrationAuthorityImpl{clk: clk, log: logger}
+	ra := RegistrationAuthorityImpl{
+		clk: clk,
+		log: logger,
+		authorizationLifetime: DefaultAuthorizationLifetime,
+	}
 	return ra
 }
 
@@ -154,6 +166,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		challenges[i].AccountKey = &reg.Key
 	}
 
+	expires := ra.clk.Now().Add(ra.authorizationLifetime)
+
 	// Partially-filled object
 	authz = core.Authorization{
 		Identifier:     identifier,
@@ -161,6 +175,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		Status:         core.StatusPending,
 		Combinations:   combinations,
 		Challenges:     challenges,
+		// TODO(jsha): Pending authz should expire earlier than finalized authz.
+		Expires: &expires,
 	}
 
 	// Get a pending Auth first so we can get our ID back, then update with challenges
@@ -189,7 +205,6 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 // that the PublicKey, CommonName, and DNSNames match those provided in
 // the CSR that was used to generate the certificate. It also checks the
 // following fields for:
-//		* notAfter is after earliestExpiry
 //		* notBefore is not more than 24 hours ago
 //		* BasicConstraintsValid is true
 //		* IsCA is false
@@ -197,8 +212,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 //		* Subject only contains CommonName & Names
 func (ra *RegistrationAuthorityImpl) MatchesCSR(
 	cert core.Certificate,
-	csr *x509.CertificateRequest,
-	earliestExpiry time.Time) (err error) {
+	csr *x509.CertificateRequest) (err error) {
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		return
@@ -243,10 +257,6 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(
 		err = core.InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
 		return
 	}
-	if parsedCertificate.NotAfter.After(earliestExpiry) {
-		err = core.InternalServerError("Generated certificate expires before earliest expiration")
-		return
-	}
 	now := ra.clk.Now()
 	if now.Sub(parsedCertificate.NotBefore) > time.Hour*24 {
 		err = core.InternalServerError(fmt.Sprintf("Generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore)))
@@ -266,6 +276,26 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(
 	}
 
 	return
+}
+
+// checkAuthorizations checks that each requested name has a valid authorization
+// that won't expire before the certificate expires. Returns an error otherwise.
+func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registration *core.Registration) error {
+	now := ra.clk.Now()
+	var badNames []string
+	for _, name := range names {
+		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
+		if err != nil || authz.Expires.Before(now) {
+			badNames = append(badNames, name)
+		}
+	}
+
+	if len(badNames) > 0 {
+		return core.UnauthorizedError(fmt.Sprintf(
+			"Authorizations for these names not found or expired: %s",
+			strings.Join(badNames, ", ")))
+	}
+	return nil
 }
 
 // NewCertificate requests the issuance of a certificate.
@@ -341,28 +371,17 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	// Check that each requested name has a valid authorization
-	now := ra.clk.Now()
-	earliestExpiry := time.Date(2100, 01, 01, 0, 0, 0, 0, time.UTC)
-	for _, name := range names {
-		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
-		if err != nil || authz.Expires.Before(now) {
-			// unable to find a valid authorization or authz is expired
-			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
-			logEvent.Error = err.Error()
-			return emptyCert, err
-		}
-
-		if authz.Expires.Before(earliestExpiry) {
-			earliestExpiry = *authz.Expires
-		}
+	err = ra.checkAuthorizations(names, &registration)
+	if err != nil {
+		logEvent.Error = err.Error()
+		return emptyCert, err
 	}
 
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	if cert, err = ra.CA.IssueCertificate(*csr, regID, earliestExpiry); err != nil {
+	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
 		// While this could be InternalServerError for certain conditions, most
 		// of the failure reasons (such as GoodKey failing) are caused by malformed
 		// requests.
@@ -371,7 +390,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	err = ra.MatchesCSR(cert, csr, earliestExpiry)
+	err = ra.MatchesCSR(cert, csr)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
@@ -556,8 +575,7 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 	if authz.Status != core.StatusValid {
 		authz.Status = core.StatusInvalid
 	} else {
-		// TODO: Enable configuration of expiry time
-		exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+		exp := ra.clk.Now().Add(ra.authorizationLifetime)
 		authz.Expires = &exp
 	}
 
