@@ -49,8 +49,8 @@ type RegistrationAuthorityImpl struct {
 func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter) RegistrationAuthorityImpl {
 	ra := RegistrationAuthorityImpl{
 		stats: stats,
-		clk: clk,
-		log: logger,
+		clk:   clk,
+		log:   logger,
 		authorizationLifetime: DefaultAuthorizationLifetime,
 	}
 	return ra
