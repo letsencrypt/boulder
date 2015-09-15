@@ -300,7 +300,7 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization
 
 type MockCA struct{}
 
-func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (core.Certificate, error) {
+func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	// Return a basic certificate so NewCertificate can continue
 	certPtr, err := core.LoadCert("test/not-an-example.com.crt")
 	if err != nil {
@@ -672,7 +672,7 @@ func TestIssueCertificate(t *testing.T) {
 		}`, &wfe.nonceService)))
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Key not authorized for name meep.com"}`)
+		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Authorizations for these names not found or expired: meep.com"}`)
 	assertCsrLogged(t, mockLog)
 
 	mockLog.Clear()
@@ -748,30 +748,6 @@ func TestNewRegistration(t *testing.T) {
 	wfe.SA = &MockSA{}
 	wfe.Stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
-	responseWriter := httptest.NewRecorder()
-
-	// GET instead of POST should be rejected
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL(NewRegPath),
-	})
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
-
-	// POST, but no body.
-	responseWriter.Body.Reset()
-	wfe.NewRegistration(responseWriter, &http.Request{
-		Method: "POST",
-		Header: map[string][]string{
-			"Content-Length": []string{"0"},
-		},
-	})
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST"}`)
-
-	// POST, but body that isn't valid JWS
-	responseWriter.Body.Reset()
-	wfe.NewRegistration(responseWriter,
-		makePostRequest("hi"))
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS"}`)
 
 	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
@@ -779,24 +755,64 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, ok, "Couldn't load RSA key")
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
-
-	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
-	responseWriter.Body.Reset()
 	nonce, err := wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
 	result, err := signer.Sign([]byte("foo"), nonce)
-	test.AssertNotError(t, err, "Unable to sign")
-	wfe.NewRegistration(responseWriter,
-		makePostRequest(result.FullSerialize()))
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON"}`)
 
-	// Same signed body, but payload modified by one byte, breaking signature.
-	// should fail JWS verification.
-	responseWriter.Body.Reset()
-	wfe.NewRegistration(responseWriter,
-		makePostRequest(`
+	nonce, err = wfe.nonceService.Nonce()
+	test.AssertNotError(t, err, "Unable to create nonce")
+	fooBody, err := signer.Sign([]byte("foo"), nonce)
+	test.AssertNotError(t, err, "Unable to sign")
+
+	nonce, err = wfe.nonceService.Nonce()
+	test.AssertNotError(t, err, "Unable to create nonce")
+	wrongAgreementBody, err := signer.Sign(
+		[]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"https://letsencrypt.org/im-bad"}`),
+		nonce)
+	test.AssertNotError(t, err, "Unable to sign")
+
+	type newRegErrorTest struct {
+		r        *http.Request
+		respBody string
+	}
+	regErrTests := []newRegErrorTest{
+		// GET instead of POST should be rejected
+		{
+			&http.Request{
+				Method: "GET",
+				URL:    mustParseURL(NewRegPath),
+			},
+			`{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`,
+		},
+
+		// POST, but no body.
+		{
+			&http.Request{
+				Method: "POST",
+				URL:    mustParseURL(NewRegPath),
+				Header: map[string][]string{
+					"Content-Length": []string{"0"},
+				},
+			},
+			`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST"}`,
+		},
+
+		// POST, but body that isn't valid JWS
+		{
+			makePostRequestWithPath(NewRegPath, "hi"),
+			`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS"}`,
+		},
+
+		// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
+		{
+			makePostRequestWithPath(NewRegPath, fooBody.FullSerialize()),
+			`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON"}`,
+		},
+
+		// Same signed body, but payload modified by one byte, breaking signature.
+		// should fail JWS verification.
+		{
+			makePostRequestWithPath(NewRegPath, `
 			{
 				"header": {
 					"alg": "RS256",
@@ -809,24 +825,21 @@ func TestNewRegistration(t *testing.T) {
 				"payload": "xm9vCg",
 				"signature": "RjUQ679fxJgeAJlxqgvDP_sfGZnJ-1RgWF2qmcbnBWljs6h1qp63pLnJOl13u81bP_bCSjaWkelGG8Ymx_X-aQ"
 			}
-		`))
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: JWS verification error"}`)
+		`),
+			`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: JWS verification error"}`,
+		},
+		{
+			makePostRequestWithPath(NewRegPath, wrongAgreementBody.FullSerialize()),
+			`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [` + agreementURL + `]"}`,
+		},
+	}
+	for _, rt := range regErrTests {
+		responseWriter := httptest.NewRecorder()
+		mux.ServeHTTP(responseWriter, rt.r)
+		test.AssertEquals(t, responseWriter.Body.String(), rt.respBody)
+	}
 
-	responseWriter.Body.Reset()
-	nonce, err = wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	result, err = signer.Sign(
-		[]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"https://letsencrypt.org/im-bad"}`),
-		nonce)
-	wfe.NewRegistration(responseWriter,
-		makePostRequest(result.FullSerialize()))
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]"}`)
-
-	responseWriter.Body.Reset()
+	responseWriter := httptest.NewRecorder()
 	nonce, err = wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
 	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"`+agreementURL+`"}`), nonce)
