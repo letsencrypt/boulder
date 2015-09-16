@@ -15,7 +15,7 @@ dependencies. This approach is most suitable if you just need to set up Boulder
 for the purpose of testing client software against it. To start Boulder
 in a Docker container, run:
 
-./test/run-docker.sh
+    ./test/run-docker.sh
 
 Slow start
 ----------
@@ -49,18 +49,16 @@ or
 
 (On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
 
-```
-> go get bitbucket.org/liamstask/goose/cmd/goose
-> go get github.com/letsencrypt/boulder/ # Ignore errors about no buildable files
-> cd $GOPATH/src/github.com/letsencrypt/boulder
-> ./test/create_db.sh
-# This starts each Boulder component with test configs. Ctrl-C kills all.
-> ./start.py
-# Run tests
-> ./test.sh
-```
+    > go get bitbucket.org/liamstask/goose/cmd/goose
+    > go get github.com/letsencrypt/boulder/ # Ignore errors about no buildable files
+    > cd $GOPATH/src/github.com/letsencrypt/boulder
+    > ./test/create_db.sh
+    # This starts each Boulder component with test configs. Ctrl-C kills all.
+    > ./start.py
+    # Run tests
+    > ./test.sh
 
-Note: create\_db.sh it uses the root MariaDB user, so if you
+Note: `create_db.sh` it uses the root MariaDB user, so if you
 have disabled that account you may have to adjust the file or
 recreate the commands.
 
