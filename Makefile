@@ -9,7 +9,8 @@ VERSION ?= 1.0.0
 EPOCH ?= 1
 MAINTAINER ?= "Community"
 
-OBJECTS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d -exec basename '{}' \;)
+CMD_OBJECTS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d -exec basename '{}' \;)
+OBJECTS = $(CMD_OBJECTS) bin/pkcs11bench
 
 # Build environment variables (referencing core/util.go)
 COMMIT_ID = $(shell git rev-parse --short HEAD)
@@ -32,7 +33,7 @@ pre:
 	@mkdir -p $(OBJDIR)
 
 # Compile each of the binaries
-$(OBJECTS): pre
+$(CMD_OBJECTS): pre
 	@echo [go] bin/$@
 	@go build -o ./bin/$@ -ldflags \
 		"-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" \
@@ -73,3 +74,5 @@ rpm:
 		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
 		test/boulder-config.json sa/_db ca/_db $(foreach var,$(OBJECTS), $(OBJDIR)/$(var))
 
+bin/pkcs11bench: pre
+	go test -o ./bin/pkcs11bench -c ./test/pkcs11bench/
