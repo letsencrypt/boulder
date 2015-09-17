@@ -10,11 +10,9 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 )
 
@@ -86,13 +84,4 @@ func (h *HTTPMonitor) watchAndServe(w http.ResponseWriter, r *http.Request) {
 		endpoint = strings.Join(segments, "/")
 	}
 	h.stats.TimingDuration(fmt.Sprintf("%s.HTTP.ResponseTime.%s", h.statsPrefix, endpoint), cClosed, 1.0)
-}
-
-// RPCMonitor stores rpc delivery state
-type RPCMonitor struct {
-	deliveryTimings map[string]time.Time
-	dtMu            *sync.RWMutex
-
-	stats statsd.Statter
-	clock clock.Clock
 }
