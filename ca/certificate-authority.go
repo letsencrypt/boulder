@@ -53,6 +53,7 @@ type CertificateAuthorityImpl struct {
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
 	DB             core.CertificateAuthorityDatabase
+	Publisher      core.Publisher
 	Clk            clock.Clock // TODO(jmhodges): should be private, like log
 	log            *blog.AuditLogger
 	Prefix         int // Prepended to the serial number
@@ -95,7 +96,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	issuer, err := loadIssuer(issuerCert)
+	issuer, err := core.LoadCert(issuerCert)
 	if err != nil {
 		return nil, err
 	}
@@ -167,19 +168,6 @@ func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
 	}
 	priv, err = pkcs11key.New(pkcs11Config.Module,
 		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel, *pkcs11Config.SlotID)
-	return
-}
-
-func loadIssuer(filename string) (issuerCert *x509.Certificate, err error) {
-	if filename == "" {
-		err = errors.New("Issuer certificate was not provided in config.")
-		return
-	}
-	issuerCertPEM, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return
-	}
-	issuerCert, err = helpers.ParseCertificatePEM(issuerCertPEM)
 	return
 }
 
@@ -407,7 +395,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// Attempt to generate the OCSP Response now. If this raises an error, it is
 	// logged but is not returned to the caller, as an error at this point does
 	// not constitute an issuance failure.
-
 	certObj, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed parsing Certificate: %s", err))
@@ -415,7 +402,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	serial := core.SerialToString(certObj.SerialNumber)
-
 	signRequest := ocsp.SignRequest{
 		Certificate: certObj,
 		Status:      string(core.OCSPStatusGood),
@@ -432,6 +418,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed storing: %s", err))
 		return cert, nil
 	}
+
+	// Submit the certificate to any configured CT logs
+	go ca.Publisher.SubmitToCT(certObj.Raw)
 
 	// Do not return an err at this point; caller must know that the Certificate
 	// was issued. (Also, it should be impossible for err to be non-nil here)

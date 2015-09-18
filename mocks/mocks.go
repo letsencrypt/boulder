@@ -297,6 +297,19 @@ func (sa *MockSA) UpdateRegistration(reg core.Registration) (err error) {
 	return
 }
 
+// GetSCTReceipt  is a mock
+func (sa *MockSA) GetSCTReceipt(serial string, logID string) (sct core.SignedCertificateTimestamp, err error) {
+	return
+}
+
+// AddSCTReceipt is a mock
+func (sa *MockSA) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error) {
+	if sct.Signature == nil {
+		err = fmt.Errorf("Bad times")
+	}
+	return
+}
+
 // GetLatestValidAuthorization is a mock
 func (sa *MockSA) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	if registrationId == 1 && identifier.Type == "dns" {
@@ -306,4 +319,14 @@ func (sa *MockSA) GetLatestValidAuthorization(registrationId int64, identifier c
 		}
 	}
 	return core.Authorization{}, errors.New("no authz")
+}
+
+// MockPublisher is a mock
+type MockPublisher struct {
+	// empty
+}
+
+// SubmitToCT is a mock
+func (*MockPublisher) SubmitToCT([]byte) error {
+	return nil
 }
