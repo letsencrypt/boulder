@@ -205,9 +205,9 @@ func TestRevoke(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
-
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
+	ca.Publisher = &mocks.MockPublisher{}
 
 	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
 	certObj, err := ca.IssueCertificate(*csr, ctx.reg.ID)
@@ -246,6 +246,7 @@ func TestIssueCertificate(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
@@ -322,6 +323,7 @@ func TestRejectNoName(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
@@ -338,6 +340,7 @@ func TestRejectTooManyNames(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
@@ -352,6 +355,7 @@ func TestDeduplication(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
@@ -381,6 +385,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
@@ -395,6 +400,7 @@ func TestShortKey(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
@@ -408,6 +414,7 @@ func TestRejectBadAlgorithm(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 

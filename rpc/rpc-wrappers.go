@@ -60,6 +60,9 @@ const (
 	MethodFinalizeAuthorization             = "FinalizeAuthorization"             // SA
 	MethodAddCertificate                    = "AddCertificate"                    // SA
 	MethodAlreadyDeniedCSR                  = "AlreadyDeniedCSR"                  // SA
+	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
+	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
+	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
 )
 
 // Request structs
@@ -573,6 +576,32 @@ func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) 
 	return
 }
 
+func NewPublisherServer(rpc RPCServer, impl core.Publisher) (err error) {
+	rpc.Handle(MethodSubmitToCT, func(req []byte) (response []byte, err error) {
+		err = impl.SubmitToCT(req)
+		return
+	})
+
+	return nil
+}
+
+// PublisherClient is a client to communicate with the Publisher Authority
+type PublisherClient struct {
+	rpc RPCClient
+}
+
+// NewPublisherClient constructs an RPC client
+func NewPublisherClient(client RPCClient) (pub PublisherClient, err error) {
+	pub = PublisherClient{rpc: client}
+	return
+}
+
+// SubmitToCT sends a request to submit a certifcate to CT logs
+func (pub PublisherClient) SubmitToCT(der []byte) (err error) {
+	_, err = pub.rpc.DispatchSync(MethodSubmitToCT, der)
+	return
+}
+
 // NewCertificateAuthorityServer constructs an RPC server
 //
 // CertificateAuthorityClient / Server
@@ -987,6 +1016,49 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		return
 	})
 
+	rpc.Handle(MethodGetSCTReceipt, func(req []byte) (response []byte, err error) {
+		var gsctReq struct {
+			Serial string
+			LogID  string
+		}
+
+		err = json.Unmarshal(req, &gsctReq)
+		if err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodGetSCTReceipt, err, req)
+			return
+		}
+
+		sct, err := impl.GetSCTReceipt(gsctReq.Serial, gsctReq.LogID)
+		jsonResponse, err := json.Marshal(core.RPCSignedCertificateTimestamp(sct))
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetSCTReceipt, err, req)
+			return
+		}
+
+		return jsonResponse, nil
+	})
+
+	rpc.Handle(MethodAddSCTReceipt, func(req []byte) (response []byte, err error) {
+		var sct core.RPCSignedCertificateTimestamp
+		err = json.Unmarshal(req, &sct)
+		if err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodAddSCTReceipt, err, req)
+			return
+		}
+
+		err = impl.AddSCTReceipt(core.SignedCertificateTimestamp(sct))
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetCertificateByShortSerial, err, req)
+			return
+		}
+
+		return nil, nil
+	})
+
 	return nil
 }
 
@@ -1247,5 +1319,37 @@ func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool,
 	case 1:
 		exists = true
 	}
+	return
+}
+
+func (cac StorageAuthorityClient) GetSCTReceipt(serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
+	var gsctReq struct {
+		Serial string
+		LogID  string
+	}
+	gsctReq.Serial = serial
+	gsctReq.LogID = logID
+
+	data, err := json.Marshal(gsctReq)
+	if err != nil {
+		return
+	}
+
+	response, err := cac.rpc.DispatchSync(MethodGetSCTReceipt, data)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(response, receipt)
+	return
+}
+
+func (cac StorageAuthorityClient) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error) {
+	data, err := json.Marshal(sct)
+	if err != nil {
+		return
+	}
+
+	_, err = cac.rpc.DispatchSync(MethodAddSCTReceipt, data)
 	return
 }

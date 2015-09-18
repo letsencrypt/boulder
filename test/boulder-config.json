@@ -28,6 +28,10 @@
     "CA": {
       "client": "CA.client",
       "server": "CA.server"
+    },
+    "Publisher": {
+      "client": "Publisher.client",
+      "server": "Publisher.server"
     }
   },
 
@@ -164,7 +168,22 @@
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "emailTemplate": "test/example-expiration-template",
-    "debugAddr": "localhost:8004"
+    "debugAddr": "localhost:8008"
+  },
+
+  "publisher": {
+    "ct": {
+      "logs": [
+        {
+          "uri": "http://127.0.0.1:4500",
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfahLEimAoz2t01p3uMziiLOl/fHTDM0YDOhBRuiBARsV4UvxG2LdNgoIGLrtCzWE0J5APC2em4JlvR8EEEFMoA=="
+        }
+      ],
+      "submissionRetries": 1,
+      "submissionBackoff": "1s",
+      "intermediateBundleFilename": "test/test-ca.pem"
+    },
+    "debugAddr": "localhost:8009"
   },
 
   "common": {
