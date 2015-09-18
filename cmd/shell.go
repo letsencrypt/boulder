@@ -41,6 +41,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/publisher"
 )
 
 // Config stores configuration parameters that applications
@@ -56,14 +57,15 @@ type Config struct {
 
 	// General
 	AMQP struct {
-		Server   string
-		Insecure bool
-		RA       Queue
-		VA       Queue
-		SA       Queue
-		CA       Queue
-		OCSP     Queue
-		TLS      *TLSConfig
+		Server    string
+		Insecure  bool
+		RA        Queue
+		VA        Queue
+		SA        Queue
+		CA        Queue
+		OCSP      Queue
+		Publisher Queue
+		TLS       *TLSConfig
 	}
 
 	WFE struct {
@@ -159,6 +161,13 @@ type Config struct {
 		DBConnect       string
 		MinTimeToExpiry string
 		ResponseLimit   int
+
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
+	}
+
+	Publisher struct {
+		CT publisher.CTConfig
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string

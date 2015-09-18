@@ -31,6 +31,7 @@ USER_BOULDER_RA="ra"
 USER_BOULDER_VA="va"
 USER_BOULDER_WFE="wfe"
 USER_BOULDER_OCSP="ocsp-updater"
+USER_BOULDER_PUBLISHER="publisher"
 
 # PASSWORDS
 PASS_BOULDER_AM="guest"
@@ -40,6 +41,7 @@ PASS_BOULDER_RA="guest"
 PASS_BOULDER_VA="guest"
 PASS_BOULDER_WFE="guest"
 PASS_BOULDER_OCSP="guest"
+PASS_BOULDER_PUBLISHER="guest"
 
 # To use different options, you should create an override
 # file with whatever changes you want for the above variables
@@ -69,6 +71,7 @@ admin declare queue name="CA.server" durable=false
 admin declare queue name="SA.server" durable=false
 admin declare queue name="RA.server" durable=false
 admin declare queue name="VA.server" durable=false
+admin declare queue name="Publisher.server" durable=false
 
 admin declare exchange name="boulder" type=topic durable=false
 
@@ -83,6 +86,7 @@ admin declare user name=${USER_BOULDER_RA} password=${PASS_BOULDER_RA} tags=""
 admin declare user name=${USER_BOULDER_VA} password=${PASS_BOULDER_VA} tags=""
 admin declare user name=${USER_BOULDER_WFE} password=${PASS_BOULDER_WFE} tags=""
 admin declare user name=${USER_BOULDER_OCSP} password=${PASS_BOULDER_OCSP} tags=""
+admin declare user name=${USER_BOULDER_PUBLISHER} password=${PASS_BOULDER_PUBLISHER} tags=""
 
 ##################################################
 ## Permissions RegExes                          ##
@@ -115,7 +119,7 @@ admin declare permission vhost=${VHOST} user=${USER_BOULDER_RA} \
 admin declare permission vhost=${VHOST} user=${USER_BOULDER_CA} \
   configure="^(CA\.server|CA->SA.*)$" \
   write="^(boulder|CA\.server|CA->SA.*)$" \
-  read="^(boulder|CA\.server|CA->SA.*)$"
+  read="^(boulder|CA\.server|CA->(SA|Publisher).*)$"
 
 # SA uses only SA.server
 admin declare permission vhost=${VHOST} user=${USER_BOULDER_SA} \
@@ -134,3 +138,9 @@ admin declare permission vhost=${VHOST} user=${USER_BOULDER_OCSP} \
   configure="^(OCSP->CA.*)$" \
   write="^(boulder|OCSP->CA.*)$" \
   read="^(boulder|OCSP->CA.*)$"
+
+# Publisher uses Publisher.server and Publisher->SA
+admin declare permission vhost=${VHOST} user=${USER_BOULDER_PUBLISHER} \
+  configure="^Publisher\.server$" \
+  write="^(boulder|Publisher\.server)$" \
+  read="^(boulder|Publisher\.server|Publisher->SA.*)$"

@@ -636,3 +636,46 @@ func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, 
 
 	return
 }
+
+// ErrNoReceipt is a error type for non-existent SCT receipt
+type ErrNoReceipt string
+
+func (e ErrNoReceipt) Error() string {
+	return string(e)
+}
+
+// GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
+// CT log ID
+func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
+	err = ssa.dbMap.SelectOne(
+		&receipt,
+		"SELECT * FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID",
+		map[string]interface{}{
+			"serial": serial,
+			"logID":  logID,
+		},
+	)
+
+	if err == sql.ErrNoRows {
+		err = ErrNoReceipt(err.Error())
+		return
+	}
+
+	return
+}
+
+// ErrDuplicateReceipt is a error type for duplicate SCT receipts
+type ErrDuplicateReceipt string
+
+func (e ErrDuplicateReceipt) Error() string {
+	return string(e)
+}
+
+// AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table
+func (ssa *SQLStorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) error {
+	err := ssa.dbMap.Insert(&sct)
+	if err != nil && strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+		err = ErrDuplicateReceipt(err.Error())
+	}
+	return err
+}
