@@ -120,8 +120,7 @@ var (
 		},
 		Combinations: [][]int{[]int{0}, []int{1}},
 	}
-	AuthzUpdated = core.Authorization{}
-	AuthzFinal   = core.Authorization{}
+	AuthzFinal = core.Authorization{}
 
 	log = mocks.UseMockLog()
 )
@@ -218,9 +217,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	AuthzUpdated = AuthzInitial
-
-	AuthzFinal = AuthzUpdated
+	AuthzFinal = AuthzInitial
 	AuthzFinal.Status = "valid"
 	exp := time.Now().Add(365 * 24 * time.Hour)
 	AuthzFinal.Expires = &exp
@@ -454,19 +451,19 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 func TestOnValidationUpdateSuccess(t *testing.T) {
 	_, sa, ra, fclk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	AuthzUpdated, _ = sa.NewPendingAuthorization(AuthzUpdated)
-	sa.UpdatePendingAuthorization(AuthzUpdated)
+	authzUpdated, _ := sa.NewPendingAuthorization(AuthzInitial)
+	expires := fclk.Now().Add(300 * 24 * time.Hour)
+	authzUpdated.Expires = &expires
+	sa.UpdatePendingAuthorization(authzUpdated)
 
 	// Simulate a successful simpleHTTP challenge
-	authzFromVA := AuthzUpdated
+	authzFromVA := authzUpdated
 	authzFromVA.Challenges[0].Status = core.StatusValid
 
 	ra.OnValidationUpdate(authzFromVA)
 
 	// Verify that the Authz in the DB is the same except for Status->StatusValid
 	authzFromVA.Status = core.StatusValid
-	expiresAt := fclk.Now().Add(365 * 24 * time.Hour)
-	authzFromVA.Expires = &expiresAt
 	dbAuthz, err := sa.GetAuthorization(authzFromVA.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	t.Log("authz from VA: ", authzFromVA)
@@ -476,10 +473,12 @@ func TestOnValidationUpdateSuccess(t *testing.T) {
 }
 
 func TestOnValidationUpdateFailure(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, fclk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	authzFromVA, _ := sa.NewPendingAuthorization(AuthzUpdated)
-	sa.UpdatePendingAuthorization(AuthzUpdated)
+	authzFromVA, _ := sa.NewPendingAuthorization(AuthzInitial)
+	expires := fclk.Now().Add(300 * 24 * time.Hour)
+	authzFromVA.Expires = &expires
+	sa.UpdatePendingAuthorization(authzFromVA)
 	authzFromVA.Challenges[0].Status = core.StatusInvalid
 
 	err := ra.OnValidationUpdate(authzFromVA)

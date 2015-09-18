@@ -371,7 +371,10 @@ type Authorization struct {
 	Status AcmeStatus `json:"status,omitempty" db:"status"`
 
 	// The date after which this authorization will be no
-	// longer be considered valid
+	// longer be considered valid. Note: a certificate may be issued even on the
+	// last day of an authorization's lifetime. The last day for which someone can
+	// hold a valid certificate based on an authorization is authorization
+	// lifetime + certificate lifetime.
 	Expires *time.Time `json:"expires,omitempty" db:"expires"`
 
 	// An array of challenges objects used to validate the
