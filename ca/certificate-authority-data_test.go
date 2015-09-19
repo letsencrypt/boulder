@@ -45,6 +45,57 @@ func TestGetSetSequenceNumber(t *testing.T) {
 	test.AssertNotError(t, err, "Could not commit")
 }
 
+func TestRollbackSequenceStability(t *testing.T) {
+	cadb, cleanUp := caDBImpl(t)
+	defer cleanUp()
+
+	// OK, we're starting up. We're gonna issue a serial number
+	// successfully.
+	tx1, err := cadb.Begin()
+	test.AssertNotError(t, err, "Could not begin")
+
+	num1, err := cadb.IncrementAndGetSerial(tx1)
+	test.AssertNotError(t, err, "Could not get number")
+
+	err = tx1.Commit()
+	test.AssertNotError(t, err, "Could not commit")
+
+	// Great. Now we're going to try to issue, but the HSM
+	// balked, or we took a reset, or something.
+
+	tx2, err := cadb.Begin()
+	test.AssertNotError(t, err, "Could not begin")
+
+	num2, err := cadb.IncrementAndGetSerial(tx2)
+	test.AssertNotError(t, err, "Could not get number")
+
+	// Pretend we had an HSM failure, or whatever
+	tx2.Rollback()
+
+
+	// OK, all is fixed now. Try again to re-issue.
+	tx3, err := cadb.Begin()
+	test.AssertNotError(t, err, "Could not begin again")
+
+	num3, err := cadb.IncrementAndGetSerial(tx3)
+	test.AssertNotError(t, err, "Could not get number again")
+
+	// Commit for safety's sake, to make sure we can.
+	err = tx3.Commit()
+	test.AssertNotError(t, err, "Could not commit")
+
+
+	// num3 and num2 should be identical, because we never used num2.
+	// If they aren't identical, then we would, in a failure scenario,
+	// skip a certificate serial index.
+	test.Assert(t, num2 == num3, "Numbers should be identical, because we rolled back")
+
+	// Just to double-check:
+	// num3 and num1 should be one apart from each other, indicating
+	// that there was no gap.
+	test.Assert(t, num1+1 == num3, "Numbers should be incrementing")
+}
+
 func caDBImpl(t *testing.T) (*CertificateAuthorityDatabaseImpl, func()) {
 	dbMap, err := sa.NewDbMap(caDBConnStr)
 	if err != nil {
