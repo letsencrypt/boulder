@@ -770,7 +770,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 	serial := parsedCertificate.SerialNumber
-	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, serial.Rsh(serial, 64))
+	certURL := fmt.Sprintf("%s%036x", wfe.CertBase, serial)
 
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
@@ -1109,7 +1109,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		return
 	}
 	serial := path[len(CertPath):]
-	if len(serial) != 16 || !allHex.Match([]byte(serial)) {
+	if !allHex.Match([]byte(serial)) {
 		logEvent.Error = "Certificate not found"
 		wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
 		addNoCacheHeader(response)
@@ -1118,7 +1118,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
 	logEvent.Extra["RequestedSerial"] = serial
 
-	cert, err := wfe.SA.GetCertificateByShortSerial(serial)
+	cert, err := wfe.SA.GetCertificate(serial)
 	if err != nil {
 		logEvent.Error = err.Error()
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {

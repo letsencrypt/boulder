@@ -7,12 +7,14 @@ package ca
 
 import (
 	"crypto"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
@@ -314,15 +316,24 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
-	serialDec, err := ca.DB.IncrementAndGetSerial(tx)
+	// Hack: CFSSL always sticks a 64-bit random number at the end of the
+	// serialSeq we provide, but we want 136 bits of random number, plus an 8-bit
+	// instance id prefix. For now, we generate the extra 72 bits of randomness
+	// ourselves. We should modify CFSSL to just allow the caller to provide a
+	// own full serial number if it wants, and do all the generation logic
+	// ourselves.
+	randomPart := big.NewInt(1)
+	// We want 72 bits of randomness.
+	randomPart = randomPart.Lsh(randomPart, 72)
+	randomPart, err = rand.Int(rand.Reader, randomPart)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("Serial increment failed, rolling back: err=[%v]", err))
+		ca.log.Audit(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		tx.Rollback()
 		return emptyCert, err
 	}
-	serialHex := fmt.Sprintf("%02X%014X", ca.Prefix, serialDec)
+	serialHex := fmt.Sprintf("%02X%018X", ca.Prefix, randomPart)
 
 	// Send the cert off for signing
 	req := signer.SignRequest{

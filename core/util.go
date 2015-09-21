@@ -295,17 +295,17 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 // SerialToString converts a certificate serial number (big.Int) to a String
 // consistently.
 func SerialToString(serial *big.Int) string {
-	return fmt.Sprintf("%032x", serial)
+	return fmt.Sprintf("%036x", serial)
 }
 
 // StringToSerial converts a string into a certificate serial number (big.Int)
 // consistently.
 func StringToSerial(serial string) (*big.Int, error) {
 	var serialNum big.Int
-	if len(serial) != 32 {
-		return &serialNum, errors.New("Serial number should be 32 characters long")
+	if len(serial) != 36 {
+		return &serialNum, errors.New("Serial number should be 36 characters long")
 	}
-	_, err := fmt.Sscanf(serial, "%032x", &serialNum)
+	_, err := fmt.Sscanf(serial, "%036x", &serialNum)
 	return &serialNum, err
 }
 

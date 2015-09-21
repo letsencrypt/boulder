@@ -306,17 +306,17 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by short serial")
 	test.AssertByteEquals(t, certDER, retrievedCert.DER)
 
-	retrievedCert, err = sa.GetCertificate("00000000000000000000000000021bd4")
+	retrievedCert, err = sa.GetCertificate("000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
 	test.AssertByteEquals(t, certDER, retrievedCert.DER)
 
-	certificateStatus, err := sa.GetCertificateStatus("00000000000000000000000000021bd4")
+	certificateStatus, err := sa.GetCertificateStatus("000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get status for www.eff.org.der")
 	test.Assert(t, !certificateStatus.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 
-	// Test cert generated locally by Boulder / CFSSL, serial "ff00000000000002238054509817da5a"
+	// Test cert generated locally by Boulder / CFSSL, serial "0000ff00000000000002238054509817da5a"
 	certDER2, err := ioutil.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
@@ -325,15 +325,15 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertEquals(t, digest2, "CMVYqWzyqUW7pfBF2CxL0Uk6I0Upsk7p4EWSnd_vYx4")
 
 	// Example cert serial is 0x21bd4, so a prefix of all zeroes should fetch it.
-	retrievedCert2, err := sa.GetCertificateByShortSerial("ff00000000000002")
+	retrievedCert2, err := sa.GetCertificateByShortSerial("0000ff0000000000")
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
 	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
 
-	retrievedCert2, err = sa.GetCertificate("ff00000000000002238054509817da5a")
+	retrievedCert2, err = sa.GetCertificate("0000ff00000000000002238054509817da5a")
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
 	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
 
-	certificateStatus2, err := sa.GetCertificateStatus("ff00000000000002238054509817da5a")
+	certificateStatus2, err := sa.GetCertificateStatus("0000ff00000000000002238054509817da5a")
 	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
 	test.Assert(t, !certificateStatus2.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
@@ -433,10 +433,14 @@ func TestUpdateOCSP(t *testing.T) {
 	_, err = sa.AddCertificate(certDER, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
-	serial := "00000000000000000000000000021bd4"
+	serial := "000000000000000000000000000000021bd4"
+	fmt.Println("querying", serial)
 	const ocspResponse = "this is a fake OCSP response"
 
 	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
+	if certificateStatusObj == nil {
+		t.Fatalf("Failed to get certificate status for %s", serial)
+	}
 	beforeUpdate := certificateStatusObj.(*core.CertificateStatus)
 
 	fc.Add(1 * time.Hour)
@@ -470,7 +474,7 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	_, err = sa.AddCertificate(certDER, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
-	serial := "00000000000000000000000000021bd4"
+	serial := "000000000000000000000000000000021bd4"
 	const ocspResponse = "this is a fake OCSP response"
 
 	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
