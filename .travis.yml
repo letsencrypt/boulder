@@ -28,10 +28,16 @@ services:
 matrix:
   fast_finish: true
 
-# Only build pushes to the master branch (and PRs)
+# Only build pushes to the master branch, PRs, and branches beginning with
+# `test-`. You should not push branches beginning with `test-` to the
+# letsencrypt repository, but this is a convenient way to push branches to your
+# own fork of the repostiroy to ensure Travis passes before submitting a PR.
+# For instance, you might run:
+# git push myremote branchname:test-branchname
 branches:
   only:
     - master
+    - /^test-.*$/
 
 before_install:
   # Travis does shallow clones, so there is no master branch present.
