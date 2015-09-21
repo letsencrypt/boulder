@@ -178,6 +178,10 @@ check_gofmt() {
 run_and_comment check_gofmt
 end_context #test/gofmt
 
+start_context "test/migrations"
+run_and_comment ./test/test-no-outdated-migrations.sh
+end_context "test/migrations"
+
 if [ "${TRAVIS}" == "true" ]; then
   ./test/create_db.sh || die "unable to create the boulder database with test/create_db.sh"
 fi
