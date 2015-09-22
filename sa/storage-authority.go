@@ -291,6 +291,14 @@ func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) 
 	return
 }
 
+// GetLatestCertificateForRequest finds the latest certificate created under
+// the specificed certificate request
+func (ssa *SQLStorageAuthority) GetLatestCertificateForRequest(requestID string) (cert core.Certificate, err error) {
+	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE requestID = :requestID ORDER BY expires DESC LIMIT 0,1",
+		map[string]interface{}{"requestID": requestID})
+	return
+}
+
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
 func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate, error) {
@@ -608,7 +616,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 
 // NewCertificateRequest creates a new certificate request in the database,
 // assigning it a random ID.  The caller is responsible for setting all fields
-// besides ID and Status.  No fields besides "Status" can be updated.
+// besides ID.  No fields besides "Status" can be updated.
 func (ssa *SQLStorageAuthority) NewCertificateRequest(req core.CertificateRequest) (output core.CertificateRequest, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -620,9 +628,6 @@ func (ssa *SQLStorageAuthority) NewCertificateRequest(req core.CertificateReques
 	for existingCertificateRequest(tx, req.ID) {
 		req.ID = core.NewToken()
 	}
-
-	// New requests are always pending
-	req.Status = core.StatusPending
 
 	// Insert the request into the database
 	err = tx.Insert(&req)

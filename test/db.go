@@ -79,6 +79,7 @@ func allTableNamesInDB(db CleanUpDB) ([]string, error) {
 	for _, table := range overrides {
 		isOverride[table] = true
 	}
+	overrideInDB := map[string]bool{}
 
 	r, err := db.Query("select table_name from information_schema.tables t where t.table_schema = DATABASE() and t.table_name != 'goose_db_version';")
 	if err != nil {
@@ -95,8 +96,18 @@ func allTableNamesInDB(db CleanUpDB) ([]string, error) {
 		// Skip tables that are overridden
 		if !isOverride[tableName] {
 			ts = append(ts, tableName)
+		} else {
+			overrideInDB[tableName] = true
 		}
 	}
 
-	return append(overrides, ts...), r.Err()
+	// Prepend overrides that are in the DB in the proper order
+	tables := []string{}
+	for _, table := range overrides {
+		if overrideInDB[table] {
+			tables = append(tables, table)
+		}
+	}
+
+	return append(tables, ts...), r.Err()
 }

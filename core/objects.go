@@ -409,8 +409,8 @@ type CertificateRequest struct {
 	ID             string     `db:"id"`
 	RegistrationID int64      `db:"registrationID"`
 	Created        time.Time  `db:"created"`
-	Status         AcmeStatus `db:"status"`
 	Expires        time.Time  `db:"expires"`
+	Status         AcmeStatus `db:"status"`
 	CSR            []byte     `db:"csr"`
 }
 

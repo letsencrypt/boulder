@@ -90,8 +90,8 @@ type ValidationAuthority interface {
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	NewCertificateRequest(CertificateRequest, int64) (CertificateRequest, error)
-	IssueCertificate(string) error
+	NewCertificateRequest(CertificateRequest) (CertificateRequest, error)
+	IssueCertificate(string)
 	RevokeCertificate(string, RevocationCode) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
@@ -110,6 +110,7 @@ type StorageGetter interface {
 	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
 	GetCertificateRequest(string) (CertificateRequest, error)
 	GetCertificate(string) (Certificate, error)
+	GetLatestCertificateForRequest(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
 	CountCertificatesRange(time.Time, time.Time) (int64, error)

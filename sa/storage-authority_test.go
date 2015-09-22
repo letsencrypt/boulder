@@ -297,6 +297,7 @@ func TestCertificateRequest(t *testing.T) {
 		RegistrationID: reg.ID,
 		Created:        time.Now(),
 		Expires:        time.Now().AddDate(0, 0, 2),
+		Status:         core.StatusValid,
 		CSR:            []byte{},
 	}
 
@@ -304,10 +305,10 @@ func TestCertificateRequest(t *testing.T) {
 	req, err := sa.NewCertificateRequest(reqIn)
 	test.AssertNotError(t, err, "Error creating cert request")
 	test.Assert(t, core.LooksLikeAToken(req.ID), "Cert request ID is not a token")
-	test.AssertEquals(t, req.Status, core.StatusPending)
 	test.AssertEquals(t, req.RegistrationID, reqIn.RegistrationID)
 	test.AssertEquals(t, req.Created, reqIn.Created)
 	test.AssertEquals(t, req.Expires, reqIn.Expires)
+	test.AssertEquals(t, req.Status, reqIn.Status)
 	test.AssertByteEquals(t, req.CSR, reqIn.CSR)
 
 	// GetCertificateRequest
@@ -418,6 +419,40 @@ func TestCountCertificatesByName(t *testing.T) {
 	count, err = sa.CountCertificatesByName("example.com", now, tomorrow)
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, count, 0)
+}
+
+func TestGetLatestCertificateForRequest(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
+
+	// Add two certs to the DB to test with, under the same request
+	// NotAfter dates:
+	// * www.eff.org.der - Apr 18 02:16:00 2016 GMT
+	// * test-cert.der   - Apr 14 23:42:01 2016 GMT
+	certFiles := []string{"www.eff.org.der", "test-cert.der"}
+	var lastExpiry time.Time
+	lastExpiringDER := []byte(nil)
+	for _, certFile := range certFiles {
+		certDER, err := ioutil.ReadFile(certFile)
+		test.AssertNotError(t, err, "Couldn't read example cert DER")
+		_, err = sa.AddCertificate(certDER, req.ID)
+		test.AssertNotError(t, err, "Couldn't add "+certFile)
+
+		cert, err := x509.ParseCertificate(certDER)
+		test.AssertNotError(t, err, "Couldn't parse "+certFile)
+
+		if lastExpiringDER == nil || lastExpiry.Before(cert.NotAfter) {
+			lastExpiringDER = certDER
+		}
+	}
+
+	// See which certificate comes back (should be www.eff.org.der)
+	retrievedCert, err := sa.GetLatestCertificateForRequest(req.ID)
+	test.AssertNotError(t, err, "Couldn't get latest cert")
+	test.AssertByteEquals(t, lastExpiringDER, retrievedCert.DER)
 }
 
 func TestDeniedCSR(t *testing.T) {
