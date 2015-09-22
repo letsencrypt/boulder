@@ -198,7 +198,8 @@ func signRequest(t *testing.T, req string, nonceService *core.NonceService) stri
 }
 
 func setupWFE(t *testing.T) WebFrontEndImpl {
-	wfe, err := NewWebFrontEndImpl()
+	stats, _ := statsd.NewNoopClient()
+	wfe, err := NewWebFrontEndImpl(stats)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.NewReg = wfe.BaseURL + NewRegPath
@@ -213,7 +214,7 @@ func setupWFE(t *testing.T) WebFrontEndImpl {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 
 	return wfe
@@ -434,13 +435,13 @@ func TestIssueCertificate(t *testing.T) {
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log)
+	stats, _ := statsd.NewNoopClient(nil)
+	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log, stats)
 	ra.SA = &mocks.MockSA{}
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}
 	wfe.SA = &mocks.MockSA{}
 	wfe.RA = &ra
-	wfe.Stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -595,7 +596,7 @@ func TestNewRegistration(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 
 	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
@@ -867,7 +868,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
 	responseWriter.Body.Reset()
@@ -888,7 +889,7 @@ func TestAuthorization(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -976,7 +977,7 @@ func TestRegistration(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
 
@@ -1067,7 +1068,7 @@ func TestTermsRedirect(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 
 	responseWriter := httptest.NewRecorder()
