@@ -288,17 +288,59 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 	test.AssertEquals(t, authz.ID, newAuthz.ID)
 }
 
+func TestCertificateRequest(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	reqIn := core.CertificateRequest{
+		RegistrationID: reg.ID,
+		Created:        time.Now(),
+		Expires:        time.Now().AddDate(0, 0, 2),
+		CSR:            []byte{},
+	}
+
+	// NewCertificateRequest
+	req, err := sa.NewCertificateRequest(reqIn)
+	test.AssertNotError(t, err, "Error creating cert request")
+	test.Assert(t, core.LooksLikeAToken(req.ID), "Cert request ID is not a token")
+	test.AssertEquals(t, req.Status, core.StatusPending)
+	test.AssertEquals(t, req.RegistrationID, reqIn.RegistrationID)
+	test.AssertEquals(t, req.Created, reqIn.Created)
+	test.AssertEquals(t, req.Expires, reqIn.Expires)
+	test.AssertByteEquals(t, req.CSR, reqIn.CSR)
+
+	// GetCertificateRequest
+	req2, err := sa.GetCertificateRequest(req.ID)
+	test.AssertNotError(t, err, "Error retrieving cert request")
+	test.AssertEquals(t, req.ID, req2.ID)
+	test.AssertEquals(t, req.RegistrationID, req2.RegistrationID)
+	// The database truncates to seconds and uses UTC, and that's OK
+	test.AssertEquals(t, req.Created.Truncate(time.Second).UTC(), req2.Created)
+	test.AssertEquals(t, req.Expires.Truncate(time.Second).UTC(), req2.Expires)
+	test.AssertEquals(t, req.Status, req2.Status)
+	test.AssertByteEquals(t, req.CSR, req2.CSR)
+
+	// UpdateCertificateRequestStatus
+	newStatus := core.StatusValid
+	err = sa.UpdateCertificateRequestStatus(req.ID, newStatus)
+	test.AssertNotError(t, err, "Error updating cert request")
+	req3, err := sa.GetCertificateRequest(req.ID)
+	test.AssertNotError(t, err, "Error retrieving cert request")
+	test.AssertEquals(t, req3.Status, newStatus)
+}
+
 func TestAddCertificate(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
-
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
 
 	// An example cert taken from EFF's website
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
-	digest, err := sa.AddCertificate(certDER, reg.ID)
+	digest, err := sa.AddCertificate(certDER, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
@@ -318,7 +360,7 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	serial := "ffdd9b8a82126d96f61d378d5ba99a0474f0"
 
-	digest2, err := sa.AddCertificate(certDER2, reg.ID)
+	digest2, err := sa.AddCertificate(certDER2, req.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 	test.AssertEquals(t, digest2, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
 
@@ -452,10 +494,12 @@ func TestUpdateOCSP(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
+
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(certDER, reg.ID)
+	_, err = sa.AddCertificate(certDER, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	serial := "000000000000000000000000000000021bd4"
@@ -492,10 +536,12 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
+
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(certDER, reg.ID)
+	_, err = sa.AddCertificate(certDER, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	serial := "000000000000000000000000000000021bd4"

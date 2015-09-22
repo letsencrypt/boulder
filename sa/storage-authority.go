@@ -6,7 +6,6 @@
 package sa
 
 import (
-	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
@@ -30,12 +29,6 @@ type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
 	clk   clock.Clock
 	log   *blog.AuditLogger
-}
-
-func digest256(data []byte) []byte {
-	d := sha256.New()
-	_, _ = d.Write(data) // Never returns an error
-	return d.Sum(nil)
 }
 
 // Utility models
@@ -74,22 +67,26 @@ func statusIsPending(status core.AcmeStatus) bool {
 	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
 }
 
-func existingPending(tx *gorp.Transaction, id string) bool {
+func existing(tx *gorp.Transaction, query string, id interface{}) bool {
 	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
+	err := tx.SelectOne(&count, query, map[string]interface{}{"id": id})
+	return err != nil || count > 0
+}
+
+func existingPending(tx *gorp.Transaction, id string) bool {
+	return existing(tx, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", id)
 }
 
 func existingFinal(tx *gorp.Transaction, id string) bool {
-	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM authz WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
+	return existing(tx, "SELECT count(*) FROM authz WHERE id = :id", id)
 }
 
 func existingRegistration(tx *gorp.Transaction, id int64) bool {
-	var count int64
-	_ = tx.SelectOne(&count, "SELECT count(*) FROM registrations WHERE id = :id", map[string]interface{}{"id": id})
-	return count > 0
+	return existing(tx, "SELECT count(*) FROM registrations WHERE id = :id", id)
+}
+
+func existingCertificateRequest(tx *gorp.Transaction, id string) bool {
+	return existing(tx, "SELECT count(*) FROM certificateRequests WHERE id = :id", id)
 }
 
 func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Transaction) error {
@@ -271,6 +268,27 @@ func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest,
 	}
 
 	return len(serialMap), nil
+}
+
+func (ssa *SQLStorageAuthority) GetCertificateRequest(id string) (req core.CertificateRequest, err error) {
+	err = ssa.dbMap.SelectOne(&req, "SELECT * FROM certificateRequests WHERE id = :id",
+		map[string]interface{}{"id": id})
+	return
+}
+
+// GetCertificateByShortSerial takes an id consisting of the first, sequential half of a
+// serial number and returns the first certificate whose full serial number is
+// lexically greater than that id. This allows clients to query on the known
+// sequential half of our serial numbers to enumerate all certificates.
+func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert core.Certificate, err error) {
+	if len(shortSerial) != 16 {
+		err = errors.New("Invalid certificate short serial " + shortSerial)
+		return
+	}
+
+	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE serial LIKE :shortSerial",
+		map[string]interface{}{"shortSerial": shortSerial + "%"})
+	return
 }
 
 // GetCertificate takes a serial number and returns the corresponding
@@ -588,8 +606,45 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
+// NewCertificateRequest creates a new certificate request in the database,
+// assigning it a random ID.  The caller is responsible for setting all fields
+// besides ID and Status.  No fields besides "Status" can be updated.
+func (ssa *SQLStorageAuthority) NewCertificateRequest(req core.CertificateRequest) (output core.CertificateRequest, err error) {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return
+	}
+
+	// Check that it doesn't exist already
+	req.ID = core.NewToken()
+	for existingCertificateRequest(tx, req.ID) {
+		req.ID = core.NewToken()
+	}
+
+	// New requests are always pending
+	req.Status = core.StatusPending
+
+	// Insert the request into the database
+	err = tx.Insert(&req)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	err = tx.Commit()
+	output = req
+	return
+}
+
+// UpdateCertificateRequestStatus sets the "status" field of the
+// identified CertificateRequest to the specified value.
+func (ssa *SQLStorageAuthority) UpdateCertificateRequestStatus(id string, status core.AcmeStatus) (err error) {
+	_, err = ssa.dbMap.Exec("UPDATE `certificateRequests` SET status = ? WHERE id = ?", string(status), id)
+	return
+}
+
 // AddCertificate stores an issued certificate.
-func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
+func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, requestID string) (digest string, err error) {
 	var parsedCertificate *x509.Certificate
 	parsedCertificate, err = x509.ParseCertificate(certDER)
 	if err != nil {
@@ -598,8 +653,14 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 	digest = core.Fingerprint256(certDER)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
+	req, err := ssa.GetCertificateRequest(requestID)
+	if err != nil {
+		return
+	}
+
 	cert := &core.Certificate{
-		RegistrationID: regID,
+		RegistrationID: req.RegistrationID,
+		RequestID:      req.ID,
 		Serial:         serial,
 		Digest:         digest,
 		DER:            certDER,

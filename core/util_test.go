@@ -35,6 +35,12 @@ func TestNewToken(t *testing.T) {
 	return
 }
 
+func TestLooksLikeAToken(t *testing.T) {
+	test.Assert(t, !LooksLikeAToken("R-UL_7MrV3tUUjO9v5ym2srK3dGGCwlxbVyKBdwLOS"), "Accepted short token")
+	test.Assert(t, !LooksLikeAToken("R-UL_7MrV3tUUjO9v5ym2srK3dGGCwlxbVyKBdwLOS%"), "Accepted invalid token")
+	test.Assert(t, LooksLikeAToken("R-UL_7MrV3tUUjO9v5ym2srK3dGGCwlxbVyKBdwLOSU"), "Rejected valid token")
+}
+
 func TestSerialUtils(t *testing.T) {
 	serial := SerialToString(big.NewInt(100000000000000000))
 	test.AssertEquals(t, serial, "00000000000000000000016345785d8a0000")

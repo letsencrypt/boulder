@@ -90,7 +90,8 @@ type ValidationAuthority interface {
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
+	NewCertificateRequest(CertificateRequest, int64) (CertificateRequest, error)
+	IssueCertificate(string) error
 	RevokeCertificate(string, RevocationCode) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
@@ -107,6 +108,7 @@ type StorageGetter interface {
 	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
 	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
+	GetCertificateRequest(string) (CertificateRequest, error)
 	GetCertificate(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
@@ -125,7 +127,10 @@ type StorageAdder interface {
 	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode RevocationCode) error
 	UpdateOCSP(serial string, ocspResponse []byte) error
 
-	AddCertificate([]byte, int64) (string, error)
+	NewCertificateRequest(CertificateRequest) (CertificateRequest, error)
+	UpdateCertificateRequestStatus(string, AcmeStatus) error
+
+	AddCertificate([]byte, string) (string, error)
 
 	AddSCTReceipt(SignedCertificateTimestamp) error
 }

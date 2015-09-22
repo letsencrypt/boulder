@@ -34,28 +34,23 @@ func TestChallenges(t *testing.T) {
 
 // objects.go
 
-var testCertificateRequestBadCSR = []byte(`{"csr":"AAAA"}`)
 var testCertificateRequestGood = []byte(`{
-  "csr": "MIHRMHgCAQAwFjEUMBIGA1UEAxMLZXhhbXBsZS5jb20wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQWUlnRrm5ErSVkTzBTk3isg1hNydfyY4NM1P_N1S-ZeD39HMrYJsQkUh2tKvy3ztfmEqWpekvO4WRktSa000BPoAAwCgYIKoZIzj0EAwMDSQAwRgIhAIZIBwu4xOUD_4dJuGgceSKaoXTFBQKA3BFBNVJvbpdsAiEAlfq3Dq_8dnYbtmyDdXgopeKkSV5_76VSpcog-wkwEwo"
+  "CSR": "MIHRMHgCAQAwFjEUMBIGA1UEAxMLZXhhbXBsZS5jb20wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQWUlnRrm5ErSVkTzBTk3isg1hNydfyY4NM1P/N1S+ZeD39HMrYJsQkUh2tKvy3ztfmEqWpekvO4WRktSa000BPoAAwCgYIKoZIzj0EAwMDSQAwRgIhAIZIBwu4xOUD/4dJuGgceSKaoXTFBQKA3BFBNVJvbpdsAiEAlfq3Dq/8dnYbtmyDdXgopeKkSV5/76VSpcog+wkwEwo="
 }`)
 
 func TestCertificateRequest(t *testing.T) {
-
-	// Good
+	// Unmarshal
 	var goodCR CertificateRequest
 	err := json.Unmarshal(testCertificateRequestGood, &goodCR)
 	if err != nil {
 		t.Errorf("Error unmarshaling good certificate request: %v", err)
 	}
-	if err = VerifyCSR(goodCR.CSR); err != nil {
-		t.Errorf("Valid CSR in CertificateRequest failed to verify: %v", err)
+	parsed, err := x509.ParseCertificateRequest(goodCR.CSR)
+	if err != nil {
+		t.Errorf("Valid CSR in CertificateRequest failed to parse: %v", err)
 	}
-
-	// Bad CSR
-	var badCR CertificateRequest
-	err = json.Unmarshal(testCertificateRequestBadCSR, &badCR)
-	if err == nil {
-		t.Errorf("Unexpectedly accepted certificate request with bad CSR")
+	if err = VerifyCSR(parsed); err != nil {
+		t.Errorf("Valid CSR in CertificateRequest failed to verify: %v", err)
 	}
 
 	// Marshal

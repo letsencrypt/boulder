@@ -3,6 +3,7 @@ package satest
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
@@ -49,4 +50,20 @@ func CreateWorkingRegistration(t *testing.T, sa core.StorageAuthority) core.Regi
 		t.Fatalf("Unable to create new registration")
 	}
 	return reg
+}
+
+// CreateWorkingCertificateRequest inserts a new, correct CertificateRequest
+// into SA using the provided registration ID. This a hack in the same way as
+// the other methods in this module.
+func CreateWorkingCertificateRequest(t *testing.T, sa core.StorageAuthority, reg core.Registration) core.CertificateRequest {
+	req, err := sa.NewCertificateRequest(core.CertificateRequest{
+		RegistrationID: reg.ID,
+		Created:        time.Now(),
+		Expires:        time.Now().AddDate(0, 0, 2),
+		CSR:            []byte{},
+	})
+	if err != nil {
+		t.Fatalf("Unable to create new certificate request")
+	}
+	return req
 }

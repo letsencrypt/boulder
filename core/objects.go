@@ -6,7 +6,6 @@
 package core
 
 import (
-	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
@@ -112,43 +111,6 @@ func (pd *ProblemDetails) Error() string {
 type AcmeIdentifier struct {
 	Type  IdentifierType `json:"type"`  // The type of identifier being encoded
 	Value string         `json:"value"` // The identifier itself
-}
-
-// CertificateRequest is just a CSR
-//
-// This data is unmarshalled from JSON by way of rawCertificateRequest, which
-// represents the actual structure received from the client.
-type CertificateRequest struct {
-	CSR   *x509.CertificateRequest // The CSR
-	Bytes []byte                   // The original bytes of the CSR, for logging.
-}
-
-type rawCertificateRequest struct {
-	CSR JSONBuffer `json:"csr"` // The encoded CSR
-}
-
-// UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
-func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
-	var raw rawCertificateRequest
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-
-	csr, err := x509.ParseCertificateRequest(raw.CSR)
-	if err != nil {
-		return err
-	}
-
-	cr.CSR = csr
-	cr.Bytes = raw.CSR
-	return nil
-}
-
-// MarshalJSON provides an implementation for encoding CertificateRequest objects.
-func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
-	return json.Marshal(rawCertificateRequest{
-		CSR: cr.CSR.Raw,
-	})
 }
 
 // Registration objects represent non-public metadata attached
@@ -296,7 +258,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 		}
 
 		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
+		if !LooksLikeAToken(ch.Token) {
 			return false
 		}
 		if _, err := B64dec(ch.Token); err != nil {
@@ -312,7 +274,7 @@ func (ch Challenge) IsSane(completed bool) bool {
 		}
 
 		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
+		if !LooksLikeAToken(ch.Token) {
 			return false
 		}
 		if _, err := B64dec(ch.Token); err != nil {
@@ -438,16 +400,31 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 	return
 }
 
+// CertificateRequest objects are entirely internal to the server.
+// They represent a client's request for a certificate.  The ID from
+// the request is used as the final segment of the generic certificate
+// URI.  Requests to that URI return the most recent certificate
+// resulting from that request.
+type CertificateRequest struct {
+	ID             string     `db:"id"`
+	RegistrationID int64      `db:"registrationID"`
+	Created        time.Time  `db:"created"`
+	Status         AcmeStatus `db:"status"`
+	Expires        time.Time  `db:"expires"`
+	CSR            []byte     `db:"csr"`
+}
+
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
-	RegistrationID int64 `db:"registrationID"`
+	RegistrationID int64  `db:"registrationID"`
+	RequestID      string `db:"requestID"`
 
+	Issued  time.Time `db:"issued"`
+	Expires time.Time `db:"expires"`
 	Serial  string    `db:"serial"`
 	Digest  string    `db:"digest"`
 	DER     []byte    `db:"der"`
-	Issued  time.Time `db:"issued"`
-	Expires time.Time `db:"expires"`
 }
 
 type IssuedCertIdentifierData struct {
