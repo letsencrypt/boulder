@@ -311,9 +311,10 @@ func StringToSerial(serial string) (*big.Int, error) {
 }
 
 func ValidSerial(serial string) bool {
-	// We check only the max length of serial, because there are a couple of
-	// initial certificates with a shorter serial in the prod DB.
-	if len(serial) > 36 {
+	// Originally, serial numbers were 32 hex characters long. We later increased
+	// them to 36, but we allow the shorter ones because they exist in some
+	// production databases.
+	if len(serial) < 32 && len(serial) > 36 {
 		return false
 	}
 	_, err := hex.DecodeString(serial)
