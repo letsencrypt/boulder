@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
@@ -209,7 +210,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	Registration, _ = ssa.NewRegistration(core.Registration{Key: AccountKeyA})
 
-	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger())
+	stats, _ := statsd.NewNoopClient()
+	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = &ca
@@ -271,38 +273,40 @@ func TestValidateContacts(t *testing.T) {
 	invalidEmail, _ := core.ParseAcmeURL("mailto:admin@example.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	err := validateContacts([]*core.AcmeURL{}, &mocks.MockDNS{})
+	nStats, _ := statsd.NewNoopClient()
+
+	err := validateContacts([]*core.AcmeURL{}, &mocks.MockDNS{}, nStats)
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = validateContacts([]*core.AcmeURL{tel}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{tel}, &mocks.MockDNS{}, nStats)
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.MockDNS{}, nStats)
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.MockDNS{}, nStats)
 	test.AssertError(t, err, "Invalid Email")
 
-	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.MockDNS{}, nStats)
 	test.AssertError(t, err, "Malformed Email")
 
-	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.MockDNS{}, nStats)
 	test.AssertError(t, err, "Unknown scehme")
 }
 
 func TestValidateEmail(t *testing.T) {
-	err := validateEmail("an email`", &mocks.MockDNS{})
+	_, err := validateEmail("an email`", &mocks.MockDNS{})
 	test.AssertError(t, err, "Malformed")
 
-	err = validateEmail("a@not.a.domain", &mocks.MockDNS{})
+	_, err = validateEmail("a@not.a.domain", &mocks.MockDNS{})
 	test.AssertError(t, err, "Cannot resolve")
 	t.Logf("No Resolve: %s", err)
 
-	err = validateEmail("a@example.com", &mocks.MockDNS{})
+	_, err = validateEmail("a@example.com", &mocks.MockDNS{})
 	test.AssertError(t, err, "No MX Record")
 	t.Logf("No MX: %s", err)
 
-	err = validateEmail("a@email.com", &mocks.MockDNS{})
+	_, err = validateEmail("a@email.com", &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Valid")
 }
 
