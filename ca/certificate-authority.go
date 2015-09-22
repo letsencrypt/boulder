@@ -9,12 +9,12 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math/big"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
@@ -322,10 +322,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// ourselves. We should modify CFSSL to just allow the caller to provide a
 	// own full serial number if it wants, and do all the generation logic
 	// ourselves.
-	randomPart := big.NewInt(1)
-	// We want 72 bits of randomness.
-	randomPart = randomPart.Lsh(randomPart, 72)
-	randomPart, err = rand.Int(rand.Reader, randomPart)
+	const randBits = 72
+	randSlice := make([]byte, randBits/8)
+	_, err = rand.Reader.Read(randSlice)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -333,7 +332,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		tx.Rollback()
 		return emptyCert, err
 	}
-	serialHex := fmt.Sprintf("%02x%018x", ca.Prefix, randomPart)
+	serialHex := fmt.Sprintf("%s%s",
+		hex.EncodeToString([]byte{byte(ca.Prefix)}),
+		hex.EncodeToString(randSlice))
 
 	// Send the cert off for signing
 	req := signer.SignRequest{
