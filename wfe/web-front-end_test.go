@@ -538,9 +538,9 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		string(cert.Raw))
-	test.Assert(
-		t, strings.HasPrefix(responseWriter.Header().Get("Location"), "/acme/cert"),
-		"Missing Location header on certificate issuance.")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Location"),
+		"/acme/cert/0000ff0000000000000e4b4f67d86e818c46")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
 		`</acme/issuer-cert>;rel="up"`)
