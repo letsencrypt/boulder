@@ -46,6 +46,8 @@
     "certNoCacheExpirationWindow": "96h",
     "indexCacheDuration": "24h",
     "issuerCacheDuration": "48h",
+    "shutdownStopTimeout": "10s",
+    "shutdownKillTimeout": "1m",
     "debugAddr": "localhost:8000"
   },
 
@@ -146,6 +148,8 @@
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
     "path": "/",
     "listenAddress": "localhost:4002",
+    "shutdownStopTimeout": "10s",
+    "shutdownKillTimeout": "1m",
     "debugAddr": "localhost:8005"
   },
 
