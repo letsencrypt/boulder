@@ -541,7 +541,7 @@ func TestIssueCertificate(t *testing.T) {
 		string(cert.Raw))
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"/acme/cert/ff0000000000000e")
+		"/acme/cert/0000ff0000000000000e4b4f67d86e818c46")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
 		`</acme/issuer-cert>;rel="up"`)
@@ -1110,8 +1110,8 @@ func TestGetCertificate(t *testing.T) {
 
 	responseWriter := httptest.NewRecorder()
 
-	// Valid short serial, cached
-	path, _ := url.Parse("/acme/cert/00000000000000b2")
+	// Valid serial, cached
+	path, _ := url.Parse("/acme/cert/0000000000000000000000000000000000b2")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
@@ -1121,9 +1121,9 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
 
-	// Unused short serial, no cache
+	// Unused serial, no cache
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/00000000000000ff")
+	path, _ = url.Parse("/acme/cert/0000000000000000000000000000000000ff")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
@@ -1132,7 +1132,7 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
 
-	// Invalid short serial, no cache
+	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
 	path, _ = url.Parse("/acme/cert/nothex")
 	wfe.Certificate(responseWriter, &http.Request{
@@ -1143,7 +1143,7 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
 
-	// Invalid short serial, no cache
+	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
 	path, _ = url.Parse("/acme/cert/00000000000000")
 	wfe.Certificate(responseWriter, &http.Request{
