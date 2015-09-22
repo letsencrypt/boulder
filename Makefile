@@ -75,4 +75,4 @@ rpm:
 		test/boulder-config.json sa/_db ca/_db $(foreach var,$(OBJECTS), $(OBJDIR)/$(var))
 
 bin/pkcs11bench: pre
-	go test -o ./bin/pkcs11bench -c ./test/pkcs11bench/
+	go test -o ./bin/pkcs11bench -c ./Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key/

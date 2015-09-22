@@ -111,6 +111,7 @@ type StorageGetter interface {
 	GetCertificateByShortSerial(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
+	GetSCTReceipt(string, string) (SignedCertificateTimestamp, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods
@@ -125,6 +126,8 @@ type StorageAdder interface {
 	UpdateOCSP(serial string, ocspResponse []byte) error
 
 	AddCertificate([]byte, int64) (string, error)
+
+	AddSCTReceipt(SignedCertificateTimestamp) error
 }
 
 // StorageAuthority interface represents a simple key/value
@@ -150,4 +153,9 @@ type DNSResolver interface {
 	LookupDNAME(string) (string, time.Duration, error)
 	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
 	LookupMX(string) ([]string, time.Duration, error)
+}
+
+// Publisher defines the public interface for the Boulder Publisher
+type Publisher interface {
+	SubmitToCT([]byte) error
 }

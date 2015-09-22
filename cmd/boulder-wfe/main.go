@@ -12,6 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -89,6 +90,11 @@ func main() {
 		wfe.IssuerCacheDuration, err = time.ParseDuration(c.WFE.IssuerCacheDuration)
 		cmd.FailOnError(err, "Couldn't parse issuer caching duration")
 
+		wfe.ShutdownStopTimeout, err = time.ParseDuration(c.WFE.ShutdownStopTimeout)
+		cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
+		wfe.ShutdownKillTimeout, err = time.ParseDuration(c.WFE.ShutdownKillTimeout)
+		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
+
 		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
@@ -119,12 +125,17 @@ func main() {
 		httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
 
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
-		srv := http.Server{
+		srv := &http.Server{
 			Addr:      c.WFE.ListenAddress,
 			ConnState: httpMonitor.ConnectionMonitor,
 			Handler:   httpMonitor.Handle(),
 		}
-		err = srv.ListenAndServe()
+
+		hd := &httpdown.HTTP{
+			StopTimeout: wfe.ShutdownStopTimeout,
+			KillTimeout: wfe.ShutdownKillTimeout,
+		}
+		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

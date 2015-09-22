@@ -194,6 +194,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		SA:             ssa,
 		PA:             pa,
 		DB:             cadb,
+		Publisher:      &mocks.MockPublisher{},
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
 		Clk:            fc,

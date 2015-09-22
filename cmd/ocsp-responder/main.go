@@ -11,9 +11,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/metrics"
@@ -123,20 +125,27 @@ func main() {
 		src, err := NewSourceFromDatabase(dbMap, caCert.SubjectKeyId)
 		cmd.FailOnError(err, "Could not connect to OCSP database")
 
+		stopTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownStopTimeout)
+		cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
+		killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
+		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
+
 		// Configure HTTP
 		m := http.NewServeMux()
 		m.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
-		srv := http.Server{
+		srv := &http.Server{
 			Addr:      c.OCSPResponder.ListenAddress,
 			ConnState: httpMonitor.ConnectionMonitor,
 			Handler:   httpMonitor.Handle(),
 		}
 
-		// Add HandlerTimer to output resp time + success/failure stats to statsd
-		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.OCSPResponder.ListenAddress))
-		err = srv.ListenAndServe()
+		hd := &httpdown.HTTP{
+			StopTimeout: stopTimeout,
+			KillTimeout: killTimeout,
+		}
+		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

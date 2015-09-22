@@ -3,6 +3,8 @@
 # Run this script after pulling changes that have migrations, to migrate your
 # local DB.
 #
+set -o errexit
+set -o xtrace
 cd $(dirname $0)/..
 
 source test/db-common.sh

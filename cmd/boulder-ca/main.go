@@ -57,6 +57,13 @@ func main() {
 			sac, err := rpc.NewStorageAuthorityClient(saRPC)
 			cmd.FailOnError(err, "Failed to create SA client")
 
+			pubRPC, err := rpc.NewAmqpRPCClient("CA->Publisher", c.AMQP.Publisher.Server, srv.Channel, stats)
+			cmd.FailOnError(err, "Unable to create RPC client")
+
+			pubc, err := rpc.NewPublisherClient(pubRPC)
+			cmd.FailOnError(err, "Failed to create Publisher client")
+
+			cai.Publisher = &pubc
 			cai.SA = &sac
 		}
 

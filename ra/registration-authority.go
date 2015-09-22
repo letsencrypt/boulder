@@ -390,11 +390,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Create the certificate and log the result
 	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
-		// While this could be InternalServerError for certain conditions, most
-		// of the failure reasons (such as GoodKey failing) are caused by malformed
-		// requests.
 		logEvent.Error = err.Error()
-		err = core.MalformedRequestError("Certificate request was invalid")
 		return emptyCert, err
 	}
 
