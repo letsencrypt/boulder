@@ -6,6 +6,7 @@
 package core
 
 import (
+	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
@@ -398,6 +399,41 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 	}
 	*jb, err = base64URLDecode(str)
 	return
+}
+
+// AcmeCertificateRequest ist the struct that we use for parsing
+// requests from clients
+type AcmeCertificateRequest struct {
+	CSR   *x509.CertificateRequest // The CSR
+	Bytes []byte                   // The original bytes of the CSR, for logging.
+}
+
+type rawAcmeCertificateRequest struct {
+	CSR JSONBuffer `json:"csr"`
+}
+
+// UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
+func (cr *AcmeCertificateRequest) UnmarshalJSON(data []byte) error {
+	var raw rawAcmeCertificateRequest
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	csr, err := x509.ParseCertificateRequest(raw.CSR)
+	if err != nil {
+		return err
+	}
+
+	cr.CSR = csr
+	cr.Bytes = raw.CSR
+	return nil
+}
+
+// MarshalJSON provides an implementation for encoding CertificateRequest objects.
+func (cr AcmeCertificateRequest) MarshalJSON() ([]byte, error) {
+	return json.Marshal(rawAcmeCertificateRequest{
+		CSR: JSONBuffer(cr.CSR.Raw),
+	})
 }
 
 // CertificateRequest objects are entirely internal to the server.
