@@ -73,6 +73,10 @@ type WebFrontEndImpl struct {
 	CertNoCacheExpirationWindow time.Duration
 	IndexCacheDuration          time.Duration
 	IssuerCacheDuration         time.Duration
+
+	// Gracefull shutdown settings
+	ShutdownStopTimeout time.Duration
+	ShutdownKillTimeout time.Duration
 }
 
 func statusCodeFromError(err interface{}) int {
