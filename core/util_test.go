@@ -44,7 +44,7 @@ func TestSerialUtils(t *testing.T) {
 	test.AssertBigIntEquals(t, serialNum, big.NewInt(100000000000000000))
 
 	badSerial, err := StringToSerial("doop!!!!000")
-	test.AssertEquals(t, fmt.Sprintf("%v", err), "Serial number should be 36 characters long")
+	test.AssertEquals(t, fmt.Sprintf("%v", err), "Invalid serial number")
 	fmt.Println(badSerial)
 }
 

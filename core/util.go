@@ -16,6 +16,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -302,11 +303,24 @@ func SerialToString(serial *big.Int) string {
 // consistently.
 func StringToSerial(serial string) (*big.Int, error) {
 	var serialNum big.Int
-	if len(serial) != 36 {
-		return &serialNum, errors.New("Serial number should be 36 characters long")
+	if !ValidSerial(serial) {
+		return &serialNum, errors.New("Invalid serial number")
 	}
 	_, err := fmt.Sscanf(serial, "%036x", &serialNum)
 	return &serialNum, err
+}
+
+func ValidSerial(serial string) bool {
+	// We check only the max length of serial, because there are a couple of
+	// initial certificates with a shorter serial in the prod DB.
+	if len(serial) > 36 {
+		return false
+	}
+	_, err := hex.DecodeString(serial)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 // GetBuildID identifies what build is running.
