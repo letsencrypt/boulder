@@ -237,7 +237,6 @@ type KeyConfig struct {
 type PKCS11Config struct {
 	Module          string
 	TokenLabel      string
-	SlotID          *int
 	PIN             string
 	PrivateKeyLabel string
 }
