@@ -77,6 +77,9 @@ type Config struct {
 		IndexCacheDuration          string
 		IssuerCacheDuration         string
 
+		ShutdownStopTimeout string
+		ShutdownKillTimeout string
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -152,6 +155,9 @@ type Config struct {
 		DBConnect     string
 		Path          string
 		ListenAddress string
+
+		ShutdownStopTimeout string
+		ShutdownKillTimeout string
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
