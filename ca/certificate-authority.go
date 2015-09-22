@@ -333,7 +333,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		tx.Rollback()
 		return emptyCert, err
 	}
-	serialHex := fmt.Sprintf("%02X%018X", ca.Prefix, randomPart)
+	serialHex := fmt.Sprintf("%02x%018x", ca.Prefix, randomPart)
 
 	// Send the cert off for signing
 	req := signer.SignRequest{

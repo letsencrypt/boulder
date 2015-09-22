@@ -1109,7 +1109,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		return
 	}
 	serial := path[len(CertPath):]
-	if !allHex.Match([]byte(serial)) {
+	if len(serial) != 36 || !allHex.Match([]byte(serial)) {
 		logEvent.Error = "Certificate not found"
 		wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
 		addNoCacheHeader(response)
