@@ -34,6 +34,24 @@ type SyslogWriter interface {
 	Warning(m string) error
 }
 
+// CertificateRequestEvent objects are used by the RA and CA to log the
+// progress of requests for certificates.
+type CertificateRequestEvent struct {
+	ID                  string    `json:",omitempty"`
+	Requester           int64     `json:",omitempty"`
+	SerialNumber        string    `json:",omitempty"`
+	RequestMethod       string    `json:",omitempty"`
+	VerificationMethods []string  `json:",omitempty"`
+	VerifiedFields      []string  `json:",omitempty"`
+	CommonName          string    `json:",omitempty"`
+	Names               []string  `json:",omitempty"`
+	NotBefore           time.Time `json:",omitempty"`
+	NotAfter            time.Time `json:",omitempty"`
+	RequestTime         time.Time `json:",omitempty"`
+	ResponseTime        time.Time `json:",omitempty"`
+	Error               string    `json:",omitempty"`
+}
+
 // singleton defines the object of a Singleton pattern
 type singleton struct {
 	once sync.Once

@@ -6,7 +6,6 @@
 package ra
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/hex"
@@ -194,6 +193,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		PA:             pa,
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
+		Log:            blog.GetAuditLogger(),
 		Clk:            fc,
 		Publisher:      &mocks.MockPublisher{},
 	}
@@ -492,16 +492,16 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	}
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csr, AccountPrivateKey.Key)
 	test.AssertNotError(t, err, "Failed to sign CSR")
-	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
-	test.AssertNotError(t, err, "Failed to parse CSR")
 	sa.UpdatePendingAuthorization(authz)
 	sa.FinalizeAuthorization(authz)
+
 	certRequest := core.CertificateRequest{
-		CSR: parsedCSR,
+		RegistrationID: Registration.ID,
+		CSR:            csrBytes,
 	}
 
 	// Registration has key == AccountKeyA
-	_, err = ra.NewCertificate(certRequest, Registration.ID)
+	_, err = ra.NewCertificate(certRequest)
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
 	test.AssertEquals(t, err.Error(), "Certificate public key must be different than account key")
 
@@ -519,10 +519,11 @@ func TestAuthorizationRequired(t *testing.T) {
 	// ExampleCSR requests not-example.com and www.not-example.com,
 	// but the authorization only covers not-example.com
 	certRequest := core.CertificateRequest{
-		CSR: ExampleCSR,
+		RegistrationID: AuthzFinal.RegistrationID,
+		CSR:            ExampleCSR.Raw,
 	}
 
-	_, err := ra.NewCertificate(certRequest, 1)
+	_, err := ra.NewCertificate(certRequest)
 	test.Assert(t, err != nil, "Issued certificate with insufficient authorization")
 
 	t.Log("DONE TestAuthorizationRequired")
@@ -543,29 +544,15 @@ func TestNewCertificate(t *testing.T) {
 	sa.FinalizeAuthorization(authzFinalWWW)
 
 	certRequest := core.CertificateRequest{
-		CSR: ExampleCSR,
+		RegistrationID: authzFinalWWW.RegistrationID,
+		CSR:            ExampleCSR.Raw,
 	}
 
-	cert, err := ra.NewCertificate(certRequest, Registration.ID)
+	_, err := ra.NewCertificate(certRequest)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	if err != nil {
 		return
 	}
-
-	parsedCert, err := x509.ParseCertificate(cert.DER)
-	test.AssertNotError(t, err, "Failed to parse certificate")
-	if err != nil {
-		return
-	}
-
-	// Verify that cert shows up and is as expected
-	dbCert, err := sa.GetCertificate(core.SerialToString(parsedCert.SerialNumber))
-	test.AssertNotError(t, err, fmt.Sprintf("Could not fetch certificate %032x from database",
-		parsedCert.SerialNumber))
-	if err != nil {
-		return
-	}
-	test.Assert(t, bytes.Compare(cert.DER, dbCert.DER) == 0, "Certificates differ")
 
 	t.Log("DONE TestOnValidationUpdate")
 }
@@ -590,19 +577,29 @@ func TestTotalCertRateLimit(t *testing.T) {
 	// Inject another final authorization to cover www.example.com
 	authzFinalWWW := AuthzFinal
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
+
+	fmt.Println("!!!!! Making pending authz !!!!!")
 	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
+	fmt.Println("!!!!! Making final authz !!!!!")
 	sa.FinalizeAuthorization(authzFinalWWW)
 
 	certRequest := core.CertificateRequest{
-		CSR: ExampleCSR,
+		RegistrationID: Registration.ID,
+		CSR:            ExampleCSR.Raw,
 	}
 
-	_, err := ra.NewCertificate(certRequest, Registration.ID)
+	fmt.Println("!!!!! Preflight !!!!!")
+	_, err := ra.CA.SA.GetCertificateRequest(requestID)
+	test.AssertNotError(t, err, "DB is closed!")
+
+	fmt.Println("!!!!! Inserting first cert !!!!!")
+	_, err := ra.NewCertificate(certRequest)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
 	fc.Add(time.Hour)
 
-	_, err = ra.NewCertificate(certRequest, Registration.ID)
+	fmt.Println("!!!!! Inserting second cert !!!!!")
+	_, err = ra.NewCertificate(certRequest)
 	test.AssertError(t, err, "Total certificate rate limit failed")
 }
 

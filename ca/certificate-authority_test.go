@@ -155,7 +155,7 @@ func setup(t *testing.T) *testCtx {
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{
 					profileName: &cfsslConfig.SigningProfile{
-						Usage:     []string{"server auth"},
+						Usage:     []string{"server auth", "client auth"},
 						CA:        false,
 						IssuerURL: []string{"http://not-example.com/issuer-url"},
 						OCSP:      "http://not-example.com/ocsp",
@@ -210,7 +210,7 @@ func (ctx *testCtx) attemptToIssue(t *testing.T, ca *CertificateAuthorityImpl, c
 	req, err := ca.NewCertificateRequest(req)
 	test.AssertNotError(t, err, "Failed to import CSR")
 
-	err = ca.IssueCertificate(req.ID)
+	err = ca.IssueCertificate(req.ID, "bogusLogEvent")
 	test.AssertNotError(t, err, "CA did not agree to issue under this request")
 
 	found = false
@@ -433,7 +433,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	req, err = ca.NewCertificateRequest(req)
 	test.AssertNotError(t, err, "Failed to import CSR")
 
-	err = ca.IssueCertificate(req.ID)
+	err = ca.IssueCertificate(req.ID, "bogusLogEvent")
 	test.AssertEquals(t, err.Error(), "Cannot issue a certificate that expires after the intermediate certificate.")
 	_, ok := err.(core.InternalServerError)
 	test.Assert(t, ok, "Incorrect error type returned")

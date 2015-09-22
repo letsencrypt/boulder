@@ -341,9 +341,9 @@ func TestAddCertificate(t *testing.T) {
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
-	digest, err := sa.AddCertificate(certDER, req.ID)
+	certObj, err := sa.AddCertificate(certDER, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
-	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
+	test.AssertEquals(t, certObj.Digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
 	retrievedCert, err := sa.GetCertificate("000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
@@ -361,9 +361,9 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	serial := "ffdd9b8a82126d96f61d378d5ba99a0474f0"
 
-	digest2, err := sa.AddCertificate(certDER2, req.ID)
+	cert2, err := sa.AddCertificate(certDER2, req.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
-	test.AssertEquals(t, digest2, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
+	test.AssertEquals(t, cert2.Digest, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
 
 	retrievedCert2, err := sa.GetCertificate(serial)
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
@@ -401,7 +401,8 @@ func TestCountCertificatesByName(t *testing.T) {
 
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
-	_, err = sa.AddCertificate(certDER, reg.ID)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
+	_, err = sa.AddCertificate(certDER, req.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
 	// Time range including now should find the cert
@@ -446,6 +447,7 @@ func TestGetLatestCertificateForRequest(t *testing.T) {
 
 		if lastExpiringDER == nil || lastExpiry.Before(cert.NotAfter) {
 			lastExpiringDER = certDER
+			lastExpiry = cert.NotAfter
 		}
 	}
 
@@ -630,10 +632,12 @@ func TestCountCertificates(t *testing.T) {
 	test.AssertEquals(t, count, int64(0))
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
+
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(certDER, reg.ID)
+	_, err = sa.AddCertificate(certDER, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	fc.Add(2 * time.Hour)

@@ -10,8 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
-	"reflect"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -82,22 +80,6 @@ func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration
 	return
 }
 
-type certificateRequestEvent struct {
-	ID                  string    `json:",omitempty"`
-	Requester           int64     `json:",omitempty"`
-	SerialNumber        string    `json:",omitempty"`
-	RequestMethod       string    `json:",omitempty"`
-	VerificationMethods []string  `json:",omitempty"`
-	VerifiedFields      []string  `json:",omitempty"`
-	CommonName          string    `json:",omitempty"`
-	Names               []string  `json:",omitempty"`
-	NotBefore           time.Time `json:",omitempty"`
-	NotAfter            time.Time `json:",omitempty"`
-	RequestTime         time.Time `json:",omitempty"`
-	ResponseTime        time.Time `json:",omitempty"`
-	Error               string    `json:",omitempty"`
-}
-
 var issuanceCountCacheLife = 1 * time.Minute
 
 // issuanceCountInvalid checks if the current issuance count is invalid either
@@ -133,6 +115,7 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int64, error) {
 		}
 		ra.totalIssuedCache = count
 		ra.lastIssuedCount = &now
+		fmt.Println("---> totalIssuedCache:", count)
 	}
 	return ra.totalIssuedCache, nil
 }
@@ -256,115 +239,46 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	return authz, err
 }
 
-// MatchesCSR tests the contents of a generated certificate to make sure
-// that the PublicKey, CommonName, and DNSNames match those provided in
-// the CSR that was used to generate the certificate. It also checks the
-// following fields for:
-//		* notBefore is not more than 24 hours ago
-//		* BasicConstraintsValid is true
-//		* IsCA is false
-//		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
-//		* Subject only contains CommonName & Names
-func (ra *RegistrationAuthorityImpl) MatchesCSR(
-	cert core.Certificate,
-	csr *x509.CertificateRequest) (err error) {
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-	if err != nil {
-		return
-	}
-
-	// Check issued certificate matches what was expected from the CSR
-	hostNames := make([]string, len(csr.DNSNames))
-	copy(hostNames, csr.DNSNames)
-	if len(csr.Subject.CommonName) > 0 {
-		hostNames = append(hostNames, csr.Subject.CommonName)
-	}
-	hostNames = core.UniqueNames(hostNames)
-
-	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
-		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
-		return
-	}
-	if len(csr.Subject.CommonName) > 0 && parsedCertificate.Subject.CommonName != csr.Subject.CommonName {
-		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
-		return
-	}
-	// Sort both slices of names before comparison.
-	parsedNames := parsedCertificate.DNSNames
-	sort.Strings(parsedNames)
-	sort.Strings(hostNames)
-	if !reflect.DeepEqual(parsedNames, hostNames) {
-		err = core.InternalServerError("Generated certificate DNSNames don't match CSR DNSNames")
-		return
-	}
-	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
-		err = core.InternalServerError("Generated certificate IPAddresses don't match CSR IPAddresses")
-		return
-	}
-	if !reflect.DeepEqual(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
-		err = core.InternalServerError("Generated certificate EmailAddresses don't match CSR EmailAddresses")
-		return
-	}
-	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
-		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
-		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
-		len(parsedCertificate.Subject.PostalCode) > 0 || len(parsedCertificate.Subject.SerialNumber) > 0 {
-		err = core.InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
-		return
-	}
-	now := ra.clk.Now()
-	if now.Sub(parsedCertificate.NotBefore) > time.Hour*24 {
-		err = core.InternalServerError(fmt.Sprintf("Generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore)))
-		return
-	}
-	if !parsedCertificate.BasicConstraintsValid {
-		err = core.InternalServerError("Generated certificate doesn't have basic constraints set")
-		return
-	}
-	if parsedCertificate.IsCA {
-		err = core.InternalServerError("Generated certificate can sign other certificates")
-		return
-	}
-	if !reflect.DeepEqual(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
-		err = core.InternalServerError("Generated certificate doesn't have correct key usage extensions")
-		return
-	}
-
-	return
-}
-
 // checkAuthorizations checks that each requested name has a valid authorization
 // that won't expire before the certificate expires. Returns an error otherwise.
-func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registration *core.Registration) error {
+func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registration *core.Registration) (time.Time, error) {
 	now := ra.clk.Now()
+
+	firstRun := true
+	var earliestExpiration time.Time
 	var badNames []string
 	for _, name := range names {
 		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
 		if err != nil || authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		}
+
+		if firstRun || authz.Expires.Before(earliestExpiration) {
+			earliestExpiration = *authz.Expires
+		}
+		firstRun = false
 	}
 
 	if len(badNames) > 0 {
-		return core.UnauthorizedError(fmt.Sprintf(
+		return earliestExpiration, core.UnauthorizedError(fmt.Sprintf(
 			"Authorizations for these names not found or expired: %s",
 			strings.Join(badNames, ", ")))
 	}
-	return nil
+	return earliestExpiration, nil
 }
 
 // NewCertificate requests the issuance of a certificate.
-func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
-	emptyCert := core.Certificate{}
+func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest) (cert core.CertificateRequest, err error) {
+	emptyCertRequest := core.CertificateRequest{}
 	var logEventResult string
 
 	// Assume the worst
 	logEventResult = "error"
 
 	// Construct the log event
-	logEvent := certificateRequestEvent{
+	logEvent := blog.CertificateRequestEvent{
 		ID:            core.NewToken(),
-		Requester:     regID,
+		Requester:     req.RegistrationID,
 		RequestMethod: "online",
 		RequestTime:   ra.clk.Now(),
 	}
@@ -375,15 +289,15 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
 	}()
 
-	if regID <= 0 {
-		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", regID))
-		return emptyCert, err
+	if req.RegistrationID <= 0 {
+		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", req.RegistrationID))
+		return emptyCertRequest, err
 	}
 
-	registration, err := ra.SA.GetRegistration(regID)
+	registration, err := ra.SA.GetRegistration(req.RegistrationID)
 	if err != nil {
 		logEvent.Error = err.Error()
-		return emptyCert, err
+		return emptyCertRequest, err
 	}
 
 	// Check total certificate rate limiting
@@ -391,19 +305,24 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		totalIssued, err := ra.getIssuanceCount()
 		if err != nil {
 			logEvent.Error = err.Error()
-			return emptyCert, err
+			return emptyCertRequest, err
 		}
 		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
-			return emptyCert, core.RateLimitedError("Certificate issuance limit reached")
+			return emptyCertRequest, core.RateLimitedError("Certificate issuance limit reached")
 		}
 	}
 
-	// Verify the CSR
-	csr := req.CSR
+	// Parse and verify the CSR
+	csr, err := x509.ParseCertificateRequest(req.CSR)
+	if err != nil {
+		logEvent.Error = err.Error()
+		err = core.UnauthorizedError("Failed to parse CSR")
+		return emptyCertRequest, err
+	}
 	if err = core.VerifyCSR(csr); err != nil {
 		logEvent.Error = err.Error()
 		err = core.UnauthorizedError("Invalid signature on CSR")
-		return emptyCert, err
+		return emptyCertRequest, err
 	}
 
 	logEvent.CommonName = csr.Subject.CommonName
@@ -419,65 +338,51 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	if len(names) == 0 {
 		err = core.UnauthorizedError("CSR has no names in it")
 		logEvent.Error = err.Error()
-		return emptyCert, err
+		return emptyCertRequest, err
 	}
 
 	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(names)
 	if err != nil {
 		logEvent.Error = err.Error()
-		return emptyCert, err
+		return emptyCertRequest, err
 	}
 	if csrPreviousDenied {
 		err = core.UnauthorizedError("CSR has already been revoked/denied")
 		logEvent.Error = err.Error()
-		return emptyCert, err
+		return emptyCertRequest, err
 	}
 
 	if core.KeyDigestEquals(csr.PublicKey, registration.Key) {
 		err = core.MalformedRequestError("Certificate public key must be different than account key")
-		return emptyCert, err
+		return emptyCertRequest, err
 	}
 
-	err = ra.checkAuthorizations(names, &registration)
+	earliestExpiration, err := ra.checkAuthorizations(names, &registration)
 	if err != nil {
 		logEvent.Error = err.Error()
-		return emptyCert, err
+		return emptyCertRequest, err
 	}
+	req.Expires = earliestExpiration
 
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
-	// Create the certificate and log the result
-	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
+	// Verify that the CA is willing to issue for this CSR
+	if req, err = ra.CA.NewCertificateRequest(req); err != nil {
 		logEvent.Error = err.Error()
-		return emptyCert, err
+		return emptyCertRequest, err
 	}
 
-	err = ra.MatchesCSR(cert, csr)
-	if err != nil {
+	// Request that the CA issue the certificate
+	if err = ra.CA.IssueCertificate(req.ID, logEvent.ID); err != nil {
 		logEvent.Error = err.Error()
-		return emptyCert, err
+		return emptyCertRequest, err
 	}
-
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
-	if err != nil {
-		// InternalServerError because the certificate from the CA should be
-		// parseable.
-		err = core.InternalServerError(err.Error())
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
-	logEvent.SerialNumber = core.SerialToString(parsedCertificate.SerialNumber)
-	logEvent.CommonName = parsedCertificate.Subject.CommonName
-	logEvent.NotBefore = parsedCertificate.NotBefore
-	logEvent.NotAfter = parsedCertificate.NotAfter
-	logEvent.ResponseTime = ra.clk.Now()
 
 	logEventResult = "successful"
 
 	ra.stats.Inc("RA.NewCertificates", 1, 1.0)
-	return cert, nil
+	return req, nil
 }
 
 // UpdateRegistration updates an existing Registration with new values.

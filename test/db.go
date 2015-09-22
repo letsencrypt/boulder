@@ -73,6 +73,7 @@ func allTableNamesInDB(db CleanUpDB) ([]string, error) {
 		"certificates",
 		"certificateRequests",
 		"authz",
+		"pendingAuthorizations",
 		"registrations",
 	}
 	isOverride := map[string]bool{}

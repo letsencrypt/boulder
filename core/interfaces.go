@@ -62,7 +62,7 @@ type RegistrationAuthority interface {
 	NewAuthorization(Authorization, int64) (Authorization, error)
 
 	// [WebFrontEnd]
-	NewCertificate(CertificateRequest, int64) (Certificate, error)
+	NewCertificate(CertificateRequest) (CertificateRequest, error)
 
 	// [WebFrontEnd]
 	UpdateRegistration(Registration, Registration) (Registration, error)
@@ -91,7 +91,7 @@ type ValidationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	NewCertificateRequest(CertificateRequest) (CertificateRequest, error)
-	IssueCertificate(string)
+	IssueCertificate(string, string) error
 	RevokeCertificate(string, RevocationCode) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
@@ -131,7 +131,7 @@ type StorageAdder interface {
 	NewCertificateRequest(CertificateRequest) (CertificateRequest, error)
 	UpdateCertificateRequestStatus(string, AcmeStatus) error
 
-	AddCertificate([]byte, string) (string, error)
+	AddCertificate([]byte, string) (Certificate, error)
 
 	AddSCTReceipt(SignedCertificateTimestamp) error
 }
