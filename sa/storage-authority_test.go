@@ -434,7 +434,6 @@ func TestUpdateOCSP(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	serial := "000000000000000000000000000000021bd4"
-	fmt.Println("querying", serial)
 	const ocspResponse = "this is a fake OCSP response"
 
 	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
