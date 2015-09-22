@@ -301,12 +301,7 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
-	// Example cert serial is 0x21bd4, so a prefix of all zeroes should fetch it.
-	retrievedCert, err := sa.GetCertificateByShortSerial("0000000000000000")
-	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by short serial")
-	test.AssertByteEquals(t, certDER, retrievedCert.DER)
-
-	retrievedCert, err = sa.GetCertificate("000000000000000000000000000000021bd4")
+	retrievedCert, err := sa.GetCertificate("000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
 	test.AssertByteEquals(t, certDER, retrievedCert.DER)
 
@@ -324,12 +319,7 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 	test.AssertEquals(t, digest2, "CMVYqWzyqUW7pfBF2CxL0Uk6I0Upsk7p4EWSnd_vYx4")
 
-	// Example cert serial is 0x21bd4, so a prefix of all zeroes should fetch it.
-	retrievedCert2, err := sa.GetCertificateByShortSerial("0000ff0000000000")
-	test.AssertNotError(t, err, "Couldn't get test-cert.der")
-	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
-
-	retrievedCert2, err = sa.GetCertificate("0000ff00000000000002238054509817da5a")
+	retrievedCert2, err := sa.GetCertificate("0000ff00000000000002238054509817da5a")
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
 	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
 
@@ -338,19 +328,6 @@ func TestAddCertificate(t *testing.T) {
 	test.Assert(t, !certificateStatus2.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
-}
-
-// TestGetCertificateByShortSerial tests some failure conditions for GetCertificate.
-// Success conditions are tested above in TestAddCertificate.
-func TestGetCertificateByShortSerial(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	_, err := sa.GetCertificateByShortSerial("")
-	test.AssertError(t, err, "Should've failed on empty serial")
-
-	_, err = sa.GetCertificateByShortSerial("01020304050607080102030405060708")
-	test.AssertError(t, err, "Should've failed on too-long serial")
 }
 
 func TestDeniedCSR(t *testing.T) {
