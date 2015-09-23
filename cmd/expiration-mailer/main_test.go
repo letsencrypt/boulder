@@ -189,6 +189,23 @@ func TestFindExpiringCertificates(t *testing.T) {
 		t.Fatalf("Couldn't store regB: %s", err)
 	}
 
+	reqA := core.CertificateRequest{
+		RegistrationID: regA.ID,
+		CSR:            []byte{},
+	}
+	reqB := core.CertificateRequest{
+		RegistrationID: regB.ID,
+		CSR:            []byte{},
+	}
+	reqA, err = ctx.ssa.NewCertificateRequest(reqA)
+	if err != nil {
+		t.Fatalf("Couldn't store reqA: %s", err)
+	}
+	reqB, err = ctx.ssa.NewCertificateRequest(reqB)
+	if err != nil {
+		t.Fatalf("Couldn't store reqB: %s", err)
+	}
+
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy A",
@@ -200,6 +217,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
+		RequestID:      reqA.ID,
 		RegistrationID: regA.ID,
 		Serial:         "001",
 		Expires:        rawCertA.NotAfter,
@@ -221,6 +239,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	}
 	certDerB, _ := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, &testKey)
 	certB := &core.Certificate{
+		RequestID:      reqA.ID,
 		RegistrationID: regA.ID,
 		Serial:         "002",
 		Expires:        rawCertB.NotAfter,
@@ -243,6 +262,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	}
 	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
 	certC := &core.Certificate{
+		RequestID:      reqB.ID,
 		RegistrationID: regB.ID,
 		Serial:         "003",
 		Expires:        rawCertC.NotAfter,
@@ -304,6 +324,16 @@ func TestLifetimeOfACert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Couldn't store regA: %s", err)
 	}
+
+	reqA := core.CertificateRequest{
+		RegistrationID: regA.ID,
+		CSR:            []byte{},
+	}
+	reqA, err = ctx.ssa.NewCertificateRequest(reqA)
+	if err != nil {
+		t.Fatalf("Couldn't store reqA: %s", err)
+	}
+
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy A",
@@ -315,6 +345,7 @@ func TestLifetimeOfACert(t *testing.T) {
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
+		RequestID:      reqA.ID,
 		RegistrationID: regA.ID,
 		Serial:         "001",
 		Expires:        rawCertA.NotAfter,
@@ -407,6 +438,16 @@ func TestDontFindRevokedCert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Couldn't store regA: %s", err)
 	}
+
+	reqA := core.CertificateRequest{
+		RegistrationID: regA.ID,
+		CSR:            []byte{},
+	}
+	reqA, err = ctx.ssa.NewCertificateRequest(reqA)
+	if err != nil {
+		t.Fatalf("Couldn't store reqA: %s", err)
+	}
+
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy A",
@@ -418,6 +459,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
+		RequestID:      reqA.ID,
 		RegistrationID: regA.ID,
 		Serial:         "001",
 		Expires:        rawCertA.NotAfter,

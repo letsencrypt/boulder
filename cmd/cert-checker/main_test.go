@@ -209,11 +209,18 @@ func TestGetAndProcessCerts(t *testing.T) {
 		Key: satest.GoodJWK(),
 	})
 	test.AssertNotError(t, err, "Couldn't create registration")
+
+	req, err := sa.NewCertificateRequest(core.CertificateRequest{
+		RegistrationID: reg.ID,
+		CSR:            []byte{},
+	})
+	test.AssertNotError(t, err, "Couldn't create certificate request")
+
 	for i := int64(0); i < 5; i++ {
 		rawCert.SerialNumber = big.NewInt(i)
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
-		_, err = sa.AddCertificate(certDER, reg.ID)
+		_, err = sa.AddCertificate(certDER, req.ID)
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 
