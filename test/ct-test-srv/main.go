@@ -20,7 +20,6 @@ type ctSubmissionRequest struct {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	log.Printf("request: %s %s", r.Method, r.URL.Path)
 	if r.Method != "POST" || r.URL.Path != "/ct/v1/add-chain" {
 		http.NotFound(w, r)
 		return
