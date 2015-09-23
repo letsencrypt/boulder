@@ -79,6 +79,7 @@ def start(race_detection):
         'cmd/boulder-va',
         'cmd/boulder-publisher',
         'cmd/ocsp-responder',
+        'test/ct-test-srv',
         'test/dns-test-srv'
     ]
     if not install(progs, race_detection):
