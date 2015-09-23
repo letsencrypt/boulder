@@ -45,16 +45,20 @@ const (
 	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
 	MethodUpdateValidations                 = "UpdateValidations"                 // VA
 	MethodCheckCAARecords                   = "CheckCAARecords"                   // VA
+	MethodNewCertificateRequest             = "NewCertificateRequest"             // CA, SA
 	MethodIssueCertificate                  = "IssueCertificate"                  // CA
 	MethodGenerateOCSP                      = "GenerateOCSP"                      // CA
 	MethodGetRegistration                   = "GetRegistration"                   // SA
 	MethodGetRegistrationByKey              = "GetRegistrationByKey"              // RA, SA
 	MethodGetAuthorization                  = "GetAuthorization"                  // SA
 	MethodGetLatestValidAuthorization       = "GetLatestValidAuthorization"       // SA
+	MethodGetCertificateRequest             = "GetLatestCertificateRequest"       // SA
 	MethodGetCertificate                    = "GetCertificate"                    // SA
+	MethodGetLatestCertificateForRequest    = "GetLatestCertificateForRequest"    // SA
 	MethodGetCertificateStatus              = "GetCertificateStatus"              // SA
 	MethodMarkCertificateRevoked            = "MarkCertificateRevoked"            // SA
 	MethodUpdateOCSP                        = "UpdateOCSP"                        // SA
+	MethodUpdateCertificateRequestStatus    = "UpdateCertificateRequestStatus"    // SA
 	MethodNewPendingAuthorization           = "NewPendingAuthorization"           // SA
 	MethodUpdatePendingAuthorization        = "UpdatePendingAuthorization"        // SA
 	MethodFinalizeAuthorization             = "FinalizeAuthorization"             // SA
@@ -95,19 +99,14 @@ type latestValidAuthorizationRequest struct {
 	Identifier core.AcmeIdentifier
 }
 
-type certificateRequest struct {
-	Req   core.CertificateRequest
-	RegID int64
-}
-
 type issueCertificateRequest struct {
-	Bytes []byte
-	RegID int64
+	ReqID      string
+	LogEventID string
 }
 
 type addCertificateRequest struct {
 	Bytes []byte
-	RegID int64
+	ReqID string
 }
 
 type revokeCertificateRequest struct {
@@ -142,6 +141,11 @@ type updateOCSPRequest struct {
 type countRequest struct {
 	Start time.Time
 	End   time.Time
+}
+
+type updateRequestStatusRequest struct {
+	ReqID  string
+	Status string
 }
 
 // Response structs
@@ -210,7 +214,7 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 
 	rpc.Handle(MethodNewCertificate, func(req []byte) (response []byte, err error) {
 		log.Info(fmt.Sprintf(" [.] Entering MethodNewCertificate"))
-		var cr certificateRequest
+		var cr core.CertificateRequest
 		if err = json.Unmarshal(req, &cr); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodNewCertificate, err, req)
@@ -218,13 +222,13 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 		}
 		log.Info(fmt.Sprintf(" [.] No problem unmarshaling request"))
 
-		cert, err := impl.NewCertificate(cr.Req, cr.RegID)
+		out, err := impl.NewCertificate(cr)
 		if err != nil {
 			return
 		}
 		log.Info(fmt.Sprintf(" [.] No problem issuing new cert"))
 
-		response, err = json.Marshal(cert)
+		response, err = json.Marshal(out)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodNewCertificate, err, req)
@@ -380,18 +384,18 @@ func (rac RegistrationAuthorityClient) NewAuthorization(authz core.Authorization
 }
 
 // NewCertificate sends a New Certificate request
-func (rac RegistrationAuthorityClient) NewCertificate(cr core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
-	data, err := json.Marshal(certificateRequest{cr, regID})
+func (rac RegistrationAuthorityClient) NewCertificate(cr core.CertificateRequest) (out core.CertificateRequest, err error) {
+	data, err := json.Marshal(cr)
 	if err != nil {
 		return
 	}
 
-	certData, err := rac.rpc.DispatchSync(MethodNewCertificate, data)
+	reqData, err := rac.rpc.DispatchSync(MethodNewCertificate, data)
 	if err != nil {
 		return
 	}
 
-	err = json.Unmarshal(certData, &cert)
+	err = json.Unmarshal(reqData, &out)
 	return
 }
 
@@ -613,34 +617,37 @@ func (pub PublisherClient) SubmitToCT(der []byte) (err error) {
 // CertificateAuthorityClient / Server
 //  -> IssueCertificate
 func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority) (err error) {
-	rpc.Handle(MethodIssueCertificate, func(req []byte) (response []byte, err error) {
-		var icReq issueCertificateRequest
-		err = json.Unmarshal(req, &icReq)
-		if err != nil {
+	rpc.Handle(MethodNewCertificateRequest, func(req []byte) (response []byte, err error) {
+		var cr core.CertificateRequest
+		if err = json.Unmarshal(req, &cr); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodIssueCertificate, err, req)
+			improperMessage(MethodNewCertificateRequest, err, req)
 			return
 		}
 
-		csr, err := x509.ParseCertificateRequest(icReq.Bytes)
-		if err != nil {
-			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodIssueCertificate, err, req)
-			return
-		}
-
-		cert, err := impl.IssueCertificate(*csr, icReq.RegID)
+		out, err := impl.NewCertificateRequest(cr)
 		if err != nil {
 			return
 		}
 
-		response, err = json.Marshal(cert)
+		response, err = json.Marshal(out)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetRegistration, err, req)
+			errorCondition(MethodNewCertificateRequest, err, req)
+			return
+		}
+		return
+	})
+
+	rpc.Handle(MethodIssueCertificate, func(req []byte) (response []byte, err error) {
+		var icReq issueCertificateRequest
+		if err = json.Unmarshal(req, &icReq); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodIssueCertificate, err, req)
 			return
 		}
 
+		err = impl.IssueCertificate(icReq.ReqID, icReq.LogEventID)
 		return
 	})
 
@@ -689,21 +696,33 @@ func NewCertificateAuthorityClient(client RPCClient) (cac CertificateAuthorityCl
 }
 
 // IssueCertificate sends a request to issue a certificate
-func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
-	var icReq issueCertificateRequest
-	icReq.Bytes = csr.Raw
-	icReq.RegID = regID
+func (cac CertificateAuthorityClient) NewCertificateRequest(req core.CertificateRequest) (out core.CertificateRequest, err error) {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return
+	}
+
+	jsonOut, err := cac.rpc.DispatchSync(MethodNewCertificateRequest, data)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonOut, &out)
+	return
+}
+
+// IssueCertificate sends a request to issue a certificate
+func (cac CertificateAuthorityClient) IssueCertificate(reqID, logEventID string) (err error) {
+	icReq := issueCertificateRequest{
+		ReqID:      reqID,
+		LogEventID: logEventID,
+	}
 	data, err := json.Marshal(icReq)
 	if err != nil {
 		return
 	}
 
-	jsonResponse, err := cac.rpc.DispatchSync(MethodIssueCertificate, data)
-	if err != nil {
-		return
-	}
-
-	err = json.Unmarshal(jsonResponse, &cert)
+	_, err = cac.rpc.DispatchSync(MethodIssueCertificate, data)
 	return
 }
 
@@ -849,11 +868,12 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 			return
 		}
 
-		id, err := impl.AddCertificate(acReq.Bytes, acReq.RegID)
+		cert, err := impl.AddCertificate(acReq.Bytes, acReq.ReqID)
 		if err != nil {
 			return
 		}
-		response = []byte(id)
+
+		response, err = json.Marshal(cert)
 		return
 	})
 
@@ -926,6 +946,22 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		return
 	})
 
+	rpc.Handle(MethodGetCertificateRequest, func(req []byte) (response []byte, err error) {
+		certReq, err := impl.GetCertificateRequest(string(req))
+		if err != nil {
+			return
+		}
+
+		jsonResponse, err := json.Marshal(certReq)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetCertificateRequest, err, req)
+			return
+		}
+
+		return jsonResponse, nil
+	})
+
 	rpc.Handle(MethodGetCertificate, func(req []byte) (response []byte, err error) {
 		cert, err := impl.GetCertificate(string(req))
 		if err != nil {
@@ -936,6 +972,22 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetCertificate, err, req)
+			return
+		}
+
+		return jsonResponse, nil
+	})
+
+	rpc.Handle(MethodGetLatestCertificateForRequest, func(req []byte) (response []byte, err error) {
+		cert, err := impl.GetCertificateByShortSerial(string(req))
+		if err != nil {
+			return
+		}
+
+		jsonResponse, err := json.Marshal(cert)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetLatestCertificateForRequest, err, req)
 			return
 		}
 
@@ -980,6 +1032,42 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		}
 
 		err = impl.UpdateOCSP(updateOCSPReq.Serial, updateOCSPReq.OCSPResponse)
+		return
+	})
+
+	rpc.Handle(MethodNewCertificateRequest, func(req []byte) (response []byte, err error) {
+		var cr core.CertificateRequest
+
+		if err = json.Unmarshal(req, &cr); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodUpdateOCSP, err, req)
+			return
+		}
+
+		out, err := impl.NewCertificateRequest(cr)
+		if err != nil {
+			return
+		}
+
+		response, err = json.Marshal(out)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodNewCertificateRequest, err, req)
+			return
+		}
+		return
+	})
+
+	rpc.Handle(MethodUpdateCertificateRequestStatus, func(req []byte) (response []byte, err error) {
+		var updateReq updateRequestStatusRequest
+
+		if err = json.Unmarshal(req, &updateReq); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodUpdateOCSP, err, req)
+			return
+		}
+
+		err = impl.UpdateCertificateRequestStatus(updateReq.ReqID, core.AcmeStatus(updateReq.Status))
 		return
 	})
 
@@ -1144,9 +1232,32 @@ func (cac StorageAuthorityClient) GetLatestValidAuthorization(registrationId int
 	return
 }
 
+// GetCertificateRequest sends a request to get a CertificateRequest by ID
+func (cac StorageAuthorityClient) GetCertificateRequest(id string) (cert core.CertificateRequest, err error) {
+	jsonCertReq, err := cac.rpc.DispatchSync(MethodGetCertificateRequest, []byte(id))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonCertReq, &cert)
+	return
+}
+
 // GetCertificate sends a request to get a Certificate by ID
 func (cac StorageAuthorityClient) GetCertificate(id string) (cert core.Certificate, err error) {
 	jsonCert, err := cac.rpc.DispatchSync(MethodGetCertificate, []byte(id))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonCert, &cert)
+	return
+}
+
+// GetLatestCertificateForRequest sends a request to obtain the most recent
+// certificate issued under a request
+func (cac StorageAuthorityClient) GetLatestCertificateForRequest(id string) (cert core.Certificate, err error) {
+	jsonCert, err := cac.rpc.DispatchSync(MethodGetLatestCertificateForRequest, []byte(id))
 	if err != nil {
 		return
 	}
@@ -1197,6 +1308,37 @@ func (cac StorageAuthorityClient) UpdateOCSP(serial string, ocspResponse []byte)
 	}
 
 	_, err = cac.rpc.DispatchSync(MethodUpdateOCSP, data)
+	return
+}
+
+// NewCertificateRequest adds a certificate request to the database
+func (cac StorageAuthorityClient) NewCertificateRequest(req core.CertificateRequest) (out core.CertificateRequest, err error) {
+	jsonReq, err := json.Marshal(req)
+	if err != nil {
+		return
+	}
+
+	jsonOut, err := cac.rpc.DispatchSync(MethodNewCertificateRequest, jsonReq)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonOut, out)
+	return
+}
+
+// UpdateCertificateRequestStatus changes the status of a request the database
+func (cac StorageAuthorityClient) UpdateCertificateRequestStatus(reqID string, status core.AcmeStatus) (err error) {
+	req := updateRequestStatusRequest{
+		ReqID:  reqID,
+		Status: string(status),
+	}
+	jsonReq, err := json.Marshal(req)
+	if err != nil {
+		return
+	}
+
+	_, err = cac.rpc.DispatchSync(MethodNewCertificateRequest, jsonReq)
 	return
 }
 
@@ -1273,10 +1415,10 @@ func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization
 }
 
 // AddCertificate sends a request to record the issuance of a certificate
-func (cac StorageAuthorityClient) AddCertificate(cert []byte, regID int64) (id string, err error) {
+func (cac StorageAuthorityClient) AddCertificate(cert []byte, reqID string) (out core.Certificate, err error) {
 	var acReq addCertificateRequest
 	acReq.Bytes = cert
-	acReq.RegID = regID
+	acReq.ReqID = reqID
 	data, err := json.Marshal(acReq)
 	if err != nil {
 		return
@@ -1286,7 +1428,8 @@ func (cac StorageAuthorityClient) AddCertificate(cert []byte, regID int64) (id s
 	if err != nil {
 		return
 	}
-	id = string(response)
+
+	err = json.Unmarshal(response, &out)
 	return
 }
 
