@@ -52,7 +52,7 @@ const (
 	MethodGetRegistrationByKey              = "GetRegistrationByKey"              // RA, SA
 	MethodGetAuthorization                  = "GetAuthorization"                  // SA
 	MethodGetLatestValidAuthorization       = "GetLatestValidAuthorization"       // SA
-	MethodGetCertificateRequest             = "GetLatestCertificateRequest"       // SA
+	MethodGetCertificateRequest             = "GetCertificateRequest"             // SA
 	MethodGetCertificate                    = "GetCertificate"                    // SA
 	MethodGetLatestCertificateForRequest    = "GetLatestCertificateForRequest"    // SA
 	MethodGetCertificateStatus              = "GetCertificateStatus"              // SA
@@ -979,7 +979,7 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 	})
 
 	rpc.Handle(MethodGetLatestCertificateForRequest, func(req []byte) (response []byte, err error) {
-		cert, err := impl.GetCertificateByShortSerial(string(req))
+		cert, err := impl.GetLatestCertificateForRequest(string(req))
 		if err != nil {
 			return
 		}
@@ -1323,7 +1323,7 @@ func (cac StorageAuthorityClient) NewCertificateRequest(req core.CertificateRequ
 		return
 	}
 
-	err = json.Unmarshal(jsonOut, out)
+	err = json.Unmarshal(jsonOut, &out)
 	return
 }
 
@@ -1338,7 +1338,7 @@ func (cac StorageAuthorityClient) UpdateCertificateRequestStatus(reqID string, s
 		return
 	}
 
-	_, err = cac.rpc.DispatchSync(MethodNewCertificateRequest, jsonReq)
+	_, err = cac.rpc.DispatchSync(MethodUpdateCertificateRequestStatus, jsonReq)
 	return
 }
 
