@@ -491,7 +491,7 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to fetch certificate status")
 
 	if code != afterStatus.RevokedReason {
-		t.Errorf("RevokedReasons, expected %s, got %s", code, afterStatus.RevokedReason)
+		t.Errorf("RevokedReasons, expected %v, got %v", code, afterStatus.RevokedReason)
 	}
 	if !fc.Now().Equal(afterStatus.RevokedDate) {
 		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), afterStatus.RevokedDate)

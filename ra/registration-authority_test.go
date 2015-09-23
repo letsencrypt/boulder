@@ -258,7 +258,7 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	if a1.Expires == nil && a2.Expires == nil {
 		return
 	} else if a1.Expires == nil || a2.Expires == nil {
-		t.Errorf("one and only one of authorization's Expires was nil; ret %s, DB %s", a1, a2)
+		t.Errorf("one and only one of authorization's Expires was nil; ret %v, DB %v", a1, a2)
 	} else {
 		test.Assert(t, a1.Expires.Equal(*a2.Expires), "ret != DB: Expires")
 	}
