@@ -85,6 +85,32 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 	return
 }
 
+func makeDBSource(dbConnect, issuerCert string, sqlDebug bool) (cfocsp.Source, error) {
+	var noSource cfocsp.Source
+	// Configure DB
+	dbMap, err := sa.NewDbMap(dbConnect)
+	if err != nil {
+		return noSource, fmt.Errorf("Could not connect to database: %s", err)
+	}
+	sa.SetSQLDebug(dbMap, sqlDebug)
+
+	// Load the CA's key so we can store its SubjectKey in the DB
+	caCertDER, err := cmd.LoadCert(issuerCert)
+	if err != nil {
+		return noSource, fmt.Errorf("Could not read issuer cert %s: %s", issuerCert, err)
+	}
+	caCert, err := x509.ParseCertificate(caCertDER)
+	if err != nil {
+		return noSource, fmt.Errorf("Could not parse issuer cert %s: %s", issuerCert, err)
+	}
+	if len(caCert.SubjectKeyId) == 0 {
+		return noSource, fmt.Errorf("Empty subjectKeyID")
+	}
+
+	// Construct source from DB
+	return NewSourceFromDatabase(dbMap, caCert.SubjectKeyId)
+}
+
 func main() {
 	app := cmd.NewAppShell("boulder-ocsp-responder", "Handles OCSP requests")
 	app.Action = func(c cmd.Config) {
@@ -106,24 +132,17 @@ func main() {
 
 		auditlogger.Info(app.VersionString())
 
-		// Configure DB
-		dbMap, err := sa.NewDbMap(c.OCSPResponder.DBConnect)
-		cmd.FailOnError(err, "Could not connect to database")
-		sa.SetSQLDebug(dbMap, c.SQL.SQLDebug)
-
-		// Load the CA's key so we can store its SubjectKey in the DB
-		caCertDER, err := cmd.LoadCert(c.Common.IssuerCert)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
-		caCert, err := x509.ParseCertificate(caCertDER)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't parse cert read from [%s]", c.Common.IssuerCert))
-		if len(caCert.SubjectKeyId) == 0 {
-			cmd.FailOnError(fmt.Errorf("Empty subjectKeyID"), "Unable to use CA certificate")
+		config := c.OCSPResponder
+		var source cfocsp.Source
+		if config.Source.DBConnect != "" {
+			auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
+			source, err = makeDBSource(config.Source.DBConnect, c.Common.IssuerCert, c.SQL.SQLDebug)
+			cmd.FailOnError(err, "Couldn't load OCSP DB")
+		} else {
+			filename := config.Source.Filename
+			source, err = cfocsp.NewSourceFromFile(filename)
+			cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", filename))
 		}
-
-		// Construct source from DB
-		auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert ID: %s", hex.EncodeToString(caCert.SubjectKeyId)))
-		src, err := NewSourceFromDatabase(dbMap, caCert.SubjectKeyId)
-		cmd.FailOnError(err, "Could not connect to OCSP database")
 
 		stopTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownStopTimeout)
 		cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
@@ -132,7 +151,7 @@ func main() {
 
 		// Configure HTTP
 		m := http.NewServeMux()
-		m.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
+		m.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: source})
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
 		srv := &http.Server{

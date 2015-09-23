@@ -1,0 +1,10 @@
+# issuer-ocsp-responses contains an OCSP response from test-ca.pem, signed by
+# test-ca.pem, indicating it is good until 2030. Generated with:
+# openssl x509 -outform der -in test/test-ca.pem  -out test/test-ca.der
+# single-ocsp --issuer test/test-ca.der --responder test/test-ca.der \
+#   --target test/test-ca.der --template test.tmp  --pkcs11 ~/pkcs11.json \
+#   --out ocsp.rsp
+# base64 ocsp.rsp | tr -d '\n' > issuer-ocsp-responses.txt
+# Note that you must setup SoftHSM locally, import the private key from
+# test-ca.key, and put appropriate settings in pkcs11.json for this to work.
+# Format is one base64-encoded DER entry per line.

@@ -26,9 +26,9 @@ class ToSServerThread(threading.Thread):
             sys.exit(1)
 
 
-config = os.environ.get('BOULDER_CONFIG')
-if config is None:
-    config = 'test/boulder-config.json'
+default_config = os.environ.get('BOULDER_CONFIG')
+if default_config is None:
+    default_config = 'test/boulder-config.json'
 processes = []
 
 
@@ -51,7 +51,7 @@ def install(progs, race_detection):
     print('installed %s with pid %d' % (cmd, p.pid))
     return True
 
-def run(path, race_detection):
+def run(path, race_detection, config=default_config):
     binary = os.path.basename(path)
     # Note: Must use exec here so that killing this process kills the command.
     cmd = """GORACE="halt_on_error=1" exec %s --config %s""" % (binary, config)
@@ -93,6 +93,14 @@ def start(race_detection):
         if not check():
             # Don't keep building stuff if a server has already died.
             return False
+
+    # Additionally run the issuer-ocsp-responder, which is not amenable to the
+    # above `run` pattern because it uses a different config file.
+    try:
+        processes.append(run('ocsp-responder', race_detection, 'test/issuer-ocsp-responder.json'))
+    except Exception as e:
+        print(e)
+        return False
 
     # Wait until all servers are up before returning to caller. This means
     # checking each server's debug port until it's available.
