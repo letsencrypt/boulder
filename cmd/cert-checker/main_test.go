@@ -16,7 +16,6 @@ import (
 	"math/big"
 	"os"
 	"path"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -121,14 +120,45 @@ func TestCheckCert(t *testing.T) {
 	//   Expiry doesn't match
 	//   Issued doesn't match
 	cert := core.Certificate{
+		Serial:  "8485f2687eba29ad455ae4e31c8679206fec",
 		DER:     brokenCertDer,
 		Issued:  issued.Add(12 * time.Hour),
 		Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match
 	}
 
 	problems := checker.checkCert(cert)
-	fmt.Println(strings.Join(problems, "\n"))
+
+	problemsMap := map[string]int{
+		"Stored digest doesn't match certificate digest":                            1,
+		"Stored serial doesn't match certificate serial":                            1,
+		"Stored expiration doesn't match certificate NotAfter":                      1,
+		"Certificate doesn't have basic constraints set":                            1,
+		"Certificate has a validity period longer than 2160h0m0s":                   1,
+		"Stored issuance date is outside of 6 hour window of certificate NotBefore": 1,
+		"Certificate has incorrect key usage extensions":                            1,
+	}
 	test.AssertEquals(t, len(problems), 7)
+	for _, p := range problems {
+		_, ok := problemsMap[p]
+		if !ok {
+			t.Errorf("Expected problem '%s' but didn't find it.", p)
+		}
+		delete(problemsMap, p)
+	}
+	for k, _ := range problemsMap {
+		t.Errorf("Found unexpected problem '%s'.", k)
+	}
+
+	// Same settings as above, but the stored serial number in the DB is invalid.
+	cert.Serial = "not valid"
+	problems = checker.checkCert(cert)
+	foundInvalidSerialProblem := false
+	for _, p := range problems {
+		if p == "Stored serial is invalid" {
+			foundInvalidSerialProblem = true
+		}
+	}
+	test.Assert(t, foundInvalidSerialProblem, "Invalid certificate serial number in DB did not trigger problem.")
 
 	// Fix the problems
 	rawCert.Subject.CommonName = "example-a.com"

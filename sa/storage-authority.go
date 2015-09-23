@@ -255,7 +255,7 @@ func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) 
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
 func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate, error) {
-	if len(serial) != 32 {
+	if !core.ValidSerial(serial) {
 		err := fmt.Errorf("Invalid certificate serial %s", serial)
 		return core.Certificate{}, err
 	}
@@ -281,9 +281,9 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate,
 // number of a certificate and returns data about that certificate's current
 // validity.
 func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core.CertificateStatus, err error) {
-	if len(serial) != 32 {
-		err = errors.New("Invalid certificate serial " + serial)
-		return
+	if !core.ValidSerial(serial) {
+		err := fmt.Errorf("Invalid certificate serial %s", serial)
+		return core.CertificateStatus{}, err
 	}
 
 	certificateStats, err := ssa.dbMap.Get(core.CertificateStatus{}, serial)

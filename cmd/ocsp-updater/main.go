@@ -36,13 +36,13 @@ type OCSPUpdater struct {
 	dbMap *gorp.DbMap
 }
 
-func setupClients(c cmd.Config) (rpc.CertificateAuthorityClient, chan *amqp.Error) {
+func setupClients(c cmd.Config, stats statsd.Statter) (rpc.CertificateAuthorityClient, chan *amqp.Error) {
 	ch, err := rpc.AmqpChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
 
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-	caRPC, err := rpc.NewAmqpRPCClient("OCSP->CA", c.AMQP.CA.Server, ch)
+	caRPC, err := rpc.NewAmqpRPCClient("OCSP->CA", c.AMQP.CA.Server, ch, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	cac, err := rpc.NewCertificateAuthorityClient(caRPC)
@@ -119,7 +119,7 @@ func (updater *OCSPUpdater) updateOneSerial(serial string) error {
 	tx, err := updater.dbMap.Begin()
 	if err != nil {
 		updater.log.Err(fmt.Sprintf("OCSP %s: Error starting transaction, aborting: %s", serial, err))
-		updater.stats.Inc("OCSP.UpdatesFailed", 1, 1.0)
+		updater.stats.Inc("OCSP.Updates.Failed", 1, 1.0)
 		tx.Rollback()
 		// Failure to begin transaction is a fatal error.
 		return FatalError(err.Error())
@@ -127,7 +127,7 @@ func (updater *OCSPUpdater) updateOneSerial(serial string) error {
 
 	if err := updater.processResponse(tx, serial); err != nil {
 		updater.log.Err(fmt.Sprintf("OCSP %s: Could not process OCSP Response, skipping: %s", serial, err))
-		updater.stats.Inc("OCSP.UpdatesFailed", 1, 1.0)
+		updater.stats.Inc("OCSP.Updates.Failed", 1, 1.0)
 		tx.Rollback()
 		return err
 	}
@@ -135,14 +135,14 @@ func (updater *OCSPUpdater) updateOneSerial(serial string) error {
 	err = tx.Commit()
 	if err != nil {
 		updater.log.Err(fmt.Sprintf("OCSP %s: Error committing transaction, skipping: %s", serial, err))
-		updater.stats.Inc("OCSP.UpdatesFailed", 1, 1.0)
+		updater.stats.Inc("OCSP.Updates.Failed", 1, 1.0)
 		tx.Rollback()
 		return err
 	}
 
 	updater.log.Info(fmt.Sprintf("OCSP %s: OK", serial))
-	updater.stats.Inc("OCSP.UpdatesProcessed", 1, 1.0)
-	updater.stats.TimingDuration("OCSP.UpdateTime", time.Since(innerStart), 1.0)
+	updater.stats.Inc("OCSP.Updates.Processed", 1, 1.0)
+	updater.stats.TimingDuration("OCSP.Updates.UpdateLatency", time.Since(innerStart), 1.0)
 	return nil
 }
 
@@ -176,8 +176,8 @@ func (updater *OCSPUpdater) findStaleResponses(oldestLastUpdatedTime time.Time, 
 			}
 		}
 
-		updater.stats.TimingDuration("OCSP.BatchTime", time.Since(outerStart), 1.0)
-		updater.stats.Inc("OCSP.BatchesProcessed", 1, 1.0)
+		updater.stats.TimingDuration("OCSP.Updates.BatchLatency", time.Since(outerStart), 1.0)
+		updater.stats.Inc("OCSP.Updates.BatchesProcessed", 1, 1.0)
 	}
 
 	return err
@@ -217,7 +217,7 @@ func main() {
 		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		cac, closeChan := setupClients(c)
+		cac, closeChan := setupClients(c, stats)
 
 		go func() {
 			// Abort if we disconnect from AMQP

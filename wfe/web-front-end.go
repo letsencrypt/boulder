@@ -43,7 +43,7 @@ const (
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
-	Stats statsd.Statter
+	stats statsd.Statter
 	log   *blog.AuditLogger
 
 	// URL configuration parameters
@@ -119,7 +119,7 @@ type requestEvent struct {
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
-func NewWebFrontEndImpl() (WebFrontEndImpl, error) {
+func NewWebFrontEndImpl(stats statsd.Statter) (WebFrontEndImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 
@@ -131,6 +131,7 @@ func NewWebFrontEndImpl() (WebFrontEndImpl, error) {
 	return WebFrontEndImpl{
 		log:          logger,
 		nonceService: nonceService,
+		stats:        stats,
 	}, nil
 }
 
@@ -250,6 +251,7 @@ func (wfe *WebFrontEndImpl) Index(response http.ResponseWriter, request *http.Re
 	if request.URL.Path != "/" {
 		logEvent.Error = "Resource not found"
 		http.NotFound(response, request)
+		response.Header().Set("Content-Type", "application/problem+json")
 		return
 	}
 
@@ -450,6 +452,12 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, 
 	response.Header().Set("Content-Type", "application/problem+json")
 	response.WriteHeader(code)
 	response.Write(problemDoc)
+
+	wfe.stats.Inc(fmt.Sprintf("WFE.HTTP.ErrorCodes.%d", code), 1, 1.0)
+	problemSegments := strings.Split(string(problem.Type), ":")
+	if len(problemSegments) > 0 {
+		wfe.stats.Inc(fmt.Sprintf("WFE.HTTP.ProblemTypes.%s", problemSegments[len(problemSegments)-1]), 1, 1.0)
+	}
 }
 
 func link(url, relation string) string {
@@ -519,9 +527,6 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	response.WriteHeader(http.StatusCreated)
 	response.Write(responseBody)
-
-	// incr reg stat
-	wfe.Stats.Inc("Registrations", 1, 1.0)
 }
 
 // NewAuthorization is used by clients to submit a new ID Authorization
@@ -588,8 +593,6 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		logEvent.Error = err.Error()
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
-	// incr pending auth stat (?)
-	wfe.Stats.Inc("PendingAuthorizations", 1, 1.0)
 }
 
 // RevokeCertificate is used by clients to request the revocation of a cert.
@@ -678,8 +681,6 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 		wfe.sendError(response, "Failed to revoke certificate", err, statusCodeFromError(err))
 	} else {
 		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
-		// incr revoked cert stat
-		wfe.Stats.Inc("RevokedCertificates", 1, 1.0)
 		response.WriteHeader(http.StatusOK)
 	}
 }
@@ -774,7 +775,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 	serial := parsedCertificate.SerialNumber
-	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, serial.Rsh(serial, 64))
+	certURL := wfe.CertBase + core.SerialToString(serial)
 
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
@@ -785,8 +786,6 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		logEvent.Error = err.Error()
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
-	// incr cert stat
-	wfe.Stats.Inc("Certificates", 1, 1.0)
 }
 
 func (wfe *WebFrontEndImpl) Challenge(
@@ -1113,7 +1112,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 		return
 	}
 	serial := path[len(CertPath):]
-	if len(serial) != 16 || !allHex.Match([]byte(serial)) {
+	if !core.ValidSerial(serial) {
 		logEvent.Error = "Certificate not found"
 		wfe.sendError(response, logEvent.Error, serial, http.StatusNotFound)
 		addNoCacheHeader(response)
@@ -1122,7 +1121,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	wfe.log.Debug(fmt.Sprintf("Requested certificate ID %s", serial))
 	logEvent.Extra["RequestedSerial"] = serial
 
-	cert, err := wfe.SA.GetCertificateByShortSerial(serial)
+	cert, err := wfe.SA.GetCertificate(serial)
 	if err != nil {
 		logEvent.Error = err.Error()
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
