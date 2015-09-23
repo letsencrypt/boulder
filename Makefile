@@ -10,7 +10,7 @@ EPOCH ?= 1
 MAINTAINER ?= "Community"
 
 CMD_OBJECTS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d -exec basename '{}' \;)
-OBJECTS = $(CMD_OBJECTS) bin/pkcs11bench
+OBJECTS = $(CMD_OBJECTS) pkcs11bench
 
 # Build environment variables (referencing core/util.go)
 COMMIT_ID = $(shell git rev-parse --short HEAD)
@@ -74,5 +74,5 @@ rpm:
 		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
 		test/boulder-config.json sa/_db ca/_db $(foreach var,$(OBJECTS), $(OBJDIR)/$(var))
 
-bin/pkcs11bench: pre
+pkcs11bench: pre
 	go test -o ./bin/pkcs11bench -c ./Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key/
