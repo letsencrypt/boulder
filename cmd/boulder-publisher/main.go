@@ -36,7 +36,7 @@ func main() {
 		go cmd.ProfileCmd("Publisher", stats)
 
 		connectionHandler := func(srv *rpc.AmqpRPCServer) {
-			saRPC, err := rpc.NewAmqpRPCClient("Publisher->SA", c.AMQP.SA.Server, srv.Channel)
+			saRPC, err := rpc.NewAmqpRPCClient("Publisher->SA", c.AMQP.SA.Server, srv.Channel, stats)
 			cmd.FailOnError(err, "Unable to create SA RPC client")
 
 			sac, err := rpc.NewStorageAuthorityClient(saRPC)

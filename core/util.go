@@ -16,6 +16,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -295,18 +296,32 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 // SerialToString converts a certificate serial number (big.Int) to a String
 // consistently.
 func SerialToString(serial *big.Int) string {
-	return fmt.Sprintf("%032x", serial)
+	return fmt.Sprintf("%036x", serial)
 }
 
 // StringToSerial converts a string into a certificate serial number (big.Int)
 // consistently.
 func StringToSerial(serial string) (*big.Int, error) {
 	var serialNum big.Int
-	if len(serial) != 32 {
-		return &serialNum, errors.New("Serial number should be 32 characters long")
+	if !ValidSerial(serial) {
+		return &serialNum, errors.New("Invalid serial number")
 	}
-	_, err := fmt.Sscanf(serial, "%032x", &serialNum)
+	_, err := fmt.Sscanf(serial, "%036x", &serialNum)
 	return &serialNum, err
+}
+
+func ValidSerial(serial string) bool {
+	// Originally, serial numbers were 32 hex characters long. We later increased
+	// them to 36, but we allow the shorter ones because they exist in some
+	// production databases.
+	if len(serial) < 32 && len(serial) > 36 {
+		return false
+	}
+	_, err := hex.DecodeString(serial)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 // GetBuildID identifies what build is running.

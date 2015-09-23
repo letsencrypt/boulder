@@ -161,7 +161,10 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 	} else {
 		// Check stored serial is correct
-		if core.SerialToString(parsedCert.SerialNumber) != cert.Serial {
+		storedSerial, err := core.StringToSerial(cert.Serial)
+		if err != nil {
+			problems = append(problems, "Stored serial is invalid")
+		} else if parsedCert.SerialNumber.Cmp(storedSerial) != 0 {
 			problems = append(problems, "Stored serial doesn't match certificate serial")
 		}
 		// Check we have the right expiration time
