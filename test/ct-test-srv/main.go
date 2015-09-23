@@ -39,7 +39,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{
 		"sct_version": 0,
-		"id": "",
+		// Sha256 of a random EC key. Generate your own with:
+		// openssl ecparam -name prime256v1 -genkey -outform der | openssl sha256 -binary | base64
+		"id": "8fjM8cvLPOhzCFwI62IYJhjkOcvWFLx1dMJbs0uhxJU=",
 		"timestamp": 1442400000,
 		"extensions": "",
 		"signature": "BAMARzBFAiBB5wKED8KqKhADT37n0y28fZIPiGbCfZRVKq0wNo0hrwIhAOIa2tPBF/rB1y30Y/ROh4LBmJ0mItAbTWy8XZKh7Wcp"
