@@ -148,6 +148,7 @@
     "source": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
     "path": "/",
     "listenAddress": "localhost:4002",
+    "maxAge": "10s",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
     "debugAddr": "localhost:8005"
