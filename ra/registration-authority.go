@@ -249,6 +249,12 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registr
 	var badNames []string
 	for _, name := range names {
 		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
+
+		// Ignore authorizations with no expiration; they are mal-formed
+		if authz.Expires == nil {
+			continue
+		}
+
 		if err != nil || authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		}

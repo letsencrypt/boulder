@@ -816,7 +816,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	}
 
 	// Make a URL for this certificate request, using its ID
-	reqURL := fmt.Sprintf("%s%016x", wfe.CertReqBase, req.ID)
+	reqURL := fmt.Sprintf("%s%s", wfe.CertReqBase, req.ID)
 
 	// TODO Content negotiation
 	response.Header().Add("Location", reqURL)
@@ -1142,15 +1142,14 @@ func (wfe *WebFrontEndImpl) CertificateRequest(response http.ResponseWriter, req
 	defer wfe.logRequestDetails(&logEvent)
 
 	path := request.URL.Path
-	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
-	// digits.
-	if !strings.HasPrefix(path, CertPath) {
+	// Certificate paths consist of the CertReqBase path, plus a token
+	if !strings.HasPrefix(path, CertReqPath) {
 		logEvent.Error = "Certificate not found"
 		wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
 		addNoCacheHeader(response)
 		return
 	}
-	reqID := path[len(CertPath):]
+	reqID := path[len(CertReqPath):]
 	if !core.LooksLikeAToken(reqID) {
 		logEvent.Error = "Certificate not found"
 		wfe.sendError(response, logEvent.Error, reqID, http.StatusNotFound)

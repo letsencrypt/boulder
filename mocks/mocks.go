@@ -20,6 +20,8 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
+var RequestID = "MZRFBNh06n5VfFPRL1vlE50j9UK4QT7ZUZC7TcN0zqQ"
+
 // MockDNS is a mock
 type MockDNS struct {
 }
@@ -208,6 +210,15 @@ func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
 	return core.Authorization{}, nil
 }
 
+// GetCertificateRequest is a mock
+func (sa *MockSA) GetCertificateRequest(requestID string) (core.CertificateRequest, error) {
+	return core.CertificateRequest{
+		ID:             RequestID,
+		RegistrationID: 1,
+		CSR:            []byte{},
+	}, nil
+}
+
 // GetCertificate is a mock
 func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 	// Serial ee == 238.crt
@@ -220,6 +231,13 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 		}, nil
 	} else if serial == "0000000000000000000000000000000000b2" {
 		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+		certBlock, _ := pem.Decode(certPemBytes)
+		return core.Certificate{
+			RegistrationID: 1,
+			DER:            certBlock.Bytes,
+		}, nil
+	} else if serial == "ff0000000000000e4b4f67d86e818c46" {
+		certPemBytes, _ := ioutil.ReadFile("test/not-an-example.com.crt")
 		certBlock, _ := pem.Decode(certPemBytes)
 		return core.Certificate{
 			RegistrationID: 1,
@@ -251,8 +269,19 @@ func (sa *MockSA) AlreadyDeniedCSR([]string) (bool, error) {
 	return false, nil
 }
 
+// NewCertificateRequest is a mock
+func (sa *MockSA) NewCertificateRequest(req core.CertificateRequest) (out core.CertificateRequest, err error) {
+	req.ID = RequestID
+	return req, nil
+}
+
+// UpdateCertificateRequestStatus is a mock
+func (sa *MockSA) UpdateCertificateRequestStatus(reqID string, status core.AcmeStatus) (err error) {
+	return
+}
+
 // AddCertificate is a mock
-func (sa *MockSA) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
+func (sa *MockSA) AddCertificate(certDER []byte, reqID string) (cert core.Certificate, err error) {
 	return
 }
 
