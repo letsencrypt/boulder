@@ -98,7 +98,7 @@ type certificateRequestEvent struct {
 	Error               string    `json:",omitempty"`
 }
 
-var issuanceCountCacheLife = 30 * time.Minute
+var issuanceCountCacheLife = 1 * time.Minute
 
 // issuanceCountInvalid checks if the current issuance count is invalid either
 // because it hasn't been set yet or because it has expired. This method expects
