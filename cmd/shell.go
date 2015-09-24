@@ -152,14 +152,10 @@ type Config struct {
 	}
 
 	OCSPResponder struct {
-		// Exactly one of DBConnect or Filename should be filled.
-		// DBConnect is used when responding for end-entity certs,
-		// and Filename is used when responding from a static file for intermediates
-		// and roots.
-		Source struct {
-			DBConnect string
-			Filename  string
-		}
+		// Source indicates the source of pre-signed OCSP responses to be used. It
+		// can be a DBConnect string or a file URL. The file URL style is used
+		// when responding from a static file for intermediates and roots.
+		Source string
 
 		Path          string
 		ListenAddress string

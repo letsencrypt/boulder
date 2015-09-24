@@ -1,8 +1,6 @@
 {
   "ocspResponder": {
-    "source": {
-      "filename": "test/issuer-ocsp-responses.txt"
-    },
+    "source": "file:test/issuer-ocsp-responses.txt",
     "path": "/",
     "listenAddress": "localhost:4003",
     "shutdownStopTimeout": "10s",

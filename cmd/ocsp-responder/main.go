@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -134,14 +135,22 @@ func main() {
 
 		config := c.OCSPResponder
 		var source cfocsp.Source
-		if config.Source.DBConnect != "" {
+		url, err := url.Parse(config.Source)
+		cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
+
+		if url.Scheme == "mysql+tcp" {
 			auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
-			source, err = makeDBSource(config.Source.DBConnect, c.Common.IssuerCert, c.SQL.SQLDebug)
+			source, err = makeDBSource(config.Source, c.Common.IssuerCert, c.SQL.SQLDebug)
 			cmd.FailOnError(err, "Couldn't load OCSP DB")
-		} else {
-			filename := config.Source.Filename
+		} else if url.Scheme == "file" {
+			filename := url.Path
+			// Go interprets cwd-relative file urls (file:test/foo.txt) as having the
+			// relative part of the path in the 'Opaque' field.
+			if filename == "" {
+				filename = url.Opaque
+			}
 			source, err = cfocsp.NewSourceFromFile(filename)
-			cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", filename))
+			cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", url.Path))
 		}
 
 		stopTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownStopTimeout)
