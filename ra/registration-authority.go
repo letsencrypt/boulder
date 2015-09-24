@@ -47,8 +47,8 @@ type RegistrationAuthorityImpl struct {
 	authorizationLifetime time.Duration
 	rlPolicies            cmd.RateLimitConfig
 	tiMu                  *sync.RWMutex
-	totalIssuedCache      *int64
-	lastIssuedCount       time.Time
+	totalIssuedCache      int64
+	lastIssuedCount       *time.Time
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -104,10 +104,10 @@ var issuanceCountCacheLife = 30 * time.Minute
 // because it hasn't been set yet or because it has expired. This method expects
 // that the caller holds either a R or W ra.tiMu lock.
 func (ra *RegistrationAuthorityImpl) issuanceCountInvalid(now time.Time) bool {
-	return ra.totalIssuedCache == nil || ra.lastIssuedCount.Add(issuanceCountCacheLife).Before(now)
+	return ra.lastIssuedCount == nil || ra.lastIssuedCount.Add(issuanceCountCacheLife).Before(now)
 }
 
-func (ra *RegistrationAuthorityImpl) getIssuanceCount() (*int64, error) {
+func (ra *RegistrationAuthorityImpl) getIssuanceCount() (int64, error) {
 	ra.tiMu.RLock()
 	if ra.issuanceCountInvalid(ra.clk.Now()) {
 		ra.tiMu.RUnlock()
@@ -118,7 +118,7 @@ func (ra *RegistrationAuthorityImpl) getIssuanceCount() (*int64, error) {
 	return count, nil
 }
 
-func (ra *RegistrationAuthorityImpl) setIssuanceCount() (*int64, error) {
+func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int64, error) {
 	ra.tiMu.Lock()
 	defer ra.tiMu.Unlock()
 
@@ -129,10 +129,10 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount() (*int64, error) {
 			now,
 		)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-		ra.totalIssuedCache = &count
-		ra.lastIssuedCount = now
+		ra.totalIssuedCache = count
+		ra.lastIssuedCount = &now
 	}
 	return ra.totalIssuedCache, nil
 }
@@ -392,7 +392,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
-	if *totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
+	if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
 		return emptyCert, fmt.Errorf("Certificate issuance limit reached")
 	}
 
