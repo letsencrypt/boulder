@@ -340,6 +340,21 @@ func TestAddCertificate(t *testing.T) {
 	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 }
 
+func TestTooLargeDerFromAddCertificate(t *testing.T) {
+	sa, cleanUp := initSA(t)
+	defer cleanUp()
+	reg := satest.CreateWorkingRegistration(t, sa)
+	der := bytes.Repeat([]byte{0}, 65536) // max size should be 65535
+	_, err := sa.AddCertificate(der, reg.ID)
+	terr, ok := err.(TooLargeDERError)
+	if !ok {
+		t.Fatalf("expected TooLargeDERError, got %#v", err)
+	}
+	if int(terr) != 65536 {
+		t.Errorf("expected size %d, got %d", 65536, int(terr))
+	}
+}
+
 // TestGetCertificateByShortSerial tests some failure conditions for GetCertificate.
 // Success conditions are tested above in TestAddCertificate.
 func TestGetCertificateByShortSerial(t *testing.T) {

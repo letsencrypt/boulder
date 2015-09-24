@@ -8,14 +8,16 @@ package sa
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
 )
 
-var mediumBlobSize = int(math.Pow(2, 24))
+var (
+	mediumBlobSize = 16777215 // 2^24 - 1 bytes, 16MB
+	blobSize       = 65535    // 2^16 - 1 bytes, 65KB
+)
 
 // regModel is the description of a core.Registration in the database.
 type regModel struct {

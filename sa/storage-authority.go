@@ -567,8 +567,18 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
+type TooLargeDERError int
+
+func (t TooLargeDERError) Error() string {
+	return fmt.Sprintf("certificate DER size is too large, %d is larger than %d", int(t), blobSize)
+}
+
 // AddCertificate stores an issued certificate.
 func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
+	if len(certDER) > blobSize {
+		return "", TooLargeDERError(len(certDER))
+	}
+
 	var parsedCertificate *x509.Certificate
 	parsedCertificate, err = x509.ParseCertificate(certDER)
 	if err != nil {
