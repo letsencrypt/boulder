@@ -35,6 +35,8 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
@@ -92,6 +94,8 @@ type Config struct {
 	}
 
 	RA struct {
+		RateLimitPoliciesFilename string
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -257,6 +261,41 @@ type TLSConfig struct {
 // Queue describes a queue name
 type Queue struct {
 	Server string
+}
+
+// RateLimitConfig contains all application layer rate limiting policies
+type RateLimitConfig struct {
+	TotalCertificates RateLimitPolicy `yaml:"totalCertificates"`
+}
+
+// RateLimitPolicy describes a generate limiting policy
+type RateLimitPolicy struct {
+	Window       time.Duration    `yaml:"-"`
+	WindowString string           `yaml:"window"`
+	Threshold    int64            `yaml:"threshold"`
+	Overrides    map[string]int64 `yaml:"overrides"`
+}
+
+// LoadRateLimitPolicies loads various rate limiting policies from a YAML
+// configuration file
+func LoadRateLimitPolicies(filename string) (RateLimitConfig, error) {
+	contents, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+	var rlc RateLimitConfig
+	err = yaml.Unmarshal(contents, &rlc)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+
+	totalCertWindow, err := time.ParseDuration(rlc.TotalCertificates.WindowString)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+
+	rlc.TotalCertificates.Window = totalCertWindow
+	return rlc, nil
 }
 
 // AppShell contains CLI Metadata

@@ -6,10 +6,13 @@
 package rpc
 
 import (
+	"bytes"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
@@ -60,6 +63,7 @@ const (
 	MethodFinalizeAuthorization             = "FinalizeAuthorization"             // SA
 	MethodAddCertificate                    = "AddCertificate"                    // SA
 	MethodAlreadyDeniedCSR                  = "AlreadyDeniedCSR"                  // SA
+	MethodCountCertificatesRange            = "CountCertificatesRange"            // SA
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
@@ -1016,6 +1020,30 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		return
 	})
 
+	rpc.Handle(MethodCountCertificatesRange, func(req []byte) (response []byte, err error) {
+		var countReq struct {
+			Start time.Time
+			End   time.Time
+		}
+
+		err = json.Unmarshal(req, &countReq)
+		if err != nil {
+			return
+		}
+
+		count, err := impl.CountCertificatesRange(countReq.Start, countReq.End)
+		if err != nil {
+			return
+		}
+		buf := new(bytes.Buffer)
+		err = binary.Write(buf, binary.LittleEndian, count)
+		if err != nil {
+			return
+		}
+		response = buf.Bytes()
+		return
+	})
+
 	rpc.Handle(MethodGetSCTReceipt, func(req []byte) (response []byte, err error) {
 		var gsctReq struct {
 			Serial string
@@ -1068,8 +1096,8 @@ type StorageAuthorityClient struct {
 }
 
 // NewStorageAuthorityClient constructs an RPC client
-func NewStorageAuthorityClient(client RPCClient) (sac StorageAuthorityClient, err error) {
-	sac = StorageAuthorityClient{rpc: client}
+func NewStorageAuthorityClient(client RPCClient) (cac StorageAuthorityClient, err error) {
+	cac = StorageAuthorityClient{rpc: client}
 	return
 }
 
@@ -1318,6 +1346,30 @@ func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool,
 		exists = false
 	case 1:
 		exists = true
+	}
+	return
+}
+
+// CountCertificatesRange sends a request to count the number of certificates
+// issued in  a certain time range
+func (cac StorageAuthorityClient) CountCertificatesRange(start, end time.Time) (count int64, err error) {
+	var countReq struct {
+		Start time.Time
+		End   time.Time
+	}
+	countReq.Start, countReq.End = start, end
+	data, err := json.Marshal(countReq)
+	if err != nil {
+		return
+	}
+	response, err := cac.rpc.DispatchSync(MethodCountCertificatesRange, data)
+	if err != nil {
+		return
+	}
+	count, n := binary.Varint(response)
+	if n <= 0 {
+		err = fmt.Errorf("Couldn't read count from RPC response")
+		return
 	}
 	return
 }

@@ -111,6 +111,7 @@ type StorageGetter interface {
 	GetCertificateByShortSerial(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
+	CountCertificatesRange(time.Time, time.Time) (int64, error)
 	GetSCTReceipt(string, string) (SignedCertificateTimestamp, error)
 }
 
