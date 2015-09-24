@@ -188,7 +188,7 @@ func (ps *Key) getPrivateKey(module *pkcs11.Ctx, session pkcs11.SessionHandle, l
 	// attribute. We don't consider that an error: the absence of the
 	// CKR_ATTRIBUTE_TYPE_INVALID property is just fine.
 	if err != nil && err == pkcs11.Error(pkcs11.CKR_ATTRIBUTE_TYPE_INVALID) {
-		return privateKeyHandle, err
+		return privateKeyHandle, nil
 	} else if err != nil {
 		return noHandle, err
 	}
