@@ -156,7 +156,11 @@ type Config struct {
 	}
 
 	OCSPResponder struct {
-		DBConnect     string
+		// Source indicates the source of pre-signed OCSP responses to be used. It
+		// can be a DBConnect string or a file URL. The file URL style is used
+		// when responding from a static file for intermediates and roots.
+		Source string
+
 		Path          string
 		ListenAddress string
 

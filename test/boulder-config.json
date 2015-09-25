@@ -146,7 +146,7 @@
   },
 
   "ocspResponder": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
+    "source": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
     "path": "/",
     "listenAddress": "localhost:4002",
     "shutdownStopTimeout": "10s",
