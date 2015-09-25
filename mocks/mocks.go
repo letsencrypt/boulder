@@ -231,11 +231,6 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 	}
 }
 
-// GetCertificateByShortSerial is a mock
-func (sa *MockSA) GetCertificateByShortSerial(serial string) (core.Certificate, error) {
-	return sa.GetCertificate("0000000000000000" + serial)
-}
-
 // GetCertificateStatus is a mock
 func (sa *MockSA) GetCertificateStatus(serial string) (core.CertificateStatus, error) {
 	// Serial ee == 238.crt

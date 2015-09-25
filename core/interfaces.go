@@ -108,7 +108,6 @@ type StorageGetter interface {
 	GetAuthorization(string) (Authorization, error)
 	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
 	GetCertificate(string) (Certificate, error)
-	GetCertificateByShortSerial(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
 	CountCertificatesRange(time.Time, time.Time) (int64, error)

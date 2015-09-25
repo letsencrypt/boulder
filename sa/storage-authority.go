@@ -237,21 +237,6 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	return ssa.GetAuthorization(auth.ID)
 }
 
-// GetCertificateByShortSerial takes an id consisting of the first, sequential half of a
-// serial number and returns the first certificate whose full serial number is
-// lexically greater than that id. This allows clients to query on the known
-// sequential half of our serial numbers to enumerate all certificates.
-func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert core.Certificate, err error) {
-	if len(shortSerial) != 16 {
-		err = errors.New("Invalid certificate short serial " + shortSerial)
-		return
-	}
-
-	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE serial LIKE :shortSerial",
-		map[string]interface{}{"shortSerial": shortSerial + "%"})
-	return
-}
-
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
 func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate, error) {
