@@ -220,7 +220,7 @@ start_context "test/integration"
 update_status --state pending --description "Integration Tests in progress"
 
 if [ -z "$LETSENCRYPT_PATH" ]; then
-  LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
+  export LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
   echo "------------------------------------------------"
   echo "--- Checking out letsencrypt client is slow. ---"
   echo "--- Recommend setting \$LETSENCRYPT_PATH to  ---"
@@ -230,9 +230,6 @@ if [ -z "$LETSENCRYPT_PATH" ]; then
 elif [ ! -d "${LETSENCRYPT_PATH}" ]; then
   build_letsencrypt
 fi
-
-source $LETSENCRYPT_PATH/venv/bin/activate || die "The LETSENCRYPT_PATH (${LETSENCRYPT_PATH}) does not have a venv/bin/activate and probably did not build correctly."
-export LETSENCRYPT_PATH
 
 python test/amqp-integration-test.py
 case $? in

@@ -6,7 +6,7 @@ fi
 
 source test/db-common.sh
 
-NEW_FILES_LIST=$(mktemp)
+NEW_FILES_LIST=$(mktemp /tmp/new-files.XXXXX)
 trap 'rm ${NEW_FILES_LIST}' EXIT
 
 for svc in $SERVICES; do
