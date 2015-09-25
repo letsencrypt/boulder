@@ -27,6 +27,16 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+type cacheCtrlHandler struct {
+	http.Handler
+	MaxAge time.Duration
+}
+
+func (c *cacheCtrlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", c.MaxAge/time.Second))
+	c.Handler.ServeHTTP(w, r)
+}
+
 /*
 DBSource maps a given Database schema to a CA Key Hash, so we can pick
 from among them when presented with OCSP requests for different certs.
@@ -158,9 +168,9 @@ func main() {
 		killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
 		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
 
-		// Configure HTTP
 		m := http.NewServeMux()
-		m.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: source})
+		m.Handle(c.OCSPResponder.Path,
+			handler(source, c.OCSPResponder.MaxAge.Duration))
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
 		srv := &http.Server{
@@ -178,4 +188,11 @@ func main() {
 	}
 
 	app.Run()
+}
+
+func handler(src cfocsp.Source, maxAge time.Duration) http.Handler {
+	return &cacheCtrlHandler{
+		Handler: cfocsp.Responder{Source: src},
+		MaxAge:  maxAge,
+	}
 }
