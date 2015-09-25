@@ -141,6 +141,11 @@ type updateOCSPRequest struct {
 	OCSPResponse []byte
 }
 
+type countRequest struct {
+	Start time.Time
+	End   time.Time
+}
+
 // Response structs
 type caaResponse struct {
 	Present bool
@@ -1004,17 +1009,13 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 	})
 
 	rpc.Handle(MethodCountCertificatesRange, func(req []byte) (response []byte, err error) {
-		var countReq struct {
-			Start time.Time
-			End   time.Time
-		}
-
-		err = json.Unmarshal(req, &countReq)
+		var cReq countRequest
+		err = json.Unmarshal(req, &cReq)
 		if err != nil {
 			return
 		}
 
-		count, err := impl.CountCertificatesRange(countReq.Start, countReq.End)
+		count, err := impl.CountCertificatesRange(cReq.Start, cReq.End)
 		if err != nil {
 			return
 		}
@@ -1324,12 +1325,9 @@ func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool,
 // CountCertificatesRange sends a request to count the number of certificates
 // issued in  a certain time range
 func (cac StorageAuthorityClient) CountCertificatesRange(start, end time.Time) (count int64, err error) {
-	var countReq struct {
-		Start time.Time
-		End   time.Time
-	}
-	countReq.Start, countReq.End = start, end
-	data, err := json.Marshal(countReq)
+	var cReq countRequest
+	cReq.Start, cReq.End = start, end
+	data, err := json.Marshal(cReq)
 	if err != nil {
 		return
 	}

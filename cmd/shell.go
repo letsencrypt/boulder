@@ -165,7 +165,7 @@ type Config struct {
 		ListenAddress string
 		// MaxAge is the max-age to set in the Cache-Controler response
 		// header. It is a time.Duration formatted string.
-		MaxAge JSONDuration
+		MaxAge ConfigDuration
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
@@ -275,12 +275,11 @@ type RateLimitConfig struct {
 	TotalCertificates RateLimitPolicy `yaml:"totalCertificates"`
 }
 
-// RateLimitPolicy describes a generate limiting policy
+// RateLimitPolicy describes a general limiting policy
 type RateLimitPolicy struct {
-	Window       time.Duration    `yaml:"-"`
-	WindowString string           `yaml:"window"`
-	Threshold    int64            `yaml:"threshold"`
-	Overrides    map[string]int64 `yaml:"overrides"`
+	Window    ConfigDuration   `yaml:"window"`
+	Threshold int64            `yaml:"threshold"`
+	Overrides map[string]int64 `yaml:"overrides"`
 }
 
 // LoadRateLimitPolicies loads various rate limiting policies from a YAML
@@ -295,13 +294,6 @@ func LoadRateLimitPolicies(filename string) (RateLimitConfig, error) {
 	if err != nil {
 		return RateLimitConfig{}, err
 	}
-
-	totalCertWindow, err := time.ParseDuration(rlc.TotalCertificates.WindowString)
-	if err != nil {
-		return RateLimitConfig{}, err
-	}
-
-	rlc.TotalCertificates.Window = totalCertWindow
 	return rlc, nil
 }
 
@@ -435,13 +427,13 @@ func DebugServer(addr string) {
 	log.Println(http.Serve(ln, nil))
 }
 
-type JSONDuration struct {
+type ConfigDuration struct {
 	time.Duration
 }
 
-var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a JSONDuration")
+var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a ConfigDuration")
 
-func (d *JSONDuration) UnmarshalJSON(b []byte) error {
+func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
 	s := ""
 	err := json.Unmarshal(b, &s)
 	if err != nil {
@@ -455,6 +447,20 @@ func (d *JSONDuration) UnmarshalJSON(b []byte) error {
 	return err
 }
 
-func (d JSONDuration) MarshalJSON() ([]byte, error) {
+func (d ConfigDuration) MarshalJSON() ([]byte, error) {
 	return []byte(d.Duration.String()), nil
+}
+
+func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	dur, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+
+	d.Duration = dur
+	return nil
 }

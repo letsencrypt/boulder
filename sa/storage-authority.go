@@ -627,7 +627,7 @@ func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, 
 func (ssa *SQLStorageAuthority) CountCertificatesRange(start, end time.Time) (count int64, err error) {
 	err = ssa.dbMap.SelectOne(
 		&count,
-		`SELECT COUNT(serial) FROM certificates
+		`SELECT COUNT(1) FROM certificates
 		WHERE issued >= :windowLeft
 		AND issued < :windowRight`,
 		map[string]interface{}{

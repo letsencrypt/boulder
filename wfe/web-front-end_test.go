@@ -440,7 +440,7 @@ func TestIssueCertificate(t *testing.T) {
 	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log, stats, cmd.RateLimitConfig{
 		TotalCertificates: cmd.RateLimitPolicy{
 			Threshold: 100,
-			Window:    24 * 90 * time.Hour,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
 	})
 	ra.SA = &mocks.MockSA{}

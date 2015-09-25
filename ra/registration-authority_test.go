@@ -215,7 +215,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats, cmd.RateLimitConfig{
 		TotalCertificates: cmd.RateLimitPolicy{
 			Threshold: 100,
-			Window:    24 * 90 * time.Hour,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
 	})
 	ra.SA = ssa
@@ -602,7 +602,7 @@ func TestTotalCertRateLimit(t *testing.T) {
 	ra.rlPolicies = cmd.RateLimitConfig{
 		TotalCertificates: cmd.RateLimitPolicy{
 			Threshold: 1,
-			Window:    24 * 90 * time.Hour,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
 	}
 	fc.Add(24 * 90 * time.Hour)

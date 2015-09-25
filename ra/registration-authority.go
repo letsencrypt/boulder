@@ -125,7 +125,7 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int64, error) {
 	now := ra.clk.Now()
 	if ra.issuanceCountInvalid(now) {
 		count, err := ra.SA.CountCertificatesRange(
-			now.Add(-ra.rlPolicies.TotalCertificates.Window),
+			now.Add(-ra.rlPolicies.TotalCertificates.Window.Duration),
 			now,
 		)
 		if err != nil {
@@ -393,7 +393,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 	if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
-		return emptyCert, fmt.Errorf("Certificate issuance limit reached")
+		return emptyCert, core.RateLimitedError("Certificate issuance limit reached")
 	}
 
 	// Verify the CSR
