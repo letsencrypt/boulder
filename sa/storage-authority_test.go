@@ -6,10 +6,12 @@
 package sa
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -298,22 +301,17 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
-	// Example cert serial is 0x21bd4, so a prefix of all zeroes should fetch it.
-	retrievedCert, err := sa.GetCertificateByShortSerial("0000000000000000")
-	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by short serial")
-	test.AssertByteEquals(t, certDER, retrievedCert.DER)
-
-	retrievedCert, err = sa.GetCertificate("00000000000000000000000000021bd4")
+	retrievedCert, err := sa.GetCertificate("000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
 	test.AssertByteEquals(t, certDER, retrievedCert.DER)
 
-	certificateStatus, err := sa.GetCertificateStatus("00000000000000000000000000021bd4")
+	certificateStatus, err := sa.GetCertificateStatus("000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get status for www.eff.org.der")
 	test.Assert(t, !certificateStatus.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 
-	// Test cert generated locally by Boulder / CFSSL, serial "ff00000000000002238054509817da5a"
+	// Test cert generated locally by Boulder / CFSSL, serial "0000ff00000000000002238054509817da5a"
 	certDER2, err := ioutil.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
@@ -321,33 +319,15 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 	test.AssertEquals(t, digest2, "CMVYqWzyqUW7pfBF2CxL0Uk6I0Upsk7p4EWSnd_vYx4")
 
-	// Example cert serial is 0x21bd4, so a prefix of all zeroes should fetch it.
-	retrievedCert2, err := sa.GetCertificateByShortSerial("ff00000000000002")
+	retrievedCert2, err := sa.GetCertificate("0000ff00000000000002238054509817da5a")
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
 	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
 
-	retrievedCert2, err = sa.GetCertificate("ff00000000000002238054509817da5a")
-	test.AssertNotError(t, err, "Couldn't get test-cert.der")
-	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
-
-	certificateStatus2, err := sa.GetCertificateStatus("ff00000000000002238054509817da5a")
+	certificateStatus2, err := sa.GetCertificateStatus("0000ff00000000000002238054509817da5a")
 	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
 	test.Assert(t, !certificateStatus2.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
-}
-
-// TestGetCertificateByShortSerial tests some failure conditions for GetCertificate.
-// Success conditions are tested above in TestAddCertificate.
-func TestGetCertificateByShortSerial(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	_, err := sa.GetCertificateByShortSerial("")
-	test.AssertError(t, err, "Should've failed on empty serial")
-
-	_, err = sa.GetCertificateByShortSerial("01020304050607080102030405060708")
-	test.AssertError(t, err, "Should've failed on too-long serial")
 }
 
 func TestDeniedCSR(t *testing.T) {
@@ -367,6 +347,58 @@ func TestDeniedCSR(t *testing.T) {
 	test.Assert(t, !exists, "Found non-existent CSR")
 }
 
+const (
+	sctVersion    = 0
+	sctTimestamp  = 1435787268907
+	sctLogID      = "aPaY+B9kgr46jO65KB1M/HFRXWeT1ETRCmesu09P+8Q="
+	sctSignature  = "BAMASDBGAiEA/4kz9wQq3NhvZ6VlOmjq2Z9MVHGrUjF8uxUG9n1uRc4CIQD2FYnnszKXrR9AP5kBWmTgh3fXy+VlHK8HZXfbzdFf7g=="
+	sctCertSerial = "ff000000000000012607e11a78ac01f9"
+)
+
+func TestAddSCTReceipt(t *testing.T) {
+	sigBytes, err := base64.StdEncoding.DecodeString(sctSignature)
+	test.AssertNotError(t, err, "Failed to decode SCT signature")
+	sct := core.SignedCertificateTimestamp{
+		SCTVersion:        sctVersion,
+		LogID:             sctLogID,
+		Timestamp:         sctTimestamp,
+		Signature:         sigBytes,
+		CertificateSerial: sctCertSerial,
+	}
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+	err = sa.AddSCTReceipt(sct)
+	test.AssertNotError(t, err, "Failed to add SCT receipt")
+	// Append only and unique on signature and across LogID and CertificateSerial
+	err = sa.AddSCTReceipt(sct)
+	test.AssertError(t, err, "Incorrectly added duplicate SCT receipt")
+	fmt.Println(err)
+}
+
+func TestGetSCTReceipt(t *testing.T) {
+	sigBytes, err := base64.StdEncoding.DecodeString(sctSignature)
+	test.AssertNotError(t, err, "Failed to decode SCT signature")
+	sct := core.SignedCertificateTimestamp{
+		SCTVersion:        sctVersion,
+		LogID:             sctLogID,
+		Timestamp:         sctTimestamp,
+		Signature:         sigBytes,
+		CertificateSerial: sctCertSerial,
+	}
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+	err = sa.AddSCTReceipt(sct)
+	test.AssertNotError(t, err, "Failed to add SCT receipt")
+
+	sqlSCT, err := sa.GetSCTReceipt(sctCertSerial, sctLogID)
+	test.AssertNotError(t, err, "Failed to get existing SCT receipt")
+	test.Assert(t, sqlSCT.SCTVersion == sct.SCTVersion, "Invalid SCT version")
+	test.Assert(t, sqlSCT.LogID == sct.LogID, "Invalid log ID")
+	test.Assert(t, sqlSCT.Timestamp == sct.Timestamp, "Invalid timestamp")
+	test.Assert(t, bytes.Compare(sqlSCT.Signature, sct.Signature) == 0, "Invalid signature")
+	test.Assert(t, sqlSCT.CertificateSerial == sct.CertificateSerial, "Invalid certificate serial")
+}
+
 func TestUpdateOCSP(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
@@ -378,10 +410,13 @@ func TestUpdateOCSP(t *testing.T) {
 	_, err = sa.AddCertificate(certDER, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
-	serial := "00000000000000000000000000021bd4"
+	serial := "000000000000000000000000000000021bd4"
 	const ocspResponse = "this is a fake OCSP response"
 
 	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
+	if certificateStatusObj == nil {
+		t.Fatalf("Failed to get certificate status for %s", serial)
+	}
 	beforeUpdate := certificateStatusObj.(*core.CertificateStatus)
 
 	fc.Add(1 * time.Hour)
@@ -415,7 +450,7 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	_, err = sa.AddCertificate(certDER, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
-	serial := "00000000000000000000000000021bd4"
+	serial := "000000000000000000000000000000021bd4"
 	const ocspResponse = "this is a fake OCSP response"
 
 	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
@@ -433,7 +468,7 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to fetch certificate status")
 
 	if code != afterStatus.RevokedReason {
-		t.Errorf("RevokedReasons, expected %d, got %d", code, afterStatus.RevokedReason)
+		t.Errorf("RevokedReasons, expected %v, got %v", code, afterStatus.RevokedReason)
 	}
 	if !fc.Now().Equal(afterStatus.RevokedDate) {
 		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), afterStatus.RevokedDate)

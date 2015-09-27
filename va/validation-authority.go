@@ -21,6 +21,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
@@ -47,6 +50,8 @@ type ValidationAuthorityImpl struct {
 	simpleHTTPSPort int
 	dvsniPort       int
 	UserAgent       string
+	stats           statsd.Statter
+	clk             clock.Clock
 }
 
 // PortConfig specifies what ports the VA should call to on the remote
@@ -58,7 +63,7 @@ type PortConfig struct {
 }
 
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *PortConfig) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *PortConfig, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
 	return &ValidationAuthorityImpl{
@@ -66,6 +71,8 @@ func NewValidationAuthorityImpl(pc *PortConfig) *ValidationAuthorityImpl {
 		simpleHTTPPort:  pc.SimpleHTTPPort,
 		simpleHTTPSPort: pc.SimpleHTTPSPort,
 		dvsniPort:       pc.DVSNIPort,
+		stats:           stats,
+		clk:             clk,
 	}
 }
 
@@ -102,13 +109,16 @@ func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 // This is the same choice made by the Go internal resolution library used by
 // net/http, except we only send A queries and accept IPv4 addresses.
 // TODO(#593): Add IPv6 support
-func (va *ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
-	addrs, _, err := va.DNSResolver.LookupHost(hostname)
+func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
+	addrs, rtt, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
 		problem = problemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
 		return
 	}
+	va.stats.TimingDuration("VA.DNS.RTT.A", rtt, 1.0)
+	va.stats.Inc("VA.DNS.Rate", 1, 1.0)
+
 	if len(addrs) == 0 {
 		problem = &core.ProblemDetails{
 			Type:   core.UnknownHostProblem,
@@ -507,7 +517,9 @@ func (va *ValidationAuthorityImpl) validateDNS(identifier core.AcmeIdentifier, i
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
-	txts, _, err := va.DNSResolver.LookupTXT(challengeSubdomain)
+	txts, rtt, err := va.DNSResolver.LookupTXT(challengeSubdomain)
+	va.stats.TimingDuration("VA.DNS.RTT.TXT", rtt, 1.0)
+	va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
@@ -537,7 +549,7 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
-		RequestTime: time.Now(),
+		RequestTime: va.clk.Now(),
 	}
 	if !authz.Challenges[challengeIndex].IsSane(true) {
 		chall := &authz.Challenges[challengeIndex]
@@ -549,6 +561,7 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 	} else {
 		var err error
 
+		vStart := va.clk.Now()
 		switch authz.Challenges[challengeIndex].Type {
 		case core.ChallengeTypeSimpleHTTP:
 			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
@@ -557,6 +570,7 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 		case core.ChallengeTypeDNS:
 			authz.Challenges[challengeIndex], err = va.validateDNS(authz.Identifier, authz.Challenges[challengeIndex])
 		}
+		va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", authz.Challenges[challengeIndex].Type, authz.Challenges[challengeIndex].Status), time.Since(vStart), 1.0)
 
 		if err != nil {
 			logEvent.Error = err.Error()
@@ -639,21 +653,27 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 		if _, present := policy.PublicSuffixList[label]; present {
 			break
 		}
-		CAAs, _, err := va.DNSResolver.LookupCAA(label)
+		CAAs, caaRtt, err := va.DNSResolver.LookupCAA(label)
 		if err != nil {
 			return nil, err
 		}
+		va.stats.TimingDuration("VA.DNS.RTT.CAA", caaRtt, 1.0)
+		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 		if len(CAAs) > 0 {
 			return newCAASet(CAAs), nil
 		}
-		cname, _, err := va.DNSResolver.LookupCNAME(label)
+		cname, cnameRtt, err := va.DNSResolver.LookupCNAME(label)
 		if err != nil {
 			return nil, err
 		}
-		dname, _, err := va.DNSResolver.LookupDNAME(label)
+		va.stats.TimingDuration("VA.DNS.RTT.CNAME", cnameRtt, 1.0)
+		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
+		dname, dnameRtt, err := va.DNSResolver.LookupDNAME(label)
 		if err != nil {
 			return nil, err
 		}
+		va.stats.TimingDuration("VA.DNS.RTT.DNAME", dnameRtt, 1.0)
+		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 		if cname == "" && dname == "" {
 			// Try parent domain (note we confirmed
 			// earlier that label contains '.')

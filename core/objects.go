@@ -7,9 +7,12 @@ package core
 
 import (
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"strings"
 	"time"
@@ -394,7 +397,10 @@ type Authorization struct {
 	Status AcmeStatus `json:"status,omitempty" db:"status"`
 
 	// The date after which this authorization will be no
-	// longer be considered valid
+	// longer be considered valid. Note: a certificate may be issued even on the
+	// last day of an authorization's lifetime. The last day for which someone can
+	// hold a valid certificate based on an authorization is authorization
+	// lifetime + certificate lifetime.
 	Expires *time.Time `json:"expires,omitempty" db:"expires"`
 
 	// An array of challenges objects used to validate the
@@ -571,6 +577,95 @@ type OCSPSigningRequest struct {
 	Status    string
 	Reason    RevocationCode
 	RevokedAt time.Time
+}
+
+type SignedCertificateTimestamp struct {
+	ID int `db:"id"`
+	// The version of the protocol to which the SCT conforms
+	SCTVersion uint8 `db:"sctVersion"`
+	// the SHA-256 hash of the log's public key, calculated over
+	// the DER encoding of the key represented as SubjectPublicKeyInfo.
+	LogID string `db:"logID"`
+	// Timestamp (in ms since unix epoc) at which the SCT was issued
+	Timestamp uint64 `db:"timestamp"`
+	// For future extensions to the protocol
+	Extensions []byte `db:"extensions"`
+	// The Log's signature for this SCT
+	Signature []byte `db:"signature"`
+
+	// The serial of the certificate this SCT is for
+	CertificateSerial string `db:"certificateSerial"`
+
+	LockCol int64
+}
+
+type RPCSignedCertificateTimestamp SignedCertificateTimestamp
+
+type rawSignedCertificateTimestamp struct {
+	Version    uint8  `json:"sct_version"`
+	LogID      string `json:"id"`
+	Timestamp  uint64 `json:"timestamp"`
+	Signature  string `json:"signature"`
+	Extensions string `json:"extensions"`
+}
+
+func (sct *SignedCertificateTimestamp) UnmarshalJSON(data []byte) error {
+	var err error
+	var rawSCT rawSignedCertificateTimestamp
+	if err = json.Unmarshal(data, &rawSCT); err != nil {
+		return fmt.Errorf("Failed to unmarshal SCT receipt, %s", err)
+	}
+	sct.LogID = rawSCT.LogID
+	if err != nil {
+		return fmt.Errorf("Failed to decode log ID, %s", err)
+	}
+	sct.Signature, err = base64.StdEncoding.DecodeString(rawSCT.Signature)
+	if err != nil {
+		return fmt.Errorf("Failed to decode SCT signature, %s", err)
+	}
+	sct.Extensions, err = base64.StdEncoding.DecodeString(rawSCT.Extensions)
+	if err != nil {
+		return fmt.Errorf("Failed to decode SCT extensions, %s", err)
+	}
+	sct.SCTVersion = rawSCT.Version
+	sct.Timestamp = rawSCT.Timestamp
+	return nil
+}
+
+const (
+	sctHashSHA256 = 4
+	sctSigECDSA   = 3
+)
+
+// CheckSignature validates that the returned SCT signature is a valid SHA256 +
+// ECDSA signature but does not verify that a specific public key signed it.
+func (sct *SignedCertificateTimestamp) CheckSignature() error {
+	if len(sct.Signature) < 4 {
+		return errors.New("SCT signature is truncated")
+	}
+	// Since all of the known logs currently only use SHA256 hashes and ECDSA
+	// keys, only allow those
+	if sct.Signature[0] != sctHashSHA256 {
+		return fmt.Errorf("Unsupported SCT hash function [%d]", sct.Signature[0])
+	}
+	if sct.Signature[1] != sctSigECDSA {
+		return fmt.Errorf("Unsupported SCT signature algorithm [%d]", sct.Signature[1])
+	}
+
+	var ecdsaSig struct {
+		R, S *big.Int
+	}
+	// Ignore the two length bytes and attempt to unmarshal the signature directly
+	signatureBytes := sct.Signature[4:]
+	signatureBytes, err := asn1.Unmarshal(signatureBytes, &ecdsaSig)
+	if err != nil {
+		return fmt.Errorf("Failed to parse SCT signature, %s", err)
+	}
+	if len(signatureBytes) > 0 {
+		return fmt.Errorf("Trailing garbage after signature")
+	}
+
+	return nil
 }
 
 // RevocationCode is used to specify a certificate revocation reason

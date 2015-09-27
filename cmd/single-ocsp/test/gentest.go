@@ -56,14 +56,12 @@ func main() {
 		TokenLabel      string
 		PIN             string
 		PrivateKeyLabel string
-		SlotID          float64
 	}
 	pkcs11Bytes, err := ioutil.ReadFile(pkcs11FileName)
 	panicOnError(err)
 	err = json.Unmarshal(pkcs11Bytes, &pkcs11)
 	panicOnError(err)
-	slotID := int(pkcs11.SlotID)
-	p11key, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, pkcs11.PrivateKeyLabel, slotID)
+	p11key, err := pkcs11key.New(pkcs11.Module, pkcs11.TokenLabel, pkcs11.PIN, pkcs11.PrivateKeyLabel)
 	panicOnError(err)
 
 	// All of the certificates start and end at the same time

@@ -33,11 +33,11 @@ def die(status):
     exit_status = status
     sys.exit(exit_status)
 
-def get_ocsp(certFile):
+def get_ocsp(certFile, url):
     openssl_ocsp_cmd = ("""
       openssl x509 -in %s -out %s.pem -inform der -outform pem;
-      openssl ocsp -no_nonce -issuer ../test-ca.pem -CAfile ../test-ca.pem -cert %s.pem -url http://localhost:4002
-    """ % (certFile, certFile, certFile))
+      openssl ocsp -no_nonce -issuer ../test-ca.pem -CAfile ../test-ca.pem -cert %s.pem -url %s
+    """ % (certFile, certFile, certFile, url))
     try:
         print openssl_ocsp_cmd
         output = subprocess.check_output(openssl_ocsp_cmd, shell=True)
@@ -49,14 +49,14 @@ def get_ocsp(certFile):
     print output
     return output
 
-def verify_ocsp_good(certFile):
-    output = get_ocsp(certFile)
+def verify_ocsp_good(certFile, url):
+    output = get_ocsp(certFile, url)
     if not re.search(": good", output):
         print "Expected OCSP response 'good', got something else."
         die(ExitStatus.OCSPFailure)
 
-def verify_ocsp_revoked(certFile):
-    output = get_ocsp(certFile)
+def verify_ocsp_revoked(certFile, url):
+    output = get_ocsp(certFile, url)
     if not re.search(": revoked", output):
         print "Expected OCSP response 'revoked', got something else."
         die(ExitStatus.OCSPFailure)
@@ -85,7 +85,12 @@ def run_node_test():
         print("\nIssuing failed")
         die(ExitStatus.NodeFailure)
 
-    verify_ocsp_good(certFile)
+    ee_ocsp_url = "http://localhost:4002"
+    issuer_ocsp_url = "http://localhost:4003"
+    verify_ocsp_good(certFile, ee_ocsp_url)
+    # Also verify that the static OCSP responder, which answers with a
+    # pre-signed, long-lived response for the CA cert, also works.
+    verify_ocsp_good("../test-ca.der", issuer_ocsp_url)
 
     if subprocess.Popen('''
         node revoke.js %s %s http://localhost:4000/acme/revoke-cert
@@ -93,7 +98,7 @@ def run_node_test():
         print("\nRevoking failed")
         die(ExitStatus.NodeFailure)
 
-    verify_ocsp_revoked(certFile)
+    verify_ocsp_revoked(certFile, ee_ocsp_url)
 
     return 0
 
@@ -104,7 +109,8 @@ def run_client_tests():
         "Please set LETSENCRYPT_PATH env variable to point at "
         "initialized (virtualenv) client repo root")
     test_script_path = os.path.join(root, 'tests', 'boulder-integration.sh')
-    if subprocess.Popen(test_script_path, shell=True, cwd=root).wait() != 0:
+    cmd = "source %s/venv/bin/activate && %s" % (root, test_script_path)
+    if subprocess.Popen(cmd, shell=True, cwd=root, executable='/bin/bash').wait() != 0:
         die(ExitStatus.PythonFailure)
 
 

@@ -90,7 +90,7 @@ type ValidationAuthority interface {
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest, int64, time.Time) (Certificate, error)
+	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
 	RevokeCertificate(string, RevocationCode) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
@@ -108,9 +108,9 @@ type StorageGetter interface {
 	GetAuthorization(string) (Authorization, error)
 	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
 	GetCertificate(string) (Certificate, error)
-	GetCertificateByShortSerial(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
+	GetSCTReceipt(string, string) (SignedCertificateTimestamp, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods
@@ -125,6 +125,8 @@ type StorageAdder interface {
 	UpdateOCSP(serial string, ocspResponse []byte) error
 
 	AddCertificate([]byte, int64) (string, error)
+
+	AddSCTReceipt(SignedCertificateTimestamp) error
 }
 
 // StorageAuthority interface represents a simple key/value
@@ -150,4 +152,9 @@ type DNSResolver interface {
 	LookupDNAME(string) (string, time.Duration, error)
 	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
 	LookupMX(string) ([]string, time.Duration, error)
+}
+
+// Publisher defines the public interface for the Boulder Publisher
+type Publisher interface {
+	SubmitToCT([]byte) error
 }

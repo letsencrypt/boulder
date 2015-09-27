@@ -12,15 +12,14 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	"github.com/letsencrypt/boulder/rpc"
 
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/rpc"
 )
 
 // Constants for AMQP
@@ -38,30 +37,6 @@ const (
 	AmqpMandatory    = false
 	AmqpImmediate    = false
 )
-
-var openCalls int64
-
-func timeDelivery(d amqp.Delivery, stats statsd.Statter, deliveryTimings map[string]time.Time) {
-	// If d is a call add to deliveryTimings and increment openCalls, if it is a
-	// response then get time.Since original call from deliveryTiming, send timing metric, and
-	// decrement openCalls, in both cases send the gauges RpcCallsOpen and RpcBodySize
-	if d.ReplyTo != "" {
-		openCalls++
-		deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.ReplyTo)] = time.Now()
-	} else {
-		openCalls--
-		rpcSent := deliveryTimings[fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey)]
-		if rpcSent != *new(time.Time) {
-			respTime := time.Since(rpcSent)
-			delete(deliveryTimings, fmt.Sprintf("%s:%s", d.CorrelationId, d.RoutingKey))
-
-			stats.TimingDuration(fmt.Sprintf("RpcCallTime.%s", d.Type), respTime, 1.0)
-		}
-	}
-
-	stats.Gauge("RpcCallsOpen", openCalls, 1.0)
-	stats.Gauge("RpcBodySize", int64(len(d.Body)), 1.0)
-}
 
 func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.Statter) {
 	ae := analysisengine.NewLoggingAnalysisEngine()
@@ -120,12 +95,8 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 		cmd.FailOnError(err, "Could not subscribe to queue")
 	}
 
-	deliveryTimings := make(map[string]time.Time)
-
 	// Run forever.
 	for d := range deliveries {
-		timeDelivery(d, stats, deliveryTimings)
-
 		// Pass each message to the Analysis Engine
 		err = ae.ProcessMessage(d)
 		if err != nil {

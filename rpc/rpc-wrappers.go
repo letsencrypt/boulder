@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
@@ -52,7 +51,6 @@ const (
 	MethodGetAuthorization                  = "GetAuthorization"                  // SA
 	MethodGetLatestValidAuthorization       = "GetLatestValidAuthorization"       // SA
 	MethodGetCertificate                    = "GetCertificate"                    // SA
-	MethodGetCertificateByShortSerial       = "GetCertificateByShortSerial"       // SA
 	MethodGetCertificateStatus              = "GetCertificateStatus"              // SA
 	MethodMarkCertificateRevoked            = "MarkCertificateRevoked"            // SA
 	MethodUpdateOCSP                        = "UpdateOCSP"                        // SA
@@ -61,6 +59,9 @@ const (
 	MethodFinalizeAuthorization             = "FinalizeAuthorization"             // SA
 	MethodAddCertificate                    = "AddCertificate"                    // SA
 	MethodAlreadyDeniedCSR                  = "AlreadyDeniedCSR"                  // SA
+	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
+	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
+	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
 )
 
 // Request structs
@@ -98,9 +99,8 @@ type certificateRequest struct {
 }
 
 type issueCertificateRequest struct {
-	Bytes          []byte
-	RegID          int64
-	EarliestExpiry time.Time
+	Bytes []byte
+	RegID int64
 }
 
 type addCertificateRequest struct {
@@ -575,6 +575,32 @@ func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) 
 	return
 }
 
+func NewPublisherServer(rpc RPCServer, impl core.Publisher) (err error) {
+	rpc.Handle(MethodSubmitToCT, func(req []byte) (response []byte, err error) {
+		err = impl.SubmitToCT(req)
+		return
+	})
+
+	return nil
+}
+
+// PublisherClient is a client to communicate with the Publisher Authority
+type PublisherClient struct {
+	rpc RPCClient
+}
+
+// NewPublisherClient constructs an RPC client
+func NewPublisherClient(client RPCClient) (pub PublisherClient, err error) {
+	pub = PublisherClient{rpc: client}
+	return
+}
+
+// SubmitToCT sends a request to submit a certifcate to CT logs
+func (pub PublisherClient) SubmitToCT(der []byte) (err error) {
+	_, err = pub.rpc.DispatchSync(MethodSubmitToCT, der)
+	return
+}
+
 // NewCertificateAuthorityServer constructs an RPC server
 //
 // CertificateAuthorityClient / Server
@@ -596,7 +622,7 @@ func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority
 			return
 		}
 
-		cert, err := impl.IssueCertificate(*csr, icReq.RegID, icReq.EarliestExpiry)
+		cert, err := impl.IssueCertificate(*csr, icReq.RegID)
 		if err != nil {
 			return
 		}
@@ -656,7 +682,7 @@ func NewCertificateAuthorityClient(client RPCClient) (cac CertificateAuthorityCl
 }
 
 // IssueCertificate sends a request to issue a certificate
-func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest, regID int64, earliestExpiry time.Time) (cert core.Certificate, err error) {
+func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	var icReq issueCertificateRequest
 	icReq.Bytes = csr.Raw
 	icReq.RegID = regID
@@ -909,22 +935,6 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		return jsonResponse, nil
 	})
 
-	rpc.Handle(MethodGetCertificateByShortSerial, func(req []byte) (response []byte, err error) {
-		cert, err := impl.GetCertificateByShortSerial(string(req))
-		if err != nil {
-			return
-		}
-
-		jsonResponse, err := json.Marshal(cert)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetCertificateByShortSerial, err, req)
-			return
-		}
-
-		return jsonResponse, nil
-	})
-
 	rpc.Handle(MethodGetCertificateStatus, func(req []byte) (response []byte, err error) {
 		status, err := impl.GetCertificateStatus(string(req))
 		if err != nil {
@@ -987,6 +997,49 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 			response = []byte{0}
 		}
 		return
+	})
+
+	rpc.Handle(MethodGetSCTReceipt, func(req []byte) (response []byte, err error) {
+		var gsctReq struct {
+			Serial string
+			LogID  string
+		}
+
+		err = json.Unmarshal(req, &gsctReq)
+		if err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodGetSCTReceipt, err, req)
+			return
+		}
+
+		sct, err := impl.GetSCTReceipt(gsctReq.Serial, gsctReq.LogID)
+		jsonResponse, err := json.Marshal(core.RPCSignedCertificateTimestamp(sct))
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetSCTReceipt, err, req)
+			return
+		}
+
+		return jsonResponse, nil
+	})
+
+	rpc.Handle(MethodAddSCTReceipt, func(req []byte) (response []byte, err error) {
+		var sct core.RPCSignedCertificateTimestamp
+		err = json.Unmarshal(req, &sct)
+		if err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodAddSCTReceipt, err, req)
+			return
+		}
+
+		err = impl.AddSCTReceipt(core.SignedCertificateTimestamp(sct))
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodAddSCTReceipt, err, req)
+			return
+		}
+
+		return nil, nil
 	})
 
 	return nil
@@ -1073,18 +1126,6 @@ func (cac StorageAuthorityClient) GetLatestValidAuthorization(registrationId int
 // GetCertificate sends a request to get a Certificate by ID
 func (cac StorageAuthorityClient) GetCertificate(id string) (cert core.Certificate, err error) {
 	jsonCert, err := cac.rpc.DispatchSync(MethodGetCertificate, []byte(id))
-	if err != nil {
-		return
-	}
-
-	err = json.Unmarshal(jsonCert, &cert)
-	return
-}
-
-// GetCertificateByShortSerial sends a request to search for a certificate by
-// the predictable portion of its serial number.
-func (cac StorageAuthorityClient) GetCertificateByShortSerial(id string) (cert core.Certificate, err error) {
-	jsonCert, err := cac.rpc.DispatchSync(MethodGetCertificateByShortSerial, []byte(id))
 	if err != nil {
 		return
 	}
@@ -1249,5 +1290,37 @@ func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool,
 	case 1:
 		exists = true
 	}
+	return
+}
+
+func (cac StorageAuthorityClient) GetSCTReceipt(serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
+	var gsctReq struct {
+		Serial string
+		LogID  string
+	}
+	gsctReq.Serial = serial
+	gsctReq.LogID = logID
+
+	data, err := json.Marshal(gsctReq)
+	if err != nil {
+		return
+	}
+
+	response, err := cac.rpc.DispatchSync(MethodGetSCTReceipt, data)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(response, receipt)
+	return
+}
+
+func (cac StorageAuthorityClient) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error) {
+	data, err := json.Marshal(sct)
+	if err != nil {
+		return
+	}
+
+	_, err = cac.rpc.DispatchSync(MethodAddSCTReceipt, data)
 	return
 }

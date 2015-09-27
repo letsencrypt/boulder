@@ -41,6 +41,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/publisher"
 )
 
 // Config stores configuration parameters that applications
@@ -56,14 +57,15 @@ type Config struct {
 
 	// General
 	AMQP struct {
-		Server   string
-		Insecure bool
-		RA       Queue
-		VA       Queue
-		SA       Queue
-		CA       Queue
-		OCSP     Queue
-		TLS      *TLSConfig
+		Server    string
+		Insecure  bool
+		RA        Queue
+		VA        Queue
+		SA        Queue
+		CA        Queue
+		OCSP      Queue
+		Publisher Queue
+		TLS       *TLSConfig
 	}
 
 	WFE struct {
@@ -74,6 +76,9 @@ type Config struct {
 		CertNoCacheExpirationWindow string
 		IndexCacheDuration          string
 		IssuerCacheDuration         string
+
+		ShutdownStopTimeout string
+		ShutdownKillTimeout string
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -147,9 +152,19 @@ type Config struct {
 	}
 
 	OCSPResponder struct {
-		DBConnect     string
+		// Source indicates the source of pre-signed OCSP responses to be used. It
+		// can be a DBConnect string or a file URL. The file URL style is used
+		// when responding from a static file for intermediates and roots.
+		Source string
+
 		Path          string
 		ListenAddress string
+		// MaxAge is the max-age to set in the Cache-Controler response
+		// header. It is a time.Duration formatted string.
+		MaxAge JSONDuration
+
+		ShutdownStopTimeout string
+		ShutdownKillTimeout string
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -159,6 +174,13 @@ type Config struct {
 		DBConnect       string
 		MinTimeToExpiry string
 		ResponseLimit   int
+
+		// DebugAddr is the address to run the /debug handlers on.
+		DebugAddr string
+	}
+
+	Publisher struct {
+		CT publisher.CTConfig
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -228,7 +250,6 @@ type KeyConfig struct {
 type PKCS11Config struct {
 	Module          string
 	TokenLabel      string
-	SlotID          *int
 	PIN             string
 	PrivateKeyLabel string
 }
@@ -317,25 +338,27 @@ func FailOnError(err error, msg string) {
 	}
 }
 
-// ProfileCmd runs forever, sending Go statistics to StatsD.
+// ProfileCmd runs forever, sending Go runtime statistics to StatsD.
 func ProfileCmd(profileName string, stats statsd.Statter) {
-	for {
+	c := time.Tick(1 * time.Second)
+	for range c {
 		var memoryStats runtime.MemStats
 		runtime.ReadMemStats(&memoryStats)
 
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
 
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0)
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0)
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0)
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Alloc", profileName), int64(memoryStats.HeapAlloc), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0)
 
-		gcPauseAvg := int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))
-
-		stats.Timing(fmt.Sprintf("Gostats.%s.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
-		stats.Gauge(fmt.Sprintf("Gostats.%s.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
-
-		time.Sleep(time.Second)
+		// Calculate average and last and convert from nanoseconds to milliseconds
+		gcPauseAvg := (int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))) / 1000000
+		lastGC := int64(memoryStats.PauseNs[(memoryStats.NumGC+255)%256]) / 1000000
+		stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPauseLatency", profileName), lastGC, 1.0)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
 	}
 }
 
@@ -371,4 +394,28 @@ func DebugServer(addr string) {
 	}
 	log.Printf("booting debug server at %#v", addr)
 	log.Println(http.Serve(ln, nil))
+}
+
+type JSONDuration struct {
+	time.Duration
+}
+
+var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a JSONDuration")
+
+func (d *JSONDuration) UnmarshalJSON(b []byte) error {
+	s := ""
+	err := json.Unmarshal(b, &s)
+	if err != nil {
+		if _, ok := err.(*json.UnmarshalTypeError); ok {
+			return ErrDurationMustBeString
+		}
+		return err
+	}
+	dd, err := time.ParseDuration(s)
+	d.Duration = dd
+	return err
+}
+
+func (d JSONDuration) MarshalJSON() ([]byte, error) {
+	return []byte(d.Duration.String()), nil
 }

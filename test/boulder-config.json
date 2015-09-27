@@ -28,6 +28,10 @@
     "CA": {
       "client": "CA.client",
       "server": "CA.server"
+    },
+    "Publisher": {
+      "client": "Publisher.client",
+      "server": "Publisher.server"
     }
   },
 
@@ -42,6 +46,8 @@
     "certNoCacheExpirationWindow": "96h",
     "indexCacheDuration": "24h",
     "issuerCacheDuration": "48h",
+    "shutdownStopTimeout": "10s",
+    "shutdownKillTimeout": "1m",
     "debugAddr": "localhost:8000"
   },
 
@@ -139,9 +145,12 @@
   },
 
   "ocspResponder": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
+    "source": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
     "path": "/",
     "listenAddress": "localhost:4002",
+    "maxAge": "10s",
+    "shutdownStopTimeout": "10s",
+    "shutdownKillTimeout": "1m",
     "debugAddr": "localhost:8005"
   },
 
@@ -164,7 +173,22 @@
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "emailTemplate": "test/example-expiration-template",
-    "debugAddr": "localhost:8004"
+    "debugAddr": "localhost:8008"
+  },
+
+  "publisher": {
+    "ct": {
+      "logs": [
+        {
+          "uri": "http://127.0.0.1:4500",
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfahLEimAoz2t01p3uMziiLOl/fHTDM0YDOhBRuiBARsV4UvxG2LdNgoIGLrtCzWE0J5APC2em4JlvR8EEEFMoA=="
+        }
+      ],
+      "submissionRetries": 1,
+      "submissionBackoff": "1s",
+      "intermediateBundleFilename": "test/test-ca.pem"
+    },
+    "debugAddr": "localhost:8009"
   },
 
   "common": {

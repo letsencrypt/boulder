@@ -16,10 +16,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
+
+// 10 month default authorization lifetime. When used with a 90-day cert
+// lifetime, this allows creation of certs that will cover a whole year,
+// plus a grace period of a month.
+// TODO(jsha): Read from a config file.
+const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
 
 // RegistrationAuthorityImpl defines an RA.
 //
@@ -30,18 +38,26 @@ type RegistrationAuthorityImpl struct {
 	VA          core.ValidationAuthority
 	SA          core.StorageAuthority
 	PA          core.PolicyAuthority
+	stats       statsd.Statter
 	DNSResolver core.DNSResolver
 	clk         clock.Clock
 	log         *blog.AuditLogger
+	// How long before a newly created authorization expires.
+	authorizationLifetime time.Duration
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger) RegistrationAuthorityImpl {
-	ra := RegistrationAuthorityImpl{clk: clk, log: logger}
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter) RegistrationAuthorityImpl {
+	ra := RegistrationAuthorityImpl{
+		stats: stats,
+		clk:   clk,
+		log:   logger,
+		authorizationLifetime: DefaultAuthorizationLifetime,
+	}
 	return ra
 }
 
-func validateEmail(address string, resolver core.DNSResolver) (err error) {
+func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, err error) {
 	_, err = mail.ParseAddress(address)
 	if err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("%s is not a valid e-mail address", address))
@@ -50,28 +66,10 @@ func validateEmail(address string, resolver core.DNSResolver) (err error) {
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	var mx []string
-	mx, _, err = resolver.LookupMX(domain)
+	mx, rtt, err = resolver.LookupMX(domain)
 	if err != nil || len(mx) == 0 {
 		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
 		return
-	}
-	return
-}
-
-func validateContacts(contacts []*core.AcmeURL, resolver core.DNSResolver) (err error) {
-	for _, contact := range contacts {
-		switch contact.Scheme {
-		case "tel":
-			continue
-		case "mailto":
-			err = validateEmail(contact.Opaque, resolver)
-			if err != nil {
-				return
-			}
-		default:
-			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
-			return
-		}
 	}
 
 	return
@@ -103,7 +101,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	}
 	reg.MergeUpdate(init)
 
-	err = validateContacts(reg.Contact, ra.DNSResolver)
+	err = validateContacts(reg.Contact, ra.DNSResolver, ra.stats)
 	if err != nil {
 		return
 	}
@@ -114,6 +112,28 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 		// InternalServerError since the user-data was validated before being
 		// passed to the SA.
 		err = core.InternalServerError(err.Error())
+	}
+
+	ra.stats.Inc("RA.NewRegistrations", 1, 1.0)
+	return
+}
+
+func validateContacts(contacts []*core.AcmeURL, resolver core.DNSResolver, stats statsd.Statter) (err error) {
+	for _, contact := range contacts {
+		switch contact.Scheme {
+		case "tel":
+			continue
+		case "mailto":
+			rtt, err := validateEmail(contact.Opaque, resolver)
+			stats.TimingDuration("RA.DNS.RTT.MX", rtt, 1.0)
+			stats.Inc("RA.DNS.Rate", 1, 1.0)
+			if err != nil {
+				return err
+			}
+		default:
+			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
+			return
+		}
 	}
 
 	return
@@ -174,6 +194,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		}
 	}
 
+	expires := ra.clk.Now().Add(ra.authorizationLifetime)
+
 	// Partially-filled object
 	authz = core.Authorization{
 		Identifier:     identifier,
@@ -181,6 +203,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		Status:         core.StatusPending,
 		Combinations:   combinations,
 		Challenges:     challenges,
+		// TODO(jsha): Pending authz should expire earlier than finalized authz.
+		Expires: &expires,
 	}
 
 	// Get a pending Auth first so we can get our ID back, then update with challenges
@@ -209,7 +233,6 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 // that the PublicKey, CommonName, and DNSNames match those provided in
 // the CSR that was used to generate the certificate. It also checks the
 // following fields for:
-//		* notAfter is after earliestExpiry
 //		* notBefore is not more than 24 hours ago
 //		* BasicConstraintsValid is true
 //		* IsCA is false
@@ -217,8 +240,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 //		* Subject only contains CommonName & Names
 func (ra *RegistrationAuthorityImpl) MatchesCSR(
 	cert core.Certificate,
-	csr *x509.CertificateRequest,
-	earliestExpiry time.Time) (err error) {
+	csr *x509.CertificateRequest) (err error) {
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		return
@@ -263,10 +285,6 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(
 		err = core.InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
 		return
 	}
-	if parsedCertificate.NotAfter.After(earliestExpiry) {
-		err = core.InternalServerError("Generated certificate expires before earliest expiration")
-		return
-	}
 	now := ra.clk.Now()
 	if now.Sub(parsedCertificate.NotBefore) > time.Hour*24 {
 		err = core.InternalServerError(fmt.Sprintf("Generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore)))
@@ -286,6 +304,26 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(
 	}
 
 	return
+}
+
+// checkAuthorizations checks that each requested name has a valid authorization
+// that won't expire before the certificate expires. Returns an error otherwise.
+func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registration *core.Registration) error {
+	now := ra.clk.Now()
+	var badNames []string
+	for _, name := range names {
+		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
+		if err != nil || authz.Expires.Before(now) {
+			badNames = append(badNames, name)
+		}
+	}
+
+	if len(badNames) > 0 {
+		return core.UnauthorizedError(fmt.Sprintf(
+			"Authorizations for these names not found or expired: %s",
+			strings.Join(badNames, ", ")))
+	}
+	return nil
 }
 
 // NewCertificate requests the issuance of a certificate.
@@ -361,37 +399,22 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	// Check that each requested name has a valid authorization
-	now := ra.clk.Now()
-	earliestExpiry := time.Date(2100, 01, 01, 0, 0, 0, 0, time.UTC)
-	for _, name := range names {
-		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
-		if err != nil || authz.Expires.Before(now) {
-			// unable to find a valid authorization or authz is expired
-			err = core.UnauthorizedError(fmt.Sprintf("Key not authorized for name %s", name))
-			logEvent.Error = err.Error()
-			return emptyCert, err
-		}
-
-		if authz.Expires.Before(earliestExpiry) {
-			earliestExpiry = *authz.Expires
-		}
+	err = ra.checkAuthorizations(names, &registration)
+	if err != nil {
+		logEvent.Error = err.Error()
+		return emptyCert, err
 	}
 
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	if cert, err = ra.CA.IssueCertificate(*csr, regID, earliestExpiry); err != nil {
-		// While this could be InternalServerError for certain conditions, most
-		// of the failure reasons (such as GoodKey failing) are caused by malformed
-		// requests.
+	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
 		logEvent.Error = err.Error()
-		err = core.MalformedRequestError("Certificate request was invalid")
 		return emptyCert, err
 	}
 
-	err = ra.MatchesCSR(cert, csr, earliestExpiry)
+	err = ra.MatchesCSR(cert, csr)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
@@ -413,6 +436,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.ResponseTime = ra.clk.Now()
 
 	logEventResult = "successful"
+
+	ra.stats.Inc("RA.NewCertificates", 1, 1.0)
 	return cert, nil
 }
 
@@ -420,7 +445,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	err = validateContacts(base.Contact, ra.DNSResolver)
+	err = validateContacts(base.Contact, ra.DNSResolver, ra.stats)
 	if err != nil {
 		return
 	}
@@ -432,6 +457,8 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 		// passed to the SA.
 		err = core.InternalServerError(fmt.Sprintf("Could not update registration: %s", err))
 	}
+
+	ra.stats.Inc("RA.UpdatedRegistrations", 1, 1.0)
 	return
 }
 
@@ -452,6 +479,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		err = core.MalformedRequestError("Challenge data was corrupted")
 		return
 	}
+	ra.stats.Inc("RA.NewPendingAuthorizations", 1, 1.0)
 
 	// Look up the account key for this authorization
 	reg, err := ra.SA.GetRegistration(authz.RegistrationID)
@@ -470,6 +498,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	// Dispatch to the VA for service
 	ra.VA.UpdateValidations(authz, challengeIndex)
 
+	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	return
 }
 
@@ -545,6 +574,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(cert x509
 	}
 
 	state = "Success"
+	ra.stats.Inc("RA.RevokedCertificates", 1, 1.0)
 	return nil
 }
 
@@ -576,11 +606,16 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 	if authz.Status != core.StatusValid {
 		authz.Status = core.StatusInvalid
 	} else {
-		// TODO: Enable configuration of expiry time
-		exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+		exp := ra.clk.Now().Add(ra.authorizationLifetime)
 		authz.Expires = &exp
 	}
 
-	// Finalize the authorization (error ignored)
-	return ra.SA.FinalizeAuthorization(authz)
+	// Finalize the authorization
+	err := ra.SA.FinalizeAuthorization(authz)
+	if err != nil {
+		return err
+	}
+
+	ra.stats.Inc("RA.FinalizedAuthorizations", 1, 1.0)
+	return nil
 }

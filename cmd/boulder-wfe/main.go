@@ -12,25 +12,27 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/wfe"
 )
 
-func setupWFE(c cmd.Config, logger *blog.AuditLogger) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
+func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
 	ch, err := rpc.AmqpChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
 	logger.Info(" [!] Connected to AMQP")
 
 	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
 
-	raRPC, err := rpc.NewAmqpRPCClient("WFE->RA", c.AMQP.RA.Server, ch)
+	raRPC, err := rpc.NewAmqpRPCClient("WFE->RA", c.AMQP.RA.Server, ch, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
-	saRPC, err := rpc.NewAmqpRPCClient("WFE->SA", c.AMQP.SA.Server, ch)
+	saRPC, err := rpc.NewAmqpRPCClient("WFE->SA", c.AMQP.SA.Server, ch, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
@@ -40,38 +42,6 @@ func setupWFE(c cmd.Config, logger *blog.AuditLogger) (rpc.RegistrationAuthority
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	return rac, sac, closeChan
-}
-
-type timedHandler struct {
-	f     func(w http.ResponseWriter, r *http.Request)
-	stats statsd.Statter
-}
-
-var openConnections int64
-
-// HandlerTimer monitors HTTP performance and sends the details to StatsD.
-func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cStart := time.Now()
-		openConnections++
-		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
-
-		handler.ServeHTTP(w, r)
-
-		openConnections--
-		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
-
-		// (FIX: this doesn't seem to really work at catching errors...)
-		state := "Success"
-		for _, h := range w.Header()["Content-Type"] {
-			if h == "application/problem+json" {
-				state = "Error"
-				break
-			}
-		}
-		// set resp timing key based on success / failure
-		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.%s", r.URL, state), time.Since(cStart), 1.0)
-	})
 }
 
 func main() {
@@ -104,12 +74,11 @@ func main() {
 
 		go cmd.DebugServer(c.WFE.DebugAddr)
 
-		wfe, err := wfe.NewWebFrontEndImpl()
+		wfe, err := wfe.NewWebFrontEndImpl(stats)
 		cmd.FailOnError(err, "Unable to create WFE")
-		rac, sac, closeChan := setupWFE(c, auditlogger)
+		rac, sac, closeChan := setupWFE(c, auditlogger, stats)
 		wfe.RA = &rac
 		wfe.SA = &sac
-		wfe.Stats = stats
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
 
 		wfe.CertCacheDuration, err = time.ParseDuration(c.WFE.CertCacheDuration)
@@ -120,6 +89,11 @@ func main() {
 		cmd.FailOnError(err, "Couldn't parse index caching duration")
 		wfe.IssuerCacheDuration, err = time.ParseDuration(c.WFE.IssuerCacheDuration)
 		cmd.FailOnError(err, "Couldn't parse issuer caching duration")
+
+		wfe.ShutdownStopTimeout, err = time.ParseDuration(c.WFE.ShutdownStopTimeout)
+		cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
+		wfe.ShutdownKillTimeout, err = time.ParseDuration(c.WFE.ShutdownKillTimeout)
+		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
 
 		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
@@ -134,7 +108,7 @@ func main() {
 				for err := range closeChan {
 					auditlogger.Warning(fmt.Sprintf(" [!] AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
 					time.Sleep(time.Second * 5)
-					rac, sac, closeChan = setupWFE(c, auditlogger)
+					rac, sac, closeChan = setupWFE(c, auditlogger, stats)
 					wfe.RA = &rac
 					wfe.SA = &sac
 				}
@@ -148,10 +122,20 @@ func main() {
 
 		auditlogger.Info(app.VersionString())
 
-		// Add HandlerTimer to output resp time + success/failure stats to statsd
+		httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
 
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
-		err = http.ListenAndServe(c.WFE.ListenAddress, HandlerTimer(h, stats))
+		srv := &http.Server{
+			Addr:      c.WFE.ListenAddress,
+			ConnState: httpMonitor.ConnectionMonitor,
+			Handler:   httpMonitor.Handle(),
+		}
+
+		hd := &httpdown.HTTP{
+			StopTimeout: wfe.ShutdownStopTimeout,
+			KillTimeout: wfe.ShutdownKillTimeout,
+		}
+		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 

@@ -28,10 +28,6 @@ import (
 )
 
 var (
-	// Times for validity checking
-	FarFuture = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
-	FarPast   = time.Date(1950, 1, 1, 0, 0, 0, 0, time.UTC)
-
 	CAkeyPEM  = mustRead("./testdata/ca_key.pem")
 	CAcertPEM = mustRead("./testdata/ca_cert.pem")
 
@@ -209,12 +205,12 @@ func TestRevoke(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
-
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
+	ca.Publisher = &mocks.MockPublisher{}
 
 	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
-	certObj, err := ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
+	certObj, err := ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertNotError(t, err, "Failed to sign certificate")
 
 	cert, err := x509.ParseCertificate(certObj.DER)
@@ -250,6 +246,7 @@ func TestIssueCertificate(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
@@ -267,7 +264,7 @@ func TestIssueCertificate(t *testing.T) {
 		csr, _ := x509.ParseCertificateRequest(csrDER)
 
 		// Sign CSR
-		issuedCert, err := ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
+		issuedCert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 		if err != nil {
 			continue
@@ -326,15 +323,16 @@ func TestRejectNoName(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects CSRs with no names
 	csr, _ := x509.ParseCertificateRequest(NoNameCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
-	if err == nil {
-		t.Errorf("CA improperly agreed to create a certificate with no name")
-	}
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertError(t, err, "CA improperly agreed to create a certificate with no name")
+	_, ok := err.(core.MalformedRequestError)
+	test.Assert(t, ok, "Incorrect error type returned")
 }
 
 func TestRejectTooManyNames(t *testing.T) {
@@ -342,13 +340,16 @@ func TestRejectTooManyNames(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects a CSR with too many names
 	csr, _ := x509.ParseCertificateRequest(TooManyNameCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
-	test.Assert(t, err != nil, "Issued certificate with too many names")
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertError(t, err, "Issued certificate with too many names")
+	_, ok := err.(core.MalformedRequestError)
+	test.Assert(t, ok, "Incorrect error type returned")
 }
 
 func TestDeduplication(t *testing.T) {
@@ -356,22 +357,17 @@ func TestDeduplication(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
 	// Test that the CA collapses duplicate names
 	csr, _ := x509.ParseCertificateRequest(DupeNameCSR)
-	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
+	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with duplicate names")
-	if err != nil {
-		return
-	}
 
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
-	if err != nil {
-		return
-	}
 
 	correctName := "a.not-example.com"
 	correctNames := len(parsedCert.DNSNames) == 1 &&
@@ -385,43 +381,47 @@ func TestRejectValidityTooLong(t *testing.T) {
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csr, _ := x509.ParseCertificateRequest(NoCNCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID, FarPast)
-	test.Assert(t, err == nil, "Can issue a certificate that expires after the underlying authorization.")
-
-	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	csr, _ = x509.ParseCertificateRequest(NoCNCSR)
 	ca.NotAfter = ctx.fc.Now()
-	_, err = ca.IssueCertificate(*csr, 1, FarFuture)
+	_, err = ca.IssueCertificate(*csr, 1)
 	test.AssertEquals(t, err.Error(), "Cannot issue a certificate that expires after the intermediate certificate.")
+	_, ok := err.(core.InternalServerError)
+	test.Assert(t, ok, "Incorrect error type returned")
 }
 
 func TestShortKey(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csr, _ := x509.ParseCertificateRequest(ShortKeyCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
-	test.Assert(t, err != nil, "Issued a certificate with too short a key.")
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertError(t, err, "Issued a certificate with too short a key.")
+	_, ok := err.(core.MalformedRequestError)
+	test.Assert(t, ok, "Incorrect error type returned")
 }
 
 func TestRejectBadAlgorithm(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(ctx.caDB, ctx.caConfig, ctx.fc, caCertFile)
+	ca.Publisher = &mocks.MockPublisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csr, _ := x509.ParseCertificateRequest(BadAlgorithmCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID, FarFuture)
-	test.Assert(t, err != nil, "Issued a certificate based on a CSR with a weak algorithm.")
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertError(t, err, "Issued a certificate based on a CSR with a weak algorithm.")
+	_, ok := err.(core.MalformedRequestError)
+	test.Assert(t, ok, "Incorrect error type returned")
 }

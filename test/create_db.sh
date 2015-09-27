@@ -1,18 +1,6 @@
 #!/bin/bash
-
-function die() {
-  if [ ! -z "$1" ]; then
-    echo $1 > /dev/stderr
-  fi
-  exit 1
-}
-
-SERVICES="ca
-sa
-policy"
-DBENVS="development
-test
-integration"
+cd $(dirname $0)/..
+source test/db-common.sh
 
 for svc in $SERVICES; do
   for dbenv in $DBENVS; do

@@ -11,12 +11,15 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/letsencrypt/boulder/metrics"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -24,36 +27,14 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-type timedHandler struct {
-	f     func(w http.ResponseWriter, r *http.Request)
-	stats statsd.Statter
+type cacheCtrlHandler struct {
+	http.Handler
+	MaxAge time.Duration
 }
 
-var openConnections int64
-
-// HandlerTimer monitors HTTP performance and sends the details to StatsD.
-func HandlerTimer(handler http.Handler, stats statsd.Statter) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cStart := time.Now()
-		openConnections++
-		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
-
-		handler.ServeHTTP(w, r)
-
-		openConnections--
-		stats.Gauge("HttpConnectionsOpen", openConnections, 1.0)
-
-		// (FIX: this doesn't seem to really work at catching errors...)
-		state := "Success"
-		for _, h := range w.Header()["Content-Type"] {
-			if h == "application/problem+json" {
-				state = "Error"
-				break
-			}
-		}
-		// set resp timing key based on success / failure
-		stats.TimingDuration(fmt.Sprintf("HttpResponseTime.%s.%s", r.URL, state), time.Since(cStart), 1.0)
-	})
+func (c *cacheCtrlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", c.MaxAge/time.Second))
+	c.Handler.ServeHTTP(w, r)
 }
 
 /*
@@ -115,6 +96,32 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 	return
 }
 
+func makeDBSource(dbConnect, issuerCert string, sqlDebug bool) (cfocsp.Source, error) {
+	var noSource cfocsp.Source
+	// Configure DB
+	dbMap, err := sa.NewDbMap(dbConnect)
+	if err != nil {
+		return noSource, fmt.Errorf("Could not connect to database: %s", err)
+	}
+	sa.SetSQLDebug(dbMap, sqlDebug)
+
+	// Load the CA's key so we can store its SubjectKey in the DB
+	caCertDER, err := cmd.LoadCert(issuerCert)
+	if err != nil {
+		return noSource, fmt.Errorf("Could not read issuer cert %s: %s", issuerCert, err)
+	}
+	caCert, err := x509.ParseCertificate(caCertDER)
+	if err != nil {
+		return noSource, fmt.Errorf("Could not parse issuer cert %s: %s", issuerCert, err)
+	}
+	if len(caCert.SubjectKeyId) == 0 {
+		return noSource, fmt.Errorf("Empty subjectKeyID")
+	}
+
+	// Construct source from DB
+	return NewSourceFromDatabase(dbMap, caCert.SubjectKeyId)
+}
+
 func main() {
 	app := cmd.NewAppShell("boulder-ocsp-responder", "Handles OCSP requests")
 	app.Action = func(c cmd.Config) {
@@ -136,34 +143,56 @@ func main() {
 
 		auditlogger.Info(app.VersionString())
 
-		// Configure DB
-		dbMap, err := sa.NewDbMap(c.OCSPResponder.DBConnect)
-		cmd.FailOnError(err, "Could not connect to database")
-		sa.SetSQLDebug(dbMap, c.SQL.SQLDebug)
+		config := c.OCSPResponder
+		var source cfocsp.Source
+		url, err := url.Parse(config.Source)
+		cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
 
-		// Load the CA's key so we can store its SubjectKey in the DB
-		caCertDER, err := cmd.LoadCert(c.Common.IssuerCert)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
-		caCert, err := x509.ParseCertificate(caCertDER)
-		cmd.FailOnError(err, fmt.Sprintf("Couldn't parse cert read from [%s]", c.Common.IssuerCert))
-		if len(caCert.SubjectKeyId) == 0 {
-			cmd.FailOnError(fmt.Errorf("Empty subjectKeyID"), "Unable to use CA certificate")
+		if url.Scheme == "mysql+tcp" {
+			auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
+			source, err = makeDBSource(config.Source, c.Common.IssuerCert, c.SQL.SQLDebug)
+			cmd.FailOnError(err, "Couldn't load OCSP DB")
+		} else if url.Scheme == "file" {
+			filename := url.Path
+			// Go interprets cwd-relative file urls (file:test/foo.txt) as having the
+			// relative part of the path in the 'Opaque' field.
+			if filename == "" {
+				filename = url.Opaque
+			}
+			source, err = cfocsp.NewSourceFromFile(filename)
+			cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", url.Path))
 		}
 
-		// Construct source from DB
-		auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert ID: %s", hex.EncodeToString(caCert.SubjectKeyId)))
-		src, err := NewSourceFromDatabase(dbMap, caCert.SubjectKeyId)
-		cmd.FailOnError(err, "Could not connect to OCSP database")
+		stopTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownStopTimeout)
+		cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
+		killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
+		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
 
-		// Configure HTTP
 		m := http.NewServeMux()
-		m.Handle(c.OCSPResponder.Path, cfocsp.Responder{Source: src})
+		m.Handle(c.OCSPResponder.Path,
+			handler(source, c.OCSPResponder.MaxAge.Duration))
 
-		// Add HandlerTimer to output resp time + success/failure stats to statsd
-		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.OCSPResponder.ListenAddress))
-		err = http.ListenAndServe(c.OCSPResponder.ListenAddress, HandlerTimer(m, stats))
+		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
+		srv := &http.Server{
+			Addr:      c.OCSPResponder.ListenAddress,
+			ConnState: httpMonitor.ConnectionMonitor,
+			Handler:   httpMonitor.Handle(),
+		}
+
+		hd := &httpdown.HTTP{
+			StopTimeout: stopTimeout,
+			KillTimeout: killTimeout,
+		}
+		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")
 	}
 
 	app.Run()
+}
+
+func handler(src cfocsp.Source, maxAge time.Duration) http.Handler {
+	return &cacheCtrlHandler{
+		Handler: cfocsp.Responder{Source: src},
+		MaxAge:  maxAge,
+	}
 }
