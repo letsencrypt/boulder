@@ -308,9 +308,8 @@ func TestHandleFunc(t *testing.T) {
 
 	// Disallowed method special case: response to HEAD has got no body
 	runWrappedHandler(&http.Request{Method: "HEAD"}, "GET", "POST")
-	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, stubCalled, true)
 	test.AssertEquals(t, rw.Body.String(), "")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
 }
 
 func TestStandardHeaders(t *testing.T) {
