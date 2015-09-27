@@ -128,6 +128,11 @@ func (log *SQLLogger) Printf(format string, v ...interface{}) {
 }
 
 // initTables constructs the table map for the ORM.
+// NOTE: For tables with an auto-increment primary key (SetKeys(true, ...)),
+// it is very important to declare them as a such here. It produces a side
+// effect in Insert() where the inserted object has its id field set to the
+// autoincremented value that resulted from the insert. See
+// https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
 func initTables(dbMap *gorp.DbMap) {
 	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "ID")
 	regTable.SetVersionCol("LockCol")
@@ -137,6 +142,7 @@ func initTables(dbMap *gorp.DbMap) {
 	pendingAuthzTable.SetVersionCol("LockCol")
 	dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
 	dbMap.AddTableWithName(challModel{}, "challenges").SetKeys(true, "ID").SetVersionCol("LockCol")
+	dbMap.AddTableWithName(issuedNameModel{}, "issuedNames").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.OCSPResponse{}, "ocspResponses").SetKeys(true, "ID")

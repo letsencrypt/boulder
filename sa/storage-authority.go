@@ -237,6 +237,46 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	return ssa.GetAuthorization(auth.ID)
 }
 
+type TooManyCertificatesError string
+
+func (t TooManyCertificatesError) Error() string {
+	return string(t)
+}
+
+// CountCertificates returns the number of certificates issued within a time
+// period containing DNSNames that are equal to, or subdomains of, the given name.
+func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
+	var count int64
+	const max = 10000
+	var serials []struct {
+		Serial string
+	}
+	_, err := ssa.dbMap.Select(
+		&serials,
+		`SELECT serial from issuedNames
+		 WHERE (reversedName = :reversedDomain OR
+			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
+		 AND Issued > :earliest AND Issued <= :latest
+		 LIMIT :limit;`,
+		map[string]interface{}{
+			"reversedDomain": core.ReverseName(domain),
+			"earliest":       earliest,
+			"latest":         latest,
+			"limit":          max + 1,
+		})
+	if err != nil {
+		return -1, err
+	} else if count > max {
+		return -1, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
+	}
+	serialMap := make(map[string]struct{}, len(serials))
+	for _, s := range serials {
+		serialMap[s.Serial] = struct{}{}
+	}
+
+	return len(serialMap), nil
+}
+
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
 func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate, error) {
@@ -579,6 +619,14 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		RevokedReason:      0,
 		LockCol:            0,
 	}
+	issuedNames := make([]issuedNameModel, len(parsedCertificate.DNSNames))
+	for i, name := range parsedCertificate.DNSNames {
+		issuedNames[i] = issuedNameModel{
+			ReversedName: core.ReverseName(name),
+			Serial:       serial,
+			Issued:       parsedCertificate.NotBefore,
+		}
+	}
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -596,6 +644,14 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 	if err != nil {
 		tx.Rollback()
 		return
+	}
+
+	for _, issuedName := range issuedNames {
+		err = tx.Insert(&issuedName)
+		if err != nil {
+			tx.Rollback()
+			return
+		}
 	}
 
 	err = tx.Commit()
