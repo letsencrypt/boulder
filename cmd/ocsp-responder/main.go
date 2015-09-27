@@ -174,14 +174,14 @@ func main() {
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
 		srv := &http.Server{
-			Addr:      c.OCSPResponder.ListenAddress,
-			ConnState: httpMonitor.ConnectionMonitor,
-			Handler:   httpMonitor.Handle(),
+			Addr:    c.OCSPResponder.ListenAddress,
+			Handler: httpMonitor.Handle(),
 		}
 
 		hd := &httpdown.HTTP{
 			StopTimeout: stopTimeout,
 			KillTimeout: killTimeout,
+			Stats:       metrics.NewFBAdapter(stats, "OCSP"),
 		}
 		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")
