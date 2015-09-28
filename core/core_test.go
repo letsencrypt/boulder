@@ -13,22 +13,47 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
 // challenges.go
 
+var accountKeyJSON = `{
+  "kty":"RSA",
+  "n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
+  "e":"AQAB"
+}`
+
 func TestChallenges(t *testing.T) {
-	simpleHTTP := SimpleHTTPChallenge()
-	if simpleHTTP.Status != StatusPending {
-		t.Errorf("Incorrect status for challenge: %v", simpleHTTP.Status)
-	}
-	if len(simpleHTTP.Token) != 43 {
-		t.Errorf("Incorrect length for simpleHTTP token: %v", simpleHTTP.Token)
+	var accountKey *jose.JsonWebKey
+	err := json.Unmarshal([]byte(accountKeyJSON), &accountKey)
+	if err != nil {
+		t.Errorf("Error unmarshaling JWK: %v", err)
 	}
 
-	dvsni := DvsniChallenge()
-	if dvsni.Status != StatusPending {
-		t.Errorf("Incorrect status for challenge: %v", dvsni.Status)
+	simpleHTTP, err := SimpleHTTPChallenge(accountKey)
+	if err != nil {
+		t.Errorf("Error creating HTTP challenge: %v", err)
+	}
+	if !simpleHTTP.IsSane(false) {
+		t.Errorf("New HTTP challenge is not sane: %v", simpleHTTP)
+	}
+
+	dvsni, err := SimpleHTTPChallenge(accountKey)
+	if err != nil {
+		t.Errorf("Error creating DVSNI challenge: %v", err)
+	}
+	if !dvsni.IsSane(false) {
+		t.Errorf("New DVSNI challenge is not sane: %v", dvsni)
+	}
+
+	dns, err := SimpleHTTPChallenge(accountKey)
+	if err != nil {
+		t.Errorf("Error creating DNS challenge: %v", err)
+	}
+	if !dns.IsSane(false) {
+		t.Errorf("New DNS challenge is not sane: %v", dns)
 	}
 }
 
@@ -101,8 +126,8 @@ func TestMergeChallenge(t *testing.T) {
 	if probe.Validated != merged.Validated {
 		t.Errorf("MergeChallenge allowed response to overwrite completed time")
 	}
-	if probe.Token != merged.Token {
-		t.Errorf("MergeChallenge allowed response to overwrite status")
+	if string(probe.AuthorizedKey) != string(merged.AuthorizedKey) {
+		t.Errorf("MergeChallenge allowed response to overwrite authorized key")
 	}
 	if probe.TLS != merged.TLS {
 		t.Errorf("MergeChallenge failed to overwrite TLS")

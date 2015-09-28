@@ -198,7 +198,7 @@ type AuthorizedKey struct {
 	Key   *jose.JsonWebKey `json:"key,omitempty"`
 }
 
-// Determine whether this AuthorizedKey object matches the given token and key
+// Match determines whether this AuthorizedKey object matches the given token and key
 func (ak AuthorizedKey) Match(token string, key *jose.JsonWebKey) bool {
 	if ak.Key == nil {
 		return false
@@ -206,18 +206,9 @@ func (ak AuthorizedKey) Match(token string, key *jose.JsonWebKey) bool {
 	return token == ak.Token && KeyDigestEquals(key.Key, ak.Key.Key)
 }
 
-// AuthorizedKeys is simply a list of authorized key objects
-type AuthorizedKeys []AuthorizedKey
-
-// Determine whether there is an entry in this AuthorizedKeys object that
-// matches the indicated token and key
-func (aks AuthorizedKeys) Match(token string, key *jose.JsonWebKey) bool {
-	for _, ak := range aks {
-		if ak.Match(token, key) {
-			return true
-		}
-	}
-	return false
+// MatchAuthorizedKey is just an alias for Match
+func (ak AuthorizedKey) MatchAuthorizedKey(ak2 AuthorizedKey) bool {
+	return ak.Match(ak2.Token, ak2.Key)
 }
 
 // Challenge is an aggregate of all data needed for any challenges.
@@ -250,8 +241,8 @@ type Challenge struct {
 	// Used by simpleHTTP challenges
 	TLS *bool `json:"tls,omitempty"`
 
-	// Used by dns and dvsni challenges
-	AuthorizedKeys JSONBuffer `json:"authorizedKeys,omitempty"`
+	// Used by simpleHTTP, dns, and dvsni challenges
+	AuthorizedKey JSONBuffer `json:"authorizedKey,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
@@ -266,6 +257,21 @@ type Challenge struct {
 	// unauthorized key. See:
 	//   https://mailarchive.ietf.org/arch/msg/acme/F71iz6qq1o_QPVhJCV4dqWf-4Yc
 	AccountKey *jose.JsonWebKey `json:"accountKey,omitempty"`
+}
+
+// UnsafeSetToken sets the token value both in the Token field and in the
+// serialized AuthorizedKey object.
+//
+// This method should only be used for writing tests, in cases where the
+// token value needs to be predictable.
+func (ch *Challenge) UnsafeSetToken(token string) (err error) {
+	ch.Token = token
+
+	ch.AuthorizedKey, err = json.Marshal(AuthorizedKey{
+		Token: token,
+		Key:   ch.AccountKey,
+	})
+	return
 }
 
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
@@ -308,28 +314,46 @@ func (ch Challenge) IsSane(completed bool) bool {
 		return false
 	}
 
-	if ch.AccountKey == nil {
+	// There always needs to be an account key and authorized key object
+	if ch.AccountKey == nil || len(ch.AuthorizedKey) == 0 {
 		return false
 	}
 
-	switch ch.Type {
-	case ChallengeTypeSimpleHTTP:
-		// check extra fields aren't used
-		if ch.AuthorizedKeys != nil {
+	// In addition to being non-empty, the authorized key should parse as JSON
+	var ak AuthorizedKey
+	err := json.Unmarshal(ch.AuthorizedKey, &ak)
+	if err != nil {
+		return false
+	}
+
+	// Before completion, the token field should be empty
+	if !completed && len(ch.Token) > 0 {
+		return false
+	}
+
+	// If the challenge is completed, then there should be a token, it should be
+	// base64, and it should match the one in the authorized key object
+	if completed {
+		if len(ch.Token) != 43 {
 			return false
 		}
 
+		if _, err := B64dec(ch.Token); err != nil {
+			return false
+		}
+
+		if ch.Token != ak.Token {
+			return false
+		}
+	}
+
+	// TODO(rlb): Remove this whole switch once the TLS option is gone.
+	switch ch.Type {
+	case ChallengeTypeSimpleHTTP:
 		if completed && ch.TLS == nil {
 			return false
 		}
 
-		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
-			return false
-		}
-		if _, err := B64dec(ch.Token); err != nil {
-			return false
-		}
 	case ChallengeTypeDVSNI:
 		// Same as DNS
 		fallthrough
@@ -339,18 +363,6 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 
-		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
-			return false
-		}
-		if _, err := B64dec(ch.Token); err != nil {
-			return false
-		}
-
-		// If completed, check that there's an authorized keys object
-		if completed && ch.AuthorizedKeys == nil {
-			return false
-		}
 	default:
 		return false
 	}
@@ -372,7 +384,15 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 			*ch.TLS = true
 		}
 
-		// For dvsni and dns, there are no client-provided fields
+		// For dvsni and dns (as well as simpleHttp), the client echoes back
+		// the "token" value provided in the authorizedKey object.  The caller
+		// should use IsSane to verify that the "token" field in the challenge
+		// matches the corresponding field in the authorized key.
+		fallthrough
+	case ChallengeTypeDVSNI:
+		fallthrough
+	case ChallengeTypeDNS:
+		ch.Token = resp.Token
 	}
 
 	return ch

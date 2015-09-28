@@ -115,11 +115,7 @@ var (
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-example.com"},
 		RegistrationID: 1,
 		Status:         "pending",
-		Challenges: []core.Challenge{
-			core.SimpleHTTPChallenge(),
-			core.DvsniChallenge(),
-		},
-		Combinations: [][]int{[]int{0}, []int{1}},
+		Combinations:   [][]int{[]int{0}, []int{1}},
 	}
 	AuthzFinal = core.Authorization{}
 
@@ -144,7 +140,13 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	test.AssertNotError(t, err, "Failed to unmarshal private JWK")
 
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
-	test.AssertNotError(t, err, "Failed to unmarshall JWK")
+	test.AssertNotError(t, err, "Failed to unmarshal JWK")
+
+	simpleHTTP, err := core.SimpleHTTPChallenge(&AccountKeyA)
+	test.AssertNotError(t, err, "Failed to create HTTP challenge")
+	dvsni, err := core.DvsniChallenge(&AccountKeyA)
+	test.AssertNotError(t, err, "Failed to create DVSNI challenge")
+	AuthzInitial.Challenges = []core.Challenge{simpleHTTP, dvsni}
 
 	fc := clock.NewFake()
 
@@ -456,7 +458,11 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 func TestOnValidationUpdateSuccess(t *testing.T) {
 	_, sa, ra, fclk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	authzUpdated, _ := sa.NewPendingAuthorization(AuthzInitial)
+	fmt.Println("AUTHZ_INITIAL", AuthzInitial)
+	authzUpdated, err := sa.NewPendingAuthorization(AuthzInitial)
+	test.AssertNotError(t, err, "Failed to create new pending authz")
+	fmt.Println("AUTHZ_UPDATED", authzUpdated)
+	fmt.Println("AUTHZ_UPDATED_ERR", err)
 	expires := fclk.Now().Add(300 * 24 * time.Hour)
 	authzUpdated.Expires = &expires
 	sa.UpdatePendingAuthorization(authzUpdated)

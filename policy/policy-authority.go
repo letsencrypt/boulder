@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
@@ -176,14 +177,18 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
-func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
-	challenges = []core.Challenge{
-		core.SimpleHTTPChallenge(),
-		core.DvsniChallenge(),
+func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int, err error) {
+	simpleHTTP, err := core.SimpleHTTPChallenge(accountKey)
+	if err != nil {
+		return
 	}
-	combinations = [][]int{
-		[]int{0},
-		[]int{1},
+
+	dvsni, err := core.DvsniChallenge(accountKey)
+	if err != nil {
+		return
 	}
+
+	challenges = []core.Challenge{simpleHTTP, dvsni}
+	combinations = [][]int{[]int{0}, []int{1}}
 	return
 }

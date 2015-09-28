@@ -7,7 +7,6 @@ package ra
 
 import (
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/mail"
@@ -167,32 +166,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		return authz, err
 	}
 
-	// Create validations, but we have to update them with URIs later
-	challenges, combinations := ra.PA.ChallengesFor(identifier)
-
-	// TODO(rlb@ipv.sx): Put these in the challenge ctors, and pass the account
-	// key through ChallengesFor().  This might require passing errors back,
-	// and handling them here.
-	for i, _ := range challenges {
-		// Add the account key used to generate the challenge
-		challenges[i].AccountKey = &reg.Key
-
-		// For DNS and DVSNI, add the account key as an authorized key
-		if challenges[i].Type == core.ChallengeTypeDVSNI || challenges[i].Type == core.ChallengeTypeDNS {
-			authorizedKeys, err := json.Marshal(core.AuthorizedKeys{
-				core.AuthorizedKey{
-					Token: challenges[i].Token,
-					Key:   &reg.Key,
-				},
-			})
-
-			if err != nil {
-				return authz, err
-			}
-
-			challenges[i].AuthorizedKeys = authorizedKeys
-		}
-	}
+	// Create validations. The WFE will  update them with URIs before sending them out.
+	challenges, combinations, err := ra.PA.ChallengesFor(identifier, &reg.Key)
 
 	expires := ra.clk.Now().Add(ra.authorizationLifetime)
 

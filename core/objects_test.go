@@ -55,20 +55,14 @@ func TestAuthorizedKeys(t *testing.T) {
 		Token: "Iy2_-2OA8lyD0lwhmD8dD3TIL3wlNpiUhLTXPJG5qOM",
 		Key:   &jose.JsonWebKey{Key: testKey2.Public()},
 	}
-	ak3 := AuthorizedKey{
-		Token: "WXC42qopdmqPcGncAVvaz0-q55X_hjmTgbCaQLT0epU",
-		Key:   &jose.JsonWebKey{Key: testKey3.Public()},
-	}
-	aks := AuthorizedKeys{ak1, ak2}
 
 	test.Assert(t, ak1.Match(ak1.Token, ak1.Key), "Authorized key should match itself")
 	test.Assert(t, !ak1.Match(ak1.Token, ak2.Key), "Authorized key should not match a different key")
 	test.Assert(t, !ak1.Match(ak2.Token, ak1.Key), "Authorized key should not match a different token")
 	test.Assert(t, !ak1.Match(ak2.Token, ak2.Key), "Authorized key should not match a completely different key")
 
-	test.Assert(t, aks.Match(ak1.Token, ak1.Key), "Authorized keys failed to match good token/key pair")
-	test.Assert(t, !aks.Match(ak1.Token, ak2.Key), "Authorized keys matched a bad mixed token/key pair")
-	test.Assert(t, !aks.Match(ak3.Token, ak3.Key), "Authorized keys matched a bad foreign token/key pair")
+	test.Assert(t, ak1.MatchAuthorizedKey(ak1), "Authorized key should match itself")
+	test.Assert(t, !ak1.MatchAuthorizedKey(ak2), "Authorized key should not match a completely different key")
 }
 
 func TestRecordSanityCheck(t *testing.T) {
@@ -107,6 +101,13 @@ func TestChallengeSanityCheck(t *testing.T) {
   }`), &accountKey)
 	test.AssertNotError(t, err, "Error unmarshaling JWK")
 
+	ak := AuthorizedKey{
+		Token: "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4",
+		Key:   accountKey,
+	}
+	jsonAK, err := json.Marshal(ak)
+	test.AssertNotError(t, err, "Error marshaling authorized key")
+
 	types := []string{ChallengeTypeSimpleHTTP, ChallengeTypeDVSNI, ChallengeTypeDNS}
 	for _, challengeType := range types {
 		chall := Challenge{
@@ -115,41 +116,20 @@ func TestChallengeSanityCheck(t *testing.T) {
 			AccountKey: accountKey,
 		}
 		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+
 		chall.Status = StatusPending
 		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-		chall.Token = ""
-		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-		chall.Token = "notlongenough"
-		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-		chall.Token = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ+PCt92wr+o!"
-		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-		chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
+
+		chall.AuthorizedKey = jsonAK
 		test.Assert(t, chall.IsSane(false), "IsSane should be true")
 
 		// Post-completion tests differ by type
+		chall.Token = ak.Token
 		if challengeType == ChallengeTypeSimpleHTTP {
 			tls := true
 			chall.TLS = &tls
-			chall.ValidationRecord = []ValidationRecord{ValidationRecord{
-				URL:               "",
-				Hostname:          "localhost",
-				Port:              "80",
-				AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
-				AddressUsed:       net.IP{127, 0, 0, 1},
-			}}
 			test.Assert(t, chall.IsSane(true), "IsSane should be true")
 		} else if challengeType == ChallengeTypeDVSNI || challengeType == ChallengeTypeDNS {
-			chall.AuthorizedKeys = []byte("8XA7vAwFqik-A_lMfa_Qug") // random
-			if challengeType == ChallengeTypeDVSNI {
-				chall.ValidationRecord = []ValidationRecord{ValidationRecord{
-					Hostname:          "localhost",
-					Port:              "80",
-					AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
-					AddressUsed:       net.IP{127, 0, 0, 1},
-				}}
-			} else {
-				chall.ValidationRecord = []ValidationRecord{}
-			}
 			test.Assert(t, chall.IsSane(true), "IsSane should be true")
 		}
 	}

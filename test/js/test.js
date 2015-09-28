@@ -348,23 +348,18 @@ function getReadyToValidate(err, resp, body) {
 
   var authz = JSON.parse(body);
 
-  var simpleHttp = authz.challenges.filter(function(x) { return x.type == "simpleHttp"; });
-  if (simpleHttp.length == 0) {
+  var httpChallenges = authz.challenges.filter(function(x) { return x.type == "simpleHttp"; });
+  if (httpChallenges.length == 0) {
     console.log("The server didn't offer any challenges we can handle.");
     process.exit(1);
   }
 
-  var challenge = simpleHttp[0];
-  var path = cryptoUtil.randomString(8) + ".txt";
-  var challengePath = ".well-known/acme-challenge/" + challenge.token;
+  var challenge = httpChallenges[0];
+  var jsonAuthorizedKey = util.b64dec(challenge.authorizedKey)
+  var authorizedKey = JSON.parse(jsonAuthorizedKey);
+  var challengePath = ".well-known/acme-challenge/" + authorizedKey.token;
   state.responseURL = challenge["uri"];
-  state.path = path;
-
-  // Create authorized keys object
-  var authorizedKeys = JSON.stringify([{
-    token: challenge.token,
-    key: state.accountKeyPair.publicKey,
-  }]);
+  state.path = challengePath;
 
   // For local, test-mode validation
   function httpResponder(req, response) {
@@ -373,9 +368,9 @@ function getReadyToValidate(err, resp, body) {
     if ((host.split(/:/)[0] === state.domain || /localhost/.test(state.newRegistrationURL)) &&
         req.method === "GET" &&
         req.url == "/" + challengePath) {
-      console.log("\nRespodned with authorized key file:", authorizedKeys);
+      console.log("\nRespodned with authorized key file:", jsonAuthorizedKey);
       response.writeHead(200, {"Content-Type": "application/json"});
-      response.end(authorizedKeys);
+      response.end(jsonAuthorizedKey);
     } else {
       console.log("Got invalid request for", req.method, host, req.url);
       response.writeHead(404, {"Content-Type": "text/plain"});
@@ -395,8 +390,8 @@ function getReadyToValidate(err, resp, body) {
   cli.spinner("Validating domain");
   post(state.responseURL, {
     resource: "challenge",
-    path: state.path,
     tls: true,
+    token: authorizedKey.token,
   }, ensureValidation);
 }
 

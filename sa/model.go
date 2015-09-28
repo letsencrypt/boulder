@@ -41,7 +41,7 @@ type challModel struct {
 	Token            string          `db:"token"`
 	TLS              *bool           `db:"tls"`
 	Validation       []byte          `db:"validation"`
-	AuthorizedKeys   []byte          `db:"authorizedKeys"`
+	AuthorizedKey    []byte          `db:"authorizedKey"`
 	ValidationRecord []byte          `db:"validationRecord"`
 	AccountKey       []byte          `db:"accountKey"`
 
@@ -95,9 +95,9 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		Token:           c.Token,
 		TLS:             c.TLS,
 	}
-	if c.AuthorizedKeys != nil {
-		cm.AuthorizedKeys = []byte(c.AuthorizedKeys)
-		if len(cm.AuthorizedKeys) > mediumBlobSize {
+	if c.AuthorizedKey != nil {
+		cm.AuthorizedKey = []byte(c.AuthorizedKey)
+		if len(cm.AuthorizedKey) > mediumBlobSize {
 			return nil, fmt.Errorf("AuthorizedKeys object is too large to store in the database")
 		}
 	}
@@ -136,13 +136,13 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
-		ID:             cm.ID,
-		Type:           cm.Type,
-		Status:         cm.Status,
-		Validated:      cm.Validated,
-		Token:          cm.Token,
-		TLS:            cm.TLS,
-		AuthorizedKeys: core.JSONBuffer(cm.AuthorizedKeys),
+		ID:            cm.ID,
+		Type:          cm.Type,
+		Status:        cm.Status,
+		Validated:     cm.Validated,
+		Token:         cm.Token,
+		TLS:           cm.TLS,
+		AuthorizedKey: core.JSONBuffer(cm.AuthorizedKey),
 	}
 	if len(cm.Error) > 0 {
 		var problem core.ProblemDetails

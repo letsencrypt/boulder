@@ -122,12 +122,12 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 			http.Redirect(w, r, "http://other.valid:8080/path", 302)
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
-			authzKeysJSON, _ := json.Marshal(core.AuthorizedKeys{
+			t.Logf("SIMPLESRV: Path = %s\n", r.URL.Path)
+			authzKeysJSON, _ := json.Marshal(
 				core.AuthorizedKey{
 					Token: currentToken,
 					Key:   accountKey,
-				},
-			})
+				})
 
 			fmt.Fprint(w, string(authzKeysJSON))
 			currentToken = defaultToken
@@ -172,7 +172,7 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 
 func dvsniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 	h := sha256.New()
-	h.Write([]byte(chall.AuthorizedKeys))
+	h.Write([]byte(chall.AuthorizedKey))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.acme.invalid", Z[:32], Z[32:])
 
@@ -228,14 +228,12 @@ func brokenTLSSrv() *httptest.Server {
 }
 
 func TestSimpleHttpTLS(t *testing.T) {
-	chall := core.Challenge{
-		Type:             core.ChallengeTypeSimpleHTTP,
-		Token:            expectedToken,
-		ValidationRecord: []core.ValidationRecord{},
-		AccountKey:       accountKey,
-	}
+	chall, err := core.SimpleHTTPChallenge(accountKey)
+	test.AssertNotError(t, err, "Failed to create HTTP challenge")
+	err = chall.UnsafeSetToken(expectedToken)
+	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
-	hs := simpleSrv(t, expectedToken, true)
+	hs := simpleSrv(t, chall.Token, true)
 	defer hs.Close()
 
 	port, err := getPort(hs)
@@ -254,14 +252,13 @@ func TestSimpleHttpTLS(t *testing.T) {
 }
 
 func TestSimpleHttp(t *testing.T) {
+	chall, err := core.SimpleHTTPChallenge(accountKey)
+	test.AssertNotError(t, err, "Failed to create HTTP challenge")
+	err = chall.UnsafeSetToken(expectedToken)
+	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+
 	tls := false
-	chall := core.Challenge{
-		Type:             core.ChallengeTypeSimpleHTTP,
-		Token:            expectedToken,
-		TLS:              &tls,
-		ValidationRecord: []core.ValidationRecord{},
-		AccountKey:       accountKey,
-	}
+	chall.TLS = &tls
 
 	// NOTE: We do not attempt to shut down the server. The problem is that the
 	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
@@ -271,7 +268,7 @@ func TestSimpleHttp(t *testing.T) {
 	// that happens, failing the test. So instead, we live with leaving the server
 	// around till the process exits.
 	// TODO(#661): add hs.Close back, see ticket for blocker
-	hs := simpleSrv(t, expectedToken, tls)
+	hs := simpleSrv(t, chall.Token, tls)
 
 	goodPort, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
@@ -300,7 +297,7 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
-	chall.Token = path404
+	chall.UnsafeSetToken(path404)
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Should have found a 404 for the challenge.")
@@ -308,7 +305,7 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
-	chall.Token = pathWrongToken
+	chall.UnsafeSetToken(pathWrongToken)
 	// The "wrong token" will actually be the expectedToken.  It's wrong
 	// because it doesn't match pathWrongToken.
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
@@ -318,14 +315,14 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
-	chall.Token = pathMoved
+	chall.UnsafeSetToken(pathMoved)
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "Failed to follow 301 redirect")
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
 
 	log.Clear()
-	chall.Token = pathFound
+	chall.UnsafeSetToken(pathFound)
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "Failed to follow 302 redirect")
@@ -343,7 +340,7 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertError(t, err, "Domain name is invalid.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 
-	chall.Token = "wait-long"
+	chall.UnsafeSetToken("wait-long")
 	started := time.Now()
 	invalidChall, err = va.validateSimpleHTTP(ident, chall)
 	took := time.Since(started)
@@ -356,13 +353,13 @@ func TestSimpleHttp(t *testing.T) {
 }
 
 func TestSimpleHttpRedirectLookup(t *testing.T) {
+	chall, err := core.SimpleHTTPChallenge(accountKey)
+	test.AssertNotError(t, err, "Failed to create HTTP challenge")
+	err = chall.UnsafeSetToken(expectedToken)
+	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+
 	tls := false
-	chall := core.Challenge{
-		Token:            expectedToken,
-		TLS:              &tls,
-		ValidationRecord: []core.ValidationRecord{},
-		AccountKey:       accountKey,
-	}
+	chall.TLS = &tls
 
 	hs := simpleSrv(t, expectedToken, tls)
 	defer hs.Close()
@@ -373,7 +370,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	va.DNSResolver = &mocks.MockDNS{}
 
 	log.Clear()
-	chall.Token = pathMoved
+	chall.UnsafeSetToken(pathMoved)
 	finChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
@@ -381,7 +378,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
-	chall.Token = pathFound
+	chall.UnsafeSetToken(pathFound)
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
@@ -390,7 +387,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
-	chall.Token = pathRedirectLookupInvalid
+	chall.UnsafeSetToken(pathRedirectLookupInvalid)
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, chall.Token)
@@ -398,7 +395,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`No IPv4 addresses found for invalid.invalid`)), 1)
 
 	log.Clear()
-	chall.Token = pathRedirectLookup
+	chall.UnsafeSetToken(pathRedirectLookup)
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
@@ -407,7 +404,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
-	chall.Token = pathRedirectPort
+	chall.UnsafeSetToken(pathRedirectPort)
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	fmt.Println(finChall.ValidationRecord)
 	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
@@ -418,12 +415,13 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 }
 
 func TestSimpleHttpRedirectLoop(t *testing.T) {
+	chall, err := core.SimpleHTTPChallenge(accountKey)
+	test.AssertNotError(t, err, "Failed to create HTTP challenge")
+	err = chall.UnsafeSetToken("looper")
+	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+
 	tls := false
-	chall := core.Challenge{
-		Token:            "looper",
-		TLS:              &tls,
-		ValidationRecord: []core.ValidationRecord{},
-	}
+	chall.TLS = &tls
 
 	hs := simpleSrv(t, expectedToken, tls)
 	defer hs.Close()
@@ -491,13 +489,11 @@ func TestDvsni(t *testing.T) {
 
 	// Need to create a new authorized keys object to get an unknown SNI (from the signature value)
 	chall.Token = core.NewToken()
-	authorizedKeys, _ := json.Marshal(core.AuthorizedKeys{
-		core.AuthorizedKey{
-			Token: chall.Token,
-			Key:   accountKey,
-		},
+	authorizedKey, _ := json.Marshal(core.AuthorizedKey{
+		Token: chall.Token,
+		Key:   accountKey,
 	})
-	chall.AuthorizedKeys = core.JSONBuffer(authorizedKeys)
+	chall.AuthorizedKey = core.JSONBuffer(authorizedKey)
 
 	log.Clear()
 	started := time.Now()
@@ -536,13 +532,15 @@ func TestTLSError(t *testing.T) {
 }
 
 func TestValidateHTTP(t *testing.T) {
-	tls := false
-	challHTTP := core.SimpleHTTPChallenge()
-	challHTTP.TLS = &tls
-	challHTTP.ValidationRecord = []core.ValidationRecord{}
-	challHTTP.AccountKey = accountKey
+	chall, err := core.SimpleHTTPChallenge(accountKey)
+	test.AssertNotError(t, err, "Failed to create HTTP challenge")
+	err = chall.UnsafeSetToken(core.NewToken())
+	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
-	hs := simpleSrv(t, challHTTP.Token, tls)
+	tls := false
+	chall.TLS = &tls
+
+	hs := simpleSrv(t, chall.Token, tls)
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
@@ -557,7 +555,7 @@ func TestValidateHTTP(t *testing.T) {
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{challHTTP},
+		Challenges:     []core.Challenge{chall},
 	}
 	va.validate(authz, 0)
 
@@ -574,13 +572,11 @@ func createChallenge(challengeType string) core.Challenge {
 		AccountKey:       accountKey,
 	}
 
-	authorizedKeys, _ := json.Marshal(core.AuthorizedKeys{
-		core.AuthorizedKey{
-			Token: chall.Token,
-			Key:   accountKey,
-		},
+	authorizedKey, _ := json.Marshal(core.AuthorizedKey{
+		Token: chall.Token,
+		Key:   accountKey,
 	})
-	chall.AuthorizedKeys = core.JSONBuffer(authorizedKeys)
+	chall.AuthorizedKey = core.JSONBuffer(authorizedKey)
 
 	return chall
 }
@@ -640,15 +636,17 @@ func TestUpdateValidations(t *testing.T) {
 	va.RA = mockRA
 
 	tls := false
-	challHTTP := core.SimpleHTTPChallenge()
-	challHTTP.TLS = &tls
-	challHTTP.ValidationRecord = []core.ValidationRecord{}
+	chall, _ := core.SimpleHTTPChallenge(accountKey)
+	chall.TLS = &tls
+	chall.ValidationRecord = []core.ValidationRecord{}
+	err := chall.UnsafeSetToken(core.NewToken())
+	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{challHTTP},
+		Challenges:     []core.Challenge{chall},
 	}
 
 	started := time.Now()
@@ -750,7 +748,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 		Value: "790DB180-A274-47A4-855F-31C428CB1072",
 	}
 
-	chalDNS := core.DNSChallenge()
+	chalDNS, _ := core.DNSChallenge(accountKey)
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
@@ -779,13 +777,13 @@ func TestDNSValidationNotSane(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chal0 := core.DNSChallenge()
+	chal0, _ := core.DNSChallenge(accountKey)
 	chal0.Token = ""
 
-	chal1 := core.DNSChallenge()
+	chal1, _ := core.DNSChallenge(accountKey)
 	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
 
-	chal2 := core.DNSChallenge()
+	chal2, _ := core.DNSChallenge(accountKey)
 	chal2.TLS = new(bool)
 	*chal2.TLS = true
 
@@ -861,7 +859,7 @@ func TestDNSValidationLive(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	goodChalDNS := core.DNSChallenge()
+	goodChalDNS, _ := core.DNSChallenge(accountKey)
 	// This token is set at _acme-challenge.good.bin.coffee
 	goodChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
 
@@ -888,7 +886,7 @@ func TestDNSValidationLive(t *testing.T) {
 		t.Logf("TestDNSValidationLive on Good did not succeed.")
 	}
 
-	badChalDNS := core.DNSChallenge()
+	badChalDNS, _ := core.DNSChallenge(accountKey)
 	// This token is NOT set at _acme-challenge.bad.bin.coffee
 	badChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
 
