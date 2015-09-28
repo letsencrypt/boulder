@@ -398,11 +398,15 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
-	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
-	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
+	test.Assert(t, len(authz.Challenges) == 4, "Incorrect number of challenges returned")                  // TO UPDATE
+	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP") // TO DELETE
+	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")           // TO DELETE
+	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeHTTP_00, "Challenge 2 not http-00")       // TO UPDATE
+	test.Assert(t, authz.Challenges[3].Type == core.ChallengeTypeTLSSNI_00, "Challenge 3 not tlssni-00")   // TO UPDATE
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
+	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 2 is not sane") // TO DELETE
+	test.Assert(t, authz.Challenges[3].IsSane(false), "Challenge 3 is not sane") // TO DELETE
 
 	t.Log("DONE TestNewAuthorization")
 }

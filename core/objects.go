@@ -96,7 +96,7 @@ const (
 )
 
 // The suffix appended to pseudo-domain names in DVSNI challenges
-const DVSNISuffix = "acme.invalid"
+const TLSSNISuffix = "acme.invalid"
 
 // The label attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
