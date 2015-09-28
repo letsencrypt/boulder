@@ -95,6 +95,12 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		Token:           c.Token,
 		TLS:             c.TLS,
 	}
+	if c.Validation != nil {
+		cm.Validation = []byte(c.Validation.FullSerialize())
+		if len(cm.Validation) > mediumBlobSize {
+			return nil, fmt.Errorf("Validation object is too large to store in the database")
+		}
+	}
 	if c.AuthorizedKey != nil {
 		cm.AuthorizedKey = []byte(c.AuthorizedKey)
 		if len(cm.AuthorizedKey) > mediumBlobSize {
@@ -143,6 +149,13 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		Token:         cm.Token,
 		TLS:           cm.TLS,
 		AuthorizedKey: core.JSONBuffer(cm.AuthorizedKey),
+	}
+	if len(cm.Validation) > 0 {
+		val, err := jose.ParseSigned(string(cm.Validation))
+		if err != nil {
+			return core.Challenge{}, err
+		}
+		c.Validation = val
 	}
 	if len(cm.Error) > 0 {
 		var problem core.ProblemDetails

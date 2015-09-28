@@ -178,6 +178,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 //
 // Note: Current implementation is static, but future versions may not be.
 func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int, err error) {
+	//-----BEGIN TO DELETE-----
 	simpleHTTP, err := core.SimpleHTTPChallenge(accountKey)
 	if err != nil {
 		return
@@ -187,8 +188,19 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, acco
 	if err != nil {
 		return
 	}
+	//-----END TO DELETE-----
 
-	challenges = []core.Challenge{simpleHTTP, dvsni}
-	combinations = [][]int{[]int{0}, []int{1}}
+	http00, err := core.HTTPChallenge_00(accountKey)
+	if err != nil {
+		return
+	}
+
+	tlssni00, err := core.TLSSNIChallenge_00(accountKey)
+	if err != nil {
+		return
+	}
+
+	challenges = []core.Challenge{simpleHTTP, dvsni, http00, tlssni00} // TO UPDATE
+	combinations = [][]int{[]int{0}, []int{1}, []int{2}, []int{3}}     // TO UPDATE
 	return
 }

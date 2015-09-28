@@ -90,7 +90,9 @@ const (
 const (
 	ChallengeTypeSimpleHTTP = "simpleHttp"
 	ChallengeTypeDVSNI      = "dvsni"
-	ChallengeTypeDNS        = "dns"
+	ChallengeTypeHTTP_00    = "http-00"
+	ChallengeTypeTLSSNI_00  = "tls-sni-00"
+	ChallengeTypeDNS_00     = "dns-00"
 )
 
 // The suffix appended to pseudo-domain names in DVSNI challenges
@@ -235,13 +237,16 @@ type Challenge struct {
 	// A URI to which a response can be POSTed
 	URI string `json:"uri"`
 
-	// Used by simpleHttp, dvsni, and dns challenges
+	// Used by simpleHttp, http-00, tls-sni-00, and dns-00 challenges
 	Token string `json:"token,omitempty"`
 
-	// Used by simpleHTTP challenges
+	// Used by simpleHttp challenges
 	TLS *bool `json:"tls,omitempty"`
 
-	// Used by simpleHTTP, dns, and dvsni challenges
+	// Used by dvsni challenges
+	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
+
+	// Used by http-00, tls-sni-00, and dns-00 challenges
 	AuthorizedKey JSONBuffer `json:"authorizedKey,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
@@ -282,14 +287,18 @@ func (ch Challenge) RecordsSane() bool {
 	}
 
 	switch ch.Type {
-	case ChallengeTypeSimpleHTTP:
+	case ChallengeTypeSimpleHTTP: // TO DELETE
+		fallthrough // TO DELETE
+	case ChallengeTypeHTTP_00:
 		for _, rec := range ch.ValidationRecord {
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
 				len(rec.AddressesResolved) == 0 {
 				return false
 			}
 		}
-	case ChallengeTypeDVSNI:
+	case ChallengeTypeDVSNI: // TO DELETE
+		fallthrough // TO DELETE
+	case ChallengeTypeTLSSNI_00:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
@@ -300,16 +309,112 @@ func (ch Challenge) RecordsSane() bool {
 			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
-	case ChallengeTypeDNS:
+	case ChallengeTypeDNS_00:
 		// Nothing for now
 	}
 
 	return true
 }
 
+//----- BEGIN TO DELETE -----
+// IsLegacy returns true if the challenge is of a legacy type (i.e., one defined
+// before draft-ietf-acme-acme-00)
+func (ch Challenge) IsLegacy() bool {
+	return (ch.Type == ChallengeTypeSimpleHTTP) ||
+		(ch.Type == ChallengeTypeDVSNI)
+}
+
+// LegacyIsSane performs sanity checks for legacy challenge types, which have
+// a different structure / logic than current challenges.
+func (ch Challenge) LegacyIsSane(completed bool) bool {
+	if !ch.IsLegacy() {
+		return false
+	}
+
+	if ch.Status != StatusPending {
+		return false
+	}
+
+	if ch.AccountKey == nil {
+		return false
+	}
+
+	switch ch.Type {
+	case ChallengeTypeSimpleHTTP:
+		// check extra fields aren't used
+		if ch.Validation != nil {
+			return false
+		}
+
+		if completed && ch.TLS == nil {
+			return false
+		}
+
+		// check token is present, corrent length, and contains b64 encoded string
+		if ch.Token == "" || len(ch.Token) != 43 {
+			return false
+		}
+		if _, err := B64dec(ch.Token); err != nil {
+			return false
+		}
+	case ChallengeTypeDVSNI:
+		// check extra fields aren't used
+		if ch.TLS != nil {
+			return false
+		}
+
+		// check token is present, corrent length, and contains b64 encoded string
+		if ch.Token == "" || len(ch.Token) != 43 {
+			return false
+		}
+		if _, err := B64dec(ch.Token); err != nil {
+			return false
+		}
+
+		// If completed, check that there's a validation object
+		if completed && ch.Validation == nil {
+			return false
+		}
+	default:
+		return false
+	}
+
+	return true
+}
+
+// LegacyMergeResponse copies a subset of client-provided data to the current Challenge.
+// Note: This method does not update the challenge on the left side of the '.'
+func (ch Challenge) LegacyMergeResponse(resp Challenge) Challenge {
+	switch ch.Type {
+	case ChallengeTypeSimpleHTTP:
+		// For simpleHttp, only "tls" is client-provided
+		// If "tls" is not provided, default to "true"
+		if resp.TLS != nil {
+			ch.TLS = resp.TLS
+		} else {
+			ch.TLS = new(bool)
+			*ch.TLS = true
+		}
+
+	case ChallengeTypeDVSNI:
+		// For dvsni and dns, only "validation" is client-provided
+		if resp.Validation != nil {
+			ch.Validation = resp.Validation
+		}
+	}
+
+	return ch
+}
+
+//----- END TO DELETE -----
+
 // IsSane checks the sanity of a challenge object before issued to the client
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
+	if ch.IsLegacy() { // TO DELETE
+		return ch.LegacyIsSane(completed) // TO DELETE
+	} // TO DELETE
+
 	if ch.Status != StatusPending {
 		return false
 	}
@@ -347,51 +452,24 @@ func (ch Challenge) IsSane(completed bool) bool {
 		}
 	}
 
-	// TODO(rlb): Remove this whole switch once the TLS option is gone.
-	switch ch.Type {
-	case ChallengeTypeSimpleHTTP:
-		if completed && ch.TLS == nil {
-			return false
-		}
-
-	case ChallengeTypeDVSNI:
-		// Same as DNS
-		fallthrough
-	case ChallengeTypeDNS:
-		// check extra fields aren't used
-		if ch.TLS != nil {
-			return false
-		}
-
-	default:
-		return false
-	}
-
 	return true
 }
 
 // MergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
-	switch ch.Type {
-	case ChallengeTypeSimpleHTTP:
-		// For simpleHttp, only "tls" is client-provided
-		// If "tls" is not provided, default to "true"
-		if resp.TLS != nil {
-			ch.TLS = resp.TLS
-		} else {
-			ch.TLS = new(bool)
-			*ch.TLS = true
-		}
+	if ch.IsLegacy() { // TO DELETE
+		return ch.LegacyMergeResponse(resp) // TO DELETE
+	} // TO DELETE
 
-		// For dvsni and dns (as well as simpleHttp), the client echoes back
-		// the "token" value provided in the authorizedKey object.  The caller
-		// should use IsSane to verify that the "token" field in the challenge
-		// matches the corresponding field in the authorized key.
+	// The only client-provided field is the token, and all current challenge types
+	// use it.
+	switch ch.Type {
+	case ChallengeTypeHTTP_00:
 		fallthrough
-	case ChallengeTypeDVSNI:
+	case ChallengeTypeTLSSNI_00:
 		fallthrough
-	case ChallengeTypeDNS:
+	case ChallengeTypeDNS_00:
 		ch.Token = resp.Token
 	}
 

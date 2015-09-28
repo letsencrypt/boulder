@@ -29,9 +29,34 @@ func newChallenge(challengeType string, accountKey *jose.JsonWebKey) (Challenge,
 	}, nil
 }
 
+//----- BEGIN TO DELETE -----
 // SimpleHTTPChallenge constructs a random HTTP challenge
 func SimpleHTTPChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
-	chall, err := newChallenge(ChallengeTypeSimpleHTTP, accountKey)
+	tls := true
+	return Challenge{
+		Type:       ChallengeTypeSimpleHTTP,
+		Status:     StatusPending,
+		Token:      NewToken(),
+		TLS:        &tls,
+		AccountKey: accountKey,
+	}, nil
+}
+
+// DvsniChallenge constructs a random DVSNI challenge
+func DvsniChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
+	return Challenge{
+		Type:       ChallengeTypeDVSNI,
+		Status:     StatusPending,
+		Token:      NewToken(),
+		AccountKey: accountKey,
+	}, nil
+}
+
+//----- END TO DELETE -----
+
+// HTTPChallenge constructs a random http-00 challenge
+func HTTPChallenge_00(accountKey *jose.JsonWebKey) (Challenge, error) {
+	chall, err := newChallenge(ChallengeTypeHTTP_00, accountKey)
 	if err != nil {
 		return Challenge{}, err
 	}
@@ -41,12 +66,12 @@ func SimpleHTTPChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
 	return chall, nil
 }
 
-// DvsniChallenge constructs a random DVSNI challenge
-func DvsniChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
-	return newChallenge(ChallengeTypeDVSNI, accountKey)
+// DvsniChallenge constructs a random tls-sni-00 challenge
+func TLSSNIChallenge_00(accountKey *jose.JsonWebKey) (Challenge, error) {
+	return newChallenge(ChallengeTypeTLSSNI_00, accountKey)
 }
 
 // DNSChallenge constructs a random DNS challenge
-func DNSChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
-	return newChallenge(ChallengeTypeDNS, accountKey)
+func DNSChallenge_00(accountKey *jose.JsonWebKey) (Challenge, error) {
+	return newChallenge(ChallengeTypeDNS_00, accountKey)
 }

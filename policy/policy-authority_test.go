@@ -186,11 +186,18 @@ func TestChallengesFor(t *testing.T) {
 		t.Errorf("Error generating challenges: %v", err)
 	}
 
-	if len(challenges) != 2 || challenges[0].Type != core.ChallengeTypeSimpleHTTP ||
-		challenges[1].Type != core.ChallengeTypeDVSNI {
+	//-----BEGIN TO UPDATE-----
+	if len(challenges) != 4 ||
+		challenges[0].Type != core.ChallengeTypeSimpleHTTP ||
+		challenges[1].Type != core.ChallengeTypeDVSNI ||
+		challenges[2].Type != core.ChallengeTypeHTTP_00 ||
+		challenges[3].Type != core.ChallengeTypeTLSSNI_00 {
 		t.Error("Incorrect challenges returned")
 	}
-	if len(combinations) != 2 || combinations[0][0] != 0 || combinations[1][0] != 1 {
+	if len(combinations) != 4 ||
+		combinations[0][0] != 0 || combinations[1][0] != 1 ||
+		combinations[2][0] != 2 || combinations[3][0] != 3 {
 		t.Error("Incorrect combinations returned")
 	}
+	//-----END TO UPDATE-----
 }
