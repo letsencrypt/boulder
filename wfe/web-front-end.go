@@ -171,16 +171,14 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 		}
 		response.Header().Set("Access-Control-Allow-Origin", "*")
 
-		switch request.Method {
-		case "HEAD":
+		// Return a bodyless response to HEAD for any resource that allows GET.
+		if _, ok := methodsOK["GET"]; ok && request.Method == "HEAD" {
 			// We'll be sending an error anyway, but we
 			// should still comply with HTTP spec by not
 			// sending a body.
 			response = BodylessResponseWriter{response}
 			h(response, request)
 			return
-		case "OPTIONS":
-			// TODO, #469
 		}
 
 		if _, ok := methodsOK[request.Method]; !ok {
