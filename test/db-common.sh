@@ -6,8 +6,7 @@ function die() {
   exit 1
 }
 
-SERVICES="ca
-sa
+SERVICES="sa
 policy"
 DBENVS="development
 test
