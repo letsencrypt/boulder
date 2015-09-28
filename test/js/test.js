@@ -20,7 +20,6 @@ var cryptoUtil = require("./crypto-util");
 var child_process = require('child_process');
 var fs = require('fs');
 var http = require('http');
-var https = require('https');
 var inquirer = require("inquirer");
 var request = require('request');
 var url = require('url');
@@ -348,7 +347,7 @@ function getReadyToValidate(err, resp, body) {
 
   var authz = JSON.parse(body);
 
-  var httpChallenges = authz.challenges.filter(function(x) { return x.type == "simpleHttp"; });
+  var httpChallenges = authz.challenges.filter(function(x) { return x.type == "http-00"; });
   if (httpChallenges.length == 0) {
     console.log("The server didn't offer any challenges we can handle.");
     process.exit(1);
@@ -377,13 +376,12 @@ function getReadyToValidate(err, resp, body) {
       response.end("");
     }
   }
-  state.httpServer = https.createServer({
-    cert: fs.readFileSync("temp-cert.pem"),
-    key: fs.readFileSync(state.keyFile)
-  }, httpResponder)
+  state.httpServer = http.createServer(httpResponder)
   if (/localhost/.test(state.newRegistrationURL)) {
+    console.log("listening on port 5001");
     state.httpServer.listen(5001)
   } else {
+    console.log("listening on port 443");
     state.httpServer.listen(443)
   }
 

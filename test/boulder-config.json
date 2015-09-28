@@ -130,9 +130,9 @@
     "userAgent": "boulder",
     "debugAddr": "localhost:8004",
     "portConfig": {
-      "simpleHTTPPort": 5001,
-      "simpleHTTPSPort": 5001,
-      "dvsniPort": 5001
+      "httpPort": 5001,
+      "httpsPort": 5001,
+      "tlsPort": 5001
     }
   },
 

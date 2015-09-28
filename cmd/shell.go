@@ -42,6 +42,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/publisher"
+	"github.com/letsencrypt/boulder/va"
 )
 
 // Config stores configuration parameters that applications
@@ -106,11 +107,7 @@ type Config struct {
 	VA struct {
 		UserAgent string
 
-		PortConfig struct {
-			SimpleHTTPPort  int
-			SimpleHTTPSPort int
-			DVSNIPort       int
-		}
+		PortConfig va.PortConfig
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
