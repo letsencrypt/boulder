@@ -256,7 +256,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest,
 		`SELECT serial from issuedNames
 		 WHERE (reversedName = :reversedDomain OR
 			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
-		 AND Issued > :earliest AND Issued <= :latest
+		 AND issued > :earliest AND issued <= :latest
 		 LIMIT :limit;`,
 		map[string]interface{}{
 			"reversedDomain": core.ReverseName(domain),
