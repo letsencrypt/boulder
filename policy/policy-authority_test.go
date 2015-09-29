@@ -190,8 +190,8 @@ func TestChallengesFor(t *testing.T) {
 	if len(challenges) != 4 ||
 		challenges[0].Type != core.ChallengeTypeSimpleHTTP ||
 		challenges[1].Type != core.ChallengeTypeDVSNI ||
-		challenges[2].Type != core.ChallengeTypeHTTP_00 ||
-		challenges[3].Type != core.ChallengeTypeTLSSNI_00 {
+		challenges[2].Type != core.ChallengeTypeHTTP01 ||
+		challenges[3].Type != core.ChallengeTypeTLSSNI01 {
 		t.Error("Incorrect challenges returned")
 	}
 	if len(combinations) != 4 ||

@@ -347,7 +347,7 @@ function getReadyToValidate(err, resp, body) {
 
   var authz = JSON.parse(body);
 
-  var httpChallenges = authz.challenges.filter(function(x) { return x.type == "http-00"; });
+  var httpChallenges = authz.challenges.filter(function(x) { return x.type == "http-01"; });
   if (httpChallenges.length == 0) {
     console.log("The server didn't offer any challenges we can handle.");
     process.exit(1);

@@ -90,9 +90,9 @@ const (
 const (
 	ChallengeTypeSimpleHTTP = "simpleHttp"
 	ChallengeTypeDVSNI      = "dvsni"
-	ChallengeTypeHTTP_00    = "http-00"
-	ChallengeTypeTLSSNI_00  = "tls-sni-00"
-	ChallengeTypeDNS_00     = "dns-00"
+	ChallengeTypeHTTP01     = "http-01"
+	ChallengeTypeTLSSNI01   = "tls-sni-01"
+	ChallengeTypeDNS01      = "dns-01"
 )
 
 // The suffix appended to pseudo-domain names in DVSNI challenges
@@ -289,7 +289,7 @@ func (ch Challenge) RecordsSane() bool {
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP: // TO DELETE
 		fallthrough // TO DELETE
-	case ChallengeTypeHTTP_00:
+	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
 				len(rec.AddressesResolved) == 0 {
@@ -298,7 +298,7 @@ func (ch Challenge) RecordsSane() bool {
 		}
 	case ChallengeTypeDVSNI: // TO DELETE
 		fallthrough // TO DELETE
-	case ChallengeTypeTLSSNI_00:
+	case ChallengeTypeTLSSNI01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
@@ -309,7 +309,7 @@ func (ch Challenge) RecordsSane() bool {
 			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
-	case ChallengeTypeDNS_00:
+	case ChallengeTypeDNS01:
 		// Nothing for now
 	}
 
@@ -465,11 +465,11 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	// The only client-provided field is the token, and all current challenge types
 	// use it.
 	switch ch.Type {
-	case ChallengeTypeHTTP_00:
+	case ChallengeTypeHTTP01:
 		fallthrough
-	case ChallengeTypeTLSSNI_00:
+	case ChallengeTypeTLSSNI01:
 		fallthrough
-	case ChallengeTypeDNS_00:
+	case ChallengeTypeDNS01:
 		ch.Token = resp.Token
 	}
 

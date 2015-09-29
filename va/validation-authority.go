@@ -498,7 +498,7 @@ func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier,
 	return va.validateZName(identifier, challenge, ZName)
 }
 
-func (va *ValidationAuthorityImpl) validateHTTP_00(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
@@ -579,7 +579,7 @@ func (va *ValidationAuthorityImpl) validateHTTP_00(identifier core.AcmeIdentifie
 
 //-----END TO DELETE-----
 
-func (va *ValidationAuthorityImpl) validateTLSSNI_00(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va *ValidationAuthorityImpl) validateTLSSNI01(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != "dns" {
@@ -649,7 +649,7 @@ func parseHTTPConnError(err error) core.ProblemType {
 	return core.ConnectionProblem
 }
 
-func (va *ValidationAuthorityImpl) validateDNS_00(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
+func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
@@ -747,12 +747,12 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 		case core.ChallengeTypeDVSNI:
 			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
 		//-----END TO DELETE-----
-		case core.ChallengeTypeHTTP_00:
-			authz.Challenges[challengeIndex], err = va.validateHTTP_00(authz.Identifier, authz.Challenges[challengeIndex])
-		case core.ChallengeTypeTLSSNI_00:
-			authz.Challenges[challengeIndex], err = va.validateTLSSNI_00(authz.Identifier, authz.Challenges[challengeIndex])
-		case core.ChallengeTypeDNS_00:
-			authz.Challenges[challengeIndex], err = va.validateDNS_00(authz.Identifier, authz.Challenges[challengeIndex])
+		case core.ChallengeTypeHTTP01:
+			authz.Challenges[challengeIndex], err = va.validateHTTP01(authz.Identifier, authz.Challenges[challengeIndex])
+		case core.ChallengeTypeTLSSNI01:
+			authz.Challenges[challengeIndex], err = va.validateTLSSNI01(authz.Identifier, authz.Challenges[challengeIndex])
+		case core.ChallengeTypeDNS01:
+			authz.Challenges[challengeIndex], err = va.validateDNS01(authz.Identifier, authz.Challenges[challengeIndex])
 		}
 		va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", authz.Challenges[challengeIndex].Type, authz.Challenges[challengeIndex].Status), time.Since(vStart), 1.0)
 

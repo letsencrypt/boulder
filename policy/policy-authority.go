@@ -190,12 +190,12 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, acco
 	}
 	//-----END TO DELETE-----
 
-	http00, err := core.HTTPChallenge_00(accountKey)
+	http00, err := core.HTTPChallenge01(accountKey)
 	if err != nil {
 		return
 	}
 
-	tlssni00, err := core.TLSSNIChallenge_00(accountKey)
+	tlssni00, err := core.TLSSNIChallenge01(accountKey)
 	if err != nil {
 		return
 	}

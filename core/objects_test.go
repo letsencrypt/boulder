@@ -173,7 +173,7 @@ func TestChallengeSanityCheck(t *testing.T) {
 	jsonAK, err := json.Marshal(ak)
 	test.AssertNotError(t, err, "Error marshaling authorized key")
 
-	types := []string{ChallengeTypeHTTP_00, ChallengeTypeTLSSNI_00, ChallengeTypeDNS_00}
+	types := []string{ChallengeTypeHTTP01, ChallengeTypeTLSSNI01, ChallengeTypeDNS01}
 	for _, challengeType := range types {
 		chall := Challenge{
 			Type:       challengeType,
