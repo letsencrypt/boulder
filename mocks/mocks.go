@@ -212,14 +212,14 @@ func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
 // GetCertificate is a mock
 func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 	// Serial ee == 238.crt
-	if serial == "000000000000000000000000000000ee" {
+	if serial == "0000000000000000000000000000000000ee" {
 		certPemBytes, _ := ioutil.ReadFile("test/238.crt")
 		certBlock, _ := pem.Decode(certPemBytes)
 		return core.Certificate{
 			RegistrationID: 1,
 			DER:            certBlock.Bytes,
 		}, nil
-	} else if serial == "000000000000000000000000000000b2" {
+	} else if serial == "0000000000000000000000000000000000b2" {
 		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 		certBlock, _ := pem.Decode(certPemBytes)
 		return core.Certificate{
@@ -231,19 +231,14 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 	}
 }
 
-// GetCertificateByShortSerial is a mock
-func (sa *MockSA) GetCertificateByShortSerial(serial string) (core.Certificate, error) {
-	return sa.GetCertificate("0000000000000000" + serial)
-}
-
 // GetCertificateStatus is a mock
 func (sa *MockSA) GetCertificateStatus(serial string) (core.CertificateStatus, error) {
 	// Serial ee == 238.crt
-	if serial == "000000000000000000000000000000ee" {
+	if serial == "0000000000000000000000000000000000ee" {
 		return core.CertificateStatus{
 			Status: core.OCSPStatusGood,
 		}, nil
-	} else if serial == "000000000000000000000000000000b2" {
+	} else if serial == "0000000000000000000000000000000000b2" {
 		return core.CertificateStatus{
 			Status: core.OCSPStatusRevoked,
 		}, nil
@@ -297,6 +292,19 @@ func (sa *MockSA) UpdateRegistration(reg core.Registration) (err error) {
 	return
 }
 
+// GetSCTReceipt  is a mock
+func (sa *MockSA) GetSCTReceipt(serial string, logID string) (sct core.SignedCertificateTimestamp, err error) {
+	return
+}
+
+// AddSCTReceipt is a mock
+func (sa *MockSA) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error) {
+	if sct.Signature == nil {
+		err = fmt.Errorf("Bad times")
+	}
+	return
+}
+
 // GetLatestValidAuthorization is a mock
 func (sa *MockSA) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	if registrationId == 1 && identifier.Type == "dns" {
@@ -306,4 +314,14 @@ func (sa *MockSA) GetLatestValidAuthorization(registrationId int64, identifier c
 		}
 	}
 	return core.Authorization{}, errors.New("no authz")
+}
+
+// MockPublisher is a mock
+type MockPublisher struct {
+	// empty
+}
+
+// SubmitToCT is a mock
+func (*MockPublisher) SubmitToCT([]byte) error {
+	return nil
 }

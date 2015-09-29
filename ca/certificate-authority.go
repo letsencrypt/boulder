@@ -7,7 +7,9 @@ package ca
 
 import (
 	"crypto"
+	"crypto/rand"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -52,7 +54,7 @@ type CertificateAuthorityImpl struct {
 	OCSPSigner     ocsp.Signer
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
-	DB             core.CertificateAuthorityDatabase
+	Publisher      core.Publisher
 	Clk            clock.Clock // TODO(jmhodges): should be private, like log
 	log            *blog.AuditLogger
 	Prefix         int // Prepended to the serial number
@@ -67,7 +69,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config cmd.CAConfig, clk clock.Clock, issuerCert string) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, issuerCert string) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -95,7 +97,7 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		return nil, err
 	}
 
-	issuer, err := loadIssuer(issuerCert)
+	issuer, err := core.LoadCert(issuerCert)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +126,6 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		Signer:     signer,
 		OCSPSigner: ocspSigner,
 		profile:    config.Profile,
-		DB:         cadb,
 		Prefix:     config.SerialPrefix,
 		Clk:        clk,
 		log:        logger,
@@ -160,26 +161,12 @@ func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
 	if pkcs11Config.Module == "" ||
 		pkcs11Config.TokenLabel == "" ||
 		pkcs11Config.PIN == "" ||
-		pkcs11Config.PrivateKeyLabel == "" ||
-		pkcs11Config.SlotID == nil {
+		pkcs11Config.PrivateKeyLabel == "" {
 		err = fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
 		return
 	}
 	priv, err = pkcs11key.New(pkcs11Config.Module,
-		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel, *pkcs11Config.SlotID)
-	return
-}
-
-func loadIssuer(filename string) (issuerCert *x509.Certificate, err error) {
-	if filename == "" {
-		err = errors.New("Issuer certificate was not provided in config.")
-		return
-	}
-	issuerCertPEM, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return
-	}
-	issuerCert, err = helpers.ParseCertificatePEM(issuerCertPEM)
+		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel)
 	return
 }
 
@@ -241,19 +228,19 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	var err error
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
-		err = fmt.Errorf("Invalid public key in CSR.")
+		err = core.MalformedRequestError("Invalid public key in CSR.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
 	if err = core.GoodKey(key); err != nil {
-		err = fmt.Errorf("Invalid public key in CSR: %s", err.Error())
+		err = core.MalformedRequestError(fmt.Sprintf("Invalid public key in CSR: %s", err.Error()))
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
 	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
-		err = fmt.Errorf("Invalid signature algorithm in CSR")
+		err = core.MalformedRequestError("Invalid signature algorithm in CSR")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
@@ -270,7 +257,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	} else if len(hostNames) > 0 {
 		commonName = hostNames[0]
 	} else {
-		err = fmt.Errorf("Cannot issue a certificate without a hostname.")
+		err = core.MalformedRequestError("Cannot issue a certificate without a hostname.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
@@ -279,7 +266,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// Collapse any duplicate names.  Note that this operation may re-order the names
 	hostNames = core.UniqueNames(hostNames)
 	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
-		err = fmt.Errorf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames)
+		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
@@ -287,7 +274,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// Verify that names are allowed by policy
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
 	if err = ca.PA.WillingToIssue(identifier); err != nil {
-		err = fmt.Errorf("Policy forbids issuing for name %s", commonName)
+		err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", commonName))
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
@@ -295,7 +282,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	for _, name := range hostNames {
 		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier); err != nil {
-			err = fmt.Errorf("Policy forbids issuing for name %s", name)
+			err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", name))
 			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 			ca.log.AuditErr(err)
 			return emptyCert, err
@@ -305,8 +292,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	notAfter := ca.Clk.Now().Add(ca.ValidityPeriod)
 
 	if ca.NotAfter.Before(notAfter) {
+		err = core.InternalServerError("Cannot issue a certificate that expires after the intermediate certificate.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		err = errors.New("Cannot issue a certificate that expires after the intermediate certificate.")
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
@@ -317,22 +304,22 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Bytes: csr.Raw,
 	}))
 
-	// Get the next serial number
-	tx, err := ca.DB.Begin()
+	// Hack: CFSSL always sticks a 64-bit random number at the end of the
+	// serialSeq we provide, but we want 136 bits of random number, plus an 8-bit
+	// instance id prefix. For now, we generate the extra 72 bits of randomness
+	// ourselves. We should modify CFSSL to just allow the caller to provide a
+	// own full serial number if it wants, and do all the generation logic
+	// ourselves.
+	const randBits = 72
+	randSlice := make([]byte, randBits/8)
+	_, err = rand.Reader.Read(randSlice)
 	if err != nil {
+		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.AuditErr(err)
+		ca.log.Audit(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		return emptyCert, err
 	}
-
-	serialDec, err := ca.DB.IncrementAndGetSerial(tx)
-	if err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("Serial increment failed, rolling back: err=[%v]", err))
-		tx.Rollback()
-		return emptyCert, err
-	}
-	serialHex := fmt.Sprintf("%02X%014X", ca.Prefix, serialDec)
+	serialHex := hex.EncodeToString([]byte{byte(ca.Prefix)}) + hex.EncodeToString(randSlice)
 
 	// Send the cert off for signing
 	req := signer.SignRequest{
@@ -347,27 +334,24 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	certPEM, err := ca.Signer.Sign(req)
 	if err != nil {
+		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Signer failed, rolling back: serial=[%s] err=[%v]", serialHex, err))
-		tx.Rollback()
 		return emptyCert, err
 	}
 
 	if len(certPEM) == 0 {
-		err = fmt.Errorf("No certificate returned by server")
+		err = core.InternalServerError("No certificate returned by server")
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("PEM empty from Signer, rolling back: serial=[%s] err=[%v]", serialHex, err))
-		tx.Rollback()
 		return emptyCert, err
 	}
 
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
-		err = fmt.Errorf("Invalid certificate value returned")
-
+		err = core.InternalServerError("Invalid certificate value returned")
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("PEM decode error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
-		tx.Rollback()
 		return emptyCert, err
 	}
 	certDER := block.Bytes
@@ -378,31 +362,24 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	// This is one last check for uncaught errors
 	if err != nil {
+		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Uncaught error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
-		tx.Rollback()
 		return emptyCert, err
 	}
 
 	// Store the cert with the certificate authority, if provided
 	_, err = ca.SA.AddCertificate(certDER, regID)
 	if err != nil {
+		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Failed RPC to store at SA, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
-		tx.Rollback()
-		return emptyCert, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("Failed to commit, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
 		return emptyCert, err
 	}
 
 	// Attempt to generate the OCSP Response now. If this raises an error, it is
 	// logged but is not returned to the caller, as an error at this point does
 	// not constitute an issuance failure.
-
 	certObj, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed parsing Certificate: %s", err))
@@ -410,7 +387,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	serial := core.SerialToString(certObj.SerialNumber)
-
 	signRequest := ocsp.SignRequest{
 		Certificate: certObj,
 		Status:      string(core.OCSPStatusGood),
@@ -427,6 +403,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed storing: %s", err))
 		return cert, nil
 	}
+
+	// Submit the certificate to any configured CT logs
+	go ca.Publisher.SubmitToCT(certObj.Raw)
 
 	// Do not return an err at this point; caller must know that the Certificate
 	// was issued. (Also, it should be impossible for err to be non-nil here)

@@ -237,25 +237,10 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	return ssa.GetAuthorization(auth.ID)
 }
 
-// GetCertificateByShortSerial takes an id consisting of the first, sequential half of a
-// serial number and returns the first certificate whose full serial number is
-// lexically greater than that id. This allows clients to query on the known
-// sequential half of our serial numbers to enumerate all certificates.
-func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert core.Certificate, err error) {
-	if len(shortSerial) != 16 {
-		err = errors.New("Invalid certificate short serial " + shortSerial)
-		return
-	}
-
-	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE serial LIKE :shortSerial",
-		map[string]interface{}{"shortSerial": shortSerial + "%"})
-	return
-}
-
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
 func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate, error) {
-	if len(serial) != 32 {
+	if !core.ValidSerial(serial) {
 		err := fmt.Errorf("Invalid certificate serial %s", serial)
 		return core.Certificate{}, err
 	}
@@ -281,9 +266,9 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate,
 // number of a certificate and returns data about that certificate's current
 // validity.
 func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core.CertificateStatus, err error) {
-	if len(serial) != 32 {
-		err = errors.New("Invalid certificate serial " + serial)
-		return
+	if !core.ValidSerial(serial) {
+		err := fmt.Errorf("Invalid certificate serial %s", serial)
+		return core.CertificateStatus{}, err
 	}
 
 	certificateStats, err := ssa.dbMap.Get(core.CertificateStatus{}, serial)
@@ -635,4 +620,47 @@ func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, 
 	}
 
 	return
+}
+
+// ErrNoReceipt is a error type for non-existent SCT receipt
+type ErrNoReceipt string
+
+func (e ErrNoReceipt) Error() string {
+	return string(e)
+}
+
+// GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
+// CT log ID
+func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
+	err = ssa.dbMap.SelectOne(
+		&receipt,
+		"SELECT * FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID",
+		map[string]interface{}{
+			"serial": serial,
+			"logID":  logID,
+		},
+	)
+
+	if err == sql.ErrNoRows {
+		err = ErrNoReceipt(err.Error())
+		return
+	}
+
+	return
+}
+
+// ErrDuplicateReceipt is a error type for duplicate SCT receipts
+type ErrDuplicateReceipt string
+
+func (e ErrDuplicateReceipt) Error() string {
+	return string(e)
+}
+
+// AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table
+func (ssa *SQLStorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) error {
+	err := ssa.dbMap.Insert(&sct)
+	if err != nil && strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
+		err = ErrDuplicateReceipt(err.Error())
+	}
+	return err
 }

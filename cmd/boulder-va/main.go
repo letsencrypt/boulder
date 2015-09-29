@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -50,7 +51,7 @@ func main() {
 		if c.VA.PortConfig.DVSNIPort != 0 {
 			pc.DVSNIPort = c.VA.PortConfig.DVSNIPort
 		}
-		vai := va.NewValidationAuthorityImpl(pc)
+		vai := va.NewValidationAuthorityImpl(pc, stats, clock.Default())
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		if !c.Common.DNSAllowLoopbackAddresses {
@@ -61,7 +62,7 @@ func main() {
 		vai.UserAgent = c.VA.UserAgent
 
 		connectionHandler := func(srv *rpc.AmqpRPCServer) {
-			raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, srv.Channel)
+			raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, srv.Channel, stats)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
 			rac, err := rpc.NewRegistrationAuthorityClient(raRPC)

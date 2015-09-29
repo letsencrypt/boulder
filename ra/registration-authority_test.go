@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
@@ -127,7 +128,6 @@ var (
 
 const (
 	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
-	caDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_ca_test"
 	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 )
 
@@ -186,20 +186,18 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	policyDBCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
 	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
 	test.AssertNotError(t, err, "Couldn't create PA")
-	cadb, caDBCleanUp := caDBImpl(t)
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
 		OCSPSigner:     ocspSigner,
 		SA:             ssa,
 		PA:             pa,
-		DB:             cadb,
+		Publisher:      &mocks.MockPublisher{},
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
 		Clk:            fc,
 	}
 	cleanUp := func() {
 		saDBCleanUp()
-		caDBCleanUp()
 		policyDBCleanUp()
 	}
 
@@ -208,7 +206,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	Registration, _ = ssa.NewRegistration(core.Registration{Key: AccountKeyA})
 
-	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger())
+	stats, _ := statsd.NewNoopClient()
+	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = &ca
@@ -226,27 +225,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	return va, ssa, &ra, fc, cleanUp
 }
 
-// This is an unfortunate bit of tech debt that is being taken on in
-// order to get the more important change of using MySQL/MariaDB in
-// all of our tests working without SQLite. We already had issues with
-// the RA here getting a real CertificateAuthority instead of a
-// CertificateAuthorityClient, so this is only marginally worse.
-// TODO(Issue #628): use a CAClient fake instead of a CAImpl instance
-func caDBImpl(t *testing.T) (core.CertificateAuthorityDatabase, func()) {
-	dbMap, err := sa.NewDbMap(caDBConnStr)
-	if err != nil {
-		t.Fatalf("Could not construct dbMap: %s", err)
-	}
-
-	cadb, err := ca.NewCertificateAuthorityDatabaseImpl(dbMap)
-	if err != nil {
-		t.Fatalf("Could not construct CA DB: %s", err)
-	}
-
-	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
-	return cadb, cleanUp
-}
-
 func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	test.Assert(t, a1.ID == a2.ID, "ret != DB: ID")
 	test.Assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
@@ -255,7 +233,7 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	if a1.Expires == nil && a2.Expires == nil {
 		return
 	} else if a1.Expires == nil || a2.Expires == nil {
-		t.Errorf("one and only one of authorization's Expires was nil; ret %s, DB %s", a1, a2)
+		t.Errorf("one and only one of authorization's Expires was nil; ret %v, DB %v", a1, a2)
 	} else {
 		test.Assert(t, a1.Expires.Equal(*a2.Expires), "ret != DB: Expires")
 	}
@@ -270,38 +248,40 @@ func TestValidateContacts(t *testing.T) {
 	invalidEmail, _ := core.ParseAcmeURL("mailto:admin@example.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	err := validateContacts([]*core.AcmeURL{}, &mocks.MockDNS{})
+	nStats, _ := statsd.NewNoopClient()
+
+	err := validateContacts([]*core.AcmeURL{}, &mocks.MockDNS{}, nStats)
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = validateContacts([]*core.AcmeURL{tel}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{tel}, &mocks.MockDNS{}, nStats)
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.MockDNS{}, nStats)
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.MockDNS{}, nStats)
 	test.AssertError(t, err, "Invalid Email")
 
-	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.MockDNS{}, nStats)
 	test.AssertError(t, err, "Malformed Email")
 
-	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.MockDNS{})
+	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.MockDNS{}, nStats)
 	test.AssertError(t, err, "Unknown scehme")
 }
 
 func TestValidateEmail(t *testing.T) {
-	err := validateEmail("an email`", &mocks.MockDNS{})
+	_, err := validateEmail("an email`", &mocks.MockDNS{})
 	test.AssertError(t, err, "Malformed")
 
-	err = validateEmail("a@not.a.domain", &mocks.MockDNS{})
+	_, err = validateEmail("a@not.a.domain", &mocks.MockDNS{})
 	test.AssertError(t, err, "Cannot resolve")
 	t.Logf("No Resolve: %s", err)
 
-	err = validateEmail("a@example.com", &mocks.MockDNS{})
+	_, err = validateEmail("a@example.com", &mocks.MockDNS{})
 	test.AssertError(t, err, "No MX Record")
 	t.Logf("No MX: %s", err)
 
-	err = validateEmail("a@email.com", &mocks.MockDNS{})
+	_, err = validateEmail("a@email.com", &mocks.MockDNS{})
 	test.AssertNotError(t, err, "Valid")
 }
 

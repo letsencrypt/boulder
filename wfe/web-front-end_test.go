@@ -198,7 +198,8 @@ func signRequest(t *testing.T, req string, nonceService *core.NonceService) stri
 }
 
 func setupWFE(t *testing.T) WebFrontEndImpl {
-	wfe, err := NewWebFrontEndImpl()
+	stats, _ := statsd.NewNoopClient()
+	wfe, err := NewWebFrontEndImpl(stats)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.NewReg = wfe.BaseURL + NewRegPath
@@ -213,7 +214,7 @@ func setupWFE(t *testing.T) WebFrontEndImpl {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 
 	return wfe
@@ -529,13 +530,13 @@ func TestIssueCertificate(t *testing.T) {
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
-	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log)
+	stats, _ := statsd.NewNoopClient(nil)
+	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log, stats)
 	ra.SA = &mocks.MockSA{}
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}
 	wfe.SA = &mocks.MockSA{}
 	wfe.RA = &ra
-	wfe.Stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -635,7 +636,7 @@ func TestIssueCertificate(t *testing.T) {
 		string(cert.Raw))
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"/acme/cert/ff0000000000000e")
+		"/acme/cert/0000ff0000000000000e4b4f67d86e818c46")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
 		`</acme/issuer-cert>;rel="up"`)
@@ -690,7 +691,7 @@ func TestNewRegistration(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 
 	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
@@ -962,7 +963,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
 	responseWriter.Body.Reset()
@@ -983,7 +984,7 @@ func TestAuthorization(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -1071,7 +1072,7 @@ func TestRegistration(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
 
@@ -1162,7 +1163,7 @@ func TestTermsRedirect(t *testing.T) {
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = &mocks.MockSA{}
-	wfe.Stats, _ = statsd.NewNoopClient()
+	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 
 	responseWriter := httptest.NewRecorder()
@@ -1204,8 +1205,8 @@ func TestGetCertificate(t *testing.T) {
 
 	responseWriter := httptest.NewRecorder()
 
-	// Valid short serial, cached
-	path, _ := url.Parse("/acme/cert/00000000000000b2")
+	// Valid serial, cached
+	path, _ := url.Parse("/acme/cert/0000000000000000000000000000000000b2")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
@@ -1215,9 +1216,9 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
 
-	// Unused short serial, no cache
+	// Unused serial, no cache
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/00000000000000ff")
+	path, _ = url.Parse("/acme/cert/0000000000000000000000000000000000ff")
 	wfe.Certificate(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    path,
@@ -1226,7 +1227,7 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
 
-	// Invalid short serial, no cache
+	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
 	path, _ = url.Parse("/acme/cert/nothex")
 	wfe.Certificate(responseWriter, &http.Request{
@@ -1237,7 +1238,7 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
 
-	// Invalid short serial, no cache
+	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
 	path, _ = url.Parse("/acme/cert/00000000000000")
 	wfe.Certificate(responseWriter, &http.Request{

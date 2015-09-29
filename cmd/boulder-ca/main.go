@@ -33,30 +33,31 @@ func main() {
 
 		go cmd.DebugServer(c.CA.DebugAddr)
 
-		dbMap, err := sa.NewDbMap(c.CA.DBConnect)
-		cmd.FailOnError(err, "Couldn't connect to CA database")
-
-		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(dbMap)
-		cmd.FailOnError(err, "Failed to create CA database")
-
 		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
 		cmd.FailOnError(err, "Couldn't connect to policy database")
 		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, clock.Default(), c.Common.IssuerCert)
+		cai, err := ca.NewCertificateAuthorityImpl(c.CA, clock.Default(), c.Common.IssuerCert)
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.PA = pa
 
 		go cmd.ProfileCmd("CA", stats)
 
 		connectionHandler := func(srv *rpc.AmqpRPCServer) {
-			saRPC, err := rpc.NewAmqpRPCClient("CA->SA", c.AMQP.SA.Server, srv.Channel)
+			saRPC, err := rpc.NewAmqpRPCClient("CA->SA", c.AMQP.SA.Server, srv.Channel, stats)
 			cmd.FailOnError(err, "Unable to create RPC client")
 
 			sac, err := rpc.NewStorageAuthorityClient(saRPC)
 			cmd.FailOnError(err, "Failed to create SA client")
 
+			pubRPC, err := rpc.NewAmqpRPCClient("CA->Publisher", c.AMQP.Publisher.Server, srv.Channel, stats)
+			cmd.FailOnError(err, "Unable to create RPC client")
+
+			pubc, err := rpc.NewPublisherClient(pubRPC)
+			cmd.FailOnError(err, "Failed to create Publisher client")
+
+			cai.Publisher = &pubc
 			cai.SA = &sac
 		}
 
