@@ -887,6 +887,17 @@ func TestTLSSNI(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 }
 
+func brokenTLSSrv() *httptest.Server {
+	server := httptest.NewUnstartedServer(http.DefaultServeMux)
+	server.TLS = &tls.Config{
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return nil, fmt.Errorf("Failing on purpose")
+		},
+	}
+	server.StartTLS()
+	return server
+}
+
 func TestTLSError(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 	hs := brokenTLSSrv()
