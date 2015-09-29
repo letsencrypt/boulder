@@ -5,6 +5,11 @@ if type realpath >/dev/null 2>&1 ; then
   cd $(realpath $(dirname $0))
 fi
 
+# The list of segments to run. To run only some of these segments, pre-set the
+# RUN variable with the ones you want (see .travis.yml for an example).
+# Order doesn't matter.
+RUN=${RUN:-vet lint fmt migrations unit integration}
+
 FAILURE=0
 
 TESTPATHS=$(go list -f '{{ .ImportPath }}' ./...)
@@ -19,7 +24,7 @@ if [ "x${TRAVIS_PULL_REQUEST}" != "x" ] ; then
   TRIGGER_COMMIT=${revs##* }
 fi
 
-GITHUB_SECRET_FILE="$(pwd)/test/github-secret.json"
+GITHUB_SECRET_FILE="/tmp/github-secret.json"
 
 start_context() {
   CONTEXT="$1"
@@ -139,116 +144,116 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 #
 # Run Go Vet, a correctness-focused static analysis tool
 #
-
-start_context "test/vet"
-run_and_comment go vet ./...
-end_context #test/vet
+if [[ "$RUN" =~ "vet" ]] ; then
+  start_context "test/vet"
+  run_and_comment go vet ./...
+  end_context #test/vet
+fi
 
 #
 # Run Go Lint, a style-focused static analysis tool
 #
-
-start_context "test/golint"
-[ -x "$(which golint)" ] && run golint ./...
-end_context #test/golint
+if [[ "$RUN" =~ "lint" ]] ; then
+  start_context "test/golint"
+  [ -x "$(which golint)" ] && run golint ./...
+  end_context #test/golint
+fi
 
 #
 # Ensure all files are formatted per the `go fmt` tool
 #
-start_context "test/gofmt"
-check_gofmt() {
-  unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1 gofmt -l)
-  if [ "x${unformatted}" == "x" ] ; then
-    return 0
-  else
-    V="Unformatted files found.
-    Please run 'go fmt' on each of these files and amend your commit to continue."
+if [[ "$RUN" =~ "fmt" ]] ; then
+  start_context "test/gofmt"
+  check_gofmt() {
+    unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1 gofmt -l)
+    if [ "x${unformatted}" == "x" ] ; then
+      return 0
+    else
+      V="Unformatted files found.
+      Please run 'go fmt' on each of these files and amend your commit to continue."
 
-    for f in ${unformatted}; do
-      V=$(printf "%s\n - %s" "${V}" "${f}")
-    done
+      for f in ${unformatted}; do
+        V=$(printf "%s\n - %s" "${V}" "${f}")
+      done
 
-    # Print to stdout
-    printf "%s\n\n" "${V}"
-    [ "${TRAVIS}" == "true" ] || exit 1 # Stop here if running locally
-    return 1
-  fi
-}
+      # Print to stdout
+      printf "%s\n\n" "${V}"
+      [ "${TRAVIS}" == "true" ] || exit 1 # Stop here if running locally
+      return 1
+    fi
+  }
 
-run_and_comment check_gofmt
-end_context #test/gofmt
+  run_and_comment check_gofmt
+  end_context #test/gofmt
+fi
 
-start_context "test/migrations"
-run_and_comment ./test/test-no-outdated-migrations.sh
-end_context "test/migrations"
+if [[ "$RUN" =~ "migrations" ]] ; then
+  start_context "test/migrations"
+  run_and_comment ./test/test-no-outdated-migrations.sh
+  end_context "test/migrations"
+fi
 
-if [ "${TRAVIS}" == "true" ]; then
+#
+# Prepare the database for unittests and integration tests
+#
+if [[ "${TRAVIS}" == "true" ]] ; then
   ./test/create_db.sh || die "unable to create the boulder database with test/create_db.sh"
 fi
 
 #
-# Unit Tests. These do not receive a context or status updates,
-# as they are reflected in our eventual exit code.
+# Unit Tests.
 #
-
-if  [ "${SKIP_UNIT_TESTS}" == "1" ]; then
-  echo "Skipping unit tests."
-else
+if [[ "$RUN" =~ "unit" ]] ; then
   run_unit_tests
-fi
-
-# If the unittests failed, exit before trying to run the integration test.
-if [ ${FAILURE} != 0 ]; then
-  echo "--------------------------------------------------"
-  echo "---        A unit test or tool failed.         ---"
-  echo "--- Stopping before running integration tests. ---"
-  echo "--------------------------------------------------"
-  exit ${FAILURE}
-fi
-
-if [ "${SKIP_INTEGRATION_TESTS}" = "1" ]; then
-  echo "Skipping integration tests."
-  exit ${FAILURE}
+  # If the unittests failed, exit before trying to run the integration test.
+  if [ ${FAILURE} != 0 ]; then
+    echo "--------------------------------------------------"
+    echo "---        A unit test or tool failed.         ---"
+    echo "--- Stopping before running integration tests. ---"
+    echo "--------------------------------------------------"
+    exit ${FAILURE}
+  fi
 fi
 
 #
 # Integration tests
 #
+if [[ "$RUN" =~ "integration" ]] ; then
+  # Set context to integration, and force a pending state
+  start_context "test/integration"
+  update_status --state pending --description "Integration Tests in progress"
 
-# Set context to integration, and force a pending state
-start_context "test/integration"
-update_status --state pending --description "Integration Tests in progress"
+  if [ -z "$LETSENCRYPT_PATH" ]; then
+    export LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
+    echo "------------------------------------------------"
+    echo "--- Checking out letsencrypt client is slow. ---"
+    echo "--- Recommend setting \$LETSENCRYPT_PATH to  ---"
+    echo "--- client repo with initialized virtualenv  ---"
+    echo "------------------------------------------------"
+    build_letsencrypt
+  elif [ ! -d "${LETSENCRYPT_PATH}" ]; then
+    build_letsencrypt
+  fi
 
-if [ -z "$LETSENCRYPT_PATH" ]; then
-  export LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
-  echo "------------------------------------------------"
-  echo "--- Checking out letsencrypt client is slow. ---"
-  echo "--- Recommend setting \$LETSENCRYPT_PATH to  ---"
-  echo "--- client repo with initialized virtualenv  ---"
-  echo "------------------------------------------------"
-  build_letsencrypt
-elif [ ! -d "${LETSENCRYPT_PATH}" ]; then
-  build_letsencrypt
+  python test/amqp-integration-test.py
+  case $? in
+    0) # Success
+      update_status --state success
+      ;;
+    1) # Python client failed
+      update_status --state success --description "Python integration failed."
+      FAILURE=1
+      ;;
+    2) # Node client failed
+      update_status --state failure --description "NodeJS integration failed."
+      FAILURE=1
+      ;;
+    *) # Error occurred
+      update_status --state error --description "Unknown error occurred."
+      FAILURE=1
+      ;;
+  esac
+  end_context #test/integration
 fi
-
-python test/amqp-integration-test.py
-case $? in
-  0) # Success
-    update_status --state success
-    ;;
-  1) # Python client failed
-    update_status --state success --description "Python integration failed."
-    FAILURE=1
-    ;;
-  2) # Node client failed
-    update_status --state failure --description "NodeJS integration failed."
-    FAILURE=1
-    ;;
-  *) # Error occurred
-    update_status --state error --description "Unknown error occurred."
-    FAILURE=1
-    ;;
-esac
-end_context #test/integration
 
 exit ${FAILURE}
