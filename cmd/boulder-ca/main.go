@@ -33,18 +33,12 @@ func main() {
 
 		go cmd.DebugServer(c.CA.DebugAddr)
 
-		dbMap, err := sa.NewDbMap(c.CA.DBConnect)
-		cmd.FailOnError(err, "Couldn't connect to CA database")
-
-		cadb, err := ca.NewCertificateAuthorityDatabaseImpl(dbMap)
-		cmd.FailOnError(err, "Failed to create CA database")
-
 		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
 		cmd.FailOnError(err, "Couldn't connect to policy database")
 		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		cai, err := ca.NewCertificateAuthorityImpl(cadb, c.CA, clock.Default(), c.Common.IssuerCert)
+		cai, err := ca.NewCertificateAuthorityImpl(c.CA, clock.Default(), c.Common.IssuerCert)
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.PA = pa
 

@@ -10,47 +10,70 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"sync/atomic"
 )
 
 type ctSubmissionRequest struct {
 	Chain []string `json:"chain"`
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" || r.URL.Path != "/ct/v1/add-chain" {
+type integrationSrv struct {
+	submissions int64
+}
+
+func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Path {
+	case "/ct/v1/add-chain":
+		if r.Method != "POST" {
+			http.NotFound(w, r)
+			return
+		}
+		bodyBytes, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
+		var addChainReq ctSubmissionRequest
+		err = json.Unmarshal(bodyBytes, &addChainReq)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		// id is a sha256 of a random EC key. Generate your own with:
+		// openssl ecparam -name prime256v1 -genkey -outform der | openssl sha256 -binary | base64
+		w.Write([]byte(`{
+			"sct_version": 0,
+			"id": "8fjM8cvLPOhzCFwI62IYJhjkOcvWFLx1dMJbs0uhxJU=",
+			"timestamp": 1442400000,
+			"extensions": "",
+			"signature": "BAMARzBFAiBB5wKED8KqKhADT37n0y28fZIPiGbCfZRVKq0wNo0hrwIhAOIa2tPBF/rB1y30Y/ROh4LBmJ0mItAbTWy8XZKh7Wcp"
+		}`))
+		atomic.AddInt64(&is.submissions, 1)
+	case "/submissions":
+		if r.Method != "GET" {
+			http.NotFound(w, r)
+			return
+		}
+
+		submissions := atomic.LoadInt64(&is.submissions)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(fmt.Sprintf("%d", submissions)))
+	default:
 		http.NotFound(w, r)
 		return
 	}
-	bodyBytes, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	}
-
-	var addChainReq ctSubmissionRequest
-	err = json.Unmarshal(bodyBytes, &addChainReq)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	}
-
-	w.WriteHeader(http.StatusOK)
-	// id is a sha256 of a random EC key. Generate your own with:
-	// openssl ecparam -name prime256v1 -genkey -outform der | openssl sha256 -binary | base64
-	w.Write([]byte(`{
-		"sct_version": 0,
-		"id": "8fjM8cvLPOhzCFwI62IYJhjkOcvWFLx1dMJbs0uhxJU=",
-		"timestamp": 1442400000,
-		"extensions": "",
-		"signature": "BAMARzBFAiBB5wKED8KqKhADT37n0y28fZIPiGbCfZRVKq0wNo0hrwIhAOIa2tPBF/rB1y30Y/ROh4LBmJ0mItAbTWy8XZKh7Wcp"
-	}`))
 }
 
 func main() {
+	is := integrationSrv{}
 	s := &http.Server{
-		Addr:    ":4500",
-		Handler: http.HandlerFunc(handler),
+		Addr:    "localhost:4500",
+		Handler: http.HandlerFunc(is.handler),
 	}
 	log.Fatal(s.ListenAndServe())
 }

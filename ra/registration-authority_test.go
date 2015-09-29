@@ -128,7 +128,6 @@ var (
 
 const (
 	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
-	caDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_ca_test"
 	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 )
 
@@ -187,13 +186,11 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	policyDBCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
 	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
 	test.AssertNotError(t, err, "Couldn't create PA")
-	cadb, caDBCleanUp := caDBImpl(t)
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
 		OCSPSigner:     ocspSigner,
 		SA:             ssa,
 		PA:             pa,
-		DB:             cadb,
 		Publisher:      &mocks.MockPublisher{},
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
@@ -201,7 +198,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	}
 	cleanUp := func() {
 		saDBCleanUp()
-		caDBCleanUp()
 		policyDBCleanUp()
 	}
 
@@ -227,27 +223,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	AuthzFinal.Challenges[0].Status = "valid"
 
 	return va, ssa, &ra, fc, cleanUp
-}
-
-// This is an unfortunate bit of tech debt that is being taken on in
-// order to get the more important change of using MySQL/MariaDB in
-// all of our tests working without SQLite. We already had issues with
-// the RA here getting a real CertificateAuthority instead of a
-// CertificateAuthorityClient, so this is only marginally worse.
-// TODO(Issue #628): use a CAClient fake instead of a CAImpl instance
-func caDBImpl(t *testing.T) (core.CertificateAuthorityDatabase, func()) {
-	dbMap, err := sa.NewDbMap(caDBConnStr)
-	if err != nil {
-		t.Fatalf("Could not construct dbMap: %s", err)
-	}
-
-	cadb, err := ca.NewCertificateAuthorityDatabaseImpl(dbMap)
-	if err != nil {
-		t.Fatalf("Could not construct CA DB: %s", err)
-	}
-
-	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
-	return cadb, cleanUp
 }
 
 func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
