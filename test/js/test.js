@@ -356,6 +356,16 @@ function getReadyToValidate(err, resp, body) {
   var challenge = httpChallenges[0];
   var jsonAuthorizedKey = util.b64dec(challenge.authorizedKey)
   var authorizedKey = JSON.parse(jsonAuthorizedKey);
+
+  // Check that the key being authorized is our own
+  if (!authorizedKey.key ||
+      authorizedKey.key.kty != state.accountKeyPair.privateKey.kty ||
+      authorizedKey.key.n != state.accountKeyPair.privateKey.n ||
+      authorizedKey.key.e != state.accountKeyPair.privateKey.e) {
+    console.log("The server asked to authorize a different key!")
+    process.exit(1);
+  }
+
   var challengePath = ".well-known/acme-challenge/" + authorizedKey.token;
   state.responseURL = challenge["uri"];
   state.path = challengePath;
@@ -367,7 +377,6 @@ function getReadyToValidate(err, resp, body) {
     if ((host.split(/:/)[0] === state.domain || /localhost/.test(state.newRegistrationURL)) &&
         req.method === "GET" &&
         req.url == "/" + challengePath) {
-      console.log("\nRespodned with authorized key file:", jsonAuthorizedKey);
       response.writeHead(200, {"Content-Type": "application/json"});
       response.end(jsonAuthorizedKey);
     } else {
@@ -378,10 +387,8 @@ function getReadyToValidate(err, resp, body) {
   }
   state.httpServer = http.createServer(httpResponder)
   if (/localhost/.test(state.newRegistrationURL)) {
-    console.log("listening on port 5001");
     state.httpServer.listen(5001)
   } else {
-    console.log("listening on port 443");
     state.httpServer.listen(443)
   }
 

@@ -129,7 +129,6 @@ tempdir = tempfile.mkdtemp()
 if not startservers.start(race_detection=True):
     die(ExitStatus.Error)
 run_node_test()
-## TODO(rlb@ipv.sx) Re-enable Let's Encrypt client tests once the client is upgraded
 run_client_tests()
 if not startservers.check():
     die(ExitStatus.Error)

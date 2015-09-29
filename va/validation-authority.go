@@ -86,6 +86,44 @@ type verificationRequestEvent struct {
 	Error        string         `json:",omitempty"`
 }
 
+//-----BEGIN TO DELETE-----
+func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
+	if len(validation.Signatures) > 1 {
+		return fmt.Errorf("Too many signatures on validation JWS")
+	}
+	if len(validation.Signatures) == 0 {
+		return fmt.Errorf("Validation JWS not signed")
+	}
+
+	payload, _, err := validation.Verify(accountKey)
+	if err != nil {
+		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
+	}
+
+	var parsedResponse map[string]interface{}
+	err = json.Unmarshal(payload, &parsedResponse)
+	if err != nil {
+		return fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
+	}
+
+	if len(parsedResponse) != len(target) {
+		return fmt.Errorf("Validation payload had an improper number of fields")
+	}
+
+	for key, targetValue := range target {
+		parsedValue, ok := parsedResponse[key]
+		if !ok {
+			return fmt.Errorf("Validation payload missing a field %s", key)
+		} else if parsedValue != targetValue {
+			return fmt.Errorf("Validation payload has improper value for field %s", key)
+		}
+	}
+
+	return nil
+}
+
+//-----END TO DELETE-----
+
 // problemDetailsFromDNSError checks the error returned from Lookup...
 // methods and tests if the error was an underlying net.OpError or an error
 // caused by resolver returning SERVFAIL or other invalid Rcodes and returns
@@ -299,7 +337,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 	return body, challenge, nil
 }
 
-func (va *ValidationAuthorityImpl) validateZName(identifier core.AcmeIdentifier, input core.Challenge, zName string) (core.Challenge, error) {
+func (va *ValidationAuthorityImpl) validateTLSWithZName(identifier core.AcmeIdentifier, input core.Challenge, zName string) (core.Challenge, error) {
 	challenge := input
 
 	addr, allAddrs, problem := va.getAddr(identifier.Value)
@@ -363,41 +401,6 @@ func (va *ValidationAuthorityImpl) validateZName(identifier core.AcmeIdentifier,
 }
 
 //-----BEGIN TO DELETE-----
-func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
-	if len(validation.Signatures) > 1 {
-		return fmt.Errorf("Too many signatures on validation JWS")
-	}
-	if len(validation.Signatures) == 0 {
-		return fmt.Errorf("Validation JWS not signed")
-	}
-
-	payload, _, err := validation.Verify(accountKey)
-	if err != nil {
-		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
-	}
-
-	var parsedResponse map[string]interface{}
-	err = json.Unmarshal(payload, &parsedResponse)
-	if err != nil {
-		return fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
-	}
-
-	if len(parsedResponse) != len(target) {
-		return fmt.Errorf("Validation payload had an improper number of fields")
-	}
-
-	for key, targetValue := range target {
-		parsedValue, ok := parsedResponse[key]
-		if !ok {
-			return fmt.Errorf("Validation payload missing a field %s", key)
-		} else if parsedValue != targetValue {
-			return fmt.Errorf("Validation payload has improper value for field %s", key)
-		}
-	}
-
-	return nil
-}
-
 func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
@@ -495,8 +498,10 @@ func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier,
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
-	return va.validateZName(identifier, challenge, ZName)
+	return va.validateTLSWithZName(identifier, challenge, ZName)
 }
+
+//-----END TO DELETE-----
 
 func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
@@ -577,8 +582,6 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 	return challenge, nil
 }
 
-//-----END TO DELETE-----
-
 func (va *ValidationAuthorityImpl) validateTLSSNI01(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
@@ -624,7 +627,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(identifier core.AcmeIdentifi
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
-	return va.validateZName(identifier, challenge, ZName)
+	return va.validateTLSWithZName(identifier, challenge, ZName)
 }
 
 // parseHTTPConnError returns the ACME ProblemType corresponding to an error

@@ -632,17 +632,6 @@ func tlssniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 	return hs
 }
 
-func brokenTLSSrv() *httptest.Server {
-	server := httptest.NewUnstartedServer(http.DefaultServeMux)
-	server.TLS = &tls.Config{
-		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-			return nil, fmt.Errorf("Failing on purpose")
-		},
-	}
-	server.StartTLS()
-	return server
-}
-
 func TestHttp(t *testing.T) {
 	chall, err := core.HTTPChallenge01(accountKey)
 	test.AssertNotError(t, err, "Failed to create HTTP challenge")

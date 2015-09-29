@@ -44,7 +44,6 @@ func TestRegistrationUpdate(t *testing.T) {
 
 var testKey1, _ = rsa.GenerateKey(rand.Reader, 2048)
 var testKey2, _ = rsa.GenerateKey(rand.Reader, 2048)
-var testKey3, _ = rsa.GenerateKey(rand.Reader, 2048)
 
 func TestAuthorizedKeys(t *testing.T) {
 	ak1 := AuthorizedKey{

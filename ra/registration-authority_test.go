@@ -437,11 +437,9 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 func TestOnValidationUpdateSuccess(t *testing.T) {
 	_, sa, ra, fclk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	fmt.Println("AUTHZ_INITIAL", AuthzInitial)
 	authzUpdated, err := sa.NewPendingAuthorization(AuthzInitial)
 	test.AssertNotError(t, err, "Failed to create new pending authz")
-	fmt.Println("AUTHZ_UPDATED", authzUpdated)
-	fmt.Println("AUTHZ_UPDATED_ERR", err)
+
 	expires := fclk.Now().Add(300 * 24 * time.Hour)
 	authzUpdated.Expires = &expires
 	sa.UpdatePendingAuthorization(authzUpdated)
