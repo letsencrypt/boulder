@@ -159,6 +159,9 @@ type Config struct {
 
 		Path          string
 		ListenAddress string
+		// MaxAge is the max-age to set in the Cache-Controler response
+		// header. It is a time.Duration formatted string.
+		MaxAge JSONDuration
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
@@ -391,4 +394,28 @@ func DebugServer(addr string) {
 	}
 	log.Printf("booting debug server at %#v", addr)
 	log.Println(http.Serve(ln, nil))
+}
+
+type JSONDuration struct {
+	time.Duration
+}
+
+var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a JSONDuration")
+
+func (d *JSONDuration) UnmarshalJSON(b []byte) error {
+	s := ""
+	err := json.Unmarshal(b, &s)
+	if err != nil {
+		if _, ok := err.(*json.UnmarshalTypeError); ok {
+			return ErrDurationMustBeString
+		}
+		return err
+	}
+	dd, err := time.ParseDuration(s)
+	d.Duration = dd
+	return err
+}
+
+func (d JSONDuration) MarshalJSON() ([]byte, error) {
+	return []byte(d.Duration.String()), nil
 }
