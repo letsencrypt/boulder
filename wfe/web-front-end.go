@@ -165,9 +165,10 @@ func (mrw BodylessResponseWriter) Write(buf []byte) (int, error) {
 // * Never send a body in response to a HEAD request. (Anything
 // written by the handler will be discarded if the method is HEAD.)
 func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h func(http.ResponseWriter, *http.Request), methods ...string) {
-	methodsOK := make(map[string]bool)
+	methodsStr := strings.Join(methods, ", ")
+	methodsMap := make(map[string]bool)
 	for _, m := range methods {
-		methodsOK[m] = true
+		methodsMap[m] = true
 	}
 	mux.HandleFunc(pattern, func(response http.ResponseWriter, request *http.Request) {
 		// We do not propagate errors here, because (1) they should be
@@ -184,20 +185,20 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 			// sending a body.
 			response = BodylessResponseWriter{response}
 		case "OPTIONS":
-			wfe.Options(response, request, methodsOK)
+			wfe.Options(response, request, methodsStr, methodsMap)
 			return
 		}
 
-		if _, ok := methodsOK[request.Method]; !ok {
+		if !methodsMap[request.Method] {
 			logEvent := wfe.populateRequestEvent(request)
 			defer wfe.logRequestDetails(&logEvent)
 			logEvent.Error = "Method not allowed"
-			response.Header().Set("Allow", strings.Join(methods, ", "))
+			response.Header().Set("Allow", methodsStr)
 			wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 			return
 		}
 
-		wfe.setCORSHeaders(response, request, strings.Join(methods, ", "))
+		wfe.setCORSHeaders(response, request, methodsStr)
 
 		// Call the wrapped handler.
 		h(response, request)
@@ -1196,17 +1197,9 @@ func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.
 }
 
 // Options responds to an HTTP OPTIONS request.
-func (wfe *WebFrontEndImpl) Options(response http.ResponseWriter, request *http.Request, methodsOK map[string]bool) {
-	allowMethods := ""
-	for method := range methodsOK {
-		if allowMethods != "" {
-			allowMethods += ", "
-		}
-		allowMethods += method
-	}
-
+func (wfe *WebFrontEndImpl) Options(response http.ResponseWriter, request *http.Request, methodsStr string, methodsMap map[string]bool) {
 	// Every OPTIONS request gets an Allow header with a list of supported methods.
-	response.Header().Set("Allow", allowMethods)
+	response.Header().Set("Allow", methodsStr)
 
 	// CORS preflight requests get additional headers. See
 	// http://www.w3.org/TR/cors/#resource-preflight-requests
@@ -1214,8 +1207,8 @@ func (wfe *WebFrontEndImpl) Options(response http.ResponseWriter, request *http.
 	if reqMethod == "" {
 		reqMethod = "GET"
 	}
-	if _, ok := methodsOK[reqMethod]; ok {
-		wfe.setCORSHeaders(response, request, allowMethods)
+	if methodsMap[reqMethod] {
+		wfe.setCORSHeaders(response, request, methodsStr)
 	}
 }
 
