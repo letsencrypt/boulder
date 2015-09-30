@@ -244,7 +244,11 @@ func (t TooManyCertificatesError) Error() string {
 }
 
 // CountCertificates returns the number of certificates issued within a time
-// period containing DNSNames that are equal to, or subdomains of, the given name.
+// period containing DNSNames that are equal to, or subdomains of, the given
+// domain name.
+// The highest count this function can return is 10,000. If there are more
+// certificates than that matching the provided domain name, it will return
+// TooManyCertificatesError.
 func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
 	var count int64
 	const max = 10000
