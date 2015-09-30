@@ -22,7 +22,6 @@ type issuedNameModel struct {
 	ReversedName string    `db:"reversedName"`
 	Issued       time.Time `db:"issued"`
 	Serial       string    `db:"serial"`
-	LockCol      int64
 }
 
 // regModel is the description of a core.Registration in the database.
