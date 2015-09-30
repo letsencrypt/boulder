@@ -352,6 +352,8 @@ func TestHandleFunc(t *testing.T) {
 	}, "GET", "POST")
 	test.AssertEquals(t, stubCalled, true)
 	test.AssertEquals(t, rw.Code, http.StatusOK)
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "")
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Headers"), "")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
 

@@ -204,7 +204,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 			return
 		}
 
-		wfe.setCORSHeaders(response, request, methodsStr)
+		wfe.setCORSHeaders(response, request, "")
 
 		// Call the wrapped handler.
 		h(response, request)
