@@ -308,9 +308,15 @@ func TestHandleFunc(t *testing.T) {
 
 	// Disallowed method special case: response to HEAD has got no body
 	runWrappedHandler(&http.Request{Method: "HEAD"}, "GET", "POST")
-	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, stubCalled, true)
 	test.AssertEquals(t, rw.Body.String(), "")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
+
+	// HEAD doesn't work with POST-only endpoints
+	runWrappedHandler(&http.Request{Method: "HEAD"}, "POST")
+	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
+	test.AssertEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
+	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
 }
 
 func TestStandardHeaders(t *testing.T) {

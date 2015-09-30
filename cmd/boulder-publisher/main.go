@@ -23,6 +23,7 @@ func main() {
 		// Set up logging
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to syslog")
+		auditlogger.Info(app.VersionString())
 
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
@@ -48,8 +49,6 @@ func main() {
 		pubs, err := rpc.NewAmqpRPCServer(c.AMQP.Publisher.Server, connectionHandler)
 		cmd.FailOnError(err, "Unable to create Publisher RPC server")
 		rpc.NewPublisherServer(pubs, &pubi)
-
-		auditlogger.Info(app.VersionString())
 
 		err = pubs.Start(c)
 		cmd.FailOnError(err, "Unable to run Publisher RPC server")
