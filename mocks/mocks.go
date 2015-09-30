@@ -6,7 +6,6 @@
 package mocks
 
 import (
-	"database/sql"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -180,7 +179,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
-		return core.Registration{ID: 2}, sql.ErrNoRows
+		return core.Registration{ID: 2}, core.NoSuchRegistrationError("reg not found")
 	}
 
 	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.

@@ -183,11 +183,10 @@ func makeBody(s string) io.ReadCloser {
 }
 
 func signRequest(t *testing.T, req string, nonceService *core.NonceService) string {
-	accountKeyJSON := []byte(`{"kty":"RSA","n":"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ","e":"AQAB","d":"BhAmDbzBAbCeHbU0Xhzi_Ar4M0eTMOEQPnPXMSfW6bc0SRW938JO_-z1scEvFY8qsxV_C0Zr7XHVZsmHz4dc9BVmhiSan36XpuOS85jLWaY073e7dUVN9-l-ak53Ys9f6KZB_v-BmGB51rUKGB70ctWiMJ1C0EzHv0h6Moog-LCd_zo03uuZD5F5wtnPrAB3SEM3vRKeZHzm5eiGxNUsaCEzGDApMYgt6YkQuUlkJwD8Ky2CkAE6lLQSPwddAfPDhsCug-12SkSIKw1EepSHz86ZVfJEnvY-h9jHIdI57mR1v7NTCDcWqy6c6qIzxwh8n2X94QTbtWT3vGQ6HXM5AQ","p":"2uhvZwNS5i-PzeI9vGx89XbdsVmeNjVxjH08V3aRBVY0dzUzwVDYk3z7sqBIj6de53Lx6W1hjmhPIqAwqQgjIKH5Z3uUCinGguKkfGDL3KgLCzYL2UIvZMvTzr9NWLc0AHMZdee5utxWKCGnZBOqy1Rd4V-6QrqjEDBvanoqA60","q":"8odNkMEiriaDKmvwDv-vOOu3LaWbu03yB7VhABu-hK5Xx74bHcvDP2HuCwDGGJY2H-xKdMdUPs0HPwbfHMUicD2vIEUDj6uyrMMZHtbcZ3moh3-WESg3TaEaJ6vhwcWXWG7Wc46G-HbCChkuVenFYYkoi68BAAjloqEUl1JBT1E"}`)
-	var accountKey jose.JsonWebKey
-	err := json.Unmarshal(accountKeyJSON, &accountKey)
-	test.AssertNotError(t, err, "Failed to unmarshal key")
-	signer, err := jose.NewSigner("RS256", &accountKey)
+	accountKey, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+
+	signer, err := jose.NewSigner("RS256", accountKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 	nonce, err := nonceService.Nonce()
 	test.AssertNotError(t, err, "Failed to make nonce")
@@ -762,6 +761,18 @@ func makeRevokeRequestJSON() ([]byte, error) {
 	return revokeRequestJSON, nil
 }
 
+// An SA mock that always returns NoSuchRegistrationError. This is necessary
+// because the standard mock in our mocks package always returns a given test
+// registration when GetRegistrationByKey is called, and we want to get a
+// NoSuchRegistrationError for tests that pass regCheck = false to verifyPOST.
+type mockSANoSuchRegistration struct {
+	mocks.MockSA
+}
+
+func (msa mockSANoSuchRegistration) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
+	return core.Registration{}, core.NoSuchRegistrationError("reg not found")
+}
+
 // Valid revocation request for existing, non-revoked cert, signed with cert
 // key.
 func TestRevokeCertificateCertKey(t *testing.T) {
@@ -778,6 +789,7 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	wfe := setupWFE(t)
+	wfe.SA = &mockSANoSuchRegistration{mocks.MockSA{}}
 	responseWriter := httptest.NewRecorder()
 
 	nonce, err := wfe.nonceService.Nonce()
@@ -867,7 +879,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe := setupWFE(t)
 
 	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.MockSA{}
+	wfe.SA = &mockSANoSuchRegistration{mocks.MockSA{}}
 	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
@@ -1197,6 +1209,29 @@ func TestLengthRequired(t *testing.T) {
 	test.Assert(t, err != nil, "No error returned for request body missing Content-Length.")
 	_, ok := err.(core.LengthRequiredError)
 	test.Assert(t, ok, "Error code for missing content-length wasn't 411.")
+}
+
+type mockSADifferentStoredKey struct {
+	mocks.MockSA
+}
+
+func (sa mockSADifferentStoredKey) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
+	keyJSON := []byte(test2KeyPublicJSON)
+	var parsedKey jose.JsonWebKey
+	parsedKey.UnmarshalJSON(keyJSON)
+
+	return core.Registration{
+		Key: parsedKey,
+	}, nil
+}
+
+func TestVerifyPOSTUsesStoredKey(t *testing.T) {
+	wfe := setupWFE(t)
+	wfe.SA = &mockSADifferentStoredKey{mocks.MockSA{}}
+	// signRequest signs with test1Key, but our special mock returns a
+	// registration with test2Key
+	_, _, _, err := wfe.verifyPOST(makePostRequest(signRequest(t, `{"resource":"foo"}`, &wfe.nonceService)), true, "foo")
+	test.AssertError(t, err, "No error returned when provided key differed from stored key.")
 }
 
 func TestBadKeyCSR(t *testing.T) {
