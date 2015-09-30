@@ -325,8 +325,10 @@ func TestHandleFunc(t *testing.T) {
 	// HEAD doesn't work with POST-only endpoints
 	runWrappedHandler(&http.Request{Method: "HEAD"}, "POST")
 	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
 	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
+	test.AssertEquals(t, rw.Body.String(), "")
 
 	wfe.AllowOrigins = []string{"*"}
 	testOrigin := "https://example.com"
