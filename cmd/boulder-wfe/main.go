@@ -66,6 +66,7 @@ func main() {
 
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		auditlogger.Info(app.VersionString())
 
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
@@ -119,8 +120,6 @@ func main() {
 		wfe.BaseURL = c.Common.BaseURL
 		h, err := wfe.Handler()
 		cmd.FailOnError(err, "Problem setting up HTTP handlers")
-
-		auditlogger.Info(app.VersionString())
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
 

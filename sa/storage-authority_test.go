@@ -38,6 +38,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
+	dbMap.TraceOn("SQL: ", &SQLLogger{log})
 
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
