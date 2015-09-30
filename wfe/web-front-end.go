@@ -162,14 +162,20 @@ func (mrw BodylessResponseWriter) Write(buf []byte) (int, error) {
 //
 // * Set CORS headers when responding to CORS "actual" requests.
 //
-// * Never send a body in response to a HEAD request. (Anything
-// written by the handler will be discarded if the method is HEAD.)
+// * Never send a body in response to a HEAD request. Anything
+// written by the handler will be discarded if the method is HEAD.
+// Also, all handlers that accept GET automatically accept HEAD.
 func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h func(http.ResponseWriter, *http.Request), methods ...string) {
-	methodsStr := strings.Join(methods, ", ")
 	methodsMap := make(map[string]bool)
 	for _, m := range methods {
 		methodsMap[m] = true
 	}
+	if methodsMap["GET"] && !methodsMap["HEAD"] {
+		// Allow HEAD for any resource that allows GET
+		methods = append(methods, "HEAD")
+		methodsMap["HEAD"] = true
+	}
+	methodsStr := strings.Join(methods, ", ")
 	mux.HandleFunc(pattern, func(response http.ResponseWriter, request *http.Request) {
 		// We do not propagate errors here, because (1) they should be
 		// transient, and (2) they fail closed.
@@ -180,8 +186,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 
 		switch request.Method {
 		case "HEAD":
-			// We'll be sending an error anyway, but we
-			// should still comply with HTTP spec by not
+			// Whether or not we're sending a 405 error,
+			// we should comply with HTTP spec by not
 			// sending a body.
 			response = BodylessResponseWriter{response}
 		case "OPTIONS":

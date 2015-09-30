@@ -253,6 +253,15 @@ func sortHeader(s string) string {
 	return strings.Join(a, ", ")
 }
 
+func addHeadIfGet(s []string) []string {
+	for _, a := range s {
+		if a == "GET" {
+			return append(s, "HEAD")
+		}
+	}
+	return s
+}
+
 func TestHandleFunc(t *testing.T) {
 	wfe := setupWFE(t)
 	var mux *http.ServeMux
@@ -291,7 +300,7 @@ func TestHandleFunc(t *testing.T) {
 			test.AssertEquals(t, rw.Code, http.StatusOK)
 		} else {
 			test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
-			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), strings.Join(c.allowed, ", "))
+			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), sortHeader(strings.Join(addHeadIfGet(c.allowed), ", ")))
 			test.AssertEquals(t,
 				rw.Body.String(),
 				`{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
@@ -306,13 +315,18 @@ func TestHandleFunc(t *testing.T) {
 	runWrappedHandler(&http.Request{Method: "PUT"}, "GET", "POST")
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
 	test.AssertEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, HEAD, POST")
 
 	// Disallowed method special case: response to HEAD has got no body
 	runWrappedHandler(&http.Request{Method: "HEAD"}, "GET", "POST")
-	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, stubCalled, true)
 	test.AssertEquals(t, rw.Body.String(), "")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
+
+	// HEAD doesn't work with POST-only endpoints
+	runWrappedHandler(&http.Request{Method: "HEAD"}, "POST")
+	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
+	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
 
 	wfe.AllowOrigins = []string{"*"}
 	testOrigin := "https://example.com"
@@ -349,7 +363,7 @@ func TestHandleFunc(t *testing.T) {
 	}, "GET")
 	test.AssertEquals(t, stubCalled, false)
 	test.AssertEquals(t, rw.Code, http.StatusOK)
-	test.AssertEquals(t, rw.Header().Get("Allow"), "GET")
+	test.AssertEquals(t, rw.Header().Get("Allow"), "GET, HEAD")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
 
 	// CORS preflight request for allowed method
@@ -364,7 +378,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Code, http.StatusOK)
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Max-Age"), "86400")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Allow-Methods")), "GET, POST")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Allow-Methods")), "GET, HEAD, POST")
 	test.AssertDeepEquals(t, rw.Header()["Access-Control-Allow-Headers"], []string{"X-Accept-Header1, X-Accept-Header2", "X-Accept-Header3"})
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
 
@@ -378,7 +392,7 @@ func TestHandleFunc(t *testing.T) {
 	}, "GET", "POST")
 	test.AssertEquals(t, rw.Code, http.StatusOK)
 	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, HEAD, POST")
 
 	// CORS preflight request missing optional Request-Method
 	// header. The "actual" request will be GET.
@@ -392,7 +406,7 @@ func TestHandleFunc(t *testing.T) {
 		test.AssertEquals(t, rw.Code, http.StatusOK)
 		if allowedMethod == "GET" {
 			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
-			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "GET")
+			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "GET, HEAD")
 		} else {
 			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
 		}
