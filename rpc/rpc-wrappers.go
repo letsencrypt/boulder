@@ -6,9 +6,7 @@
 package rpc
 
 import (
-	"bytes"
 	"crypto/x509"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1019,13 +1017,7 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		if err != nil {
 			return
 		}
-		buf := new(bytes.Buffer)
-		err = binary.Write(buf, binary.LittleEndian, count)
-		if err != nil {
-			return
-		}
-		response = buf.Bytes()
-		return
+		return json.Marshal(count)
 	})
 
 	rpc.Handle(MethodGetSCTReceipt, func(req []byte) (response []byte, err error) {
@@ -1080,8 +1072,8 @@ type StorageAuthorityClient struct {
 }
 
 // NewStorageAuthorityClient constructs an RPC client
-func NewStorageAuthorityClient(client RPCClient) (cac StorageAuthorityClient, err error) {
-	cac = StorageAuthorityClient{rpc: client}
+func NewStorageAuthorityClient(client RPCClient) (sac StorageAuthorityClient, err error) {
+	sac = StorageAuthorityClient{rpc: client}
 	return
 }
 
@@ -1335,11 +1327,7 @@ func (cac StorageAuthorityClient) CountCertificatesRange(start, end time.Time) (
 	if err != nil {
 		return
 	}
-	count, n := binary.Varint(response)
-	if n <= 0 {
-		err = fmt.Errorf("Couldn't read count from RPC response")
-		return
-	}
+	err = json.Unmarshal(response, &count)
 	return
 }
 

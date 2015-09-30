@@ -387,13 +387,15 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	}
 
 	// Check total certificate rate limiting
-	totalIssued, err := ra.getIssuanceCount()
-	if err != nil {
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-	if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
-		return emptyCert, core.RateLimitedError("Certificate issuance limit reached")
+	if ra.rlPolicies.TotalCertificates.Threshold != 0 {
+		totalIssued, err := ra.getIssuanceCount()
+		if err != nil {
+			logEvent.Error = err.Error()
+			return emptyCert, err
+		}
+		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
+			return emptyCert, core.RateLimitedError("Certificate issuance limit reached")
+		}
 	}
 
 	// Verify the CSR
