@@ -239,9 +239,9 @@ func main() {
 
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		auditlogger.Info(app.VersionString())
 
 		blog.SetAuditLogger(auditlogger)
-		auditlogger.Info(app.VersionString())
 
 		saDbMap, err := sa.NewDbMap(c.CertChecker.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
