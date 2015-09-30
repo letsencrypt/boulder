@@ -333,7 +333,7 @@ func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdenti
 		return challenge, err
 	}
 
-	contentTypes, ok := httpResponse.Header[http.CanonicalHeaderKey("content-type")]
+	contentTypes, ok := httpResponse.Header["Content-Type"]
 	if ok && len(contentTypes) != 1 {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
