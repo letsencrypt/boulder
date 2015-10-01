@@ -118,8 +118,8 @@ func main() {
 		cmd.FailOnError(err, "Could not connect to statsd")
 
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		auditlogger.Info(app.VersionString())
 
 		blog.SetAuditLogger(auditlogger)
 
@@ -130,8 +130,6 @@ func main() {
 		cmd.FailOnError(err, "Could not connect to AMQP")
 
 		go cmd.ProfileCmd("AM", stats)
-
-		auditlogger.Info(app.VersionString())
 
 		startMonitor(ch, auditlogger, stats)
 	}

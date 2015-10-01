@@ -7,12 +7,13 @@ import socket
 import subprocess
 import sys
 import tempfile
+import urllib2
 
 import startservers
 
 
 class ExitStatus:
-    OK, PythonFailure, NodeFailure, Error, OCSPFailure = range(5)
+    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure = range(6)
 
 
 class ProcInfo:
@@ -62,6 +63,13 @@ def verify_ocsp_revoked(certFile, url):
         die(ExitStatus.OCSPFailure)
     pass
 
+def verify_ct_submission(expectedSubmissions, url):
+    resp = urllib2.urlopen(url)
+    submissionStr = resp.read()
+    if int(submissionStr) != expectedSubmissions:
+        print "Expected %d submissions, found %d" % (expectedSubmissions, int(submissionStr))
+        die(ExitStatus.CTFailure)
+
 def run_node_test():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -91,6 +99,7 @@ def run_node_test():
     # Also verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, also works.
     verify_ocsp_good("../test-ca.der", issuer_ocsp_url)
+    verify_ct_submission(1, "http://localhost:4500/submissions")
 
     if subprocess.Popen('''
         node revoke.js %s %s http://localhost:4000/acme/revoke-cert

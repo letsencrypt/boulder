@@ -98,6 +98,9 @@ func statusCodeFromError(err interface{}) int {
 		return http.StatusBadRequest
 	case core.InternalServerError:
 		return http.StatusInternalServerError
+	case core.RateLimitedError:
+		// net/http doesn't have a specific const for 'Too Many Requests'
+		return 429
 	default:
 		return http.StatusInternalServerError
 	}
@@ -154,8 +157,9 @@ func (mrw BodylessResponseWriter) Write(buf []byte) (int, error) {
 // * Respond http.StatusMethodNotAllowed for HTTP methods other than
 //   those listed.
 //
-// * Never send a body in response to a HEAD request. (Anything
-//   written by the handler will be discarded if the method is HEAD.)
+// * Never send a body in response to a HEAD request. Anything
+//   written by the handler will be discarded if the method is HEAD. Also, all
+//   handlers that accept GET automatically accept HEAD.
 func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h func(http.ResponseWriter, *http.Request), methods ...string) {
 	methodsOK := make(map[string]bool)
 	for _, m := range methods {
@@ -170,14 +174,14 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 		}
 		response.Header().Set("Access-Control-Allow-Origin", "*")
 
-		switch request.Method {
-		case "HEAD":
+		// Return a bodyless response to HEAD for any resource that allows GET.
+		if _, ok := methodsOK["GET"]; ok && request.Method == "HEAD" {
 			// We'll be sending an error anyway, but we
 			// should still comply with HTTP spec by not
 			// sending a body.
 			response = BodylessResponseWriter{response}
-		case "OPTIONS":
-			// TODO, #469
+			h(response, request)
+			return
 		}
 
 		if _, ok := methodsOK[request.Method]; !ok {
