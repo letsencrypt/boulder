@@ -54,7 +54,6 @@
   "ca": {
     "serialPrefix": 255,
     "profile": "ee",
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_ca_integration",
     "debugAddr": "localhost:8001",
     "Key": {
       "File": "test/test-ca.key"
