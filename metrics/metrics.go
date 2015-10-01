@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 )
 
 // HTTPMonitor stores some server state
@@ -72,11 +73,12 @@ func (h *HTTPMonitor) watchAndServe(w http.ResponseWriter, r *http.Request) {
 type FBAdapter struct {
 	stats  statsd.Statter
 	prefix string
+	clk    clock.Clock
 }
 
 // NewFBAdapter returns a new adapter
-func NewFBAdapter(stats statsd.Statter, prefix string) FBAdapter {
-	return FBAdapter{stats: stats, prefix: prefix}
+func NewFBAdapter(stats statsd.Statter, prefix string, clock clock.Clock) FBAdapter {
+	return FBAdapter{stats: stats, prefix: prefix, clk: clock}
 }
 
 // BumpAvg is essentially statsd.Statter.Gauge
@@ -106,7 +108,7 @@ func (fba FBAdapter) BumpTime(key string) interface {
 } {
 	return btHolder{
 		key:     fmt.Sprintf("%s.%s", fba.prefix, key),
-		started: time.Now(),
+		started: fba.clk.Now(),
 		stats:   fba.stats,
 	}
 }

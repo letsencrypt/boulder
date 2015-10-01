@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -133,7 +134,7 @@ func main() {
 		hd := &httpdown.HTTP{
 			StopTimeout: wfe.ShutdownStopTimeout,
 			KillTimeout: wfe.ShutdownKillTimeout,
-			Stats:       metrics.NewFBAdapter(stats, "WFE"),
+			Stats:       metrics.NewFBAdapter(stats, "WFE", clock.Default()),
 		}
 		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")
