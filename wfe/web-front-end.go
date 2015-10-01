@@ -1252,13 +1252,6 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	if allowMethods != "" {
 		// For an OPTIONS request: allow all methods handled at this URL.
 		response.Header().Set("Access-Control-Allow-Methods", allowMethods)
-
-		// Allow all requested headers.
-		if acrh, ok := request.Header["Access-Control-Request-Headers"]; ok {
-			for _, h := range acrh {
-				response.Header().Add("Access-Control-Allow-Headers", h)
-			}
-		}
 	}
 	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
 	response.Header().Set("Access-Control-Max-Age", "86400")
