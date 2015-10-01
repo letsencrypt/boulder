@@ -260,7 +260,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest,
 		`SELECT serial from issuedNames
 		 WHERE (reversedName = :reversedDomain OR
 			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
-		 AND issued > :earliest AND issued <= :latest
+		 AND notBefore > :earliest AND notBefore <= :latest
 		 LIMIT :limit;`,
 		map[string]interface{}{
 			"reversedDomain": core.ReverseName(domain),
@@ -628,7 +628,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		issuedNames[i] = issuedNameModel{
 			ReversedName: core.ReverseName(name),
 			Serial:       serial,
-			Issued:       parsedCertificate.NotBefore,
+			NotBefore:    parsedCertificate.NotBefore,
 		}
 	}
 

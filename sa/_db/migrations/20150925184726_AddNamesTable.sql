@@ -7,10 +7,10 @@ CREATE TABLE `issuedNames` (
   -- DNS names are restricted to the ASCII character set.
   -- 640 char limit is enforced in policy-authority.go.
   `reversedName` VARCHAR(640) CHARACTER SET ascii NOT NULL,
-  `issued` DATETIME NOT NULL,
+  `notBefore` DATETIME NOT NULL,
   `serial` VARCHAR(255) NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `reversedName_issued_Idx` (`reversedName`, `issued`)
+  KEY `reversedName_notBefore_Idx` (`reversedName`, `notBefore`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 

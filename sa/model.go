@@ -20,7 +20,7 @@ var mediumBlobSize = int(math.Pow(2, 24))
 type issuedNameModel struct {
 	ID           int64     `db:"id"`
 	ReversedName string    `db:"reversedName"`
-	Issued       time.Time `db:"issued"`
+	NotBefore    time.Time `db:"notBefore"`
 	Serial       string    `db:"serial"`
 }
 
