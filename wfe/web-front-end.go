@@ -98,6 +98,9 @@ func statusCodeFromError(err interface{}) int {
 		return http.StatusBadRequest
 	case core.InternalServerError:
 		return http.StatusInternalServerError
+	case core.RateLimitedError:
+		// net/http doesn't have a specific const for 'Too Many Requests'
+		return 429
 	default:
 		return http.StatusInternalServerError
 	}
