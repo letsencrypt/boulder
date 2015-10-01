@@ -99,7 +99,7 @@
               "PublicKey": true,
               "SignatureAlgorithm": true
             },
-            "UseSerialSeq": true
+            "ClientProvidesSerialNumbers": true
           }
         },
         "default": {
