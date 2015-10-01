@@ -119,14 +119,6 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 	return nil
 }
 
-type NoSuchRegistrationError struct {
-	Msg string
-}
-
-func (e NoSuchRegistrationError) Error() string {
-	return e.Msg
-}
-
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(id int64) (core.Registration, error) {
 	regObj, err := ssa.dbMap.Get(regModel{}, id)
@@ -135,7 +127,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(id int64) (core.Registration, er
 	}
 	if regObj == nil {
 		msg := fmt.Sprintf("No registrations with ID %d", id)
-		return core.Registration{}, NoSuchRegistrationError{Msg: msg}
+		return core.Registration{}, core.NoSuchRegistrationError(msg)
 	}
 	regPtr, ok := regObj.(*regModel)
 	if !ok {
@@ -155,7 +147,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (core.
 
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
-		return core.Registration{}, NoSuchRegistrationError{Msg: msg}
+		return core.Registration{}, core.NoSuchRegistrationError(msg)
 	}
 	if err != nil {
 		return core.Registration{}, err
@@ -442,7 +434,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) error 
 	}
 	if n == 0 {
 		msg := fmt.Sprintf("Requested registration not found %v", reg.ID)
-		return NoSuchRegistrationError{Msg: msg}
+		return core.NoSuchRegistrationError(msg)
 	}
 
 	return nil
