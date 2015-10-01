@@ -29,6 +29,7 @@ func main() {
 		// Set up logging
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		auditlogger.Info(app.VersionString())
 
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
@@ -42,7 +43,10 @@ func main() {
 		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats)
+		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
+		cmd.FailOnError(err, "Couldn't load rate limit policies file")
+
+		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats, rateLimitPolicies)
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
@@ -81,8 +85,6 @@ func main() {
 		ras, err := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, connectionHandler)
 		cmd.FailOnError(err, "Unable to create RA RPC server")
 		rpc.NewRegistrationAuthorityServer(ras, &rai)
-
-		auditlogger.Info(app.VersionString())
 
 		err = ras.Start(c)
 		cmd.FailOnError(err, "Unable to run RA RPC server")

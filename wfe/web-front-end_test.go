@@ -25,6 +25,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/cmd"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 
@@ -308,9 +309,15 @@ func TestHandleFunc(t *testing.T) {
 
 	// Disallowed method special case: response to HEAD has got no body
 	runWrappedHandler(&http.Request{Method: "HEAD"}, "GET", "POST")
-	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, stubCalled, true)
 	test.AssertEquals(t, rw.Body.String(), "")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
+
+	// HEAD doesn't work with POST-only endpoints
+	runWrappedHandler(&http.Request{Method: "HEAD"}, "POST")
+	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
+	test.AssertEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
+	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
 }
 
 func TestStandardHeaders(t *testing.T) {
@@ -436,7 +443,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
-	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log, stats)
+	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log, stats, cmd.RateLimitConfig{})
 	ra.SA = &mocks.MockSA{}
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}

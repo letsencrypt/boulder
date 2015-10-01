@@ -119,7 +119,7 @@ func SetSQLDebug(dbMap *gorp.DbMap, state bool) {
 
 // SQLLogger adapts the AuditLogger to a format GORP can use.
 type SQLLogger struct {
-	log *blog.AuditLogger
+	log blog.SyslogWriter
 }
 
 // Printf adapts the AuditLogger to GORP's interface

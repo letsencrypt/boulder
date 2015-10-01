@@ -38,6 +38,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
+	dbMap.TraceOn("SQL: ", &SQLLogger{log})
 
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
@@ -536,4 +537,33 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	if ocspResponse != string(fetched.Response) {
 		t.Errorf("OCSPResponse response, expected %#v, got %#v", ocspResponse, string(fetched.Response))
 	}
+}
+
+func TestCountCertificates(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+	fc.Add(time.Hour * 24)
+	now := fc.Now()
+	count, err := sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
+	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
+	test.AssertEquals(t, count, int64(0))
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	// Add a cert to the DB to test with.
+	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	_, err = sa.AddCertificate(certDER, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	fc.Add(2 * time.Hour)
+	now = fc.Now()
+	count, err = sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
+	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
+	test.AssertEquals(t, count, int64(1))
+
+	fc.Add(24 * time.Hour)
+	now = fc.Now()
+	count, err = sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
+	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
+	test.AssertEquals(t, count, int64(0))
 }
