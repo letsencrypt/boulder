@@ -92,6 +92,7 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 	currentToken := defaultToken
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/jose+json")
 		if !strings.HasPrefix(r.Host, "localhost:") && r.Host != "other.valid" && r.Host != "other.valid:8080" {
 			t.Errorf("Bad Host header: " + r.Host)
 		}
@@ -131,6 +132,15 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectPort) {
 			t.Logf("SIMPLESRV: Got a port redirect req\n")
 			http.Redirect(w, r, "http://other.valid:8080/path", 302)
+		} else if strings.HasSuffix(r.URL.Path, "bad-content-type") {
+			w.Header().Set("Content-Type", "application/bad")
+			t.Logf("SIMPLESRV: Got bad content type header req\n")
+		} else if strings.HasSuffix(r.URL.Path, "multi-content-type") {
+			w.Header()["Content-Type"] = []string{"application/jose+json", "application/bad"}
+			t.Logf("SIMPLESRV: Got bad content type header req\n")
+		} else if strings.HasSuffix(r.URL.Path, "no-content-type") {
+			w.Header().Del("Content-Type")
+			t.Logf("SIMPLESRV: Got bad content type header req\n")
 		} else {
 			t.Logf("SIMPLESRV: Got a valid req\n")
 			fmt.Fprint(w, createValidation(currentToken, enableTLS))
@@ -302,6 +312,30 @@ func TestSimpleHttp(t *testing.T) {
 	finChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "Error validating simpleHttp")
+	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+
+	log.Clear()
+	chall.Token = "bad-content-type"
+	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Error validating simpleHttp")
+	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
+	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+
+	log.Clear()
+	chall.Token = "multi-content-type"
+	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Error validating simpleHttp")
+	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
+	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+
+	log.Clear()
+	chall.Token = "no-content-type"
+	invalidChall, err = va.validateSimpleHTTP(ident, chall)
+	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
+	test.AssertError(t, err, "Error validating simpleHttp")
+	test.AssertEquals(t, invalidChall.Error.Type, core.UnauthorizedProblem)
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
