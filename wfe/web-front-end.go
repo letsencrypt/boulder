@@ -1220,8 +1220,8 @@ func (wfe *WebFrontEndImpl) Options(response http.ResponseWriter, request *http.
 
 // setCORSHeaders() tells the client that CORS is acceptable for this
 // request. If allowMethods == "" the request is assumed to be a CORS
-// actual request and no Access-Control-Allow-Methods or -Headers
-// headers will be sent.
+// actual request and no Access-Control-Allow-Methods header will be
+// sent.
 func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request *http.Request, allowMethods string) {
 	reqOrigin := request.Header.Get("Origin")
 	if reqOrigin == "" {
