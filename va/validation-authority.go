@@ -333,6 +333,30 @@ func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdenti
 		return challenge, err
 	}
 
+	contentTypes, ok := httpResponse.Header["Content-Type"]
+	if ok && len(contentTypes) != 1 {
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: "Multiple Content-Type headers provided",
+		}
+		return challenge, challenge.Error
+	} else if ok && len(contentTypes) == 1 && contentTypes[0] != "application/jose+json" {
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: "Invalid content type",
+		}
+		return challenge, challenge.Error
+	} else if !ok {
+		challenge.Status = core.StatusInvalid
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: "No Content-Type header provided",
+		}
+		return challenge, challenge.Error
+	}
+
 	// Read body & test
 	body, readErr := ioutil.ReadAll(httpResponse.Body)
 	if readErr != nil {
