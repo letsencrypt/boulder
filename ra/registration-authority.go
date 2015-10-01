@@ -13,11 +13,13 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -43,15 +45,21 @@ type RegistrationAuthorityImpl struct {
 	log         *blog.AuditLogger
 	// How long before a newly created authorization expires.
 	authorizationLifetime time.Duration
+	rlPolicies            cmd.RateLimitConfig
+	tiMu                  *sync.RWMutex
+	totalIssuedCache      int64
+	lastIssuedCount       *time.Time
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter) RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, policies cmd.RateLimitConfig) RegistrationAuthorityImpl {
 	ra := RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
 		authorizationLifetime: DefaultAuthorizationLifetime,
+		rlPolicies:            policies,
+		tiMu:                  new(sync.RWMutex),
 	}
 	return ra
 }
@@ -88,6 +96,45 @@ type certificateRequestEvent struct {
 	RequestTime         time.Time `json:",omitempty"`
 	ResponseTime        time.Time `json:",omitempty"`
 	Error               string    `json:",omitempty"`
+}
+
+var issuanceCountCacheLife = 1 * time.Minute
+
+// issuanceCountInvalid checks if the current issuance count is invalid either
+// because it hasn't been set yet or because it has expired. This method expects
+// that the caller holds either a R or W ra.tiMu lock.
+func (ra *RegistrationAuthorityImpl) issuanceCountInvalid(now time.Time) bool {
+	return ra.lastIssuedCount == nil || ra.lastIssuedCount.Add(issuanceCountCacheLife).Before(now)
+}
+
+func (ra *RegistrationAuthorityImpl) getIssuanceCount() (int64, error) {
+	ra.tiMu.RLock()
+	if ra.issuanceCountInvalid(ra.clk.Now()) {
+		ra.tiMu.RUnlock()
+		return ra.setIssuanceCount()
+	}
+	count := ra.totalIssuedCache
+	ra.tiMu.RUnlock()
+	return count, nil
+}
+
+func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int64, error) {
+	ra.tiMu.Lock()
+	defer ra.tiMu.Unlock()
+
+	now := ra.clk.Now()
+	if ra.issuanceCountInvalid(now) {
+		count, err := ra.SA.CountCertificatesRange(
+			now.Add(-ra.rlPolicies.TotalCertificates.Window.Duration),
+			now,
+		)
+		if err != nil {
+			return 0, err
+		}
+		ra.totalIssuedCache = count
+		ra.lastIssuedCount = &now
+	}
+	return ra.totalIssuedCache, nil
 }
 
 // NewRegistration constructs a new Registration from a request.
@@ -337,6 +384,18 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
+	}
+
+	// Check total certificate rate limiting
+	if ra.rlPolicies.TotalCertificates.Threshold != 0 {
+		totalIssued, err := ra.getIssuanceCount()
+		if err != nil {
+			logEvent.Error = err.Error()
+			return emptyCert, err
+		}
+		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
+			return emptyCert, core.RateLimitedError("Certificate issuance limit reached")
+		}
 	}
 
 	// Verify the CSR

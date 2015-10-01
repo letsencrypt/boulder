@@ -622,6 +622,22 @@ func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, 
 	return
 }
 
+// CountCertificatesRange returns the number of certificates issued in a specific
+// date range
+func (ssa *SQLStorageAuthority) CountCertificatesRange(start, end time.Time) (count int64, err error) {
+	err = ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM certificates
+		WHERE issued >= :windowLeft
+		AND issued < :windowRight`,
+		map[string]interface{}{
+			"windowLeft":  start,
+			"windowRight": end,
+		},
+	)
+	return count, err
+}
+
 // ErrNoReceipt is a error type for non-existent SCT receipt
 type ErrNoReceipt string
 

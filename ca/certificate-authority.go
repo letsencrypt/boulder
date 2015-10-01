@@ -54,7 +54,6 @@ type CertificateAuthorityImpl struct {
 	OCSPSigner     ocsp.Signer
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
-	DB             core.CertificateAuthorityDatabase
 	Publisher      core.Publisher
 	Clk            clock.Clock // TODO(jmhodges): should be private, like log
 	log            *blog.AuditLogger
@@ -70,7 +69,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config cmd.CAConfig, clk clock.Clock, issuerCert string) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, issuerCert string) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -127,7 +126,6 @@ func NewCertificateAuthorityImpl(cadb core.CertificateAuthorityDatabase, config 
 		Signer:     signer,
 		OCSPSigner: ocspSigner,
 		profile:    config.Profile,
-		DB:         cadb,
 		Prefix:     config.SerialPrefix,
 		Clk:        clk,
 		log:        logger,
@@ -306,15 +304,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Bytes: csr.Raw,
 	}))
 
-	// Get the next serial number
-	tx, err := ca.DB.Begin()
-	if err != nil {
-		err = core.InternalServerError(err.Error())
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.AuditErr(err)
-		return emptyCert, err
-	}
-
 	// Hack: CFSSL always sticks a 64-bit random number at the end of the
 	// serialSeq we provide, but we want 136 bits of random number, plus an 8-bit
 	// instance id prefix. For now, we generate the extra 72 bits of randomness
@@ -328,7 +317,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
-		tx.Rollback()
 		return emptyCert, err
 	}
 	serialHex := hex.EncodeToString([]byte{byte(ca.Prefix)}) + hex.EncodeToString(randSlice)
@@ -349,7 +337,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Signer failed, rolling back: serial=[%s] err=[%v]", serialHex, err))
-		tx.Rollback()
 		return emptyCert, err
 	}
 
@@ -357,7 +344,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		err = core.InternalServerError("No certificate returned by server")
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("PEM empty from Signer, rolling back: serial=[%s] err=[%v]", serialHex, err))
-		tx.Rollback()
 		return emptyCert, err
 	}
 
@@ -366,7 +352,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		err = core.InternalServerError("Invalid certificate value returned")
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("PEM decode error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
-		tx.Rollback()
 		return emptyCert, err
 	}
 	certDER := block.Bytes
@@ -380,7 +365,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Uncaught error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
-		tx.Rollback()
 		return emptyCert, err
 	}
 
@@ -390,14 +374,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Failed RPC to store at SA, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
-		tx.Rollback()
-		return emptyCert, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		err = core.InternalServerError(err.Error())
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("Failed to commit, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
 		return emptyCert, err
 	}
 
