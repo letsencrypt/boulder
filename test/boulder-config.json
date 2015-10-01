@@ -117,6 +117,7 @@
   },
 
   "ra": {
+    "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "debugAddr": "localhost:8002"
   },
 

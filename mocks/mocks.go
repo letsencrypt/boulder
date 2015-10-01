@@ -315,6 +315,11 @@ func (sa *MockSA) GetLatestValidAuthorization(registrationId int64, identifier c
 	return core.Authorization{}, errors.New("no authz")
 }
 
+// CountCertificatesRange is a mock
+func (sa *MockSA) CountCertificatesRange(_, _ time.Time) (int64, error) {
+	return 0, nil
+}
+
 // MockPublisher is a mock
 type MockPublisher struct {
 	// empty
