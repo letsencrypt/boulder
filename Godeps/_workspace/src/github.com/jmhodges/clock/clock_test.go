@@ -9,6 +9,8 @@ import (
 func TestFakeClockGoldenPath(t *testing.T) {
 	clk := NewFake()
 	second := NewFake()
+	oldT := clk.Now()
+
 	if !clk.Now().Equal(second.Now()) {
 		t.Errorf("clocks must start out at the same time but didn't: %#v vs %#v", clk.Now(), second.Now())
 	}
@@ -16,6 +18,27 @@ func TestFakeClockGoldenPath(t *testing.T) {
 	if clk.Now().Equal(second.Now()) {
 		t.Errorf("clocks different must differ: %#v vs %#v", clk.Now(), second.Now())
 	}
+
+	clk.Set(oldT)
+	if !clk.Now().Equal(second.Now()) {
+		t.Errorf("clk should have been been set backwards: %#v vs %#v", clk.Now(), second.Now())
+	}
+
+	clk.Sleep(time.Second)
+	if clk.Now().Equal(second.Now()) {
+		t.Errorf("clk should have been set forwards (by sleeping): %#v vs %#v", clk.Now(), second.Now())
+	}
+}
+
+func TestNegativeSleep(t *testing.T) {
+	clk := NewFake()
+	clk.Add(1 * time.Hour)
+	first := clk.Now()
+	clk.Sleep(-10 * time.Second)
+	if !clk.Now().Equal(first) {
+		t.Errorf("clk should not move in time on a negative sleep")
+	}
+
 }
 
 func ExampleClock() {

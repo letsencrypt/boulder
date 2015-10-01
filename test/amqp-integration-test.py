@@ -7,6 +7,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import urllib2
 
 import startservers
@@ -53,8 +54,11 @@ def get_ocsp(certFile, url):
 def verify_ocsp_good(certFile, url):
     output = get_ocsp(certFile, url)
     if not re.search(": good", output):
-        print "Expected OCSP response 'good', got something else."
-        die(ExitStatus.OCSPFailure)
+        if not re.search(" unauthorized \(6\)", output):
+            print "Expected OCSP response 'unauthorized', got something else."
+            die(ExitStatus.OCSPFailure)
+        return False
+    return True
 
 def verify_ocsp_revoked(certFile, url):
     output = get_ocsp(certFile, url)
@@ -62,6 +66,17 @@ def verify_ocsp_revoked(certFile, url):
         print "Expected OCSP response 'revoked', got something else."
         die(ExitStatus.OCSPFailure)
     pass
+
+# loop_check expects the function passed as action will return True/False to indicate
+# success/failure
+def loop_check(failureStatus, action, *args):
+    timeout = time.time() + 5
+    while True:
+        if action(*args):
+            break
+        if time.time() > timeout:
+            die(failureStatus)
+        time.sleep(0.25)
 
 def verify_ct_submission(expectedSubmissions, url):
     resp = urllib2.urlopen(url)
@@ -95,10 +110,15 @@ def run_node_test():
 
     ee_ocsp_url = "http://localhost:4002"
     issuer_ocsp_url = "http://localhost:4003"
-    verify_ocsp_good(certFile, ee_ocsp_url)
+
     # Also verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, also works.
     verify_ocsp_good("../test-ca.der", issuer_ocsp_url)
+
+    # As OCSP-Updater is generating responses indepedantly of the CA we sit in a loop
+    # checking OCSP until we either see a good response or we timeout (5s).
+    loop_check(ExitStatus.OCSPFailure, verify_ocsp_good, certFile, ee_ocsp_url)
+
     verify_ct_submission(1, "http://localhost:4500/submissions")
 
     if subprocess.Popen('''

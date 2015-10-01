@@ -78,6 +78,7 @@ def start(race_detection):
         'cmd/boulder-ca',
         'cmd/boulder-va',
         'cmd/boulder-publisher',
+        'cmd/ocsp-updater',
         'cmd/ocsp-responder',
         'test/ct-test-srv',
         'test/dns-test-srv'
