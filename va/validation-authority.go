@@ -564,7 +564,6 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 		err = fmt.Errorf("The authorizated keys file from the server did not match this challenge [%v] != [%v]",
 			string(challenge.AuthorizedKey), string(body))
 		va.log.Debug(err.Error())
-		jwk, _ := json.Marshal(challenge.AccountKey)
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type:   core.UnauthorizedProblem,
