@@ -270,11 +270,14 @@ type OCSPUpdaterConfig struct {
 
 	NewCertificateWindow ConfigDuration
 	OldOCSPWindow        ConfigDuration
+	MissingSCTWindow     ConfigDuration
 
 	NewCertificateBatchSize int
 	OldOCSPBatchSize        int
+	MissingSCTBatchSize     int
 
 	OCSPMinTimeToExpiry ConfigDuration
+	OldestIssuedSCT     ConfigDuration
 
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
