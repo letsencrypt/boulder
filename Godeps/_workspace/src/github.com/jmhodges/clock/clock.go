@@ -1,9 +1,21 @@
 // Package clock provides an abstraction for system time that enables
 // testing of time-sensitive code.
 //
-// By passing in Default to production code, you can then use NewFake
-// in tests to create Clocks that control what time the production
-// code sees.
+// Where you'd use time.Now, instead use clk.Now where clk is an
+// instance of Clock.
+//
+// When running your code in production, pass it a Clock given by
+// Default() and when you're running it in your tests, pass it an
+// instance of Clock from NewFake().
+//
+// When you do that, you can use FakeClock's Add and Set methods to
+// control how time behaves in your code making them more reliable
+// while also expanding the space of problems you can test.
+//
+// This code intentionally does not attempt to provide an abstraction
+// over time.Ticker and time.Timer because Go does not have the
+// runtime or API hooks available to do reliably. See
+// https://github.com/golang/go/issues/8869
 //
 // Be sure to test Time equality with time.Time#Equal, not ==.
 package clock
@@ -29,12 +41,17 @@ type Clock interface {
 	// Now returns the Clock's current view of the time. Mutating the
 	// returned Time will not mutate the clock's time.
 	Now() time.Time
+	Sleep(time.Duration)
 }
 
 type sysClock struct{}
 
 func (s sysClock) Now() time.Time {
 	return time.Now()
+}
+
+func (s sysClock) Sleep(d time.Duration) {
+	time.Sleep(d)
 }
 
 // NewFake returns a FakeClock to be used in tests that need to
@@ -54,6 +71,9 @@ type FakeClock interface {
 	Clock
 	// Adjust the time that will be returned by Now.
 	Add(d time.Duration)
+
+	// Set the Clock's time to exactly the time given.
+	Set(t time.Time)
 }
 
 // To prevent mistakes with the API, we hide this behind NewFake. It's
@@ -71,8 +91,22 @@ func (f *fake) Now() time.Time {
 	return f.t
 }
 
+func (f *fake) Sleep(d time.Duration) {
+	if d < 0 {
+		// time.Sleep just returns immediately. Do the same.
+		return
+	}
+	f.Add(d)
+}
+
 func (f *fake) Add(d time.Duration) {
 	f.Lock()
 	defer f.Unlock()
 	f.t = f.t.Add(d)
+}
+
+func (f *fake) Set(t time.Time) {
+	f.Lock()
+	defer f.Unlock()
+	f.t = t
 }
