@@ -47,6 +47,14 @@ func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool) (*PolicyAu
 
 const maxLabels = 10
 
+// DNS defines max label length as 63 characters. Some implementations allow
+// more, but we will be conservative.
+const maxLabelLength = 63
+
+// This is based off maxLabels * maxLabelLength, but is also a restriction based
+// on the max size of indexed storage in the issuedNames table.
+const maxDNSIdentifierLength = 640
+
 var dnsLabelRegexp = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
 
@@ -143,9 +151,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		return SyntaxError{}
 	}
 	for _, label := range labels {
-		// DNS defines max label length as 63 characters. Some implementations allow
-		// more, but we will be conservative.
-		if len(label) < 1 || len(label) > 63 {
+		if len(label) < 1 || len(label) > maxLabelLength {
 			return SyntaxError{}
 		}
 
