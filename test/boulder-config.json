@@ -110,7 +110,8 @@
           "expiry": "8760h"
         }
       }
-    }
+    },
+    "maxGoroutines": 0
   },
 
   "pa": {
@@ -119,11 +120,13 @@
 
   "ra": {
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
+    "maxGoroutines": 0,
     "debugAddr": "localhost:8002"
   },
 
   "sa": {
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
+    "maxGoroutines": 0,
     "debugAddr": "localhost:8003"
   },
 
@@ -134,7 +137,8 @@
       "simpleHTTPPort": 5001,
       "simpleHTTPSPort": 5001,
       "dvsniPort": 5001
-    }
+    },
+    "maxGoroutines": 0
   },
 
   "sql": {
@@ -196,6 +200,7 @@
       "submissionBackoff": "1s",
       "intermediateBundleFilename": "test/test-ca.pem"
     },
+    "maxGoroutines": 0,
     "debugAddr": "localhost:8009"
   },
 

@@ -98,12 +98,16 @@ type Config struct {
 	RA struct {
 		RateLimitPoliciesFilename string
 
+		MaxGoroutines int64
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
 
 	SA struct {
 		DBConnect string
+
+		MaxGoroutines int64
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -117,6 +121,9 @@ type Config struct {
 			SimpleHTTPSPort int
 			DVSNIPort       int
 		}
+
+		MaxGoroutines int64
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -181,6 +188,8 @@ type Config struct {
 	Publisher struct {
 		CT publisher.CTConfig
 
+		MaxGoroutines int64
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -202,8 +211,6 @@ type Config struct {
 		DNSResolver               string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
-
-		MaxGoroutines int64
 	}
 
 	CertChecker struct {
@@ -230,6 +237,8 @@ type CAConfig struct {
 	// The maximum number of subjectAltNames in a single certificate
 	MaxNames int
 	CFSSL    cfsslConfig.Config
+
+	MaxGoroutines int64
 
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string

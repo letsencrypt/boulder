@@ -62,7 +62,7 @@ func main() {
 			cai.SA = &sac
 		}
 
-		cas, err := rpc.NewAmqpRPCServer(c.AMQP.CA.Server, connectionHandler, c.Common.MaxGoroutines)
+		cas, err := rpc.NewAmqpRPCServer(c.AMQP.CA.Server, connectionHandler, c.CA.MaxGoroutines)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
 		rpc.NewCertificateAuthorityServer(cas, cai)
 

@@ -72,7 +72,7 @@ func main() {
 			vai.RA = &rac
 		}
 
-		vas, err := rpc.NewAmqpRPCServer(c.AMQP.VA.Server, connectionHandler, c.Common.MaxGoroutines)
+		vas, err := rpc.NewAmqpRPCServer(c.AMQP.VA.Server, connectionHandler, c.VA.MaxGoroutines)
 		cmd.FailOnError(err, "Unable to create VA RPC server")
 		rpc.NewValidationAuthorityServer(vas, vai)
 
