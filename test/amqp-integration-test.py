@@ -1,5 +1,6 @@
 #!/usr/bin/env python2.7
 import atexit
+import base64
 import os
 import re
 import shutil
@@ -7,6 +8,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import urllib
 import time
 import urllib2
 
@@ -35,19 +37,48 @@ def die(status):
     exit_status = status
     sys.exit(exit_status)
 
-def get_ocsp(certFile, url):
+# Fetch an OCSP response, parse it with OpenSSL, and return the output.
+def get_ocsp(cert_file, url):
+    ocsp_req_file = os.path.join(tempdir, "ocsp.req")
+    ocsp_resp_file = os.path.join(tempdir, "ocsp.resp")
+    # First generate the OCSP request in DER form
+    openssl_ocsp = "openssl ocsp -issuer ../test-ca.pem -cert %s.pem" % cert_file
     openssl_ocsp_cmd = ("""
       openssl x509 -in %s -out %s.pem -inform der -outform pem;
-      openssl ocsp -no_nonce -issuer ../test-ca.pem -CAfile ../test-ca.pem -cert %s.pem -url %s
-    """ % (certFile, certFile, certFile, url))
+      %s -no_nonce -reqout %s
+    """ % (cert_file, cert_file, openssl_ocsp, ocsp_req_file))
+    print openssl_ocsp_cmd
+    subprocess.check_output(openssl_ocsp_cmd, shell=True)
+    with open(ocsp_req_file) as f:
+        ocsp_req = f.read()
+    ocsp_req_b64 = base64.b64encode(ocsp_req)
+
+    # Make the OCSP request three different ways: by POST, by GET, and by GET with
+    # URL-encoded parameters. All three should have an identical response.
+    get_response = urllib2.urlopen("%s/%s" % (url, ocsp_req_b64)).read()
+    get_encoded_response = urllib2.urlopen("%s/%s" % (url, urllib.quote(ocsp_req_b64, safe = ""))).read()
+    post_response = urllib2.urlopen("%s/" % (url), ocsp_req).read()
+
+    if get_response != get_encoded_response:
+        print "OCSP responses for GET and URL-encoded GET differed."
+        die(ExitStatus.OCSPFailure)
+    elif get_response != post_response:
+        print "OCSP responses for GET and POST differed."
+        die(ExitStatus.OCSPFailure)
+
+    with open(ocsp_resp_file, "w") as f:
+        f.write(get_response)
+
+    ocsp_verify_cmd = "%s -CAfile ../test-ca.pem -respin %s" % (openssl_ocsp, ocsp_resp_file)
+    print ocsp_verify_cmd
     try:
-        print openssl_ocsp_cmd
-        output = subprocess.check_output(openssl_ocsp_cmd, shell=True)
+        output = subprocess.check_output(ocsp_verify_cmd, shell=True)
     except subprocess.CalledProcessError as e:
         output = e.output
         print output
-        print "OpenSSL returned non-zero: %s" % e
+        print "subprocess returned non-zero: %s" % e
         die(ExitStatus.OCSPFailure)
+
     print output
     return output
 

@@ -168,8 +168,7 @@ func main() {
 		killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
 		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
 
-		m := http.NewServeMux()
-		m.Handle(c.OCSPResponder.Path,
+		m := http.StripPrefix(c.OCSPResponder.Path,
 			handler(source, c.OCSPResponder.MaxAge.Duration))
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
