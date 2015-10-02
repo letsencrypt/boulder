@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // Return short format caller info for printing errors, so errors don't all
@@ -24,6 +26,21 @@ func caller() string {
 	splits := strings.Split(file, "/")
 	filename := splits[len(splits)-1]
 	return fmt.Sprintf("%s:%d:", filename, line)
+}
+
+// UnsafeSetToken sets the token value both in the Token field and in the
+// serialized AuthorizedKey object.
+//
+// This method should only be used for writing tests, in cases where the
+// token value needs to be predictable.
+func UnsafeSetToken(ch *core.Challenge, token string) (err error) {
+	ch.Token = token
+
+	ch.AuthorizedKey, err = json.Marshal(core.AuthorizedKey{
+		Token: token,
+		Key:   ch.AccountKey,
+	})
+	return
 }
 
 // Assert a boolean

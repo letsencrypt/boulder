@@ -264,21 +264,6 @@ type Challenge struct {
 	AccountKey *jose.JsonWebKey `json:"accountKey,omitempty"`
 }
 
-// UnsafeSetToken sets the token value both in the Token field and in the
-// serialized AuthorizedKey object.
-//
-// This method should only be used for writing tests, in cases where the
-// token value needs to be predictable.
-func (ch *Challenge) UnsafeSetToken(token string) (err error) {
-	ch.Token = token
-
-	ch.AuthorizedKey, err = json.Marshal(AuthorizedKey{
-		Token: token,
-		Key:   ch.AccountKey,
-	})
-	return
-}
-
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
 // back to the RA to be stored.
 func (ch Challenge) RecordsSane() bool {

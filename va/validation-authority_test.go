@@ -635,7 +635,7 @@ func tlssniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 func TestHttp(t *testing.T) {
 	chall, err := core.HTTPChallenge01(accountKey)
 	test.AssertNotError(t, err, "Failed to create HTTP challenge")
-	err = chall.UnsafeSetToken(expectedToken)
+	err = test.UnsafeSetToken(&chall, expectedToken)
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
 	// NOTE: We do not attempt to shut down the server. The problem is that the
@@ -675,7 +675,7 @@ func TestHttp(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
-	chall.UnsafeSetToken(path404)
+	test.UnsafeSetToken(&chall, path404)
 	invalidChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, "Should have found a 404 for the challenge.")
@@ -683,7 +683,7 @@ func TestHttp(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
-	chall.UnsafeSetToken(pathWrongToken)
+	test.UnsafeSetToken(&chall, pathWrongToken)
 	// The "wrong token" will actually be the expectedToken.  It's wrong
 	// because it doesn't match pathWrongToken.
 	invalidChall, err = va.validateHTTP01(ident, chall)
@@ -693,14 +693,14 @@ func TestHttp(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
-	chall.UnsafeSetToken(pathMoved)
+	test.UnsafeSetToken(&chall, pathMoved)
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "Failed to follow 301 redirect")
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
 
 	log.Clear()
-	chall.UnsafeSetToken(pathFound)
+	test.UnsafeSetToken(&chall, pathFound)
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "Failed to follow 302 redirect")
@@ -718,7 +718,7 @@ func TestHttp(t *testing.T) {
 	test.AssertError(t, err, "Domain name is invalid.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 
-	chall.UnsafeSetToken("wait-long")
+	test.UnsafeSetToken(&chall, "wait-long")
 	started := time.Now()
 	invalidChall, err = va.validateHTTP01(ident, chall)
 	took := time.Since(started)
@@ -733,7 +733,7 @@ func TestHttp(t *testing.T) {
 func TestHTTPRedirectLookup(t *testing.T) {
 	chall, err := core.HTTPChallenge01(accountKey)
 	test.AssertNotError(t, err, "Failed to create HTTP challenge")
-	err = chall.UnsafeSetToken(expectedToken)
+	err = test.UnsafeSetToken(&chall, expectedToken)
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
 	hs := httpSrv(t, expectedToken)
@@ -745,7 +745,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	va.DNSResolver = &mocks.MockDNS{}
 
 	log.Clear()
-	chall.UnsafeSetToken(pathMoved)
+	test.UnsafeSetToken(&chall, pathMoved)
 	finChall, err := va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
@@ -753,7 +753,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
-	chall.UnsafeSetToken(pathFound)
+	test.UnsafeSetToken(&chall, pathFound)
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
@@ -762,7 +762,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
-	chall.UnsafeSetToken(pathRedirectLookupInvalid)
+	test.UnsafeSetToken(&chall, pathRedirectLookupInvalid)
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, chall.Token)
@@ -770,7 +770,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`No IPv4 addresses found for invalid.invalid`)), 1)
 
 	log.Clear()
-	chall.UnsafeSetToken(pathRedirectLookup)
+	test.UnsafeSetToken(&chall, pathRedirectLookup)
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
@@ -779,7 +779,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
-	chall.UnsafeSetToken(pathRedirectPort)
+	test.UnsafeSetToken(&chall, pathRedirectPort)
 	finChall, err = va.validateHTTP01(ident, chall)
 	fmt.Println(finChall.ValidationRecord)
 	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
@@ -792,7 +792,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 func TestHTTPRedirectLoop(t *testing.T) {
 	chall, err := core.HTTPChallenge01(accountKey)
 	test.AssertNotError(t, err, "Failed to create HTTP challenge")
-	err = chall.UnsafeSetToken("looper")
+	err = test.UnsafeSetToken(&chall, "looper")
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
 	hs := httpSrv(t, expectedToken)
@@ -917,7 +917,7 @@ func TestTLSError(t *testing.T) {
 func TestValidateHTTP(t *testing.T) {
 	chall, err := core.HTTPChallenge01(accountKey)
 	test.AssertNotError(t, err, "Failed to create HTTP challenge")
-	err = chall.UnsafeSetToken(core.NewToken())
+	err = test.UnsafeSetToken(&chall, core.NewToken())
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
 	hs := httpSrv(t, chall.Token)
@@ -1027,7 +1027,7 @@ func TestUpdateValidations(t *testing.T) {
 
 	chall, _ := core.HTTPChallenge01(accountKey)
 	chall.ValidationRecord = []core.ValidationRecord{}
-	err := chall.UnsafeSetToken(core.NewToken())
+	err := test.UnsafeSetToken(&chall, core.NewToken())
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
 	var authz = core.Authorization{
