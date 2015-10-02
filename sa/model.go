@@ -17,6 +17,13 @@ import (
 
 var mediumBlobSize = int(math.Pow(2, 24))
 
+type issuedNameModel struct {
+	ID           int64     `db:"id"`
+	ReversedName string    `db:"reversedName"`
+	NotBefore    time.Time `db:"notBefore"`
+	Serial       string    `db:"serial"`
+}
+
 // regModel is the description of a core.Registration in the database.
 type regModel struct {
 	ID        int64           `db:"id"`
