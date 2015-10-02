@@ -116,18 +116,18 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	defer cleanUp()
 
 	_, err := sa.GetRegistration(100)
-	if _, ok := err.(NoSuchRegistrationError); !ok {
+	if _, ok := err.(core.NoSuchRegistrationError); !ok {
 		t.Errorf("GetRegistration: expected NoSuchRegistrationError, got %T type error (%s)", err, err)
 	}
 
 	jwk := satest.GoodJWK()
 	_, err = sa.GetRegistrationByKey(jwk)
-	if _, ok := err.(NoSuchRegistrationError); !ok {
+	if _, ok := err.(core.NoSuchRegistrationError); !ok {
 		t.Errorf("GetRegistrationByKey: expected a NoSuchRegistrationError, got %T type error (%s)", err, err)
 	}
 
 	err = sa.UpdateRegistration(core.Registration{ID: 100, Key: jwk})
-	if _, ok := err.(NoSuchRegistrationError); !ok {
+	if _, ok := err.(core.NoSuchRegistrationError); !ok {
 		t.Errorf("UpdateRegistration: expected a NoSuchRegistrationError, got %T type error (%v)", err, err)
 	}
 }
@@ -312,23 +312,70 @@ func TestAddCertificate(t *testing.T) {
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 
-	// Test cert generated locally by Boulder / CFSSL, serial "0000ff00000000000002238054509817da5a"
+	// Test cert generated locally by Boulder / CFSSL, names [example.com,
+	// www.example.com, admin.example.com]
 	certDER2, err := ioutil.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	serial := "ffdd9b8a82126d96f61d378d5ba99a0474f0"
 
 	digest2, err := sa.AddCertificate(certDER2, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
-	test.AssertEquals(t, digest2, "CMVYqWzyqUW7pfBF2CxL0Uk6I0Upsk7p4EWSnd_vYx4")
+	test.AssertEquals(t, digest2, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
 
-	retrievedCert2, err := sa.GetCertificate("0000ff00000000000002238054509817da5a")
+	retrievedCert2, err := sa.GetCertificate(serial)
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
 	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
 
-	certificateStatus2, err := sa.GetCertificateStatus("0000ff00000000000002238054509817da5a")
+	certificateStatus2, err := sa.GetCertificateStatus(serial)
 	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
 	test.Assert(t, !certificateStatus2.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
 	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
+}
+
+func TestCountCertificatesByName(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+	// Test cert generated locally by Boulder / CFSSL, names [example.com,
+	// www.example.com, admin.example.com]
+	certDER, err := ioutil.ReadFile("test-cert.der")
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+
+	cert, err := x509.ParseCertificate(certDER)
+	test.AssertNotError(t, err, "Couldn't parse example cert DER")
+
+	// Set the test clock's time to the time from the test certificate
+	clk.Add(-clk.Now().Sub(cert.NotBefore))
+	now := clk.Now()
+	yesterday := clk.Now().Add(-24 * time.Hour)
+	twoDaysAgo := clk.Now().Add(-48 * time.Hour)
+	tomorrow := clk.Now().Add(24 * time.Hour)
+
+	// Count for a name that doesn't have any certs
+	count, err := sa.CountCertificatesByName("example.com", yesterday, now)
+	test.AssertNotError(t, err, "Error counting certs.")
+	test.AssertEquals(t, count, 0)
+
+	// Add the test cert and query for its names.
+	reg := satest.CreateWorkingRegistration(t, sa)
+	_, err = sa.AddCertificate(certDER, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add test-cert.der")
+
+	// Time range including now should find the cert
+	count, err = sa.CountCertificatesByName("example.com", yesterday, now)
+	test.AssertNotError(t, err, "Error counting certs.")
+	test.AssertEquals(t, count, 1)
+
+	// Time range between two days ago and yesterday should not.
+	count, err = sa.CountCertificatesByName("example.com", twoDaysAgo, yesterday)
+	test.AssertNotError(t, err, "Error counting certs.")
+	test.AssertEquals(t, count, 0)
+
+	// Time range between now and tomorrow also should not (time ranges are
+	// inclusive at the tail end, but not the beginning end).
+	count, err = sa.CountCertificatesByName("example.com", now, tomorrow)
+	test.AssertNotError(t, err, "Error counting certs.")
+	test.AssertEquals(t, count, 0)
 }
 
 func TestDeniedCSR(t *testing.T) {
@@ -490,4 +537,33 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	if ocspResponse != string(fetched.Response) {
 		t.Errorf("OCSPResponse response, expected %#v, got %#v", ocspResponse, string(fetched.Response))
 	}
+}
+
+func TestCountCertificates(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+	fc.Add(time.Hour * 24)
+	now := fc.Now()
+	count, err := sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
+	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
+	test.AssertEquals(t, count, int64(0))
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	// Add a cert to the DB to test with.
+	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	_, err = sa.AddCertificate(certDER, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	fc.Add(2 * time.Hour)
+	now = fc.Now()
+	count, err = sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
+	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
+	test.AssertEquals(t, count, int64(1))
+
+	fc.Add(24 * time.Hour)
+	now = fc.Now()
+	count, err = sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
+	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
+	test.AssertEquals(t, count, int64(0))
 }

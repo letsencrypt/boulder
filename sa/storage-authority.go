@@ -119,14 +119,6 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 	return nil
 }
 
-type NoSuchRegistrationError struct {
-	Msg string
-}
-
-func (e NoSuchRegistrationError) Error() string {
-	return e.Msg
-}
-
 // GetRegistration obtains a Registration by ID
 func (ssa *SQLStorageAuthority) GetRegistration(id int64) (core.Registration, error) {
 	regObj, err := ssa.dbMap.Get(regModel{}, id)
@@ -135,7 +127,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(id int64) (core.Registration, er
 	}
 	if regObj == nil {
 		msg := fmt.Sprintf("No registrations with ID %d", id)
-		return core.Registration{}, NoSuchRegistrationError{Msg: msg}
+		return core.Registration{}, core.NoSuchRegistrationError(msg)
 	}
 	regPtr, ok := regObj.(*regModel)
 	if !ok {
@@ -155,7 +147,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (core.
 
 	if err == sql.ErrNoRows {
 		msg := fmt.Sprintf("No registrations with public key sha256 %s", sha)
-		return core.Registration{}, NoSuchRegistrationError{Msg: msg}
+		return core.Registration{}, core.NoSuchRegistrationError(msg)
 	}
 	if err != nil {
 		return core.Registration{}, err
@@ -235,6 +227,50 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	}
 
 	return ssa.GetAuthorization(auth.ID)
+}
+
+type TooManyCertificatesError string
+
+func (t TooManyCertificatesError) Error() string {
+	return string(t)
+}
+
+// CountCertificates returns the number of certificates issued within a time
+// period containing DNSNames that are equal to, or subdomains of, the given
+// domain name.
+// The highest count this function can return is 10,000. If there are more
+// certificates than that matching the provided domain name, it will return
+// TooManyCertificatesError.
+func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
+	var count int64
+	const max = 10000
+	var serials []struct {
+		Serial string
+	}
+	_, err := ssa.dbMap.Select(
+		&serials,
+		`SELECT serial from issuedNames
+		 WHERE (reversedName = :reversedDomain OR
+			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
+		 AND notBefore > :earliest AND notBefore <= :latest
+		 LIMIT :limit;`,
+		map[string]interface{}{
+			"reversedDomain": core.ReverseName(domain),
+			"earliest":       earliest,
+			"latest":         latest,
+			"limit":          max + 1,
+		})
+	if err != nil {
+		return -1, err
+	} else if count > max {
+		return -1, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
+	}
+	serialMap := make(map[string]struct{}, len(serials))
+	for _, s := range serials {
+		serialMap[s.Serial] = struct{}{}
+	}
+
+	return len(serialMap), nil
 }
 
 // GetCertificate takes a serial number and returns the corresponding
@@ -398,7 +434,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) error 
 	}
 	if n == 0 {
 		msg := fmt.Sprintf("Requested registration not found %v", reg.ID)
-		return NoSuchRegistrationError{Msg: msg}
+		return core.NoSuchRegistrationError(msg)
 	}
 
 	return nil
@@ -579,6 +615,14 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		RevokedReason:      0,
 		LockCol:            0,
 	}
+	issuedNames := make([]issuedNameModel, len(parsedCertificate.DNSNames))
+	for i, name := range parsedCertificate.DNSNames {
+		issuedNames[i] = issuedNameModel{
+			ReversedName: core.ReverseName(name),
+			Serial:       serial,
+			NotBefore:    parsedCertificate.NotBefore,
+		}
+	}
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -596,6 +640,14 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 	if err != nil {
 		tx.Rollback()
 		return
+	}
+
+	for _, issuedName := range issuedNames {
+		err = tx.Insert(&issuedName)
+		if err != nil {
+			tx.Rollback()
+			return
+		}
 	}
 
 	err = tx.Commit()
@@ -620,6 +672,22 @@ func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, 
 	}
 
 	return
+}
+
+// CountCertificatesRange returns the number of certificates issued in a specific
+// date range
+func (ssa *SQLStorageAuthority) CountCertificatesRange(start, end time.Time) (count int64, err error) {
+	err = ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM certificates
+		WHERE issued >= :windowLeft
+		AND issued < :windowRight`,
+		map[string]interface{}{
+			"windowLeft":  start,
+			"windowRight": end,
+		},
+	)
+	return count, err
 }
 
 // ErrNoReceipt is a error type for non-existent SCT receipt

@@ -43,7 +43,10 @@ func main() {
 		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats)
+		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
+		cmd.FailOnError(err, "Couldn't load rate limit policies file")
+
+		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats, rateLimitPolicies)
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")

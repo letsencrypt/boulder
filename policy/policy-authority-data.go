@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"strings"
 
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
@@ -37,14 +38,6 @@ type RawRuleSet struct {
 type RuleSet struct {
 	Blacklist []BlacklistRule
 	Whitelist []WhitelistRule
-}
-
-func reverseName(domain string) string {
-	labels := strings.Split(domain, ".")
-	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
-		labels[i], labels[j] = labels[j], labels[i]
-	}
-	return strings.Join(labels, ".")
 }
 
 // PolicyAuthorityDatabaseImpl enforces policy decisions based on various rule
@@ -84,7 +77,7 @@ func (padb *PolicyAuthorityDatabaseImpl) LoadRules(rs RuleSet) error {
 		return err
 	}
 	for _, r := range rs.Blacklist {
-		r.Host = reverseName(r.Host)
+		r.Host = core.ReverseName(r.Host)
 		tx.Insert(&r)
 	}
 	_, err = tx.Exec("DELETE FROM whitelist")
@@ -109,7 +102,7 @@ func (padb *PolicyAuthorityDatabaseImpl) DumpRules() (rs RuleSet, err error) {
 		return
 	}
 	for _, r := range bList {
-		r.Host = reverseName(r.Host)
+		r.Host = core.ReverseName(r.Host)
 	}
 	rs.Blacklist = bList
 	var wList []WhitelistRule
@@ -167,7 +160,7 @@ func (padb *PolicyAuthorityDatabaseImpl) CheckHostLists(host string, requireWhit
 		}
 	}
 	// Overrides the whitelist if a blacklist rule is found
-	host = reverseName(host)
+	host = core.ReverseName(host)
 	if !padb.allowedByBlacklist(host) {
 		// return fmt.Errorf("Domain is blacklisted for issuance")
 		return BlacklistedError{}

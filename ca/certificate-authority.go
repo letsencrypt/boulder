@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
@@ -304,22 +305,20 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Bytes: csr.Raw,
 	}))
 
-	// Hack: CFSSL always sticks a 64-bit random number at the end of the
-	// serialSeq we provide, but we want 136 bits of random number, plus an 8-bit
-	// instance id prefix. For now, we generate the extra 72 bits of randomness
-	// ourselves. We should modify CFSSL to just allow the caller to provide a
-	// own full serial number if it wants, and do all the generation logic
-	// ourselves.
-	const randBits = 72
-	randSlice := make([]byte, randBits/8)
-	_, err = rand.Reader.Read(randSlice)
+	// We want 136 bits of random number, plus an 8-bit instance id prefix.
+	const randBits = 136
+	serialBytes := make([]byte, randBits/8+1)
+	serialBytes[0] = byte(ca.Prefix)
+	_, err = rand.Reader.Read(serialBytes[1:])
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		return emptyCert, err
 	}
-	serialHex := hex.EncodeToString([]byte{byte(ca.Prefix)}) + hex.EncodeToString(randSlice)
+	serialHex := hex.EncodeToString(serialBytes)
+	serialBigInt := big.NewInt(0)
+	serialBigInt = serialBigInt.SetBytes(serialBytes)
 
 	// Send the cert off for signing
 	req := signer.SignRequest{
@@ -329,7 +328,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Subject: &signer.Subject{
 			CN: commonName,
 		},
-		SerialSeq: serialHex,
+		Serial: serialBigInt,
 	}
 
 	certPEM, err := ca.Signer.Sign(req)
@@ -377,34 +376,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
-	// Attempt to generate the OCSP Response now. If this raises an error, it is
-	// logged but is not returned to the caller, as an error at this point does
-	// not constitute an issuance failure.
+	// Submit the certificate to any configured CT logs
 	certObj, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed parsing Certificate: %s", err))
 		return cert, nil
 	}
-
-	serial := core.SerialToString(certObj.SerialNumber)
-	signRequest := ocsp.SignRequest{
-		Certificate: certObj,
-		Status:      string(core.OCSPStatusGood),
-	}
-
-	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
-	if err != nil {
-		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed signing: %s", err))
-		return cert, nil
-	}
-
-	err = ca.SA.UpdateOCSP(serial, ocspResponse)
-	if err != nil {
-		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed storing: %s", err))
-		return cert, nil
-	}
-
-	// Submit the certificate to any configured CT logs
 	go ca.Publisher.SubmitToCT(certObj.Raw)
 
 	// Do not return an err at this point; caller must know that the Certificate

@@ -23,7 +23,6 @@ sudo: false
 
 services:
   - rabbitmq
-  - mysql
 
 matrix:
   fast_finish: true
@@ -40,37 +39,20 @@ branches:
     - /^test-.*$/
 
 before_install:
-  # Travis does shallow clones, so there is no master branch present.
-  # But test-no-outdated-migrations.sh needs to check diffs against master.
-  # Fetch just the master branch from origin.
-  - git fetch origin master
-  # Github-PR-Status secret
-  - openssl aes-256-cbc -K $encrypted_53b2630f0fb4_key -iv $encrypted_53b2630f0fb4_iv -in test/github-secret.json.enc -out test/github-secret.json -d || true
+  - source test/travis-before-install.sh
 
-  - travis_retry go get golang.org/x/tools/cmd/vet
-  - travis_retry go get golang.org/x/tools/cmd/cover
-  - travis_retry go get github.com/golang/lint/golint
-  - travis_retry go get github.com/mattn/goveralls
-  - travis_retry go get github.com/modocache/gover
-  - travis_retry go get github.com/jcjones/github-pr-status
-  - travis_retry go get bitbucket.org/liamstask/goose/cmd/goose
-
-  # Boulder consists of multiple Go packages, which
-  # refer to each other by their absolute GitHub path,
-  # e.g. github.com/letsencrypt/boulder/analysis. That means, by default, if
-  # someone forks the repo, Travis won't pass on their own repo. To fix that,
-  # we add a symlink.
-  - mkdir -p $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt
-  - test ! -d $GOPATH/src/github.com/letsencrypt/boulder && ln -s $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt/boulder || true
+# Override default Travis install command to prevent it from adding
+# Godeps/_workspace to GOPATH. When that happens, it hides failures that should
+# arise from importing non-vendorized paths.
+install:
+  - true
 
 env:
   global:
-    - LETSENCRYPT_PATH=/tmp/letsencrypt
+    - LETSENCRYPT_PATH=$HOME/letsencrypt
   matrix:
-    - SKIP_INTEGRATION_TESTS=1
-    - SKIP_UNIT_TESTS=1
-    - RUN_MAKE=1 SKIP_UNIT_TESTS=1 SKIP_INTEGRATION_TESTS=1
+    - RUN="integration vet lint fmt migrations"
+    - RUN="unit"
 
 script:
-  - bash test/travis_make.sh
   - bash test.sh

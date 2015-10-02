@@ -7,13 +7,13 @@ package metrics
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 )
 
 // HTTPMonitor stores some server state
@@ -22,7 +22,6 @@ type HTTPMonitor struct {
 	statsPrefix         string
 	handler             http.Handler
 	connectionsInFlight int64
-	openConnections     int64
 }
 
 // NewHTTPMonitor returns a new initialized HTTPMonitor
@@ -32,24 +31,7 @@ func NewHTTPMonitor(stats statsd.Statter, handler http.Handler, prefix string) H
 		handler:             handler,
 		statsPrefix:         prefix,
 		connectionsInFlight: 0,
-		openConnections:     0,
 	}
-}
-
-// ConnectionMonitor provides states on open connection state
-func (h *HTTPMonitor) ConnectionMonitor(_ net.Conn, state http.ConnState) {
-	var open int64
-	switch state {
-	case http.StateNew:
-		open = atomic.AddInt64(&h.openConnections, 1)
-	case http.StateHijacked:
-		fallthrough
-	case http.StateClosed:
-		open = atomic.AddInt64(&h.openConnections, -1)
-	default:
-		return
-	}
-	h.stats.Gauge(fmt.Sprintf("%s.HTTP.OpenConnections", h.statsPrefix), open, 1.0)
 }
 
 // Handle wraps handlers and records various metrics about requests to these handlers
@@ -84,4 +66,54 @@ func (h *HTTPMonitor) watchAndServe(w http.ResponseWriter, r *http.Request) {
 		endpoint = strings.Join(segments, "/")
 	}
 	h.stats.TimingDuration(fmt.Sprintf("%s.HTTP.ResponseTime.%s", h.statsPrefix, endpoint), cClosed, 1.0)
+}
+
+// FBAdapter provides a facebookgo/stats client interface that sends metrics via
+// a StatsD client
+type FBAdapter struct {
+	stats  statsd.Statter
+	prefix string
+	clk    clock.Clock
+}
+
+// NewFBAdapter returns a new adapter
+func NewFBAdapter(stats statsd.Statter, prefix string, clock clock.Clock) FBAdapter {
+	return FBAdapter{stats: stats, prefix: prefix, clk: clock}
+}
+
+// BumpAvg is essentially statsd.Statter.Gauge
+func (fba FBAdapter) BumpAvg(key string, val float64) {
+	fba.stats.Gauge(fmt.Sprintf("%s.%s", fba.prefix, key), int64(val), 1.0)
+}
+
+// BumpSum is essentially statsd.Statter.Inc (httpdown only ever uses positive
+// deltas)
+func (fba FBAdapter) BumpSum(key string, val float64) {
+	fba.stats.Inc(fmt.Sprintf("%s.%s", fba.prefix, key), int64(val), 1.0)
+}
+
+type btHolder struct {
+	key     string
+	stats   statsd.Statter
+	started time.Time
+}
+
+func (bth btHolder) End() {
+	bth.stats.TimingDuration(bth.key, time.Since(bth.started), 1.0)
+}
+
+// BumpTime is essentially a (much better) statsd.Statter.TimingDuration
+func (fba FBAdapter) BumpTime(key string) interface {
+	End()
+} {
+	return btHolder{
+		key:     fmt.Sprintf("%s.%s", fba.prefix, key),
+		started: fba.clk.Now(),
+		stats:   fba.stats,
+	}
+}
+
+// BumpHistogram isn't used by facebookgo/httpdown
+func (fba FBAdapter) BumpHistogram(_ string, _ float64) {
+	return
 }

@@ -32,29 +32,19 @@ if default_config is None:
 processes = []
 
 
-def install(progs, race_detection):
-    cmd = "go install"
+def install(race_detection):
+    # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
+    # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
+    # BUILD_ID.
+    cmd = "make BUILD_TIME='' BUILD_ID=''  "
     if race_detection:
-        cmd = """go install -race"""
+        cmd = cmd + " GO_BUILD_FLAGS=-race"
 
-    for prog in progs:
-        cmd += " ./" + prog
-    p = subprocess.Popen(cmd, shell=True)
-    out, err = p.communicate()
-    if p.returncode != 0:
-        sys.stderr.write("unable to run go install: %s\n" % cmd)
-        if out:
-            sys.stderr.write("stdout:\n" + out + "\n")
-        if err:
-            sys.stderr.write("stderr: \n" + err + "\n")
-        return False
-    print('installed %s with pid %d' % (cmd, p.pid))
-    return True
+    return subprocess.call(cmd, shell=True) == 0
 
-def run(path, race_detection, config=default_config):
-    binary = os.path.basename(path)
+def run(binary, race_detection, config=default_config):
     # Note: Must use exec here so that killing this process kills the command.
-    cmd = """GORACE="halt_on_error=1" exec %s --config %s""" % (binary, config)
+    cmd = """GORACE="halt_on_error=1" exec ./bin/%s --config %s""" % (binary, config)
     p = subprocess.Popen(cmd, shell=True)
     p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))
@@ -72,17 +62,18 @@ def start(race_detection):
     t.daemon = True
     t.start()
     progs = [
-        'cmd/boulder-wfe',
-        'cmd/boulder-ra',
-        'cmd/boulder-sa',
-        'cmd/boulder-ca',
-        'cmd/boulder-va',
-        'cmd/boulder-publisher',
-        'cmd/ocsp-responder',
-        'test/ct-test-srv',
-        'test/dns-test-srv'
+        'boulder-wfe',
+        'boulder-ra',
+        'boulder-sa',
+        'boulder-ca',
+        'boulder-va',
+        'boulder-publisher',
+        'ocsp-updater',
+        'ocsp-responder',
+        'ct-test-srv',
+        'dns-test-srv'
     ]
-    if not install(progs, race_detection):
+    if not install(race_detection):
         return False
     for prog in progs:
         try:
