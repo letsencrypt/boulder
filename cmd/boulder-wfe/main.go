@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -66,6 +67,7 @@ func main() {
 
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		auditlogger.Info(app.VersionString())
 
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
@@ -120,20 +122,18 @@ func main() {
 		h, err := wfe.Handler()
 		cmd.FailOnError(err, "Problem setting up HTTP handlers")
 
-		auditlogger.Info(app.VersionString())
-
 		httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
 
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
 		srv := &http.Server{
-			Addr:      c.WFE.ListenAddress,
-			ConnState: httpMonitor.ConnectionMonitor,
-			Handler:   httpMonitor.Handle(),
+			Addr:    c.WFE.ListenAddress,
+			Handler: httpMonitor.Handle(),
 		}
 
 		hd := &httpdown.HTTP{
 			StopTimeout: wfe.ShutdownStopTimeout,
 			KillTimeout: wfe.ShutdownKillTimeout,
+			Stats:       metrics.NewFBAdapter(stats, "WFE", clock.Default()),
 		}
 		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")

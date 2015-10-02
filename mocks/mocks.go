@@ -6,7 +6,6 @@
 package mocks
 
 import (
-	"database/sql"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -180,7 +179,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
-		return core.Registration{ID: 2}, sql.ErrNoRows
+		return core.Registration{ID: 2}, core.NoSuchRegistrationError("reg not found")
 	}
 
 	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.
@@ -314,6 +313,11 @@ func (sa *MockSA) GetLatestValidAuthorization(registrationId int64, identifier c
 		}
 	}
 	return core.Authorization{}, errors.New("no authz")
+}
+
+// CountCertificatesRange is a mock
+func (sa *MockSA) CountCertificatesRange(_, _ time.Time) (int64, error) {
+	return 0, nil
 }
 
 // MockPublisher is a mock

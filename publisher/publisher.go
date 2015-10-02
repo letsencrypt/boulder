@@ -44,11 +44,11 @@ func (logDesc *LogDescription) UnmarshalJSON(data []byte) error {
 	// Load Key
 	pkBytes, err := base64.StdEncoding.DecodeString(rawLogDesc.PublicKey)
 	if err != nil {
-		return fmt.Errorf("")
+		return fmt.Errorf("Failed to decode base64 log public key")
 	}
 	pk, err := x509.ParsePKIXPublicKey(pkBytes)
 	if err != nil {
-		return fmt.Errorf("")
+		return fmt.Errorf("Failed to parse log public key")
 	}
 	ecdsaKey, ok := pk.(*ecdsa.PublicKey)
 	if !ok {

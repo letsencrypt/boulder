@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/metrics"
@@ -131,6 +132,7 @@ func main() {
 
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		auditlogger.Info(app.VersionString())
 
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
@@ -140,8 +142,6 @@ func main() {
 		go cmd.DebugServer(c.OCSPResponder.DebugAddr)
 
 		go cmd.ProfileCmd("OCSP", stats)
-
-		auditlogger.Info(app.VersionString())
 
 		config := c.OCSPResponder
 		var source cfocsp.Source
@@ -168,20 +168,19 @@ func main() {
 		killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
 		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
 
-		m := http.NewServeMux()
-		m.Handle(c.OCSPResponder.Path,
+		m := http.StripPrefix(c.OCSPResponder.Path,
 			handler(source, c.OCSPResponder.MaxAge.Duration))
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
 		srv := &http.Server{
-			Addr:      c.OCSPResponder.ListenAddress,
-			ConnState: httpMonitor.ConnectionMonitor,
-			Handler:   httpMonitor.Handle(),
+			Addr:    c.OCSPResponder.ListenAddress,
+			Handler: httpMonitor.Handle(),
 		}
 
 		hd := &httpdown.HTTP{
 			StopTimeout: stopTimeout,
 			KillTimeout: killTimeout,
+			Stats:       metrics.NewFBAdapter(stats, "OCSP", clock.Default()),
 		}
 		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")

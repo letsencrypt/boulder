@@ -8,7 +8,6 @@ package wfe
 import (
 	"bytes"
 	"crypto/x509"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -98,6 +97,9 @@ func statusCodeFromError(err interface{}) int {
 		return http.StatusBadRequest
 	case core.InternalServerError:
 		return http.StatusInternalServerError
+	case core.RateLimitedError:
+		// net/http doesn't have a specific const for 'Too Many Requests'
+		return 429
 	default:
 		return http.StatusInternalServerError
 	}
@@ -154,8 +156,9 @@ func (mrw BodylessResponseWriter) Write(buf []byte) (int, error) {
 // * Respond http.StatusMethodNotAllowed for HTTP methods other than
 //   those listed.
 //
-// * Never send a body in response to a HEAD request. (Anything
-//   written by the handler will be discarded if the method is HEAD.)
+// * Never send a body in response to a HEAD request. Anything
+//   written by the handler will be discarded if the method is HEAD. Also, all
+//   handlers that accept GET automatically accept HEAD.
 func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h func(http.ResponseWriter, *http.Request), methods ...string) {
 	methodsOK := make(map[string]bool)
 	for _, m := range methods {
@@ -170,14 +173,14 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 		}
 		response.Header().Set("Access-Control-Allow-Origin", "*")
 
-		switch request.Method {
-		case "HEAD":
+		// Return a bodyless response to HEAD for any resource that allows GET.
+		if _, ok := methodsOK["GET"]; ok && request.Method == "HEAD" {
 			// We'll be sending an error anyway, but we
 			// should still comply with HTTP spec by not
 			// sending a body.
 			response = BodylessResponseWriter{response}
-		case "OPTIONS":
-			// TODO, #469
+			h(response, request)
+			return
 		}
 
 		if _, ok := methodsOK[request.Method]; !ok {
@@ -298,9 +301,22 @@ const (
 	malformedJWS = "Unable to read/verify body"
 )
 
+// verifyPOST reads and parses the request body, looks up the Registration
+// corresponding to its JWK, verifies the JWS signature,
+// checks that the resource field is present and correct in the JWS protected
+// header, and returns the JWS payload bytes, the key used to verify, and the
+// corresponding Registration (or error).
+// If regCheck is false, verifyPOST will still try to look up a registration
+// object, and will return it if found. However, if no registration object is
+// found, verifyPOST will attempt to verify the JWS using the key in the JWS
+// headers, and return the key plus a dummy registration if successful. If a
+// caller passes regCheck = false, it should plan on validating the key itself.
 func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
 	var err error
-	var reg core.Registration
+	// TODO: We should return a pointer to a registration, which can be nil,
+	// rather the a registration value with a sentinel value.
+	// https://github.com/letsencrypt/boulder/issues/877
+	reg := core.Registration{ID: -1}
 
 	if _, ok := request.Header["Content-Length"]; !ok {
 		err = core.LengthRequiredError("Content-Length header is required for POST.")
@@ -347,18 +363,40 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
 	}
-	key := parsedJws.Signatures[0].Header.JsonWebKey
+	submittedKey := parsedJws.Signatures[0].Header.JsonWebKey
+	if submittedKey == nil {
+		err = core.SignatureValidationError("No JWK in JWS header")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
+	}
+
+	var key *jose.JsonWebKey
+	reg, err = wfe.SA.GetRegistrationByKey(*submittedKey)
+	// Special case: If no registration was found, but regCheck is false, use an
+	// empty registration and the submitted key. The caller is expected to do some
+	// validation on the returned key.
+	if _, ok := err.(core.NoSuchRegistrationError); ok && !regCheck {
+		// When looking up keys from the registrations DB, we can be confident they
+		// are "good". But when we are verifying against any submitted key, we want
+		// to check its quality before doing the verify.
+		if err = core.GoodKey(submittedKey.Key); err != nil {
+			return nil, nil, reg, err
+		}
+		key = submittedKey
+	} else if err != nil {
+		// For all other errors, or if regCheck is true, return error immediately.
+		return nil, nil, reg, err
+	} else {
+		// If the lookup was successful, use that key.
+		key = &reg.Key
+	}
+
 	payload, header, err := parsedJws.Verify(key)
 	if err != nil {
 		puberr := core.SignatureValidationError("JWS verification error")
 		wfe.log.Debug(string(body))
 		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
 		return nil, nil, reg, puberr
-	}
-	if key == nil {
-		err = core.SignatureValidationError("No JWK in JWS header")
-		wfe.log.Debug(err.Error())
-		return nil, nil, reg, err
 	}
 
 	// Check that the request has a known anti-replay nonce
@@ -371,18 +409,6 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 		err = core.SignatureValidationError(fmt.Sprintf("JWS has invalid anti-replay nonce"))
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
-	}
-
-	reg, err = wfe.SA.GetRegistrationByKey(*key)
-	if err != nil {
-		// If we are requiring a valid registration, any failure to look up the
-		// registration is an overall failure to verify.
-		if regCheck {
-			return nil, nil, reg, err
-		}
-		// Otherwise we just return an empty registration. The caller is expected
-		// to use the returned key instead.
-		reg = core.Registration{}
 	}
 
 	// Check that the "resource" field is present and has the correct value
@@ -539,7 +565,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
 		respCode := statusCodeFromError(err)
-		if err == sql.ErrNoRows {
+		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
 		}
@@ -709,7 +735,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
 		respCode := statusCodeFromError(err)
-		if err == sql.ErrNoRows {
+		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
 		}
@@ -907,7 +933,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
 		respCode := http.StatusBadRequest
-		if err == sql.ErrNoRows {
+		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
 		}
@@ -983,7 +1009,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
 		respCode := statusCodeFromError(err)
-		if err == sql.ErrNoRows {
+		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
 		}
