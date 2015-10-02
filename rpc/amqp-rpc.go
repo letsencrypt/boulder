@@ -407,7 +407,7 @@ func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
 			select {
 			case msg, ok := <-msgs:
 				if ok {
-					rpc.processMessage(msg)
+					go rpc.processMessage(msg)
 				} else {
 					// chan has been closed by rpc.channel.Cancel
 					rpc.log.Info(" [!] Finished processing messages")
