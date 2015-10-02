@@ -177,8 +177,6 @@ type Config struct {
 	OCSPUpdater OCSPUpdaterConfig
 
 	Publisher struct {
-		CT publisher.CTConfig
-
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -200,6 +198,8 @@ type Config struct {
 		DNSResolver               string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
+
+		CT publisher.CTConfig
 	}
 
 	CertChecker struct {

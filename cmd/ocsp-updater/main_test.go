@@ -70,6 +70,7 @@ func setup(t *testing.T) (OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock
 		clk:   fc,
 		cac:   &mockCA{},
 		pubc:  &mockPub{sa},
+		sac:   sa,
 		stats: stats,
 		log:   blog.GetAuditLogger(),
 	}

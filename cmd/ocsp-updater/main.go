@@ -34,11 +34,14 @@ type OCSPUpdater struct {
 
 	cac  core.CertificateAuthority
 	pubc core.Publisher
+	sac  core.StorageAuthority
 
-	// Bits various loops need but don't really fit in the looper struct
+	// Used  to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
-	oldestIssuedSCT     time.Duration
-	numLogs             int
+	// Used to calculate how far back missing SCT receipts should be looked for
+	oldestIssuedSCT time.Duration
+	// Number of CT logs we expect to have receipts from
+	numLogs int
 
 	newCertificatesLoop    *looper
 	oldOCSPResponsesLoop   *looper
@@ -53,6 +56,7 @@ func newUpdater(
 	dbMap *gorp.DbMap,
 	ca core.CertificateAuthority,
 	pub core.Publisher,
+	sac core.StorageAuthority,
 	config cmd.OCSPUpdaterConfig,
 	numLogs int,
 ) (*OCSPUpdater, error) {
@@ -304,7 +308,7 @@ func (updater *OCSPUpdater) missingReceiptsTick(batchSize int) {
 	since := now.Add(-updater.oldestIssuedSCT)
 	serials, err := updater.getSerialsIssuedSince(since, batchSize)
 	if err != nil {
-		updater.log.AuditErr(err)
+		updater.log.AuditErr(fmt.Errorf("Failed to get certificate serials: %s", err))
 		return
 	}
 
@@ -313,26 +317,23 @@ func (updater *OCSPUpdater) missingReceiptsTick(batchSize int) {
 		// really have another method that allows us to specify which log/s should
 		// be submitted to so we don't double submit to logs we already have receipts
 		// for
-		if count, err := updater.getNumberOfReceipts(serial); err == nil && count != updater.numLogs {
-			var certDER []byte
-			updater.dbMap.SelectOne(
-				&certDER,
-				`SELECT der FROM certificates
-					 WHERE serial = :serial`,
-				map[string]interface{}{"serial": serial},
-			)
-			if err != nil {
-				updater.log.AuditErr(err)
-				continue
-			}
+		count, err := updater.getNumberOfReceipts(serial)
+		if err != nil {
+			updater.log.AuditErr(fmt.Errorf("Failed to get number of SCT receipts for certificate: %s", err))
+			continue
+		}
+		if count == updater.numLogs {
+			continue
+		}
+		cert, err := updater.sac.GetCertificate(serial)
+		if err != nil {
+			updater.log.AuditErr(fmt.Errorf("Failed to get certificate: %s", err))
+			continue
+		}
 
-			err = updater.pubc.SubmitToCT(certDER)
-			if err != nil {
-				updater.log.AuditErr(err)
-				continue
-			}
-		} else if err != nil {
-			updater.log.AuditErr(err)
+		err = updater.pubc.SubmitToCT(cert.DER)
+		if err != nil {
+			updater.log.AuditErr(fmt.Errorf("Failed to submit certificate to CT log: %s", err))
 			continue
 		}
 	}
@@ -365,7 +366,12 @@ func (l *looper) loop() {
 	}
 }
 
-func setupClients(c cmd.Config, stats statsd.Statter) (core.CertificateAuthority, core.Publisher, chan *amqp.Error) {
+func setupClients(c cmd.Config, stats statsd.Statter) (
+	core.CertificateAuthority,
+	core.Publisher,
+	core.StorageAuthority,
+	chan *amqp.Error,
+) {
 	ch, err := rpc.AmqpChannel(c)
 	cmd.FailOnError(err, "Could not connect to AMQP")
 
@@ -383,7 +389,13 @@ func setupClients(c cmd.Config, stats statsd.Statter) (core.CertificateAuthority
 	pubc, err := rpc.NewPublisherClient(pubRPC)
 	cmd.FailOnError(err, "Unable to create Publisher client")
 
-	return cac, pubc, closeChan
+	saRPC, err := rpc.NewAmqpRPCClient("OCSP->SA", c.AMQP.SA.Server, ch, stats)
+	cmd.FailOnError(err, "Unable to create RPC client")
+
+	sac, err := rpc.NewStorageAuthorityClient(saRPC)
+	cmd.FailOnError(err, "Unable to create Publisher client")
+
+	return cac, pubc, sac, closeChan
 }
 
 func main() {
@@ -410,7 +422,7 @@ func main() {
 		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		cac, pubc, closeChan := setupClients(c, stats)
+		cac, pubc, sac, closeChan := setupClients(c, stats)
 
 		updater, err := newUpdater(
 			stats,
@@ -418,9 +430,10 @@ func main() {
 			dbMap,
 			cac,
 			pubc,
+			sac,
 			// Necessary evil for now
 			c.OCSPUpdater,
-			len(c.Publisher.CT.Logs),
+			len(c.Common.CT.Logs),
 		)
 
 		go updater.newCertificatesLoop.loop()
