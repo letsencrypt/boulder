@@ -376,34 +376,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
-	// Attempt to generate the OCSP Response now. If this raises an error, it is
-	// logged but is not returned to the caller, as an error at this point does
-	// not constitute an issuance failure.
+	// Submit the certificate to any configured CT logs
 	certObj, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed parsing Certificate: %s", err))
 		return cert, nil
 	}
-
-	serial := core.SerialToString(certObj.SerialNumber)
-	signRequest := ocsp.SignRequest{
-		Certificate: certObj,
-		Status:      string(core.OCSPStatusGood),
-	}
-
-	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
-	if err != nil {
-		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed signing: %s", err))
-		return cert, nil
-	}
-
-	err = ca.SA.UpdateOCSP(serial, ocspResponse)
-	if err != nil {
-		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed storing: %s", err))
-		return cert, nil
-	}
-
-	// Submit the certificate to any configured CT logs
 	go ca.Publisher.SubmitToCT(certObj.Raw)
 
 	// Do not return an err at this point; caller must know that the Certificate

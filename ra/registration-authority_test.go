@@ -192,10 +192,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		OCSPSigner:     ocspSigner,
 		SA:             ssa,
 		PA:             pa,
-		Publisher:      &mocks.MockPublisher{},
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
 		Clk:            fc,
+		Publisher:      &mocks.MockPublisher{},
 	}
 	cleanUp := func() {
 		saDBCleanUp()

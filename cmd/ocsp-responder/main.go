@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/metrics"
@@ -172,14 +173,14 @@ func main() {
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
 		srv := &http.Server{
-			Addr:      c.OCSPResponder.ListenAddress,
-			ConnState: httpMonitor.ConnectionMonitor,
-			Handler:   httpMonitor.Handle(),
+			Addr:    c.OCSPResponder.ListenAddress,
+			Handler: httpMonitor.Handle(),
 		}
 
 		hd := &httpdown.HTTP{
 			StopTimeout: stopTimeout,
 			KillTimeout: killTimeout,
+			Stats:       metrics.NewFBAdapter(stats, "OCSP", clock.Default()),
 		}
 		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")
