@@ -62,16 +62,16 @@ def start(race_detection):
     t.daemon = True
     t.start()
     progs = [
-        'cmd/boulder-wfe',
-        'cmd/boulder-ra',
-        'cmd/boulder-sa',
-        'cmd/boulder-ca',
-        'cmd/boulder-va',
-        'cmd/boulder-publisher',
-        'cmd/ocsp-updater',
-        'cmd/ocsp-responder',
-        'test/ct-test-srv',
-        'test/dns-test-srv'
+        'boulder-wfe',
+        'boulder-ra',
+        'boulder-sa',
+        'boulder-ca',
+        'boulder-va',
+        'boulder-publisher',
+        'ocsp-updater',
+        'ocsp-responder',
+        'ct-test-srv',
+        'dns-test-srv'
     ]
     if not install(race_detection):
         return False
