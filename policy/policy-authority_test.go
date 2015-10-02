@@ -186,7 +186,7 @@ func TestChallengesFor(t *testing.T) {
 		t.Errorf("Error generating challenges: %v", err)
 	}
 
-	//-----BEGIN TO UPDATE-----
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these tests
 	if len(challenges) != 4 ||
 		challenges[0].Type != core.ChallengeTypeSimpleHTTP ||
 		challenges[1].Type != core.ChallengeTypeDVSNI ||
@@ -199,5 +199,4 @@ func TestChallengesFor(t *testing.T) {
 		combinations[2][0] != 2 || combinations[3][0] != 3 {
 		t.Error("Incorrect combinations returned")
 	}
-	//-----END TO UPDATE-----
 }

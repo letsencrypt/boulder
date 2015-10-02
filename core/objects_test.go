@@ -90,7 +90,7 @@ func TestRecordSanityCheck(t *testing.T) {
 	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
 }
 
-//-----BEGIN TO DELETE-----
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this test
 func TestChallengeSanityCheck_Legacy(t *testing.T) {
 	// Make a temporary account key
 	var accountKey *jose.JsonWebKey
@@ -152,8 +152,6 @@ func TestChallengeSanityCheck_Legacy(t *testing.T) {
 	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
 }
-
-//-----END TO DELETE-----
 
 func TestChallengeSanityCheck(t *testing.T) {
 	// Make a temporary account key

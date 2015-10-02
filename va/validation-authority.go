@@ -86,7 +86,7 @@ type verificationRequestEvent struct {
 	Error        string         `json:",omitempty"`
 }
 
-//-----BEGIN TO DELETE-----
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
 	if len(validation.Signatures) > 1 {
 		return fmt.Errorf("Too many signatures on validation JWS")
@@ -121,8 +121,6 @@ func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.Jso
 
 	return nil
 }
-
-//-----END TO DELETE-----
 
 // problemDetailsFromDNSError checks the error returned from Lookup...
 // methods and tests if the error was an underlying net.OpError or an error
@@ -400,7 +398,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(identifier core.AcmeIden
 	return challenge, challenge.Error
 }
 
-//-----BEGIN TO DELETE-----
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
@@ -460,6 +458,7 @@ func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdenti
 	return challenge, nil
 }
 
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
@@ -500,8 +499,6 @@ func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier,
 
 	return va.validateTLSWithZName(identifier, challenge, ZName)
 }
-
-//-----END TO DELETE-----
 
 func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
@@ -742,12 +739,12 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 
 		vStart := va.clk.Now()
 		switch authz.Challenges[challengeIndex].Type {
-		//-----BEGIN TO DELETE-----
 		case core.ChallengeTypeSimpleHTTP:
+			// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
 			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
 		case core.ChallengeTypeDVSNI:
+			// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
 			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
-		//-----END TO DELETE-----
 		case core.ChallengeTypeHTTP01:
 			authz.Challenges[challengeIndex], err = va.validateHTTP01(authz.Identifier, authz.Challenges[challengeIndex])
 		case core.ChallengeTypeTLSSNI01:

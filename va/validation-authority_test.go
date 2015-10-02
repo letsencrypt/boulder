@@ -80,7 +80,7 @@ const pathReLookupInvalid = "re-lookup-invalid"
 const pathLooper = "looper"
 const pathValid = "valid"
 
-//-----BEGIN TO DELETE-----
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
 func createValidation(token string, enableTLS bool) string {
 	payload, _ := json.Marshal(map[string]interface{}{
 		"type":  "simpleHttp",
@@ -92,6 +92,7 @@ func createValidation(token string, enableTLS bool) string {
 	return obj.FullSerialize()
 }
 
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
 func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 	m := http.NewServeMux()
 
@@ -181,6 +182,7 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 	return server
 }
 
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
 func dvsniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 	encodedSig := core.B64enc(chall.Validation.Signatures[0].Signature)
 	h := sha256.New()
@@ -228,6 +230,7 @@ func dvsniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 	return hs
 }
 
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
 func TestSimpleHttpTLS(t *testing.T) {
 	chall := core.Challenge{
 		Type:             core.ChallengeTypeSimpleHTTP,
@@ -254,6 +257,7 @@ func TestSimpleHttpTLS(t *testing.T) {
 	test.AssertEquals(t, logs[0].Priority, syslog.LOG_NOTICE)
 }
 
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
 func TestSimpleHttp(t *testing.T) {
 	tls := false
 	chall := core.Challenge{
@@ -356,6 +360,7 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 }
 
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
 func TestSimpleHttpRedirectLookup(t *testing.T) {
 	tls := false
 	chall := core.Challenge{
@@ -418,6 +423,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 }
 
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
 func TestSimpleHttpRedirectLoop(t *testing.T) {
 	tls := false
 	chall := core.Challenge{
@@ -441,6 +447,7 @@ func TestSimpleHttpRedirectLoop(t *testing.T) {
 	fmt.Println(finChall)
 }
 
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
 func TestDvsni(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeDVSNI)
 
@@ -518,8 +525,6 @@ func TestDVSNIWithTLSError(t *testing.T) {
 	test.AssertError(t, err, "What cert was used?")
 	test.AssertEquals(t, invalidChall.Error.Type, core.TLSProblem)
 }
-
-//-----END TO DELETE-----
 
 func httpSrv(t *testing.T, token string) *httptest.Server {
 	m := http.NewServeMux()
@@ -958,15 +963,13 @@ func createChallenge(challengeType string) core.Challenge {
 	})
 	chall.AuthorizedKey = core.JSONBuffer(authorizedKey)
 
-	//-----BEGIN TO DELETE-----
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
 	validationPayload, _ := json.Marshal(map[string]interface{}{
 		"type":  chall.Type,
 		"token": chall.Token,
 	})
-
 	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
 	chall.Validation, _ = signer.Sign(validationPayload, "")
-	//-----END TO DELETE-----
 
 	return chall
 }

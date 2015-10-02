@@ -29,8 +29,8 @@ func newChallenge(challengeType string, accountKey *jose.JsonWebKey) (Challenge,
 	}, nil
 }
 
-//----- BEGIN TO DELETE -----
 // SimpleHTTPChallenge constructs a random HTTP challenge
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func SimpleHTTPChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
 	tls := true
 	return Challenge{
@@ -43,6 +43,7 @@ func SimpleHTTPChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
 }
 
 // DvsniChallenge constructs a random DVSNI challenge
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func DvsniChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
 	return Challenge{
 		Type:       ChallengeTypeDVSNI,
@@ -51,8 +52,6 @@ func DvsniChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
 		AccountKey: accountKey,
 	}, nil
 }
-
-//----- END TO DELETE -----
 
 // HTTPChallenge constructs a random http-00 challenge
 func HTTPChallenge01(accountKey *jose.JsonWebKey) (Challenge, error) {

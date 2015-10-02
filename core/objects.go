@@ -272,8 +272,9 @@ func (ch Challenge) RecordsSane() bool {
 	}
 
 	switch ch.Type {
-	case ChallengeTypeSimpleHTTP: // TO DELETE
-		fallthrough // TO DELETE
+	case ChallengeTypeSimpleHTTP:
+		// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this case
+		fallthrough
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
@@ -281,8 +282,9 @@ func (ch Challenge) RecordsSane() bool {
 				return false
 			}
 		}
-	case ChallengeTypeDVSNI: // TO DELETE
-		fallthrough // TO DELETE
+	case ChallengeTypeDVSNI:
+		// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this case
+		fallthrough
 	case ChallengeTypeTLSSNI01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
@@ -301,9 +303,9 @@ func (ch Challenge) RecordsSane() bool {
 	return true
 }
 
-//----- BEGIN TO DELETE -----
 // IsLegacy returns true if the challenge is of a legacy type (i.e., one defined
 // before draft-ietf-acme-acme-00)
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func (ch Challenge) IsLegacy() bool {
 	return (ch.Type == ChallengeTypeSimpleHTTP) ||
 		(ch.Type == ChallengeTypeDVSNI)
@@ -311,6 +313,7 @@ func (ch Challenge) IsLegacy() bool {
 
 // LegacyIsSane performs sanity checks for legacy challenge types, which have
 // a different structure / logic than current challenges.
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func (ch Challenge) LegacyIsSane(completed bool) bool {
 	if !ch.IsLegacy() {
 		return false
@@ -369,6 +372,7 @@ func (ch Challenge) LegacyIsSane(completed bool) bool {
 
 // LegacyMergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func (ch Challenge) LegacyMergeResponse(resp Challenge) Challenge {
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP:
@@ -391,14 +395,13 @@ func (ch Challenge) LegacyMergeResponse(resp Challenge) Challenge {
 	return ch
 }
 
-//----- END TO DELETE -----
-
 // IsSane checks the sanity of a challenge object before issued to the client
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
-	if ch.IsLegacy() { // TO DELETE
-		return ch.LegacyIsSane(completed) // TO DELETE
-	} // TO DELETE
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
+	if ch.IsLegacy() {
+		return ch.LegacyIsSane(completed)
+	}
 
 	if ch.Status != StatusPending {
 		return false
@@ -443,9 +446,10 @@ func (ch Challenge) IsSane(completed bool) bool {
 // MergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
-	if ch.IsLegacy() { // TO DELETE
-		return ch.LegacyMergeResponse(resp) // TO DELETE
-	} // TO DELETE
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
+	if ch.IsLegacy() {
+		return ch.LegacyMergeResponse(resp)
+	}
 
 	// The only client-provided field is the token, and all current challenge types
 	// use it.
