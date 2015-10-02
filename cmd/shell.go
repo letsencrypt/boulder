@@ -202,6 +202,8 @@ type Config struct {
 		DNSResolver               string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
+
+		MaxGoroutines int64
 	}
 
 	CertChecker struct {

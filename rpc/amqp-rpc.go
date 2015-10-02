@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -169,11 +170,13 @@ type AmqpRPCServer struct {
 	connected         bool
 	done              bool
 	dMu               sync.Mutex
+	currentGoroutines int64
+	maxGoroutines     int64
 }
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
-func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer)) (*AmqpRPCServer, error) {
+func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer), maxGoroutines int64) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
 	b := make([]byte, 4)
 	_, err := rand.Read(b)
@@ -187,6 +190,7 @@ func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer)) (*AmqpRP
 		dispatchTable:     make(map[string]func([]byte) ([]byte, error)),
 		connectionHandler: handler,
 		consumerName:      consumerName,
+		maxGoroutines:     maxGoroutines,
 	}, nil
 }
 
@@ -407,7 +411,31 @@ func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
 			select {
 			case msg, ok := <-msgs:
 				if ok {
-					go rpc.processMessage(msg)
+					if rpc.maxGoroutines > 0 && atomic.LoadInt64(&rpc.currentGoroutines) >= rpc.maxGoroutines {
+						response := RPCResponse{Error: wrapError(core.InternalServerError("RPC server has spawned too many Goroutines"))}
+						jsonResponse, err := json.Marshal(response)
+						if err != nil {
+							// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+							rpc.log.Audit(fmt.Sprintf(" [s>][%s][%s] Error condition marshalling RPC response %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
+							break // This breaks the select case not the for loop
+						}
+						rpc.Channel.Publish(
+							AmqpExchange,
+							msg.ReplyTo,
+							AmqpMandatory,
+							AmqpImmediate,
+							amqp.Publishing{
+								CorrelationId: msg.CorrelationId,
+								Type:          msg.Type,
+								Body:          jsonResponse,
+								Expiration:    "30000",
+							})
+					}
+					go func() {
+						atomic.AddInt64(&rpc.currentGoroutines, 1)
+						defer atomic.AddInt64(&rpc.currentGoroutines, -1)
+						rpc.processMessage(msg)
+					}()
 				} else {
 					// chan has been closed by rpc.channel.Cancel
 					rpc.log.Info(" [!] Finished processing messages")
