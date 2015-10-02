@@ -407,35 +407,30 @@ func (ch Challenge) IsSane(completed bool) bool {
 		return false
 	}
 
-	// There always needs to be an account key and authorized key object
-	if ch.AccountKey == nil || len(ch.AuthorizedKey) == 0 {
+	// There always needs to be an account key and token
+	if ch.AccountKey == nil || !LooksLikeAToken(ch.Token) {
 		return false
 	}
 
-	// In addition to being non-empty, the authorized key should parse as JSON
-	var ak AuthorizedKey
-	err := json.Unmarshal(ch.AuthorizedKey, &ak)
-	if err != nil {
+	// Before completion, the authorized key field should be empty
+	if !completed && len(ch.AuthorizedKey) > 0 {
 		return false
 	}
 
-	// Before completion, the token field should be empty
-	if !completed && len(ch.Token) > 0 {
-		return false
-	}
-
-	// If the challenge is completed, then there should be a token, it should be
-	// base64, and it should match the one in the authorized key object
+	// If the challenge is completed, then there should be an authorized key object,
+	// it should parse as JSON, and it should match the challenge.
 	if completed {
-		if len(ch.Token) != 43 {
+		if len(ch.AuthorizedKey) == 0 {
 			return false
 		}
 
-		if _, err := B64dec(ch.Token); err != nil {
+		var ak AuthorizedKey
+		err := json.Unmarshal(ch.AuthorizedKey, &ak)
+		if err != nil {
 			return false
 		}
 
-		if ch.Token != ak.Token {
+		if !ak.Match(ch.Token, ch.AccountKey) {
 			return false
 		}
 	}
@@ -451,15 +446,15 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 		return ch.LegacyMergeResponse(resp)
 	}
 
-	// The only client-provided field is the token, and all current challenge types
-	// use it.
+	// The only client-provided field is the authorized key object, and all current
+	// challenge types use it.
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
 		fallthrough
 	case ChallengeTypeTLSSNI01:
 		fallthrough
 	case ChallengeTypeDNS01:
-		ch.Token = resp.Token
+		ch.AuthorizedKey = resp.AuthorizedKey
 	}
 
 	return ch

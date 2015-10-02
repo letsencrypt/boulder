@@ -26,6 +26,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net/url"
+	"regexp"
 	"strings"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -142,6 +143,12 @@ func RandomString(byteLength int) string {
 // NewToken produces a random string for Challenges, etc.
 func NewToken() string {
 	return RandomString(32)
+}
+
+const tokenFormat = "^[\\w-]{43}$"
+
+func LooksLikeAToken(token string) bool {
+	return regexp.MustCompile(tokenFormat).MatchString(token)
 }
 
 // Fingerprints

@@ -182,10 +182,10 @@ func TestChallengeSanityCheck(t *testing.T) {
 		chall.Status = StatusPending
 		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 
-		chall.AuthorizedKey = jsonAK
+		chall.Token = ak.Token
 		test.Assert(t, chall.IsSane(false), "IsSane should be true")
 
-		chall.Token = ak.Token
+		chall.AuthorizedKey = jsonAK
 		test.Assert(t, chall.IsSane(true), "IsSane should be true")
 	}
 
