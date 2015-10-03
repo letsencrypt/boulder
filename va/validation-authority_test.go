@@ -65,17 +65,16 @@ var ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
 
 var log = mocks.UseMockLog()
 
-const expectedToken = "THETOKEN"
-const pathWrongToken = "wrongtoken"
+// All paths that get assigned to tokens MUST be valid tokens
+const expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+const pathWrongToken = "i6lNAC4lOOLYCl-A08VJt9z_tKYvVk63Dumo8icsBjQ"
 const path404 = "404"
-const pathFound = "302"
-const pathMoved = "301"
-const pathRedirectLookup = "re-lookup"
-const pathRedirectLookupInvalid = "re-lookup-invalid"
+const pathFound = "GBq8SwWq3JsbREFdCamk5IX3KLsxW5ULeGs98Ajl_UM"
+const pathMoved = "5J4FIMrWNfmvHZo-QpKZngmuhqZGwRm21-oEgUDstJM"
 const pathRedirectPort = "port-redirect"
 const pathWait = "wait"
 const pathWaitLong = "wait-long"
-const pathReLookup = "re-lookup"
+const pathReLookup = "7e-P57coLM7D3woNTp_xbJrtlkDYy6PWf3mSSbLwCr4"
 const pathReLookupInvalid = "re-lookup-invalid"
 const pathLooper = "looper"
 const pathValid = "valid"
@@ -118,22 +117,22 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 				currentToken = pathFound
 			}
 			http.Redirect(w, r, pathMoved, 302)
-		} else if strings.HasSuffix(r.URL.Path, "wait") {
+		} else if strings.HasSuffix(r.URL.Path, pathWait) {
 			t.Logf("SIMPLESRV: Got a wait req\n")
 			time.Sleep(time.Second * 3)
-		} else if strings.HasSuffix(r.URL.Path, "wait-long") {
+		} else if strings.HasSuffix(r.URL.Path, pathWaitLong) {
 			t.Logf("SIMPLESRV: Got a wait-long req\n")
 			time.Sleep(time.Second * 10)
-		} else if strings.HasSuffix(r.URL.Path, "re-lookup") {
+		} else if strings.HasSuffix(r.URL.Path, pathReLookup) {
 			t.Logf("SIMPLESRV: Got a redirect req to a valid hostname\n")
 			if currentToken == defaultToken {
-				currentToken = "re-lookup"
+				currentToken = pathReLookup
 			}
 			http.Redirect(w, r, "http://other.valid/path", 302)
-		} else if strings.HasSuffix(r.URL.Path, "re-lookup-invalid") {
+		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
 			t.Logf("SIMPLESRV: Got a redirect req to a invalid hostname\n")
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
-		} else if strings.HasSuffix(r.URL.Path, "looper") {
+		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
 			t.Logf("SIMPLESRV: Got a loop req\n")
 			http.Redirect(w, r, r.URL.String(), 301)
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectPort) {
@@ -327,15 +326,15 @@ func TestSimpleHttp(t *testing.T) {
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "Failed to follow 301 redirect")
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 
 	log.Clear()
 	chall.Token = pathFound
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "Failed to follow 302 redirect")
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 
 	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
 	invalidChall, err = va.validateSimpleHTTP(ipIdentifier, chall)
@@ -383,7 +382,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	finChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
@@ -391,12 +390,12 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
-	chall.Token = pathRedirectLookupInvalid
+	chall.Token = pathReLookupInvalid
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, chall.Token)
@@ -404,11 +403,11 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`No IPv4 addresses found for invalid.invalid`)), 1)
 
 	log.Clear()
-	chall.Token = pathRedirectLookup
+	chall.Token = pathReLookup
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/re-lookup" to ".*other.valid/path"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid/path"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
@@ -560,7 +559,7 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 		} else if strings.HasSuffix(r.URL.Path, pathReLookup) {
 			t.Logf("HTTPSRV: Got a redirect req to a valid hostname\n")
 			if currentToken == defaultToken {
-				currentToken = "re-lookup"
+				currentToken = pathReLookup
 			}
 			http.Redirect(w, r, "http://other.valid/path", 302)
 		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
@@ -575,13 +574,11 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 		} else {
 			t.Logf("HTTPSRV: Got a valid req\n")
 			t.Logf("HTTPSRV: Path = %s\n", r.URL.Path)
-			authzKeysJSON, _ := json.Marshal(
-				core.AuthorizedKey{
-					Token: currentToken,
-					Key:   accountKey,
-				})
 
-			fmt.Fprint(w, string(authzKeysJSON))
+			keyAuthz, _ := core.NewKeyAuthorization(currentToken, accountKey)
+			t.Logf("HTTPSRV: Key Authz = %s\n", keyAuthz.String())
+
+			fmt.Fprint(w, keyAuthz.String())
 			currentToken = defaultToken
 		}
 	})
@@ -593,7 +590,7 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 
 func tlssniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 	h := sha256.New()
-	h.Write([]byte(chall.AuthorizedKey))
+	h.Write([]byte(chall.KeyAuthorization.String()))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.acme.invalid", Z[:32], Z[32:])
 
@@ -674,6 +671,7 @@ func TestHttp(t *testing.T) {
 	va = NewValidationAuthorityImpl(&PortConfig{HTTPPort: goodPort}, stats, clock.Default())
 	va.DNSResolver = &mocks.MockDNS{}
 	log.Clear()
+	t.Logf("Trying to validate: %+v\n", chall)
 	finChall, err := va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "Error validating http")
@@ -702,15 +700,15 @@ func TestHttp(t *testing.T) {
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "Failed to follow 301 redirect")
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, "Failed to follow 302 redirect")
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 
 	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
 	invalidChall, err = va.validateHTTP01(ipIdentifier, chall)
@@ -723,7 +721,7 @@ func TestHttp(t *testing.T) {
 	test.AssertError(t, err, "Domain name is invalid.")
 	test.AssertEquals(t, invalidChall.Error.Type, core.UnknownHostProblem)
 
-	setChallengeToken(&chall, "wait-long")
+	setChallengeToken(&chall, pathWaitLong)
 	started := time.Now()
 	invalidChall, err = va.validateHTTP01(ident, chall)
 	took := time.Since(started)
@@ -754,7 +752,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	finChall, err := va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
@@ -762,12 +760,12 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/302" to ".*/301"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/301" to ".*/valid"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
-	setChallengeToken(&chall, pathRedirectLookupInvalid)
+	setChallengeToken(&chall, pathReLookupInvalid)
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, chall.Token)
@@ -775,11 +773,11 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`No IPv4 addresses found for invalid.invalid`)), 1)
 
 	log.Clear()
-	setChallengeToken(&chall, pathRedirectLookup)
+	setChallengeToken(&chall, pathReLookup)
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/re-lookup" to ".*other.valid/path"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid/path"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
@@ -866,11 +864,8 @@ func TestTLSSNI(t *testing.T) {
 
 	// Need to create a new authorized keys object to get an unknown SNI (from the signature value)
 	chall.Token = core.NewToken()
-	authorizedKey, _ := json.Marshal(core.AuthorizedKey{
-		Token: chall.Token,
-		Key:   accountKey,
-	})
-	chall.AuthorizedKey = core.JSONBuffer(authorizedKey)
+	keyAuthorization, _ := core.NewKeyAuthorization(chall.Token, accountKey)
+	chall.KeyAuthorization = &keyAuthorization
 
 	log.Clear()
 	started := time.Now()
@@ -957,11 +952,8 @@ func createChallenge(challengeType string) core.Challenge {
 		AccountKey:       accountKey,
 	}
 
-	authorizedKey, _ := json.Marshal(core.AuthorizedKey{
-		Token: chall.Token,
-		Key:   accountKey,
-	})
-	chall.AuthorizedKey = core.JSONBuffer(authorizedKey)
+	keyAuthorization, _ := core.NewKeyAuthorization(chall.Token, accountKey)
+	chall.KeyAuthorization = &keyAuthorization
 
 	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
 	validationPayload, _ := json.Marshal(map[string]interface{}{
@@ -975,14 +967,16 @@ func createChallenge(challengeType string) core.Challenge {
 }
 
 // setChallengeToken sets the token value both in the Token field and
-// in the serialized AuthorizedKey object.
+// in the serialized KeyAuthorization object.
 func setChallengeToken(ch *core.Challenge, token string) (err error) {
 	ch.Token = token
 
-	ch.AuthorizedKey, err = json.Marshal(core.AuthorizedKey{
-		Token: token,
-		Key:   ch.AccountKey,
-	})
+	keyAuthorization, err := core.NewKeyAuthorization(token, ch.AccountKey)
+	if err != nil {
+		return
+	}
+
+	ch.KeyAuthorization = &keyAuthorization
 	return
 }
 

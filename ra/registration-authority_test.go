@@ -126,15 +126,12 @@ const (
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
-	jsonAuthorizedKey, err := json.Marshal(core.AuthorizedKey{
-		Token: ch.Token,
-		Key:   ch.AccountKey,
-	})
+	keyAuthorization, err := core.NewKeyAuthorization(ch.Token, ch.AccountKey)
 	if err != nil {
 		return
 	}
 
-	out = core.Challenge{AuthorizedKey: jsonAuthorizedKey}
+	out = core.Challenge{KeyAuthorization: &keyAuthorization}
 	return
 }
 

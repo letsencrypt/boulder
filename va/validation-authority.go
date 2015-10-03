@@ -514,30 +514,6 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 		return challenge, challenge.Error
 	}
 
-	// Validate that the challenge/response pair is well-formed
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	var authorizedKey core.AuthorizedKey
-	err := json.Unmarshal(challenge.AuthorizedKey, &authorizedKey)
-	if err != nil {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "AuthorizedKey object on challenge failed to parse as JSON",
-		}
-		va.log.Debug(fmt.Sprintf("%s [%s] HTTP failure: %s", challenge.Type, identifier, err))
-		challenge.Status = core.StatusInvalid
-		return challenge, err
-	}
-	if !authorizedKey.Match(challenge.Token, challenge.AccountKey) {
-		err = fmt.Errorf("Improper token / authorized key pair")
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: err.Error(),
-		}
-		va.log.Debug(fmt.Sprintf("%s [%s] HTTP failure: %s", challenge.Type, identifier, err))
-		challenge.Status = core.StatusInvalid
-		return challenge, err
-	}
-
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
 	body, challenge, err := va.fetchHTTP(identifier, path, false, challenge)
@@ -545,11 +521,10 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 		return challenge, err
 	}
 
-	// Parse body as an authorized key object
-	var serverAuthorizedKey core.AuthorizedKey
-	err = json.Unmarshal(body, &serverAuthorizedKey)
+	// Parse body as a key authorization object
+	serverKeyAuthorization, err := core.NewKeyAuthorizationFromString(string(body))
 	if err != nil {
-		err = fmt.Errorf("Error parsing authorized key file: %s", err.Error())
+		err = fmt.Errorf("Error parsing key authorization file: %s", err.Error())
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
@@ -560,9 +535,9 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 	}
 
 	// Check that the account key for this challenge is authorized by this object
-	if !serverAuthorizedKey.MatchAuthorizedKey(authorizedKey) {
-		err = fmt.Errorf("The authorizated keys file from the server did not match this challenge [%v] != [%v]",
-			string(challenge.AuthorizedKey), string(body))
+	if !serverKeyAuthorization.Match(challenge.Token, challenge.AccountKey) {
+		err = fmt.Errorf("The key authorization file from the server did not match this challenge [%v] != [%v]",
+			challenge.KeyAuthorization.String(), string(body))
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
@@ -589,35 +564,9 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(identifier core.AcmeIdentifi
 		return challenge, challenge.Error
 	}
 
-	// Parse the authorized key object
-	var authorizedKey core.AuthorizedKey
-	err := json.Unmarshal(challenge.AuthorizedKey, &authorizedKey)
-	if err != nil {
-		err = fmt.Errorf("Error parsing authorized key file: %s", err.Error())
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	// Check that the account key for this challenge is authorized by this object
-	if !authorizedKey.Match(challenge.Token, challenge.AccountKey) {
-		err = fmt.Errorf("The authorizated keys file provided did not match this challenge")
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
 	// Compute the digest that will appear in the certificate
 	h := sha256.New()
-	h.Write([]byte(challenge.AuthorizedKey))
+	h.Write([]byte(challenge.KeyAuthorization.String()))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
@@ -659,35 +608,9 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 		return challenge, challenge.Error
 	}
 
-	// Parse the authorized key object
-	var authorizedKey core.AuthorizedKey
-	err := json.Unmarshal(challenge.AuthorizedKey, &authorizedKey)
-	if err != nil {
-		err = fmt.Errorf("Error parsing authorized key file: %s", err.Error())
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	// Check that the account key for this challenge is authorized by this object
-	if !authorizedKey.Match(challenge.Token, challenge.AccountKey) {
-		err = fmt.Errorf("The authorizated key file provided did not match this challenge")
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	// Compute the digest of the authorized key file
+	// Compute the digest of the key authorization file
 	h := sha256.New()
-	h.Write([]byte(challenge.AuthorizedKey))
+	h.Write([]byte(challenge.KeyAuthorization.String()))
 	authorizedKeysDigest := hex.EncodeToString(h.Sum(nil))
 
 	// Look for the required record in the DNS
