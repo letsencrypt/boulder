@@ -17,8 +17,9 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"golang.org/x/net/publicsuffix"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -386,18 +387,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	// Check total certificate rate limiting
-	if ra.rlPolicies.TotalCertificates.Threshold != 0 {
-		totalIssued, err := ra.getIssuanceCount()
-		if err != nil {
-			logEvent.Error = err.Error()
-			return emptyCert, err
-		}
-		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
-			return emptyCert, core.RateLimitedError("Certificate issuance limit reached")
-		}
-	}
-
 	// Verify the CSR
 	csr := req.CSR
 	if err = core.VerifyCSR(csr); err != nil {
@@ -435,6 +424,15 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	if core.KeyDigestEquals(csr.PublicKey, registration.Key) {
 		err = core.MalformedRequestError("Certificate public key must be different than account key")
+		return emptyCert, err
+	}
+
+	// Check rate limits before checking authorizations. If someone is unable to
+	// issue a cert due to rate limiting, we don't want to tell them to go get the
+	// necessary authorizations, only to later fail the rate limit check.
+	err = ra.checkLimits(names)
+	if err != nil {
+		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
@@ -478,6 +476,77 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	ra.stats.Inc("RA.NewCertificates", 1, 1.0)
 	return cert, nil
+}
+
+// domainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
+// for the purpose of rate limiting. It also de-duplicates the output
+// domains.
+func domainsForRateLimiting(names []string) ([]string, error) {
+	domainsMap := make(map[string]struct{}, len(names))
+	var domains []string
+	for _, name := range names {
+		eTLDPlusOne, err := publicsuffix.EffectiveTLDPlusOne(name)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := domainsMap[eTLDPlusOne]; !ok {
+			domainsMap[eTLDPlusOne] = struct{}{}
+			domains = append(domains, eTLDPlusOne)
+		}
+	}
+	return domains, nil
+}
+
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []string, limit cmd.RateLimitPolicy) error {
+	names, err := domainsForRateLimiting(names)
+	if err != nil {
+		return err
+	}
+	now := ra.clk.Now()
+	windowBegin := limit.WindowBegin(now)
+	counts, err := ra.SA.CountCertificatesByNames(names, windowBegin, now)
+	if err != nil {
+		return err
+	}
+	var badNames []string
+	for _, name := range names {
+		count, ok := counts[name]
+		if !ok {
+			// Shouldn't happen, but let's be careful anyhow.
+			return errors.New("StorageAuthority failed to return a count for every name")
+		}
+		if count >= int(limit.GetThreshold(name)) {
+			badNames = append(badNames, name)
+		}
+	}
+	if len(badNames) > 0 {
+		return core.RateLimitedError(fmt.Sprintf(
+			"Too many certificates already issued for: %s",
+			strings.Join(badNames, ", ")))
+	}
+	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) checkLimits(names []string) error {
+	limits := ra.rlPolicies
+	// Check total certificate rate limiting
+	if limits.TotalCertificates.Enabled() {
+		totalIssued, err := ra.getIssuanceCount()
+		if err != nil {
+			return err
+		}
+		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
+			return core.RateLimitedError("Certificate issuance limit reached")
+		}
+	}
+	// Check rate limiting by name
+	if limits.CertificatesPerName.Enabled() {
+		err := ra.checkCertificatesPerNameLimit(names, limits.CertificatesPerName)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // UpdateRegistration updates an existing Registration with new values.

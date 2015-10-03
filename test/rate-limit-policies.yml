@@ -1,3 +1,15 @@
+# See cmd/shell.go for definitions of these rate limits.
 totalCertificates:
   window: 2160h
   threshold: 100000
+certificatesPerName:
+  window: 2160h
+  threshold: 2
+  overrides:
+    ratelimit.me: 1
+    # Hostnames used by the letsencrypt client integration test.
+    le.wtf: 10000
+    le1.wtf: 10000
+    le2.wtf: 10000
+    le3.wtf: 10000
+    nginx.wtf: 10000

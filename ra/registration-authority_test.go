@@ -606,6 +606,111 @@ func TestTotalCertRateLimit(t *testing.T) {
 	test.AssertError(t, err, "Total certificate rate limit failed")
 }
 
+func TestDomainsForRateLimiting(t *testing.T) {
+	domains, err := domainsForRateLimiting([]string{})
+	test.AssertNotError(t, err, "failed on empty")
+	test.AssertEquals(t, len(domains), 0)
+
+	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com"})
+	test.AssertNotError(t, err, "failed on example.com")
+	test.AssertEquals(t, len(domains), 1)
+	test.AssertEquals(t, domains[0], "example.com")
+
+	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk"})
+	test.AssertNotError(t, err, "failed on example.co.uk")
+	test.AssertEquals(t, len(domains), 2)
+	test.AssertEquals(t, domains[0], "example.com")
+	test.AssertEquals(t, domains[1], "example.co.uk")
+
+	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
+	test.AssertError(t, err, "should fail on public suffix")
+
+	domains, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
+	test.AssertNotError(t, err, "failed on foo.bar.baz")
+	test.AssertEquals(t, len(domains), 1)
+	test.AssertEquals(t, domains[0], "example.com")
+}
+
+type mockSAWithNameCounts struct {
+	mocks.MockSA
+	nameCounts map[string]int
+	t          *testing.T
+	clk        clock.FakeClock
+}
+
+func (m mockSAWithNameCounts) CountCertificatesByNames(names []string, earliest, latest time.Time) (ret map[string]int, err error) {
+	if latest != m.clk.Now() {
+		m.t.Error("incorrect latest")
+	}
+	if earliest != m.clk.Now().Add(-23*time.Hour) {
+		m.t.Errorf("incorrect earliest")
+	}
+	return m.nameCounts, nil
+}
+
+func TestCheckCertificatesPerNameLimit(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	rlp := cmd.RateLimitPolicy{
+		Threshold: 3,
+		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+		Overrides: map[string]int64{
+			"bigissuer.com":     100,
+			"smallissuer.co.uk": 1,
+		},
+	}
+
+	mockSA := &mockSAWithNameCounts{
+		nameCounts: map[string]int{
+			"example.com": 1,
+		},
+		clk: fc,
+		t:   t,
+	}
+
+	ra.SA = mockSA
+
+	// One base domain, below threshold
+	err := ra.checkCertificatesPerNameLimit([]string{"www.example.com", "example.com"}, rlp)
+	test.AssertNotError(t, err, "rate limited example.com incorrectly")
+
+	// One base domain, above threshold
+	mockSA.nameCounts["example.com"] = 10
+	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "example.com"}, rlp)
+	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
+	if _, ok := err.(core.RateLimitedError); !ok {
+		t.Errorf("Incorrect error type %#v", err)
+	}
+
+	// SA misbehaved and didn't send back a count for every input name
+	err = ra.checkCertificatesPerNameLimit([]string{"zombo.com", "www.example.com", "example.com"}, rlp)
+	test.AssertError(t, err, "incorrectly failed to error on misbehaving SA")
+
+	// Two base domains, one above threshold but with an override.
+	mockSA.nameCounts["example.com"] = 0
+	mockSA.nameCounts["bigissuer.com"] = 50
+	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "subdomain.bigissuer.com"}, rlp)
+	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
+
+	// Two base domains, one above its override
+	mockSA.nameCounts["example.com"] = 0
+	mockSA.nameCounts["bigissuer.com"] = 100
+	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "subdomain.bigissuer.com"}, rlp)
+	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
+	if _, ok := err.(core.RateLimitedError); !ok {
+		t.Errorf("Incorrect error type")
+	}
+
+	// One base domain, above its override (which is below threshold)
+	mockSA.nameCounts["smallissuer.co.uk"] = 1
+	err = ra.checkCertificatesPerNameLimit([]string{"www.smallissuer.co.uk"}, rlp)
+	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
+	if _, ok := err.(core.RateLimitedError); !ok {
+		t.Errorf("Incorrect error type %#v", err)
+	}
+}
+
 var CAkeyPEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
 	"MIIJKQIBAAKCAgEAqmM0dEf/J9MCk2ItzevL0dKJ84lVUtf/vQ7AXFi492vFXc3b\n" +
 	"PrJz2ybtjO08oVkhRrFGGgLufL2JeOBn5pUZQrp6TqyCLoQ4f/yrmu9tCeG8CtDg\n" +

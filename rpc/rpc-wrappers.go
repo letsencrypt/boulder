@@ -61,6 +61,7 @@ const (
 	MethodAddCertificate                    = "AddCertificate"                    // SA
 	MethodAlreadyDeniedCSR                  = "AlreadyDeniedCSR"                  // SA
 	MethodCountCertificatesRange            = "CountCertificatesRange"            // SA
+	MethodCountCertificatesByNames          = "CountCertificatesByNames"          // SA
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
@@ -142,6 +143,12 @@ type updateOCSPRequest struct {
 type countRequest struct {
 	Start time.Time
 	End   time.Time
+}
+
+type countCertificatesByNamesRequest struct {
+	Names    []string
+	Earliest time.Time
+	Latest   time.Time
 }
 
 // Response structs
@@ -1020,6 +1027,20 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		return json.Marshal(count)
 	})
 
+	rpc.Handle(MethodCountCertificatesByNames, func(req []byte) (response []byte, err error) {
+		var cReq countCertificatesByNamesRequest
+		err = json.Unmarshal(req, &cReq)
+		if err != nil {
+			return
+		}
+
+		counts, err := impl.CountCertificatesByNames(cReq.Names, cReq.Earliest, cReq.Latest)
+		if err != nil {
+			return
+		}
+		return json.Marshal(counts)
+	})
+
 	rpc.Handle(MethodGetSCTReceipt, func(req []byte) (response []byte, err error) {
 		var gsctReq struct {
 			Serial string
@@ -1328,6 +1349,23 @@ func (cac StorageAuthorityClient) CountCertificatesRange(start, end time.Time) (
 		return
 	}
 	err = json.Unmarshal(response, &count)
+	return
+}
+
+// CountCertificatesByNames calls CountCertificatesRange on the remote
+// StorageAuthority.
+func (cac StorageAuthorityClient) CountCertificatesByNames(names []string, earliest, latest time.Time) (counts map[string]int, err error) {
+	var cReq countCertificatesByNamesRequest
+	cReq.Names, cReq.Earliest, cReq.Latest = names, earliest, latest
+	data, err := json.Marshal(cReq)
+	if err != nil {
+		return
+	}
+	response, err := cac.rpc.DispatchSync(MethodCountCertificatesByNames, data)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(response, &counts)
 	return
 }
 
