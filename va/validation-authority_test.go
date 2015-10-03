@@ -635,9 +635,8 @@ func tlssniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 }
 
 func TestHttp(t *testing.T) {
-	chall, err := core.HTTPChallenge01(accountKey)
-	test.AssertNotError(t, err, "Failed to create HTTP challenge")
-	err = setChallengeToken(&chall, expectedToken)
+	chall := core.HTTPChallenge01(accountKey)
+	err := setChallengeToken(&chall, expectedToken)
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
 	// NOTE: We do not attempt to shut down the server. The problem is that the
@@ -734,9 +733,8 @@ func TestHttp(t *testing.T) {
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
-	chall, err := core.HTTPChallenge01(accountKey)
-	test.AssertNotError(t, err, "Failed to create HTTP challenge")
-	err = setChallengeToken(&chall, expectedToken)
+	chall := core.HTTPChallenge01(accountKey)
+	err := setChallengeToken(&chall, expectedToken)
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
 	hs := httpSrv(t, expectedToken)
@@ -793,9 +791,8 @@ func TestHTTPRedirectLookup(t *testing.T) {
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
-	chall, err := core.HTTPChallenge01(accountKey)
-	test.AssertNotError(t, err, "Failed to create HTTP challenge")
-	err = setChallengeToken(&chall, "looper")
+	chall := core.HTTPChallenge01(accountKey)
+	err := setChallengeToken(&chall, "looper")
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
 	hs := httpSrv(t, expectedToken)
@@ -915,9 +912,8 @@ func TestTLSError(t *testing.T) {
 }
 
 func TestValidateHTTP(t *testing.T) {
-	chall, err := core.HTTPChallenge01(accountKey)
-	test.AssertNotError(t, err, "Failed to create HTTP challenge")
-	err = setChallengeToken(&chall, core.NewToken())
+	chall := core.HTTPChallenge01(accountKey)
+	err := setChallengeToken(&chall, core.NewToken())
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
 
 	hs := httpSrv(t, chall.Token)
@@ -1034,7 +1030,7 @@ func TestUpdateValidations(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chall, _ := core.HTTPChallenge01(accountKey)
+	chall := core.HTTPChallenge01(accountKey)
 	chall.ValidationRecord = []core.ValidationRecord{}
 	err := setChallengeToken(&chall, core.NewToken())
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
@@ -1145,7 +1141,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 		Value: "790DB180-A274-47A4-855F-31C428CB1072",
 	}
 
-	chalDNS, _ := core.DNSChallenge01(accountKey)
+	chalDNS := core.DNSChallenge01(accountKey)
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
@@ -1174,13 +1170,13 @@ func TestDNSValidationNotSane(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	chal0, _ := core.DNSChallenge01(accountKey)
+	chal0 := core.DNSChallenge01(accountKey)
 	chal0.Token = ""
 
-	chal1, _ := core.DNSChallenge01(accountKey)
+	chal1 := core.DNSChallenge01(accountKey)
 	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
 
-	chal2, _ := core.DNSChallenge01(accountKey)
+	chal2 := core.DNSChallenge01(accountKey)
 	chal2.TLS = new(bool)
 	*chal2.TLS = true
 
@@ -1256,7 +1252,7 @@ func TestDNSValidationLive(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	goodChalDNS, _ := core.DNSChallenge01(accountKey)
+	goodChalDNS := core.DNSChallenge01(accountKey)
 	// This token is set at _acme-challenge.good.bin.coffee
 	goodChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
 
@@ -1283,7 +1279,7 @@ func TestDNSValidationLive(t *testing.T) {
 		t.Logf("TestDNSValidationLive on Good did not succeed.")
 	}
 
-	badChalDNS, _ := core.DNSChallenge01(accountKey)
+	badChalDNS := core.DNSChallenge01(accountKey)
 	// This token is NOT set at _acme-challenge.bad.bin.coffee
 	badChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
 

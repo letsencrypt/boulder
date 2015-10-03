@@ -32,28 +32,29 @@ func TestChallenges(t *testing.T) {
 		t.Errorf("Error unmarshaling JWK: %v", err)
 	}
 
-	simpleHTTP, err := SimpleHTTPChallenge(accountKey)
-	if err != nil {
-		t.Errorf("Error creating HTTP challenge: %v", err)
-	}
+	simpleHTTP := SimpleHTTPChallenge(accountKey)
 	if !simpleHTTP.IsSane(false) {
 		t.Errorf("New HTTP challenge is not sane: %v", simpleHTTP)
 	}
 
-	dvsni, err := SimpleHTTPChallenge(accountKey)
-	if err != nil {
-		t.Errorf("Error creating DVSNI challenge: %v", err)
-	}
+	dvsni := DvsniChallenge(accountKey)
 	if !dvsni.IsSane(false) {
 		t.Errorf("New DVSNI challenge is not sane: %v", dvsni)
 	}
 
-	dns, err := SimpleHTTPChallenge(accountKey)
-	if err != nil {
-		t.Errorf("Error creating DNS challenge: %v", err)
+	http01 := HTTPChallenge01(accountKey)
+	if !http01.IsSane(false) {
+		t.Errorf("New http-01 challenge is not sane: %v", http01)
 	}
-	if !dns.IsSane(false) {
-		t.Errorf("New DNS challenge is not sane: %v", dns)
+
+	tlssni01 := TLSSNIChallenge01(accountKey)
+	if !tlssni01.IsSane(false) {
+		t.Errorf("New tls-sni-01 challenge is not sane: %v", tlssni01)
+	}
+
+	dns01 := DNSChallenge01(accountKey)
+	if !dns01.IsSane(false) {
+		t.Errorf("New dns-01 challenge is not sane: %v", dns01)
 	}
 }
 

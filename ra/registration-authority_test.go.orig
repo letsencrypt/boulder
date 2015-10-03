@@ -24,7 +24,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/ca"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
@@ -101,6 +100,9 @@ var (
 	}
 
 	ResponseIndex = 0
+	Response      = core.Challenge{
+		Type: "simpleHttp",
+	}
 
 	ExampleCSR = &x509.CertificateRequest{}
 
@@ -113,7 +115,11 @@ var (
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-example.com"},
 		RegistrationID: 1,
 		Status:         "pending",
-		Combinations:   [][]int{[]int{0}, []int{1}},
+		Challenges: []core.Challenge{
+			core.SimpleHTTPChallenge(),
+			core.DvsniChallenge(),
+		},
+		Combinations: [][]int{[]int{0}, []int{1}},
 	}
 	AuthzFinal = core.Authorization{}
 
@@ -122,18 +128,9 @@ var (
 
 const (
 	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
+	caDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_ca_test"
 	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 )
-
-func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
-	keyAuthorization, err := core.NewKeyAuthorization(ch.Token, ch.AccountKey)
-	if err != nil {
-		return
-	}
-
-	out = core.Challenge{KeyAuthorization: &keyAuthorization}
-	return
-}
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
@@ -147,11 +144,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	test.AssertNotError(t, err, "Failed to unmarshal private JWK")
 
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
-	test.AssertNotError(t, err, "Failed to unmarshal JWK")
-
-	simpleHTTP := core.SimpleHTTPChallenge(&AccountKeyA)
-	dvsni := core.DvsniChallenge(&AccountKeyA)
-	AuthzInitial.Challenges = []core.Challenge{simpleHTTP, dvsni}
+	test.AssertNotError(t, err, "Failed to unmarshall JWK")
 
 	fc := clock.NewFake()
 
@@ -194,18 +187,21 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	policyDBCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
 	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
 	test.AssertNotError(t, err, "Couldn't create PA")
+	cadb, caDBCleanUp := caDBImpl(t)
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
 		OCSPSigner:     ocspSigner,
 		SA:             ssa,
 		PA:             pa,
+		DB:             cadb,
+		Publisher:      &mocks.MockPublisher{},
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
 		Clk:            fc,
-		Publisher:      &mocks.MockPublisher{},
 	}
 	cleanUp := func() {
 		saDBCleanUp()
+		caDBCleanUp()
 		policyDBCleanUp()
 	}
 
@@ -215,12 +211,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	Registration, _ = ssa.NewRegistration(core.Registration{Key: AccountKeyA})
 
 	stats, _ := statsd.NewNoopClient()
-	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats, cmd.RateLimitConfig{
-		TotalCertificates: cmd.RateLimitPolicy{
-			Threshold: 100,
-			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		},
-	})
+	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = &ca
@@ -238,6 +229,27 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	return va, ssa, &ra, fc, cleanUp
 }
 
+// This is an unfortunate bit of tech debt that is being taken on in
+// order to get the more important change of using MySQL/MariaDB in
+// all of our tests working without SQLite. We already had issues with
+// the RA here getting a real CertificateAuthority instead of a
+// CertificateAuthorityClient, so this is only marginally worse.
+// TODO(Issue #628): use a CAClient fake instead of a CAImpl instance
+func caDBImpl(t *testing.T) (core.CertificateAuthorityDatabase, func()) {
+	dbMap, err := sa.NewDbMap(caDBConnStr)
+	if err != nil {
+		t.Fatalf("Could not construct dbMap: %s", err)
+	}
+
+	cadb, err := ca.NewCertificateAuthorityDatabaseImpl(dbMap)
+	if err != nil {
+		t.Fatalf("Could not construct CA DB: %s", err)
+	}
+
+	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	return cadb, cleanUp
+}
+
 func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	test.Assert(t, a1.ID == a2.ID, "ret != DB: ID")
 	test.Assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
@@ -246,7 +258,11 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 	if a1.Expires == nil && a2.Expires == nil {
 		return
 	} else if a1.Expires == nil || a2.Expires == nil {
+<<<<<<< HEAD
+		t.Errorf("one and only one of authorization's Expires was nil; ret %+v, DB %+v", a1, a2)
+=======
 		t.Errorf("one and only one of authorization's Expires was nil; ret %v, DB %v", a1, a2)
+>>>>>>> master
 	} else {
 		test.Assert(t, a1.Expires.Equal(*a2.Expires), "ret != DB: Expires")
 	}
@@ -384,21 +400,11 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these lines
-	test.Assert(t, len(authz.Challenges) == 4, "Incorrect number of challenges returned")
+	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
 	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
 	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
-	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeHTTP01, "Challenge 2 not http-00")
-	test.Assert(t, authz.Challenges[3].Type == core.ChallengeTypeTLSSNI01, "Challenge 3 not tlssni-00")
-
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
-	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 2 is not sane")
-	test.Assert(t, authz.Challenges[3].IsSane(false), "Challenge 3 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
 }
@@ -411,9 +417,7 @@ func TestUpdateAuthorization(t *testing.T) {
 	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
-	response, err := makeResponse(authz.Challenges[ResponseIndex])
-	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
 	// Verify that returned authz same as DB
@@ -447,9 +451,7 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 	test.AssertNotError(t, err, "UpdateRegistration failed")
 
 	// Verify that the RA rejected the authorization request
-	response, err := makeResponse(authz.Challenges[ResponseIndex])
-	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	_, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	_, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
 	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
 
 	t.Log("DONE TestUpdateAuthorizationReject")
@@ -458,9 +460,7 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 func TestOnValidationUpdateSuccess(t *testing.T) {
 	_, sa, ra, fclk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	authzUpdated, err := sa.NewPendingAuthorization(AuthzInitial)
-	test.AssertNotError(t, err, "Failed to create new pending authz")
-
+	authzUpdated, _ := sa.NewPendingAuthorization(AuthzInitial)
 	expires := fclk.Now().Add(300 * 24 * time.Hour)
 	authzUpdated.Expires = &expires
 	sa.UpdatePendingAuthorization(authzUpdated)
@@ -591,42 +591,6 @@ func TestNewCertificate(t *testing.T) {
 	test.Assert(t, bytes.Compare(cert.DER, dbCert.DER) == 0, "Certificates differ")
 
 	t.Log("DONE TestOnValidationUpdate")
-}
-
-func TestTotalCertRateLimit(t *testing.T) {
-	_, sa, ra, fc, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.rlPolicies = cmd.RateLimitConfig{
-		TotalCertificates: cmd.RateLimitPolicy{
-			Threshold: 1,
-			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		},
-	}
-	fc.Add(24 * 90 * time.Hour)
-
-	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
-	sa.UpdatePendingAuthorization(AuthzFinal)
-	sa.FinalizeAuthorization(AuthzFinal)
-
-	// Inject another final authorization to cover www.example.com
-	authzFinalWWW := AuthzFinal
-	authzFinalWWW.Identifier.Value = "www.not-example.com"
-	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
-	sa.FinalizeAuthorization(authzFinalWWW)
-
-	certRequest := core.CertificateRequest{
-		CSR: ExampleCSR,
-	}
-
-	_, err := ra.NewCertificate(certRequest, Registration.ID)
-	test.AssertNotError(t, err, "Failed to issue certificate")
-
-	fc.Add(time.Hour)
-
-	_, err = ra.NewCertificate(certRequest, Registration.ID)
-	test.AssertError(t, err, "Total certificate rate limit failed")
 }
 
 var CAkeyPEM = "-----BEGIN RSA PRIVATE KEY-----\n" +

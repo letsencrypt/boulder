@@ -9,50 +9,41 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
-func newChallenge(challengeType string, accountKey *jose.JsonWebKey) (Challenge, error) {
+func newChallenge(challengeType string, accountKey *jose.JsonWebKey) Challenge {
 	return Challenge{
 		Type:       challengeType,
 		Status:     StatusPending,
 		AccountKey: accountKey,
 		Token:      NewToken(),
-	}, nil
+	}
 }
 
 // SimpleHTTPChallenge constructs a random HTTP challenge
 // TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func SimpleHTTPChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
+func SimpleHTTPChallenge(accountKey *jose.JsonWebKey) Challenge {
+	challenge := newChallenge(ChallengeTypeSimpleHTTP, accountKey)
 	tls := true
-	return Challenge{
-		Type:       ChallengeTypeSimpleHTTP,
-		Status:     StatusPending,
-		Token:      NewToken(),
-		TLS:        &tls,
-		AccountKey: accountKey,
-	}, nil
+	challenge.TLS = &tls
+	return challenge
 }
 
 // DvsniChallenge constructs a random DVSNI challenge
 // TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func DvsniChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
-	return Challenge{
-		Type:       ChallengeTypeDVSNI,
-		Status:     StatusPending,
-		Token:      NewToken(),
-		AccountKey: accountKey,
-	}, nil
+func DvsniChallenge(accountKey *jose.JsonWebKey) Challenge {
+	return newChallenge(ChallengeTypeDVSNI, accountKey)
 }
 
-// HTTPChallenge constructs a random http-01 challenge
-func HTTPChallenge01(accountKey *jose.JsonWebKey) (Challenge, error) {
+// HTTPChallenge01 constructs a random http-01 challenge
+func HTTPChallenge01(accountKey *jose.JsonWebKey) Challenge {
 	return newChallenge(ChallengeTypeHTTP01, accountKey)
 }
 
-// DvsniChallenge constructs a random tls-sni-00 challenge
-func TLSSNIChallenge01(accountKey *jose.JsonWebKey) (Challenge, error) {
+// DvsniChallenge01 constructs a random tls-sni-00 challenge
+func TLSSNIChallenge01(accountKey *jose.JsonWebKey) Challenge {
 	return newChallenge(ChallengeTypeTLSSNI01, accountKey)
 }
 
-// DNSChallenge constructs a random DNS challenge
-func DNSChallenge01(accountKey *jose.JsonWebKey) (Challenge, error) {
+// DNSChallenge01 constructs a random DNS challenge
+func DNSChallenge01(accountKey *jose.JsonWebKey) Challenge {
 	return newChallenge(ChallengeTypeDNS01, accountKey)
 }

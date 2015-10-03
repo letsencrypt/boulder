@@ -184,30 +184,13 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 //
 // Note: Current implementation is static, but future versions may not be.
 func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int, err error) {
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this
-	simpleHTTP, err := core.SimpleHTTPChallenge(accountKey)
-	if err != nil {
-		return
-	}
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this
-	dvsni, err := core.DvsniChallenge(accountKey)
-	if err != nil {
-		return
-	}
-
-	http00, err := core.HTTPChallenge01(accountKey)
-	if err != nil {
-		return
-	}
-
-	tlssni00, err := core.TLSSNIChallenge01(accountKey)
-	if err != nil {
-		return
-	}
-
 	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these lines
-	challenges = []core.Challenge{simpleHTTP, dvsni, http00, tlssni00}
+	challenges = []core.Challenge{
+		core.SimpleHTTPChallenge(accountKey),
+		core.DvsniChallenge(accountKey),
+		core.HTTPChallenge01(accountKey),
+		core.TLSSNIChallenge01(accountKey),
+	}
 	combinations = [][]int{[]int{0}, []int{1}, []int{2}, []int{3}}
 	return
 }

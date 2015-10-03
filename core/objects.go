@@ -6,6 +6,7 @@
 package core
 
 import (
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
@@ -217,7 +218,7 @@ func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, 
 	}, nil
 }
 
-// NewKeyAuthorization computes the thumbprint and assembles the object
+// NewKeyAuthorizationFromString parses the string and composes a key authorization struct
 func NewKeyAuthorizationFromString(input string) (ka KeyAuthorization, err error) {
 	parts := strings.Split(input, ".")
 	if len(parts) != 2 {
@@ -256,7 +257,10 @@ func (ka KeyAuthorization) Match(token string, key *jose.JsonWebKey) bool {
 		return false
 	}
 
-	return token == ka.Token && thumbprint == ka.Thumbprint
+	tokensEqual := subtle.ConstantTimeCompare([]byte(token), []byte(ka.Token))
+	thumbprintsEqual := subtle.ConstantTimeCompare([]byte(thumbprint), []byte(ka.Thumbprint))
+
+	return tokensEqual == 1 && thumbprintsEqual == 1
 }
 
 // MarshalJSON packs a key authorization into its string representation
@@ -371,22 +375,18 @@ func (ch Challenge) RecordsSane() bool {
 	return true
 }
 
-// IsLegacy returns true if the challenge is of a legacy type (i.e., one defined
+// isLegacy returns true if the challenge is of a legacy type (i.e., one defined
 // before draft-ietf-acme-acme-00)
 // TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (ch Challenge) IsLegacy() bool {
+func (ch Challenge) isLegacy() bool {
 	return (ch.Type == ChallengeTypeSimpleHTTP) ||
 		(ch.Type == ChallengeTypeDVSNI)
 }
 
-// LegacyIsSane performs sanity checks for legacy challenge types, which have
+// legacyIsSane performs sanity checks for legacy challenge types, which have
 // a different structure / logic than current challenges.
 // TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (ch Challenge) LegacyIsSane(completed bool) bool {
-	if !ch.IsLegacy() {
-		return false
-	}
-
+func (ch Challenge) legacyIsSane(completed bool) bool {
 	if ch.Status != StatusPending {
 		return false
 	}
@@ -438,10 +438,10 @@ func (ch Challenge) LegacyIsSane(completed bool) bool {
 	return true
 }
 
-// LegacyMergeResponse copies a subset of client-provided data to the current Challenge.
+// legacyMergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
 // TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (ch Challenge) LegacyMergeResponse(resp Challenge) Challenge {
+func (ch Challenge) legacyMergeResponse(resp Challenge) Challenge {
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP:
 		// For simpleHttp, only "tls" is client-provided
@@ -467,8 +467,8 @@ func (ch Challenge) LegacyMergeResponse(resp Challenge) Challenge {
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
 	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
-	if ch.IsLegacy() {
-		return ch.LegacyIsSane(completed)
+	if ch.isLegacy() {
+		return ch.legacyIsSane(completed)
 	}
 
 	if ch.Status != StatusPending {
@@ -504,8 +504,8 @@ func (ch Challenge) IsSane(completed bool) bool {
 // Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
-	if ch.IsLegacy() {
-		return ch.LegacyMergeResponse(resp)
+	if ch.isLegacy() {
+		return ch.legacyMergeResponse(resp)
 	}
 
 	// The only client-provided field is the key authorization, and all current
