@@ -240,6 +240,11 @@ func NewKeyAuthorizationFromString(input string) (ka KeyAuthorization, err error
 	return
 }
 
+// String produces the string representation of a key authorization
+func (ka KeyAuthorization) String() string {
+	return ka.Token + "." + ka.Thumbprint
+}
+
 // Match determines whether this KeyAuthorization matches the given token and key
 func (ka KeyAuthorization) Match(token string, key *jose.JsonWebKey) bool {
 	if key == nil {
@@ -256,7 +261,7 @@ func (ka KeyAuthorization) Match(token string, key *jose.JsonWebKey) bool {
 
 // MarshalJSON packs a key authorization into its string representation
 func (ka KeyAuthorization) MarshalJSON() (result []byte, err error) {
-	return json.Marshal(ka.Token + "." + ka.Thumbprint)
+	return json.Marshal(ka.String())
 }
 
 // UnmarshalJSON unpacks a key authorization from a string

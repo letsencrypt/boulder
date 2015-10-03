@@ -47,8 +47,7 @@ type challModel struct {
 	Validated        *time.Time      `db:"validated"`
 	Token            string          `db:"token"`
 	TLS              *bool           `db:"tls"`
-	Validation       []byte          `db:"validation"`
-	AuthorizedKey    []byte          `db:"authorizedKey"`
+	KeyAuthorization string          `db:"keyAuthorization"`
 	ValidationRecord []byte          `db:"validationRecord"`
 	AccountKey       []byte          `db:"accountKey"`
 
@@ -102,17 +101,8 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		Token:           c.Token,
 		TLS:             c.TLS,
 	}
-	if c.Validation != nil {
-		cm.Validation = []byte(c.Validation.FullSerialize())
-		if len(cm.Validation) > mediumBlobSize {
-			return nil, fmt.Errorf("Validation object is too large to store in the database")
-		}
-	}
-	if c.AuthorizedKey != nil {
-		cm.AuthorizedKey = []byte(c.AuthorizedKey)
-		if len(cm.AuthorizedKey) > mediumBlobSize {
-			return nil, fmt.Errorf("AuthorizedKeys object is too large to store in the database")
-		}
+	if c.KeyAuthorization != nil {
+		cm.KeyAuthorization = c.KeyAuthorization.String()
 	}
 	if c.Error != nil {
 		errJSON, err := json.Marshal(c.Error)
@@ -149,20 +139,19 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
-		ID:            cm.ID,
-		Type:          cm.Type,
-		Status:        cm.Status,
-		Validated:     cm.Validated,
-		Token:         cm.Token,
-		TLS:           cm.TLS,
-		AuthorizedKey: core.JSONBuffer(cm.AuthorizedKey),
+		ID:        cm.ID,
+		Type:      cm.Type,
+		Status:    cm.Status,
+		Validated: cm.Validated,
+		Token:     cm.Token,
+		TLS:       cm.TLS,
 	}
-	if len(cm.Validation) > 0 {
-		val, err := jose.ParseSigned(string(cm.Validation))
+	if len(cm.KeyAuthorization) > 0 {
+		ka, err := core.NewKeyAuthorizationFromString(cm.KeyAuthorization)
 		if err != nil {
 			return core.Challenge{}, err
 		}
-		c.Validation = val
+		c.KeyAuthorization = &ka
 	}
 	if len(cm.Error) > 0 {
 		var problem core.ProblemDetails
