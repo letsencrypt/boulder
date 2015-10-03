@@ -126,7 +126,7 @@ func TestMergeChallenge(t *testing.T) {
 	if probe.Validated != merged.Validated {
 		t.Errorf("MergeChallenge allowed response to overwrite completed time")
 	}
-	if string(probe.AuthorizedKey) != string(merged.AuthorizedKey) {
+	if probe.KeyAuthorization != merged.KeyAuthorization {
 		t.Errorf("MergeChallenge allowed response to overwrite authorized key")
 	}
 	if probe.TLS != merged.TLS {

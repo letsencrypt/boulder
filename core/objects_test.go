@@ -45,23 +45,19 @@ func TestRegistrationUpdate(t *testing.T) {
 var testKey1, _ = rsa.GenerateKey(rand.Reader, 2048)
 var testKey2, _ = rsa.GenerateKey(rand.Reader, 2048)
 
-func TestAuthorizedKeys(t *testing.T) {
-	ak1 := AuthorizedKey{
-		Token: "99DrlWuy-4Nc82olAy0cK7Shnm4uV32pJovyucGEWME",
-		Key:   &jose.JsonWebKey{Key: testKey1.Public()},
-	}
-	ak2 := AuthorizedKey{
-		Token: "Iy2_-2OA8lyD0lwhmD8dD3TIL3wlNpiUhLTXPJG5qOM",
-		Key:   &jose.JsonWebKey{Key: testKey2.Public()},
-	}
+func TestKeyAuthorization(t *testing.T) {
+	jwk1 := &jose.JsonWebKey{Key: testKey1.Public()}
+	jwk2 := &jose.JsonWebKey{Key: testKey2.Public()}
 
-	test.Assert(t, ak1.Match(ak1.Token, ak1.Key), "Authorized key should match itself")
-	test.Assert(t, !ak1.Match(ak1.Token, ak2.Key), "Authorized key should not match a different key")
-	test.Assert(t, !ak1.Match(ak2.Token, ak1.Key), "Authorized key should not match a different token")
-	test.Assert(t, !ak1.Match(ak2.Token, ak2.Key), "Authorized key should not match a completely different key")
+	ka1, err := NewKeyAuthorization("99DrlWuy-4Nc82olAy0cK7Shnm4uV32pJovyucGEWME", jwk1)
+	test.AssertNotError(t, err, "Failed to create a new key authorization")
+	ka2, err := NewKeyAuthorization("Iy2_-2OA8lyD0lwhmD8dD3TIL3wlNpiUhLTXPJG5qOM", jwk2)
+	test.AssertNotError(t, err, "Failed to create a new key authorization")
 
-	test.Assert(t, ak1.MatchAuthorizedKey(ak1), "Authorized key should match itself")
-	test.Assert(t, !ak1.MatchAuthorizedKey(ak2), "Authorized key should not match a completely different key")
+	test.Assert(t, ka1.Match(ka1.Token, jwk1), "Authorized key should match itself")
+	test.Assert(t, !ka1.Match(ka1.Token, jwk2), "Authorized key should not match a different key")
+	test.Assert(t, !ka1.Match(ka2.Token, jwk1), "Authorized key should not match a different token")
+	test.Assert(t, !ka1.Match(ka2.Token, jwk2), "Authorized key should not match a completely different key")
 }
 
 func TestRecordSanityCheck(t *testing.T) {
@@ -163,12 +159,8 @@ func TestChallengeSanityCheck(t *testing.T) {
   }`), &accountKey)
 	test.AssertNotError(t, err, "Error unmarshaling JWK")
 
-	ak := AuthorizedKey{
-		Token: "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4",
-		Key:   accountKey,
-	}
-	jsonAK, err := json.Marshal(ak)
-	test.AssertNotError(t, err, "Error marshaling authorized key")
+	ka, err := NewKeyAuthorization("KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4", accountKey)
+	test.AssertNotError(t, err, "Error creating key authorization")
 
 	types := []string{ChallengeTypeHTTP01, ChallengeTypeTLSSNI01, ChallengeTypeDNS01}
 	for _, challengeType := range types {
@@ -182,10 +174,10 @@ func TestChallengeSanityCheck(t *testing.T) {
 		chall.Status = StatusPending
 		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
 
-		chall.Token = ak.Token
+		chall.Token = ka.Token
 		test.Assert(t, chall.IsSane(false), "IsSane should be true")
 
-		chall.AuthorizedKey = jsonAK
+		chall.KeyAuthorization = &ka
 		test.Assert(t, chall.IsSane(true), "IsSane should be true")
 	}
 

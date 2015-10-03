@@ -193,24 +193,87 @@ type ValidationRecord struct {
 	AddressUsed       net.IP   `json:"addressUsed"`
 }
 
-// AuthorizedKey represents a domain holder's authorization for a
+// KeyAuthorization represents a domain holder's authorization for a
 // specific account key to satisfy a specific challenge.
-type AuthorizedKey struct {
-	Token string           `json:"token"`
-	Key   *jose.JsonWebKey `json:"key,omitempty"`
+type KeyAuthorization struct {
+	Token      string
+	Thumbprint string
 }
 
-// Match determines whether this AuthorizedKey object matches the given token and key
-func (ak AuthorizedKey) Match(token string, key *jose.JsonWebKey) bool {
-	if ak.Key == nil {
+// NewKeyAuthorization computes the thumbprint and assembles the object
+func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, error) {
+	if key == nil {
+		return KeyAuthorization{}, fmt.Errorf("Cannot authorize a nil key")
+	}
+
+	thumbprint, err := Thumbprint(key)
+	if err != nil {
+		return KeyAuthorization{}, err
+	}
+
+	return KeyAuthorization{
+		Token:      token,
+		Thumbprint: thumbprint,
+	}, nil
+}
+
+// NewKeyAuthorization computes the thumbprint and assembles the object
+func NewKeyAuthorizationFromString(input string) (ka KeyAuthorization, err error) {
+	parts := strings.Split(input, ".")
+	if len(parts) != 2 {
+		err = fmt.Errorf("Invalid key authorization: %d parts", len(parts))
+		return
+	} else if !LooksLikeAToken(parts[0]) {
+		err = fmt.Errorf("Invalid key authorization: malformed token")
+		return
+	} else if !LooksLikeAToken(parts[1]) {
+		// Thumbprints have the same syntax as tokens in boulder
+		// Both are base64-encoded and 32 octets
+		err = fmt.Errorf("Invalid key authorization: malformed key thumbprint")
+		return
+	}
+
+	ka = KeyAuthorization{
+		Token:      parts[0],
+		Thumbprint: parts[1],
+	}
+	return
+}
+
+// Match determines whether this KeyAuthorization matches the given token and key
+func (ka KeyAuthorization) Match(token string, key *jose.JsonWebKey) bool {
+	if key == nil {
 		return false
 	}
-	return token == ak.Token && KeyDigestEquals(key.Key, ak.Key.Key)
+
+	thumbprint, err := Thumbprint(key)
+	if err != nil {
+		return false
+	}
+
+	return token == ka.Token && thumbprint == ka.Thumbprint
 }
 
-// MatchAuthorizedKey is just an alias for Match
-func (ak AuthorizedKey) MatchAuthorizedKey(ak2 AuthorizedKey) bool {
-	return ak.Match(ak2.Token, ak2.Key)
+// MarshalJSON packs a key authorization into its string representation
+func (ka KeyAuthorization) MarshalJSON() (result []byte, err error) {
+	return json.Marshal(ka.Token + "." + ka.Thumbprint)
+}
+
+// UnmarshalJSON unpacks a key authorization from a string
+func (ka *KeyAuthorization) UnmarshalJSON(data []byte) (err error) {
+	var str string
+	err = json.Unmarshal(data, &str)
+	if err != nil {
+		return err
+	}
+
+	parsed, err := NewKeyAuthorizationFromString(str)
+	if err != nil {
+		return err
+	}
+
+	*ka = parsed
+	return
 }
 
 // Challenge is an aggregate of all data needed for any challenges.
@@ -247,7 +310,7 @@ type Challenge struct {
 	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
 
 	// Used by http-00, tls-sni-00, and dns-00 challenges
-	AuthorizedKey JSONBuffer `json:"authorizedKey,omitempty"`
+	KeyAuthorization *KeyAuthorization `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
@@ -412,25 +475,19 @@ func (ch Challenge) IsSane(completed bool) bool {
 		return false
 	}
 
-	// Before completion, the authorized key field should be empty
-	if !completed && len(ch.AuthorizedKey) > 0 {
+	// Before completion, the key authorization field should be empty
+	if !completed && ch.KeyAuthorization != nil {
 		return false
 	}
 
-	// If the challenge is completed, then there should be an authorized key object,
-	// it should parse as JSON, and it should match the challenge.
+	// If the challenge is completed, then there should be a key authorization,
+	// and it should match the challenge.
 	if completed {
-		if len(ch.AuthorizedKey) == 0 {
+		if ch.KeyAuthorization == nil {
 			return false
 		}
 
-		var ak AuthorizedKey
-		err := json.Unmarshal(ch.AuthorizedKey, &ak)
-		if err != nil {
-			return false
-		}
-
-		if !ak.Match(ch.Token, ch.AccountKey) {
+		if !ch.KeyAuthorization.Match(ch.Token, ch.AccountKey) {
 			return false
 		}
 	}
@@ -446,7 +503,7 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 		return ch.LegacyMergeResponse(resp)
 	}
 
-	// The only client-provided field is the authorized key object, and all current
+	// The only client-provided field is the key authorization, and all current
 	// challenge types use it.
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
@@ -454,7 +511,7 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 	case ChallengeTypeTLSSNI01:
 		fallthrough
 	case ChallengeTypeDNS01:
-		ch.AuthorizedKey = resp.AuthorizedKey
+		ch.KeyAuthorization = resp.KeyAuthorization
 	}
 
 	return ch
