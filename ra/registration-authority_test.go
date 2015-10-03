@@ -101,9 +101,6 @@ var (
 	}
 
 	ResponseIndex = 0
-	Response      = core.Challenge{
-		Type: "simpleHttp",
-	}
 
 	ExampleCSR = &x509.CertificateRequest{}
 
@@ -127,6 +124,19 @@ const (
 	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
 	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 )
+
+func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
+	jsonAuthorizedKey, err := json.Marshal(core.AuthorizedKey{
+		Token: ch.Token,
+		Key:   ch.AccountKey,
+	})
+	if err != nil {
+		return
+	}
+
+	out = core.Challenge{AuthorizedKey: jsonAuthorizedKey}
+	return
+}
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
@@ -406,7 +416,9 @@ func TestUpdateAuthorization(t *testing.T) {
 	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
-	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
+	response, err := makeResponse(authz.Challenges[ResponseIndex])
+	test.AssertNotError(t, err, "Unable to construct response to challenge")
+	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
 	// Verify that returned authz same as DB
@@ -440,7 +452,9 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 	test.AssertNotError(t, err, "UpdateRegistration failed")
 
 	// Verify that the RA rejected the authorization request
-	_, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
+	response, err := makeResponse(authz.Challenges[ResponseIndex])
+	test.AssertNotError(t, err, "Unable to construct response to challenge")
+	_, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
 	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
 
 	t.Log("DONE TestUpdateAuthorizationReject")

@@ -6,26 +6,15 @@
 package core
 
 import (
-	"encoding/json"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
 func newChallenge(challengeType string, accountKey *jose.JsonWebKey) (Challenge, error) {
-	ak := AuthorizedKey{
-		Token: NewToken(),
-		Key:   accountKey,
-	}
-
-	jsonAK, err := json.Marshal(ak)
-	if err != nil {
-		return Challenge{}, err
-	}
-
 	return Challenge{
-		Type:          challengeType,
-		Status:        StatusPending,
-		AccountKey:    accountKey,
-		AuthorizedKey: jsonAK,
+		Type:       challengeType,
+		Status:     StatusPending,
+		AccountKey: accountKey,
+		Token:      NewToken(),
 	}, nil
 }
 
@@ -53,16 +42,9 @@ func DvsniChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
 	}, nil
 }
 
-// HTTPChallenge constructs a random http-00 challenge
+// HTTPChallenge constructs a random http-01 challenge
 func HTTPChallenge01(accountKey *jose.JsonWebKey) (Challenge, error) {
-	chall, err := newChallenge(ChallengeTypeHTTP01, accountKey)
-	if err != nil {
-		return Challenge{}, err
-	}
-
-	tls := true
-	chall.TLS = &tls
-	return chall, nil
+	return newChallenge(ChallengeTypeHTTP01, accountKey)
 }
 
 // DvsniChallenge constructs a random tls-sni-00 challenge

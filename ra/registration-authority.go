@@ -506,6 +506,12 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	}
 	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
 
+	// At this point, the challenge should be sane as a complete challenge
+	if !authz.Challenges[challengeIndex].IsSane(true) {
+		err = core.MalformedRequestError("Response does not complete challenge")
+		return
+	}
+
 	// Store the updated version
 	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
 		// This can pretty much only happen when the client corrupts the Challenge
