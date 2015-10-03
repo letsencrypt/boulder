@@ -246,6 +246,9 @@ type Challenge struct {
 	// Used by dvsni challenges
 	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
 
+	// used by tls-sni-01
+	N int64
+
 	// Used by http-00, tls-sni-00, and dns-00 challenges
 	AuthorizedKey JSONBuffer `json:"authorizedKey,omitempty"`
 

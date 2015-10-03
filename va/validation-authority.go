@@ -6,6 +6,7 @@
 package va
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
@@ -14,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -337,10 +339,53 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 	return body, challenge, nil
 }
 
-func (va *ValidationAuthorityImpl) validateTLSWithZName(identifier core.AcmeIdentifier, input core.Challenge, zName string) (core.Challenge, error) {
+func (va *ValidationAuthorityImpl) validateOneZName(identifier core.AcmeIdentifier, challenge core.Challenge, hostPort string, zName string) *core.ProblemDetails {
+
+	// Make connections with SNI = nonceName
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, &tls.Config{
+		ServerName:         zName,
+		InsecureSkipVerify: true,
+	})
+
+	va.log.Notice(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
+	if err != nil {
+		challenge.Error = &core.ProblemDetails{
+			Type:   parseHTTPConnError(err),
+			Detail: "Failed to connect to host for DVSNI challenge",
+		}
+		va.log.Debug(fmt.Sprintf("%s [%s] TLS Connection failure: %s", challenge.Type, identifier, err))
+		return challenge.Error
+	}
+	defer conn.Close()
+
+	// Check that zName is the sole dNSName SAN in the server's certificate
+	certs := conn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		challenge.Error = &core.ProblemDetails{
+			Type:   core.UnauthorizedProblem,
+			Detail: "No certs presented for TLS SNI challenge",
+		}
+		return challenge.Error
+	}
+	// Do not inspect all Subject Alternative Names, because otherwise
+	// a single certificate could contain all of the Zi values
+	name := certs[0].DNSNames[0]
+	if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
+		return nil
+	}
+
+	challenge.Error = &core.ProblemDetails{
+		Type:   core.UnauthorizedProblem,
+		Detail: "Correct zName not found for TLS SNI challenge",
+	}
+	return challenge.Error
+}
+
+func (va *ValidationAuthorityImpl) validateTLSWithZNames(identifier core.AcmeIdentifier, input core.Challenge, zNames []string) (core.Challenge, error) {
 	challenge := input
 
 	addr, allAddrs, problem := va.getAddr(identifier.Value)
+	// Right now we make all connections to one of the addresses; maybe we should do a different one each time?
 	challenge.ValidationRecord = []core.ValidationRecord{
 		core.ValidationRecord{
 			Hostname:          identifier.Value,
@@ -353,51 +398,41 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(identifier core.AcmeIden
 		challenge.Error = problem
 		return challenge, challenge.Error
 	}
-
-	// Make a connection with SNI = nonceName
 	portString := fmt.Sprintf("%d", va.tlsPort)
 	hostPort := net.JoinHostPort(addr.String(), portString)
 	challenge.ValidationRecord[0].Port = portString
-	va.log.Notice(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, &tls.Config{
-		ServerName:         zName,
-		InsecureSkipVerify: true,
-	})
 
-	if err != nil {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   parseHTTPConnError(err),
-			Detail: "Failed to connect to host for DVSNI challenge",
+	va.log.Notice(fmt.Sprintf("%s [%s] Preparing to validate for %#v", challenge.Type, identifier, zNames))
+	if len(zNames) > 1 {
+		for m := 0; m < 5; m++ {
+			// Randomly pick one of the N values Zi for each validation
+			j, err := rand.Int(rand.Reader, big.NewInt(challenge.N))
+			if err != nil {
+				challenge.Error = &core.ProblemDetails{
+					Type:   core.UnauthorizedProblem,
+					Detail: "RNG failure picking Zi values for validation",
+				}
+				challenge.Status = core.StatusInvalid
+				return challenge, err
+			}
+			i := j.Int64()
+			pdErr := va.validateOneZName(identifier, input, hostPort, zNames[i])
+			if pdErr != nil {
+				challenge.Status = core.StatusInvalid
+				challenge.Error = pdErr
+				return challenge, pdErr
+			}
 		}
-		va.log.Debug(fmt.Sprintf("%s [%s] TLS Connection failure: %s", challenge.Type, identifier, err))
-		return challenge, err
-	}
-	defer conn.Close()
-
-	// Check that zName is a dNSName SAN in the server's certificate
-	certs := conn.ConnectionState().PeerCertificates
-	if len(certs) == 0 {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: "No certs presented for TLS SNI challenge",
-		}
-		challenge.Status = core.StatusInvalid
-		return challenge, challenge.Error
-	}
-	for _, name := range certs[0].DNSNames {
-		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
-			challenge.Status = core.StatusValid
-			return challenge, nil
+	} else {
+		err := va.validateOneZName(identifier, input, hostPort, zNames[0])
+		if err != nil {
+			challenge.Status = core.StatusInvalid
+			challenge.Error = err
+			return challenge, err
 		}
 	}
-
-	challenge.Error = &core.ProblemDetails{
-		Type:   core.UnauthorizedProblem,
-		Detail: "Correct zName not found for TLS SNI challenge",
-	}
-	challenge.Status = core.StatusInvalid
-	return challenge, challenge.Error
+	challenge.Status = core.StatusValid
+	return challenge, nil
 }
 
 //-----BEGIN TO DELETE-----
@@ -491,14 +526,15 @@ func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier,
 		return challenge, err
 	}
 
-	// Compute the digest that will appear in the certificate
 	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
+	// Compute the digest that will appear in the certificate
 	h := sha256.New()
 	h.Write([]byte(encodedSignature))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
-	return va.validateTLSWithZName(identifier, challenge, ZName)
+	ZNames := []string{ZName}
+	return va.validateTLSWithZNames(identifier, challenge, ZNames)
 }
 
 //-----END TO DELETE-----
@@ -620,14 +656,25 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(identifier core.AcmeIdentifi
 		}
 		return challenge, err
 	}
-
 	// Compute the digest that will appear in the certificate
-	h := sha256.New()
-	h.Write([]byte(challenge.AuthorizedKey))
-	Z := hex.EncodeToString(h.Sum(nil))
-	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
+	va.log.Debug(fmt.Sprintf("TLS-SNI [%d] Preparing %d Z values", challenge.N))
+	Znames := makeZnames(challenge.AuthorizedKey, challenge.N)
+	return va.validateTLSWithZNames(identifier, challenge, Znames)
+}
 
-	return va.validateTLSWithZName(identifier, challenge, ZName)
+// Make the set of N values of Zi for that the TLS-SNI-01 challenge uses to
+// convince the CA that the client isn't just the beneficiary of a default vhost
+func makeZnames(authKey core.JSONBuffer, iterations int64) []string {
+	Znames := make([]string, iterations)
+	prev := []byte(authKey)
+	for i := 0; int64(i) < iterations; i++ {
+		h := sha256.New()
+		h.Write(prev)
+		Z := hex.EncodeToString(h.Sum(nil))
+		prev = []byte(Z)
+		Znames[i] = (fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix))
+	}
+	return Znames
 }
 
 // parseHTTPConnError returns the ACME ProblemType corresponding to an error
