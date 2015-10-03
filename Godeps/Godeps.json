@@ -125,6 +125,10 @@
 			"Rev": "287a1d87db5d649b01d6193bd9d07e909f08094c"
 		},
 		{
+			"ImportPath": "golang.org/x/net/publicsuffix",
+			"Rev": "db8e4de5b2d6653f66aea53094624468caad15d2"
+		},
+		{
 			"ImportPath": "gopkg.in/gorp.v1",
 			"Comment": "v1.7.1",
 			"Rev": "c87af80f3cc5036b55b83d77171e156791085e2e"
