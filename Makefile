@@ -12,7 +12,7 @@ MAINTAINER ?= "Community"
 CMDS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d)
 CMD_BASENAMES = $(shell echo $(CMDS) | xargs -n1 basename)
 CMD_BINS = $(addprefix $(OBJDIR)/, $(CMD_BASENAMES) )
-OBJECTS = $(CMD_BINS) $(OBJDIR)/pkcs11bench
+OBJECTS = $(CMD_BINS)
 
 # Build environment variables (referencing core/util.go)
 COMMIT_ID = $(shell git rev-parse --short HEAD)
