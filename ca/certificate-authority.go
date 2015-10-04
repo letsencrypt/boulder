@@ -309,7 +309,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
 	serialBytes[0] = byte(ca.Prefix)
-	_, err = rand.Reader.Read(serialBytes[1:])
+	_, err = rand.Read(serialBytes[1:])
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
