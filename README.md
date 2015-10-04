@@ -29,7 +29,7 @@ install RabbitMQ from https://rabbitmq.com/download.html to get a
 recent version.
 
 Also, Boulder requires Go 1.5. As of September 2015 this version is not yet
-available in OS repostiories, so you will have to install from https://golang.org/dl/.
+available in OS repositories, so you will have to install from https://golang.org/dl/.
 
 Ubuntu:
 
