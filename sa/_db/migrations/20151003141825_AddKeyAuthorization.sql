@@ -2,7 +2,7 @@
 -- +goose Up
 -- SQL in section 'Up' is executed when this migration is applied
 
-ALTER TABLE `challenges` ADD COLUMN (`keyAuthorization` mediumblob);
+ALTER TABLE `challenges` ADD COLUMN (`keyAuthorization` varchar(255));
 ALTER TABLE `challenges` DROP COLUMN `validation`;
 
 -- +goose Down

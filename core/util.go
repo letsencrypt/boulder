@@ -146,12 +146,12 @@ func NewToken() string {
 	return RandomString(32)
 }
 
-const tokenFormat = "^[\\w-]{43}$"
+var tokenFormat = regexp.MustCompile("^[\\w-]{43}$")
 
 // LooksLikeAToken checks whether a string represents a 32-octet value in
 // the URL-safe base64 alphabet.
 func LooksLikeAToken(token string) bool {
-	return regexp.MustCompile(tokenFormat).MatchString(token)
+	return tokenFormat.MatchString(token)
 }
 
 // Fingerprints

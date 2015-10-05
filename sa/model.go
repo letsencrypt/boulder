@@ -102,7 +102,11 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		TLS:             c.TLS,
 	}
 	if c.KeyAuthorization != nil {
-		cm.KeyAuthorization = c.KeyAuthorization.String()
+		kaString := c.KeyAuthorization.String()
+		if len(kaString) > 255 {
+			return nil, fmt.Errorf("Key authorization is too large to store in the database")
+		}
+		cm.KeyAuthorization = kaString
 	}
 	if c.Error != nil {
 		errJSON, err := json.Marshal(c.Error)
