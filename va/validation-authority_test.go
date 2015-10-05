@@ -247,7 +247,7 @@ func TestSimpleHttpTLS(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{SimpleHTTPSPort: port}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 
 	log.Clear()
 	finChall, err := va.validateSimpleHTTP(ident, chall)
@@ -289,7 +289,7 @@ func TestSimpleHttp(t *testing.T) {
 	}
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{SimpleHTTPPort: badPort}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 
 	invalidChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -297,7 +297,7 @@ func TestSimpleHttp(t *testing.T) {
 	test.AssertEquals(t, invalidChall.Error.Type, core.ConnectionProblem)
 
 	va = NewValidationAuthorityImpl(&PortConfig{SimpleHTTPPort: goodPort}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	log.Clear()
 	finChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
@@ -375,7 +375,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{SimpleHTTPPort: port}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 
 	log.Clear()
 	chall.Token = pathMoved
@@ -436,7 +436,7 @@ func TestSimpleHttpRedirectLoop(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{SimpleHTTPPort: port}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 
 	log.Clear()
 	finChall, err := va.validateSimpleHTTP(ident, chall)
@@ -471,7 +471,7 @@ func TestDvsni(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{DVSNIPort: port}, stats, clock.Default())
 
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 
 	log.Clear()
 	finChall, err := va.validateDvsni(ident, chall)
@@ -531,7 +531,7 @@ func TestTLSError(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{DVSNIPort: port}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 
 	invalidChall, err := va.validateDvsni(ident, chall)
 	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
@@ -551,7 +551,7 @@ func TestValidateHTTP(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{SimpleHTTPPort: port}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -598,7 +598,7 @@ func TestValidateDvsni(t *testing.T) {
 
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{DVSNIPort: port}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -616,7 +616,7 @@ func TestValidateDvsni(t *testing.T) {
 func TestValidateDvsniNotSane(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, stats, clock.Default()) // no calls made
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -638,7 +638,7 @@ func TestValidateDvsniNotSane(t *testing.T) {
 func TestUpdateValidations(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -694,7 +694,7 @@ func TestCAAChecking(t *testing.T) {
 
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
 	for _, caaTest := range tests {
 		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
@@ -727,7 +727,7 @@ func TestCAAChecking(t *testing.T) {
 func TestDNSValidationFailure(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -764,7 +764,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -778,7 +778,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 func TestDNSValidationNotSane(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -809,7 +809,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 func TestDNSValidationServFail(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -860,7 +860,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 func TestDNSValidationLive(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, stats, clock.Default())
-	va.DNSResolver = &mocks.MockDNS{}
+	va.DNSResolver = &mocks.DNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
