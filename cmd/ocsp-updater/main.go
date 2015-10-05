@@ -108,30 +108,10 @@ func newUpdater(
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
-	var count int
-	err := updater.dbMap.SelectOne(
-		&count,
-		`SELECT count(cs.serial)
-		 FROM certificateStatus AS cs
-		 JOIN certificates AS cert
-		 ON cs.serial = cert.serial
-		 WHERE cs.ocspLastUpdated < :lastUpdate
-		 AND cert.expires > now()
-		 ORDER BY cs.ocspLastUpdated ASC`,
-		map[string]interface{}{
-			"lastUpdate": oldestLastUpdatedTime,
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	var allStatuses []core.CertificateStatus
-	for offset := 0; offset < count; {
-		var statuses []core.CertificateStatus
-		_, err = updater.dbMap.Select(
-			&statuses,
-			`SELECT cs.*
+	var statuses []core.CertificateStatus
+	_, err := updater.dbMap.Select(
+		&statuses,
+		`SELECT cs.*
 			 FROM certificateStatus AS cs
 			 JOIN certificates AS cert
 			 ON cs.serial = cert.serial
@@ -139,49 +119,32 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Ti
 			 AND cert.expires > now()
 			 ORDER BY cs.ocspLastUpdated ASC
 			 LIMIT :limit`,
-			map[string]interface{}{
-				"lastUpdate": oldestLastUpdatedTime,
-				"limit":      batchSize,
-			},
-		)
-		if err == sql.ErrNoRows {
-			return allStatuses, nil
-		}
-		allStatuses = append(allStatuses, statuses...)
-		offset += len(statuses)
+		map[string]interface{}{
+			"lastUpdate": oldestLastUpdatedTime,
+			"limit":      batchSize,
+		},
+	)
+	if err == sql.ErrNoRows {
+		return statuses, nil
 	}
-	return allStatuses, err
+	return statuses, err
 }
 
 func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) ([]core.CertificateStatus, error) {
-	var count int
-	err := updater.dbMap.SelectOne(
-		&count,
-		"SELECT count(serial) FROM certificateStatus WHERE ocspLastUpdated = 0",
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	var allStatuses []core.CertificateStatus
-	for offset := 0; offset < count; {
-		var statuses []core.CertificateStatus
-		_, err := updater.dbMap.Select(
-			&statuses,
-			`SELECT * FROM certificateStatus
+	var statuses []core.CertificateStatus
+	_, err := updater.dbMap.Select(
+		&statuses,
+		`SELECT * FROM certificateStatus
 			 WHERE ocspLastUpdated = 0
 			 LIMIT :limit`,
-			map[string]interface{}{
-				"limit": batchSize,
-			},
-		)
-		if err == sql.ErrNoRows {
-			return allStatuses, nil
-		}
-		allStatuses = append(allStatuses, statuses...)
-		offset += len(statuses)
+		map[string]interface{}{
+			"limit": batchSize,
+		},
+	)
+	if err == sql.ErrNoRows {
+		return statuses, nil
 	}
-	return allStatuses, err
+	return statuses, err
 }
 
 type responseMeta struct {
@@ -311,39 +274,22 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(batchSize int) {
 }
 
 func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int) ([]string, error) {
-	var count int
-	err := updater.dbMap.SelectOne(
-		&count,
-		"SELECT count(serial) FROM certificates WHERE issued > :issued",
-		map[string]interface{}{"issued": since},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	var allSerials []string
-	for offset := 0; offset < count; {
-		var serials []string
-		_, err := updater.dbMap.Select(
-			&serials,
-			`SELECT serial FROM certificates
+	var serials []string
+	_, err := updater.dbMap.Select(
+		&serials,
+		`SELECT serial FROM certificates
 			 WHERE issued > :since
 			 ORDER BY issued ASC
-			 LIMIT :limit
-			 OFFSET :offset`,
-			map[string]interface{}{
-				"since":  since,
-				"limit":  batchSize,
-				"offset": offset,
-			},
-		)
-		if err == sql.ErrNoRows {
-			return allSerials, nil
-		}
-		allSerials = append(allSerials, serials...)
-		offset += len(serials)
+			 LIMIT :limit`,
+		map[string]interface{}{
+			"since": since,
+			"limit": batchSize,
+		},
+	)
+	if err == sql.ErrNoRows {
+		return serials, nil
 	}
-	return allSerials, err
+	return serials, err
 }
 
 func (updater *OCSPUpdater) getNumberOfReceipts(serial string) (int, error) {
