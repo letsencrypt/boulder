@@ -226,6 +226,8 @@ func wrapError(err error) (rpcError rpcError) {
 			rpcError.Type = "CertificateIssuanceError"
 		case core.NoSuchRegistrationError:
 			rpcError.Type = "NoSuchRegistrationError"
+		case core.RateLimitedError:
+			rpcError.Type = "RateLimitedError"
 		}
 	}
 	return
@@ -253,6 +255,8 @@ func unwrapError(rpcError rpcError) (err error) {
 			err = core.CertificateIssuanceError(rpcError.Value)
 		case "NoSuchRegistrationError":
 			err = core.NoSuchRegistrationError(rpcError.Value)
+		case "RateLimitedError":
+			err = core.RateLimitedError(rpcError.Value)
 		default:
 			err = errors.New(rpcError.Value)
 		}

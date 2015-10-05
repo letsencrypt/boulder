@@ -37,6 +37,9 @@ const (
 	TermsPath      = "/terms"
 	IssuerPath     = "/acme/issuer-cert"
 	BuildIDPath    = "/build"
+
+	// Not included in net/http
+	StatusRateLimited = 429
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -105,8 +108,7 @@ func statusCodeFromError(err interface{}) int {
 	case core.InternalServerError:
 		return http.StatusInternalServerError
 	case core.RateLimitedError:
-		// net/http doesn't have a specific const for 'Too Many Requests'
-		return 429
+		return StatusRateLimited
 	default:
 		return http.StatusInternalServerError
 	}
@@ -473,6 +475,8 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, 
 		fallthrough
 	case http.StatusLengthRequired:
 		problem.Type = core.MalformedProblem
+	case StatusRateLimited:
+		problem.Type = core.RateLimitedProblem
 	default: // Either http.StatusInternalServerError or an unexpected code
 		problem.Type = core.ServerInternalProblem
 	}

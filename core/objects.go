@@ -84,6 +84,7 @@ const (
 	TLSProblem            = ProblemType("urn:acme:error:tls")
 	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
 	UnknownHostProblem    = ProblemType("urn:acme:error:unknownHost")
+	RateLimitedProblem    = ProblemType("urn:acme:error:rateLimited")
 )
 
 // These types are the available challenges
