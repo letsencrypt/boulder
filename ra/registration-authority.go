@@ -196,7 +196,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	identifier := request.Identifier
 
 	// Check that the identifier is present and appropriate
-	if err = ra.PA.WillingToIssue(identifier); err != nil {
+	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
 		err = core.UnauthorizedError(err.Error())
 		return authz, err
 	}

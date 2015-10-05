@@ -156,14 +156,14 @@ func (padb *PolicyAuthorityDatabaseImpl) CheckHostLists(host string, requireWhit
 	if requireWhitelisted {
 		if !padb.allowedByWhitelist(host) {
 			// return fmt.Errorf("Domain is not whitelisted for issuance")
-			return NotWhitelistedError{}
+			return ErrNotWhitelisted
 		}
 	}
 	// Overrides the whitelist if a blacklist rule is found
 	host = core.ReverseName(host)
 	if !padb.allowedByBlacklist(host) {
 		// return fmt.Errorf("Domain is blacklisted for issuance")
-		return BlacklistedError{}
+		return ErrBlacklisted
 	}
 	return nil
 }
