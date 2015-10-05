@@ -4,3 +4,33 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 package rpc
+
+import (
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/test"
+	"reflect"
+	"testing"
+)
+
+func TestWrapError(t *testing.T) {
+	testCases := []error{
+		core.InternalServerError("foo"),
+		core.NotSupportedError("foo"),
+		core.MalformedRequestError("foo"),
+		core.UnauthorizedError("foo"),
+		core.NotFoundError("foo"),
+		core.SyntaxError("foo"),
+		core.SignatureValidationError("foo"),
+		core.CertificateIssuanceError("foo"),
+		core.NoSuchRegistrationError("foo"),
+		core.RateLimitedError("foo"),
+	}
+	for _, c := range testCases {
+		wrapped := wrapError(c)
+		test.AssertEquals(t, wrapped.Type, reflect.TypeOf(c).Name())
+		test.AssertEquals(t, wrapped.Value, "foo")
+		unwrapped := unwrapError(wrapped)
+		test.AssertEquals(t, wrapped.Type, reflect.TypeOf(unwrapped).Name())
+		test.AssertEquals(t, unwrapped.Error(), "foo")
+	}
+}
