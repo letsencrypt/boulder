@@ -186,8 +186,6 @@ type Config struct {
 	OCSPUpdater OCSPUpdaterConfig
 
 	Publisher struct {
-		CT publisher.CTConfig
-
 		MaxConcurrentRPCServerRequests int64
 
 		// DebugAddr is the address to run the /debug handlers on.
@@ -211,6 +209,8 @@ type Config struct {
 		DNSResolver               string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
+
+		CT publisher.CTConfig
 	}
 
 	CertChecker struct {
@@ -283,11 +283,14 @@ type OCSPUpdaterConfig struct {
 
 	NewCertificateWindow ConfigDuration
 	OldOCSPWindow        ConfigDuration
+	MissingSCTWindow     ConfigDuration
 
 	NewCertificateBatchSize int
 	OldOCSPBatchSize        int
+	MissingSCTBatchSize     int
 
 	OCSPMinTimeToExpiry ConfigDuration
+	OldestIssuedSCT     ConfigDuration
 
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string

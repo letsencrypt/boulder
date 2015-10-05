@@ -189,6 +189,15 @@
   },
 
   "publisher": {
+    "debugAddr": "localhost:8009"
+  },
+
+  "common": {
+    "baseURL": "http://localhost:4000",
+    "issuerCert": "test/test-ca.pem",
+    "dnsResolver": "127.0.0.1:8053",
+    "dnsTimeout": "10s",
+    "dnsAllowLoopbackAddresses": true,
     "ct": {
       "logs": [
         {
@@ -200,16 +209,7 @@
       "submissionBackoff": "1s",
       "intermediateBundleFilename": "test/test-ca.pem"
     },
-    "maxConcurrentRPCServerRequests": 16,
-    "debugAddr": "localhost:8009"
-  },
-
-  "common": {
-    "baseURL": "http://localhost:4000",
-    "issuerCert": "test/test-ca.pem",
-    "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
-    "dnsAllowLoopbackAddresses": true
+    "maxConcurrentRPCServerRequests": 16
   },
 
   "certChecker": {
