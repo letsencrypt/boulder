@@ -98,12 +98,16 @@ type Config struct {
 	RA struct {
 		RateLimitPoliciesFilename string
 
+		MaxConcurrentRPCServerRequests int64
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
 
 	SA struct {
 		DBConnect string
+
+		MaxConcurrentRPCServerRequests int64
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -117,6 +121,9 @@ type Config struct {
 			SimpleHTTPSPort int
 			DVSNIPort       int
 		}
+
+		MaxConcurrentRPCServerRequests int64
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -179,6 +186,8 @@ type Config struct {
 	OCSPUpdater OCSPUpdaterConfig
 
 	Publisher struct {
+		MaxConcurrentRPCServerRequests int64
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -228,6 +237,8 @@ type CAConfig struct {
 	// The maximum number of subjectAltNames in a single certificate
 	MaxNames int
 	CFSSL    cfsslConfig.Config
+
+	MaxConcurrentRPCServerRequests int64
 
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
