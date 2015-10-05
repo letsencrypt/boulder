@@ -38,7 +38,7 @@ const (
 	IssuerPath     = "/acme/issuer-cert"
 	BuildIDPath    = "/build"
 
-	// Not included in net/http
+	// StatusRateLimited is not in net/http
 	StatusRateLimited = 429
 )
 
