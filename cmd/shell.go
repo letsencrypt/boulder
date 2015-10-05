@@ -98,7 +98,7 @@ type Config struct {
 	RA struct {
 		RateLimitPoliciesFilename string
 
-		MaxGoroutines int64
+		MaxConcurrentRPCServerRequests int64
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -107,7 +107,7 @@ type Config struct {
 	SA struct {
 		DBConnect string
 
-		MaxGoroutines int64
+		MaxConcurrentRPCServerRequests int64
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -122,7 +122,7 @@ type Config struct {
 			DVSNIPort       int
 		}
 
-		MaxGoroutines int64
+		MaxConcurrentRPCServerRequests int64
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -188,7 +188,7 @@ type Config struct {
 	Publisher struct {
 		CT publisher.CTConfig
 
-		MaxGoroutines int64
+		MaxConcurrentRPCServerRequests int64
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -238,7 +238,7 @@ type CAConfig struct {
 	MaxNames int
 	CFSSL    cfsslConfig.Config
 
-	MaxGoroutines int64
+	MaxConcurrentRPCServerRequests int64
 
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
