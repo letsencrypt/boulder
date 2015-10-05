@@ -815,10 +815,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 
-	// Make a URL for this certificate.
-	// We use only the sequential part of the serial number, because it should
-	// uniquely identify the certificate, and this makes it easy for anybody to
-	// enumerate and mirror our certificates.
+	// Make a URL for this certificate from its serial number
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -845,7 +842,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 // Certificates are issued asynchronously under this context: A request to this
 // URL will result in a 201 Created message with an empty body.
 //
-// TODO: Actually make this method do what it claims.  Right now, the method
+// TODO(#590): Actually make this method do what it claims.  Right now, the method
 // exposes the async interface, but the certificate is still issued synchronously,
 // and the CSR is not cached.  In other words, the current implementation is just
 // a copy/paste of NewCertificate that doesn't actually return the certificate.
@@ -911,10 +908,7 @@ func (wfe *WebFrontEndImpl) NewCertificateRequest(response http.ResponseWriter, 
 		return
 	}
 
-	// Make a URL for this certificate.
-	// We use only the sequential part of the serial number, because it should
-	// uniquely identify the certificate, and this makes it easy for anybody to
-	// enumerate and mirror our certificates.
+	// Make a URL for this certificate from its serial number
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -1293,7 +1287,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 // CertificateRequest is used by clients to request the latest certificate issued under
 // a cached CSR.
 //
-// TODO: Have this method actually look up certificate requests.  As it is, this method
+// TODO(#590): Have this method actually look up certificate requests.  As it is, this method
 // is just a copy/paste of Certificate() that uses CertReqPath instead of CertPath and
 // provides a Content-Location pointing to the specific cert.
 func (wfe *WebFrontEndImpl) CertificateRequest(response http.ResponseWriter, request *http.Request) {
