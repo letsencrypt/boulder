@@ -155,7 +155,7 @@ fi
 #
 if [[ "$RUN" =~ "lint" ]] ; then
   start_context "test/golint"
-  [ -x "$(which golint)" ] && run golint ./...
+  [ -x "$(which golint)" ] && run golint -min_confidence=0.9 ./...
   end_context #test/golint
 fi
 
