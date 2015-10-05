@@ -195,16 +195,16 @@ func (rpc *AmqpRPCServer) Handle(method string, handler func([]byte) ([]byte, er
 	rpc.dispatchTable[method] = handler
 }
 
-// RPCError is a JSON wrapper for error as it cannot be un/marshalled
+// rpcError is a JSON wrapper for error as it cannot be un/marshalled
 // due to type interface{}.
-type RPCError struct {
+type rpcError struct {
 	Value string `json:"value"`
 	Type  string `json:"type,omitempty"`
 }
 
-// Wraps a error in a RPCError so it can be marshalled to
+// Wraps a error in a rpcError so it can be marshalled to
 // JSON.
-func wrapError(err error) (rpcError RPCError) {
+func wrapError(err error) (rpcError rpcError) {
 	if err != nil {
 		rpcError.Value = err.Error()
 		switch err.(type) {
@@ -231,8 +231,8 @@ func wrapError(err error) (rpcError RPCError) {
 	return
 }
 
-// Unwraps a RPCError and returns the correct error type.
-func unwrapError(rpcError RPCError) (err error) {
+// Unwraps a rpcError and returns the correct error type.
+func unwrapError(rpcError rpcError) (err error) {
 	if rpcError.Value != "" {
 		switch rpcError.Type {
 		case "InternalServerError":
@@ -260,11 +260,11 @@ func unwrapError(rpcError RPCError) (err error) {
 	return
 }
 
-// RPCResponse is a stuct for wire-representation of response messages
+// rpcResponse is a stuct for wire-representation of response messages
 // used by DispatchSync
-type RPCResponse struct {
+type rpcResponse struct {
 	ReturnVal []byte   `json:"returnVal,omitempty"`
-	Error     RPCError `json:"error,omitempty"`
+	Error     rpcError `json:"error,omitempty"`
 }
 
 // AmqpChannel sets a AMQP connection up using SSL if configuration is provided
@@ -349,7 +349,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 		rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
 		return
 	}
-	var response RPCResponse
+	var response rpcResponse
 	var err error
 	response.ReturnVal, err = cb(msg.Body)
 	response.Error = wrapError(err)
@@ -588,7 +588,7 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 	callStarted := time.Now()
 	select {
 	case jsonResponse := <-rpc.Dispatch(method, body):
-		var rpcResponse RPCResponse
+		var rpcResponse rpcResponse
 		err = json.Unmarshal(jsonResponse, &rpcResponse)
 		if err != nil {
 			return
