@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -82,6 +83,8 @@ func main() {
 		wfe.SA = &sac
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
 
+		wfe.AllowOrigins = c.WFE.AllowOrigins
+
 		wfe.CertCacheDuration, err = time.ParseDuration(c.WFE.CertCacheDuration)
 		cmd.FailOnError(err, "Couldn't parse certificate caching duration")
 		wfe.CertNoCacheExpirationWindow, err = time.ParseDuration(c.WFE.CertNoCacheExpirationWindow)
@@ -125,14 +128,14 @@ func main() {
 
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
 		srv := &http.Server{
-			Addr:      c.WFE.ListenAddress,
-			ConnState: httpMonitor.ConnectionMonitor,
-			Handler:   httpMonitor.Handle(),
+			Addr:    c.WFE.ListenAddress,
+			Handler: httpMonitor.Handle(),
 		}
 
 		hd := &httpdown.HTTP{
 			StopTimeout: wfe.ShutdownStopTimeout,
 			KillTimeout: wfe.ShutdownKillTimeout,
+			Stats:       metrics.NewFBAdapter(stats, "WFE", clock.Default()),
 		}
 		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")

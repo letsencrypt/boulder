@@ -42,6 +42,7 @@
 
   "wfe": {
     "listenAddress": "127.0.0.1:4000",
+    "allowOrigins": ["*"],
     "certCacheDuration": "6h",
     "certNoCacheExpirationWindow": "96h",
     "indexCacheDuration": "24h",
@@ -99,7 +100,7 @@
               "PublicKey": true,
               "SignatureAlgorithm": true
             },
-            "UseSerialSeq": true
+            "ClientProvidesSerialNumbers": true
           }
         },
         "default": {
@@ -117,6 +118,7 @@
   },
 
   "ra": {
+    "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "debugAddr": "localhost:8002"
   },
 
@@ -155,7 +157,14 @@
 
   "ocspUpdater": {
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
-    "minTimeToExpiry": "72h",
+    "newCertificateWindow": "1s",
+    "oldOCSPWindow": "2s",
+    "missingSCTWindow": "1m",
+    "newCertificateBatchSize": 1000,
+    "oldOCSPBatchSize": 5000,
+    "missingSCTBatchSize": 5000,
+    "ocspMinTimeToExpiry": "72h",
+    "sctOldestIssued": "72h",
     "debugAddr": "localhost:8006"
   },
 

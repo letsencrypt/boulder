@@ -35,6 +35,8 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
@@ -72,6 +74,8 @@ type Config struct {
 		BaseURL       string
 		ListenAddress string
 
+		AllowOrigins []string
+
 		CertCacheDuration           string
 		CertNoCacheExpirationWindow string
 		IndexCacheDuration          string
@@ -92,6 +96,8 @@ type Config struct {
 	}
 
 	RA struct {
+		RateLimitPoliciesFilename string
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -161,7 +167,7 @@ type Config struct {
 		ListenAddress string
 		// MaxAge is the max-age to set in the Cache-Controler response
 		// header. It is a time.Duration formatted string.
-		MaxAge JSONDuration
+		MaxAge ConfigDuration
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
@@ -170,14 +176,7 @@ type Config struct {
 		DebugAddr string
 	}
 
-	OCSPUpdater struct {
-		DBConnect       string
-		MinTimeToExpiry string
-		ResponseLimit   int
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
+	OCSPUpdater OCSPUpdaterConfig
 
 	Publisher struct {
 		CT publisher.CTConfig
@@ -264,6 +263,50 @@ type TLSConfig struct {
 // Queue describes a queue name
 type Queue struct {
 	Server string
+}
+
+// OCSPUpdaterConfig provides the various window tick times and batch sizes needed
+// for the OCSP (and SCT) updater
+type OCSPUpdaterConfig struct {
+	DBConnect string
+
+	NewCertificateWindow ConfigDuration
+	OldOCSPWindow        ConfigDuration
+
+	NewCertificateBatchSize int
+	OldOCSPBatchSize        int
+
+	OCSPMinTimeToExpiry ConfigDuration
+
+	// DebugAddr is the address to run the /debug handlers on.
+	DebugAddr string
+}
+
+// RateLimitConfig contains all application layer rate limiting policies
+type RateLimitConfig struct {
+	TotalCertificates RateLimitPolicy `yaml:"totalCertificates"`
+}
+
+// RateLimitPolicy describes a general limiting policy
+type RateLimitPolicy struct {
+	Window    ConfigDuration   `yaml:"window"`
+	Threshold int64            `yaml:"threshold"`
+	Overrides map[string]int64 `yaml:"overrides"`
+}
+
+// LoadRateLimitPolicies loads various rate limiting policies from a YAML
+// configuration file
+func LoadRateLimitPolicies(filename string) (RateLimitConfig, error) {
+	contents, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+	var rlc RateLimitConfig
+	err = yaml.Unmarshal(contents, &rlc)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+	return rlc, nil
 }
 
 // AppShell contains CLI Metadata
@@ -396,13 +439,13 @@ func DebugServer(addr string) {
 	log.Println(http.Serve(ln, nil))
 }
 
-type JSONDuration struct {
+type ConfigDuration struct {
 	time.Duration
 }
 
-var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a JSONDuration")
+var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a ConfigDuration")
 
-func (d *JSONDuration) UnmarshalJSON(b []byte) error {
+func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
 	s := ""
 	err := json.Unmarshal(b, &s)
 	if err != nil {
@@ -416,6 +459,20 @@ func (d *JSONDuration) UnmarshalJSON(b []byte) error {
 	return err
 }
 
-func (d JSONDuration) MarshalJSON() ([]byte, error) {
+func (d ConfigDuration) MarshalJSON() ([]byte, error) {
 	return []byte(d.Duration.String()), nil
+}
+
+func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	dur, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+
+	d.Duration = dur
+	return nil
 }

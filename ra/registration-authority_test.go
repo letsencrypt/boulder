@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/ca"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
@@ -191,10 +192,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		OCSPSigner:     ocspSigner,
 		SA:             ssa,
 		PA:             pa,
-		Publisher:      &mocks.MockPublisher{},
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
 		Clk:            fc,
+		Publisher:      &mocks.MockPublisher{},
 	}
 	cleanUp := func() {
 		saDBCleanUp()
@@ -207,7 +208,12 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	Registration, _ = ssa.NewRegistration(core.Registration{Key: AccountKeyA})
 
 	stats, _ := statsd.NewNoopClient()
-	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats)
+	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats, cmd.RateLimitConfig{
+		TotalCertificates: cmd.RateLimitPolicy{
+			Threshold: 100,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+		},
+	})
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = &ca
@@ -562,6 +568,42 @@ func TestNewCertificate(t *testing.T) {
 	test.Assert(t, bytes.Compare(cert.DER, dbCert.DER) == 0, "Certificates differ")
 
 	t.Log("DONE TestOnValidationUpdate")
+}
+
+func TestTotalCertRateLimit(t *testing.T) {
+	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.rlPolicies = cmd.RateLimitConfig{
+		TotalCertificates: cmd.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+		},
+	}
+	fc.Add(24 * 90 * time.Hour)
+
+	AuthzFinal.RegistrationID = Registration.ID
+	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
+	sa.UpdatePendingAuthorization(AuthzFinal)
+	sa.FinalizeAuthorization(AuthzFinal)
+
+	// Inject another final authorization to cover www.example.com
+	authzFinalWWW := AuthzFinal
+	authzFinalWWW.Identifier.Value = "www.not-example.com"
+	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
+	sa.FinalizeAuthorization(authzFinalWWW)
+
+	certRequest := core.CertificateRequest{
+		CSR: ExampleCSR,
+	}
+
+	_, err := ra.NewCertificate(certRequest, Registration.ID)
+	test.AssertNotError(t, err, "Failed to issue certificate")
+
+	fc.Add(time.Hour)
+
+	_, err = ra.NewCertificate(certRequest, Registration.ID)
+	test.AssertError(t, err, "Total certificate rate limit failed")
 }
 
 var CAkeyPEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
