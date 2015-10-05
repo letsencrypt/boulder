@@ -74,6 +74,8 @@ type Config struct {
 		BaseURL       string
 		ListenAddress string
 
+		AllowOrigins []string
+
 		CertCacheDuration           string
 		CertNoCacheExpirationWindow string
 		IndexCacheDuration          string
