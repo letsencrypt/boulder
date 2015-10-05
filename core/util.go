@@ -192,6 +192,7 @@ func KeyDigestEquals(j, k crypto.PublicKey) bool {
 // AcmeURL is a URL that automatically marshal/unmarshal to JSON strings
 type AcmeURL url.URL
 
+// ParseAcmeURL is just a wrapper around url.Parse that returns an *AcmeURL
 func ParseAcmeURL(s string) (*AcmeURL, error) {
 	u, err := url.Parse(s)
 	if err != nil {
@@ -318,6 +319,9 @@ func StringToSerial(serial string) (*big.Int, error) {
 	return &serialNum, err
 }
 
+// ValidSerial tests whether the input string represents a syntactically
+// valid serial number, i.e., that it is a valid hex string between 32
+// and 36 characters long.
 func ValidSerial(serial string) bool {
 	// Originally, serial numbers were 32 hex characters long. We later increased
 	// them to 36, but we allow the shorter ones because they exist in some

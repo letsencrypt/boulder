@@ -130,6 +130,21 @@ func revokeByReg(regID int64, reasonCode core.RevocationCode, deny bool, rac rpc
 	return
 }
 
+// This abstraction is needed so that we can use sort.Sort below
+type revocationCodes []core.RevocationCode
+
+func (rc revocationCodes) Len() int {
+	return len(rc)
+}
+
+func (rc revocationCodes) Less(i, j int) bool {
+	return rc[i] < rc[j]
+}
+
+func (rc revocationCodes) Swap(i, j int) {
+	rc[i], rc[j] = rc[j], rc[i]
+}
+
 func main() {
 	app := cli.NewApp()
 	app.Name = "admin-revoker"
@@ -219,7 +234,7 @@ func main() {
 			Name:  "list-reasons",
 			Usage: "List all revocation reason codes",
 			Action: func(c *cli.Context) {
-				var codes core.RevocationCodes
+				var codes revocationCodes
 				for k := range core.RevocationReasons {
 					codes = append(codes, k)
 				}
