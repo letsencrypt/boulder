@@ -50,7 +50,7 @@ func AssertNotError(t *testing.T, err error, message string) {
 // AssertError checks that err is non-nil
 func AssertError(t *testing.T, err error, message string) {
 	if err == nil {
-		t.Fatalf("%s %s: %s", caller(), message, err)
+		t.Fatalf("%s %s", caller(), message)
 	}
 }
 
