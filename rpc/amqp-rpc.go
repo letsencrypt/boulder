@@ -233,6 +233,8 @@ func wrapError(err error) (rpcError RPCError) {
 			rpcError.Type = "NoSuchRegistrationError"
 		case core.TooManyRPCRequestsError:
 			rpcError.Type = "TooManyRPCRequestsError"
+		case core.RateLimitedError:
+			rpcError.Type = "RateLimitedError"
 		}
 	}
 	return
@@ -262,6 +264,8 @@ func unwrapError(rpcError RPCError) (err error) {
 			err = core.NoSuchRegistrationError(rpcError.Value)
 		case "TooManyRPCRequestsError":
 			err = core.TooManyRPCRequestsError(rpcError.Value)
+		case "RateLimitedError":
+			err = core.RateLimitedError(rpcError.Value)
 		default:
 			err = errors.New(rpcError.Value)
 		}
