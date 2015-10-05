@@ -111,7 +111,7 @@
         }
       }
     },
-    "maxConcurrentRPCServerRequests": 0
+    "maxConcurrentRPCServerRequests": 16
   },
 
   "pa": {
@@ -120,13 +120,13 @@
 
   "ra": {
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
-    "maxConcurrentRPCServerRequests": 0,
+    "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8002"
   },
 
   "sa": {
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
-    "maxConcurrentRPCServerRequests": 0,
+    "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8003"
   },
 
@@ -138,7 +138,7 @@
       "simpleHTTPSPort": 5001,
       "dvsniPort": 5001
     },
-    "maxConcurrentRPCServerRequests": 0
+    "maxConcurrentRPCServerRequests": 16
   },
 
   "sql": {
@@ -200,7 +200,7 @@
       "submissionBackoff": "1s",
       "intermediateBundleFilename": "test/test-ca.pem"
     },
-    "maxConcurrentRPCServerRequests": 0,
+    "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8009"
   },
 
