@@ -168,10 +168,10 @@ func TestAddAuthorization(t *testing.T) {
 }
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
-	return CreateDomainAuthWithRegId(t, domainName, sa, 42)
+	return CreateDomainAuthWithRegID(t, domainName, sa, 42)
 }
 
-func CreateDomainAuthWithRegId(t *testing.T, domainName string, sa *SQLStorageAuthority, regID int64) (authz core.Authorization) {
+func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAuthority, regID int64) (authz core.Authorization) {
 
 	// create pending auth
 	authz, err := sa.NewPendingAuthorization(core.Authorization{RegistrationID: regID, Challenges: []core.Challenge{core.Challenge{}}})
@@ -212,7 +212,7 @@ func TestGetLatestValidAuthorizationBasic(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 
 	// authorize "example.org"
-	authz = CreateDomainAuthWithRegId(t, "example.org", sa, reg.ID)
+	authz = CreateDomainAuthWithRegID(t, "example.org", sa, reg.ID)
 
 	// finalize auth
 	authz.Status = core.StatusValid
@@ -243,7 +243,7 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	// create invalid authz
-	authz := CreateDomainAuthWithRegId(t, domain, sa, reg.ID)
+	authz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
 	exp := time.Now().AddDate(0, 0, 10) // expire in 10 day
 	authz.Expires = &exp
 	authz.Status = core.StatusInvalid
@@ -255,7 +255,7 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 	test.AssertError(t, err, "Should not have found a valid auth for "+domain)
 
 	// create valid auth
-	authz = CreateDomainAuthWithRegId(t, domain, sa, reg.ID)
+	authz = CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
 	exp = time.Now().AddDate(0, 0, 1) // expire in 1 day
 	authz.Expires = &exp
 	authz.Status = core.StatusValid
@@ -271,7 +271,7 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 	test.AssertEquals(t, authz.RegistrationID, reg.ID)
 
 	// create a newer auth
-	newAuthz := CreateDomainAuthWithRegId(t, domain, sa, reg.ID)
+	newAuthz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
 	exp = time.Now().AddDate(0, 0, 2) // expire in 2 day
 	newAuthz.Expires = &exp
 	newAuthz.Status = core.StatusValid
