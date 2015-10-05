@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -160,20 +161,23 @@ func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog
 // To implement specific functionality, using code should use the Handle
 // method to add specific actions.
 type AmqpRPCServer struct {
-	serverQueue       string
-	Channel           *amqp.Channel
-	log               *blog.AuditLogger
-	dispatchTable     map[string]func([]byte) ([]byte, error)
-	connectionHandler func(*AmqpRPCServer)
-	consumerName      string
-	connected         bool
-	done              bool
-	dMu               sync.Mutex
+	serverQueue                    string
+	Channel                        *amqp.Channel
+	log                            *blog.AuditLogger
+	dispatchTable                  map[string]func([]byte) ([]byte, error)
+	connectionHandler              func(*AmqpRPCServer)
+	consumerName                   string
+	connected                      bool
+	done                           bool
+	dMu                            sync.Mutex
+	currentGoroutines              int64
+	maxConcurrentRPCServerRequests int64
+	tooManyRequestsResponse        []byte
 }
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
-func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer)) (*AmqpRPCServer, error) {
+func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer), maxConcurrentRPCServerRequests int64) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
 	b := make([]byte, 4)
 	_, err := rand.Read(b)
@@ -182,11 +186,12 @@ func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer)) (*AmqpRP
 	}
 	consumerName := fmt.Sprintf("%s.%x", serverQueue, b)
 	return &AmqpRPCServer{
-		serverQueue:       serverQueue,
-		log:               log,
-		dispatchTable:     make(map[string]func([]byte) ([]byte, error)),
-		connectionHandler: handler,
-		consumerName:      consumerName,
+		serverQueue:                    serverQueue,
+		log:                            log,
+		dispatchTable:                  make(map[string]func([]byte) ([]byte, error)),
+		connectionHandler:              handler,
+		consumerName:                   consumerName,
+		maxConcurrentRPCServerRequests: maxConcurrentRPCServerRequests,
 	}, nil
 }
 
@@ -226,6 +231,8 @@ func wrapError(err error) (rpcError rpcError) {
 			rpcError.Type = "CertificateIssuanceError"
 		case core.NoSuchRegistrationError:
 			rpcError.Type = "NoSuchRegistrationError"
+		case core.TooManyRPCRequestsError:
+			rpcError.Type = "TooManyRPCRequestsError"
 		case core.RateLimitedError:
 			rpcError.Type = "RateLimitedError"
 		}
@@ -255,6 +262,8 @@ func unwrapError(rpcError rpcError) (err error) {
 			err = core.CertificateIssuanceError(rpcError.Value)
 		case "NoSuchRegistrationError":
 			err = core.NoSuchRegistrationError(rpcError.Value)
+		case "TooManyRPCRequestsError":
+			err = core.TooManyRPCRequestsError(rpcError.Value)
 		case "RateLimitedError":
 			err = core.RateLimitedError(rpcError.Value)
 		default:
@@ -380,10 +389,33 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 		})
 }
 
+func (rpc *AmqpRPCServer) replyTooManyRequests(msg amqp.Delivery) {
+	rpc.Channel.Publish(
+		AmqpExchange,
+		msg.ReplyTo,
+		AmqpMandatory,
+		AmqpImmediate,
+		amqp.Publishing{
+			CorrelationId: msg.CorrelationId,
+			Type:          msg.Type,
+			Body:          rpc.tooManyRequestsResponse,
+			Expiration:    "1000",
+		})
+}
+
 // Start starts the AMQP-RPC server and handles reconnections, this will block
 // until a fatal error is returned or AmqpRPCServer.Stop() is called and all
 // remaining messages are processed.
 func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
+	tooManyGoroutines := RPCResponse{
+		Error: wrapError(core.TooManyRPCRequestsError("RPC server has spawned too many Goroutines")),
+	}
+	tooManyRequestsResponse, err := json.Marshal(tooManyGoroutines)
+	if err != nil {
+		return err
+	}
+	rpc.tooManyRequestsResponse = tooManyRequestsResponse
+
 	go rpc.catchSignals()
 	for {
 		rpc.dMu.Lock()
@@ -411,7 +443,15 @@ func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
 			select {
 			case msg, ok := <-msgs:
 				if ok {
-					rpc.processMessage(msg)
+					if rpc.maxConcurrentRPCServerRequests > 0 && atomic.LoadInt64(&rpc.currentGoroutines) >= rpc.maxConcurrentRPCServerRequests {
+						rpc.replyTooManyRequests(msg)
+						break // this breaks the select, not the for
+					}
+					go func() {
+						atomic.AddInt64(&rpc.currentGoroutines, 1)
+						defer atomic.AddInt64(&rpc.currentGoroutines, -1)
+						rpc.processMessage(msg)
+					}()
 				} else {
 					// chan has been closed by rpc.channel.Cancel
 					rpc.log.Info(" [!] Finished processing messages")
