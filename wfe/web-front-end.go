@@ -39,6 +39,10 @@ const (
 	BuildIDPath    = "/build"
 )
 
+// WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
+// i.e., ACME.  Its members configure the paths for various ACME functions,
+// plus a few other data items used in ACME.  Its methods are primarily handlers
+// for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
@@ -300,6 +304,8 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", age))
 }
 
+// Directory is an HTTP request handler that simply provides the directory
+// object stored in the WFE's DirectoryJSON member.
 func (wfe *WebFrontEndImpl) Directory(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json")
 	response.Write(wfe.DirectoryJSON)
@@ -549,8 +555,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
-	var id int64 = reg.ID
-	regURL := fmt.Sprintf("%s%d", wfe.RegBase, id)
+	regURL := fmt.Sprintf("%s%d", wfe.RegBase, reg.ID)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -829,6 +834,8 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	}
 }
 
+// Challenge handles POST requests to challenge URLs.  Such requests are clients'
+// responses to the server's challenges.
 func (wfe *WebFrontEndImpl) Challenge(
 	response http.ResponseWriter,
 	request *http.Request) {
