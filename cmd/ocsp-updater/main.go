@@ -108,43 +108,80 @@ func newUpdater(
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
-	var statuses []core.CertificateStatus
-	_, err := updater.dbMap.Select(
-		&statuses,
-		`SELECT cs.*
+	var count int
+	err := updater.dbMap.SelectOne(
+		&count,
+		`SELECT count(cs.serial)
 		 FROM certificateStatus AS cs
 		 JOIN certificates AS cert
 		 ON cs.serial = cert.serial
 		 WHERE cs.ocspLastUpdated < :lastUpdate
 		 AND cert.expires > now()
-		 ORDER BY cs.ocspLastUpdated ASC
-		 LIMIT :limit`,
+		 ORDER BY cs.ocspLastUpdated ASC`,
 		map[string]interface{}{
 			"lastUpdate": oldestLastUpdatedTime,
-			"limit":      batchSize,
 		},
 	)
-	if err == sql.ErrNoRows {
-		return statuses, nil
+	if err != nil {
+		return nil, err
 	}
-	return statuses, err
+
+	var allStatuses []core.CertificateStatus
+	for offset := 0; offset < count; {
+		var statuses []core.CertificateStatus
+		_, err = updater.dbMap.Select(
+			&statuses,
+			`SELECT cs.*
+			 FROM certificateStatus AS cs
+			 JOIN certificates AS cert
+			 ON cs.serial = cert.serial
+			 WHERE cs.ocspLastUpdated < :lastUpdate
+			 AND cert.expires > now()
+			 ORDER BY cs.ocspLastUpdated ASC
+			 LIMIT :limit`,
+			map[string]interface{}{
+				"lastUpdate": oldestLastUpdatedTime,
+				"limit":      batchSize,
+			},
+		)
+		if err == sql.ErrNoRows {
+			return allStatuses, nil
+		}
+		allStatuses = append(allStatuses, statuses...)
+		offset += len(statuses)
+	}
+	return allStatuses, err
 }
 
 func (updater *OCSPUpdater) getCertificatesWithMissingResponses(batchSize int) ([]core.CertificateStatus, error) {
-	var statuses []core.CertificateStatus
-	_, err := updater.dbMap.Select(
-		&statuses,
-		`SELECT * FROM certificateStatus
-		 WHERE ocspLastUpdated = 0
-		 LIMIT :limit`,
-		map[string]interface{}{
-			"limit": batchSize,
-		},
+	var count int
+	err := updater.dbMap.SelectOne(
+		&count,
+		"SELECT count(serial) FROM certificateStatus WHERE ocspLastUpdated = 0",
 	)
-	if err == sql.ErrNoRows {
-		return statuses, nil
+	if err != nil {
+		return nil, err
 	}
-	return statuses, err
+
+	var allStatuses []core.CertificateStatus
+	for offset := 0; offset < count; {
+		var statuses []core.CertificateStatus
+		_, err := updater.dbMap.Select(
+			&statuses,
+			`SELECT * FROM certificateStatus
+			 WHERE ocspLastUpdated = 0
+			 LIMIT :limit`,
+			map[string]interface{}{
+				"limit": batchSize,
+			},
+		)
+		if err == sql.ErrNoRows {
+			return allStatuses, nil
+		}
+		allStatuses = append(allStatuses, statuses...)
+		offset += len(statuses)
+	}
+	return allStatuses, err
 }
 
 type responseMeta struct {
@@ -274,21 +311,39 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(batchSize int) {
 }
 
 func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int) ([]string, error) {
-	var serials []string
-	_, err := updater.dbMap.Select(
-		&serials,
-		`SELECT serial FROM certificates
-		 WHERE issued > :since
-		 LIMIT :limit`,
-		map[string]interface{}{
-			"since": since,
-			"limit": batchSize,
-		},
+	var count int
+	err := updater.dbMap.SelectOne(
+		&count,
+		"SELECT count(serial) FROM certificates WHERE issued > :issued",
+		map[string]interface{}{"issued": since},
 	)
-	if err == sql.ErrNoRows {
-		return serials, nil
+	if err != nil {
+		return nil, err
 	}
-	return serials, err
+
+	var allSerials []string
+	for offset := 0; offset < count; {
+		var serials []string
+		_, err := updater.dbMap.Select(
+			&serials,
+			`SELECT serial FROM certificates
+			 WHERE issued > :since
+			 ORDER BY issued ASC
+			 LIMIT :limit
+			 OFFSET :offset`,
+			map[string]interface{}{
+				"since":  since,
+				"limit":  batchSize,
+				"offset": offset,
+			},
+		)
+		if err == sql.ErrNoRows {
+			return allSerials, nil
+		}
+		allSerials = append(allSerials, serials...)
+		offset += len(serials)
+	}
+	return allSerials, err
 }
 
 func (updater *OCSPUpdater) getNumberOfReceipts(serial string) (int, error) {
@@ -313,10 +368,6 @@ func (updater *OCSPUpdater) missingReceiptsTick(batchSize int) {
 	}
 
 	for _, serial := range serials {
-		// TODO(rolandshoemaker): For now this will do, in the future we should
-		// really have another method that allows us to specify which log/s should
-		// be submitted to so we don't double submit to logs we already have receipts
-		// for
 		count, err := updater.getNumberOfReceipts(serial)
 		if err != nil {
 			updater.log.AuditErr(fmt.Errorf("Failed to get number of SCT receipts for certificate: %s", err))
