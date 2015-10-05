@@ -582,9 +582,9 @@ type rawSignedCertificateTimestamp struct {
 	Extensions string `json:"extensions"`
 }
 
-// UnmarshalJSON parses a simplified JSON form of an SCT, covering all of
-// the fields in the SignedCertificateTimestamp struct except for ID,
-// CertificateSerial,
+// UnmarshalJSON parses the add-chain response from a CT log. It fills all of
+// the fields in the SignedCertificateTimestamp struct except for ID and
+// CertificateSerial, which are used for local recordkeeping in the Boulder DB.
 func (sct *SignedCertificateTimestamp) UnmarshalJSON(data []byte) error {
 	var err error
 	var rawSCT rawSignedCertificateTimestamp

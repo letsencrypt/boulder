@@ -30,7 +30,7 @@ import (
 	"log"
 	"net"
 	"net/http"
-	_ "net/http/pprof" // HTTP performance profiling
+	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
 	"os"
 	"runtime"
 	"time"
