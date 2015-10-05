@@ -146,7 +146,18 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 #
 if [[ "$RUN" =~ "vet" ]] ; then
   start_context "test/vet"
-  run_and_comment go vet ./...
+  check_go_vet() {
+    errors=$(go vet ./...)
+    if [ "x${errors}" == "x" ]; then
+      return 0
+    else
+      # Re-run to display the errors
+      go vet ./...
+      return 1
+    fi
+  }
+
+  run_and_comment check_go_vet
   end_context #test/vet
 fi
 
@@ -155,7 +166,18 @@ fi
 #
 if [[ "$RUN" =~ "lint" ]] ; then
   start_context "test/golint"
-  [ -x "$(which golint)" ] && run golint -min_confidence=0.9 ./...
+  check_golint() {
+    errors=$([ -x "$(which golint)" ] && golint -min_confidence=0.81 ./...)
+    if [ "x${errors}" == "x" ]; then
+      return 0
+    else
+      # Re-run to display the errors
+      [ -x "$(which golint)" ] && run golint -min_confidence=0.81 ./...
+      return 1
+    fi
+  }
+
+  run_and_comment check_golint
   end_context #test/golint
 fi
 
