@@ -855,7 +855,7 @@ func (wfe *WebFrontEndImpl) NewCertificateRequest(response http.ResponseWriter, 
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
 		respCode := statusCodeFromError(err)
-		if err == sql.ErrNoRows {
+		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
 		}
