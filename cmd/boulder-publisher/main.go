@@ -30,7 +30,7 @@ func main() {
 
 		blog.SetAuditLogger(auditlogger)
 
-		pubi, err := publisher.NewPublisherImpl(c.Publisher.CT)
+		pubi, err := publisher.NewPublisherImpl(c.Common.CT)
 		cmd.FailOnError(err, "Could not setup Publisher")
 
 		go cmd.DebugServer(c.Publisher.DebugAddr)
@@ -46,7 +46,7 @@ func main() {
 			pubi.SA = &sac
 		}
 
-		pubs, err := rpc.NewAmqpRPCServer(c.AMQP.Publisher.Server, connectionHandler)
+		pubs, err := rpc.NewAmqpRPCServer(c.AMQP.Publisher.Server, connectionHandler, c.Publisher.MaxConcurrentRPCServerRequests)
 		cmd.FailOnError(err, "Unable to create Publisher RPC server")
 		rpc.NewPublisherServer(pubs, &pubi)
 
