@@ -98,12 +98,16 @@ type Config struct {
 	RA struct {
 		RateLimitPoliciesFilename string
 
+		MaxConcurrentRPCServerRequests int64
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
 
 	SA struct {
 		DBConnect string
+
+		MaxConcurrentRPCServerRequests int64
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -117,6 +121,9 @@ type Config struct {
 			SimpleHTTPSPort int
 			DVSNIPort       int
 		}
+
+		MaxConcurrentRPCServerRequests int64
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -179,7 +186,7 @@ type Config struct {
 	OCSPUpdater OCSPUpdaterConfig
 
 	Publisher struct {
-		CT publisher.CTConfig
+		MaxConcurrentRPCServerRequests int64
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -202,6 +209,8 @@ type Config struct {
 		DNSResolver               string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
+
+		CT publisher.CTConfig
 	}
 
 	CertChecker struct {
@@ -228,6 +237,8 @@ type CAConfig struct {
 	// The maximum number of subjectAltNames in a single certificate
 	MaxNames int
 	CFSSL    cfsslConfig.Config
+
+	MaxConcurrentRPCServerRequests int64
 
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
@@ -272,11 +283,14 @@ type OCSPUpdaterConfig struct {
 
 	NewCertificateWindow ConfigDuration
 	OldOCSPWindow        ConfigDuration
+	MissingSCTWindow     ConfigDuration
 
 	NewCertificateBatchSize int
 	OldOCSPBatchSize        int
+	MissingSCTBatchSize     int
 
 	OCSPMinTimeToExpiry ConfigDuration
+	OldestIssuedSCT     ConfigDuration
 
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
