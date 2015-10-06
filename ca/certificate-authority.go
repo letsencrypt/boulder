@@ -603,7 +603,6 @@ func (ca *CertificateAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509.
 		return
 	}
 	if !reflect.DeepEqual(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
-		fmt.Printf("EKU: %+v\n", parsedCertificate.ExtKeyUsage)
 		err = core.InternalServerError("Generated certificate doesn't have correct key usage extensions")
 		return
 	}

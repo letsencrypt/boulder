@@ -115,7 +115,6 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int64, error) {
 		}
 		ra.totalIssuedCache = count
 		ra.lastIssuedCount = &now
-		fmt.Println("---> totalIssuedCache:", count)
 	}
 	return ra.totalIssuedCache, nil
 }

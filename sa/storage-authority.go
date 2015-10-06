@@ -273,7 +273,6 @@ func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest,
 func (ssa *SQLStorageAuthority) GetCertificateRequest(id string) (req core.CertificateRequest, err error) {
 	err = ssa.dbMap.SelectOne(&req, "SELECT * FROM certificateRequests WHERE id = :id",
 		map[string]interface{}{"id": id})
-	fmt.Println(">>>>> >>>>> GetCertificateRequest err =", err)
 	return
 }
 
@@ -652,7 +651,6 @@ func (ssa *SQLStorageAuthority) UpdateCertificateRequestStatus(id string, status
 // AddCertificate stores an issued certificate.
 func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, requestID string) (cert core.Certificate, err error) {
 
-	fmt.Println(">>>>> AddCertificate check = 0 <<<<<")
 	var parsedCertificate *x509.Certificate
 	parsedCertificate, err = x509.ParseCertificate(certDER)
 	if err != nil {
@@ -661,13 +659,11 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, requestID string)
 	digest := core.Fingerprint256(certDER)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 
-	fmt.Println(">>>>> AddCertificate check = 1 <<<<<")
 	req, err := ssa.GetCertificateRequest(requestID)
 	if err != nil {
 		return
 	}
 
-	fmt.Println(">>>>> AddCertificate check = 2 <<<<<")
 	cert = core.Certificate{
 		RegistrationID: req.RegistrationID,
 		RequestID:      req.ID,
@@ -695,28 +691,24 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, requestID string)
 		}
 	}
 
-	fmt.Println(">>>>> AddCertificate check = 3 <<<<<")
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
 	}
 
 	// TODO Verify that the serial number doesn't yet exist
-	fmt.Println(">>>>> AddCertificate check = 4 <<<<<")
 	err = tx.Insert(&cert)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
-	fmt.Println(">>>>> AddCertificate check = 5 <<<<<")
 	err = tx.Insert(certStatus)
 	if err != nil {
 		tx.Rollback()
 		return
 	}
 
-	fmt.Println(">>>>> AddCertificate check = 6 <<<<<")
 	for _, issuedName := range issuedNames {
 		err = tx.Insert(&issuedName)
 		if err != nil {
@@ -725,7 +717,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, requestID string)
 		}
 	}
 
-	fmt.Println(">>>>> AddCertificate check = 7 <<<<<")
 	err = tx.Commit()
 	return
 }

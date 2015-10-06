@@ -578,9 +578,7 @@ func TestTotalCertRateLimit(t *testing.T) {
 	authzFinalWWW := AuthzFinal
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
 
-	fmt.Println("!!!!! Making pending authz !!!!!")
 	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
-	fmt.Println("!!!!! Making final authz !!!!!")
 	sa.FinalizeAuthorization(authzFinalWWW)
 
 	certRequest := core.CertificateRequest{
@@ -588,17 +586,11 @@ func TestTotalCertRateLimit(t *testing.T) {
 		CSR:            ExampleCSR.Raw,
 	}
 
-	fmt.Println("!!!!! Preflight !!!!!")
-	_, err := ra.CA.SA.GetCertificateRequest(requestID)
-	test.AssertNotError(t, err, "DB is closed!")
-
-	fmt.Println("!!!!! Inserting first cert !!!!!")
 	_, err := ra.NewCertificate(certRequest)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
 	fc.Add(time.Hour)
 
-	fmt.Println("!!!!! Inserting second cert !!!!!")
 	_, err = ra.NewCertificate(certRequest)
 	test.AssertError(t, err, "Total certificate rate limit failed")
 }
