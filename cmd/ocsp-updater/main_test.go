@@ -8,8 +8,10 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-	"github.com/letsencrypt/boulder/core"
 
+	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -30,7 +32,24 @@ func (ca *mockCA) RevokeCertificate(serial string, reasonCode core.RevocationCod
 	return
 }
 
+type mockPub struct {
+	sa core.StorageAuthority
+}
+
+func (p *mockPub) SubmitToCT(_ []byte) error {
+	return p.sa.AddSCTReceipt(core.SignedCertificateTimestamp{
+		SCTVersion:        0,
+		LogID:             "id",
+		Timestamp:         0,
+		Extensions:        []byte{},
+		Signature:         []byte{0},
+		CertificateSerial: "00",
+	})
+}
+
 const dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+
+var log = mocks.UseMockLog()
 
 func setup(t *testing.T) (OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
 	dbMap, err := sa.NewDbMap(dbConnStr)
@@ -50,7 +69,10 @@ func setup(t *testing.T) (OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock
 		dbMap: dbMap,
 		clk:   fc,
 		cac:   &mockCA{},
+		pubc:  &mockPub{sa},
+		sac:   sa,
 		stats: stats,
+		log:   blog.GetAuditLogger(),
 	}
 
 	return updater, sa, dbMap, fc, cleanUp
@@ -194,4 +216,23 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	certs, err := updater.findStaleOCSPResponses(fc.Now().Add(-updater.ocspMinTimeToExpiry), 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
 	test.AssertEquals(t, len(certs), 0)
+}
+
+func TestMissingReceiptsTick(t *testing.T) {
+	updater, sa, _, _, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	parsedCert, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	updater.numLogs = 1
+	updater.oldestIssuedSCT = 1 * time.Hour
+	updater.missingReceiptsTick(10)
+
+	count, err := updater.getNumberOfReceipts("00")
+	test.AssertNotError(t, err, "Couldn't get number of receipts")
+	test.AssertEquals(t, count, 1)
 }

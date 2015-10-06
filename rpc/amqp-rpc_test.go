@@ -6,10 +6,11 @@
 package rpc
 
 import (
-	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/test"
 	"reflect"
 	"testing"
+
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestWrapError(t *testing.T) {
@@ -24,6 +25,7 @@ func TestWrapError(t *testing.T) {
 		core.CertificateIssuanceError("foo"),
 		core.NoSuchRegistrationError("foo"),
 		core.RateLimitedError("foo"),
+		core.TooManyRPCRequestsError("foo"),
 	}
 	for _, c := range testCases {
 		wrapped := wrapError(c)

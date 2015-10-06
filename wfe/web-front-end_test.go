@@ -175,7 +175,7 @@ func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWe
 	return
 }
 
-func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	return nil
 }
 

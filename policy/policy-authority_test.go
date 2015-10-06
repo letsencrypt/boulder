@@ -11,6 +11,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
@@ -21,15 +22,20 @@ var log = mocks.UseMockLog()
 var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
 
 func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
+	dbMap, cleanUp := paDBMap(t)
+	pa, err := NewPolicyAuthorityImpl(dbMap, false)
+	if err != nil {
+		cleanUp()
+		t.Fatalf("Couldn't create policy implementation: %s", err)
+	}
+	return pa, cleanUp
+}
+
+func paDBMap(t *testing.T) (*gorp.DbMap, func()) {
 	dbMap, err := sa.NewDbMap(dbConnStr)
 	test.AssertNotError(t, err, "Could not construct dbMap")
-
-	pa, err := NewPolicyAuthorityImpl(dbMap, false)
-	test.AssertNotError(t, err, "Couldn't create PADB")
-
 	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
-
-	return pa, cleanUp
+	return dbMap, cleanUp
 }
 
 func TestWillingToIssue(t *testing.T) {
@@ -120,7 +126,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
-	err = pa.WillingToIssue(identifier)
+	err = pa.WillingToIssue(identifier, 100)
 	_, ok := err.(InvalidIdentifierError)
 	if !ok {
 		t.Error("Identifier was not correctly forbidden: ", identifier)
@@ -129,7 +135,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test syntax errors
 	for _, domain := range shouldBeSyntaxError {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier)
+		err := pa.WillingToIssue(identifier, 100)
 		_, ok := err.(SyntaxError)
 		if !ok {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
@@ -139,7 +145,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test public suffix matching
 	for _, domain := range shouldBeNonPublic {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier)
+		err := pa.WillingToIssue(identifier, 100)
 		_, ok := err.(NonPublicError)
 		if !ok {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
@@ -149,9 +155,8 @@ func TestWillingToIssue(t *testing.T) {
 	// Test blacklisting
 	for _, domain := range shouldBeBlacklisted {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier)
-		_, ok := err.(BlacklistedError)
-		if !ok {
+		err := pa.WillingToIssue(identifier, 100)
+		if err != ErrBlacklisted {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
 	}
@@ -159,7 +164,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test acceptance of good names
 	for _, domain := range shouldBeAccepted {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		if err := pa.WillingToIssue(identifier); err != nil {
+		if err := pa.WillingToIssue(identifier, 100); err != nil {
 			t.Error("Identifier was incorrectly forbidden: ", identifier, err)
 		}
 	}
@@ -198,5 +203,102 @@ func TestChallengesFor(t *testing.T) {
 		combinations[0][0] != 0 || combinations[1][0] != 1 ||
 		combinations[2][0] != 2 || combinations[3][0] != 3 {
 		t.Error("Incorrect combinations returned")
+	}
+}
+
+func TestWillingToIssueWithWhitelist(t *testing.T) {
+	dbMap, cleanUp := paDBMap(t)
+	defer cleanUp()
+	pa, err := NewPolicyAuthorityImpl(dbMap, true)
+	test.AssertNotError(t, err, "Couldn't create policy implementation")
+	googID := core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "www.google.com",
+	}
+	zomboID := core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "www.zombo.com",
+	}
+
+	type listTestCase struct {
+		regID int64
+		id    core.AcmeIdentifier
+		err   error
+	}
+	pa.DB.LoadRules(RuleSet{
+		Whitelist: []WhitelistRule{
+			{Host: "www.zombo.com"},
+		},
+	})
+
+	// Note that www.google.com is not in the blacklist for this test. We no
+	// longer have a hardcoded blacklist.
+	testCases := []listTestCase{
+		{100, googID, ErrNotWhitelisted},
+		{whitelistedPartnerRegID, googID, nil},
+		{100, zomboID, nil},
+		{whitelistedPartnerRegID, zomboID, nil},
+	}
+	for _, tc := range testCases {
+		err := pa.WillingToIssue(tc.id, tc.regID)
+		if err != tc.err {
+			t.Errorf("%#v, %d: want %#v, got %#v", tc.id.Value, tc.regID, tc.err, err)
+		}
+	}
+
+	pa.DB.LoadRules(RuleSet{
+		Blacklist: []BlacklistRule{
+			{Host: "www.google.com"},
+		},
+		Whitelist: []WhitelistRule{
+			{Host: "www.zombo.com"},
+		},
+	})
+
+	exampleID := core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "www.example.com",
+	}
+
+	testCases = []listTestCase{
+		// This ErrNotWhitelisted is surprising and accidental from the ordering
+		// of the whitelist and blacklist check. The whitelist will be gone soon
+		// enough.
+		{100, googID, ErrNotWhitelisted},
+		{whitelistedPartnerRegID, googID, ErrBlacklisted},
+		{100, zomboID, nil},
+		{whitelistedPartnerRegID, zomboID, nil},
+		{100, exampleID, ErrNotWhitelisted},
+		{whitelistedPartnerRegID, exampleID, nil},
+	}
+	for _, tc := range testCases {
+		err := pa.WillingToIssue(tc.id, tc.regID)
+		if err != tc.err {
+			t.Errorf("%#v, %d: want %#v, got %#v", tc.id.Value, tc.regID, tc.err, err)
+		}
+	}
+
+	pa.DB.LoadRules(RuleSet{
+		Blacklist: []BlacklistRule{
+			{Host: "www.google.com"},
+		},
+		Whitelist: []WhitelistRule{
+			{Host: "www.zombo.com"},
+			{Host: "www.google.com"},
+		},
+	})
+	testCases = []listTestCase{
+		{100, googID, ErrBlacklisted},
+		{whitelistedPartnerRegID, googID, ErrBlacklisted},
+		{100, zomboID, nil},
+		{whitelistedPartnerRegID, zomboID, nil},
+		{100, exampleID, ErrNotWhitelisted},
+		{whitelistedPartnerRegID, exampleID, nil},
+	}
+	for _, tc := range testCases {
+		err := pa.WillingToIssue(tc.id, tc.regID)
+		if err != tc.err {
+			t.Errorf("%#v, %d: want %#v, got %#v", tc.id.Value, tc.regID, tc.err, err)
+		}
 	}
 }
