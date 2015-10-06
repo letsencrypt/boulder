@@ -515,7 +515,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 			// Shouldn't happen, but let's be careful anyhow.
 			return errors.New("StorageAuthority failed to return a count for every name")
 		}
-		if count >= int(limit.GetThreshold(name)) {
+		if int64(count) >= limit.GetThreshold(name) {
 			badNames = append(badNames, name)
 		}
 	}
@@ -529,7 +529,6 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 
 func (ra *RegistrationAuthorityImpl) checkLimits(names []string) error {
 	limits := ra.rlPolicies
-	// Check total certificate rate limiting
 	if limits.TotalCertificates.Enabled() {
 		totalIssued, err := ra.getIssuanceCount()
 		if err != nil {
@@ -539,7 +538,6 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string) error {
 			return core.RateLimitedError("Certificate issuance limit reached")
 		}
 	}
-	// Check rate limiting by name
 	if limits.CertificatesPerName.Enabled() {
 		err := ra.checkCertificatesPerNameLimit(names, limits.CertificatesPerName)
 		if err != nil {
