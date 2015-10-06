@@ -110,7 +110,8 @@
           "expiry": "8760h"
         }
       }
-    }
+    },
+    "maxConcurrentRPCServerRequests": 16
   },
 
   "pa": {
@@ -119,11 +120,13 @@
 
   "ra": {
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
+    "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8002"
   },
 
   "sa": {
     "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
+    "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8003"
   },
 
@@ -134,7 +137,8 @@
       "simpleHTTPPort": 5001,
       "simpleHTTPSPort": 5001,
       "dvsniPort": 5001
-    }
+    },
+    "maxConcurrentRPCServerRequests": 16
   },
 
   "sql": {
@@ -185,6 +189,15 @@
   },
 
   "publisher": {
+    "debugAddr": "localhost:8009"
+  },
+
+  "common": {
+    "baseURL": "http://localhost:4000",
+    "issuerCert": "test/test-ca.pem",
+    "dnsResolver": "127.0.0.1:8053",
+    "dnsTimeout": "10s",
+    "dnsAllowLoopbackAddresses": true,
     "ct": {
       "logs": [
         {
@@ -196,15 +209,7 @@
       "submissionBackoff": "1s",
       "intermediateBundleFilename": "test/test-ca.pem"
     },
-    "debugAddr": "localhost:8009"
-  },
-
-  "common": {
-    "baseURL": "http://localhost:4000",
-    "issuerCert": "test/test-ca.pem",
-    "dnsResolver": "127.0.0.1:8053",
-    "dnsTimeout": "10s",
-    "dnsAllowLoopbackAddresses": true
+    "maxConcurrentRPCServerRequests": 16
   },
 
   "certChecker": {
