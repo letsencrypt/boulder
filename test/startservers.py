@@ -36,9 +36,9 @@ def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
     # BUILD_ID.
-    cmd = "make BUILD_TIME='' BUILD_ID=''  "
+    cmd = "make GO_BUILD_FLAGS=''  "
     if race_detection:
-        cmd = cmd + " GO_BUILD_FLAGS=-race"
+        cmd = "make GO_BUILD_FLAGS=-race"
 
     return subprocess.call(cmd, shell=True) == 0
 

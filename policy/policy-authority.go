@@ -6,12 +6,12 @@
 package policy
 
 import (
+	"errors"
 	"net"
 	"regexp"
 	"strings"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -45,15 +45,23 @@ func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool) (*PolicyAu
 	return &pa, nil
 }
 
-const maxLabels = 10
+const (
+	maxLabels = 10
 
-// DNS defines max label length as 63 characters. Some implementations allow
-// more, but we will be conservative.
-const maxLabelLength = 63
+	// DNS defines max label length as 63 characters. Some implementations allow
+	// more, but we will be conservative.
+	maxLabelLength = 63
 
-// This is based off maxLabels * maxLabelLength, but is also a restriction based
-// on the max size of indexed storage in the issuedNames table.
-const maxDNSIdentifierLength = 640
+	// This is based off maxLabels * maxLabelLength, but is also a restriction based
+	// on the max size of indexed storage in the issuedNames table.
+	maxDNSIdentifierLength = 640
+
+	// whitelistedPartnerRegID is the registartion ID we check for to see if we need
+	// to skip the domain whitelist (but not the blacklist). This is for an
+	// early partner integration during the beta period and should be removed
+	// later.
+	whitelistedPartnerRegID = -1
+)
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
@@ -90,17 +98,17 @@ type SyntaxError struct{}
 // Internet.
 type NonPublicError struct{}
 
-// BlacklistedError indicates we have blacklisted one or more of these identifiers.
-type BlacklistedError struct{}
+// ErrBlacklisted indicates we have blacklisted one or more of these
+// identifiers.
+var ErrBlacklisted = errors.New("Name is blacklisted")
 
-// NotWhitelistedError indicates we have not whitelisted one or more of these identifiers.
-type NotWhitelistedError struct{}
+// ErrNotWhitelisted indicates we have not whitelisted one or more of these
+// identifiers.
+var ErrNotWhitelisted = errors.New("Name is not whitelisted")
 
 func (e InvalidIdentifierError) Error() string { return "Invalid identifier type" }
 func (e SyntaxError) Error() string            { return "Syntax error" }
 func (e NonPublicError) Error() string         { return "Name does not end in a public suffix" }
-func (e BlacklistedError) Error() string       { return "Name is blacklisted" }
-func (e NotWhitelistedError) Error() string    { return "Name is not whitelisted" }
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier.
@@ -125,7 +133,7 @@ func (e NotWhitelistedError) Error() string    { return "Name is not whitelisted
 //      names are on the blacklist.
 //
 // XXX: We should probably fold everything to lower-case somehow.
-func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	if id.Type != core.IdentifierDNS {
 		return InvalidIdentifierError{}
 	}
@@ -169,9 +177,17 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier) error {
 		return NonPublicError{}
 	}
 
-	// Require no match against blacklist (and if pa.EnforceWhitelist is true
-	// require domain to match a whitelist rule)
-	if err := pa.DB.CheckHostLists(domain, pa.EnforceWhitelist); err != nil {
+	// Use the domain whitelist if the PA has been asked to. However, if the
+	// registration ID is from a whitelisted partner we're allowing to register
+	// any domain, they can get in, too.
+	enforceWhitelist := pa.EnforceWhitelist
+	if regID == whitelistedPartnerRegID {
+		enforceWhitelist = false
+	}
+
+	// Require no match against blacklist and if enforceWhitelist is true
+	// require domain to match a whitelist rule.
+	if err := pa.DB.CheckHostLists(domain, enforceWhitelist); err != nil {
 		return err
 	}
 

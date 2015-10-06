@@ -12,9 +12,7 @@ MAINTAINER ?= "Community"
 CMDS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d)
 CMD_BASENAMES = $(shell echo $(CMDS) | xargs -n1 basename)
 CMD_BINS = $(addprefix $(OBJDIR)/, $(CMD_BASENAMES) )
-OBJECTS = $(CMD_BINS) $(OBJDIR)/pkcs11bench
-
-GO_BUILD_FLAGS =
+OBJECTS = $(CMD_BINS)
 
 # Build environment variables (referencing core/util.go)
 COMMIT_ID = $(shell git rev-parse --short HEAD)
@@ -28,6 +26,8 @@ BUILD_HOST_VAR = github.com/letsencrypt/boulder/core.BuildHost
 BUILD_TIME = $(shell date -u)
 BUILD_TIME_VAR = github.com/letsencrypt/boulder/core.BuildTime
 
+GO_BUILD_FLAGS = -ldflags "-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" -X \"$(BUILD_HOST_VAR)=$(BUILD_HOST)\""
+
 .PHONY: all build
 all: build
 
@@ -39,9 +39,7 @@ $(OBJDIR):
 $(CMD_BINS): build_cmds
 
 build_cmds: | $(OBJDIR)
-	GOBIN=$(OBJDIR) go install $(GO_BUILD_FLAGS) -ldflags \
-		"-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" \
-		-X \"$(BUILD_HOST_VAR)=$(BUILD_HOST)\"" ./...
+	GOBIN=$(OBJDIR) go install $(GO_BUILD_FLAGS) ./...
 
 clean:
 	rm -f $(OBJDIR)/*
@@ -76,6 +74,3 @@ rpm: build
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
 		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
 		test/boulder-config.json sa/_db $(OBJECTS)
-
-$(OBJDIR)/pkcs11bench: ./Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key/*.go | $(OBJDIR)
-	go test -o $(OBJDIR)/pkcs11bench -c ./Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key/

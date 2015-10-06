@@ -87,6 +87,10 @@ type NoSuchRegistrationError string
 // RateLimitedError indicates the user has hit a rate limit
 type RateLimitedError string
 
+// TooManyRPCRequestsError indicates an RPC server has hit it's concurrent request
+// limit
+type TooManyRPCRequestsError string
+
 func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
 func (e MalformedRequestError) Error() string    { return string(e) }
@@ -98,6 +102,7 @@ func (e SignatureValidationError) Error() string { return string(e) }
 func (e CertificateIssuanceError) Error() string { return string(e) }
 func (e NoSuchRegistrationError) Error() string  { return string(e) }
 func (e RateLimitedError) Error() string         { return string(e) }
+func (e TooManyRPCRequestsError) Error() string  { return string(e) }
 
 // Base64 functions
 
