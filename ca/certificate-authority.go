@@ -398,7 +398,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(requestID string, logEventI
 			CN: commonName,
 		},
 	}
-	go ca.signCertificate(csr, signRequest, requestID, logEventID)
+
+	// TODO(rlb): Run this in a goroutine to make it async
+	ca.signCertificate(csr, signRequest, requestID, logEventID)
 
 	logEventResult = "successful"
 	return nil
