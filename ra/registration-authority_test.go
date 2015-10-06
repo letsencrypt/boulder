@@ -403,6 +403,25 @@ func TestNewAuthorization(t *testing.T) {
 	t.Log("DONE TestNewAuthorization")
 }
 
+func TestNewAuthorizationCapitalLetters(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	authzReq := core.Authorization{
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: "NOT-example.COM",
+		},
+	}
+	authz, err := ra.NewAuthorization(authzReq, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+	test.AssertEquals(t, "not-example.com", authz.Identifier.Value)
+
+	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	assertAuthzEqual(t, authz, dbAuthz)
+}
+
 func TestUpdateAuthorization(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
