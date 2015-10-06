@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -175,7 +176,7 @@ func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier) (challenges []co
 	return
 }
 
-func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	return nil
 }
 
@@ -1362,4 +1363,27 @@ func TestBadKeyCSR(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: Key too small: 512"}`)
+}
+
+func TestStatusCodeFromError(t *testing.T) {
+	testCases := []struct {
+		err        error
+		statusCode int
+	}{
+		{core.InternalServerError("foo"), 500},
+		{core.NotSupportedError("foo"), 501},
+		{core.MalformedRequestError("foo"), 400},
+		{core.UnauthorizedError("foo"), 403},
+		{core.NotFoundError("foo"), 404},
+		{core.SyntaxError("foo"), 400},
+		{core.SignatureValidationError("foo"), 400},
+		{core.RateLimitedError("foo"), 429},
+		{core.LengthRequiredError("foo"), 411},
+	}
+	for _, c := range testCases {
+		got := statusCodeFromError(c.err)
+		if got != c.statusCode {
+			t.Errorf("Incorrect status code for %s. Expected %d, got %d", reflect.TypeOf(c.err).Name(), c.statusCode, got)
+		}
+	}
 }
