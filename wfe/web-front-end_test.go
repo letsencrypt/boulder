@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -670,8 +669,6 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertByteEquals(t, cert.Raw, body)
 
 	certURL := responseWriter.Header().Get("Content-Location")
-	fmt.Printf("\n\n\n certURL = %+v \n\n\n", certURL)
-	fmt.Printf("\n\n\n serial = %+v \n\n\n", hex.EncodeToString(cert.SerialNumber.Bytes()))
 
 	// Verify that the same certificate is returned from a GET to the certificate URL
 	mockLog.Clear()

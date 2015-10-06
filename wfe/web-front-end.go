@@ -824,7 +824,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	response.WriteHeader(http.StatusCreated)
 
 	// incr cert stat
-	wfe.Stats.Inc("Certificates", 1, 1.0)
+	wfe.stats.Inc("Certificates", 1, 1.0)
 }
 
 func (wfe *WebFrontEndImpl) Challenge(
@@ -1204,7 +1204,7 @@ func (wfe *WebFrontEndImpl) CertificateRequest(response http.ResponseWriter, req
 		return
 	}
 	serial := parsedCertificate.SerialNumber
-	certURL := fmt.Sprintf("%s%016x", wfe.CertBase, serial.Rsh(serial, 64))
+	certURL := wfe.CertBase + core.SerialToString(serial)
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")

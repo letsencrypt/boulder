@@ -213,7 +213,7 @@ func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
 // GetCertificateRequest is a mock
 func (sa *MockSA) GetCertificateRequest(requestID string) (core.CertificateRequest, error) {
 	return core.CertificateRequest{
-		ID:             RequestID,
+		ID:             requestID,
 		RegistrationID: 1,
 		CSR:            []byte{},
 	}, nil
@@ -236,7 +236,7 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 			RegistrationID: 1,
 			DER:            certBlock.Bytes,
 		}, nil
-	} else if serial == "ff0000000000000e4b4f67d86e818c46" {
+	} else if serial == "0000ff0000000000000e4b4f67d86e818c46" {
 		certPemBytes, _ := ioutil.ReadFile("test/not-an-example.com.crt")
 		certBlock, _ := pem.Decode(certPemBytes)
 		return core.Certificate{
@@ -246,6 +246,11 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 	} else {
 		return core.Certificate{}, errors.New("No cert")
 	}
+}
+
+// GetLatestCertificateForRequest is a mock
+func (sa *MockSA) GetLatestCertificateForRequest(requestID string) (core.Certificate, error) {
+	return sa.GetCertificate("0000ff0000000000000e4b4f67d86e818c46")
 }
 
 // GetCertificateStatus is a mock
