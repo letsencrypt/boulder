@@ -301,7 +301,7 @@ func (ctx symmetricMac) signPayload(payload []byte, alg SignatureAlgorithm) (Sig
 	}
 
 	return Signature{
-		Signature: mac,
+		signature: mac,
 		protected: &rawHeader{},
 	}, nil
 }

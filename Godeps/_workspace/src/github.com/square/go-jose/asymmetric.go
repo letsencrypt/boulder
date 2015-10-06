@@ -252,7 +252,7 @@ func (ctx rsaDecrypterSigner) signPayload(payload []byte, alg SignatureAlgorithm
 	}
 
 	return Signature{
-		Signature: out,
+		signature: out,
 		protected: &rawHeader{},
 	}, nil
 }
@@ -454,7 +454,7 @@ func (ctx ecDecrypterSigner) signPayload(payload []byte, alg SignatureAlgorithm)
 	out := append(rBytesPadded, sBytesPadded...)
 
 	return Signature{
-		Signature: out,
+		signature: out,
 		protected: &rawHeader{},
 	}, nil
 }
