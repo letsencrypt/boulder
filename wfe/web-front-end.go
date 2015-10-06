@@ -113,7 +113,7 @@ func statusCodeFromError(err interface{}) int {
 type requestEvent struct {
 	ID           string          `json:",omitempty"`
 	RealIP       string          `json:",omitempty"`
-	ForwardedFor string          `json:",omitempty"`
+	ClientAddr   string          `json:",omitempty"`
 	Endpoint     string          `json:",omitempty"`
 	Method       string          `json:",omitempty"`
 	RequestTime  time.Time       `json:",omitempty"`
@@ -730,13 +730,13 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 }
 
-func (wfe *WebFrontEndImpl) logCsr(remoteAddr string, cr core.CertificateRequest, registration core.Registration) {
+func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, registration core.Registration) {
 	var csrLog = struct {
-		RemoteAddr   string
+		ClientAddr   string
 		CsrBase64    []byte
 		Registration core.Registration
 	}{
-		RemoteAddr:   remoteAddr,
+		ClientAddr:   getClientAddr(request),
 		CsrBase64:    cr.Bytes,
 		Registration: registration,
 	}
@@ -778,7 +778,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
-	wfe.logCsr(request.RemoteAddr, certificateRequest, reg)
+	wfe.logCsr(request, certificateRequest, reg)
 	// Check that the key in the CSR is good. This will also be checked in the CA
 	// component, but we want to discard CSRs with bad keys as early as possible
 	// because (a) it's an easy check and we can save unnecessary requests and
@@ -1298,15 +1298,26 @@ func (wfe *WebFrontEndImpl) logRequestDetails(logEvent *requestEvent) {
 
 func (wfe *WebFrontEndImpl) populateRequestEvent(request *http.Request) (logEvent requestEvent) {
 	logEvent = requestEvent{
-		ID:           core.NewToken(),
-		RealIP:       request.Header.Get("X-Real-IP"),
-		ForwardedFor: request.Header.Get("X-Forwarded-For"),
-		Method:       request.Method,
-		RequestTime:  time.Now(),
-		Extra:        make(map[string]interface{}, 0),
+		ID:          core.NewToken(),
+		RealIP:      request.Header.Get("X-Real-IP"),
+		ClientAddr:  getClientAddr(request),
+		Method:      request.Method,
+		RequestTime: time.Now(),
+		Extra:       make(map[string]interface{}, 0),
 	}
 	if request.URL != nil {
 		logEvent.Endpoint = request.URL.String()
 	}
 	return
+}
+
+// Comma-separated list of HTTP clients involved in making this
+// request, starting with the original requestor and ending with the
+// remote end of our TCP connection (which is typically our own
+// proxy).
+func getClientAddr(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		return xff + "," + r.RemoteAddr
+	}
+	return r.RemoteAddr
 }
