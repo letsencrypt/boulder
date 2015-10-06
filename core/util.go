@@ -117,7 +117,11 @@ func pad(x string) string {
 }
 
 func unpad(x string) string {
-	return strings.Replace(x, "=", "", -1)
+	end := len(x)
+	for end != 0 && x[end-1] == '=' {
+		end--
+	}
+	return x[:end]
 }
 
 // B64enc encodes a byte array as unpadded, URL-safe Base64
