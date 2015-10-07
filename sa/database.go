@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 
+	// Provide access to the MySQL driver
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
