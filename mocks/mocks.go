@@ -225,6 +225,13 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 			RegistrationID: 1,
 			DER:            certBlock.Bytes,
 		}, nil
+	} else if serial == "0000ff0000000000000e4b4f67d86e818c46" {
+		certPemBytes, _ := ioutil.ReadFile("test/not-an-example.com.crt")
+		certBlock, _ := pem.Decode(certPemBytes)
+		return core.Certificate{
+			RegistrationID: 1,
+			DER:            certBlock.Bytes,
+		}, nil
 	} else {
 		return core.Certificate{}, errors.New("No cert")
 	}
