@@ -206,6 +206,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		t.Fatalf("Couldn't store reqB: %s", err)
 	}
 
+	// Already sent a nag but too long ago
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy A",
@@ -216,41 +217,18 @@ func TestFindExpiringCertificates(t *testing.T) {
 		SerialNumber: big.NewInt(1337),
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
-	certA := &core.Certificate{
-		RequestID:      reqA.ID,
-		RegistrationID: regA.ID,
-		Serial:         "001",
-		Expires:        rawCertA.NotAfter,
-		DER:            certDerA,
-	}
-	// Already sent a nag but too long ago
-	certStatusA := &core.CertificateStatus{
-		Serial:                "001",
-		LastExpirationNagSent: ctx.fc.Now().Add(-time.Hour * 24 * 3),
-		Status:                core.OCSPStatusGood,
-	}
+
+	// Already sent a nag for this period
 	rawCertB := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy B",
 		},
 		NotAfter:     ctx.fc.Now().AddDate(0, 0, 3),
 		DNSNames:     []string{"example-b.com"},
-		SerialNumber: big.NewInt(1337),
+		SerialNumber: big.NewInt(1338),
 	}
 	certDerB, _ := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, &testKey)
-	certB := &core.Certificate{
-		RequestID:      reqA.ID,
-		RegistrationID: regA.ID,
-		Serial:         "002",
-		Expires:        rawCertB.NotAfter,
-		DER:            certDerB,
-	}
-	// Already sent a nag for this period
-	certStatusB := &core.CertificateStatus{
-		Serial:                "002",
-		LastExpirationNagSent: ctx.fc.Now().Add(-time.Hour * 24 * 3),
-		Status:                core.OCSPStatusGood,
-	}
+
 	rawCertC := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy C",
@@ -258,38 +236,28 @@ func TestFindExpiringCertificates(t *testing.T) {
 		// This is within the earliest nag window (7 days)
 		NotAfter:     ctx.fc.Now().AddDate(0, 0, 6),
 		DNSNames:     []string{"example-c.com"},
-		SerialNumber: big.NewInt(1337),
+		SerialNumber: big.NewInt(1339),
 	}
 	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
-	certC := &core.Certificate{
-		RequestID:      reqB.ID,
-		RegistrationID: regB.ID,
-		Serial:         "003",
-		Expires:        rawCertC.NotAfter,
-		DER:            certDerC,
-	}
-	certStatusC := &core.CertificateStatus{
-		Serial: "003",
-		Status: core.OCSPStatusGood,
-	}
 
-	err = ctx.dbMap.Insert(certA)
+	_, err = ctx.ssa.AddCertificate(certDerA, reqA.ID)
 	test.AssertNotError(t, err, "Couldn't add certA")
-	err = ctx.dbMap.Insert(certB)
+	_, err = ctx.ssa.AddCertificate(certDerB, reqA.ID)
 	test.AssertNotError(t, err, "Couldn't add certB")
-	err = ctx.dbMap.Insert(certC)
+	_, err = ctx.ssa.AddCertificate(certDerC, reqB.ID)
 	test.AssertNotError(t, err, "Couldn't add certC")
-	err = ctx.dbMap.Insert(certStatusA)
-	test.AssertNotError(t, err, "Couldn't add certStatusA")
-	err = ctx.dbMap.Insert(certStatusB)
-	test.AssertNotError(t, err, "Couldn't add certStatusB")
-	err = ctx.dbMap.Insert(certStatusC)
-	test.AssertNotError(t, err, "Couldn't add certStatusC")
+
+	// Nag certs A and B 3 days ago
+	now := ctx.fc.Now()
+	ctx.fc.Set(now.Add(-time.Hour * 24 * 3))
+	ctx.m.updateCertStatus(core.SerialToString(rawCertA.SerialNumber))
+	ctx.m.updateCertStatus(core.SerialToString(rawCertB.SerialNumber))
+	ctx.fc.Set(now)
 
 	log.Clear()
 	err = ctx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
-	// Should get 001 and 003
+	// Should get certs A and C
 	test.AssertEquals(t, len(ctx.mc.Messages), 2)
 
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 1 days (%s)`, rawCertA.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), ctx.mc.Messages[0])
