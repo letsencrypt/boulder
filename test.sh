@@ -47,8 +47,6 @@ update_status() {
 }
 
 function run() {
-  echo "RUN"
-
   echo "$@"
   "$@" 2>&1
   local status=$?
