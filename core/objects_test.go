@@ -6,6 +6,8 @@
 package core
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"net"
 	"testing"
@@ -40,6 +42,24 @@ func TestRegistrationUpdate(t *testing.T) {
 	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
 }
 
+var testKey1, _ = rsa.GenerateKey(rand.Reader, 2048)
+var testKey2, _ = rsa.GenerateKey(rand.Reader, 2048)
+
+func TestKeyAuthorization(t *testing.T) {
+	jwk1 := &jose.JsonWebKey{Key: testKey1.Public()}
+	jwk2 := &jose.JsonWebKey{Key: testKey2.Public()}
+
+	ka1, err := NewKeyAuthorization("99DrlWuy-4Nc82olAy0cK7Shnm4uV32pJovyucGEWME", jwk1)
+	test.AssertNotError(t, err, "Failed to create a new key authorization")
+	ka2, err := NewKeyAuthorization("Iy2_-2OA8lyD0lwhmD8dD3TIL3wlNpiUhLTXPJG5qOM", jwk2)
+	test.AssertNotError(t, err, "Failed to create a new key authorization")
+
+	test.Assert(t, ka1.Match(ka1.Token, jwk1), "Authorized key should match itself")
+	test.Assert(t, !ka1.Match(ka1.Token, jwk2), "Authorized key should not match a different key")
+	test.Assert(t, !ka1.Match(ka2.Token, jwk1), "Authorized key should not match a different token")
+	test.Assert(t, !ka1.Match(ka2.Token, jwk2), "Authorized key should not match a completely different key")
+}
+
 func TestRecordSanityCheck(t *testing.T) {
 	rec := []ValidationRecord{
 		ValidationRecord{
@@ -66,7 +86,8 @@ func TestRecordSanityCheck(t *testing.T) {
 	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
 }
 
-func TestChallengeSanityCheck(t *testing.T) {
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this test
+func TestChallengeSanityCheck_Legacy(t *testing.T) {
 	// Make a temporary account key
 	var accountKey *jose.JsonWebKey
 	err := json.Unmarshal([]byte(`{
@@ -76,7 +97,7 @@ func TestChallengeSanityCheck(t *testing.T) {
   }`), &accountKey)
 	test.AssertNotError(t, err, "Error unmarshaling JWK")
 
-	types := []string{ChallengeTypeSimpleHTTP, ChallengeTypeDVSNI, ChallengeTypeDNS}
+	types := []string{ChallengeTypeSimpleHTTP, ChallengeTypeDVSNI}
 	for _, challengeType := range types {
 		chall := Challenge{
 			Type:       challengeType,
@@ -107,7 +128,7 @@ func TestChallengeSanityCheck(t *testing.T) {
 				AddressUsed:       net.IP{127, 0, 0, 1},
 			}}
 			test.Assert(t, chall.IsSane(true), "IsSane should be true")
-		} else if challengeType == ChallengeTypeDVSNI || challengeType == ChallengeTypeDNS {
+		} else if challengeType == ChallengeTypeDVSNI {
 			chall.Validation = new(jose.JsonWebSignature)
 			if challengeType == ChallengeTypeDVSNI {
 				chall.ValidationRecord = []ValidationRecord{ValidationRecord{
@@ -121,6 +142,43 @@ func TestChallengeSanityCheck(t *testing.T) {
 			}
 			test.Assert(t, chall.IsSane(true), "IsSane should be true")
 		}
+	}
+
+	chall := Challenge{Type: "bogus", Status: StatusPending}
+	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
+}
+
+func TestChallengeSanityCheck(t *testing.T) {
+	// Make a temporary account key
+	var accountKey *jose.JsonWebKey
+	err := json.Unmarshal([]byte(`{
+    "kty":"RSA",
+    "n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
+    "e":"AQAB"
+  }`), &accountKey)
+	test.AssertNotError(t, err, "Error unmarshaling JWK")
+
+	ka, err := NewKeyAuthorization("KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4", accountKey)
+	test.AssertNotError(t, err, "Error creating key authorization")
+
+	types := []string{ChallengeTypeHTTP01, ChallengeTypeTLSSNI01, ChallengeTypeDNS01}
+	for _, challengeType := range types {
+		chall := Challenge{
+			Type:       challengeType,
+			Status:     StatusInvalid,
+			AccountKey: accountKey,
+		}
+		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+
+		chall.Status = StatusPending
+		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
+
+		chall.Token = ka.Token
+		test.Assert(t, chall.IsSane(false), "IsSane should be true")
+
+		chall.KeyAuthorization = &ka
+		test.Assert(t, chall.IsSane(true), "IsSane should be true")
 	}
 
 	chall := Challenge{Type: "bogus", Status: StatusPending}

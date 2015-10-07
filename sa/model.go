@@ -35,6 +35,8 @@ type regModel struct {
 }
 
 // challModel is the description of a core.Challenge in the database
+//
+// The Validation field is a stub; the column is only there for backward compatibility.
 type challModel struct {
 	ID              int64  `db:"id"`
 	AuthorizationID string `db:"authorizationID"`
@@ -45,7 +47,7 @@ type challModel struct {
 	Validated        *time.Time      `db:"validated"`
 	Token            string          `db:"token"`
 	TLS              *bool           `db:"tls"`
-	Validation       []byte          `db:"validation"`
+	KeyAuthorization string          `db:"keyAuthorization"`
 	ValidationRecord []byte          `db:"validationRecord"`
 	AccountKey       []byte          `db:"accountKey"`
 
@@ -99,11 +101,12 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		Token:           c.Token,
 		TLS:             c.TLS,
 	}
-	if c.Validation != nil {
-		cm.Validation = []byte(c.Validation.FullSerialize())
-		if len(cm.Validation) > mediumBlobSize {
-			return nil, fmt.Errorf("Validation object is too large to store in the database")
+	if c.KeyAuthorization != nil {
+		kaString := c.KeyAuthorization.String()
+		if len(kaString) > 255 {
+			return nil, fmt.Errorf("Key authorization is too large to store in the database")
 		}
+		cm.KeyAuthorization = kaString
 	}
 	if c.Error != nil {
 		errJSON, err := json.Marshal(c.Error)
@@ -147,12 +150,12 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		Token:     cm.Token,
 		TLS:       cm.TLS,
 	}
-	if len(cm.Validation) > 0 {
-		val, err := jose.ParseSigned(string(cm.Validation))
+	if len(cm.KeyAuthorization) > 0 {
+		ka, err := core.NewKeyAuthorizationFromString(cm.KeyAuthorization)
 		if err != nil {
 			return core.Challenge{}, err
 		}
-		c.Validation = val
+		c.KeyAuthorization = &ka
 	}
 	if len(cm.Error) > 0 {
 		var problem core.ProblemDetails
