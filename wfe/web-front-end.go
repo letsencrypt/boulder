@@ -31,7 +31,7 @@ const (
 	NewAuthzPath   = "/acme/new-authz"
 	AuthzPath      = "/acme/authz/"
 	ChallengePath  = "/acme/challenge/"
-	NewCertReqPath = "/acme/new-cert-req/"
+	NewCertReqPath = "/acme/new-cert-req"
 	CertReqPath    = "/acme/cert-req/"
 	NewCertPath    = "/acme/new-cert" // TODO(#934): Delete
 	CertPath       = "/acme/cert/"
