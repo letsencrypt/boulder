@@ -45,6 +45,17 @@ update_status() {
   fi
 }
 
+function error_on_output() {
+  output=$($@ 2>&1)
+  echo $output
+
+  if [ "x${output}" == "x" ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 function run() {
   echo "$@"
   "$@" 2>&1
@@ -148,18 +159,7 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 #
 if [[ "$RUN" =~ "vet" ]] ; then
   start_context "test/vet"
-  check_go_vet() {
-    errors=$(go vet ./...)
-    if [ "x${errors}" == "x" ]; then
-      return 0
-    else
-      # Re-run to display the errors
-      go vet ./...
-      return 1
-    fi
-  }
-
-  run_and_comment check_go_vet
+  run_and_comment error_on_output go vet ./...
   end_context #test/vet
 fi
 
@@ -168,18 +168,7 @@ fi
 #
 if [[ "$RUN" =~ "lint" ]] ; then
   start_context "test/golint"
-  check_golint() {
-    errors=$([ -x "$(which golint)" ] && golint -min_confidence=0.81 ./...)
-    if [ "x${errors}" == "x" ]; then
-      return 0
-    else
-      # Re-run to display the errors
-      [ -x "$(which golint)" ] && run golint -min_confidence=0.81 ./...
-      return 1
-    fi
-  }
-
-  run_and_comment check_golint
+  run_and_comment error_on_output golint -min_confidence=0.81 ./...
   end_context #test/golint
 fi
 
