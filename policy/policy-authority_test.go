@@ -6,7 +6,10 @@
 package policy
 
 import (
+	"encoding/json"
 	"testing"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
@@ -167,17 +170,38 @@ func TestWillingToIssue(t *testing.T) {
 	}
 }
 
+var accountKeyJSON = `{
+  "kty":"RSA",
+  "n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
+  "e":"AQAB"
+}`
+
 func TestChallengesFor(t *testing.T) {
 	pa, cleanup := paImpl(t)
 	defer cleanup()
 
-	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{})
+	var accountKey *jose.JsonWebKey
+	err := json.Unmarshal([]byte(accountKeyJSON), &accountKey)
+	if err != nil {
+		t.Errorf("Error unmarshaling JWK: %v", err)
+	}
 
-	if len(challenges) != 2 || challenges[0].Type != core.ChallengeTypeSimpleHTTP ||
-		challenges[1].Type != core.ChallengeTypeDVSNI {
+	challenges, combinations, err := pa.ChallengesFor(core.AcmeIdentifier{}, accountKey)
+	if err != nil {
+		t.Errorf("Error generating challenges: %v", err)
+	}
+
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these tests
+	if len(challenges) != 4 ||
+		challenges[0].Type != core.ChallengeTypeSimpleHTTP ||
+		challenges[1].Type != core.ChallengeTypeDVSNI ||
+		challenges[2].Type != core.ChallengeTypeHTTP01 ||
+		challenges[3].Type != core.ChallengeTypeTLSSNI01 {
 		t.Error("Incorrect challenges returned")
 	}
-	if len(combinations) != 2 || combinations[0][0] != 0 || combinations[1][0] != 1 {
+	if len(combinations) != 4 ||
+		combinations[0][0] != 0 || combinations[1][0] != 1 ||
+		combinations[2][0] != 2 || combinations[3][0] != 3 {
 		t.Error("Incorrect combinations returned")
 	}
 }
