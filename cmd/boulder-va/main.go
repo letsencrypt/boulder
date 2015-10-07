@@ -39,18 +39,18 @@ func main() {
 		go cmd.ProfileCmd("VA", stats)
 
 		pc := &va.PortConfig{
-			SimpleHTTPPort:  80,
-			SimpleHTTPSPort: 443,
-			DVSNIPort:       443,
+			HTTPPort:  80,
+			HTTPSPort: 443,
+			TLSPort:   443,
 		}
-		if c.VA.PortConfig.SimpleHTTPPort != 0 {
-			pc.SimpleHTTPPort = c.VA.PortConfig.SimpleHTTPPort
+		if c.VA.PortConfig.HTTPPort != 0 {
+			pc.HTTPPort = c.VA.PortConfig.HTTPPort
 		}
-		if c.VA.PortConfig.SimpleHTTPSPort != 0 {
-			pc.SimpleHTTPSPort = c.VA.PortConfig.SimpleHTTPSPort
+		if c.VA.PortConfig.HTTPSPort != 0 {
+			pc.HTTPSPort = c.VA.PortConfig.HTTPSPort
 		}
-		if c.VA.PortConfig.DVSNIPort != 0 {
-			pc.DVSNIPort = c.VA.PortConfig.DVSNIPort
+		if c.VA.PortConfig.TLSPort != 0 {
+			pc.TLSPort = c.VA.PortConfig.TLSPort
 		}
 		vai := va.NewValidationAuthorityImpl(pc, stats, clock.Default())
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
