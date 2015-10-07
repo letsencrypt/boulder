@@ -8,7 +8,8 @@ fi
 # The list of segments to run. To run only some of these segments, pre-set the
 # RUN variable with the ones you want (see .travis.yml for an example).
 # Order doesn't matter.
-RUN=${RUN:-vet lint fmt migrations unit integration}
+#RUN=${RUN:-vet lint fmt migrations unit integration}
+RUN=${RUN:-vet lint fmt}
 
 FAILURE=0
 
@@ -45,18 +46,9 @@ update_status() {
   fi
 }
 
-function error_on_output() {
-  output=$($@ 2>&1)
-  echo $output
-
-  if [ "x${output}" == "x" ]; then
-    return 0
-  else
-    return 1
-  fi
-}
-
 function run() {
+  echo "RUN"
+
   echo "$@"
   "$@" 2>&1
   local status=$?
@@ -74,13 +66,23 @@ function run() {
 }
 
 function run_and_comment() {
-  if [ "x${TRAVIS}" = "x" ] || [ "${TRAVIS_PULL_REQUEST}" == "false" ] || [ ! -f "${GITHUB_SECRET_FILE}" ] ; then
-    run "$@"
+  echo "$@"
+  result=$("$@" 2>&1)
+  echo ${result}
+
+  if [ "x${result}" == "x" ]; then
+    update_status --state success
+    echo "Success: $@"
   else
-    result=$(run "$@")
-    local status=$?
-    # Only send a comment if exit code > 0
-    if [ ${status} -ne 0 ] ; then
+    FAILURE=1
+    update_status --state failure
+    echo "[!] FAILURE: $@"
+  fi
+
+  # If this is a travis PR run, post a comment
+  if [ "x${TRAVIS}" != "x" ] && [ "${TRAVIS_PULL_REQUEST}" != "false" ] && [ -f "${GITHUB_SECRET_FILE}" ] ; then
+    # If the output is non-empty, post a comment and mark this as a failure
+    if [ "x${result}" -ne "x" ] ; then
       echo $'```\n'${result}$'\n```' | github-pr-status --authfile $GITHUB_SECRET_FILE \
         --owner "letsencrypt" --repo "boulder" \
         comment --pr "${TRAVIS_PULL_REQUEST}" -b -
@@ -159,7 +161,7 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 #
 if [[ "$RUN" =~ "vet" ]] ; then
   start_context "test/vet"
-  run_and_comment error_on_output go vet ./...
+  run_and_comment go vet ./...
   end_context #test/vet
 fi
 
@@ -168,7 +170,7 @@ fi
 #
 if [[ "$RUN" =~ "lint" ]] ; then
   start_context "test/golint"
-  run_and_comment error_on_output golint -min_confidence=0.81 ./...
+  run_and_comment golint -min_confidence=0.80 ./...
   end_context #test/golint
 fi
 
