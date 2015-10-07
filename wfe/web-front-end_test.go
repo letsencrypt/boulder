@@ -621,10 +621,42 @@ func TestIssueCertificate(t *testing.T) {
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Invalid signature on CSR"}`)
 
+	// Test the success case with the sync API
+	// TODO(#934): Delete this test
 	mockLog.Clear()
-	responseWriter.Body.Reset()
+	responseWriter = httptest.NewRecorder()
 	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
 	wfe.NewCertificate(responseWriter,
+		makePostRequest(signRequest(t, `{
+			"resource":"new-cert",
+			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+		}`, &wfe.nonceService)))
+	assertCsrLogged(t, mockLog)
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Location"),
+		"/acme/cert/0000ff0000000000000e4b4f67d86e818c46")
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		`</acme/issuer-cert>;rel="up"`)
+	reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
+	test.AssertEquals(t, len(reqlogs), 1)
+	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_NOTICE)
+	test.AssertContains(t, reqlogs[0].Message, `[AUDIT] `)
+	test.AssertContains(t, reqlogs[0].Message, `"CommonName":"not-an-example.com",`)
+
+	cert, err := core.LoadCert("test/not-an-example.com.crt")
+	test.AssertNotError(t, err, "Could not load cert")
+
+	body := make([]byte, responseWriter.Body.Len())
+	_, err = responseWriter.Body.Read(body)
+	test.AssertNotError(t, err, "Failed to read body")
+	test.AssertByteEquals(t, cert.Raw, body)
+
+	// Test the success case with the async API
+	mockLog.Clear()
+	responseWriter = httptest.NewRecorder()
+	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
+	wfe.NewCertificateRequest(responseWriter,
 		makePostRequest(signRequest(t, `{
 			"resource":"new-cert",
 			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
@@ -636,7 +668,7 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
 		`</acme/issuer-cert>;rel="up"`)
-	reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
+	reqlogs = mockLog.GetAllMatching(`Certificate request - successful`)
 	test.AssertEquals(t, len(reqlogs), 1)
 	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_NOTICE)
 	test.AssertContains(t, reqlogs[0].Message, `[AUDIT] `)
@@ -660,12 +692,9 @@ func TestIssueCertificate(t *testing.T) {
 		t, responseWriter.Header().Get("Content-Type"),
 		"application/pkix-cert")
 
-	body := make([]byte, responseWriter.Body.Len())
+	body = make([]byte, responseWriter.Body.Len())
 	_, err = responseWriter.Body.Read(body)
 	test.AssertNotError(t, err, "Failed to read body")
-
-	cert, err := core.LoadCert("test/not-an-example.com.crt")
-	test.AssertNotError(t, err, "Could not load cert")
 	test.AssertByteEquals(t, cert.Raw, body)
 
 	certURL := responseWriter.Header().Get("Content-Location")
