@@ -13,10 +13,10 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// MockSyslogWriter implements the blog.SyslogWriter interface. It
+// SyslogWriter implements the blog.SyslogWriter interface. It
 // stores all logged messages in a buffer for inspection by test
 // functions (via GetAll()) instead of sending them to syslog.
-type MockSyslogWriter struct {
+type SyslogWriter struct {
 	logged    []*LogMessage
 	msgChan   chan<- *LogMessage
 	getChan   <-chan []*LogMessage
@@ -24,7 +24,7 @@ type MockSyslogWriter struct {
 	closeChan chan<- struct{}
 }
 
-// LogMessage is a log entry that has been sent to a MockSyslogWriter.
+// LogMessage is a log entry that has been sent to a SyslogWriter.
 type LogMessage struct {
 	Priority syslog.Priority // aka Log level
 	Message  string          // content of log message
@@ -54,19 +54,19 @@ func (lm *LogMessage) String() string {
 //		// ...
 //		Assert(t, len(log.GetAll()) > 0, "Should have logged something")
 //	}
-func UseMockLog() *MockSyslogWriter {
+func UseMockLog() *SyslogWriter {
 	sw := NewSyslogWriter()
 	blog.GetAuditLogger().SyslogWriter = sw
 	return sw
 }
 
-// NewSyslogWriter returns a new MockSyslogWriter.
-func NewSyslogWriter() *MockSyslogWriter {
+// NewSyslogWriter returns a new SyslogWriter.
+func NewSyslogWriter() *SyslogWriter {
 	msgChan := make(chan *LogMessage)
 	getChan := make(chan []*LogMessage)
 	clearChan := make(chan struct{})
 	closeChan := make(chan struct{})
-	msw := &MockSyslogWriter{
+	msw := &SyslogWriter{
 		logged:    []*LogMessage{},
 		msgChan:   msgChan,
 		getChan:   getChan,
@@ -91,7 +91,7 @@ func NewSyslogWriter() *MockSyslogWriter {
 	return msw
 }
 
-func (msw *MockSyslogWriter) write(m string, priority syslog.Priority) error {
+func (msw *SyslogWriter) write(m string, priority syslog.Priority) error {
 	msw.msgChan <- &LogMessage{Message: m, Priority: priority}
 	return nil
 }
@@ -100,7 +100,7 @@ func (msw *MockSyslogWriter) write(m string, priority syslog.Priority) error {
 // Clear(), if applicable).
 //
 // The caller must not modify the returned slice or its elements.
-func (msw *MockSyslogWriter) GetAll() []*LogMessage {
+func (msw *SyslogWriter) GetAll() []*LogMessage {
 	return <-msw.getChan
 }
 
@@ -110,7 +110,7 @@ func (msw *MockSyslogWriter) GetAll() []*LogMessage {
 // is more important than performance.
 //
 // The caller must not modify the elements of the returned slice.
-func (msw *MockSyslogWriter) GetAllMatching(reString string) (matches []*LogMessage) {
+func (msw *SyslogWriter) GetAllMatching(reString string) (matches []*LogMessage) {
 	re := regexp.MustCompile(reString)
 	for _, logMsg := range <-msw.getChan {
 		if re.MatchString(logMsg.Message) {
@@ -121,52 +121,52 @@ func (msw *MockSyslogWriter) GetAllMatching(reString string) (matches []*LogMess
 }
 
 // Clear resets the log buffer.
-func (msw *MockSyslogWriter) Clear() {
+func (msw *SyslogWriter) Clear() {
 	msw.clearChan <- struct{}{}
 }
 
 // Close releases resources. No other methods may be called after this.
-func (msw *MockSyslogWriter) Close() error {
+func (msw *SyslogWriter) Close() error {
 	msw.closeChan <- struct{}{}
 	return nil
 }
 
 // Alert logs at LOG_ALERT
-func (msw *MockSyslogWriter) Alert(m string) error {
+func (msw *SyslogWriter) Alert(m string) error {
 	return msw.write(m, syslog.LOG_ALERT)
 }
 
 // Crit logs at LOG_CRIT
-func (msw *MockSyslogWriter) Crit(m string) error {
+func (msw *SyslogWriter) Crit(m string) error {
 	return msw.write(m, syslog.LOG_CRIT)
 }
 
 // Debug logs at LOG_DEBUG
-func (msw *MockSyslogWriter) Debug(m string) error {
+func (msw *SyslogWriter) Debug(m string) error {
 	return msw.write(m, syslog.LOG_DEBUG)
 }
 
 // Emerg logs at LOG_EMERG
-func (msw *MockSyslogWriter) Emerg(m string) error {
+func (msw *SyslogWriter) Emerg(m string) error {
 	return msw.write(m, syslog.LOG_EMERG)
 }
 
 // Err logs at LOG_ERR
-func (msw *MockSyslogWriter) Err(m string) error {
+func (msw *SyslogWriter) Err(m string) error {
 	return msw.write(m, syslog.LOG_ERR)
 }
 
 // Info logs at LOG_INFO
-func (msw *MockSyslogWriter) Info(m string) error {
+func (msw *SyslogWriter) Info(m string) error {
 	return msw.write(m, syslog.LOG_INFO)
 }
 
 // Notice logs at LOG_NOTICE
-func (msw *MockSyslogWriter) Notice(m string) error {
+func (msw *SyslogWriter) Notice(m string) error {
 	return msw.write(m, syslog.LOG_NOTICE)
 }
 
 // Warning logs at LOG_WARNING
-func (msw *MockSyslogWriter) Warning(m string) error {
+func (msw *SyslogWriter) Warning(m string) error {
 	return msw.write(m, syslog.LOG_WARNING)
 }

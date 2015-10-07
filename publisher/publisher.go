@@ -24,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+// LogDescription tells you how to connect to a log and verify its statements.
 type LogDescription struct {
 	ID        string
 	URI       string
@@ -35,6 +36,9 @@ type rawLogDescription struct {
 	PublicKey string `json:"key"`
 }
 
+// UnmarshalJSON parses a simple JSON format for log descriptions.  Both the
+// URI and the public key are expected to be strings.  The public key is a
+// base64-encoded PKIX public key structure.
 func (logDesc *LogDescription) UnmarshalJSON(data []byte) error {
 	var rawLogDesc rawLogDescription
 	if err := json.Unmarshal(data, &rawLogDesc); err != nil {
