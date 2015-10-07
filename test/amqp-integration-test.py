@@ -189,6 +189,6 @@ tempdir = tempfile.mkdtemp()
 if not startservers.start(race_detection=True):
     die(ExitStatus.Error)
 run_node_test()
-#run_client_tests()
+run_client_tests()
 if not startservers.check():
     die(ExitStatus.Error)
