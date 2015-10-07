@@ -101,9 +101,6 @@ var (
 	}
 
 	ResponseIndex = 0
-	Response      = core.Challenge{
-		Type: "simpleHttp",
-	}
 
 	ExampleCSR = &x509.CertificateRequest{}
 
@@ -116,11 +113,7 @@ var (
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-example.com"},
 		RegistrationID: 1,
 		Status:         "pending",
-		Challenges: []core.Challenge{
-			core.SimpleHTTPChallenge(),
-			core.DvsniChallenge(),
-		},
-		Combinations: [][]int{[]int{0}, []int{1}},
+		Combinations:   [][]int{[]int{0}, []int{1}},
 	}
 	AuthzFinal = core.Authorization{}
 
@@ -131,6 +124,16 @@ const (
 	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
 	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
 )
+
+func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
+	keyAuthorization, err := core.NewKeyAuthorization(ch.Token, ch.AccountKey)
+	if err != nil {
+		return
+	}
+
+	out = core.Challenge{KeyAuthorization: &keyAuthorization}
+	return
+}
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
@@ -144,7 +147,11 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	test.AssertNotError(t, err, "Failed to unmarshal private JWK")
 
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
-	test.AssertNotError(t, err, "Failed to unmarshall JWK")
+	test.AssertNotError(t, err, "Failed to unmarshal JWK")
+
+	simpleHTTP := core.SimpleHTTPChallenge(&AccountKeyA)
+	dvsni := core.DvsniChallenge(&AccountKeyA)
+	AuthzInitial.Challenges = []core.Challenge{simpleHTTP, dvsni}
 
 	fc := clock.NewFake()
 
@@ -195,7 +202,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		ValidityPeriod: time.Hour * 2190,
 		NotAfter:       time.Now().Add(time.Hour * 8761),
 		Clk:            fc,
-		Publisher:      &mocks.MockPublisher{},
+		Publisher:      &mocks.Publisher{},
 	}
 	cleanUp := func() {
 		saDBCleanUp()
@@ -218,7 +225,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.VA = va
 	ra.CA = &ca
 	ra.PA = pa
-	ra.DNSResolver = &mocks.MockDNS{}
+	ra.DNSResolver = &mocks.DNSResolver{}
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -256,38 +263,38 @@ func TestValidateContacts(t *testing.T) {
 
 	nStats, _ := statsd.NewNoopClient()
 
-	err := validateContacts([]*core.AcmeURL{}, &mocks.MockDNS{}, nStats)
+	err := validateContacts([]*core.AcmeURL{}, &mocks.DNSResolver{}, nStats)
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = validateContacts([]*core.AcmeURL{tel}, &mocks.MockDNS{}, nStats)
+	err = validateContacts([]*core.AcmeURL{tel}, &mocks.DNSResolver{}, nStats)
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.MockDNS{}, nStats)
+	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.DNSResolver{}, nStats)
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.MockDNS{}, nStats)
+	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.DNSResolver{}, nStats)
 	test.AssertError(t, err, "Invalid Email")
 
-	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.MockDNS{}, nStats)
+	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.DNSResolver{}, nStats)
 	test.AssertError(t, err, "Malformed Email")
 
-	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.MockDNS{}, nStats)
+	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.DNSResolver{}, nStats)
 	test.AssertError(t, err, "Unknown scehme")
 }
 
 func TestValidateEmail(t *testing.T) {
-	_, err := validateEmail("an email`", &mocks.MockDNS{})
+	_, err := validateEmail("an email`", &mocks.DNSResolver{})
 	test.AssertError(t, err, "Malformed")
 
-	_, err = validateEmail("a@not.a.domain", &mocks.MockDNS{})
+	_, err = validateEmail("a@not.a.domain", &mocks.DNSResolver{})
 	test.AssertError(t, err, "Cannot resolve")
 	t.Logf("No Resolve: %s", err)
 
-	_, err = validateEmail("a@example.com", &mocks.MockDNS{})
+	_, err = validateEmail("a@example.com", &mocks.DNSResolver{})
 	test.AssertError(t, err, "No MX Record")
 	t.Logf("No MX: %s", err)
 
-	_, err = validateEmail("a@email.com", &mocks.MockDNS{})
+	_, err = validateEmail("a@email.com", &mocks.DNSResolver{})
 	test.AssertNotError(t, err, "Valid")
 }
 
@@ -377,11 +384,21 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these lines
+	test.Assert(t, len(authz.Challenges) == 4, "Incorrect number of challenges returned")
 	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
 	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
+
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
+	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeHTTP01, "Challenge 2 not http-00")
+	test.Assert(t, authz.Challenges[3].Type == core.ChallengeTypeTLSSNI01, "Challenge 3 not tlssni-00")
+
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
+
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
+	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 2 is not sane")
+	test.Assert(t, authz.Challenges[3].IsSane(false), "Challenge 3 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
 }
@@ -394,7 +411,9 @@ func TestUpdateAuthorization(t *testing.T) {
 	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
-	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
+	response, err := makeResponse(authz.Challenges[ResponseIndex])
+	test.AssertNotError(t, err, "Unable to construct response to challenge")
+	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
 	// Verify that returned authz same as DB
@@ -428,7 +447,9 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 	test.AssertNotError(t, err, "UpdateRegistration failed")
 
 	// Verify that the RA rejected the authorization request
-	_, err = ra.UpdateAuthorization(authz, ResponseIndex, Response)
+	response, err := makeResponse(authz.Challenges[ResponseIndex])
+	test.AssertNotError(t, err, "Unable to construct response to challenge")
+	_, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
 	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
 
 	t.Log("DONE TestUpdateAuthorizationReject")
@@ -437,7 +458,9 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 func TestOnValidationUpdateSuccess(t *testing.T) {
 	_, sa, ra, fclk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	authzUpdated, _ := sa.NewPendingAuthorization(AuthzInitial)
+	authzUpdated, err := sa.NewPendingAuthorization(AuthzInitial)
+	test.AssertNotError(t, err, "Failed to create new pending authz")
+
 	expires := fclk.Now().Add(300 * 24 * time.Hour)
 	authzUpdated.Expires = &expires
 	sa.UpdatePendingAuthorization(authzUpdated)
@@ -632,7 +655,7 @@ func TestDomainsForRateLimiting(t *testing.T) {
 }
 
 type mockSAWithNameCounts struct {
-	mocks.MockSA
+	mocks.StorageAuthority
 	nameCounts map[string]int
 	t          *testing.T
 	clk        clock.FakeClock

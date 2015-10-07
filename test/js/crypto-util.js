@@ -137,6 +137,12 @@ module.exports = {
     return forge.pki.certificateRequestToPem(c);
   },
 
+  thumbprint: function(publicKey) {
+    // Only handling RSA keys
+    input = bytesToBuffer('{"e":"'+ publicKey.e + '","kty":"RSA","n":"'+ publicKey.n +'"}');
+    return util.b64enc(crypto.createHash('sha256').update(input).digest());
+  },
+
   ///// SIGNATURE GENERATION / VERIFICATION
 
   generateSignature: function(keyPair, payload, nonce) {

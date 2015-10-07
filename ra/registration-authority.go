@@ -214,13 +214,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		return authz, err
 	}
 
-	// Create validations, but we have to update them with URIs later
-	challenges, combinations := ra.PA.ChallengesFor(identifier)
-
-	for i := range challenges {
-		// Add the account key used to generate the challenge
-		challenges[i].AccountKey = &reg.Key
-	}
+	// Create validations. The WFE will  update them with URIs before sending them out.
+	challenges, combinations, err := ra.PA.ChallengesFor(identifier, &reg.Key)
 
 	expires := ra.clk.Now().Add(ra.authorizationLifetime)
 
@@ -577,6 +572,12 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
+
+	// At this point, the challenge should be sane as a complete challenge
+	if !authz.Challenges[challengeIndex].IsSane(true) {
+		err = core.MalformedRequestError("Response does not complete challenge")
+		return
+	}
 
 	// Store the updated version
 	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
