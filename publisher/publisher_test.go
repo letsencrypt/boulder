@@ -196,7 +196,7 @@ func setup(t *testing.T, port, retries int) (PublisherImpl, *x509.Certificate) {
 	})
 	test.AssertNotError(t, err, "Couldn't create new Publisher")
 	pub.issuerBundle = append(pub.issuerBundle, base64.StdEncoding.EncodeToString(intermediatePEM.Bytes))
-	pub.SA = &mocks.MockSA{}
+	pub.SA = &mocks.StorageAuthority{}
 
 	leafPEM, _ := pem.Decode([]byte(testLeaf))
 	leaf, err := x509.ParseCertificate(leafPEM.Bytes)

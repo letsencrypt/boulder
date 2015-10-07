@@ -145,7 +145,7 @@ func TestCheckCert(t *testing.T) {
 		}
 		delete(problemsMap, p)
 	}
-	for k, _ := range problemsMap {
+	for k := range problemsMap {
 		t.Errorf("Found unexpected problem '%s'.", k)
 	}
 

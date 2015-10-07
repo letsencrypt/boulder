@@ -56,11 +56,11 @@ func (m *mockMail) SendMail(to []string, msg string) (err error) {
 }
 
 type fakeRegStore struct {
-	RegById map[int64]core.Registration
+	RegByID map[int64]core.Registration
 }
 
 func (f fakeRegStore) GetRegistration(id int64) (core.Registration, error) {
-	r, ok := f.RegById[id]
+	r, ok := f.RegByID[id]
 	if !ok {
 		msg := fmt.Sprintf("no such registration %d", id)
 		return r, core.NoSuchRegistrationError(msg)
@@ -69,7 +69,7 @@ func (f fakeRegStore) GetRegistration(id int64) (core.Registration, error) {
 }
 
 func newFakeRegStore() fakeRegStore {
-	return fakeRegStore{RegById: make(map[int64]core.Registration)}
+	return fakeRegStore{RegByID: make(map[int64]core.Registration)}
 }
 
 const testTmpl = `hi, cert for DNS names {{.DNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`

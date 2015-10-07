@@ -630,11 +630,6 @@ type Certificate struct {
 	DER     []byte    `db:"der"`
 }
 
-type IssuedCertIdentifierData struct {
-	ReversedName string
-	Serial       string
-}
-
 // IdentifierData holds information about what certificates are known for a
 // given identifier. This is used to present Proof of Posession challenges in
 // the case where a certificate already exists. The DB table holding
@@ -737,6 +732,8 @@ type OCSPSigningRequest struct {
 	RevokedAt time.Time
 }
 
+// SignedCertificateTimestamp represents objects used by Certificate Transparency
+// to demonstrate that a certificate was submitted to a CT log. See RFC 6962.
 type SignedCertificateTimestamp struct {
 	ID int `db:"id"`
 	// The version of the protocol to which the SCT conforms
@@ -757,8 +754,6 @@ type SignedCertificateTimestamp struct {
 	LockCol int64
 }
 
-type RPCSignedCertificateTimestamp SignedCertificateTimestamp
-
 type rawSignedCertificateTimestamp struct {
 	Version    uint8  `json:"sct_version"`
 	LogID      string `json:"id"`
@@ -767,6 +762,9 @@ type rawSignedCertificateTimestamp struct {
 	Extensions string `json:"extensions"`
 }
 
+// UnmarshalJSON parses the add-chain response from a CT log. It fills all of
+// the fields in the SignedCertificateTimestamp struct except for ID and
+// CertificateSerial, which are used for local recordkeeping in the Boulder DB.
 func (sct *SignedCertificateTimestamp) UnmarshalJSON(data []byte) error {
 	var err error
 	var rawSCT rawSignedCertificateTimestamp
@@ -828,20 +826,6 @@ func (sct *SignedCertificateTimestamp) CheckSignature() error {
 
 // RevocationCode is used to specify a certificate revocation reason
 type RevocationCode int
-
-type RevocationCodes []RevocationCode
-
-func (rc RevocationCodes) Len() int {
-	return len(rc)
-}
-
-func (rc RevocationCodes) Less(i, j int) bool {
-	return rc[i] < rc[j]
-}
-
-func (rc RevocationCodes) Swap(i, j int) {
-	rc[i], rc[j] = rc[j], rc[i]
-}
 
 // RevocationReasons provides a map from reason code to string explaining the
 // code

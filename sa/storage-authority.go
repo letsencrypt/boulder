@@ -209,16 +209,16 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 }
 
 // GetLatestValidAuthorization gets the valid authorization with biggest expire date for a given domain and registrationId
-func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	ident, err := json.Marshal(identifier)
 	if err != nil {
 		return
 	}
 	var auth core.Authorization
 	err = ssa.dbMap.SelectOne(&auth, "SELECT id FROM authz "+
-		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
+		"WHERE identifier = :identifier AND registrationID = :registrationID AND status = 'valid' "+
 		"ORDER BY expires DESC LIMIT 1",
-		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
+		map[string]interface{}{"identifier": string(ident), "registrationID": registrationID})
 	if err != nil {
 		return
 	}
@@ -226,15 +226,18 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	return ssa.GetAuthorization(auth.ID)
 }
 
+// TooManyCertificatesError indicates that the number of certificates returned by
+// CountCertificates exceeded the hard-coded limit of 10,000 certificates.
 type TooManyCertificatesError string
 
 func (t TooManyCertificatesError) Error() string {
 	return string(t)
 }
 
-// CountCertificates returns the number of certificates issued within a time
+// CountCertificatesByName returns the number of certificates issued within a time
 // period containing DNSNames that are equal to, or subdomains of, the given
 // domain name.
+//
 // The highest count this function can return is 10,000. If there are more
 // certificates than that matching the provided domain name, it will return
 // TooManyCertificatesError.
@@ -270,6 +273,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest,
 	return len(serialMap), nil
 }
 
+// GetCertificateRequest looks up a certificate request by ID.
 func (ssa *SQLStorageAuthority) GetCertificateRequest(id string) (req core.CertificateRequest, err error) {
 	err = ssa.dbMap.SelectOne(&req, "SELECT * FROM certificateRequests WHERE id = :id",
 		map[string]interface{}{"id": id})
