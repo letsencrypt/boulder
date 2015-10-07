@@ -161,7 +161,7 @@ func errorCondition(method string, err error, obj interface{}) {
 }
 
 // NewRegistrationAuthorityServer constructs an RPC server
-func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthority) error {
+func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority) error {
 	log := blog.GetAuditLogger()
 
 	rpc.Handle(MethodNewRegistration, func(req []byte) (response []byte, err error) {
@@ -338,11 +338,11 @@ func NewRegistrationAuthorityServer(rpc RPCServer, impl core.RegistrationAuthori
 
 // RegistrationAuthorityClient represents an RA RPC client
 type RegistrationAuthorityClient struct {
-	rpc RPCClient
+	rpc Client
 }
 
 // NewRegistrationAuthorityClient constructs an RPC client
-func NewRegistrationAuthorityClient(client RPCClient) (rac RegistrationAuthorityClient, err error) {
+func NewRegistrationAuthorityClient(client Client) (rac RegistrationAuthorityClient, err error) {
 	rac = RegistrationAuthorityClient{rpc: client}
 	return
 }
@@ -489,7 +489,7 @@ func (rac RegistrationAuthorityClient) OnValidationUpdate(authz core.Authorizati
 //
 // ValidationAuthorityClient / Server
 //  -> UpdateValidations
-func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) (err error) {
+func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (err error) {
 	rpc.Handle(MethodUpdateValidations, func(req []byte) (response []byte, err error) {
 		var vaReq validationRequest
 		if err = json.Unmarshal(req, &vaReq); err != nil {
@@ -533,11 +533,11 @@ func NewValidationAuthorityServer(rpc RPCServer, impl core.ValidationAuthority) 
 
 // ValidationAuthorityClient represents an RPC client for the VA
 type ValidationAuthorityClient struct {
-	rpc RPCClient
+	rpc Client
 }
 
 // NewValidationAuthorityClient constructs an RPC client
-func NewValidationAuthorityClient(client RPCClient) (vac ValidationAuthorityClient, err error) {
+func NewValidationAuthorityClient(client Client) (vac ValidationAuthorityClient, err error) {
 	vac = ValidationAuthorityClient{rpc: client}
 	return
 }
@@ -582,7 +582,8 @@ func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) 
 	return
 }
 
-func NewPublisherServer(rpc RPCServer, impl core.Publisher) (err error) {
+// NewPublisherServer creates a new server that wraps a CT publisher
+func NewPublisherServer(rpc Server, impl core.Publisher) (err error) {
 	rpc.Handle(MethodSubmitToCT, func(req []byte) (response []byte, err error) {
 		err = impl.SubmitToCT(req)
 		return
@@ -593,11 +594,11 @@ func NewPublisherServer(rpc RPCServer, impl core.Publisher) (err error) {
 
 // PublisherClient is a client to communicate with the Publisher Authority
 type PublisherClient struct {
-	rpc RPCClient
+	rpc Client
 }
 
 // NewPublisherClient constructs an RPC client
-func NewPublisherClient(client RPCClient) (pub PublisherClient, err error) {
+func NewPublisherClient(client Client) (pub PublisherClient, err error) {
 	pub = PublisherClient{rpc: client}
 	return
 }
@@ -612,7 +613,7 @@ func (pub PublisherClient) SubmitToCT(der []byte) (err error) {
 //
 // CertificateAuthorityClient / Server
 //  -> IssueCertificate
-func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority) (err error) {
+func NewCertificateAuthorityServer(rpc Server, impl core.CertificateAuthority) (err error) {
 	rpc.Handle(MethodIssueCertificate, func(req []byte) (response []byte, err error) {
 		var icReq issueCertificateRequest
 		err = json.Unmarshal(req, &icReq)
@@ -679,11 +680,11 @@ func NewCertificateAuthorityServer(rpc RPCServer, impl core.CertificateAuthority
 
 // CertificateAuthorityClient is a client to communicate with the CA.
 type CertificateAuthorityClient struct {
-	rpc RPCClient
+	rpc Client
 }
 
 // NewCertificateAuthorityClient constructs an RPC client
-func NewCertificateAuthorityClient(client RPCClient) (cac CertificateAuthorityClient, err error) {
+func NewCertificateAuthorityClient(client Client) (cac CertificateAuthorityClient, err error) {
 	cac = CertificateAuthorityClient{rpc: client}
 	return
 }
@@ -745,7 +746,7 @@ func (cac CertificateAuthorityClient) GenerateOCSP(signRequest core.OCSPSigningR
 }
 
 // NewStorageAuthorityServer constructs an RPC server
-func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error {
+func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	rpc.Handle(MethodUpdateRegistration, func(req []byte) (response []byte, err error) {
 		var reg core.Registration
 		if err = json.Unmarshal(req, &reg); err != nil {
@@ -1034,7 +1035,7 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 		}
 
 		sct, err := impl.GetSCTReceipt(gsctReq.Serial, gsctReq.LogID)
-		jsonResponse, err := json.Marshal(core.RPCSignedCertificateTimestamp(sct))
+		jsonResponse, err := json.Marshal(core.SignedCertificateTimestamp(sct))
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetSCTReceipt, err, req)
@@ -1045,7 +1046,7 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 	})
 
 	rpc.Handle(MethodAddSCTReceipt, func(req []byte) (response []byte, err error) {
-		var sct core.RPCSignedCertificateTimestamp
+		var sct core.SignedCertificateTimestamp
 		err = json.Unmarshal(req, &sct)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
@@ -1068,11 +1069,11 @@ func NewStorageAuthorityServer(rpc RPCServer, impl core.StorageAuthority) error 
 
 // StorageAuthorityClient is a client to communicate with the Storage Authority
 type StorageAuthorityClient struct {
-	rpc RPCClient
+	rpc Client
 }
 
 // NewStorageAuthorityClient constructs an RPC client
-func NewStorageAuthorityClient(client RPCClient) (sac StorageAuthorityClient, err error) {
+func NewStorageAuthorityClient(client Client) (sac StorageAuthorityClient, err error) {
 	sac = StorageAuthorityClient{rpc: client}
 	return
 }
@@ -1124,10 +1125,10 @@ func (cac StorageAuthorityClient) GetAuthorization(id string) (authz core.Author
 }
 
 // GetLatestValidAuthorization sends a request to get an Authorization by RegID, Identifier
-func (cac StorageAuthorityClient) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+func (cac StorageAuthorityClient) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 
 	var lvar latestValidAuthorizationRequest
-	lvar.RegID = registrationId
+	lvar.RegID = registrationID
 	lvar.Identifier = identifier
 
 	data, err := json.Marshal(lvar)
@@ -1331,6 +1332,8 @@ func (cac StorageAuthorityClient) CountCertificatesRange(start, end time.Time) (
 	return
 }
 
+// GetSCTReceipt retrieves an SCT according to the serial number of a certificate
+// and the logID of the log to which it was submitted.
 func (cac StorageAuthorityClient) GetSCTReceipt(serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
 	var gsctReq struct {
 		Serial string
@@ -1353,6 +1356,7 @@ func (cac StorageAuthorityClient) GetSCTReceipt(serial string, logID string) (re
 	return
 }
 
+// AddSCTReceipt adds a new SCT to the database.
 func (cac StorageAuthorityClient) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error) {
 	data, err := json.Marshal(sct)
 	if err != nil {
