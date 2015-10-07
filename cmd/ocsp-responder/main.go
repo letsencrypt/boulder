@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -66,14 +67,13 @@ func NewSourceFromDatabase(dbMap *gorp.DbMap, caKeyHash []byte) (src *DBSource, 
 }
 
 // Response is called by the HTTP server to handle a new OCSP request.
-func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool) {
+func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	log := blog.GetAuditLogger()
 
 	// Check that this request is for the proper CA
 	if bytes.Compare(req.IssuerKeyHash, src.caKeyHash) != 0 {
 		log.Debug(fmt.Sprintf("Request intended for CA Cert ID: %s", hex.EncodeToString(req.IssuerKeyHash)))
-		present = false
-		return
+		return nil, false
 	}
 
 	serialString := core.SerialToString(req.SerialNumber)
@@ -86,37 +86,33 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 	err := src.dbMap.SelectOne(&ocspResponse, "SELECT * from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
 		map[string]interface{}{"serial": serialString})
 	if err != nil {
-		present = false
-		return
+		return nil, false
 	}
 
 	log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 
-	response = ocspResponse.Response
-	present = true
-	return
+	return ocspResponse.Response, true
 }
 
-func makeDBSource(dbConnect, issuerCert string, sqlDebug bool) (cfocsp.Source, error) {
-	var noSource cfocsp.Source
+func makeDBSource(dbConnect, issuerCert string, sqlDebug bool) (*DBSource, error) {
 	// Configure DB
 	dbMap, err := sa.NewDbMap(dbConnect)
 	if err != nil {
-		return noSource, fmt.Errorf("Could not connect to database: %s", err)
+		return nil, fmt.Errorf("Could not connect to database: %s", err)
 	}
 	sa.SetSQLDebug(dbMap, sqlDebug)
 
 	// Load the CA's key so we can store its SubjectKey in the DB
 	caCertDER, err := cmd.LoadCert(issuerCert)
 	if err != nil {
-		return noSource, fmt.Errorf("Could not read issuer cert %s: %s", issuerCert, err)
+		return nil, fmt.Errorf("Could not read issuer cert %s: %s", issuerCert, err)
 	}
 	caCert, err := x509.ParseCertificate(caCertDER)
 	if err != nil {
-		return noSource, fmt.Errorf("Could not parse issuer cert %s: %s", issuerCert, err)
+		return nil, fmt.Errorf("Could not parse issuer cert %s: %s", issuerCert, err)
 	}
 	if len(caCert.SubjectKeyId) == 0 {
-		return noSource, fmt.Errorf("Empty subjectKeyID")
+		return nil, fmt.Errorf("Empty subjectKeyID")
 	}
 
 	// Construct source from DB
@@ -161,6 +157,8 @@ func main() {
 			}
 			source, err = cfocsp.NewSourceFromFile(filename)
 			cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", url.Path))
+		} else {
+			cmd.FailOnError(errors.New(`"source" parameter not found in JSON config`), "unable to start ocsp-responder")
 		}
 
 		stopTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownStopTimeout)
