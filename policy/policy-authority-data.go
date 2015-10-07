@@ -103,8 +103,8 @@ func (padb *PolicyAuthorityDatabaseImpl) DumpRules() (rs RuleSet, err error) {
 	}
 	for _, r := range bList {
 		r.Host = core.ReverseName(r.Host)
+		rs.Blacklist = append(rs.Blacklist, r)
 	}
-	rs.Blacklist = bList
 	var wList []WhitelistRule
 	_, err = padb.dbMap.Select(&wList, "SELECT * FROM whitelist")
 	if err != nil {

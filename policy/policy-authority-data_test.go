@@ -24,6 +24,34 @@ func padbImpl(t *testing.T) (*PolicyAuthorityDatabaseImpl, func()) {
 	return padb, cleanUp
 }
 
+func TestLoadAndDumpRules(t *testing.T) {
+	p, cleanup := padbImpl(t)
+	defer cleanup()
+
+	load := RuleSet{
+		Blacklist: []BlacklistRule{
+			BlacklistRule{
+				Host: "bad.com",
+			},
+		},
+		Whitelist: []WhitelistRule{
+			WhitelistRule{
+				Host: "good.bad.com",
+			},
+		},
+	}
+	err := p.LoadRules(load)
+	test.AssertNotError(t, err, "Couldn't load rules")
+
+	dumped, err := p.DumpRules()
+	test.AssertNotError(t, err, "Couldn't dump rules")
+	test.AssertEquals(t, len(dumped.Blacklist), 1)
+	test.AssertEquals(t, len(dumped.Whitelist), 1)
+
+	test.AssertEquals(t, dumped.Whitelist[0], load.Whitelist[0])
+	test.AssertEquals(t, dumped.Blacklist[0], load.Blacklist[0])
+}
+
 func TestBlacklist(t *testing.T) {
 	p, cleanup := padbImpl(t)
 	defer cleanup()
