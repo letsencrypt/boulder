@@ -168,7 +168,7 @@ fi
 #
 if [[ "$RUN" =~ "lint" ]] ; then
   start_context "test/golint"
-  run_and_comment golint -min_confidence=0.80 ./...
+  run_and_comment golint -min_confidence=0.81 ./...
   end_context #test/golint
 fi
 
