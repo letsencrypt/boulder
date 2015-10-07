@@ -212,7 +212,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		scheme = "https"
 		port = va.httpsPort
 	}
-	portString := fmt.Sprintf("%d", port)
+	portString := strconv.Itoa(port)
 	hostPort := net.JoinHostPort(host, portString)
 
 	url := &url.URL{
@@ -353,7 +353,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(identifier core.AcmeIden
 	}
 
 	// Make a connection with SNI = nonceName
-	portString := fmt.Sprintf("%d", va.tlsPort)
+	portString := strconv.Itoa(va.tlsPort)
 	hostPort := net.JoinHostPort(addr.String(), portString)
 	challenge.ValidationRecord[0].Port = portString
 	va.log.Notice(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
