@@ -655,7 +655,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	rlp := cmd.RateLimitPolicy{
 		Threshold: 3,
 		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
-		Overrides: map[string]int64{
+		Overrides: map[string]int{
 			"bigissuer.com":     100,
 			"smallissuer.co.uk": 1,
 		},
@@ -672,31 +672,31 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	ra.SA = mockSA
 
 	// One base domain, below threshold
-	err := ra.checkCertificatesPerNameLimit([]string{"www.example.com", "example.com"}, rlp)
+	err := ra.checkCertificatesPerNameLimit([]string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertNotError(t, err, "rate limited example.com incorrectly")
 
 	// One base domain, above threshold
 	mockSA.nameCounts["example.com"] = 10
-	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "example.com"}, rlp)
+	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type %#v", err)
 	}
 
 	// SA misbehaved and didn't send back a count for every input name
-	err = ra.checkCertificatesPerNameLimit([]string{"zombo.com", "www.example.com", "example.com"}, rlp)
+	err = ra.checkCertificatesPerNameLimit([]string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to error on misbehaving SA")
 
 	// Two base domains, one above threshold but with an override.
 	mockSA.nameCounts["example.com"] = 0
 	mockSA.nameCounts["bigissuer.com"] = 50
-	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "subdomain.bigissuer.com"}, rlp)
+	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
 
 	// Two base domains, one above its override
 	mockSA.nameCounts["example.com"] = 0
 	mockSA.nameCounts["bigissuer.com"] = 100
-	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "subdomain.bigissuer.com"}, rlp)
+	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type")
@@ -704,7 +704,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 
 	// One base domain, above its override (which is below threshold)
 	mockSA.nameCounts["smallissuer.co.uk"] = 1
-	err = ra.checkCertificatesPerNameLimit([]string{"www.smallissuer.co.uk"}, rlp)
+	err = ra.checkCertificatesPerNameLimit([]string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type %#v", err)

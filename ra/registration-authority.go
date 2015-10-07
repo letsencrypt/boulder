@@ -48,7 +48,7 @@ type RegistrationAuthorityImpl struct {
 	authorizationLifetime time.Duration
 	rlPolicies            cmd.RateLimitConfig
 	tiMu                  *sync.RWMutex
-	totalIssuedCache      int64
+	totalIssuedCache      int
 	lastIssuedCount       *time.Time
 }
 
@@ -108,7 +108,7 @@ func (ra *RegistrationAuthorityImpl) issuanceCountInvalid(now time.Time) bool {
 	return ra.lastIssuedCount == nil || ra.lastIssuedCount.Add(issuanceCountCacheLife).Before(now)
 }
 
-func (ra *RegistrationAuthorityImpl) getIssuanceCount() (int64, error) {
+func (ra *RegistrationAuthorityImpl) getIssuanceCount() (int, error) {
 	ra.tiMu.RLock()
 	if ra.issuanceCountInvalid(ra.clk.Now()) {
 		ra.tiMu.RUnlock()
@@ -119,7 +119,7 @@ func (ra *RegistrationAuthorityImpl) getIssuanceCount() (int64, error) {
 	return count, nil
 }
 
-func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int64, error) {
+func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int, error) {
 	ra.tiMu.Lock()
 	defer ra.tiMu.Unlock()
 
@@ -132,7 +132,7 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		ra.totalIssuedCache = count
+		ra.totalIssuedCache = int(count)
 		ra.lastIssuedCount = &now
 	}
 	return ra.totalIssuedCache, nil
@@ -430,7 +430,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	// Check rate limits before checking authorizations. If someone is unable to
 	// issue a cert due to rate limiting, we don't want to tell them to go get the
 	// necessary authorizations, only to later fail the rate limit check.
-	err = ra.checkLimits(names)
+	err = ra.checkLimits(names, registration.ID)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
@@ -497,7 +497,7 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	return domains, nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []string, limit cmd.RateLimitPolicy) error {
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []string, limit cmd.RateLimitPolicy, regID int64) error {
 	names, err := domainsForRateLimiting(names)
 	if err != nil {
 		return err
@@ -515,7 +515,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 			// Shouldn't happen, but let's be careful anyhow.
 			return errors.New("StorageAuthority failed to return a count for every name")
 		}
-		if int64(count) >= limit.GetThreshold(name) {
+		if count >= limit.GetThreshold(name, regID) {
 			badNames = append(badNames, name)
 		}
 	}
@@ -527,7 +527,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkLimits(names []string) error {
+func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) error {
 	limits := ra.rlPolicies
 	if limits.TotalCertificates.Enabled() {
 		totalIssued, err := ra.getIssuanceCount()
@@ -539,7 +539,7 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string) error {
 		}
 	}
 	if limits.CertificatesPerName.Enabled() {
-		err := ra.checkCertificatesPerNameLimit(names, limits.CertificatesPerName)
+		err := ra.checkCertificatesPerNameLimit(names, limits.CertificatesPerName, regID)
 		if err != nil {
 			return err
 		}

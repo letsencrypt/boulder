@@ -13,3 +13,5 @@ certificatesPerName:
     le2.wtf: 10000
     le3.wtf: 10000
     nginx.wtf: 10000
+  registrationOverrides:
+    101: 1000

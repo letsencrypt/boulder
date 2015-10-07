@@ -25,15 +25,20 @@ type RateLimitPolicy struct {
 	Window ConfigDuration `yaml:"window"`
 	// The max number of items that can be present before triggering the rate
 	// limit. Zero means "no limit."
-	Threshold int64 `yaml:"threshold"`
-	// A per-key override granting higher limits. The key is defined on a
-	// per-limit basis and should match the key it counts on. For instance, a rate
-	// limit on the number of certificates per name uses name as a key, whilte a
-	// rate limit on the number of registrations per IP subnet would use subnet as
-	// a key.
+	Threshold int `yaml:"threshold"`
+	// A per-key override setting different limits than the default (higher or lower).
+	// The key is defined on a per-limit basis and should match the key it counts on.
+	// For instance, a rate limit on the number of certificates per name uses name as
+	// a key, while a rate limit on the number of registrations per IP subnet would
+	// use subnet as a key.
 	// Note that a zero entry in the overrides map does not mean "not limit," it
 	// means a limit of zero.
-	Overrides map[string]int64 `yaml:"overrides"`
+	Overrides map[string]int `yaml:"overrides"`
+	// A per-registration override setting. This can be used, e.g. if there are
+	// hosting providers that we would like to grant a higher rate of issuance
+	// than the default. If both key-based and registration-based overrides are
+	// available, the registration-based on takes priority.
+	RegistrationOverrides map[int64]int `yaml:"registrationOverrides"`
 }
 
 // Enabled returns true iff the RateLimitPolicy is enabled.
@@ -43,7 +48,10 @@ func (rlp *RateLimitPolicy) Enabled() bool {
 
 // GetThreshold returns the threshold for this rate limit, taking into account
 // any overrides for `key`.
-func (rlp *RateLimitPolicy) GetThreshold(key string) int64 {
+func (rlp *RateLimitPolicy) GetThreshold(key string, regID int64) int {
+	if override, ok := rlp.RegistrationOverrides[regID]; ok {
+		return override
+	}
 	if override, ok := rlp.Overrides[key]; ok {
 		return override
 	}
