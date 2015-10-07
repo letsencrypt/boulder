@@ -8,8 +8,7 @@ fi
 # The list of segments to run. To run only some of these segments, pre-set the
 # RUN variable with the ones you want (see .travis.yml for an example).
 # Order doesn't matter.
-#RUN=${RUN:-vet lint fmt migrations unit integration}
-RUN=${RUN:-vet lint fmt}
+RUN=${RUN:-vet lint fmt migrations unit integration}
 
 FAILURE=0
 
