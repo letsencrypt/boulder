@@ -6,6 +6,7 @@
 package core
 
 import (
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
@@ -91,11 +92,13 @@ const (
 const (
 	ChallengeTypeSimpleHTTP = "simpleHttp"
 	ChallengeTypeDVSNI      = "dvsni"
-	ChallengeTypeDNS        = "dns"
+	ChallengeTypeHTTP01     = "http-01"
+	ChallengeTypeTLSSNI01   = "tls-sni-01"
+	ChallengeTypeDNS01      = "dns-01"
 )
 
 // The suffix appended to pseudo-domain names in DVSNI challenges
-const DVSNISuffix = "acme.invalid"
+const TLSSNISuffix = "acme.invalid"
 
 // The label attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
@@ -192,6 +195,97 @@ type ValidationRecord struct {
 	AddressUsed       net.IP   `json:"addressUsed"`
 }
 
+// KeyAuthorization represents a domain holder's authorization for a
+// specific account key to satisfy a specific challenge.
+type KeyAuthorization struct {
+	Token      string
+	Thumbprint string
+}
+
+// NewKeyAuthorization computes the thumbprint and assembles the object
+func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, error) {
+	if key == nil {
+		return KeyAuthorization{}, fmt.Errorf("Cannot authorize a nil key")
+	}
+
+	thumbprint, err := Thumbprint(key)
+	if err != nil {
+		return KeyAuthorization{}, err
+	}
+
+	return KeyAuthorization{
+		Token:      token,
+		Thumbprint: thumbprint,
+	}, nil
+}
+
+// NewKeyAuthorizationFromString parses the string and composes a key authorization struct
+func NewKeyAuthorizationFromString(input string) (ka KeyAuthorization, err error) {
+	parts := strings.Split(input, ".")
+	if len(parts) != 2 {
+		err = fmt.Errorf("Invalid key authorization: %d parts", len(parts))
+		return
+	} else if !LooksLikeAToken(parts[0]) {
+		err = fmt.Errorf("Invalid key authorization: malformed token")
+		return
+	} else if !LooksLikeAToken(parts[1]) {
+		// Thumbprints have the same syntax as tokens in boulder
+		// Both are base64-encoded and 32 octets
+		err = fmt.Errorf("Invalid key authorization: malformed key thumbprint")
+		return
+	}
+
+	ka = KeyAuthorization{
+		Token:      parts[0],
+		Thumbprint: parts[1],
+	}
+	return
+}
+
+// String produces the string representation of a key authorization
+func (ka KeyAuthorization) String() string {
+	return ka.Token + "." + ka.Thumbprint
+}
+
+// Match determines whether this KeyAuthorization matches the given token and key
+func (ka KeyAuthorization) Match(token string, key *jose.JsonWebKey) bool {
+	if key == nil {
+		return false
+	}
+
+	thumbprint, err := Thumbprint(key)
+	if err != nil {
+		return false
+	}
+
+	tokensEqual := subtle.ConstantTimeCompare([]byte(token), []byte(ka.Token))
+	thumbprintsEqual := subtle.ConstantTimeCompare([]byte(thumbprint), []byte(ka.Thumbprint))
+
+	return tokensEqual == 1 && thumbprintsEqual == 1
+}
+
+// MarshalJSON packs a key authorization into its string representation
+func (ka KeyAuthorization) MarshalJSON() (result []byte, err error) {
+	return json.Marshal(ka.String())
+}
+
+// UnmarshalJSON unpacks a key authorization from a string
+func (ka *KeyAuthorization) UnmarshalJSON(data []byte) (err error) {
+	var str string
+	err = json.Unmarshal(data, &str)
+	if err != nil {
+		return err
+	}
+
+	parsed, err := NewKeyAuthorizationFromString(str)
+	if err != nil {
+		return err
+	}
+
+	*ka = parsed
+	return
+}
+
 // Challenge is an aggregate of all data needed for any challenges.
 //
 // Rather than define individual types for different types of
@@ -216,14 +310,17 @@ type Challenge struct {
 	// A URI to which a response can be POSTed
 	URI string `json:"uri"`
 
-	// Used by simpleHttp, dvsni, and dns challenges
+	// Used by simpleHttp, http-00, tls-sni-00, and dns-00 challenges
 	Token string `json:"token,omitempty"`
 
-	// Used by simpleHTTP challenges
+	// Used by simpleHttp challenges
 	TLS *bool `json:"tls,omitempty"`
 
-	// Used by dns and dvsni challenges
+	// Used by dvsni challenges
 	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
+
+	// Used by http-00, tls-sni-00, and dns-00 challenges
+	KeyAuthorization *KeyAuthorization `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
@@ -249,6 +346,9 @@ func (ch Challenge) RecordsSane() bool {
 
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP:
+		// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this case
+		fallthrough
+	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
 				len(rec.AddressesResolved) == 0 {
@@ -256,6 +356,9 @@ func (ch Challenge) RecordsSane() bool {
 			}
 		}
 	case ChallengeTypeDVSNI:
+		// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this case
+		fallthrough
+	case ChallengeTypeTLSSNI01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
@@ -266,16 +369,25 @@ func (ch Challenge) RecordsSane() bool {
 			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
-	case ChallengeTypeDNS:
+	case ChallengeTypeDNS01:
 		// Nothing for now
 	}
 
 	return true
 }
 
-// IsSane checks the sanity of a challenge object before issued to the client
-// (completed = false) and before validation (completed = true).
-func (ch Challenge) IsSane(completed bool) bool {
+// isLegacy returns true if the challenge is of a legacy type (i.e., one defined
+// before draft-ietf-acme-acme-00)
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
+func (ch Challenge) isLegacy() bool {
+	return (ch.Type == ChallengeTypeSimpleHTTP) ||
+		(ch.Type == ChallengeTypeDVSNI)
+}
+
+// legacyIsSane performs sanity checks for legacy challenge types, which have
+// a different structure / logic than current challenges.
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
+func (ch Challenge) legacyIsSane(completed bool) bool {
 	if ch.Status != StatusPending {
 		return false
 	}
@@ -303,9 +415,6 @@ func (ch Challenge) IsSane(completed bool) bool {
 			return false
 		}
 	case ChallengeTypeDVSNI:
-		// Same as DNS
-		fallthrough
-	case ChallengeTypeDNS:
 		// check extra fields aren't used
 		if ch.TLS != nil {
 			return false
@@ -330,9 +439,10 @@ func (ch Challenge) IsSane(completed bool) bool {
 	return true
 }
 
-// MergeResponse copies a subset of client-provided data to the current Challenge.
+// legacyMergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
-func (ch Challenge) MergeResponse(resp Challenge) Challenge {
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
+func (ch Challenge) legacyMergeResponse(resp Challenge) Challenge {
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP:
 		// For simpleHttp, only "tls" is client-provided
@@ -345,12 +455,69 @@ func (ch Challenge) MergeResponse(resp Challenge) Challenge {
 		}
 
 	case ChallengeTypeDVSNI:
-		fallthrough
-	case ChallengeTypeDNS:
 		// For dvsni and dns, only "validation" is client-provided
 		if resp.Validation != nil {
 			ch.Validation = resp.Validation
 		}
+	}
+
+	return ch
+}
+
+// IsSane checks the sanity of a challenge object before issued to the client
+// (completed = false) and before validation (completed = true).
+func (ch Challenge) IsSane(completed bool) bool {
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
+	if ch.isLegacy() {
+		return ch.legacyIsSane(completed)
+	}
+
+	if ch.Status != StatusPending {
+		return false
+	}
+
+	// There always needs to be an account key and token
+	if ch.AccountKey == nil || !LooksLikeAToken(ch.Token) {
+		return false
+	}
+
+	// Before completion, the key authorization field should be empty
+	if !completed && ch.KeyAuthorization != nil {
+		return false
+	}
+
+	// If the challenge is completed, then there should be a key authorization,
+	// and it should match the challenge.
+	if completed {
+		if ch.KeyAuthorization == nil {
+			return false
+		}
+
+		if !ch.KeyAuthorization.Match(ch.Token, ch.AccountKey) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// MergeResponse copies a subset of client-provided data to the current Challenge.
+// Note: This method does not update the challenge on the left side of the '.'
+func (ch Challenge) MergeResponse(resp Challenge) Challenge {
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
+	if ch.isLegacy() {
+		return ch.legacyMergeResponse(resp)
+	}
+
+	// The only client-provided field is the key authorization, and all current
+	// challenge types use it.
+	switch ch.Type {
+	case ChallengeTypeHTTP01:
+		fallthrough
+	case ChallengeTypeTLSSNI01:
+		fallthrough
+	case ChallengeTypeDNS01:
+		ch.KeyAuthorization = resp.KeyAuthorization
 	}
 
 	return ch
@@ -448,11 +615,6 @@ type Certificate struct {
 	DER     []byte    `db:"der"`
 	Issued  time.Time `db:"issued"`
 	Expires time.Time `db:"expires"`
-}
-
-type IssuedCertIdentifierData struct {
-	ReversedName string
-	Serial       string
 }
 
 // IdentifierData holds information about what certificates are known for a
@@ -557,6 +719,8 @@ type OCSPSigningRequest struct {
 	RevokedAt time.Time
 }
 
+// SignedCertificateTimestamp represents objects used by Certificate Transparency
+// to demonstrate that a certificate was submitted to a CT log. See RFC 6962.
 type SignedCertificateTimestamp struct {
 	ID int `db:"id"`
 	// The version of the protocol to which the SCT conforms
@@ -577,8 +741,6 @@ type SignedCertificateTimestamp struct {
 	LockCol int64
 }
 
-type RPCSignedCertificateTimestamp SignedCertificateTimestamp
-
 type rawSignedCertificateTimestamp struct {
 	Version    uint8  `json:"sct_version"`
 	LogID      string `json:"id"`
@@ -587,6 +749,9 @@ type rawSignedCertificateTimestamp struct {
 	Extensions string `json:"extensions"`
 }
 
+// UnmarshalJSON parses the add-chain response from a CT log. It fills all of
+// the fields in the SignedCertificateTimestamp struct except for ID and
+// CertificateSerial, which are used for local recordkeeping in the Boulder DB.
 func (sct *SignedCertificateTimestamp) UnmarshalJSON(data []byte) error {
 	var err error
 	var rawSCT rawSignedCertificateTimestamp
@@ -648,20 +813,6 @@ func (sct *SignedCertificateTimestamp) CheckSignature() error {
 
 // RevocationCode is used to specify a certificate revocation reason
 type RevocationCode int
-
-type RevocationCodes []RevocationCode
-
-func (rc RevocationCodes) Len() int {
-	return len(rc)
-}
-
-func (rc RevocationCodes) Less(i, j int) bool {
-	return rc[i] < rc[j]
-}
-
-func (rc RevocationCodes) Swap(i, j int) {
-	rc[i], rc[j] = rc[j], rc[i]
-}
 
 // RevocationReasons provides a map from reason code to string explaining the
 // code

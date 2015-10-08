@@ -212,16 +212,16 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 }
 
 // GetLatestValidAuthorization gets the valid authorization with biggest expire date for a given domain and registrationId
-func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	ident, err := json.Marshal(identifier)
 	if err != nil {
 		return
 	}
 	var auth core.Authorization
 	err = ssa.dbMap.SelectOne(&auth, "SELECT id FROM authz "+
-		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
+		"WHERE identifier = :identifier AND registrationID = :registrationID AND status = 'valid' "+
 		"ORDER BY expires DESC LIMIT 1",
-		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
+		map[string]interface{}{"identifier": string(ident), "registrationID": registrationID})
 	if err != nil {
 		return
 	}
@@ -229,19 +229,40 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	return ssa.GetAuthorization(auth.ID)
 }
 
+// TooManyCertificatesError indicates that the number of certificates returned by
+// CountCertificates exceeded the hard-coded limit of 10,000 certificates.
 type TooManyCertificatesError string
 
 func (t TooManyCertificatesError) Error() string {
 	return string(t)
 }
 
-// CountCertificates returns the number of certificates issued within a time
-// period containing DNSNames that are equal to, or subdomains of, the given
-// domain name.
+// CountCertificatesByNames counts, for each input domain, the number of
+// certificates issued in the given time range for that domain and its
+// subdomains. It returns a map from domains to counts, which is guaranteed to
+// contain an entry for each input domain, so long as err is nil.
 // The highest count this function can return is 10,000. If there are more
-// certificates than that matching the provided domain name, it will return
+// certificates than that matching one ofthe provided domain names, it will return
 // TooManyCertificatesError.
-func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) CountCertificatesByNames(domains []string, earliest, latest time.Time) (map[string]int, error) {
+	ret := make(map[string]int, len(domains))
+	for _, domain := range domains {
+		currentCount, err := ssa.countCertificatesByName(domain, earliest, latest)
+		if err != nil {
+			return ret, err
+		}
+		ret[domain] = currentCount
+	}
+	return ret, nil
+}
+
+// countCertificatesByNames returns, for a single domain, the count of
+// certificates issued in the given time range for that domain and its
+// subdomains.
+// The highest count this function can return is 10,000. If there are more
+// certificates than that matching one ofthe provided domain names, it will return
+// TooManyCertificatesError.
+func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
 	var count int64
 	const max = 10000
 	var serials []struct {
@@ -260,10 +281,12 @@ func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest,
 			"latest":         latest,
 			"limit":          max + 1,
 		})
-	if err != nil {
+	if err == sql.ErrNoRows {
+		return 0, nil
+	} else if err != nil {
 		return -1, err
 	} else if count > max {
-		return -1, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
+		return max, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
 	}
 	serialMap := make(map[string]struct{}, len(serials))
 	for _, s := range serials {

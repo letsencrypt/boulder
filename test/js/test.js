@@ -20,7 +20,6 @@ var cryptoUtil = require("./crypto-util");
 var child_process = require('child_process');
 var fs = require('fs');
 var http = require('http');
-var https = require('https');
 var inquirer = require("inquirer");
 var request = require('request');
 var url = require('url');
@@ -103,7 +102,7 @@ var cliOptions = cli.parse({
 
 var state = {
   certPrivateKey: null,
-  accountPrivateKey: null,
+  accountKeyPair: null,
 
   newRegistrationURL: cliOptions.newReg,
   registrationURL: "",
@@ -221,8 +220,8 @@ function makeAccountKeyPair(answers) {
       console.log(error);
       process.exit(1);
     }
-    state.accountPrivateKey = cryptoUtil.importPemPrivateKey(fs.readFileSync("account-key.pem"));
-    state.acme = new Acme(state.accountPrivateKey);
+    state.accountKeyPair = cryptoUtil.importPemPrivateKey(fs.readFileSync("account-key.pem"));
+    state.acme = new Acme(state.accountKeyPair);
 
     console.log();
     if (cliOptions.email) {
@@ -348,26 +347,20 @@ function getReadyToValidate(err, resp, body) {
 
   var authz = JSON.parse(body);
 
-  var simpleHttp = authz.challenges.filter(function(x) { return x.type == "simpleHttp"; });
-  if (simpleHttp.length == 0) {
+  var httpChallenges = authz.challenges.filter(function(x) { return x.type == "http-01"; });
+  if (httpChallenges.length == 0) {
     console.log("The server didn't offer any challenges we can handle.");
     process.exit(1);
   }
+  var challenge = httpChallenges[0];
 
-  var challenge = simpleHttp[0];
-  var path = cryptoUtil.randomString(8) + ".txt";
+  // Construct a key authorization for this token and key
+  var thumbprint = cryptoUtil.thumbprint(state.accountKeyPair.publicKey);
+  var keyAuthorization = challenge.token + "." + thumbprint;
+
   var challengePath = ".well-known/acme-challenge/" + challenge.token;
   state.responseURL = challenge["uri"];
-  state.path = path;
-
-  // Sign validation JWS
-  var validationObject = JSON.stringify({
-    type: "simpleHttp",
-    token: challenge.token,
-    tls: true
-  })
-  var validationJWS = cryptoUtil.generateSignature(state.accountPrivateKey,
-                                               new Buffer(validationObject))
+  state.path = challengePath;
 
   // For local, test-mode validation
   function httpResponder(req, response) {
@@ -376,18 +369,16 @@ function getReadyToValidate(err, resp, body) {
     if ((host.split(/:/)[0] === state.domain || /localhost/.test(state.newRegistrationURL)) &&
         req.method === "GET" &&
         req.url == "/" + challengePath) {
-      response.writeHead(200, {"Content-Type": "application/jose+json"});
-      response.end(JSON.stringify(validationJWS));
+      console.log("Providing key authorization:", keyAuthorization);
+      response.writeHead(200, {"Content-Type": "application/json"});
+      response.end(keyAuthorization);
     } else {
       console.log("Got invalid request for", req.method, host, req.url);
       response.writeHead(404, {"Content-Type": "text/plain"});
       response.end("");
     }
   }
-  state.httpServer = https.createServer({
-    cert: fs.readFileSync("temp-cert.pem"),
-    key: fs.readFileSync(state.keyFile)
-  }, httpResponder)
+  state.httpServer = http.createServer(httpResponder)
   if (/localhost/.test(state.newRegistrationURL)) {
     state.httpServer.listen(5001)
   } else {
@@ -397,8 +388,7 @@ function getReadyToValidate(err, resp, body) {
   cli.spinner("Validating domain");
   post(state.responseURL, {
     resource: "challenge",
-    path: state.path,
-    tls: true,
+    keyAuthorization: keyAuthorization,
   }, ensureValidation);
 }
 

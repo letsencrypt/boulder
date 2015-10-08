@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -198,14 +199,14 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
-func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier) (challenges []core.Challenge, combinations [][]int) {
+func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int, err error) {
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these lines
 	challenges = []core.Challenge{
-		core.SimpleHTTPChallenge(),
-		core.DvsniChallenge(),
+		core.SimpleHTTPChallenge(accountKey),
+		core.DvsniChallenge(accountKey),
+		core.HTTPChallenge01(accountKey),
+		core.TLSSNIChallenge01(accountKey),
 	}
-	combinations = [][]int{
-		[]int{0},
-		[]int{1},
-	}
+	combinations = [][]int{[]int{0}, []int{1}, []int{2}, []int{3}}
 	return
 }

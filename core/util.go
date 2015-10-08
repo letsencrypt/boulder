@@ -8,6 +8,7 @@ package core
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -26,6 +27,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net/url"
+	"regexp"
 	"strings"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -117,7 +119,11 @@ func pad(x string) string {
 }
 
 func unpad(x string) string {
-	return strings.Replace(x, "=", "", -1)
+	end := len(x)
+	for end != 0 && x[end-1] == '=' {
+		end--
+	}
+	return x[:end]
 }
 
 // B64enc encodes a byte array as unpadded, URL-safe Base64
@@ -149,6 +155,14 @@ func NewToken() string {
 	return RandomString(32)
 }
 
+var tokenFormat = regexp.MustCompile("^[\\w-]{43}$")
+
+// LooksLikeAToken checks whether a string represents a 32-octet value in
+// the URL-safe base64 alphabet.
+func LooksLikeAToken(token string) bool {
+	return tokenFormat.MatchString(token)
+}
+
 // Fingerprints
 
 // Fingerprint256 produces an unpadded, URL-safe Base64-encoded SHA256 digest
@@ -157,6 +171,96 @@ func Fingerprint256(data []byte) string {
 	d := sha256.New()
 	_, _ = d.Write(data) // Never returns an error
 	return B64enc(d.Sum(nil))
+}
+
+// Thumbprint produces a JWK thumbprint [RFC7638] of a JWK.
+// XXX(rlb): This is adapted from a PR to go-jose, but we need it here until
+//           that PR is merged and we update to that version.
+//           https://github.com/square/go-jose/pull/37
+// XXX(rlb): Once that lands, we should replace the digest methods below
+//           with this standard thumbprint.
+const rsaThumbprintTemplate = `{"e":"%s","kty":"RSA","n":"%s"}`
+const ecThumbprintTemplate = `{"crv":"%s","kty":"EC","x":"%s","y":"%s"}`
+
+// Get JOSE name of curve
+func curveName(crv elliptic.Curve) (string, error) {
+	switch crv {
+	case elliptic.P256():
+		return "P-256", nil
+	case elliptic.P384():
+		return "P-384", nil
+	case elliptic.P521():
+		return "P-521", nil
+	default:
+		return "", fmt.Errorf("square/go-jose: unsupported/unknown elliptic curve")
+	}
+}
+
+// Get size of curve in bytes
+func curveSize(crv elliptic.Curve) int {
+	bits := crv.Params().BitSize
+
+	div := bits / 8
+	mod := bits % 8
+
+	if mod == 0 {
+		return div
+	}
+
+	return div + 1
+}
+
+func newFixedSizeBuffer(data []byte, length int) []byte {
+	if len(data) > length {
+		panic("square/go-jose: invalid call to newFixedSizeBuffer (len(data) > length)")
+	}
+	pad := make([]byte, length-len(data))
+	return append(pad, data...)
+}
+
+func ecThumbprintInput(curve elliptic.Curve, x, y *big.Int) (string, error) {
+	coordLength := curveSize(curve)
+	crv, err := curveName(curve)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf(ecThumbprintTemplate, crv,
+		B64enc(newFixedSizeBuffer(x.Bytes(), coordLength)),
+		B64enc(newFixedSizeBuffer(y.Bytes(), coordLength))), nil
+}
+
+func rsaThumbprintInput(n *big.Int, e int) (string, error) {
+	return fmt.Sprintf(rsaThumbprintTemplate,
+		B64enc(big.NewInt(int64(e)).Bytes()),
+		B64enc(n.Bytes())), nil
+}
+
+// Thumbprint computes the JWK Thumbprint of a key using the
+// indicated hash algorithm.
+func Thumbprint(k *jose.JsonWebKey) (string, error) {
+	var input string
+	var err error
+	switch key := k.Key.(type) {
+	case *ecdsa.PublicKey:
+		input, err = ecThumbprintInput(key.Curve, key.X, key.Y)
+	case *ecdsa.PrivateKey:
+		input, err = ecThumbprintInput(key.Curve, key.X, key.Y)
+	case *rsa.PublicKey:
+		input, err = rsaThumbprintInput(key.N, key.E)
+	case *rsa.PrivateKey:
+		input, err = rsaThumbprintInput(key.N, key.E)
+	default:
+		return "", fmt.Errorf("square/go-jose: unkown key type")
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	h := sha256.New()
+	h.Write([]byte(input))
+	return B64enc(h.Sum(nil)), nil
 }
 
 // KeyDigest produces a padded, standard Base64-encoded SHA256 digest of a
@@ -197,6 +301,7 @@ func KeyDigestEquals(j, k crypto.PublicKey) bool {
 // AcmeURL is a URL that automatically marshal/unmarshal to JSON strings
 type AcmeURL url.URL
 
+// ParseAcmeURL is just a wrapper around url.Parse that returns an *AcmeURL
 func ParseAcmeURL(s string) (*AcmeURL, error) {
 	u, err := url.Parse(s)
 	if err != nil {
@@ -323,6 +428,9 @@ func StringToSerial(serial string) (*big.Int, error) {
 	return &serialNum, err
 }
 
+// ValidSerial tests whether the input string represents a syntactically
+// valid serial number, i.e., that it is a valid hex string between 32
+// and 36 characters long.
 func ValidSerial(serial string) bool {
 	// Originally, serial numbers were 32 hex characters long. We later increased
 	// them to 36, but we allow the shorter ones because they exist in some

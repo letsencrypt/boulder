@@ -5,31 +5,45 @@
 
 package core
 
-// SimpleHTTPChallenge constructs a random HTTP challenge
-func SimpleHTTPChallenge() Challenge {
-	tls := true
+import (
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+)
+
+func newChallenge(challengeType string, accountKey *jose.JsonWebKey) Challenge {
 	return Challenge{
-		Type:   ChallengeTypeSimpleHTTP,
-		Status: StatusPending,
-		Token:  NewToken(),
-		TLS:    &tls,
+		Type:       challengeType,
+		Status:     StatusPending,
+		AccountKey: accountKey,
+		Token:      NewToken(),
 	}
+}
+
+// SimpleHTTPChallenge constructs a random HTTP challenge
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
+func SimpleHTTPChallenge(accountKey *jose.JsonWebKey) Challenge {
+	challenge := newChallenge(ChallengeTypeSimpleHTTP, accountKey)
+	tls := true
+	challenge.TLS = &tls
+	return challenge
 }
 
 // DvsniChallenge constructs a random DVSNI challenge
-func DvsniChallenge() Challenge {
-	return Challenge{
-		Type:   ChallengeTypeDVSNI,
-		Status: StatusPending,
-		Token:  NewToken(),
-	}
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
+func DvsniChallenge(accountKey *jose.JsonWebKey) Challenge {
+	return newChallenge(ChallengeTypeDVSNI, accountKey)
 }
 
-// DNSChallenge constructs a random DNS challenge
-func DNSChallenge() Challenge {
-	return Challenge{
-		Type:   ChallengeTypeDNS,
-		Status: StatusPending,
-		Token:  NewToken(),
-	}
+// HTTPChallenge01 constructs a random http-01 challenge
+func HTTPChallenge01(accountKey *jose.JsonWebKey) Challenge {
+	return newChallenge(ChallengeTypeHTTP01, accountKey)
+}
+
+// TLSSNIChallenge01 constructs a random tls-sni-00 challenge
+func TLSSNIChallenge01(accountKey *jose.JsonWebKey) Challenge {
+	return newChallenge(ChallengeTypeTLSSNI01, accountKey)
+}
+
+// DNSChallenge01 constructs a random DNS challenge
+func DNSChallenge01(accountKey *jose.JsonWebKey) Challenge {
+	return newChallenge(ChallengeTypeDNS01, accountKey)
 }

@@ -30,12 +30,10 @@ import (
 	"log"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
 	"os"
 	"runtime"
 	"time"
-
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
@@ -44,6 +42,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/publisher"
+	"github.com/letsencrypt/boulder/va"
 )
 
 // Config stores configuration parameters that applications
@@ -116,11 +115,7 @@ type Config struct {
 	VA struct {
 		UserAgent string
 
-		PortConfig struct {
-			SimpleHTTPPort  int
-			SimpleHTTPSPort int
-			DVSNIPort       int
-		}
+		PortConfig va.PortConfig
 
 		MaxConcurrentRPCServerRequests int64
 
@@ -222,6 +217,9 @@ type Config struct {
 	SubscriberAgreementURL string
 }
 
+// CAConfig structs have configuration information for the certificate
+// authority, including database parameters as well as controls for
+// issued certificates.
 type CAConfig struct {
 	Profile      string
 	TestMode     bool
@@ -244,6 +242,8 @@ type CAConfig struct {
 	DebugAddr string
 }
 
+// PAConfig specifies how a policy authority should connect to its
+// database, and what policies it should enforce.
 type PAConfig struct {
 	DBConnect              string
 	EnforcePolicyWhitelist bool
@@ -296,33 +296,6 @@ type OCSPUpdaterConfig struct {
 	DebugAddr string
 }
 
-// RateLimitConfig contains all application layer rate limiting policies
-type RateLimitConfig struct {
-	TotalCertificates RateLimitPolicy `yaml:"totalCertificates"`
-}
-
-// RateLimitPolicy describes a general limiting policy
-type RateLimitPolicy struct {
-	Window    ConfigDuration   `yaml:"window"`
-	Threshold int64            `yaml:"threshold"`
-	Overrides map[string]int64 `yaml:"overrides"`
-}
-
-// LoadRateLimitPolicies loads various rate limiting policies from a YAML
-// configuration file
-func LoadRateLimitPolicies(filename string) (RateLimitConfig, error) {
-	contents, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return RateLimitConfig{}, err
-	}
-	var rlc RateLimitConfig
-	err = yaml.Unmarshal(contents, &rlc)
-	if err != nil {
-		return RateLimitConfig{}, err
-	}
-	return rlc, nil
-}
-
 // AppShell contains CLI Metadata
 type AppShell struct {
 	Action func(Config)
@@ -330,6 +303,7 @@ type AppShell struct {
 	App    *cli.App
 }
 
+// Version returns a string representing the version of boulder running.
 func Version() string {
 	return fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
 }
@@ -441,6 +415,11 @@ func LoadCert(path string) (cert []byte, err error) {
 	return
 }
 
+// DebugServer starts a server to receive debug information.  Typical
+// usage is to start it in a goroutine, configured with an address
+// from the appropriate configuration object:
+//
+//   go cmd.DebugServer(c.XA.DebugAddr)
 func DebugServer(addr string) {
 	if addr == "" {
 		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")
@@ -453,12 +432,19 @@ func DebugServer(addr string) {
 	log.Println(http.Serve(ln, nil))
 }
 
+// ConfigDuration is just an alias for time.Duration that allows
+// serialization to YAML as well as JSON.
 type ConfigDuration struct {
 	time.Duration
 }
 
+// ErrDurationMustBeString is returned when a non-string value is
+// presented to be deserialized as a ConfigDuration
 var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a ConfigDuration")
 
+// UnmarshalJSON parses a string into a ConfigDuration using
+// time.ParseDuration.  If the input does not unmarshal as a
+// string, then UnmarshalJSON returns ErrDurationMustBeString.
 func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
 	s := ""
 	err := json.Unmarshal(b, &s)
@@ -473,10 +459,13 @@ func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// MarshalJSON returns the string form of the duration, as a byte array.
 func (d ConfigDuration) MarshalJSON() ([]byte, error) {
 	return []byte(d.Duration.String()), nil
 }
 
+// UnmarshalYAML uses the same frmat as JSON, but is called by the YAML
+// parser (vs. the JSON parser).
 func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
