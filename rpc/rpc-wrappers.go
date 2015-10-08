@@ -39,7 +39,6 @@ const (
 	MethodNewCertificate                    = "NewCertificate"                    // RA
 	MethodUpdateRegistration                = "UpdateRegistration"                // RA, SA
 	MethodUpdateAuthorization               = "UpdateAuthorization"               // RA
-	MethodRevokeCertificate                 = "RevokeCertificate"                 // CA
 	MethodRevokeCertificateWithReg          = "RevokeCertificateWithReg"          // RA
 	MethodAdministrativelyRevokeCertificate = "AdministrativelyRevokeCertificate" // RA
 	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
@@ -117,9 +116,8 @@ type revokeCertificateRequest struct {
 }
 
 type markCertificateRevokedRequest struct {
-	Serial       string
-	OCSPResponse []byte
-	ReasonCode   core.RevocationCode
+	Serial     string
+	ReasonCode core.RevocationCode
 }
 
 type caaRequest struct {
@@ -652,19 +650,6 @@ func NewCertificateAuthorityServer(rpc Server, impl core.CertificateAuthority) (
 		return
 	})
 
-	rpc.Handle(MethodRevokeCertificate, func(req []byte) (response []byte, err error) {
-		var revokeReq revokeCertificateRequest
-		err = json.Unmarshal(req, &revokeReq)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodRevokeCertificate, err, req)
-			return
-		}
-
-		err = impl.RevokeCertificate(revokeReq.Serial, revokeReq.ReasonCode)
-		return
-	})
-
 	rpc.Handle(MethodGenerateOCSP, func(req []byte) (response []byte, err error) {
 		var xferObj core.OCSPSigningRequest
 		err = json.Unmarshal(req, &xferObj)
@@ -712,23 +697,6 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	}
 
 	err = json.Unmarshal(jsonResponse, &cert)
-	return
-}
-
-// RevokeCertificate sends a request to revoke a certificate
-func (cac CertificateAuthorityClient) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
-	var revokeReq revokeCertificateRequest
-	revokeReq.Serial = serial
-	revokeReq.ReasonCode = reasonCode
-
-	data, err := json.Marshal(revokeReq)
-	if err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		errorCondition(MethodRevokeCertificate, err, revokeReq)
-		return
-	}
-
-	_, err = cac.rpc.DispatchSync(MethodRevokeCertificate, data)
 	return
 }
 
@@ -974,7 +942,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 			return
 		}
 
-		err = impl.MarkCertificateRevoked(mcrReq.Serial, mcrReq.OCSPResponse, mcrReq.ReasonCode)
+		err = impl.MarkCertificateRevoked(mcrReq.Serial, mcrReq.ReasonCode)
 		return
 	})
 
@@ -1190,11 +1158,10 @@ func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.C
 }
 
 // MarkCertificateRevoked sends a request to mark a certificate as revoked
-func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
+func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, reasonCode core.RevocationCode) (err error) {
 	var mcrReq markCertificateRevokedRequest
 
 	mcrReq.Serial = serial
-	mcrReq.OCSPResponse = ocspResponse
 	mcrReq.ReasonCode = reasonCode
 
 	data, err := json.Marshal(mcrReq)

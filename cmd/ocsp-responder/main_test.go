@@ -71,12 +71,12 @@ func TestDBHandler(t *testing.T) {
 		t.Fatalf("ocsp.ParseResponse: %s", err)
 	}
 
-	dbOCSP := &core.OCSPResponse{
-		Serial:    core.SerialToString(ocspResp.SerialNumber),
-		CreatedAt: time.Now(),
-		Response:  resp,
+	status := &core.CertificateStatus{
+		Serial:          core.SerialToString(ocspResp.SerialNumber),
+		OCSPLastUpdated: time.Now(),
+		OCSPResponse:    resp,
 	}
-	err = src.dbMap.Insert(dbOCSP)
+	err = src.dbMap.Insert(status)
 	if err != nil {
 		t.Fatalf("unable to insert response: %s", err)
 	}

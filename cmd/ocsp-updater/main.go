@@ -43,9 +43,10 @@ type OCSPUpdater struct {
 	// Number of CT logs we expect to have receipts from
 	numLogs int
 
-	newCertificatesLoop    *looper
-	oldOCSPResponsesLoop   *looper
-	missingSCTReceiptsLoop *looper
+	newCertificatesLoop     *looper
+	oldOCSPResponsesLoop    *looper
+	missingSCTReceiptsLoop  *looper
+	revokedCertificatesLoop *looper
 }
 
 // This is somewhat gross but can be pared down a bit once the publisher and this
@@ -101,6 +102,14 @@ func newUpdater(
 		tickFunc:  updater.missingReceiptsTick,
 		name:      "MissingSCTReceipts",
 	}
+	updater.revokedCertificatesLoop = &looper{
+		clk:       clk,
+		stats:     stats,
+		batchSize: config.RevokedCertificateBatchSize,
+		tickDur:   config.RevokedCertificateWindow.Duration,
+		tickFunc:  updater.revokedCertificatesTick,
+		name:      "RevokedCertificates",
+	}
 
 	updater.ocspMinTimeToExpiry = config.OCSPMinTimeToExpiry.Duration
 
@@ -152,7 +161,7 @@ type responseMeta struct {
 	*core.CertificateStatus
 }
 
-func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (responseMeta, error) {
+func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (core.CertificateStatus, error) {
 	var cert core.Certificate
 	err := updater.dbMap.SelectOne(
 		&cert,
@@ -160,12 +169,12 @@ func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (res
 		map[string]interface{}{"serial": status.Serial},
 	)
 	if err != nil {
-		return responseMeta{}, err
+		return core.CertificateStatus{}, err
 	}
 
 	_, err = x509.ParseCertificate(cert.DER)
 	if err != nil {
-		return responseMeta{}, err
+		return core.CertificateStatus{}, err
 	}
 
 	signRequest := core.OCSPSigningRequest{
@@ -177,34 +186,27 @@ func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (res
 
 	ocspResponse, err := updater.cac.GenerateOCSP(signRequest)
 	if err != nil {
-		return responseMeta{}, err
+		return core.CertificateStatus{}, err
 	}
 
-	timestamp := updater.clk.Now()
-	status.OCSPLastUpdated = timestamp
-	ocspResp := &core.OCSPResponse{
-		Serial:    cert.Serial,
-		CreatedAt: timestamp,
-		Response:  ocspResponse,
-	}
-	return responseMeta{ocspResp, &status}, nil
+	status.OCSPLastUpdated = updater.clk.Now()
+	status.OCSPResponse = ocspResponse
+	return status, nil
 }
 
-func (updater *OCSPUpdater) storeResponse(tx *gorp.Transaction, meta responseMeta) error {
+func (updater *OCSPUpdater) storeResponse(status core.CertificateStatus) error {
 	// Record the response.
-	err := tx.Insert(meta.OCSPResponse)
-	if err != nil {
-		return err
-	}
-
-	// Reset the update clock
-	_, err = tx.Update(meta.CertificateStatus)
-	if err != nil {
-		return err
-	}
-
-	// Done
-	return nil
+	_, err := updater.dbMap.Exec(
+		`UPDATE certificateStatus
+		 SET ocspResponse=?,ocspLastUpdated=?
+		 WHERE serial=?
+		 AND status=?`,
+		status.OCSPResponse,
+		status.OCSPLastUpdated,
+		status.Serial,
+		string(core.OCSPStatusGood),
+	)
+	return err
 }
 
 // newCertificateTick checks for certificates issued since the last tick and
@@ -214,14 +216,102 @@ func (updater *OCSPUpdater) newCertificateTick(batchSize int) {
 	// OCSP responses
 	statuses, err := updater.getCertificatesWithMissingResponses(batchSize)
 	if err != nil {
+		updater.stats.Inc("OCSP.Errors.FindMissingResponses", 1, 1.0)
+		updater.log.AuditErr(fmt.Errorf("Failed to find certificates with missing OCSP responses: %s", err))
 		return
 	}
 
 	updater.generateOCSPResponses(statuses)
 }
 
+func (updater *OCSPUpdater) findRevokedCertificates(batchSize int) ([]core.CertificateStatus, error) {
+	var statuses []core.CertificateStatus
+	_, err := updater.dbMap.Select(
+		&statuses,
+		`SELECT * FROM certificateStatus
+		 WHERE status = :revoked
+		 AND ocspLastUpdated < revokedDate
+		 LIMIT :limit`,
+		map[string]interface{}{
+			"revoked": string(core.OCSPStatusRevoked),
+			"limit":   batchSize,
+		},
+	)
+	return statuses, err
+}
+
+func (updater *OCSPUpdater) generateRevokedResponse(status core.CertificateStatus) (core.CertificateStatus, error) {
+	var cert core.Certificate
+	err := updater.dbMap.SelectOne(
+		&cert,
+		`SELECT * FROM certificates
+			 WHERE serial = :serial`,
+		map[string]interface{}{"serial": status.Serial},
+	)
+	if err != nil {
+		return core.CertificateStatus{}, err
+	}
+
+	signRequest := core.OCSPSigningRequest{
+		CertDER:   cert.DER,
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    status.RevokedReason,
+		RevokedAt: status.RevokedDate,
+	}
+
+	ocspResponse, err := updater.cac.GenerateOCSP(signRequest)
+	if err != nil {
+		return core.CertificateStatus{}, err
+	}
+
+	now := updater.clk.Now()
+	status.OCSPLastUpdated = now
+	status.OCSPResponse = ocspResponse
+	return status, nil
+}
+
+func (updater *OCSPUpdater) storeRevokedResponse(status core.CertificateStatus) error {
+	// Record the response.
+	_, err := updater.dbMap.Exec(
+		`UPDATE certificateStatus
+		 SET ocspResponse=?,ocspLastUpdated=?,revokedDate=?,revokedReason=?
+		 WHERE serial=?
+		 AND status=?`,
+		status.OCSPResponse,
+		status.OCSPLastUpdated,
+		status.RevokedDate,
+		status.RevokedReason,
+		status.Serial,
+		string(core.OCSPStatusRevoked),
+	)
+	return err
+}
+
+func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) {
+	statuses, err := updater.findRevokedCertificates(batchSize)
+	if err != nil {
+		updater.stats.Inc("OCSP.Errors.FindRevokedCertificates", 1, 1.0)
+		updater.log.AuditErr(fmt.Errorf("Failed to find revoked certificates: %s", err))
+		return
+	}
+
+	for _, status := range statuses {
+		meta, err := updater.generateRevokedResponse(status)
+		if err != nil {
+			updater.log.AuditErr(fmt.Errorf("Failed to generate revoked OCSP response: %s", err))
+			updater.stats.Inc("OCSP.Errors.RevokedResponseGeneration", 1, 1.0)
+			continue
+		}
+		err = updater.storeRevokedResponse(meta)
+		if err != nil {
+			updater.stats.Inc("OCSP.Errors.StoreRevokedResponse", 1, 1.0)
+			updater.log.AuditErr(fmt.Errorf("Failed to store OCSP response: %s", err))
+			continue
+		}
+	}
+}
+
 func (updater *OCSPUpdater) generateOCSPResponses(statuses []core.CertificateStatus) {
-	responses := []responseMeta{}
 	for _, status := range statuses {
 		meta, err := updater.generateResponse(status)
 		if err != nil {
@@ -229,33 +319,15 @@ func (updater *OCSPUpdater) generateOCSPResponses(statuses []core.CertificateSta
 			updater.stats.Inc("OCSP.Errors.ResponseGeneration", 1, 1.0)
 			continue
 		}
-		responses = append(responses, meta)
 		updater.stats.Inc("OCSP.GeneratedResponses", 1, 1.0)
-	}
-
-	tx, err := updater.dbMap.Begin()
-	if err != nil {
-		updater.log.AuditErr(fmt.Errorf("Failed to open OCSP response transaction: %s", err))
-		updater.stats.Inc("OCSP.Errors.OpenTransaction", 1, 1.0)
-		return
-	}
-	for _, meta := range responses {
-		err = updater.storeResponse(tx, meta)
+		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.log.AuditErr(fmt.Errorf("Failed to store OCSP response: %s", err))
 			updater.stats.Inc("OCSP.Errors.StoreResponse", 1, 1.0)
-			tx.Rollback()
-			return
+			continue
 		}
+		updater.stats.Inc("OCSP.StoredResponses", 1, 1.0)
 	}
-	err = tx.Commit()
-	if err != nil {
-		updater.log.AuditErr(fmt.Errorf("Failed to commit OCSP response transaction: %s", err))
-		updater.stats.Inc("OCSP.Errors.CommitTransaction", 1, 1.0)
-		return
-	}
-	updater.stats.Inc("OCSP.StoredResponses", int64(len(responses)), 1.0)
-
 	return
 }
 
@@ -435,6 +507,8 @@ func main() {
 
 		go updater.newCertificatesLoop.loop()
 		go updater.oldOCSPResponsesLoop.loop()
+		go updater.missingSCTReceiptsLoop.loop()
+		go updater.revokedCertificatesLoop.loop()
 
 		cmd.FailOnError(err, "Failed to create updater")
 
