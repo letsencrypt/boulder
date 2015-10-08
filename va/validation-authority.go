@@ -260,12 +260,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 
 		reqHost := req.URL.Host
 		reqPort := ""
-		if strings.Contains(reqHost, ":") {
-			splitHost := strings.SplitN(reqHost, ":", 2)
-			if len(splitHost) <= 1 {
-				return fmt.Errorf("Malformed host")
-			}
-			reqHost, reqPort = splitHost[0], splitHost[1]
+		if h, p, err := net.SplitHostPort(reqHost); err == nil {
+			reqHost, reqPort = h, p
 			portNum, err := strconv.Atoi(reqPort)
 			if err != nil {
 				return err
