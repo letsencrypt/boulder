@@ -887,7 +887,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	logEvent.Extra["AuthorizationExpires"] = authz.Expires
 
 	switch request.Method {
-	case "GET":
+	case "GET", "HEAD":
 		wfe.getChallenge(response, request, authz, &challenge, &logEvent)
 
 	case "POST":
