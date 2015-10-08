@@ -164,9 +164,11 @@
     "newCertificateWindow": "1s",
     "oldOCSPWindow": "2s",
     "missingSCTWindow": "1m",
+    "revokedCertificateWindow": "1s",
     "newCertificateBatchSize": 1000,
     "oldOCSPBatchSize": 5000,
     "missingSCTBatchSize": 5000,
+    "revokedCertificateBatchSize": 1000,
     "ocspMinTimeToExpiry": "72h",
     "sctOldestIssued": "72h",
     "debugAddr": "localhost:8006"

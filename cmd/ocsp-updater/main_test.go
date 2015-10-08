@@ -79,7 +79,7 @@ func setup(t *testing.T) (OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock
 }
 
 func TestGenerateAndStoreOCSPResponse(t *testing.T) {
-	updater, sa, dbMap, _, cleanUp := setup(t)
+	updater, sa, _, _, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -93,20 +93,12 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 
 	meta, err := updater.generateResponse(status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	tx, err := dbMap.Begin()
-	test.AssertNotError(t, err, "Couldn't open a transaction")
-	err = updater.storeResponse(tx, meta)
-	test.AssertNotError(t, err, "Couldn't store OCSP response")
-	err = tx.Commit()
-	test.AssertNotError(t, err, "Couldn't close transaction")
+	err = updater.storeResponse(meta)
+	test.AssertNotError(t, err, "Couldn't store certificate status")
 
-	var ocspResponse core.OCSPResponse
-	err = dbMap.SelectOne(
-		&ocspResponse,
-		"SELECT * from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
-		map[string]interface{}{"serial": status.Serial},
-	)
-	test.AssertNotError(t, err, "Couldn't get OCSP response from database")
+	newStatus, err := sa.GetCertificateStatus(status.Serial)
+	test.AssertNotError(t, err, "Couldn't retrieve certificate status")
+	test.AssertByteEquals(t, meta.OCSPResponse, newStatus.OCSPResponse)
 }
 
 func TestGenerateOCSPResponses(t *testing.T) {
@@ -136,7 +128,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 }
 
 func TestFindStaleOCSPResponses(t *testing.T) {
-	updater, sa, dbMap, fc, cleanUp := setup(t)
+	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -155,12 +147,8 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 
 	meta, err := updater.generateResponse(status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	tx, err := dbMap.Begin()
-	test.AssertNotError(t, err, "Couldn't open a transaction")
-	err = updater.storeResponse(tx, meta)
+	err = updater.storeResponse(meta)
 	test.AssertNotError(t, err, "Couldn't store OCSP response")
-	err = tx.Commit()
-	test.AssertNotError(t, err, "Couldn't close transaction")
 
 	certs, err = updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")

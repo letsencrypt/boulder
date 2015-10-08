@@ -94,9 +94,11 @@ def verify_ocsp_good(certFile, url):
 def verify_ocsp_revoked(certFile, url):
     output = get_ocsp(certFile, url)
     if not re.search(": revoked", output):
-        print "Expected OCSP response 'revoked', got something else."
-        die(ExitStatus.OCSPFailure)
-    pass
+        if not re.search(": good", output):
+            print "Expected OCSP response 'good', got something else."
+            die(ExitStatus.OCSPFailure)
+        return False
+    return True
 
 # loop_check expects the function passed as action will return True/False to indicate
 # success/failure
@@ -160,8 +162,7 @@ def run_node_test():
         print("\nRevoking failed")
         die(ExitStatus.NodeFailure)
 
-    verify_ocsp_revoked(certFile, ee_ocsp_url)
-
+    loop_check(ExitStatus.OCSPFailure, verify_ocsp_revoked, certFile, ee_ocsp_url)
     return 0
 
 

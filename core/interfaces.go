@@ -91,7 +91,6 @@ type ValidationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
-	RevokeCertificate(string, RevocationCode) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
 
@@ -123,7 +122,7 @@ type StorageAdder interface {
 	NewPendingAuthorization(Authorization) (Authorization, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
-	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode RevocationCode) error
+	MarkCertificateRevoked(serial string, reasonCode RevocationCode) error
 	UpdateOCSP(serial string, ocspResponse []byte) error
 
 	AddCertificate([]byte, int64) (string, error)

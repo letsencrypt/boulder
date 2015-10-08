@@ -79,19 +79,22 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	serialString := core.SerialToString(req.SerialNumber)
 	log.Debug(fmt.Sprintf("Searching for OCSP issued by us for serial %s", serialString))
 
-	var ocspResponse core.OCSPResponse
+	var response []byte
 	// Note: we order by id rather than createdAt, because otherwise we sometimes
 	// get the wrong result if a certificate is revoked in the same second as its
 	// last update (e.g. client issues and instant revokes).
-	err := src.dbMap.SelectOne(&ocspResponse, "SELECT * from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
-		map[string]interface{}{"serial": serialString})
-	if err != nil {
+	err := src.dbMap.SelectOne(
+		&response,
+		"SELECT ocspResponse from certificateStatus WHERE serial = :serial",
+		map[string]interface{}{"serial": serialString},
+	)
+	if err != nil || len(response) == 0 {
 		return nil, false
 	}
 
 	log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 
-	return ocspResponse.Response, true
+	return response, true
 }
 
 func makeDBSource(dbConnect, issuerCert string, sqlDebug bool) (*DBSource, error) {
