@@ -743,6 +743,11 @@ type SignedCertificateTimestamp struct {
 	LockCol int64
 }
 
+// RPCSignedCertificateTimestamp is used in the RPC layer to bypass the fancy
+// UnmarshalJSON that is defined below otherwise SCTs will be mangaled by passing
+// through the RPC layer
+type RPCSignedCertificateTimestamp SignedCertificateTimestamp
+
 type rawSignedCertificateTimestamp struct {
 	Version    uint8  `json:"sct_version"`
 	LogID      string `json:"id"`
