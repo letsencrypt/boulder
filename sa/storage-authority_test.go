@@ -429,7 +429,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 	// Add a second test cert (for example.co.bn) and query for multiple names.
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
-	_, err = sa.AddCertificate(certDER2, reg.ID)
+	_, err = sa.AddCertificate(certDER2, req.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 	counts, err = sa.CountCertificatesByNames([]string{"example.com", "foo.com", "example.co.bn"}, yesterday, now.Add(10000*time.Hour))
 	test.AssertNotError(t, err, "Error counting certs.")

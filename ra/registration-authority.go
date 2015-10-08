@@ -357,7 +357,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest)
 	err = ra.checkLimits(names, registration.ID)
 	if err != nil {
 		logEvent.Error = err.Error()
-		return emptyCert, err
+		return emptyCertRequest, err
 	}
 
 	earliestExpiration, err := ra.checkAuthorizations(names, &registration)
