@@ -212,12 +212,10 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		scheme = "https"
 		port = va.httpsPort
 	}
-	portString := strconv.Itoa(port)
-	hostPort := net.JoinHostPort(host, portString)
 
 	url := &url.URL{
 		Scheme: scheme,
-		Host:   hostPort,
+		Host:   host,
 		Path:   path,
 	}
 
@@ -238,8 +236,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		httpRequest.Header["User-Agent"] = []string{va.UserAgent}
 	}
 
-	httpRequest.Host = hostPort
-	dialer, prob := va.resolveAndConstructDialer(host, portString)
+	dialer, prob := va.resolveAndConstructDialer(host, strconv.Itoa(port))
 	dialer.record.URL = url.String()
 	challenge.ValidationRecord = append(challenge.ValidationRecord, dialer.record)
 	if prob != nil {

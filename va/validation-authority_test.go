@@ -99,7 +99,7 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 	currentToken := defaultToken
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.Host, "localhost:") && r.Host != "other.valid" && r.Host != "other.valid:8080" {
+		if r.Host != "localhost" && r.Host != "other.valid" && r.Host != "other.valid:8080" {
 			t.Errorf("Bad Host header: " + r.Host)
 		}
 		if strings.HasSuffix(r.URL.Path, path404) {
@@ -532,7 +532,7 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 	currentToken := defaultToken
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.Host, "localhost:") && r.Host != "other.valid" && r.Host != "other.valid:8080" {
+		if r.Host != "localhost" && r.Host != "other.valid" && r.Host != "other.valid:8080" {
 			t.Errorf("Bad Host header: " + r.Host)
 		}
 		if strings.HasSuffix(r.URL.Path, path404) {
