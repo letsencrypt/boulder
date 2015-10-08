@@ -178,11 +178,7 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 
 // resolveAndConstructDialer gets the prefered address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
-func (va *ValidationAuthorityImpl) resolveAndConstructDialer(name, defaultPort string) (dialer, *core.ProblemDetails) {
-	port := fmt.Sprintf("%d", va.httpPort)
-	if defaultPort != "" {
-		port = defaultPort
-	}
+func (va *ValidationAuthorityImpl) resolveAndConstructDialer(name, port string) (dialer, *core.ProblemDetails) {
 	d := dialer{
 		record: core.ValidationRecord{
 			Hostname: name,
@@ -278,7 +274,9 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 				return fmt.Errorf("Invalid port number in redirect")
 			}
 		} else if strings.ToLower(req.URL.Scheme) == "https" {
-			reqPort = "443"
+			reqPort = strconv.Itoa(va.httpsPort)
+		} else {
+			reqPort = strconv.Itoa(va.httpPort)
 		}
 
 		dialer, err := va.resolveAndConstructDialer(reqHost, reqPort)
