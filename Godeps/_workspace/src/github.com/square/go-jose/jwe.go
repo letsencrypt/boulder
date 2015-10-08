@@ -129,6 +129,12 @@ func (parsed *rawJsonWebEncryption) sanitized() (*JsonWebEncryption, error) {
 
 	obj.Header = obj.mergedHeaders(nil).sanitized()
 
+	// Check that there is not a nonce in the unprotected headers
+	if (parsed.Unprotected != nil && parsed.Unprotected.Nonce != "") ||
+		(parsed.Header != nil && parsed.Header.Nonce != "") {
+		return nil, fmt.Errorf("square/go-jose: Nonce parameter included in unprotected header")
+	}
+
 	if parsed.Protected != nil && len(parsed.Protected.bytes()) > 0 {
 		err := json.Unmarshal(parsed.Protected.bytes(), &obj.protected)
 		if err != nil {
@@ -149,6 +155,11 @@ func (parsed *rawJsonWebEncryption) sanitized() (*JsonWebEncryption, error) {
 			encryptedKey, err := base64URLDecode(parsed.Recipients[r].EncryptedKey)
 			if err != nil {
 				return nil, err
+			}
+
+			// Check that there is not a nonce in the unprotected header
+			if parsed.Recipients[r].Header != nil && parsed.Recipients[r].Header.Nonce != "" {
+				return nil, fmt.Errorf("square/go-jose: Nonce parameter included in unprotected header")
 			}
 
 			obj.recipients[r].header = parsed.Recipients[r].Header
@@ -216,8 +227,7 @@ func parseEncryptedCompact(input string) (*JsonWebEncryption, error) {
 
 // CompactSerialize serializes an object using the compact serialization format.
 func (obj JsonWebEncryption) CompactSerialize() (string, error) {
-	if len(obj.recipients) != 1 || obj.unprotected != nil ||
-		obj.protected == nil || obj.recipients[0].header != nil {
+	if len(obj.recipients) > 1 || obj.unprotected != nil || obj.recipients[0].header != nil {
 		return "", ErrNotSupported
 	}
 
@@ -258,9 +268,7 @@ func (obj JsonWebEncryption) FullSerialize() string {
 		raw.EncryptedKey = newBuffer(obj.recipients[0].encryptedKey)
 	}
 
-	if obj.protected != nil {
-		raw.Protected = newBuffer(mustSerializeJSON(obj.protected))
-	}
+	raw.Protected = newBuffer(mustSerializeJSON(obj.protected))
 
 	return string(mustSerializeJSON(raw))
 }

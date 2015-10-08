@@ -24,12 +24,14 @@ import (
 
 // Signer represents a signer which takes a payload and produces a signed JWS object.
 type Signer interface {
-	Sign(payload []byte, nonce string) (*JsonWebSignature, error)
+	Sign(payload []byte) (*JsonWebSignature, error)
+	AddNonces(nonces []string)
 }
 
 // MultiSigner represents a signer which supports multiple recipients.
 type MultiSigner interface {
-	Sign(payload []byte, nonce string) (*JsonWebSignature, error)
+	Sign(payload []byte) (*JsonWebSignature, error)
+	AddNonces(nonces []string)
 	AddRecipient(alg SignatureAlgorithm, signingKey interface{}) error
 }
 
@@ -43,6 +45,7 @@ type payloadVerifier interface {
 
 type genericSigner struct {
 	recipients []recipientSigInfo
+	nonces     []string
 }
 
 type recipientSigInfo struct {
@@ -123,7 +126,7 @@ func makeRecipient(alg SignatureAlgorithm, signingKey interface{}) (recipientSig
 	}
 }
 
-func (ctx *genericSigner) Sign(payload []byte, nonce string) (*JsonWebSignature, error) {
+func (ctx *genericSigner) Sign(payload []byte) (*JsonWebSignature, error) {
 	obj := &JsonWebSignature{}
 	obj.payload = payload
 	obj.Signatures = make([]Signature, len(ctx.recipients))
@@ -138,8 +141,13 @@ func (ctx *genericSigner) Sign(payload []byte, nonce string) (*JsonWebSignature,
 			protected.Kid = recipient.publicKey.KeyID
 		}
 
-		if nonce != "" {
-			protected.Nonce = nonce
+		if ctx.nonces != nil {
+			if len(ctx.nonces) == 0 {
+				return nil, fmt.Errorf("square/go-jose: Nonce required but no nonces available")
+			}
+
+			protected.Nonce = ctx.nonces[0]
+			ctx.nonces = ctx.nonces[1:]
 		}
 
 		serializedProtected := mustSerializeJSON(protected)
@@ -160,11 +168,18 @@ func (ctx *genericSigner) Sign(payload []byte, nonce string) (*JsonWebSignature,
 	return obj, nil
 }
 
+// AddNonces provides or updates a nonce pool to the first recipients.
+// After this method is called, the signer will consume one nonce per
+// signature, returning an error if there are no nonces left in the pool.
+func (ctx *genericSigner) AddNonces(nonces []string) {
+	ctx.nonces = append(ctx.nonces, nonces...)
+}
+
 // Verify validates the signature on the object and returns the payload.
-func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, JoseHeader, error) {
+func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, error) {
 	verifier, err := newVerifier(verificationKey)
 	if err != nil {
-		return nil, JoseHeader{}, err
+		return nil, err
 	}
 
 	for _, signature := range obj.Signatures {
@@ -173,13 +188,14 @@ func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, JoseHea
 			// Unsupported crit header
 			continue
 		}
+
 		input := obj.computeAuthData(&signature)
 		alg := SignatureAlgorithm(headers.Alg)
 		err := verifier.verifyPayload(input, signature.Signature, alg)
 		if err == nil {
-			return obj.payload, headers.sanitized(), nil
+			return obj.payload, nil
 		}
 	}
 
-	return nil, JoseHeader{}, ErrCryptoFailure
+	return nil, ErrCryptoFailure
 }

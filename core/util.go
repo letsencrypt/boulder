@@ -30,7 +30,7 @@ import (
 	"regexp"
 	"strings"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	blog "github.com/letsencrypt/boulder/log"
 )
 

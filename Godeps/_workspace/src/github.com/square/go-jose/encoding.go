@@ -132,6 +132,14 @@ func newBuffer(data []byte) *byteBuffer {
 	}
 }
 
+func newFixedSizeBuffer(data []byte, length int) *byteBuffer {
+	if len(data) > length {
+		panic("square/go-jose: invalid call to newFixedSizeBuffer (len(data) > length)")
+	}
+	pad := make([]byte, length-len(data))
+	return newBuffer(append(pad, data...))
+}
+
 func newBufferFromInt(num uint64) *byteBuffer {
 	data := make([]byte, 8)
 	binary.BigEndian.PutUint64(data, num)

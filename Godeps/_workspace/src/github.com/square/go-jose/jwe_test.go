@@ -149,6 +149,66 @@ func TestMissingInvalidHeaders(t *testing.T) {
 	}
 }
 
+func TestRejectUnprotectedJWENonce(t *testing.T) {
+	// No need to test compact, since that's always protected
+
+	// Flattened JSON
+	input := `{
+      "header":  {
+        "alg": "XYZ", "enc": "XYZ",
+        "nonce": "should-cause-an-error"
+      },
+      "encrypted_key": "does-not-matter",
+      "aad": "does-not-matter",
+      "iv": "does-not-matter",
+      "ciphertext": "does-not-matter",
+      "tag": "does-not-matter"
+  }`
+	_, err := ParseEncrypted(input)
+	if err == nil {
+		t.Error("JWE with an unprotected nonce parsed as valid.")
+	} else if err.Error() != "square/go-jose: Nonce parameter included in unprotected header" {
+		t.Errorf("Improper error for unprotected nonce: %v", err)
+	}
+
+	input = `{
+      "unprotected":  {
+        "alg": "XYZ", "enc": "XYZ",
+        "nonce": "should-cause-an-error"
+      },
+      "encrypted_key": "does-not-matter",
+      "aad": "does-not-matter",
+      "iv": "does-not-matter",
+      "ciphertext": "does-not-matter",
+      "tag": "does-not-matter"
+  }`
+	_, err = ParseEncrypted(input)
+	if err == nil {
+		t.Error("JWE with an unprotected nonce parsed as valid.")
+	} else if err.Error() != "square/go-jose: Nonce parameter included in unprotected header" {
+		t.Errorf("Improper error for unprotected nonce: %v", err)
+	}
+
+	// Full JSON
+	input = `{
+      "header":  { "alg": "XYZ", "enc": "XYZ" },
+      "aad": "does-not-matter",
+      "iv": "does-not-matter",
+      "ciphertext": "does-not-matter",
+      "tag": "does-not-matter",
+      "recipients": [{
+        "header": { "nonce": "should-cause-an-error" },
+        "encrypted_key": "does-not-matter"
+      }]
+	}`
+	_, err = ParseEncrypted(input)
+	if err == nil {
+		t.Error("JWS with an unprotected nonce parsed as valid.")
+	} else if err.Error() != "square/go-jose: Nonce parameter included in unprotected header" {
+		t.Errorf("Improper error for unprotected nonce: %v", err)
+	}
+}
+
 func TestCompactSerialize(t *testing.T) {
 	// Compact serialization must fail if we have unprotected headers
 	obj := &JsonWebEncryption{

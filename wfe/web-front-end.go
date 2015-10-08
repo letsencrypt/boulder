@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -414,7 +414,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 		key = &reg.Key
 	}
 
-	payload, header, err := parsedJws.Verify(key)
+	payload, err := parsedJws.Verify(key)
 	if err != nil {
 		puberr := core.SignatureValidationError("JWS verification error")
 		wfe.log.Debug(string(body))
@@ -423,12 +423,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 	}
 
 	// Check that the request has a known anti-replay nonce
-	// i.e., Nonce is in protected header and
-	if err != nil || len(header.Nonce) == 0 {
+	if len(parsedJws.Signatures) == 0 || len(parsedJws.Signatures[0].Header.Nonce) == 0 {
 		err = core.SignatureValidationError("JWS has no anti-replay nonce")
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
-	} else if !wfe.nonceService.Valid(header.Nonce) {
+	} else if !wfe.nonceService.Valid(parsedJws.Signatures[0].Header.Nonce) {
 		err = core.SignatureValidationError(fmt.Sprintf("JWS has invalid anti-replay nonce"))
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
