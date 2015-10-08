@@ -132,7 +132,7 @@ func (parsed *rawJsonWebEncryption) sanitized() (*JsonWebEncryption, error) {
 	// Check that there is not a nonce in the unprotected headers
 	if (parsed.Unprotected != nil && parsed.Unprotected.Nonce != "") ||
 		(parsed.Header != nil && parsed.Header.Nonce != "") {
-		return nil, fmt.Errorf("square/go-jose: Nonce parameter included in unprotected header")
+		return nil, ErrUnprotectedNonce
 	}
 
 	if parsed.Protected != nil && len(parsed.Protected.bytes()) > 0 {
@@ -159,7 +159,7 @@ func (parsed *rawJsonWebEncryption) sanitized() (*JsonWebEncryption, error) {
 
 			// Check that there is not a nonce in the unprotected header
 			if parsed.Recipients[r].Header != nil && parsed.Recipients[r].Header.Nonce != "" {
-				return nil, fmt.Errorf("square/go-jose: Nonce parameter included in unprotected header")
+				return nil, ErrUnprotectedNonce
 			}
 
 			obj.recipients[r].header = parsed.Recipients[r].Header

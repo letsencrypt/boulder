@@ -95,29 +95,29 @@ func TestRejectUnprotectedJWSNonce(t *testing.T) {
 
 	// Flattened JSON
 	input := `{
-      "header": { "nonce": "should-cause-an-error" },
-			"payload": "does-not-matter",
-			"signature": "does-not-matter"
+		"header": { "nonce": "should-cause-an-error" },
+		"payload": "does-not-matter",
+		"signature": "does-not-matter"
 	}`
 	_, err := ParseSigned(input)
 	if err == nil {
 		t.Error("JWS with an unprotected nonce parsed as valid.")
-	} else if err.Error() != "square/go-jose: Nonce parameter included in unprotected header" {
+	} else if err != ErrUnprotectedNonce {
 		t.Errorf("Improper error for unprotected nonce: %v", err)
 	}
 
 	// Full JSON
 	input = `{
-			"payload": "does-not-matter",
-      "signatures": [{
-        "header": { "nonce": "should-cause-an-error" },
-			  "signature": "does-not-matter"
-      }]
+		"payload": "does-not-matter",
+ 		"signatures": [{
+ 			"header": { "nonce": "should-cause-an-error" },
+			"signature": "does-not-matter"
+		}]
 	}`
 	_, err = ParseSigned(input)
 	if err == nil {
 		t.Error("JWS with an unprotected nonce parsed as valid.")
-	} else if err.Error() != "square/go-jose: Nonce parameter included in unprotected header" {
+	} else if err != ErrUnprotectedNonce {
 		t.Errorf("Improper error for unprotected nonce: %v", err)
 	}
 }

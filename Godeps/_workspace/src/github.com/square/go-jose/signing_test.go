@@ -27,6 +27,12 @@ import (
 	"testing"
 )
 
+type staticNonceSource string
+
+func (sns staticNonceSource) Nonce() (string, error) {
+	return string(sns), nil
+}
+
 func RoundtripJWS(sigAlg SignatureAlgorithm, serializer func(*JsonWebSignature) (string, error), corrupter func(*JsonWebSignature), signingKey interface{}, verificationKey interface{}, nonce string) error {
 	signer, err := NewSigner(sigAlg, signingKey)
 	if err != nil {
@@ -34,7 +40,7 @@ func RoundtripJWS(sigAlg SignatureAlgorithm, serializer func(*JsonWebSignature) 
 	}
 
 	if nonce != "" {
-		signer.AddNonces([]string{nonce})
+		signer.SetNonceSource(staticNonceSource(nonce))
 	}
 
 	input := []byte("Lorem ipsum dolor sit amet")

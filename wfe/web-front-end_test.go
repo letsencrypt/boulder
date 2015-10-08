@@ -189,9 +189,7 @@ func signRequest(t *testing.T, req string, nonceService *core.NonceService) stri
 
 	signer, err := jose.NewSigner("RS256", accountKey)
 	test.AssertNotError(t, err, "Failed to make signer")
-	nonce, err := nonceService.Nonce()
-	test.AssertNotError(t, err, "Failed to make nonce")
-	signer.AddNonces([]string{nonce})
+	signer.SetNonceSource(nonceService)
 	result, err := signer.Sign([]byte(req))
 	test.AssertNotError(t, err, "Failed to sign req")
 	ret := result.FullSerialize()
@@ -717,20 +715,12 @@ func TestNewRegistration(t *testing.T) {
 	test.Assert(t, ok, "Couldn't load RSA key")
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
-	nonce, err := wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	signer.AddNonces([]string{nonce})
+	signer.SetNonceSource(&wfe.nonceService)
 	result, err := signer.Sign([]byte("foo"))
 
-	nonce, err = wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	signer.AddNonces([]string{nonce})
 	fooBody, err := signer.Sign([]byte("foo"))
 	test.AssertNotError(t, err, "Unable to sign")
 
-	nonce, err = wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	signer.AddNonces([]string{nonce})
 	wrongAgreementBody, err := signer.Sign(
 		[]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"https://letsencrypt.org/im-bad"}`))
 	test.AssertNotError(t, err, "Unable to sign")
@@ -804,9 +794,7 @@ func TestNewRegistration(t *testing.T) {
 	}
 
 	responseWriter := httptest.NewRecorder()
-	nonce, err = wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	signer.AddNonces([]string{nonce})
+	signer.SetNonceSource(&wfe.nonceService)
 	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"` + agreementURL + `"}`))
 	wfe.NewRegistration(responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -839,9 +827,7 @@ func TestNewRegistration(t *testing.T) {
 	// Reset the body and status code
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
-	nonce, err = wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	signer.AddNonces([]string{nonce})
+	signer.SetNonceSource(&wfe.nonceService)
 	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"` + agreementURL + `"}`))
 
 	wfe.NewRegistration(responseWriter,
@@ -909,9 +895,7 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	wfe.SA = &mockSANoSuchRegistration{mocks.StorageAuthority{}}
 	responseWriter := httptest.NewRecorder()
 
-	nonce, err := wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	signer.AddNonces([]string{nonce})
+	signer.SetNonceSource(&wfe.nonceService)
 	result, _ := signer.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -934,9 +918,7 @@ func TestRevokeCertificateAccountKey(t *testing.T) {
 	test.Assert(t, ok, "Couldn't load RSA key")
 	accountKeySigner, err := jose.NewSigner("RS256", test1Key)
 	test.AssertNotError(t, err, "Failed to make signer")
-	nonce, err := wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	accountKeySigner.AddNonces([]string{nonce})
+	accountKeySigner.SetNonceSource(&wfe.nonceService)
 	result, _ := accountKeySigner.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -947,8 +929,6 @@ func TestRevokeCertificateAccountKey(t *testing.T) {
 // A revocation request signed by an unauthorized key.
 func TestRevokeCertificateWrongKey(t *testing.T) {
 	wfe := setupWFE(t)
-	nonce, err := wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
 	responseWriter := httptest.NewRecorder()
 	test2JWK, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
@@ -956,12 +936,10 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 	test.Assert(t, ok, "Couldn't load RSA key")
 	accountKeySigner2, err := jose.NewSigner("RS256", test2Key)
 	test.AssertNotError(t, err, "Failed to make signer")
-	nonce, err = wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
 	revokeRequestJSON, err := makeRevokeRequestJSON()
 	test.AssertNotError(t, err, "Unable to create revoke request")
 
-	accountKeySigner2.AddNonces([]string{nonce})
+	accountKeySigner2.SetNonceSource(&wfe.nonceService)
 	result, _ := accountKeySigner2.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1004,9 +982,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
 	responseWriter.Body.Reset()
-	nonce, err := wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	signer.AddNonces([]string{nonce})
+	signer.SetNonceSource(&wfe.nonceService)
 	result, _ := signer.Sign(revokeRequestJSON)
 	wfe.RevokeCertificate(responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -1150,9 +1126,7 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	// Test POST valid JSON but key is not registered
-	nonce, err := wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	signer.AddNonces([]string{nonce})
+	signer.SetNonceSource(&wfe.nonceService)
 	result, err := signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Unable to sign")
 	wfe.Registration(responseWriter,
@@ -1170,9 +1144,7 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	// Test POST valid JSON with registration up in the mock (with incorrect agreement URL)
-	nonce, err = wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	signer.AddNonces([]string{nonce})
+	signer.SetNonceSource(&wfe.nonceService)
 	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"https://letsencrypt.org/im-bad"}`))
 
 	// Test POST valid JSON with registration up in the mock
@@ -1184,9 +1156,7 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with registration up in the mock (with correct agreement URL)
-	nonce, err = wfe.nonceService.Nonce()
-	test.AssertNotError(t, err, "Unable to create nonce")
-	signer.AddNonces([]string{nonce})
+	signer.SetNonceSource(&wfe.nonceService)
 	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Couldn't sign")
 	wfe.Registration(responseWriter,

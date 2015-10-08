@@ -110,7 +110,7 @@
 		},
 		{
 			"ImportPath": "github.com/square/go-jose",
-			"Rev": "4b2d821334e4ac3af5e6d0b489a3b3aa383cc9a3"
+			"Rev": "13f1c2a1222b4a490e982e6d20af041facc406b5"
 		},
 		{
 			"ImportPath": "github.com/streadway/amqp",

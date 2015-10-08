@@ -55,6 +55,10 @@ var (
 	// trying to compact-serialize an object which can't be represented in
 	// compact form.
 	ErrNotSupported = errors.New("square/go-jose: compact serialization not supported for object")
+
+	// ErrUnprotectedNonce indicates that while parsing a JWS or JWE object, a
+	// nonce header parameter was included in an unprotected header object.
+	ErrUnprotectedNonce = errors.New("square/go-jose: Nonce parameter included in unprotected header")
 )
 
 // Key management algorithms

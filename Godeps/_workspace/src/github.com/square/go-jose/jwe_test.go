@@ -154,16 +154,16 @@ func TestRejectUnprotectedJWENonce(t *testing.T) {
 
 	// Flattened JSON
 	input := `{
-      "header":  {
-        "alg": "XYZ", "enc": "XYZ",
-        "nonce": "should-cause-an-error"
-      },
-      "encrypted_key": "does-not-matter",
-      "aad": "does-not-matter",
-      "iv": "does-not-matter",
-      "ciphertext": "does-not-matter",
-      "tag": "does-not-matter"
-  }`
+	"header":  {
+		"alg": "XYZ", "enc": "XYZ",
+		"nonce": "should-cause-an-error"
+	},
+	"encrypted_key": "does-not-matter",
+	"aad": "does-not-matter",
+	"iv": "does-not-matter",
+	"ciphertext": "does-not-matter",
+	"tag": "does-not-matter"
+	}`
 	_, err := ParseEncrypted(input)
 	if err == nil {
 		t.Error("JWE with an unprotected nonce parsed as valid.")
@@ -172,16 +172,16 @@ func TestRejectUnprotectedJWENonce(t *testing.T) {
 	}
 
 	input = `{
-      "unprotected":  {
-        "alg": "XYZ", "enc": "XYZ",
-        "nonce": "should-cause-an-error"
-      },
-      "encrypted_key": "does-not-matter",
-      "aad": "does-not-matter",
-      "iv": "does-not-matter",
-      "ciphertext": "does-not-matter",
-      "tag": "does-not-matter"
-  }`
+		"unprotected":  {
+			"alg": "XYZ", "enc": "XYZ",
+			"nonce": "should-cause-an-error"
+		},
+		"encrypted_key": "does-not-matter",
+		"aad": "does-not-matter",
+		"iv": "does-not-matter",
+		"ciphertext": "does-not-matter",
+		"tag": "does-not-matter"
+	}`
 	_, err = ParseEncrypted(input)
 	if err == nil {
 		t.Error("JWE with an unprotected nonce parsed as valid.")
@@ -191,15 +191,15 @@ func TestRejectUnprotectedJWENonce(t *testing.T) {
 
 	// Full JSON
 	input = `{
-      "header":  { "alg": "XYZ", "enc": "XYZ" },
-      "aad": "does-not-matter",
-      "iv": "does-not-matter",
-      "ciphertext": "does-not-matter",
-      "tag": "does-not-matter",
-      "recipients": [{
-        "header": { "nonce": "should-cause-an-error" },
-        "encrypted_key": "does-not-matter"
-      }]
+		"header":  { "alg": "XYZ", "enc": "XYZ" },
+		"aad": "does-not-matter",
+		"iv": "does-not-matter",
+		"ciphertext": "does-not-matter",
+		"tag": "does-not-matter",
+		"recipients": [{
+			"header": { "nonce": "should-cause-an-error" },
+			"encrypted_key": "does-not-matter"
+		}]
 	}`
 	_, err = ParseEncrypted(input)
 	if err == nil {
