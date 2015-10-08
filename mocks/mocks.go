@@ -320,6 +320,11 @@ func (sa *StorageAuthority) CountCertificatesRange(_, _ time.Time) (int64, error
 	return 0, nil
 }
 
+// CountCertificatesByNames is a mock
+func (sa *StorageAuthority) CountCertificatesByNames(_ []string, _, _ time.Time) (ret map[string]int, err error) {
+	return
+}
+
 // Publisher is a mock
 type Publisher struct {
 	// empty
