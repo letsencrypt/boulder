@@ -517,7 +517,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign CSR")
 	sa.UpdatePendingAuthorization(authz)
 	sa.FinalizeAuthorization(authz)
-
 	certRequest := core.CertificateRequest{
 		RegistrationID: Registration.ID,
 		CSR:            csrBytes,
@@ -600,7 +599,6 @@ func TestTotalCertRateLimit(t *testing.T) {
 	// Inject another final authorization to cover www.example.com
 	authzFinalWWW := AuthzFinal
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
-
 	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
 	sa.FinalizeAuthorization(authzFinalWWW)
 

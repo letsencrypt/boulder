@@ -289,6 +289,11 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest)
 		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
 	}()
 
+	if !req.ReadyForRA() {
+		err = core.MalformedRequestError("Incomplete certificate request")
+		return emptyCertRequest, err
+	}
+
 	if req.RegistrationID <= 0 {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", req.RegistrationID))
 		return emptyCertRequest, err

@@ -34,5 +34,5 @@ ALTER TABLE `certificates` ADD CONSTRAINT
 -- SQL section 'Down' is executed when this migration is rolled back
 
 DROP TABLE `certificateRequests`;
-ALTER TABLE `certificates` DROP COLUMN `requestID`;
 ALTER TABLE `certificates` DROP FOREIGN KEY `reqId_certificates`;
+ALTER TABLE `certificates` DROP COLUMN `requestID`;

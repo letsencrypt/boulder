@@ -751,7 +751,7 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.AcmeCertificat
 		Registration core.Registration
 	}{
 		ClientAddr:   getClientAddr(request),
-		CsrBase64:    cr.Bytes,
+		CsrBase64:    cr.CSR.Raw,
 		Registration: registration,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
@@ -818,7 +818,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	// RA for secondary validation.
 	req := core.CertificateRequest{
 		RegistrationID: reg.ID,
-		CSR:            certificateRequest.Bytes,
+		CSR:            certificateRequest.CSR.Raw,
 	}
 	req, err = wfe.RA.NewCertificate(req)
 	if err != nil {
@@ -922,7 +922,7 @@ func (wfe *WebFrontEndImpl) NewCertificateRequest(response http.ResponseWriter, 
 	// RA for secondary validation.
 	req := core.CertificateRequest{
 		RegistrationID: reg.ID,
-		CSR:            certificateRequest.Bytes,
+		CSR:            certificateRequest.CSR.Raw,
 	}
 	req, err = wfe.RA.NewCertificate(req)
 	if err != nil {

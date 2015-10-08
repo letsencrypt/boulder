@@ -192,10 +192,16 @@ func TestFindExpiringCertificates(t *testing.T) {
 	reqA := core.CertificateRequest{
 		RegistrationID: regA.ID,
 		CSR:            []byte{},
+		Created:        ctx.fc.Now(),
+		Expires:        ctx.fc.Now().AddDate(0, 0, 2),
+		Status:         core.StatusValid,
 	}
 	reqB := core.CertificateRequest{
 		RegistrationID: regB.ID,
 		CSR:            []byte{},
+		Created:        ctx.fc.Now(),
+		Expires:        ctx.fc.Now().AddDate(0, 0, 2),
+		Status:         core.StatusValid,
 	}
 	reqA, err = ctx.ssa.NewCertificateRequest(reqA)
 	if err != nil {
@@ -296,6 +302,9 @@ func TestLifetimeOfACert(t *testing.T) {
 	reqA := core.CertificateRequest{
 		RegistrationID: regA.ID,
 		CSR:            []byte{},
+		Created:        ctx.fc.Now(),
+		Expires:        ctx.fc.Now().AddDate(0, 0, 2),
+		Status:         core.StatusValid,
 	}
 	reqA, err = ctx.ssa.NewCertificateRequest(reqA)
 	if err != nil {
@@ -410,6 +419,9 @@ func TestDontFindRevokedCert(t *testing.T) {
 	reqA := core.CertificateRequest{
 		RegistrationID: regA.ID,
 		CSR:            []byte{},
+		Created:        ctx.fc.Now(),
+		Expires:        ctx.fc.Now().AddDate(0, 0, 2),
+		Status:         core.StatusValid,
 	}
 	reqA, err = ctx.ssa.NewCertificateRequest(reqA)
 	if err != nil {

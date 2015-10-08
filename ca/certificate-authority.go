@@ -247,9 +247,20 @@ func uniqueHostNames(csr *x509.CertificateRequest) (commonName string, hostNames
 func (ca *CertificateAuthorityImpl) NewCertificateRequest(req core.CertificateRequest) (core.CertificateRequest, error) {
 	emptyCertRequest := core.CertificateRequest{}
 
+	// Check that enough of the request has been filled out
+	if !req.ReadyForCA() {
+		err := core.MalformedRequestError("Incomplete certificate request forwarded to CA.")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
+	}
+
 	// Parse the CSR
 	csr, err := x509.ParseCertificateRequest(req.CSR)
 	if err != nil {
+		err = core.MalformedRequestError("Malformed CSR.")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
 		return emptyCertRequest, err
 	}
 
@@ -285,8 +296,7 @@ func (ca *CertificateAuthorityImpl) NewCertificateRequest(req core.CertificateRe
 		return emptyCertRequest, err
 	}
 
-	// Collapse any duplicate names and check that there aren't too many.
-	// Note that this operation may re-order the names.
+	// Check that there aren't too many name
 	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
 		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
 		ca.Log.WarningErr(err)
@@ -316,7 +326,21 @@ func (ca *CertificateAuthorityImpl) NewCertificateRequest(req core.CertificateRe
 	req.Created = ca.Clk.Now()
 	req.Status = core.StatusValid
 
-	return ca.SA.NewCertificateRequest(req)
+	fullReq, err := ca.SA.NewCertificateRequest(req)
+	if err != nil {
+		err = core.InternalServerError(fmt.Sprintf("Failed to store certificate request: %v", err))
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
+	}
+	if !fullReq.Complete() {
+		err = core.InternalServerError("Storage authority returned an incomplete certificate request")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
+	}
+
+	return fullReq, nil
 }
 
 // IssueCertificate fetches a certificate request by ID and passes it to a
@@ -348,16 +372,32 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(requestID string, logEventI
 
 	req, err := ca.SA.GetCertificateRequest(requestID)
 	if err != nil {
+		err = core.InternalServerError("Unable to retrieve certificate request returned from DB")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return err
+	}
+
+	if !req.Complete() {
+		err = core.InternalServerError("Incomplete certificate request returned from DB")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
 		return err
 	}
 
 	if req.Status != core.StatusValid {
-		return core.InternalServerError("Cannot issue; certificate request is not valid")
+		err = core.InternalServerError("Cannot issue; certificate request is not valid")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return err
 	}
 
 	// Extract hostnames from the CSR
 	csr, err := x509.ParseCertificateRequest(req.CSR)
 	if err != nil {
+		err = core.InternalServerError("Malformed CSR in cached certificate request")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
 		return err
 	}
 	commonName, hostNames := uniqueHostNames(csr)

@@ -6,7 +6,6 @@
 package ca
 
 import (
-	//"bytes"
 	"crypto/x509"
 	"encoding/asn1"
 	"fmt"
@@ -88,8 +87,6 @@ var (
 const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
-const minWait = 125 * time.Millisecond
-const maxWait = 2 * time.Second
 
 const (
 	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
@@ -213,29 +210,9 @@ func (ctx *testCtx) attemptToIssue(t *testing.T, ca *CertificateAuthorityImpl, c
 	err = ca.IssueCertificate(req.ID, "bogusLogEvent")
 	test.AssertNotError(t, err, "CA did not agree to issue under this request")
 
-	found = false
-	wait := minWait
-	for wait < maxWait {
-		time.Sleep(wait)
-		wait = 2 * wait
-
-		req, err := ctx.sa.GetCertificateRequest(req.ID)
-		test.AssertNotError(t, err, "Unable to retrieve supposedly pending certificate request")
-		if err != nil {
-			return
-		}
-
-		switch req.Status {
-		case core.StatusValid:
-			cert, err = ctx.sa.GetLatestCertificateForRequest(req.ID)
-			test.AssertNotError(t, err, "Error retrieving issued certificate")
-			found = (err == nil)
-			return
-		case core.StatusInvalid:
-			test.Assert(t, false, "Issuance failed; see logs for details")
-			return
-		}
-	}
+	cert, err = ctx.sa.GetLatestCertificateForRequest(req.ID)
+	test.AssertNotError(t, err, "Error retrieving issued certificate")
+	found = (err == nil)
 	return
 }
 
@@ -414,7 +391,6 @@ func TestDeduplication(t *testing.T) {
 	correctNames := len(parsedCert.DNSNames) == 1 &&
 		parsedCert.DNSNames[0] == correctName &&
 		parsedCert.Subject.CommonName == correctName
-	fmt.Println("Names in the cert:", parsedCert.DNSNames)
 	test.Assert(t, correctNames, "Incorrect set of names in deduplicated certificate")
 }
 

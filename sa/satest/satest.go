@@ -61,6 +61,7 @@ func CreateWorkingCertificateRequest(t *testing.T, sa core.StorageAuthority, reg
 		Created:        time.Now(),
 		Expires:        time.Now().AddDate(0, 0, 2),
 		CSR:            []byte{},
+		Status:         core.StatusPending,
 	})
 	if err != nil {
 		t.Fatalf("Unable to create new certificate request")

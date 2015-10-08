@@ -314,6 +314,7 @@ func TestCertificateRequest(t *testing.T) {
 	// GetCertificateRequest
 	req2, err := sa.GetCertificateRequest(req.ID)
 	test.AssertNotError(t, err, "Error retrieving cert request")
+	test.Assert(t, req2.Complete(), "Certificate request from DB is incomplete")
 	test.AssertEquals(t, req.ID, req2.ID)
 	test.AssertEquals(t, req.RegistrationID, req2.RegistrationID)
 	// The database truncates to seconds and uses UTC, and that's OK
@@ -328,6 +329,7 @@ func TestCertificateRequest(t *testing.T) {
 	test.AssertNotError(t, err, "Error updating cert request")
 	req3, err := sa.GetCertificateRequest(req.ID)
 	test.AssertNotError(t, err, "Error retrieving cert request")
+	test.Assert(t, req3.Complete(), "Certificate request from DB is incomplete")
 	test.AssertEquals(t, req3.Status, newStatus)
 }
 

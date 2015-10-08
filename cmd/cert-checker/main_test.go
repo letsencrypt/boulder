@@ -213,6 +213,9 @@ func TestGetAndProcessCerts(t *testing.T) {
 	req, err := sa.NewCertificateRequest(core.CertificateRequest{
 		RegistrationID: reg.ID,
 		CSR:            []byte{},
+		Created:        time.Now(),
+		Expires:        time.Now().AddDate(0, 0, 2),
+		Status:         core.StatusValid,
 	})
 	test.AssertNotError(t, err, "Couldn't create certificate request")
 

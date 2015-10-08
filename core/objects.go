@@ -568,18 +568,17 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 	return
 }
 
-// AcmeCertificateRequest ist the struct that we use for parsing
+// AcmeCertificateRequest is the struct that we use for parsing
 // requests from clients
 type AcmeCertificateRequest struct {
-	CSR   *x509.CertificateRequest // The CSR
-	Bytes []byte                   // The original bytes of the CSR, for logging.
+	CSR *x509.CertificateRequest
 }
 
 type rawAcmeCertificateRequest struct {
 	CSR JSONBuffer `json:"csr"`
 }
 
-// UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
+// UnmarshalJSON decodes the Base64 CSR and parses it.
 func (cr *AcmeCertificateRequest) UnmarshalJSON(data []byte) error {
 	var raw rawAcmeCertificateRequest
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -592,15 +591,14 @@ func (cr *AcmeCertificateRequest) UnmarshalJSON(data []byte) error {
 	}
 
 	cr.CSR = csr
-	cr.Bytes = raw.CSR
 	return nil
 }
 
-// MarshalJSON provides an implementation for encoding CertificateRequest objects.
+// MarshalJSON is here as a stub.  It always returns an error because there
+// should never be a reason to marshal one of these things.  If there is, there
+// will need to be some actual logic.
 func (cr AcmeCertificateRequest) MarshalJSON() ([]byte, error) {
-	return json.Marshal(rawAcmeCertificateRequest{
-		CSR: JSONBuffer(cr.CSR.Raw),
-	})
+	return nil, fmt.Errorf("Unimplemented method AcmeCertificateRequest.MarshalJSON")
 }
 
 // CertificateRequest objects are entirely internal to the server.
@@ -617,17 +615,43 @@ type CertificateRequest struct {
 	CSR            []byte     `db:"csr"`
 }
 
+// ReadyForRA tests whether the RegistrationID and CSR fields have been
+// populated.  The WFE should fill these in before passing the request to the
+// RA.
+func (cr CertificateRequest) ReadyForRA() bool {
+	return cr.RegistrationID > 0 && cr.CSR != nil
+}
+
+// ReadyForCA tests whether the RegistrationID, CSR, and expires fields have
+// been populated.  The WFE and RA should fill these in before the request
+// shows up at the CA.
+func (cr CertificateRequest) ReadyForCA() bool {
+	return cr.ReadyForRA() && cr.Expires != time.Time{}
+}
+
+// ReadyForSA tests whether the all fields besides the ID have been populated.
+// Requests should be in this state before they are sent to the SA for storage.
+func (cr CertificateRequest) ReadyForSA() bool {
+	return cr.ReadyForCA() && cr.Created != time.Time{} && len(cr.Status) > 0
+}
+
+// Complete tests whether all fields in the request have been populated.  This
+// should be the case for all requests that have been stored in the database.
+func (cr CertificateRequest) Complete() bool {
+	return cr.ReadyForCA() && LooksLikeAToken(cr.ID)
+}
+
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
 	RegistrationID int64  `db:"registrationID"`
 	RequestID      string `db:"requestID"`
 
-	Issued  time.Time `db:"issued"`
-	Expires time.Time `db:"expires"`
 	Serial  string    `db:"serial"`
 	Digest  string    `db:"digest"`
 	DER     []byte    `db:"der"`
+	Issued  time.Time `db:"issued"`
+	Expires time.Time `db:"expires"`
 }
 
 // IdentifierData holds information about what certificates are known for a

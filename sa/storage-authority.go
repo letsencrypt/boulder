@@ -280,23 +280,8 @@ func (ssa *SQLStorageAuthority) GetCertificateRequest(id string) (req core.Certi
 	return
 }
 
-// GetCertificateByShortSerial takes an id consisting of the first, sequential half of a
-// serial number and returns the first certificate whose full serial number is
-// lexically greater than that id. This allows clients to query on the known
-// sequential half of our serial numbers to enumerate all certificates.
-func (ssa *SQLStorageAuthority) GetCertificateByShortSerial(shortSerial string) (cert core.Certificate, err error) {
-	if len(shortSerial) != 16 {
-		err = errors.New("Invalid certificate short serial " + shortSerial)
-		return
-	}
-
-	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE serial LIKE :shortSerial",
-		map[string]interface{}{"shortSerial": shortSerial + "%"})
-	return
-}
-
-// GetLatestCertificateForRequest finds the latest certificate created under
-// the specificed certificate request
+// GetLatestCertificateForRequest finds the certificate created under
+// the specificed certificate request that has the latest expiration.
 func (ssa *SQLStorageAuthority) GetLatestCertificateForRequest(requestID string) (cert core.Certificate, err error) {
 	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE requestID = :requestID ORDER BY expires DESC LIMIT 0,1",
 		map[string]interface{}{"requestID": requestID})
@@ -622,6 +607,11 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 // assigning it a random ID.  The caller is responsible for setting all fields
 // besides ID.  No fields besides "Status" can be updated.
 func (ssa *SQLStorageAuthority) NewCertificateRequest(req core.CertificateRequest) (output core.CertificateRequest, err error) {
+	if !req.ReadyForSA() {
+		err = fmt.Errorf("Incomplete certificate request sent for storage")
+		return
+	}
+
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
