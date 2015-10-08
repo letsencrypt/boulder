@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"net"
 	"net/mail"
 	"reflect"
 	"sort"
@@ -138,15 +139,38 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int, error) {
 	return ra.totalIssuedCache, nil
 }
 
+func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
+	limit := ra.rlPolicies.RegistrationsPerIP
+	if limit.Enabled() {
+		now := ra.clk.Now()
+		count, err := ra.SA.CountRegistrationsByIP(ip, limit.WindowBegin(now), now)
+		if err != nil {
+			return err
+		}
+		if count >= limit.GetThreshold(ip.String(), -1) {
+			return core.RateLimitedError("Too many registrations from this IP")
+		}
+	}
+	return nil
+}
+
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
 	if err = core.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
+	if err = ra.checkRegistrationLimit(init.InitialIP); err != nil {
+		return core.Registration{}, err
+	}
+
 	reg = core.Registration{
 		Key: init.Key,
 	}
 	reg.MergeUpdate(init)
+
+	// This field isn't updatable by the end user, so it isn't copied by
+	// MergeUpdate. But we need to fill it in for new registrations.
+	reg.InitialIP = init.InitialIP
 
 	err = validateContacts(reg.Contact, ra.DNSResolver, ra.stats)
 	if err != nil {

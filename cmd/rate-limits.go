@@ -17,6 +17,10 @@ type RateLimitConfig struct {
 	// These are counted by "base domain" aka eTLD+1, so any entries in the
 	// overrides section must be an eTLD+1 according to the publicsuffix package.
 	CertificatesPerName RateLimitPolicy `yaml:"certificatesPerName"`
+	// Number of registrations that can be created per IP.
+	// Note: Since this is checked before a registration is created, setting a
+	// RegistrationOverride on it has no effect.
+	RegistrationsPerIP RateLimitPolicy `yaml:"registrationsPerIP"`
 }
 
 // RateLimitPolicy describes a general limiting policy
