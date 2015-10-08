@@ -670,6 +670,9 @@ type CertificateStatus struct {
 
 	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
+	// The encoded and signed OCSP response.
+	OCSPResponse []byte `db:"ocspResponse"`
+
 	LockCol int64 `json:"-"`
 }
 
@@ -686,7 +689,6 @@ type OCSPResponse struct {
 	// createdAt: The date the response was signed.
 	CreatedAt time.Time `db:"createdAt"`
 
-	// response: The encoded and signed CRL.
 	Response []byte `db:"response"`
 }
 
@@ -740,6 +742,11 @@ type SignedCertificateTimestamp struct {
 
 	LockCol int64
 }
+
+// RPCSignedCertificateTimestamp is used in the RPC layer to bypass the fancy
+// UnmarshalJSON that is defined below otherwise SCTs will be mangaled by passing
+// through the RPC layer
+type RPCSignedCertificateTimestamp SignedCertificateTimestamp
 
 type rawSignedCertificateTimestamp struct {
 	Version    uint8  `json:"sct_version"`
