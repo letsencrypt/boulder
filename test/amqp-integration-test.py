@@ -131,11 +131,13 @@ def run_node_test():
         die(ExitStatus.Error)
     certFile = os.path.join(tempdir, "cert.der")
     keyFile = os.path.join(tempdir, "key.pem")
+    # Pick a random hostname so we don't run into certificate rate limiting.
+    domain = subprocess.check_output("openssl rand -hex 6", shell=True).strip()
     if subprocess.Popen('''
         node test.js --email foo@letsencrypt.org --agree true \
-          --domains foo.com --new-reg http://localhost:4000/acme/new-reg \
+          --domains www.%s.com --new-reg http://localhost:4000/acme/new-reg \
           --certKey %s --cert %s
-        ''' % (keyFile, certFile), shell=True).wait() != 0:
+        ''' % (domain, keyFile, certFile), shell=True).wait() != 0:
         print("\nIssuing failed")
         die(ExitStatus.NodeFailure)
 
