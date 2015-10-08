@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"sort"
 	"strings"
 	"time"
@@ -229,6 +230,73 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationID int64
 	return ssa.GetAuthorization(auth.ID)
 }
 
+// incrementIP increments the byte within `ip` at `index`, accounting for overflow.
+// Index must be greater than zero and less than len(ip).
+func incrementIP(ip *net.IP, index int) {
+	if (*ip)[index] == 255 {
+		(*ip)[index-1]++
+		(*ip)[index] = 0
+	} else {
+		(*ip)[index]++
+	}
+}
+
+// ipRange returns a range of IP addresses suitable for querying MySQL for the
+// purpose of rate limiting using a range that is inclusive on the lower end and
+// exclusive at the higher end. If ip is an IPv4 address, it returns that address,
+// plus the one immediately higher than it. If ip is an IPv6 address, it applies
+// a /48 mask to it and returns the lowest IP in the resulting network, and the
+// first IP outside of the resulting network.
+func ipRange(ip net.IP) (net.IP, net.IP) {
+	ip = ip.To16()
+	begin := make(net.IP, len(ip))
+	end := make(net.IP, len(ip))
+	// For IPv4 addresses, do a match on exact address, so begin = ip and end =
+	// next higher IP.
+	if ip.To4() != nil {
+		copy(begin, ip)
+		copy(end, ip)
+		incrementIP(&end, 15)
+	} else {
+		// For IPv6, match on a certain subnet range, since one person can commonly
+		// have an entire /48 to themselves.
+		maskLength := 48
+		mask := net.CIDRMask(maskLength, 128)
+		begin = ip.Mask(mask)
+		copy(end, begin)
+		incrementIP(&end, (maskLength/8)-1)
+	}
+	return begin, end
+}
+
+// CountRegistrationsByIP returns the number of registrations created in the
+// time range in an IP range. For IPv4 addresses, that range is limited to the
+// single IP. For IPv6 addresses, that range is a /48, since it's not uncommon
+// for one person to have a /48 to themselves.
+func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ip net.IP, earliest time.Time, latest time.Time) (int, error) {
+	var count int64
+	beginIP, endIP := ipRange(ip)
+	err := ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM registrations
+		 WHERE 
+		 :beginIP <= initialIP AND
+		 initialIP < :endIP AND
+		 :earliest < createdAt AND
+		 createdAt <= :latest`,
+		map[string]interface{}{
+			"ip":       ip.String(),
+			"earliest": earliest,
+			"latest":   latest,
+			"beginIP":  []byte(beginIP),
+			"endIP":    []byte(endIP),
+		})
+	if err != nil {
+		return -1, err
+	}
+	return int(count), nil
+}
+
 // TooManyCertificatesError indicates that the number of certificates returned by
 // CountCertificates exceeded the hard-coded limit of 10,000 certificates.
 type TooManyCertificatesError string
@@ -344,6 +412,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (core.Reg
 	if err != nil {
 		return reg, err
 	}
+	rm.CreatedAt = ssa.clk.Now()
 	err = ssa.dbMap.Insert(rm)
 	if err != nil {
 		return reg, err
@@ -446,17 +515,32 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) error {
-	rm, err := registrationToModel(&reg)
+	lookupResult, err := ssa.dbMap.Get(regModel{}, reg.ID)
 	if err != nil {
 		return err
 	}
+	if lookupResult == nil {
+		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
+		return core.NoSuchRegistrationError(msg)
+	}
+	existingRegModel, ok := lookupResult.(*regModel)
+	if !ok {
+		// Shouldn't happen
+		return fmt.Errorf("Incorrect type returned from registration lookup")
+	}
 
-	n, err := ssa.dbMap.Update(rm)
+	updatedRegModel, err := registrationToModel(&reg)
+	if err != nil {
+		return err
+	}
+	updatedRegModel.LockCol = existingRegModel.LockCol
+
+	n, err := ssa.dbMap.Update(updatedRegModel)
 	if err != nil {
 		return err
 	}
 	if n == 0 {
-		msg := fmt.Sprintf("Requested registration not found %v", reg.ID)
+		msg := fmt.Sprintf("Requested registration not found %d", reg.ID)
 		return core.NoSuchRegistrationError(msg)
 	}
 

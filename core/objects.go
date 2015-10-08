@@ -168,6 +168,12 @@ type Registration struct {
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty"`
+
+	// InitialIP is the IP address from which the registration was created
+	InitialIP net.IP `json:"initialIp"`
+
+	// CreatedAt is the time the registration was created.
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // MergeUpdate copies a subset of information from the input Registration
