@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/big"
 	"net/url"
+	"sort"
 	"testing"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -112,4 +113,10 @@ func TestAcmeURL(t *testing.T) {
 	u, _ := url.Parse(s)
 	a := (*AcmeURL)(u)
 	test.AssertEquals(t, s, a.String())
+}
+
+func TestUniqueLowerNames(t *testing.T) {
+	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com"})
+	sort.Strings(u)
+	test.AssertDeepEquals(t, []string{"bar.com", "baz.com", "foobar.com"}, u)
 }

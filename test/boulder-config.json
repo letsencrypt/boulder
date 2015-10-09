@@ -189,6 +189,7 @@
   },
 
   "publisher": {
+    "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8009"
   },
 
@@ -208,8 +209,7 @@
       "submissionRetries": 1,
       "submissionBackoff": "1s",
       "intermediateBundleFilename": "test/test-ca.pem"
-    },
-    "maxConcurrentRPCServerRequests": 16
+    }
   },
 
   "certChecker": {

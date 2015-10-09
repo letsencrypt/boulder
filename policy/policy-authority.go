@@ -64,7 +64,7 @@ const (
 	whitelistedPartnerRegID = -1
 )
 
-var dnsLabelRegexp = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9-]{0,62}$")
+var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
 
 func isDNSCharacter(ch byte) bool {
@@ -112,7 +112,8 @@ func (e SyntaxError) Error() string            { return "Syntax error" }
 func (e NonPublicError) Error() string         { return "Name does not end in a public suffix" }
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
-// identifier.
+// identifier. It expects domains in id to be lowercase to prevent mismatched
+// cases breaking queries.
 //
 // We place several criteria on identifiers we are willing to issue for:
 //
@@ -132,8 +133,6 @@ func (e NonPublicError) Error() string         { return "Name does not end in a 
 // XXX: Is there any need for this method to be constant-time?  We're
 //      going to refuse to issue anyway, but timing could leak whether
 //      names are on the blacklist.
-//
-// XXX: We should probably fold everything to lower-case somehow.
 func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	if id.Type != core.IdentifierDNS {
 		return InvalidIdentifierError{}
@@ -146,7 +145,6 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 		}
 	}
 
-	domain = strings.ToLower(domain)
 	if len(domain) > 255 {
 		return SyntaxError{}
 	}

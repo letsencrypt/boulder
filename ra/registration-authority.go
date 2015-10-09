@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"net"
 	"net/mail"
 	"reflect"
 	"sort"
@@ -138,15 +139,42 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int, error) {
 	return ra.totalIssuedCache, nil
 }
 
+// noRegistrationID is used for the regID parameter to GetThreshold when no
+// registration-based overrides are necessary.
+const noRegistrationID = -1
+
+func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
+	limit := ra.rlPolicies.RegistrationsPerIP
+	if limit.Enabled() {
+		now := ra.clk.Now()
+		count, err := ra.SA.CountRegistrationsByIP(ip, limit.WindowBegin(now), now)
+		if err != nil {
+			return err
+		}
+		if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
+			return core.RateLimitedError("Too many registrations from this IP")
+		}
+	}
+	return nil
+}
+
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
 	if err = core.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
+	if err = ra.checkRegistrationLimit(init.InitialIP); err != nil {
+		return core.Registration{}, err
+	}
+
 	reg = core.Registration{
 		Key: init.Key,
 	}
 	reg.MergeUpdate(init)
+
+	// This field isn't updatable by the end user, so it isn't copied by
+	// MergeUpdate. But we need to fill it in for new registrations.
+	reg.InitialIP = init.InitialIP
 
 	err = validateContacts(reg.Contact, ra.DNSResolver, ra.stats)
 	if err != nil {
@@ -186,7 +214,8 @@ func validateContacts(contacts []*core.AcmeURL, resolver core.DNSResolver, stats
 	return
 }
 
-// NewAuthorization constuct a new Authz from a request.
+// NewAuthorization constuct a new Authz from a request. Values (domains) in
+// request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
 	reg, err := ra.SA.GetRegistration(regID)
 	if err != nil {
@@ -195,6 +224,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	identifier := request.Identifier
+	identifier.Value = strings.ToLower(identifier.Value)
 
 	// Check that the identifier is present and appropriate
 	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
@@ -275,7 +305,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(
 	if len(csr.Subject.CommonName) > 0 {
 		hostNames = append(hostNames, csr.Subject.CommonName)
 	}
-	hostNames = core.UniqueNames(hostNames)
+	hostNames = core.UniqueLowerNames(hostNames)
 
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
 		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
