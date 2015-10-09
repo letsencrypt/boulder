@@ -51,10 +51,11 @@ type RegistrationAuthorityImpl struct {
 	tiMu                  *sync.RWMutex
 	totalIssuedCache      int
 	lastIssuedCount       *time.Time
+	maxContactsPerReg     int
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, policies cmd.RateLimitConfig) RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, policies cmd.RateLimitConfig, maxContactsPerReg int) RegistrationAuthorityImpl {
 	ra := RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
@@ -62,6 +63,7 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 		authorizationLifetime: DefaultAuthorizationLifetime,
 		rlPolicies:            policies,
 		tiMu:                  new(sync.RWMutex),
+		maxContactsPerReg:     maxContactsPerReg,
 	}
 	return ra
 }
@@ -176,7 +178,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	// MergeUpdate. But we need to fill it in for new registrations.
 	reg.InitialIP = init.InitialIP
 
-	err = validateContacts(reg.Contact, ra.DNSResolver, ra.stats)
+	err = ra.validateContacts(reg.Contact)
 	if err != nil {
 		return
 	}
@@ -193,15 +195,20 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	return
 }
 
-func validateContacts(contacts []*core.AcmeURL, resolver core.DNSResolver, stats statsd.Statter) (err error) {
+func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) (err error) {
+	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
+		return core.MalformedRequestError(fmt.Sprintf("Too many contacts provided: %d > %d",
+			len(contacts), ra.maxContactsPerReg))
+	}
+
 	for _, contact := range contacts {
 		switch contact.Scheme {
 		case "tel":
 			continue
 		case "mailto":
-			rtt, err := validateEmail(contact.Opaque, resolver)
-			stats.TimingDuration("RA.DNS.RTT.MX", rtt, 1.0)
-			stats.Inc("RA.DNS.Rate", 1, 1.0)
+			rtt, err := validateEmail(contact.Opaque, ra.DNSResolver)
+			ra.stats.TimingDuration("RA.DNS.RTT.MX", rtt, 1.0)
+			ra.stats.Inc("RA.DNS.Rate", 1, 1.0)
 			if err != nil {
 				return err
 			}
@@ -576,7 +583,7 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) er
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	err = validateContacts(base.Contact, ra.DNSResolver, ra.stats)
+	err = ra.validateContacts(base.Contact)
 	if err != nil {
 		return
 	}
