@@ -32,6 +32,11 @@ import (
 // TODO(jsha): Read from a config file.
 const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
 
+// 1 week default pending authorization lifetime.  If you can't respond to a
+// challenge this quickly, then you need to request a new challenge.
+// TODO(rlb): Read from a config file
+const DefaultPendingAuthorizationLifetime = 7 * 24 * time.Hour
+
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -59,9 +64,10 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 		stats: stats,
 		clk:   clk,
 		log:   logger,
-		authorizationLifetime: DefaultAuthorizationLifetime,
-		rlPolicies:            policies,
-		tiMu:                  new(sync.RWMutex),
+		authorizationLifetime:        DefaultAuthorizationLifetime,
+		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
+		rlPolicies:                   policies,
+		tiMu:                         new(sync.RWMutex),
 	}
 	return ra
 }
@@ -247,7 +253,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Create validations. The WFE will  update them with URIs before sending them out.
 	challenges, combinations, err := ra.PA.ChallengesFor(identifier, &reg.Key)
 
-	expires := ra.clk.Now().Add(ra.authorizationLifetime)
+	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 
 	// Partially-filled object
 	authz = core.Authorization{
