@@ -569,30 +569,58 @@ func TestMarkCertificateRevoked(t *testing.T) {
 func TestCountCertificates(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
-	fc.Add(time.Hour * 24)
-	now := fc.Now()
-	count, err := sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
-	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
-	test.AssertEquals(t, count, int64(0))
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	// Add a cert to the DB to test with.
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(certDER, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
-	fc.Add(2 * time.Hour)
-	now = fc.Now()
-	count, err = sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
-	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
+	// Add three certificates, and test at three points
+	// t= 0    6   12   18   24   30   36
+	//    .    |    .    |    .    |    .
+	//    .<---|----.----|--->.    |    .
+	//    .    |    .<---|----.----|--->.
+	//    .    |    .<---|----.----|--->.
+	// valid:  1         3         2
+	base := fc.Now()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Couldn't generate test key pair")
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1337),
+		NotBefore:    base,
+		NotAfter:     base.Add(24 * time.Hour),
+	}
+	cert1, err := x509.CreateCertificate(rand.Reader, template, template, priv.Public(), priv)
+	template = &x509.Certificate{
+		SerialNumber: big.NewInt(1338),
+		NotBefore:    base.Add(12 * time.Hour),
+		NotAfter:     base.Add(36 * time.Hour),
+	}
+	cert2, err := x509.CreateCertificate(rand.Reader, template, template, priv.Public(), priv)
+	template = &x509.Certificate{
+		SerialNumber: big.NewInt(1339),
+		NotBefore:    base.Add(12 * time.Hour),
+		NotAfter:     base.Add(36 * time.Hour),
+	}
+	cert3, err := x509.CreateCertificate(rand.Reader, template, template, priv.Public(), priv)
+
+	_, err = sa.AddCertificate(cert1, reg.ID)
+	test.AssertNotError(t, err, "Couldn't store certificate")
+	fc.Add(12 * time.Hour)
+	_, err = sa.AddCertificate(cert2, reg.ID)
+	test.AssertNotError(t, err, "Couldn't store certificate")
+	_, err = sa.AddCertificate(cert3, reg.ID)
+	test.AssertNotError(t, err, "Couldn't store certificate")
+	fc.Set(base)
+
+	count, err := sa.CountValidCertificatesAtTime(base.Add(6 * time.Hour))
+	test.AssertNotError(t, err, "Couldn't get certificate count")
 	test.AssertEquals(t, count, int64(1))
 
-	fc.Add(24 * time.Hour)
-	now = fc.Now()
-	count, err = sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
-	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
-	test.AssertEquals(t, count, int64(0))
+	count, err = sa.CountValidCertificatesAtTime(base.Add(18 * time.Hour))
+	test.AssertNotError(t, err, "Couldn't get certificate count")
+	test.AssertEquals(t, count, int64(3))
+
+	count, err = sa.CountValidCertificatesAtTime(base.Add(30 * time.Hour))
+	test.AssertNotError(t, err, "Couldn't get certificate count")
+	test.AssertEquals(t, count, int64(2))
 }
 
 func TestCountRegistrationsByIP(t *testing.T) {

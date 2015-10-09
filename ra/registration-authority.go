@@ -128,10 +128,7 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int, error) {
 
 	now := ra.clk.Now()
 	if ra.issuanceCountInvalid(now) {
-		count, err := ra.SA.CountCertificatesRange(
-			now.Add(-ra.rlPolicies.TotalCertificates.Window.Duration),
-			now,
-		)
+		count, err := ra.SA.CountValidCertificatesAtTime(now)
 		if err != nil {
 			return 0, err
 		}

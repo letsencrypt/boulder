@@ -61,7 +61,7 @@ const (
 	MethodFinalizeAuthorization             = "FinalizeAuthorization"             // SA
 	MethodAddCertificate                    = "AddCertificate"                    // SA
 	MethodAlreadyDeniedCSR                  = "AlreadyDeniedCSR"                  // SA
-	MethodCountCertificatesRange            = "CountCertificatesRange"            // SA
+	MethodCountValidCertificatesAtTime      = "CountValidCertificatesAtTime"      // SA
 	MethodCountCertificatesByNames          = "CountCertificatesByNames"          // SA
 	MethodCountRegistrationsByIP            = "CountRegistrationsByIP"            // SA
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
@@ -140,11 +140,6 @@ type alreadyDeniedCSRReq struct {
 type updateOCSPRequest struct {
 	Serial       string
 	OCSPResponse []byte
-}
-
-type countRequest struct {
-	Start time.Time
-	End   time.Time
 }
 
 type countCertificatesByNamesRequest struct {
@@ -1022,14 +1017,14 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
-	rpc.Handle(MethodCountCertificatesRange, func(req []byte) (response []byte, err error) {
-		var cReq countRequest
-		err = json.Unmarshal(req, &cReq)
+	rpc.Handle(MethodCountValidCertificatesAtTime, func(req []byte) (response []byte, err error) {
+		var now time.Time
+		err = json.Unmarshal(req, &now)
 		if err != nil {
 			return
 		}
 
-		count, err := impl.CountCertificatesRange(cReq.Start, cReq.End)
+		count, err := impl.CountValidCertificatesAtTime(now)
 		if err != nil {
 			return
 		}
@@ -1358,16 +1353,14 @@ func (cac StorageAuthorityClient) AlreadyDeniedCSR(names []string) (exists bool,
 	return
 }
 
-// CountCertificatesRange sends a request to count the number of certificates
-// issued in  a certain time range
-func (cac StorageAuthorityClient) CountCertificatesRange(start, end time.Time) (count int64, err error) {
-	var cReq countRequest
-	cReq.Start, cReq.End = start, end
-	data, err := json.Marshal(cReq)
+// CountValidCertificatesAtTime sends a request to count the number of
+// certificates valid at a given time
+func (cac StorageAuthorityClient) CountValidCertificatesAtTime(now time.Time) (count int64, err error) {
+	data, err := json.Marshal(now)
 	if err != nil {
 		return
 	}
-	response, err := cac.rpc.DispatchSync(MethodCountCertificatesRange, data)
+	response, err := cac.rpc.DispatchSync(MethodCountValidCertificatesAtTime, data)
 	if err != nil {
 		return
 	}

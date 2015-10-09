@@ -322,7 +322,7 @@ func (sa *StorageAuthority) GetLatestValidAuthorization(registrationID int64, id
 }
 
 // CountCertificatesRange is a mock
-func (sa *StorageAuthority) CountCertificatesRange(_, _ time.Time) (int64, error) {
+func (sa *StorageAuthority) CountValidCertificatesAtTime(_ time.Time) (int64, error) {
 	return 0, nil
 }
 
