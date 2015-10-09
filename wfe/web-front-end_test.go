@@ -547,7 +547,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
-	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log, stats, cmd.RateLimitConfig{})
+	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log, stats, cmd.RateLimitConfig{}, 0)
 	ra.SA = &mocks.StorageAuthority{}
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}

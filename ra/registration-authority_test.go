@@ -224,7 +224,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 			Threshold: 100,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
-	})
+	}, 1)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = &ca
@@ -259,30 +259,34 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 }
 
 func TestValidateContacts(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
 	tel, _ := core.ParseAcmeURL("tel:")
 	ansible, _ := core.ParseAcmeURL("ansible:earth.sol.milkyway.laniakea/letsencrypt")
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
 	invalidEmail, _ := core.ParseAcmeURL("mailto:admin@example.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	nStats, _ := statsd.NewNoopClient()
-
-	err := validateContacts([]*core.AcmeURL{}, &mocks.DNSResolver{}, nStats)
+	err := ra.validateContacts([]*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = validateContacts([]*core.AcmeURL{tel}, &mocks.DNSResolver{}, nStats)
+	err = ra.validateContacts([]*core.AcmeURL{tel, validEmail})
+	test.AssertError(t, err, "Too Many Contacts")
+
+	err = ra.validateContacts([]*core.AcmeURL{tel})
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.DNSResolver{}, nStats)
+	err = ra.validateContacts([]*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.DNSResolver{}, nStats)
+	err = ra.validateContacts([]*core.AcmeURL{invalidEmail})
 	test.AssertError(t, err, "Invalid Email")
 
-	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.DNSResolver{}, nStats)
+	err = ra.validateContacts([]*core.AcmeURL{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.DNSResolver{}, nStats)
+	err = ra.validateContacts([]*core.AcmeURL{ansible})
 	test.AssertError(t, err, "Unknown scehme")
 }
 
