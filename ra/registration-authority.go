@@ -221,7 +221,8 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 	return
 }
 
-// NewAuthorization constuct a new Authz from a request.
+// NewAuthorization constuct a new Authz from a request. Values (domains) in
+// request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
 	reg, err := ra.SA.GetRegistration(regID)
 	if err != nil {
@@ -230,6 +231,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	identifier := request.Identifier
+	identifier.Value = strings.ToLower(identifier.Value)
 
 	// Check that the identifier is present and appropriate
 	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
@@ -310,7 +312,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(
 	if len(csr.Subject.CommonName) > 0 {
 		hostNames = append(hostNames, csr.Subject.CommonName)
 	}
-	hostNames = core.UniqueNames(hostNames)
+	hostNames = core.UniqueLowerNames(hostNames)
 
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
 		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
