@@ -17,6 +17,8 @@ EXPOSE 4000
 
 # get database migration tool
 RUN go get bitbucket.org/liamstask/goose/cmd/goose
+# install go lint
+RUN go get -v github.com/golang/lint/golint
 
 # Assume the configuration is in /etc/boulder
 ENV BOULDER_CONFIG /go/src/github.com/letsencrypt/boulder/test/boulder-config.json
