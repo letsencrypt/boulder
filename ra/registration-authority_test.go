@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"net"
 	"net/url"
 	"testing"
 	"time"
@@ -212,7 +213,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	csrDER, _ := hex.DecodeString(CSRhex)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 
-	Registration, _ = ssa.NewRegistration(core.Registration{Key: AccountKeyA})
+	Registration, _ = ssa.NewRegistration(core.Registration{
+		Key:       AccountKeyA,
+		InitialIP: net.ParseIP("3.2.3.3"),
+	})
 
 	stats, _ := statsd.NewNoopClient()
 	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats, cmd.RateLimitConfig{
@@ -303,8 +307,9 @@ func TestNewRegistration(t *testing.T) {
 	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact: []*core.AcmeURL{mailto},
-		Key:     AccountKeyB,
+		Contact:   []*core.AcmeURL{mailto},
+		Key:       AccountKeyB,
+		InitialIP: net.ParseIP("7.6.6.5"),
 	}
 
 	result, err := ra.NewRegistration(input)
@@ -332,6 +337,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 		Key:       AccountKeyC,
 		Contact:   []*core.AcmeURL{mailto},
 		Agreement: "I agreed",
+		InitialIP: net.ParseIP("5.0.5.0"),
 	}
 
 	result, err := ra.NewRegistration(input)
