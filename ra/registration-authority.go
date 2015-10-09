@@ -139,6 +139,10 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int, error) {
 	return ra.totalIssuedCache, nil
 }
 
+// noRegistrationID is used for the regID parameter to GetThreshold when no
+// registration-based overrides are necessary.
+const noRegistrationID = -1
+
 func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
 	limit := ra.rlPolicies.RegistrationsPerIP
 	if limit.Enabled() {
@@ -147,7 +151,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
 		if err != nil {
 			return err
 		}
-		if count >= limit.GetThreshold(ip.String(), -1) {
+		if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
 			return core.RateLimitedError("Too many registrations from this IP")
 		}
 	}

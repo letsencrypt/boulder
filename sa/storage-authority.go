@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"sort"
 	"strings"
@@ -230,15 +231,26 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationID int64
 	return ssa.GetAuthorization(auth.ID)
 }
 
-// incrementIP increments the byte within `ip` at `index`, accounting for overflow.
-// Index must be greater than zero and less than len(ip).
-func incrementIP(ip *net.IP, index int) {
-	if (*ip)[index] == 255 {
-		(*ip)[index-1]++
-		(*ip)[index] = 0
-	} else {
-		(*ip)[index]++
+// incrementIP returns a copy of `ip` incremented at a bit index `index`,
+// or in other words the first IP of the next highest subnet given a mask of
+// length `index`.
+// In order to easily account for overflow, we treat ip as a big.Int and add to
+// it. If the increment overflows the max size of a net.IP, return the highest
+// possible net.IP.
+func incrementIP(ip net.IP, index int) net.IP {
+	bigInt := new(big.Int)
+	bigInt.SetBytes([]byte(ip))
+	incr := new(big.Int).Lsh(big.NewInt(1), 128-uint(index))
+	bigInt.Add(bigInt, incr)
+	// bigInt.Bytes can be shorter than 16 bytes, so stick it into a
+	// full-sized net.IP.
+	resultBytes := bigInt.Bytes()
+	if len(resultBytes) > 16 {
+		return net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
 	}
+	result := make(net.IP, 16)
+	copy(result[16-len(resultBytes):], resultBytes)
+	return result
 }
 
 // ipRange returns a range of IP addresses suitable for querying MySQL for the
@@ -249,23 +261,19 @@ func incrementIP(ip *net.IP, index int) {
 // first IP outside of the resulting network.
 func ipRange(ip net.IP) (net.IP, net.IP) {
 	ip = ip.To16()
-	begin := make(net.IP, len(ip))
-	end := make(net.IP, len(ip))
+	// For IPv6, match on a certain subnet range, since one person can commonly
+	// have an entire /48 to themselves.
+	maskLength := 48
 	// For IPv4 addresses, do a match on exact address, so begin = ip and end =
 	// next higher IP.
 	if ip.To4() != nil {
-		copy(begin, ip)
-		copy(end, ip)
-		incrementIP(&end, 15)
-	} else {
-		// For IPv6, match on a certain subnet range, since one person can commonly
-		// have an entire /48 to themselves.
-		maskLength := 48
-		mask := net.CIDRMask(maskLength, 128)
-		begin = ip.Mask(mask)
-		copy(end, begin)
-		incrementIP(&end, (maskLength/8)-1)
+		maskLength = 128
 	}
+
+	mask := net.CIDRMask(maskLength, 128)
+	begin := ip.Mask(mask)
+	end := incrementIP(begin, maskLength)
+
 	return begin, end
 }
 

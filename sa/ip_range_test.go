@@ -16,21 +16,23 @@ func TestIncrementIP(t *testing.T) {
 		index    int
 		expected string
 	}{
-		{"0.0.0.0", 15, "0.0.0.1"},
-		{"0.0.0.255", 15, "0.0.1.0"},
-		{"127.0.0.1", 15, "127.0.0.2"},
-		{"1.2.3.4", 14, "1.2.4.4"},
-		{"::1", 15, "::2"},
-		{"2002:1001:4008::", 15, "2002:1001:4008::1"},
-		{"2002:1001:4008::", 5, "2002:1001:4009::"},
+		{"0.0.0.0", 128, "0.0.0.1"},
+		{"0.0.0.255", 128, "0.0.1.0"},
+		{"127.0.0.1", 128, "127.0.0.2"},
+		{"1.2.3.4", 120, "1.2.4.4"},
+		{"::1", 128, "::2"},
+		{"2002:1001:4008::", 128, "2002:1001:4008::1"},
+		{"2002:1001:4008::", 48, "2002:1001:4009::"},
+		{"2002:1001:ffff::", 48, "2002:1002::"},
+		{"ffff:ffff:ffff::", 48, "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"},
 	}
 	for _, tc := range testCases {
 		ip := net.ParseIP(tc.ip).To16()
-		incrementIP(&ip, tc.index)
+		actual := incrementIP(ip, tc.index)
 		expectedIP := net.ParseIP(tc.expected)
-		if !ip.Equal(expectedIP) {
+		if !actual.Equal(expectedIP) {
 			t.Errorf("Expected incrementIP(%s, %d) to be %s, instead got %s",
-				tc.ip, tc.index, expectedIP, ip.String())
+				tc.ip, tc.index, expectedIP, actual.String())
 		}
 	}
 }
