@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"crypto/x509"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -80,19 +81,32 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	log.Debug(fmt.Sprintf("Searching for OCSP issued by us for serial %s", serialString))
 
 	var response []byte
+	defer func() {
+		if len(response) != 0 {
+			log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
+		}
+	}()
 	// Note: we order by id rather than createdAt, because otherwise we sometimes
 	// get the wrong result if a certificate is revoked in the same second as its
 	// last update (e.g. client issues and instant revokes).
 	err := src.dbMap.SelectOne(
 		&response,
-		"SELECT ocspResponse from certificateStatus WHERE serial = :serial",
+		"SELECT ocspResponse FROM certificateStatus WHERE serial = :serial",
 		map[string]interface{}{"serial": serialString},
 	)
 	if err != nil || len(response) == 0 {
+		if err == sql.ErrNoRows || len(response) == 0 {
+			err := src.dbMap.SelectOne(
+				&response,
+				"SELECT response from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
+				map[string]interface{}{"serial": serialString},
+			)
+			if err == nil && len(response) != 0 {
+				return response, true
+			}
+		}
 		return nil, false
 	}
-
-	log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 
 	return response, true
 }

@@ -230,7 +230,7 @@ func (updater *OCSPUpdater) findRevokedCertificates(batchSize int) ([]core.Certi
 		&statuses,
 		`SELECT * FROM certificateStatus
 		 WHERE status = :revoked
-		 AND ocspLastUpdated < revokedDate
+		 AND ocspLastUpdated <= revokedDate
 		 LIMIT :limit`,
 		map[string]interface{}{
 			"revoked": string(core.OCSPStatusRevoked),
