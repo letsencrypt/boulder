@@ -9,8 +9,10 @@ VERSION ?= 1.0.0
 EPOCH ?= 1
 MAINTAINER ?= "Community"
 
-CMD_OBJECTS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d -exec basename '{}' \;)
-OBJECTS = $(CMD_OBJECTS) pkcs11bench
+CMDS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d)
+CMD_BASENAMES = $(shell echo $(CMDS) | xargs -n1 basename)
+CMD_BINS = $(addprefix $(OBJDIR)/, $(CMD_BASENAMES) )
+OBJECTS = $(CMD_BINS)
 
 # Build environment variables (referencing core/util.go)
 COMMIT_ID = $(shell git rev-parse --short HEAD)
@@ -24,21 +26,20 @@ BUILD_HOST_VAR = github.com/letsencrypt/boulder/core.BuildHost
 BUILD_TIME = $(shell date -u)
 BUILD_TIME_VAR = github.com/letsencrypt/boulder/core.BuildTime
 
+GO_BUILD_FLAGS = -ldflags "-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" -X \"$(BUILD_HOST_VAR)=$(BUILD_HOST)\""
+
 .PHONY: all build
 all: build
 
 build: $(OBJECTS)
 
-pre:
+$(OBJDIR):
 	@mkdir -p $(OBJDIR)
 
-# Compile each of the binaries
-$(CMD_OBJECTS): pre
-	@echo [go] bin/$@
-	@go build -o ./bin/$@ -ldflags \
-		"-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" \
-		-X \"$(BUILD_HOST_VAR)=$(BUILD_HOST)\"" \
-		./cmd/$@/
+$(CMD_BINS): build_cmds
+
+build_cmds: | $(OBJDIR)
+	GOBIN=$(OBJDIR) go install $(GO_BUILD_FLAGS) ./...
 
 clean:
 	rm -f $(OBJDIR)/*
@@ -64,7 +65,7 @@ archive:
 # Version and Epoch, such as:
 #
 # VERSION=0.1.9 EPOCH=52 MAINTAINER="$(whoami)" ARCHIVEDIR=/tmp make build rpm
-rpm:
+rpm: build
 	fpm -s dir -t rpm --rpm-digest sha256 --name "boulder" \
 		--license "Mozilla Public License v2.0" --vendor "ISRG" \
 		--url "https://github.com/letsencrypt/boulder" --prefix=/opt/boulder \
@@ -72,7 +73,4 @@ rpm:
 		--package $(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.rpm \
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
 		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
-		test/boulder-config.json sa/_db ca/_db $(foreach var,$(OBJECTS), $(OBJDIR)/$(var))
-
-pkcs11bench: pre
-	go test -o ./bin/pkcs11bench -c ./Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key/
+		test/boulder-config.json sa/_db $(OBJECTS)

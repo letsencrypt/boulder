@@ -6,6 +6,7 @@
 package core
 
 import (
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
@@ -84,6 +85,7 @@ const (
 	TLSProblem            = ProblemType("urn:acme:error:tls")
 	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
 	UnknownHostProblem    = ProblemType("urn:acme:error:unknownHost")
+	RateLimitedProblem    = ProblemType("urn:acme:error:rateLimited")
 )
 
 // These types are the available challenges
@@ -193,24 +195,95 @@ type ValidationRecord struct {
 	AddressUsed       net.IP   `json:"addressUsed"`
 }
 
-// AuthorizedKey represents a domain holder's authorization for a
+// KeyAuthorization represents a domain holder's authorization for a
 // specific account key to satisfy a specific challenge.
-type AuthorizedKey struct {
-	Token string           `json:"token"`
-	Key   *jose.JsonWebKey `json:"key,omitempty"`
+type KeyAuthorization struct {
+	Token      string
+	Thumbprint string
 }
 
-// Match determines whether this AuthorizedKey object matches the given token and key
-func (ak AuthorizedKey) Match(token string, key *jose.JsonWebKey) bool {
-	if ak.Key == nil {
+// NewKeyAuthorization computes the thumbprint and assembles the object
+func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, error) {
+	if key == nil {
+		return KeyAuthorization{}, fmt.Errorf("Cannot authorize a nil key")
+	}
+
+	thumbprint, err := Thumbprint(key)
+	if err != nil {
+		return KeyAuthorization{}, err
+	}
+
+	return KeyAuthorization{
+		Token:      token,
+		Thumbprint: thumbprint,
+	}, nil
+}
+
+// NewKeyAuthorizationFromString parses the string and composes a key authorization struct
+func NewKeyAuthorizationFromString(input string) (ka KeyAuthorization, err error) {
+	parts := strings.Split(input, ".")
+	if len(parts) != 2 {
+		err = fmt.Errorf("Invalid key authorization: %d parts", len(parts))
+		return
+	} else if !LooksLikeAToken(parts[0]) {
+		err = fmt.Errorf("Invalid key authorization: malformed token")
+		return
+	} else if !LooksLikeAToken(parts[1]) {
+		// Thumbprints have the same syntax as tokens in boulder
+		// Both are base64-encoded and 32 octets
+		err = fmt.Errorf("Invalid key authorization: malformed key thumbprint")
+		return
+	}
+
+	ka = KeyAuthorization{
+		Token:      parts[0],
+		Thumbprint: parts[1],
+	}
+	return
+}
+
+// String produces the string representation of a key authorization
+func (ka KeyAuthorization) String() string {
+	return ka.Token + "." + ka.Thumbprint
+}
+
+// Match determines whether this KeyAuthorization matches the given token and key
+func (ka KeyAuthorization) Match(token string, key *jose.JsonWebKey) bool {
+	if key == nil {
 		return false
 	}
-	return token == ak.Token && KeyDigestEquals(key.Key, ak.Key.Key)
+
+	thumbprint, err := Thumbprint(key)
+	if err != nil {
+		return false
+	}
+
+	tokensEqual := subtle.ConstantTimeCompare([]byte(token), []byte(ka.Token))
+	thumbprintsEqual := subtle.ConstantTimeCompare([]byte(thumbprint), []byte(ka.Thumbprint))
+
+	return tokensEqual == 1 && thumbprintsEqual == 1
 }
 
-// MatchAuthorizedKey is just an alias for Match
-func (ak AuthorizedKey) MatchAuthorizedKey(ak2 AuthorizedKey) bool {
-	return ak.Match(ak2.Token, ak2.Key)
+// MarshalJSON packs a key authorization into its string representation
+func (ka KeyAuthorization) MarshalJSON() (result []byte, err error) {
+	return json.Marshal(ka.String())
+}
+
+// UnmarshalJSON unpacks a key authorization from a string
+func (ka *KeyAuthorization) UnmarshalJSON(data []byte) (err error) {
+	var str string
+	err = json.Unmarshal(data, &str)
+	if err != nil {
+		return err
+	}
+
+	parsed, err := NewKeyAuthorizationFromString(str)
+	if err != nil {
+		return err
+	}
+
+	*ka = parsed
+	return
 }
 
 // Challenge is an aggregate of all data needed for any challenges.
@@ -250,7 +323,7 @@ type Challenge struct {
 	N int64
 
 	// Used by http-00, tls-sni-00, and dns-00 challenges
-	AuthorizedKey JSONBuffer `json:"authorizedKey,omitempty"`
+	KeyAuthorization *KeyAuthorization `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
@@ -267,21 +340,6 @@ type Challenge struct {
 	AccountKey *jose.JsonWebKey `json:"accountKey,omitempty"`
 }
 
-// UnsafeSetToken sets the token value both in the Token field and in the
-// serialized AuthorizedKey object.
-//
-// This method should only be used for writing tests, in cases where the
-// token value needs to be predictable.
-func (ch *Challenge) UnsafeSetToken(token string) (err error) {
-	ch.Token = token
-
-	ch.AuthorizedKey, err = json.Marshal(AuthorizedKey{
-		Token: token,
-		Key:   ch.AccountKey,
-	})
-	return
-}
-
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
 // back to the RA to be stored.
 func (ch Challenge) RecordsSane() bool {
@@ -290,8 +348,9 @@ func (ch Challenge) RecordsSane() bool {
 	}
 
 	switch ch.Type {
-	case ChallengeTypeSimpleHTTP: // TO DELETE
-		fallthrough // TO DELETE
+	case ChallengeTypeSimpleHTTP:
+		// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this case
+		fallthrough
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
@@ -299,8 +358,9 @@ func (ch Challenge) RecordsSane() bool {
 				return false
 			}
 		}
-	case ChallengeTypeDVSNI: // TO DELETE
-		fallthrough // TO DELETE
+	case ChallengeTypeDVSNI:
+		// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this case
+		fallthrough
 	case ChallengeTypeTLSSNI01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
@@ -319,21 +379,18 @@ func (ch Challenge) RecordsSane() bool {
 	return true
 }
 
-//----- BEGIN TO DELETE -----
-// IsLegacy returns true if the challenge is of a legacy type (i.e., one defined
+// isLegacy returns true if the challenge is of a legacy type (i.e., one defined
 // before draft-ietf-acme-acme-00)
-func (ch Challenge) IsLegacy() bool {
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
+func (ch Challenge) isLegacy() bool {
 	return (ch.Type == ChallengeTypeSimpleHTTP) ||
 		(ch.Type == ChallengeTypeDVSNI)
 }
 
-// LegacyIsSane performs sanity checks for legacy challenge types, which have
+// legacyIsSane performs sanity checks for legacy challenge types, which have
 // a different structure / logic than current challenges.
-func (ch Challenge) LegacyIsSane(completed bool) bool {
-	if !ch.IsLegacy() {
-		return false
-	}
-
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
+func (ch Challenge) legacyIsSane(completed bool) bool {
 	if ch.Status != StatusPending {
 		return false
 	}
@@ -385,9 +442,10 @@ func (ch Challenge) LegacyIsSane(completed bool) bool {
 	return true
 }
 
-// LegacyMergeResponse copies a subset of client-provided data to the current Challenge.
+// legacyMergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
-func (ch Challenge) LegacyMergeResponse(resp Challenge) Challenge {
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
+func (ch Challenge) legacyMergeResponse(resp Challenge) Challenge {
 	switch ch.Type {
 	case ChallengeTypeSimpleHTTP:
 		// For simpleHttp, only "tls" is client-provided
@@ -409,48 +467,36 @@ func (ch Challenge) LegacyMergeResponse(resp Challenge) Challenge {
 	return ch
 }
 
-//----- END TO DELETE -----
-
 // IsSane checks the sanity of a challenge object before issued to the client
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
-	if ch.IsLegacy() { // TO DELETE
-		return ch.LegacyIsSane(completed) // TO DELETE
-	} // TO DELETE
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
+	if ch.isLegacy() {
+		return ch.legacyIsSane(completed)
+	}
 
 	if ch.Status != StatusPending {
 		return false
 	}
 
-	// There always needs to be an account key and authorized key object
-	if ch.AccountKey == nil || len(ch.AuthorizedKey) == 0 {
+	// There always needs to be an account key and token
+	if ch.AccountKey == nil || !LooksLikeAToken(ch.Token) {
 		return false
 	}
 
-	// In addition to being non-empty, the authorized key should parse as JSON
-	var ak AuthorizedKey
-	err := json.Unmarshal(ch.AuthorizedKey, &ak)
-	if err != nil {
+	// Before completion, the key authorization field should be empty
+	if !completed && ch.KeyAuthorization != nil {
 		return false
 	}
 
-	// Before completion, the token field should be empty
-	if !completed && len(ch.Token) > 0 {
-		return false
-	}
-
-	// If the challenge is completed, then there should be a token, it should be
-	// base64, and it should match the one in the authorized key object
+	// If the challenge is completed, then there should be a key authorization,
+	// and it should match the challenge.
 	if completed {
-		if len(ch.Token) != 43 {
+		if ch.KeyAuthorization == nil {
 			return false
 		}
 
-		if _, err := B64dec(ch.Token); err != nil {
-			return false
-		}
-
-		if ch.Token != ak.Token {
+		if !ch.KeyAuthorization.Match(ch.Token, ch.AccountKey) {
 			return false
 		}
 	}
@@ -461,19 +507,20 @@ func (ch Challenge) IsSane(completed bool) bool {
 // MergeResponse copies a subset of client-provided data to the current Challenge.
 // Note: This method does not update the challenge on the left side of the '.'
 func (ch Challenge) MergeResponse(resp Challenge) Challenge {
-	if ch.IsLegacy() { // TO DELETE
-		return ch.LegacyMergeResponse(resp) // TO DELETE
-	} // TO DELETE
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
+	if ch.isLegacy() {
+		return ch.legacyMergeResponse(resp)
+	}
 
-	// The only client-provided field is the token, and all current challenge types
-	// use it.
+	// The only client-provided field is the key authorization, and all current
+	// challenge types use it.
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
 		fallthrough
 	case ChallengeTypeTLSSNI01:
 		fallthrough
 	case ChallengeTypeDNS01:
-		ch.Token = resp.Token
+		ch.KeyAuthorization = resp.KeyAuthorization
 	}
 
 	return ch
@@ -571,11 +618,6 @@ type Certificate struct {
 	DER     []byte    `db:"der"`
 	Issued  time.Time `db:"issued"`
 	Expires time.Time `db:"expires"`
-}
-
-type IssuedCertIdentifierData struct {
-	ReversedName string
-	Serial       string
 }
 
 // IdentifierData holds information about what certificates are known for a
@@ -680,6 +722,8 @@ type OCSPSigningRequest struct {
 	RevokedAt time.Time
 }
 
+// SignedCertificateTimestamp represents objects used by Certificate Transparency
+// to demonstrate that a certificate was submitted to a CT log. See RFC 6962.
 type SignedCertificateTimestamp struct {
 	ID int `db:"id"`
 	// The version of the protocol to which the SCT conforms
@@ -700,8 +744,6 @@ type SignedCertificateTimestamp struct {
 	LockCol int64
 }
 
-type RPCSignedCertificateTimestamp SignedCertificateTimestamp
-
 type rawSignedCertificateTimestamp struct {
 	Version    uint8  `json:"sct_version"`
 	LogID      string `json:"id"`
@@ -710,6 +752,9 @@ type rawSignedCertificateTimestamp struct {
 	Extensions string `json:"extensions"`
 }
 
+// UnmarshalJSON parses the add-chain response from a CT log. It fills all of
+// the fields in the SignedCertificateTimestamp struct except for ID and
+// CertificateSerial, which are used for local recordkeeping in the Boulder DB.
 func (sct *SignedCertificateTimestamp) UnmarshalJSON(data []byte) error {
 	var err error
 	var rawSCT rawSignedCertificateTimestamp
@@ -771,20 +816,6 @@ func (sct *SignedCertificateTimestamp) CheckSignature() error {
 
 // RevocationCode is used to specify a certificate revocation reason
 type RevocationCode int
-
-type RevocationCodes []RevocationCode
-
-func (rc RevocationCodes) Len() int {
-	return len(rc)
-}
-
-func (rc RevocationCodes) Less(i, j int) bool {
-	return rc[i] < rc[j]
-}
-
-func (rc RevocationCodes) Swap(i, j int) {
-	rc[i], rc[j] = rc[j], rc[i]
-}
 
 // RevocationReasons provides a map from reason code to string explaining the
 // code

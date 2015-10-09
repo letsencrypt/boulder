@@ -352,21 +352,13 @@ function getReadyToValidate(err, resp, body) {
     console.log("The server didn't offer any challenges we can handle.");
     process.exit(1);
   }
-
   var challenge = httpChallenges[0];
-  var jsonAuthorizedKey = util.b64dec(challenge.authorizedKey)
-  var authorizedKey = JSON.parse(jsonAuthorizedKey);
 
-  // Check that the key being authorized is our own
-  if (!authorizedKey.key ||
-      authorizedKey.key.kty != state.accountKeyPair.privateKey.kty ||
-      authorizedKey.key.n != state.accountKeyPair.privateKey.n ||
-      authorizedKey.key.e != state.accountKeyPair.privateKey.e) {
-    console.log("The server asked to authorize a different key!")
-    process.exit(1);
-  }
+  // Construct a key authorization for this token and key
+  var thumbprint = cryptoUtil.thumbprint(state.accountKeyPair.publicKey);
+  var keyAuthorization = challenge.token + "." + thumbprint;
 
-  var challengePath = ".well-known/acme-challenge/" + authorizedKey.token;
+  var challengePath = ".well-known/acme-challenge/" + challenge.token;
   state.responseURL = challenge["uri"];
   state.path = challengePath;
 
@@ -377,8 +369,9 @@ function getReadyToValidate(err, resp, body) {
     if ((host.split(/:/)[0] === state.domain || /localhost/.test(state.newRegistrationURL)) &&
         req.method === "GET" &&
         req.url == "/" + challengePath) {
+      console.log("Providing key authorization:", keyAuthorization);
       response.writeHead(200, {"Content-Type": "application/json"});
-      response.end(jsonAuthorizedKey);
+      response.end(keyAuthorization);
     } else {
       console.log("Got invalid request for", req.method, host, req.url);
       response.writeHead(404, {"Content-Type": "text/plain"});
@@ -395,8 +388,7 @@ function getReadyToValidate(err, resp, body) {
   cli.spinner("Validating domain");
   post(state.responseURL, {
     resource: "challenge",
-    tls: true,
-    token: authorizedKey.token,
+    keyAuthorization: keyAuthorization,
   }, ensureValidation);
 }
 

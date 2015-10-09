@@ -23,6 +23,7 @@ func main() {
 		// Set up logging
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		auditlogger.Info(app.VersionString())
 
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
@@ -42,11 +43,9 @@ func main() {
 
 		connectionHandler := func(*rpc.AmqpRPCServer) {}
 
-		sas, err := rpc.NewAmqpRPCServer(c.AMQP.SA.Server, connectionHandler)
+		sas, err := rpc.NewAmqpRPCServer(c.AMQP.SA.Server, connectionHandler, c.SA.MaxConcurrentRPCServerRequests)
 		cmd.FailOnError(err, "Unable to create SA RPC server")
 		rpc.NewStorageAuthorityServer(sas, sai)
-
-		auditlogger.Info(app.VersionString())
 
 		err = sas.Start(c)
 		cmd.FailOnError(err, "Unable to run SA RPC server")

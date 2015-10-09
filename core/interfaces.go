@@ -97,7 +97,7 @@ type CertificateAuthority interface {
 
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
-	WillingToIssue(AcmeIdentifier) error
+	WillingToIssue(id AcmeIdentifier, regID int64) error
 	ChallengesFor(AcmeIdentifier, *jose.JsonWebKey) ([]Challenge, [][]int, error)
 }
 
@@ -110,6 +110,8 @@ type StorageGetter interface {
 	GetCertificate(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
+	CountCertificatesRange(time.Time, time.Time) (int64, error)
+	CountCertificatesByNames([]string, time.Time, time.Time) (map[string]int, error)
 	GetSCTReceipt(string, string) (SignedCertificateTimestamp, error)
 }
 

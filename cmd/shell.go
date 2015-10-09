@@ -30,7 +30,7 @@ import (
 	"log"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
 	"os"
 	"runtime"
 	"time"
@@ -73,6 +73,8 @@ type Config struct {
 		BaseURL       string
 		ListenAddress string
 
+		AllowOrigins []string
+
 		CertCacheDuration           string
 		CertNoCacheExpirationWindow string
 		IndexCacheDuration          string
@@ -93,12 +95,18 @@ type Config struct {
 	}
 
 	RA struct {
+		RateLimitPoliciesFilename string
+
+		MaxConcurrentRPCServerRequests int64
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
 
 	SA struct {
 		DBConnect string
+
+		MaxConcurrentRPCServerRequests int64
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -108,6 +116,9 @@ type Config struct {
 		UserAgent string
 
 		PortConfig va.PortConfig
+
+		MaxConcurrentRPCServerRequests int64
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -158,7 +169,7 @@ type Config struct {
 		ListenAddress string
 		// MaxAge is the max-age to set in the Cache-Controler response
 		// header. It is a time.Duration formatted string.
-		MaxAge JSONDuration
+		MaxAge ConfigDuration
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
@@ -167,17 +178,10 @@ type Config struct {
 		DebugAddr string
 	}
 
-	OCSPUpdater struct {
-		DBConnect       string
-		MinTimeToExpiry string
-		ResponseLimit   int
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
+	OCSPUpdater OCSPUpdaterConfig
 
 	Publisher struct {
-		CT publisher.CTConfig
+		MaxConcurrentRPCServerRequests int64
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
@@ -200,6 +204,8 @@ type Config struct {
 		DNSResolver               string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
+
+		CT publisher.CTConfig
 	}
 
 	CertChecker struct {
@@ -211,6 +217,9 @@ type Config struct {
 	SubscriberAgreementURL string
 }
 
+// CAConfig structs have configuration information for the certificate
+// authority, including database parameters as well as controls for
+// issued certificates.
 type CAConfig struct {
 	Profile      string
 	TestMode     bool
@@ -227,10 +236,14 @@ type CAConfig struct {
 	MaxNames int
 	CFSSL    cfsslConfig.Config
 
+	MaxConcurrentRPCServerRequests int64
+
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
 }
 
+// PAConfig specifies how a policy authority should connect to its
+// database, and what policies it should enforce.
 type PAConfig struct {
 	DBConnect              string
 	EnforcePolicyWhitelist bool
@@ -263,6 +276,26 @@ type Queue struct {
 	Server string
 }
 
+// OCSPUpdaterConfig provides the various window tick times and batch sizes needed
+// for the OCSP (and SCT) updater
+type OCSPUpdaterConfig struct {
+	DBConnect string
+
+	NewCertificateWindow ConfigDuration
+	OldOCSPWindow        ConfigDuration
+	MissingSCTWindow     ConfigDuration
+
+	NewCertificateBatchSize int
+	OldOCSPBatchSize        int
+	MissingSCTBatchSize     int
+
+	OCSPMinTimeToExpiry ConfigDuration
+	OldestIssuedSCT     ConfigDuration
+
+	// DebugAddr is the address to run the /debug handlers on.
+	DebugAddr string
+}
+
 // AppShell contains CLI Metadata
 type AppShell struct {
 	Action func(Config)
@@ -270,6 +303,7 @@ type AppShell struct {
 	App    *cli.App
 }
 
+// Version returns a string representing the version of boulder running.
 func Version() string {
 	return fmt.Sprintf("0.1.0 [%s]", core.GetBuildID())
 }
@@ -381,6 +415,11 @@ func LoadCert(path string) (cert []byte, err error) {
 	return
 }
 
+// DebugServer starts a server to receive debug information.  Typical
+// usage is to start it in a goroutine, configured with an address
+// from the appropriate configuration object:
+//
+//   go cmd.DebugServer(c.XA.DebugAddr)
 func DebugServer(addr string) {
 	if addr == "" {
 		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")
@@ -393,13 +432,20 @@ func DebugServer(addr string) {
 	log.Println(http.Serve(ln, nil))
 }
 
-type JSONDuration struct {
+// ConfigDuration is just an alias for time.Duration that allows
+// serialization to YAML as well as JSON.
+type ConfigDuration struct {
 	time.Duration
 }
 
-var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a JSONDuration")
+// ErrDurationMustBeString is returned when a non-string value is
+// presented to be deserialized as a ConfigDuration
+var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a ConfigDuration")
 
-func (d *JSONDuration) UnmarshalJSON(b []byte) error {
+// UnmarshalJSON parses a string into a ConfigDuration using
+// time.ParseDuration.  If the input does not unmarshal as a
+// string, then UnmarshalJSON returns ErrDurationMustBeString.
+func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
 	s := ""
 	err := json.Unmarshal(b, &s)
 	if err != nil {
@@ -413,6 +459,23 @@ func (d *JSONDuration) UnmarshalJSON(b []byte) error {
 	return err
 }
 
-func (d JSONDuration) MarshalJSON() ([]byte, error) {
+// MarshalJSON returns the string form of the duration, as a byte array.
+func (d ConfigDuration) MarshalJSON() ([]byte, error) {
 	return []byte(d.Duration.String()), nil
+}
+
+// UnmarshalYAML uses the same frmat as JSON, but is called by the YAML
+// parser (vs. the JSON parser).
+func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	dur, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+
+	d.Duration = dur
+	return nil
 }

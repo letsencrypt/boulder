@@ -8,7 +8,6 @@ package wfe
 import (
 	"bytes"
 	"crypto/x509"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -38,8 +37,15 @@ const (
 	TermsPath      = "/terms"
 	IssuerPath     = "/acme/issuer-cert"
 	BuildIDPath    = "/build"
+
+	// StatusRateLimited is not in net/http
+	StatusRateLimited = 429
 )
 
+// WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
+// i.e., ACME.  Its members configure the paths for various ACME functions,
+// plus a few other data items used in ACME.  Its methods are primarily handlers
+// for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
@@ -74,7 +80,10 @@ type WebFrontEndImpl struct {
 	IndexCacheDuration          time.Duration
 	IssuerCacheDuration         time.Duration
 
-	// Gracefull shutdown settings
+	// CORS settings
+	AllowOrigins []string
+
+	// Graceful shutdown settings
 	ShutdownStopTimeout time.Duration
 	ShutdownKillTimeout time.Duration
 }
@@ -98,6 +107,8 @@ func statusCodeFromError(err interface{}) int {
 		return http.StatusBadRequest
 	case core.InternalServerError:
 		return http.StatusInternalServerError
+	case core.RateLimitedError:
+		return StatusRateLimited
 	default:
 		return http.StatusInternalServerError
 	}
@@ -106,7 +117,7 @@ func statusCodeFromError(err interface{}) int {
 type requestEvent struct {
 	ID           string          `json:",omitempty"`
 	RealIP       string          `json:",omitempty"`
-	ForwardedFor string          `json:",omitempty"`
+	ClientAddr   string          `json:",omitempty"`
 	Endpoint     string          `json:",omitempty"`
 	Method       string          `json:",omitempty"`
 	RequestTime  time.Time       `json:",omitempty"`
@@ -151,16 +162,27 @@ func (mrw BodylessResponseWriter) Write(buf []byte) (int, error) {
 //
 // * Set a Replay-Nonce header.
 //
-// * Respond http.StatusMethodNotAllowed for HTTP methods other than
-//   those listed.
+// * Respond to OPTIONS requests, including CORS preflight requests.
 //
-// * Never send a body in response to a HEAD request. (Anything
-//   written by the handler will be discarded if the method is HEAD.)
+// * Respond http.StatusMethodNotAllowed for HTTP methods other than
+// those listed.
+//
+// * Set CORS headers when responding to CORS "actual" requests.
+//
+// * Never send a body in response to a HEAD request. Anything
+// written by the handler will be discarded if the method is HEAD.
+// Also, all handlers that accept GET automatically accept HEAD.
 func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h func(http.ResponseWriter, *http.Request), methods ...string) {
-	methodsOK := make(map[string]bool)
+	methodsMap := make(map[string]bool)
 	for _, m := range methods {
-		methodsOK[m] = true
+		methodsMap[m] = true
 	}
+	if methodsMap["GET"] && !methodsMap["HEAD"] {
+		// Allow HEAD for any resource that allows GET
+		methods = append(methods, "HEAD")
+		methodsMap["HEAD"] = true
+	}
+	methodsStr := strings.Join(methods, ", ")
 	mux.HandleFunc(pattern, func(response http.ResponseWriter, request *http.Request) {
 		// We do not propagate errors here, because (1) they should be
 		// transient, and (2) they fail closed.
@@ -168,26 +190,28 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h fun
 		if err == nil {
 			response.Header().Set("Replay-Nonce", nonce)
 		}
-		response.Header().Set("Access-Control-Allow-Origin", "*")
 
 		switch request.Method {
 		case "HEAD":
-			// We'll be sending an error anyway, but we
-			// should still comply with HTTP spec by not
+			// Whether or not we're sending a 405 error,
+			// we should comply with HTTP spec by not
 			// sending a body.
 			response = BodylessResponseWriter{response}
 		case "OPTIONS":
-			// TODO, #469
+			wfe.Options(response, request, methodsStr, methodsMap)
+			return
 		}
 
-		if _, ok := methodsOK[request.Method]; !ok {
+		if !methodsMap[request.Method] {
 			logEvent := wfe.populateRequestEvent(request)
 			defer wfe.logRequestDetails(&logEvent)
 			logEvent.Error = "Method not allowed"
-			response.Header().Set("Allow", strings.Join(methods, ", "))
+			response.Header().Set("Allow", methodsStr)
 			wfe.sendError(response, logEvent.Error, request.Method, http.StatusMethodNotAllowed)
 			return
 		}
+
+		wfe.setCORSHeaders(response, request, "")
 
 		// Call the wrapped handler.
 		h(response, request)
@@ -282,6 +306,8 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", age))
 }
 
+// Directory is an HTTP request handler that simply provides the directory
+// object stored in the WFE's DirectoryJSON member.
 func (wfe *WebFrontEndImpl) Directory(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json")
 	response.Write(wfe.DirectoryJSON)
@@ -298,9 +324,22 @@ const (
 	malformedJWS = "Unable to read/verify body"
 )
 
+// verifyPOST reads and parses the request body, looks up the Registration
+// corresponding to its JWK, verifies the JWS signature,
+// checks that the resource field is present and correct in the JWS protected
+// header, and returns the JWS payload bytes, the key used to verify, and the
+// corresponding Registration (or error).
+// If regCheck is false, verifyPOST will still try to look up a registration
+// object, and will return it if found. However, if no registration object is
+// found, verifyPOST will attempt to verify the JWS using the key in the JWS
+// headers, and return the key plus a dummy registration if successful. If a
+// caller passes regCheck = false, it should plan on validating the key itself.
 func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
 	var err error
-	var reg core.Registration
+	// TODO: We should return a pointer to a registration, which can be nil,
+	// rather the a registration value with a sentinel value.
+	// https://github.com/letsencrypt/boulder/issues/877
+	reg := core.Registration{ID: -1}
 
 	if _, ok := request.Header["Content-Length"]; !ok {
 		err = core.LengthRequiredError("Content-Length header is required for POST.")
@@ -347,18 +386,40 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
 	}
-	key := parsedJws.Signatures[0].Header.JsonWebKey
+	submittedKey := parsedJws.Signatures[0].Header.JsonWebKey
+	if submittedKey == nil {
+		err = core.SignatureValidationError("No JWK in JWS header")
+		wfe.log.Debug(err.Error())
+		return nil, nil, reg, err
+	}
+
+	var key *jose.JsonWebKey
+	reg, err = wfe.SA.GetRegistrationByKey(*submittedKey)
+	// Special case: If no registration was found, but regCheck is false, use an
+	// empty registration and the submitted key. The caller is expected to do some
+	// validation on the returned key.
+	if _, ok := err.(core.NoSuchRegistrationError); ok && !regCheck {
+		// When looking up keys from the registrations DB, we can be confident they
+		// are "good". But when we are verifying against any submitted key, we want
+		// to check its quality before doing the verify.
+		if err = core.GoodKey(submittedKey.Key); err != nil {
+			return nil, nil, reg, err
+		}
+		key = submittedKey
+	} else if err != nil {
+		// For all other errors, or if regCheck is true, return error immediately.
+		return nil, nil, reg, err
+	} else {
+		// If the lookup was successful, use that key.
+		key = &reg.Key
+	}
+
 	payload, header, err := parsedJws.Verify(key)
 	if err != nil {
 		puberr := core.SignatureValidationError("JWS verification error")
 		wfe.log.Debug(string(body))
 		wfe.log.Debug(fmt.Sprintf("%v :: %v", puberr.Error(), err.Error()))
 		return nil, nil, reg, puberr
-	}
-	if key == nil {
-		err = core.SignatureValidationError("No JWK in JWS header")
-		wfe.log.Debug(err.Error())
-		return nil, nil, reg, err
 	}
 
 	// Check that the request has a known anti-replay nonce
@@ -371,18 +432,6 @@ func (wfe *WebFrontEndImpl) verifyPOST(request *http.Request, regCheck bool, res
 		err = core.SignatureValidationError(fmt.Sprintf("JWS has invalid anti-replay nonce"))
 		wfe.log.Debug(err.Error())
 		return nil, nil, reg, err
-	}
-
-	reg, err = wfe.SA.GetRegistrationByKey(*key)
-	if err != nil {
-		// If we are requiring a valid registration, any failure to look up the
-		// registration is an overall failure to verify.
-		if regCheck {
-			return nil, nil, reg, err
-		}
-		// Otherwise we just return an empty registration. The caller is expected
-		// to use the returned key instead.
-		reg = core.Registration{}
 	}
 
 	// Check that the "resource" field is present and has the correct value
@@ -426,6 +475,8 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, msg string, 
 		fallthrough
 	case http.StatusLengthRequired:
 		problem.Type = core.MalformedProblem
+	case StatusRateLimited:
+		problem.Type = core.RateLimitedProblem
 	default: // Either http.StatusInternalServerError or an unexpected code
 		problem.Type = core.ServerInternalProblem
 	}
@@ -508,8 +559,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
-	var id int64 = reg.ID
-	regURL := fmt.Sprintf("%s%d", wfe.RegBase, id)
+	regURL := fmt.Sprintf("%s%d", wfe.RegBase, reg.ID)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -539,7 +589,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
 		respCode := statusCodeFromError(err)
-		if err == sql.ErrNoRows {
+		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
 		}
@@ -685,13 +735,13 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 }
 
-func (wfe *WebFrontEndImpl) logCsr(remoteAddr string, cr core.CertificateRequest, registration core.Registration) {
+func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, registration core.Registration) {
 	var csrLog = struct {
-		RemoteAddr   string
+		ClientAddr   string
 		CsrBase64    []byte
 		Registration core.Registration
 	}{
-		RemoteAddr:   remoteAddr,
+		ClientAddr:   getClientAddr(request),
 		CsrBase64:    cr.Bytes,
 		Registration: registration,
 	}
@@ -709,7 +759,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
 		respCode := statusCodeFromError(err)
-		if err == sql.ErrNoRows {
+		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
 		}
@@ -733,7 +783,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
-	wfe.logCsr(request.RemoteAddr, certificateRequest, reg)
+	wfe.logCsr(request, certificateRequest, reg)
 	// Check that the key in the CSR is good. This will also be checked in the CA
 	// component, but we want to discard CSRs with bad keys as early as possible
 	// because (a) it's an easy check and we can save unnecessary requests and
@@ -788,6 +838,8 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	}
 }
 
+// Challenge handles POST requests to challenge URLs.  Such requests are clients'
+// responses to the server's challenges.
 func (wfe *WebFrontEndImpl) Challenge(
 	response http.ResponseWriter,
 	request *http.Request) {
@@ -859,7 +911,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(authz core.Authorization, ch
 // display to the client by clearing its ID and RegistrationID fields, and
 // preparing all its challenges.
 func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(authz *core.Authorization) {
-	for i, _ := range authz.Challenges {
+	for i := range authz.Challenges {
 		wfe.prepChallengeForDisplay(*authz, &authz.Challenges[i])
 	}
 	authz.ID = ""
@@ -907,7 +959,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
 		respCode := http.StatusBadRequest
-		if err == sql.ErrNoRows {
+		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
 		}
@@ -983,7 +1035,7 @@ func (wfe *WebFrontEndImpl) Registration(response http.ResponseWriter, request *
 		logEvent.Error = err.Error()
 		respMsg := malformedJWS
 		respCode := statusCodeFromError(err)
-		if err == sql.ErrNoRows {
+		if _, ok := err.(core.NoSuchRegistrationError); ok {
 			respMsg = unknownKey
 			respCode = http.StatusForbidden
 		}
@@ -1185,6 +1237,61 @@ func (wfe *WebFrontEndImpl) BuildID(response http.ResponseWriter, request *http.
 	}
 }
 
+// Options responds to an HTTP OPTIONS request.
+func (wfe *WebFrontEndImpl) Options(response http.ResponseWriter, request *http.Request, methodsStr string, methodsMap map[string]bool) {
+	// Every OPTIONS request gets an Allow header with a list of supported methods.
+	response.Header().Set("Allow", methodsStr)
+
+	// CORS preflight requests get additional headers. See
+	// http://www.w3.org/TR/cors/#resource-preflight-requests
+	reqMethod := request.Header.Get("Access-Control-Request-Method")
+	if reqMethod == "" {
+		reqMethod = "GET"
+	}
+	if methodsMap[reqMethod] {
+		wfe.setCORSHeaders(response, request, methodsStr)
+	}
+}
+
+// setCORSHeaders() tells the client that CORS is acceptable for this
+// request. If allowMethods == "" the request is assumed to be a CORS
+// actual request and no Access-Control-Allow-Methods header will be
+// sent.
+func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request *http.Request, allowMethods string) {
+	reqOrigin := request.Header.Get("Origin")
+	if reqOrigin == "" {
+		// This is not a CORS request.
+		return
+	}
+
+	// Allow CORS if the current origin (or "*") is listed as an
+	// allowed origin in config. Otherwise, disallow by returning
+	// without setting any CORS headers.
+	allow := false
+	for _, ao := range wfe.AllowOrigins {
+		if ao == "*" {
+			response.Header().Set("Access-Control-Allow-Origin", "*")
+			allow = true
+			break
+		} else if ao == reqOrigin {
+			response.Header().Set("Vary", "Origin")
+			response.Header().Set("Access-Control-Allow-Origin", ao)
+			allow = true
+			break
+		}
+	}
+	if !allow {
+		return
+	}
+
+	if allowMethods != "" {
+		// For an OPTIONS request: allow all methods handled at this URL.
+		response.Header().Set("Access-Control-Allow-Methods", allowMethods)
+	}
+	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
+	response.Header().Set("Access-Control-Max-Age", "86400")
+}
+
 func (wfe *WebFrontEndImpl) logRequestDetails(logEvent *requestEvent) {
 	logEvent.ResponseTime = time.Now()
 	var msg string
@@ -1198,15 +1305,26 @@ func (wfe *WebFrontEndImpl) logRequestDetails(logEvent *requestEvent) {
 
 func (wfe *WebFrontEndImpl) populateRequestEvent(request *http.Request) (logEvent requestEvent) {
 	logEvent = requestEvent{
-		ID:           core.NewToken(),
-		RealIP:       request.Header.Get("X-Real-IP"),
-		ForwardedFor: request.Header.Get("X-Forwarded-For"),
-		Method:       request.Method,
-		RequestTime:  time.Now(),
-		Extra:        make(map[string]interface{}, 0),
+		ID:          core.NewToken(),
+		RealIP:      request.Header.Get("X-Real-IP"),
+		ClientAddr:  getClientAddr(request),
+		Method:      request.Method,
+		RequestTime: time.Now(),
+		Extra:       make(map[string]interface{}, 0),
 	}
 	if request.URL != nil {
 		logEvent.Endpoint = request.URL.String()
 	}
 	return
+}
+
+// Comma-separated list of HTTP clients involved in making this
+// request, starting with the original requestor and ending with the
+// remote end of our TCP connection (which is typically our own
+// proxy).
+func getClientAddr(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		return xff + "," + r.RemoteAddr
+	}
+	return r.RemoteAddr
 }

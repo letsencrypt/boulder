@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/metrics"
@@ -65,14 +67,13 @@ func NewSourceFromDatabase(dbMap *gorp.DbMap, caKeyHash []byte) (src *DBSource, 
 }
 
 // Response is called by the HTTP server to handle a new OCSP request.
-func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool) {
+func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	log := blog.GetAuditLogger()
 
 	// Check that this request is for the proper CA
 	if bytes.Compare(req.IssuerKeyHash, src.caKeyHash) != 0 {
 		log.Debug(fmt.Sprintf("Request intended for CA Cert ID: %s", hex.EncodeToString(req.IssuerKeyHash)))
-		present = false
-		return
+		return nil, false
 	}
 
 	serialString := core.SerialToString(req.SerialNumber)
@@ -85,37 +86,33 @@ func (src *DBSource) Response(req *ocsp.Request) (response []byte, present bool)
 	err := src.dbMap.SelectOne(&ocspResponse, "SELECT * from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
 		map[string]interface{}{"serial": serialString})
 	if err != nil {
-		present = false
-		return
+		return nil, false
 	}
 
 	log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 
-	response = ocspResponse.Response
-	present = true
-	return
+	return ocspResponse.Response, true
 }
 
-func makeDBSource(dbConnect, issuerCert string, sqlDebug bool) (cfocsp.Source, error) {
-	var noSource cfocsp.Source
+func makeDBSource(dbConnect, issuerCert string, sqlDebug bool) (*DBSource, error) {
 	// Configure DB
 	dbMap, err := sa.NewDbMap(dbConnect)
 	if err != nil {
-		return noSource, fmt.Errorf("Could not connect to database: %s", err)
+		return nil, fmt.Errorf("Could not connect to database: %s", err)
 	}
 	sa.SetSQLDebug(dbMap, sqlDebug)
 
 	// Load the CA's key so we can store its SubjectKey in the DB
 	caCertDER, err := cmd.LoadCert(issuerCert)
 	if err != nil {
-		return noSource, fmt.Errorf("Could not read issuer cert %s: %s", issuerCert, err)
+		return nil, fmt.Errorf("Could not read issuer cert %s: %s", issuerCert, err)
 	}
 	caCert, err := x509.ParseCertificate(caCertDER)
 	if err != nil {
-		return noSource, fmt.Errorf("Could not parse issuer cert %s: %s", issuerCert, err)
+		return nil, fmt.Errorf("Could not parse issuer cert %s: %s", issuerCert, err)
 	}
 	if len(caCert.SubjectKeyId) == 0 {
-		return noSource, fmt.Errorf("Empty subjectKeyID")
+		return nil, fmt.Errorf("Empty subjectKeyID")
 	}
 
 	// Construct source from DB
@@ -131,6 +128,7 @@ func main() {
 
 		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
 		cmd.FailOnError(err, "Could not connect to Syslog")
+		auditlogger.Info(app.VersionString())
 
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
@@ -140,8 +138,6 @@ func main() {
 		go cmd.DebugServer(c.OCSPResponder.DebugAddr)
 
 		go cmd.ProfileCmd("OCSP", stats)
-
-		auditlogger.Info(app.VersionString())
 
 		config := c.OCSPResponder
 		var source cfocsp.Source
@@ -161,6 +157,8 @@ func main() {
 			}
 			source, err = cfocsp.NewSourceFromFile(filename)
 			cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", url.Path))
+		} else {
+			cmd.FailOnError(errors.New(`"source" parameter not found in JSON config`), "unable to start ocsp-responder")
 		}
 
 		stopTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownStopTimeout)
@@ -168,20 +166,19 @@ func main() {
 		killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
 		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
 
-		m := http.NewServeMux()
-		m.Handle(c.OCSPResponder.Path,
+		m := http.StripPrefix(c.OCSPResponder.Path,
 			handler(source, c.OCSPResponder.MaxAge.Duration))
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
 		srv := &http.Server{
-			Addr:      c.OCSPResponder.ListenAddress,
-			ConnState: httpMonitor.ConnectionMonitor,
-			Handler:   httpMonitor.Handle(),
+			Addr:    c.OCSPResponder.ListenAddress,
+			Handler: httpMonitor.Handle(),
 		}
 
 		hd := &httpdown.HTTP{
 			StopTimeout: stopTimeout,
 			KillTimeout: killTimeout,
+			Stats:       metrics.NewFBAdapter(stats, "OCSP", clock.Default()),
 		}
 		err = httpdown.ListenAndServe(srv, hd)
 		cmd.FailOnError(err, "Error starting HTTP server")

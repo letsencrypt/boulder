@@ -13,11 +13,14 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/publicsuffix"
+
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -43,15 +46,21 @@ type RegistrationAuthorityImpl struct {
 	log         *blog.AuditLogger
 	// How long before a newly created authorization expires.
 	authorizationLifetime time.Duration
+	rlPolicies            cmd.RateLimitConfig
+	tiMu                  *sync.RWMutex
+	totalIssuedCache      int
+	lastIssuedCount       *time.Time
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter) RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, policies cmd.RateLimitConfig) RegistrationAuthorityImpl {
 	ra := RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
 		authorizationLifetime: DefaultAuthorizationLifetime,
+		rlPolicies:            policies,
+		tiMu:                  new(sync.RWMutex),
 	}
 	return ra
 }
@@ -88,6 +97,45 @@ type certificateRequestEvent struct {
 	RequestTime         time.Time `json:",omitempty"`
 	ResponseTime        time.Time `json:",omitempty"`
 	Error               string    `json:",omitempty"`
+}
+
+var issuanceCountCacheLife = 1 * time.Minute
+
+// issuanceCountInvalid checks if the current issuance count is invalid either
+// because it hasn't been set yet or because it has expired. This method expects
+// that the caller holds either a R or W ra.tiMu lock.
+func (ra *RegistrationAuthorityImpl) issuanceCountInvalid(now time.Time) bool {
+	return ra.lastIssuedCount == nil || ra.lastIssuedCount.Add(issuanceCountCacheLife).Before(now)
+}
+
+func (ra *RegistrationAuthorityImpl) getIssuanceCount() (int, error) {
+	ra.tiMu.RLock()
+	if ra.issuanceCountInvalid(ra.clk.Now()) {
+		ra.tiMu.RUnlock()
+		return ra.setIssuanceCount()
+	}
+	count := ra.totalIssuedCache
+	ra.tiMu.RUnlock()
+	return count, nil
+}
+
+func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int, error) {
+	ra.tiMu.Lock()
+	defer ra.tiMu.Unlock()
+
+	now := ra.clk.Now()
+	if ra.issuanceCountInvalid(now) {
+		count, err := ra.SA.CountCertificatesRange(
+			now.Add(-ra.rlPolicies.TotalCertificates.Window.Duration),
+			now,
+		)
+		if err != nil {
+			return 0, err
+		}
+		ra.totalIssuedCache = int(count)
+		ra.lastIssuedCount = &now
+	}
+	return ra.totalIssuedCache, nil
 }
 
 // NewRegistration constructs a new Registration from a request.
@@ -149,7 +197,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	identifier := request.Identifier
 
 	// Check that the identifier is present and appropriate
-	if err = ra.PA.WillingToIssue(identifier); err != nil {
+	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
 		err = core.UnauthorizedError(err.Error())
 		return authz, err
 	}
@@ -374,6 +422,15 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
+	// Check rate limits before checking authorizations. If someone is unable to
+	// issue a cert due to rate limiting, we don't want to tell them to go get the
+	// necessary authorizations, only to later fail the rate limit check.
+	err = ra.checkLimits(names, registration.ID)
+	if err != nil {
+		logEvent.Error = err.Error()
+		return emptyCert, err
+	}
+
 	err = ra.checkAuthorizations(names, &registration)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -416,6 +473,75 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	return cert, nil
 }
 
+// domainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
+// for the purpose of rate limiting. It also de-duplicates the output
+// domains.
+func domainsForRateLimiting(names []string) ([]string, error) {
+	domainsMap := make(map[string]struct{}, len(names))
+	var domains []string
+	for _, name := range names {
+		eTLDPlusOne, err := publicsuffix.EffectiveTLDPlusOne(name)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := domainsMap[eTLDPlusOne]; !ok {
+			domainsMap[eTLDPlusOne] = struct{}{}
+			domains = append(domains, eTLDPlusOne)
+		}
+	}
+	return domains, nil
+}
+
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []string, limit cmd.RateLimitPolicy, regID int64) error {
+	names, err := domainsForRateLimiting(names)
+	if err != nil {
+		return err
+	}
+	now := ra.clk.Now()
+	windowBegin := limit.WindowBegin(now)
+	counts, err := ra.SA.CountCertificatesByNames(names, windowBegin, now)
+	if err != nil {
+		return err
+	}
+	var badNames []string
+	for _, name := range names {
+		count, ok := counts[name]
+		if !ok {
+			// Shouldn't happen, but let's be careful anyhow.
+			return errors.New("StorageAuthority failed to return a count for every name")
+		}
+		if count >= limit.GetThreshold(name, regID) {
+			badNames = append(badNames, name)
+		}
+	}
+	if len(badNames) > 0 {
+		return core.RateLimitedError(fmt.Sprintf(
+			"Too many certificates already issued for: %s",
+			strings.Join(badNames, ", ")))
+	}
+	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) error {
+	limits := ra.rlPolicies
+	if limits.TotalCertificates.Enabled() {
+		totalIssued, err := ra.getIssuanceCount()
+		if err != nil {
+			return err
+		}
+		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
+			return core.RateLimitedError("Certificate issuance limit reached")
+		}
+	}
+	if limits.CertificatesPerName.Enabled() {
+		err := ra.checkCertificatesPerNameLimit(names, limits.CertificatesPerName, regID)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // UpdateRegistration updates an existing Registration with new values.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
@@ -446,6 +572,12 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
+
+	// At this point, the challenge should be sane as a complete challenge
+	if !authz.Challenges[challengeIndex].IsSane(true) {
+		err = core.MalformedRequestError("Response does not complete challenge")
+		return
+	}
 
 	// Store the updated version
 	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -27,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
@@ -173,7 +175,7 @@ func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWe
 	return
 }
 
-func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier) error {
+func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	return nil
 }
 
@@ -182,11 +184,10 @@ func makeBody(s string) io.ReadCloser {
 }
 
 func signRequest(t *testing.T, req string, nonceService *core.NonceService) string {
-	accountKeyJSON := []byte(`{"kty":"RSA","n":"z2NsNdHeqAiGdPP8KuxfQXat_uatOK9y12SyGpfKw1sfkizBIsNxERjNDke6Wp9MugN9srN3sr2TDkmQ-gK8lfWo0v1uG_QgzJb1vBdf_hH7aejgETRGLNJZOdaKDsyFnWq1WGJq36zsHcd0qhggTk6zVwqczSxdiWIAZzEakIUZ13KxXvoepYLY0Q-rEEQiuX71e4hvhfeJ4l7m_B-awn22UUVvo3kCqmaRlZT-36vmQhDGoBsoUo1KBEU44jfeK5PbNRk7vDJuH0B7qinr_jczHcvyD-2TtPzKaCioMtNh_VZbPNDaG67sYkQlC15-Ff3HPzKKJW2XvkVG91qMvQ","e":"AQAB","d":"BhAmDbzBAbCeHbU0Xhzi_Ar4M0eTMOEQPnPXMSfW6bc0SRW938JO_-z1scEvFY8qsxV_C0Zr7XHVZsmHz4dc9BVmhiSan36XpuOS85jLWaY073e7dUVN9-l-ak53Ys9f6KZB_v-BmGB51rUKGB70ctWiMJ1C0EzHv0h6Moog-LCd_zo03uuZD5F5wtnPrAB3SEM3vRKeZHzm5eiGxNUsaCEzGDApMYgt6YkQuUlkJwD8Ky2CkAE6lLQSPwddAfPDhsCug-12SkSIKw1EepSHz86ZVfJEnvY-h9jHIdI57mR1v7NTCDcWqy6c6qIzxwh8n2X94QTbtWT3vGQ6HXM5AQ","p":"2uhvZwNS5i-PzeI9vGx89XbdsVmeNjVxjH08V3aRBVY0dzUzwVDYk3z7sqBIj6de53Lx6W1hjmhPIqAwqQgjIKH5Z3uUCinGguKkfGDL3KgLCzYL2UIvZMvTzr9NWLc0AHMZdee5utxWKCGnZBOqy1Rd4V-6QrqjEDBvanoqA60","q":"8odNkMEiriaDKmvwDv-vOOu3LaWbu03yB7VhABu-hK5Xx74bHcvDP2HuCwDGGJY2H-xKdMdUPs0HPwbfHMUicD2vIEUDj6uyrMMZHtbcZ3moh3-WESg3TaEaJ6vhwcWXWG7Wc46G-HbCChkuVenFYYkoi68BAAjloqEUl1JBT1E"}`)
-	var accountKey jose.JsonWebKey
-	err := json.Unmarshal(accountKeyJSON, &accountKey)
-	test.AssertNotError(t, err, "Failed to unmarshal key")
-	signer, err := jose.NewSigner("RS256", &accountKey)
+	accountKey, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+
+	signer, err := jose.NewSigner("RS256", accountKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 	nonce, err := nonceService.Nonce()
 	test.AssertNotError(t, err, "Failed to make nonce")
@@ -212,7 +213,7 @@ func setupWFE(t *testing.T) WebFrontEndImpl {
 	wfe.log.SyslogWriter = mocks.NewSyslogWriter()
 
 	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.MockSA{}
+	wfe.SA = &mocks.StorageAuthority{}
 	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 
@@ -252,6 +253,15 @@ func sortHeader(s string) string {
 	return strings.Join(a, ", ")
 }
 
+func addHeadIfGet(s []string) []string {
+	for _, a := range s {
+		if a == "GET" {
+			return append(s, "HEAD")
+		}
+	}
+	return s
+}
+
 func TestHandleFunc(t *testing.T) {
 	wfe := setupWFE(t)
 	var mux *http.ServeMux
@@ -270,32 +280,34 @@ func TestHandleFunc(t *testing.T) {
 
 	// Plain requests (no CORS)
 	type testCase struct {
-		allowed       []string
-		reqMethod     string
-		shouldSucceed bool
+		allowed        []string
+		reqMethod      string
+		shouldCallStub bool
+		shouldSucceed  bool
 	}
 	var lastNonce string
 	for _, c := range []testCase{
-		{[]string{"GET", "POST"}, "GET", true},
-		{[]string{"GET", "POST"}, "POST", true},
-		{[]string{"GET"}, "", false},
-		{[]string{"GET"}, "POST", false},
-		{[]string{"GET"}, "OPTIONS", false},     // TODO, #469
-		{[]string{"GET"}, "MAKE-COFFEE", false}, // 405, or 418?
+		{[]string{"GET", "POST"}, "GET", true, true},
+		{[]string{"GET", "POST"}, "POST", true, true},
+		{[]string{"GET"}, "", false, false},
+		{[]string{"GET"}, "POST", false, false},
+		{[]string{"GET"}, "OPTIONS", false, true},
+		{[]string{"GET"}, "MAKE-COFFEE", false, false}, // 405, or 418?
 	} {
 		runWrappedHandler(&http.Request{Method: c.reqMethod}, c.allowed...)
-		test.AssertEquals(t, stubCalled, c.shouldSucceed)
+		test.AssertEquals(t, stubCalled, c.shouldCallStub)
 		if c.shouldSucceed {
 			test.AssertEquals(t, rw.Code, http.StatusOK)
 		} else {
 			test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
-			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), strings.Join(c.allowed, ", "))
+			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), sortHeader(strings.Join(addHeadIfGet(c.allowed), ", ")))
 			test.AssertEquals(t,
 				rw.Body.String(),
 				`{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
 		}
 		nonce := rw.Header().Get("Replay-Nonce")
 		test.AssertNotEquals(t, nonce, lastNonce)
+		test.AssertNotEquals(t, nonce, "")
 		lastNonce = nonce
 	}
 
@@ -303,47 +315,147 @@ func TestHandleFunc(t *testing.T) {
 	runWrappedHandler(&http.Request{Method: "PUT"}, "GET", "POST")
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
 	test.AssertEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed"}`)
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, HEAD, POST")
 
 	// Disallowed method special case: response to HEAD has got no body
 	runWrappedHandler(&http.Request{Method: "HEAD"}, "GET", "POST")
-	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, stubCalled, true)
 	test.AssertEquals(t, rw.Body.String(), "")
-	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, POST")
-}
 
-func TestStandardHeaders(t *testing.T) {
-	wfe := setupWFE(t)
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	// HEAD doesn't work with POST-only endpoints
+	runWrappedHandler(&http.Request{Method: "HEAD"}, "POST")
+	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
+	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
+	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
+	test.AssertEquals(t, rw.Body.String(), "")
 
-	cases := []struct {
-		path    string
-		allowed []string
-	}{
-		{wfe.NewReg, []string{"POST"}},
-		{wfe.RegBase, []string{"POST"}},
-		{wfe.NewAuthz, []string{"POST"}},
-		{wfe.AuthzBase, []string{"GET"}},
-		{wfe.ChallengeBase, []string{"GET", "POST"}},
-		{wfe.NewCert, []string{"POST"}},
-		{wfe.CertBase, []string{"GET"}},
-		{wfe.SubscriberAgreementURL, []string{"GET"}},
+	wfe.AllowOrigins = []string{"*"}
+	testOrigin := "https://example.com"
+
+	// CORS "actual" request for disallowed method
+	runWrappedHandler(&http.Request{
+		Method: "POST",
+		Header: map[string][]string{
+			"Origin": {testOrigin},
+		},
+	}, "GET")
+	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
+
+	// CORS "actual" request for allowed method
+	runWrappedHandler(&http.Request{
+		Method: "GET",
+		Header: map[string][]string{
+			"Origin": {testOrigin},
+		},
+	}, "GET", "POST")
+	test.AssertEquals(t, stubCalled, true)
+	test.AssertEquals(t, rw.Code, http.StatusOK)
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "")
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
+
+	// CORS preflight request for disallowed method
+	runWrappedHandler(&http.Request{
+		Method: "OPTIONS",
+		Header: map[string][]string{
+			"Origin":                        {testOrigin},
+			"Access-Control-Request-Method": {"POST"},
+		},
+	}, "GET")
+	test.AssertEquals(t, stubCalled, false)
+	test.AssertEquals(t, rw.Code, http.StatusOK)
+	test.AssertEquals(t, rw.Header().Get("Allow"), "GET, HEAD")
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
+
+	// CORS preflight request for allowed method
+	runWrappedHandler(&http.Request{
+		Method: "OPTIONS",
+		Header: map[string][]string{
+			"Origin":                         {testOrigin},
+			"Access-Control-Request-Method":  {"POST"},
+			"Access-Control-Request-Headers": {"X-Accept-Header1, X-Accept-Header2", "X-Accept-Header3"},
+		},
+	}, "GET", "POST")
+	test.AssertEquals(t, rw.Code, http.StatusOK)
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Max-Age"), "86400")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Allow-Methods")), "GET, HEAD, POST")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Access-Control-Expose-Headers")), "Link, Replay-Nonce")
+
+	// OPTIONS request without an Origin header (i.e., not a CORS
+	// preflight request)
+	runWrappedHandler(&http.Request{
+		Method: "OPTIONS",
+		Header: map[string][]string{
+			"Access-Control-Request-Method": {"POST"},
+		},
+	}, "GET", "POST")
+	test.AssertEquals(t, rw.Code, http.StatusOK)
+	test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
+	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, HEAD, POST")
+
+	// CORS preflight request missing optional Request-Method
+	// header. The "actual" request will be GET.
+	for _, allowedMethod := range []string{"GET", "POST"} {
+		runWrappedHandler(&http.Request{
+			Method: "OPTIONS",
+			Header: map[string][]string{
+				"Origin": {testOrigin},
+			},
+		}, allowedMethod)
+		test.AssertEquals(t, rw.Code, http.StatusOK)
+		if allowedMethod == "GET" {
+			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "*")
+			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Methods"), "GET, HEAD")
+		} else {
+			test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), "")
+		}
 	}
 
-	for _, c := range cases {
-		responseWriter := httptest.NewRecorder()
-		mux.ServeHTTP(responseWriter, &http.Request{
-			Method: "BOGUS",
-			URL:    mustParseURL(c.path),
-		})
-		acao := responseWriter.Header().Get("Access-Control-Allow-Origin")
-		nonce := responseWriter.Header().Get("Replay-Nonce")
-		allow := responseWriter.Header().Get("Allow")
-		test.Assert(t, responseWriter.Code == http.StatusMethodNotAllowed, "Bogus method allowed")
-		test.Assert(t, acao == "*", "Bad CORS header")
-		test.Assert(t, len(nonce) > 0, "Bad Replay-Nonce header")
-		test.Assert(t, len(allow) > 0 && allow == strings.Join(c.allowed, ", "), "Bad Allow header")
+	// No CORS headers are given when configuration does not list
+	// "*" or the client-provided origin.
+	for _, wfe.AllowOrigins = range [][]string{
+		{},
+		{"http://example.com", "https://other.example"},
+		{""}, // Invalid origin is never matched
+	} {
+		runWrappedHandler(&http.Request{
+			Method: "OPTIONS",
+			Header: map[string][]string{
+				"Origin":                        {testOrigin},
+				"Access-Control-Request-Method": {"POST"},
+			},
+		}, "POST")
+		test.AssertEquals(t, rw.Code, http.StatusOK)
+		for _, h := range []string{
+			"Access-Control-Allow-Methods",
+			"Access-Control-Allow-Origin",
+			"Access-Control-Expose-Headers",
+			"Access-Control-Request-Headers",
+		} {
+			test.AssertEquals(t, rw.Header().Get(h), "")
+		}
+	}
+
+	// CORS headers are offered when configuration lists "*" or
+	// the client-provided origin.
+	for _, wfe.AllowOrigins = range [][]string{
+		{testOrigin, "http://example.org", "*"},
+		{"", "http://example.org", testOrigin}, // Invalid origin is harmless
+	} {
+		runWrappedHandler(&http.Request{
+			Method: "OPTIONS",
+			Header: map[string][]string{
+				"Origin":                        {testOrigin},
+				"Access-Control-Request-Method": {"POST"},
+			},
+		}, "POST")
+		test.AssertEquals(t, rw.Code, http.StatusOK)
+		test.AssertEquals(t, rw.Header().Get("Access-Control-Allow-Origin"), testOrigin)
+		// http://www.w3.org/TR/cors/ section 6.4:
+		test.AssertEquals(t, rw.Header().Get("Vary"), "Origin")
 	}
 }
 
@@ -421,7 +533,7 @@ func TestIssueCertificate(t *testing.T) {
 	wfe := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
-	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
+	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
 
 	// The mock CA we use always returns the same test certificate, with a Not
 	// Before of 2015-09-22. Since we're currently using a real RA instead of a
@@ -435,11 +547,11 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
-	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log, stats)
-	ra.SA = &mocks.MockSA{}
+	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log, stats, cmd.RateLimitConfig{})
+	ra.SA = &mocks.StorageAuthority{}
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}
-	wfe.SA = &mocks.MockSA{}
+	wfe.SA = &mocks.StorageAuthority{}
 	wfe.RA = &ra
 	responseWriter := httptest.NewRecorder()
 
@@ -558,7 +670,7 @@ func TestChallenge(t *testing.T) {
 	wfe := setupWFE(t)
 
 	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.MockSA{}
+	wfe.SA = &mocks.StorageAuthority{}
 	responseWriter := httptest.NewRecorder()
 
 	var key jose.JsonWebKey
@@ -594,7 +706,7 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.MockSA{}
+	wfe.SA = &mocks.StorageAuthority{}
 	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 
@@ -761,6 +873,18 @@ func makeRevokeRequestJSON() ([]byte, error) {
 	return revokeRequestJSON, nil
 }
 
+// An SA mock that always returns NoSuchRegistrationError. This is necessary
+// because the standard mock in our mocks package always returns a given test
+// registration when GetRegistrationByKey is called, and we want to get a
+// NoSuchRegistrationError for tests that pass regCheck = false to verifyPOST.
+type mockSANoSuchRegistration struct {
+	mocks.StorageAuthority
+}
+
+func (msa mockSANoSuchRegistration) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
+	return core.Registration{}, core.NoSuchRegistrationError("reg not found")
+}
+
 // Valid revocation request for existing, non-revoked cert, signed with cert
 // key.
 func TestRevokeCertificateCertKey(t *testing.T) {
@@ -777,6 +901,7 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	wfe := setupWFE(t)
+	wfe.SA = &mockSANoSuchRegistration{mocks.StorageAuthority{}}
 	responseWriter := httptest.NewRecorder()
 
 	nonce, err := wfe.nonceService.Nonce()
@@ -866,7 +991,7 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe := setupWFE(t)
 
 	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.MockSA{}
+	wfe.SA = &mockSANoSuchRegistration{mocks.StorageAuthority{}}
 	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
@@ -887,7 +1012,7 @@ func TestAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.MockSA{}
+	wfe.SA = &mocks.StorageAuthority{}
 	wfe.stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 
@@ -975,7 +1100,7 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.MockSA{}
+	wfe.SA = &mocks.StorageAuthority{}
 	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
@@ -1066,7 +1191,7 @@ func TestTermsRedirect(t *testing.T) {
 	wfe := setupWFE(t)
 
 	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.MockSA{}
+	wfe.SA = &mocks.StorageAuthority{}
 	wfe.stats, _ = statsd.NewNoopClient()
 	wfe.SubscriberAgreementURL = agreementURL
 
@@ -1102,59 +1227,64 @@ func TestGetCertificate(t *testing.T) {
 	wfe := setupWFE(t)
 	wfe.CertCacheDuration = time.Second * 10
 	wfe.CertNoCacheExpirationWindow = time.Hour * 24 * 7
-	wfe.SA = &mocks.MockSA{}
+	wfe.SA = &mocks.StorageAuthority{}
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	certBlock, _ := pem.Decode(certPemBytes)
 
 	responseWriter := httptest.NewRecorder()
 
+	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog.Clear()
+
 	// Valid serial, cached
-	path, _ := url.Parse("/acme/cert/0000000000000000000000000000000000b2")
-	wfe.Certificate(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
+	req, _ := http.NewRequest("GET", "/acme/cert/0000000000000000000000000000000000b2", nil)
+	req.RemoteAddr = "192.168.0.1"
+	wfe.Certificate(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
 
+	reqlogs := mockLog.GetAllMatching(`Successful request`)
+	test.AssertEquals(t, len(reqlogs), 1)
+	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_INFO)
+	test.AssertContains(t, reqlogs[0].Message, `"ClientAddr":"192.168.0.1"`)
+
 	// Unused serial, no cache
+	mockLog.Clear()
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/0000000000000000000000000000000000ff")
-	wfe.Certificate(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
+	req, _ = http.NewRequest("GET", "/acme/cert/0000000000000000000000000000000000ff", nil)
+	req.RemoteAddr = "192.168.0.1"
+	req.Header.Set("X-Forwarded-For", "192.168.99.99")
+	wfe.Certificate(responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, 404)
+	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
+
+	reqlogs = mockLog.GetAllMatching(`Terminated request`)
+	test.AssertEquals(t, len(reqlogs), 1)
+	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_INFO)
+	test.AssertContains(t, reqlogs[0].Message, `"ClientAddr":"192.168.99.99,192.168.0.1"`)
+
+	// Invalid serial, no cache
+	responseWriter = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/acme/cert/nothex", nil)
+	wfe.Certificate(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/nothex")
-	wfe.Certificate(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
-	test.AssertEquals(t, responseWriter.Code, 404)
-	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
-
-	// Invalid serial, no cache
-	responseWriter = httptest.NewRecorder()
-	path, _ = url.Parse("/acme/cert/00000000000000")
-	wfe.Certificate(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    path,
-	})
+	req, _ = http.NewRequest("GET", "/acme/cert/00000000000000", nil)
+	wfe.Certificate(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, 404)
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found"}`)
 }
 
-func assertCsrLogged(t *testing.T, mockLog *mocks.MockSyslogWriter) {
+func assertCsrLogged(t *testing.T, mockLog *mocks.SyslogWriter) {
 	matches := mockLog.GetAllMatching("^\\[AUDIT\\] Certificate request JSON=")
 	test.Assert(t, len(matches) == 1,
 		fmt.Sprintf("Incorrect number of certificate request log entries: %d",
@@ -1163,28 +1293,33 @@ func assertCsrLogged(t *testing.T, mockLog *mocks.MockSyslogWriter) {
 }
 
 func TestLogCsrPem(t *testing.T) {
-	const certificateRequestJson = `{
+	const certificateRequestJSON = `{
 		"csr": "MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca-fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB-6dp48xkcX7Z_KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD-eeu8-z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7_C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT_DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq_Bbe7TBGVYZabUEh-LOskYwhgcOuThVN7tHnH5rhN-gb7cEdysjTb1QL-vOUwYgV75CB6PE5JVYK-cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub-fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G_W-Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd-L3IcyvHVKxNhIJXZVH0AOqh_1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY"
 	}`
 	wfe := setupWFE(t)
 	var certificateRequest core.CertificateRequest
-	err := json.Unmarshal([]byte(certificateRequestJson), &certificateRequest)
+	err := json.Unmarshal([]byte(certificateRequestJSON), &certificateRequest)
 	test.AssertNotError(t, err, "Unable to parse certificateRequest")
 
-	mockSA := mocks.MockSA{}
+	mockSA := mocks.StorageAuthority{}
 	reg, err := mockSA.GetRegistration(789)
 	test.AssertNotError(t, err, "Unable to get registration")
 
-	remoteAddr := "12.34.98.76"
+	req, err := http.NewRequest("GET", "http://[::1]/", nil)
+	test.AssertNotError(t, err, "NewRequest failed")
+	req.RemoteAddr = "12.34.98.76"
+	req.Header.Set("X-Forwarded-For", "10.0.0.1,172.16.0.1")
 
-	wfe.logCsr(remoteAddr, certificateRequest, reg)
+	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog.Clear()
 
-	mockLog := wfe.log.SyslogWriter.(*mocks.MockSyslogWriter)
+	wfe.logCsr(req, certificateRequest, reg)
+
 	matches := mockLog.GetAllMatching("Certificate request")
 	test.Assert(t, len(matches) == 1,
 		"Incorrect number of certificate request log entries")
 	test.AssertEquals(t, matches[0].Priority, syslog.LOG_NOTICE)
-	test.AssertEquals(t, matches[0].Message, `[AUDIT] Certificate request JSON={"RemoteAddr":"12.34.98.76","CsrBase64":"MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca+fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB+6dp48xkcX7Z/KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD+eeu8+z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7/C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT/DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq/Bbe7TBGVYZabUEh+LOskYwhgcOuThVN7tHnH5rhN+gb7cEdysjTb1QL+vOUwYgV75CB6PE5JVYK+cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub+fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G/W+Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd+L3IcyvHVKxNhIJXZVH0AOqh/1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY=","Registration":{"id":789,"key":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"agreement":"http://example.invalid/terms"}}`)
+	test.AssertEquals(t, matches[0].Message, `[AUDIT] Certificate request JSON={"ClientAddr":"10.0.0.1,172.16.0.1,12.34.98.76","CsrBase64":"MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca+fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB+6dp48xkcX7Z/KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD+eeu8+z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7/C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT/DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq/Bbe7TBGVYZabUEh+LOskYwhgcOuThVN7tHnH5rhN+gb7cEdysjTb1QL+vOUwYgV75CB6PE5JVYK+cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub+fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G/W+Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd+L3IcyvHVKxNhIJXZVH0AOqh/1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY=","Registration":{"id":789,"key":{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"},"agreement":"http://example.invalid/terms"}}`)
 }
 
 func TestLengthRequired(t *testing.T) {
@@ -1196,6 +1331,29 @@ func TestLengthRequired(t *testing.T) {
 	test.Assert(t, err != nil, "No error returned for request body missing Content-Length.")
 	_, ok := err.(core.LengthRequiredError)
 	test.Assert(t, ok, "Error code for missing content-length wasn't 411.")
+}
+
+type mockSADifferentStoredKey struct {
+	mocks.StorageAuthority
+}
+
+func (sa mockSADifferentStoredKey) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
+	keyJSON := []byte(test2KeyPublicJSON)
+	var parsedKey jose.JsonWebKey
+	parsedKey.UnmarshalJSON(keyJSON)
+
+	return core.Registration{
+		Key: parsedKey,
+	}, nil
+}
+
+func TestVerifyPOSTUsesStoredKey(t *testing.T) {
+	wfe := setupWFE(t)
+	wfe.SA = &mockSADifferentStoredKey{mocks.StorageAuthority{}}
+	// signRequest signs with test1Key, but our special mock returns a
+	// registration with test2Key
+	_, _, _, err := wfe.verifyPOST(makePostRequest(signRequest(t, `{"resource":"foo"}`, &wfe.nonceService)), true, "foo")
+	test.AssertError(t, err, "No error returned when provided key differed from stored key.")
 }
 
 func TestBadKeyCSR(t *testing.T) {
@@ -1214,4 +1372,27 @@ func TestBadKeyCSR(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: Key too small: 512"}`)
+}
+
+func TestStatusCodeFromError(t *testing.T) {
+	testCases := []struct {
+		err        error
+		statusCode int
+	}{
+		{core.InternalServerError("foo"), 500},
+		{core.NotSupportedError("foo"), 501},
+		{core.MalformedRequestError("foo"), 400},
+		{core.UnauthorizedError("foo"), 403},
+		{core.NotFoundError("foo"), 404},
+		{core.SyntaxError("foo"), 400},
+		{core.SignatureValidationError("foo"), 400},
+		{core.RateLimitedError("foo"), 429},
+		{core.LengthRequiredError("foo"), 411},
+	}
+	for _, c := range testCases {
+		got := statusCodeFromError(c.err)
+		if got != c.statusCode {
+			t.Errorf("Incorrect status code for %s. Expected %d, got %d", reflect.TypeOf(c.err).Name(), c.statusCode, got)
+		}
+	}
 }

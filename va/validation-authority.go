@@ -88,7 +88,7 @@ type verificationRequestEvent struct {
 	Error        string         `json:",omitempty"`
 }
 
-//-----BEGIN TO DELETE-----
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
 	if len(validation.Signatures) > 1 {
 		return fmt.Errorf("Too many signatures on validation JWS")
@@ -123,8 +123,6 @@ func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.Jso
 
 	return nil
 }
-
-//-----END TO DELETE-----
 
 // problemDetailsFromDNSError checks the error returned from Lookup...
 // methods and tests if the error was an underlying net.OpError or an error
@@ -216,7 +214,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		scheme = "https"
 		port = va.httpsPort
 	}
-	portString := fmt.Sprintf("%d", port)
+	portString := strconv.Itoa(port)
 	hostPort := net.JoinHostPort(host, portString)
 
 	url := &url.URL{
@@ -398,7 +396,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZNames(identifier core.AcmeIde
 		challenge.Error = problem
 		return challenge, challenge.Error
 	}
-	portString := fmt.Sprintf("%d", va.tlsPort)
+	portString := strconv.Itoa(va.tlsPort)
 	hostPort := net.JoinHostPort(addr.String(), portString)
 	challenge.ValidationRecord[0].Port = portString
 
@@ -435,7 +433,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZNames(identifier core.AcmeIde
 	return challenge, nil
 }
 
-//-----BEGIN TO DELETE-----
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
@@ -495,6 +493,7 @@ func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdenti
 	return challenge, nil
 }
 
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
 func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
@@ -537,8 +536,6 @@ func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier,
 	return va.validateTLSWithZNames(identifier, challenge, ZNames)
 }
 
-//-----END TO DELETE-----
-
 func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
@@ -553,30 +550,6 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 		return challenge, challenge.Error
 	}
 
-	// Validate that the challenge/response pair is well-formed
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	var authorizedKey core.AuthorizedKey
-	err := json.Unmarshal(challenge.AuthorizedKey, &authorizedKey)
-	if err != nil {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "AuthorizedKey object on challenge failed to parse as JSON",
-		}
-		va.log.Debug(fmt.Sprintf("%s [%s] HTTP failure: %s", challenge.Type, identifier, err))
-		challenge.Status = core.StatusInvalid
-		return challenge, err
-	}
-	if !authorizedKey.Match(challenge.Token, challenge.AccountKey) {
-		err = fmt.Errorf("Improper token / authorized key pair")
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: err.Error(),
-		}
-		va.log.Debug(fmt.Sprintf("%s [%s] HTTP failure: %s", challenge.Type, identifier, err))
-		challenge.Status = core.StatusInvalid
-		return challenge, err
-	}
-
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
 	body, challenge, err := va.fetchHTTP(identifier, path, false, challenge)
@@ -584,11 +557,10 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 		return challenge, err
 	}
 
-	// Parse body as an authorized key object
-	var serverAuthorizedKey core.AuthorizedKey
-	err = json.Unmarshal(body, &serverAuthorizedKey)
+	// Parse body as a key authorization object
+	serverKeyAuthorization, err := core.NewKeyAuthorizationFromString(string(body))
 	if err != nil {
-		err = fmt.Errorf("Error parsing authorized key file: %s", err.Error())
+		err = fmt.Errorf("Error parsing key authorization file: %s", err.Error())
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
@@ -599,13 +571,10 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 	}
 
 	// Check that the account key for this challenge is authorized by this object
-	if !serverAuthorizedKey.MatchAuthorizedKey(authorizedKey) {
-		err = fmt.Errorf("The authorizated keys file from the server did not match this challenge")
+	if !serverKeyAuthorization.Match(challenge.Token, challenge.AccountKey) {
+		err = fmt.Errorf("The key authorization file from the server did not match this challenge [%v] != [%v]",
+			challenge.KeyAuthorization.String(), string(body))
 		va.log.Debug(err.Error())
-		jwk, _ := json.Marshal(challenge.AccountKey)
-		va.log.Debug(challenge.Token)
-		va.log.Debug(string(jwk))
-		va.log.Debug(string(body))
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &core.ProblemDetails{
 			Type:   core.UnauthorizedProblem,
@@ -631,42 +600,17 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(identifier core.AcmeIdentifi
 		return challenge, challenge.Error
 	}
 
-	// Parse the authorized key object
-	var authorizedKey core.AuthorizedKey
-	err := json.Unmarshal(challenge.AuthorizedKey, &authorizedKey)
-	if err != nil {
-		err = fmt.Errorf("Error parsing authorized key file: %s", err.Error())
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	// Check that the account key for this challenge is authorized by this object
-	if !authorizedKey.Match(challenge.Token, challenge.AccountKey) {
-		err = fmt.Errorf("The authorizated keys file provided did not match this challenge")
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-	// Compute the digest that will appear in the certificate
 	va.log.Debug(fmt.Sprintf("TLS-SNI [%d] Preparing %d Z values", challenge.N))
-	Znames := makeZnames(challenge.AuthorizedKey, challenge.N)
+	// Compute the digests that will appear in the certificates
+	Znames := makeZnames(challenge.KeyAuthorization.String(), challenge.N)
 	return va.validateTLSWithZNames(identifier, challenge, Znames)
 }
 
 // Make the set of N values of Zi for that the TLS-SNI-01 challenge uses to
 // convince the CA that the client isn't just the beneficiary of a default vhost
-func makeZnames(authKey core.JSONBuffer, iterations int64) []string {
+func makeZnames(keyAuth string, iterations int64) []string {
 	Znames := make([]string, iterations)
-	prev := []byte(authKey)
+	prev := []byte(keyAuth)
 	for i := 0; int64(i) < iterations; i++ {
 		h := sha256.New()
 		h.Write(prev)
@@ -712,35 +656,9 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 		return challenge, challenge.Error
 	}
 
-	// Parse the authorized key object
-	var authorizedKey core.AuthorizedKey
-	err := json.Unmarshal(challenge.AuthorizedKey, &authorizedKey)
-	if err != nil {
-		err = fmt.Errorf("Error parsing authorized key file: %s", err.Error())
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	// Check that the account key for this challenge is authorized by this object
-	if !authorizedKey.Match(challenge.Token, challenge.AccountKey) {
-		err = fmt.Errorf("The authorizated key file provided did not match this challenge")
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	// Compute the digest of the authorized key file
+	// Compute the digest of the key authorization file
 	h := sha256.New()
-	h.Write([]byte(challenge.AuthorizedKey))
+	h.Write([]byte(challenge.KeyAuthorization.String()))
 	authorizedKeysDigest := hex.EncodeToString(h.Sum(nil))
 
 	// Look for the required record in the DNS
@@ -791,12 +709,12 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 
 		vStart := va.clk.Now()
 		switch authz.Challenges[challengeIndex].Type {
-		//-----BEGIN TO DELETE-----
 		case core.ChallengeTypeSimpleHTTP:
+			// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
 			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
 		case core.ChallengeTypeDVSNI:
+			// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
 			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
-		//-----END TO DELETE-----
 		case core.ChallengeTypeHTTP01:
 			authz.Challenges[challengeIndex], err = va.validateHTTP01(authz.Identifier, authz.Challenges[challengeIndex])
 		case core.ChallengeTypeTLSSNI01:

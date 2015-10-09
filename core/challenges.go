@@ -6,78 +6,46 @@
 package core
 
 import (
-	"encoding/json"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
-func newChallenge(challengeType string, accountKey *jose.JsonWebKey) (Challenge, error) {
-	ak := AuthorizedKey{
-		Token: NewToken(),
-		Key:   accountKey,
-	}
-
-	jsonAK, err := json.Marshal(ak)
-	if err != nil {
-		return Challenge{}, err
-	}
-
+func newChallenge(challengeType string, accountKey *jose.JsonWebKey) Challenge {
 	return Challenge{
-		Type:          challengeType,
-		Status:        StatusPending,
-		AccountKey:    accountKey,
-		AuthorizedKey: jsonAK,
-	}, nil
+		Type:       challengeType,
+		Status:     StatusPending,
+		AccountKey: accountKey,
+		Token:      NewToken(),
+	}
 }
 
-//----- BEGIN TO DELETE -----
 // SimpleHTTPChallenge constructs a random HTTP challenge
-func SimpleHTTPChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
+func SimpleHTTPChallenge(accountKey *jose.JsonWebKey) Challenge {
+	challenge := newChallenge(ChallengeTypeSimpleHTTP, accountKey)
 	tls := true
-	return Challenge{
-		Type:       ChallengeTypeSimpleHTTP,
-		Status:     StatusPending,
-		Token:      NewToken(),
-		TLS:        &tls,
-		AccountKey: accountKey,
-	}, nil
+	challenge.TLS = &tls
+	return challenge
 }
 
 // DvsniChallenge constructs a random DVSNI challenge
-func DvsniChallenge(accountKey *jose.JsonWebKey) (Challenge, error) {
-	return Challenge{
-		Type:       ChallengeTypeDVSNI,
-		Status:     StatusPending,
-		Token:      NewToken(),
-		AccountKey: accountKey,
-	}, nil
+// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
+func DvsniChallenge(accountKey *jose.JsonWebKey) Challenge {
+	return newChallenge(ChallengeTypeDVSNI, accountKey)
 }
 
-//----- END TO DELETE -----
-
-// HTTPChallenge constructs a random http-00 challenge
-func HTTPChallenge01(accountKey *jose.JsonWebKey) (Challenge, error) {
-	chall, err := newChallenge(ChallengeTypeHTTP01, accountKey)
-	if err != nil {
-		return Challenge{}, err
-	}
-
-	tls := true
-	chall.TLS = &tls
-	return chall, nil
+// HTTPChallenge01 constructs a random http-01 challenge
+func HTTPChallenge01(accountKey *jose.JsonWebKey) Challenge {
+	return newChallenge(ChallengeTypeHTTP01, accountKey)
 }
 
-// DvsniChallenge constructs a random tls-sni-00 challenge
-func TLSSNIChallenge01(accountKey *jose.JsonWebKey) (Challenge, error) {
-	chall, err := newChallenge(ChallengeTypeTLSSNI01, accountKey)
-	if err != nil {
-		return Challenge{}, err
-	}
-
-	chall.N = 25
-	return chall, nil
+// TLSSNIChallenge01 constructs a random tls-sni-00 challenge
+func TLSSNIChallenge01(accountKey *jose.JsonWebKey) Challenge {
+	chall := newChallenge(ChallengeTypeTLSSNI01, accountKey)
+  chall.N = 25
+  return chall
 }
 
-// DNSChallenge constructs a random DNS challenge
-func DNSChallenge01(accountKey *jose.JsonWebKey) (Challenge, error) {
+// DNSChallenge01 constructs a random DNS challenge
+func DNSChallenge01(accountKey *jose.JsonWebKey) Challenge {
 	return newChallenge(ChallengeTypeDNS01, accountKey)
 }
