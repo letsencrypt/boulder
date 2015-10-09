@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -31,6 +32,10 @@ type regModel struct {
 	KeySHA256 string          `db:"jwk_sha256"`
 	Contact   []*core.AcmeURL `db:"contact"`
 	Agreement string          `db:"agreement"`
+	// InitialIP is stored as sixteen binary bytes, regardless of whether it
+	// represents a v4 or v6 IP address.
+	InitialIP []byte    `db:"initialIp"`
+	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
 }
 
@@ -65,12 +70,17 @@ func registrationToModel(r *core.Registration) (*regModel, error) {
 	if err != nil {
 		return nil, err
 	}
+	if r.InitialIP == nil {
+		return nil, fmt.Errorf("initialIP was nil")
+	}
 	rm := &regModel{
 		ID:        r.ID,
 		Key:       key,
 		KeySHA256: sha,
 		Contact:   r.Contact,
 		Agreement: r.Agreement,
+		InitialIP: []byte(r.InitialIP.To16()),
+		CreatedAt: r.CreatedAt,
 	}
 	return rm, nil
 }
@@ -87,6 +97,8 @@ func modelToRegistration(rm *regModel) (core.Registration, error) {
 		Key:       *k,
 		Contact:   rm.Contact,
 		Agreement: rm.Agreement,
+		InitialIP: net.IP(rm.InitialIP),
+		CreatedAt: rm.CreatedAt,
 	}
 	return r, nil
 }
