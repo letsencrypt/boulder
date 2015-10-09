@@ -26,20 +26,16 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
-)
-
-var (
-	saDbConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
-	paDbConnStr = "mysql+tcp://policy@localhost:3306/boulder_policy_test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
 func BenchmarkCheckCert(b *testing.B) {
-	saDbMap, err := sa.NewDbMap(saDbConnStr)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
 	if err != nil {
 		fmt.Println("Couldn't connect to database")
 		return
 	}
-	paDbMap, err := sa.NewDbMap(paDbConnStr)
+	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	if err != nil {
 		fmt.Println("Couldn't connect to database")
 		return
@@ -78,10 +74,10 @@ func BenchmarkCheckCert(b *testing.B) {
 }
 
 func TestCheckCert(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(saDbConnStr)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetSATestDatabase(t)
-	paDbMap, err := sa.NewDbMap(paDbConnStr)
+	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	test.AssertNotError(t, err, "Couldn't connect to policy database")
 	paCleanup := test.ResetPolicyTestDatabase(t)
 	defer func() {
@@ -179,9 +175,9 @@ func TestCheckCert(t *testing.T) {
 }
 
 func TestGetAndProcessCerts(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(saDbConnStr)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	paDbMap, err := sa.NewDbMap(paDbConnStr)
+	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	test.AssertNotError(t, err, "Couldn't connect to policy database")
 	fc := clock.NewFake()
 

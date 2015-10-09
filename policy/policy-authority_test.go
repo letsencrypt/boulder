@@ -16,10 +16,10 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
 var log = mocks.UseMockLog()
-var dbConnStr = "mysql+tcp://policy@localhost:3306/boulder_policy_test"
 
 func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
 	dbMap, cleanUp := paDBMap(t)
@@ -32,7 +32,7 @@ func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
 }
 
 func paDBMap(t *testing.T) (*gorp.DbMap, func()) {
-	dbMap, err := sa.NewDbMap(dbConnStr)
+	dbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	test.AssertNotError(t, err, "Could not construct dbMap")
 	cleanUp := test.ResetPolicyTestDatabase(t)
 	return dbMap, cleanUp
