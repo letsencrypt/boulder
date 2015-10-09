@@ -747,6 +747,13 @@ type SignedCertificateTimestamp struct {
 	LockCol int64
 }
 
+// RPCSignedCertificateTimestamp is a wrapper around SignedCertificateTimestamp
+// so that it can be passed through the RPC layer properly. Without this wrapper
+// the UnmarshalJSON method below will be used when marshaling/unmarshaling the
+// object, which is not what we want as it is not symmetrical (as it is intended
+// to unmarshal a rawSignedCertificateTimestamp into a SignedCertificateTimestamp)
+type RPCSignedCertificateTimestamp SignedCertificateTimestamp
+
 type rawSignedCertificateTimestamp struct {
 	Version    uint8  `json:"sct_version"`
 	LogID      string `json:"id"`
