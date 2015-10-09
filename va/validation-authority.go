@@ -23,8 +23,8 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -95,7 +95,7 @@ func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.Jso
 		return fmt.Errorf("Validation JWS not signed")
 	}
 
-	payload, _, err := validation.Verify(accountKey)
+	payload, err := validation.Verify(accountKey)
 	if err != nil {
 		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
 	}

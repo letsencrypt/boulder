@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
-	"GoVersion": "go1.5",
+	"GoVersion": "devel +6ec1809 Tue Aug 25 18:10:14 2015 +0000",
 	"Packages": [
 		"./..."
 	],
@@ -101,10 +101,6 @@
 			"Rev": "3c4ebd218625c9364c33db6d39c276d80c3090c6"
 		},
 		{
-			"ImportPath": "github.com/letsencrypt/go-jose",
-			"Rev": "e7bd87a386998d423741e8e370af1a22638767e0"
-		},
-		{
 			"ImportPath": "github.com/miekg/dns",
 			"Rev": "7ff8d29c8b70b10f383a11f03b7bf5b7408bf41a"
 		},
@@ -113,8 +109,8 @@
 			"Rev": "88c9f842544e629ec046105d7fb50d5daafae737"
 		},
 		{
-			"ImportPath": "github.com/square/go-jose/cipher",
-			"Rev": "2f4e4fff85a98acc176ac2712c31394ac1acb7e8"
+			"ImportPath": "github.com/square/go-jose",
+			"Rev": "3f4a5b0f20dc7e530ab38a5c80c3059b95121a82"
 		},
 		{
 			"ImportPath": "github.com/streadway/amqp",

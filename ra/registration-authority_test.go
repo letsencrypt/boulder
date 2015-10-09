@@ -22,7 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"

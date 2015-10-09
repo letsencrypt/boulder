@@ -17,7 +17,9 @@
 package jose
 
 import (
+	"crypto/elliptic"
 	"errors"
+	"fmt"
 )
 
 // KeyAlgorithm represents a key management algorithm.
@@ -53,6 +55,10 @@ var (
 	// trying to compact-serialize an object which can't be represented in
 	// compact form.
 	ErrNotSupported = errors.New("square/go-jose: compact serialization not supported for object")
+
+	// ErrUnprotectedNonce indicates that while parsing a JWS or JWE object, a
+	// nonce header parameter was included in an unprotected header object.
+	ErrUnprotectedNonce = errors.New("square/go-jose: Nonce parameter included in unprotected header")
 )
 
 // Key management algorithms
@@ -84,9 +90,9 @@ const (
 	RS256 = SignatureAlgorithm("RS256") // RSASSA-PKCS-v1.5 using SHA-256
 	RS384 = SignatureAlgorithm("RS384") // RSASSA-PKCS-v1.5 using SHA-384
 	RS512 = SignatureAlgorithm("RS512") // RSASSA-PKCS-v1.5 using SHA-512
-	ES256 = SignatureAlgorithm("ES256") // RCDSA using P-256 and SHA-256
-	ES384 = SignatureAlgorithm("ES384") // RCDSA using P-384 and SHA-384
-	ES512 = SignatureAlgorithm("ES512") // RCDSA using P-521 and SHA-512
+	ES256 = SignatureAlgorithm("ES256") // ECDSA using P-256 and SHA-256
+	ES384 = SignatureAlgorithm("ES384") // ECDSA using P-384 and SHA-384
+	ES512 = SignatureAlgorithm("ES512") // ECDSA using P-521 and SHA-512
 	PS256 = SignatureAlgorithm("PS256") // RSASSA-PSS using SHA256 and MGF1-SHA256
 	PS384 = SignatureAlgorithm("PS384") // RSASSA-PSS using SHA384 and MGF1-SHA384
 	PS512 = SignatureAlgorithm("PS512") // RSASSA-PSS using SHA512 and MGF1-SHA512
@@ -128,8 +134,8 @@ type rawHeader struct {
 type JoseHeader struct {
 	KeyID      string
 	JsonWebKey *JsonWebKey
-	Nonce      string
 	Algorithm  string
+	Nonce      string
 }
 
 // sanitized produces a cleaned-up header object from the raw JSON.
@@ -137,8 +143,8 @@ func (parsed rawHeader) sanitized() JoseHeader {
 	return JoseHeader{
 		KeyID:      parsed.Kid,
 		JsonWebKey: parsed.Jwk,
-		Nonce:      parsed.Nonce,
 		Algorithm:  parsed.Alg,
+		Nonce:      parsed.Nonce,
 	}
 }
 
@@ -187,4 +193,32 @@ func (dst *rawHeader) merge(src *rawHeader) {
 	if dst.Nonce == "" {
 		dst.Nonce = src.Nonce
 	}
+}
+
+// Get JOSE name of curve
+func curveName(crv elliptic.Curve) (string, error) {
+	switch crv {
+	case elliptic.P256():
+		return "P-256", nil
+	case elliptic.P384():
+		return "P-384", nil
+	case elliptic.P521():
+		return "P-521", nil
+	default:
+		return "", fmt.Errorf("square/go-jose: unsupported/unknown elliptic curve")
+	}
+}
+
+// Get size of curve in bytes
+func curveSize(crv elliptic.Curve) int {
+	bits := crv.Params().BitSize
+
+	div := bits / 8
+	mod := bits % 8
+
+	if mod == 0 {
+		return div
+	}
+
+	return div + 1
 }

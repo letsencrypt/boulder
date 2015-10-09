@@ -19,8 +19,10 @@ package josecipher
 import (
 	"bytes"
 	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -264,7 +266,7 @@ func TestInvalidKey(t *testing.T) {
 	}
 }
 
-func TestInvalidCiphertext(t *testing.T) {
+func TestTruncatedCiphertext(t *testing.T) {
 	key := make([]byte, 32)
 	nonce := make([]byte, 16)
 	data := make([]byte, 32)
@@ -280,15 +282,45 @@ func TestInvalidCiphertext(t *testing.T) {
 	ctx := aead.(*cbcAEAD)
 	ct := aead.Seal(nil, nonce, data, nil)
 
+	// Truncated ciphertext, but with correct auth tag
+	truncated, tail := resize(ct[:len(ct)-ctx.authtagBytes-2], len(ct)-2)
+	copy(tail, ctx.computeAuthTag(nil, nonce, truncated[:len(truncated)-ctx.authtagBytes]))
+
+	// Open should fail
+	_, err = aead.Open(nil, nonce, truncated, nil)
+	if err == nil {
+		t.Error("open on truncated ciphertext should fail")
+	}
+}
+
+func TestInvalidPaddingOpen(t *testing.T) {
+	key := make([]byte, 32)
+	nonce := make([]byte, 16)
+
+	// Plaintext with invalid padding
+	plaintext := padBuffer(make([]byte, 28), aes.BlockSize)
+	plaintext[len(plaintext)-1] = 0xFF
+
+	io.ReadFull(rand.Reader, key)
+	io.ReadFull(rand.Reader, nonce)
+
+	block, _ := aes.NewCipher(key)
+	cbc := cipher.NewCBCEncrypter(block, nonce)
+	buffer := append([]byte{}, plaintext...)
+	cbc.CryptBlocks(buffer, buffer)
+
+	aead, _ := NewCBCHMAC(key, aes.NewCipher)
+	ctx := aead.(*cbcAEAD)
+
 	// Mutated ciphertext, but with correct auth tag
-	ct[len(ct)-ctx.authtagBytes-1] ^= 0xFF
-	tag := ctx.computeAuthTag(nil, nonce, ct[:len(ct)-ctx.authtagBytes])
-	copy(ct[len(ct)-ctx.authtagBytes:], tag)
+	size := len(buffer)
+	ciphertext, tail := resize(buffer, size+(len(key)/2))
+	copy(tail, ctx.computeAuthTag(nil, nonce, ciphertext[:size]))
 
 	// Open should fail (b/c of invalid padding, even though tag matches)
-	_, err = aead.Open(nil, nonce, ct, nil)
-	if err == nil {
-		t.Error("open on mutated ciphertext should fail")
+	_, err := aead.Open(nil, nonce, ciphertext, nil)
+	if err == nil || !strings.Contains(err.Error(), "invalid padding") {
+		t.Error("no or unexpected error on open with invalid padding:", err)
 	}
 }
 
@@ -322,6 +354,14 @@ func TestInvalidPadding(t *testing.T) {
 			t.Error("unpad on truncated padding should fail", i)
 			return
 		}
+	}
+}
+
+func TestZeroLengthPadding(t *testing.T) {
+	data := make([]byte, 16)
+	data, err := unpadBuffer(data, 16)
+	if err == nil {
+		t.Error("padding with 0x00 should never be valid")
 	}
 }
 
