@@ -811,11 +811,11 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
 
 	// Create new certificate and return
-	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
-	// WFE is compromised, *and* the attacker knows the public key of an account
+	// TODO(#954): The RA trusts the WFE to provide the correct key. If the WFE
+	// is compromised, *and* the attacker knows the public key of an account
 	// authorized for target site, they could cause issuance for that site by
-	// lying to the RA. We should probably pass a copy of the whole rquest to the
-	// RA for secondary validation.
+	// lying to the RA. We should probably pass a copy of the whole request to
+	// the RA for secondary validation.
 	req := core.CertificateRequest{
 		RegistrationID: reg.ID,
 		CSR:            certificateRequest.CSR.Raw,
@@ -827,7 +827,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 
-	// Since issuance is still currnently synchronous, we know that by the time
+	// Since issuance is still currently synchronous, we know that by the time
 	// the method returns, the cert will be in the database.  So we just need to
 	// fetch it here.
 	cert, err := wfe.SA.GetLatestCertificateForRequest(req.ID)
@@ -852,7 +852,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	serial := parsedCertificate.SerialNumber
 	certURL := wfe.CertBase + core.SerialToString(serial)
 
-	// TODO Content negotiation
+	// TODO(#956): Content negotiation
 	response.Header().Add("Location", certURL)
 	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
@@ -915,11 +915,11 @@ func (wfe *WebFrontEndImpl) NewCertificateRequest(response http.ResponseWriter, 
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
 
 	// Create new certificate and return
-	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
-	// WFE is compromised, *and* the attacker knows the public key of an account
+	// TODO(#954): The RA trusts the WFE to provide the correct key. If the WFE
+	// is compromised, *and* the attacker knows the public key of an account
 	// authorized for target site, they could cause issuance for that site by
-	// lying to the RA. We should probably pass a copy of the whole rquest to the
-	// RA for secondary validation.
+	// lying to the RA. We should probably pass a copy of the whole request to
+	// the RA for secondary validation.
 	req := core.CertificateRequest{
 		RegistrationID: reg.ID,
 		CSR:            certificateRequest.CSR.Raw,
@@ -934,7 +934,7 @@ func (wfe *WebFrontEndImpl) NewCertificateRequest(response http.ResponseWriter, 
 	// Make a URL for this certificate request, using its ID
 	reqURL := fmt.Sprintf("%s%s", wfe.CertReqBase, req.ID)
 
-	// TODO Content negotiation
+	// TODO(#956): Content negotiation
 	response.Header().Add("Location", reqURL)
 	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
 	response.WriteHeader(http.StatusCreated)
@@ -1302,7 +1302,7 @@ func (wfe *WebFrontEndImpl) CertificateRequest(response http.ResponseWriter, req
 	if err != nil {
 		logEvent.Error = err.Error()
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
-			wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
+			wfe.sendError(response, "Multiple certificates with same serial", err, http.StatusConflict)
 		} else {
 			addNoCacheHeader(response)
 			wfe.sendError(response, "Certificate not found", err, http.StatusNotFound)
@@ -1337,8 +1337,6 @@ func (wfe *WebFrontEndImpl) CertificateRequest(response http.ResponseWriter, req
 }
 
 // Certificate is used by clients to request a copy of a specific certificate
-// Certificate is used by clients to request a copy of their current certificate, or to
-// request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
@@ -1366,7 +1364,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	if err != nil {
 		logEvent.Error = err.Error()
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
-			wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
+			wfe.sendError(response, "Multiple certificates with same serial", err, http.StatusConflict)
 		} else {
 			addNoCacheHeader(response)
 			wfe.sendError(response, "Certificate not found", err, http.StatusNotFound)
@@ -1376,7 +1374,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 
 	addCacheHeader(response, wfe.CertCacheDuration.Seconds())
 
-	// TODO Content negotiation
+	// TODO(#956): Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.Header().Add("Link", link(IssuerPath, "up"))
 	response.WriteHeader(http.StatusOK)
@@ -1403,7 +1401,7 @@ func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.R
 
 	addCacheHeader(response, wfe.IssuerCacheDuration.Seconds())
 
-	// TODO Content negotiation
+	// TODO(#956): Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
 	if _, err := response.Write(wfe.IssuerCert); err != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
+var blobSize = int(math.Pow(2, 16))
 var mediumBlobSize = int(math.Pow(2, 24))
 
 type issuedNameModel struct {

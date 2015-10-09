@@ -348,7 +348,8 @@ function getReadyToValidate(err, resp, body) {
 
   state.authorizationURL = resp.headers["location"];
 
-  // XXX: Override this to test the async version
+  // We override this now to test the async behavior
+  // TODO(#934): Remove this override
   state.newCertificateURL = links["next"].replace("new-cert", "new-cert-req");
 
   var authz = JSON.parse(body);

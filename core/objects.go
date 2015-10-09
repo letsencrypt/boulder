@@ -638,7 +638,7 @@ func (cr CertificateRequest) ReadyForSA() bool {
 // Complete tests whether all fields in the request have been populated.  This
 // should be the case for all requests that have been stored in the database.
 func (cr CertificateRequest) Complete() bool {
-	return cr.ReadyForCA() && LooksLikeAToken(cr.ID)
+	return cr.ReadyForSA() && LooksLikeAToken(cr.ID)
 }
 
 // Certificate objects are entirely internal to the server.  The only

@@ -7,7 +7,7 @@ CREATE TABLE `certificateRequests` (
   `registrationID` bigint(20) NOT NULL,
   `created` datetime NOT NULL,
   `expires` datetime NOT NULL,
-  `csr` mediumblob NOT NULL,
+  `csr` blob NOT NULL,
   `status` varchar(255) DEFAULT NULL,
 
   PRIMARY KEY (`id`),

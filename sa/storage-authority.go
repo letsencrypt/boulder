@@ -22,6 +22,11 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// In a few cases, we generate unique random IDs by generating them and testing
+// whether the generated ID exists in the database.  The collision risk should
+// be low, so we should stop after a small number of attempts.
+const uniqueIDAttemptLimit = 5
+
 const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC"
 
 // SQLStorageAuthority defines a Storage Authority
@@ -67,26 +72,29 @@ func statusIsPending(status core.AcmeStatus) bool {
 	return status == core.StatusPending || status == core.StatusProcessing || status == core.StatusUnknown
 }
 
-func existing(tx *gorp.Transaction, query string, id interface{}) bool {
+// Note: If there the query here returns an error (e.g., becuase the table
+// doesn't exist), then it will appear that there are rows present.
+func (ssa *SQLStorageAuthority) existing(tx *gorp.Transaction, query string, id interface{}) bool {
 	var count int64
 	err := tx.SelectOne(&count, query, map[string]interface{}{"id": id})
+	ssa.log.Debug(fmt.Sprintf("Error checking for existing rows: [%s] [%v] [%v]", query, id, err))
 	return err != nil || count > 0
 }
 
-func existingPending(tx *gorp.Transaction, id string) bool {
-	return existing(tx, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", id)
+func (ssa *SQLStorageAuthority) existingPending(tx *gorp.Transaction, id string) bool {
+	return ssa.existing(tx, "SELECT count(*) FROM pendingAuthorizations WHERE id = :id", id)
 }
 
-func existingFinal(tx *gorp.Transaction, id string) bool {
-	return existing(tx, "SELECT count(*) FROM authz WHERE id = :id", id)
+func (ssa *SQLStorageAuthority) existingFinal(tx *gorp.Transaction, id string) bool {
+	return ssa.existing(tx, "SELECT count(*) FROM authz WHERE id = :id", id)
 }
 
-func existingRegistration(tx *gorp.Transaction, id int64) bool {
-	return existing(tx, "SELECT count(*) FROM registrations WHERE id = :id", id)
+func (ssa *SQLStorageAuthority) existingRegistration(tx *gorp.Transaction, id int64) bool {
+	return ssa.existing(tx, "SELECT count(*) FROM registrations WHERE id = :id", id)
 }
 
-func existingCertificateRequest(tx *gorp.Transaction, id string) bool {
-	return existing(tx, "SELECT count(*) FROM certificateRequests WHERE id = :id", id)
+func (ssa *SQLStorageAuthority) existingCertificateRequest(tx *gorp.Transaction, id string) bool {
+	return ssa.existing(tx, "SELECT count(*) FROM certificateRequests WHERE id = :id", id)
 }
 
 func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Transaction) error {
@@ -303,7 +311,7 @@ func (ssa *SQLStorageAuthority) GetCertificateRequest(id string) (req core.Certi
 // GetLatestCertificateForRequest finds the certificate created under
 // the specificed certificate request that has the latest expiration.
 func (ssa *SQLStorageAuthority) GetLatestCertificateForRequest(requestID string) (cert core.Certificate, err error) {
-	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE requestID = :requestID ORDER BY expires DESC LIMIT 0,1",
+	err = ssa.dbMap.SelectOne(&cert, "SELECT * FROM certificates WHERE requestID = :requestID ORDER BY expires DESC LIMIT 1",
 		map[string]interface{}{"requestID": requestID})
 	return
 }
@@ -483,9 +491,17 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 	}
 
 	// Check that it doesn't exist already
+	attempts := 0
 	authz.ID = core.NewToken()
-	for existingPending(tx, authz.ID) || existingFinal(tx, authz.ID) {
+	for (ssa.existingPending(tx, authz.ID) || ssa.existingFinal(tx, authz.ID)) &&
+		(attempts < uniqueIDAttemptLimit) {
 		authz.ID = core.NewToken()
+		attempts += 1
+	}
+	if attempts >= uniqueIDAttemptLimit {
+		tx.Rollback()
+		err = fmt.Errorf("Unable to generate a unique authorization ID")
+		return
 	}
 
 	// Insert a stub row in pending
@@ -539,13 +555,13 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 		return
 	}
 
-	if existingFinal(tx, authz.ID) {
+	if ssa.existingFinal(tx, authz.ID) {
 		err = errors.New("Cannot update a final authorization")
 		tx.Rollback()
 		return
 	}
 
-	if !existingPending(tx, authz.ID) {
+	if !ssa.existingPending(tx, authz.ID) {
 		err = errors.New("Requested authorization not found " + authz.ID)
 		tx.Rollback()
 		return
@@ -582,7 +598,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	}
 
 	// Check that a pending authz exists
-	if !existingPending(tx, authz.ID) {
+	if !ssa.existingPending(tx, authz.ID) {
 		err = errors.New("Cannot finalize a authorization that is not pending")
 		tx.Rollback()
 		return
@@ -632,15 +648,27 @@ func (ssa *SQLStorageAuthority) NewCertificateRequest(req core.CertificateReques
 		return
 	}
 
+	if len(req.CSR) > blobSize {
+		err = fmt.Errorf("CSR is too large to be stored in the database")
+		return
+	}
+
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
 	}
 
 	// Check that it doesn't exist already
+	attempts := 0
 	req.ID = core.NewToken()
-	for existingCertificateRequest(tx, req.ID) {
+	for ssa.existingCertificateRequest(tx, req.ID) && (attempts < uniqueIDAttemptLimit) {
 		req.ID = core.NewToken()
+		attempts += 1
+	}
+	if attempts >= uniqueIDAttemptLimit {
+		tx.Rollback()
+		err = fmt.Errorf("Unable to generate a unique request ID")
+		return
 	}
 
 	// Insert the request into the database
@@ -658,7 +686,27 @@ func (ssa *SQLStorageAuthority) NewCertificateRequest(req core.CertificateReques
 // UpdateCertificateRequestStatus sets the "status" field of the
 // identified CertificateRequest to the specified value.
 func (ssa *SQLStorageAuthority) UpdateCertificateRequestStatus(id string, status core.AcmeStatus) (err error) {
-	_, err = ssa.dbMap.Exec("UPDATE `certificateRequests` SET status = ? WHERE id = ?", string(status), id)
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return
+	}
+
+	certReqObj, err := tx.Get(core.CertificateRequest{}, id)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	certReq := certReqObj.(*core.CertificateRequest)
+	certReq.Status = status
+
+	_, err = tx.Update(certReq)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
+	err = tx.Commit()
 	return
 }
 

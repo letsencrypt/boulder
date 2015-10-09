@@ -235,7 +235,12 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 }
 
 // checkAuthorizations checks that each requested name has a valid authorization
-// that won't expire before the certificate expires. Returns an error otherwise.
+// that has not expired. Returns an error otherwise.
+//
+// If all names are authorized, the first return value is the time of the
+// earliest expiration among authorizations for these names.  For example, if
+// the names are from a CSR, then the CSR can be used for issuance until that
+// date.
 func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registration *core.Registration) (time.Time, error) {
 	now := ra.clk.Now()
 
@@ -245,12 +250,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registr
 	for _, name := range names {
 		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
 
-		// Ignore authorizations with no expiration; they are mal-formed
-		if authz.Expires == nil {
-			continue
-		}
-
-		if err != nil || authz.Expires.Before(now) {
+		if err != nil || authz.Expires == nil || authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		}
 
@@ -365,6 +365,9 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest)
 		logEvent.Error = err.Error()
 		return emptyCertRequest, err
 	}
+	// TODO(rlb): Update req.Expires based on current authorization data when
+	// re-issuance is requested.  This isn't relevant until re-issuance is
+	// supported, though.
 	req.Expires = earliestExpiration
 
 	// Mark that we verified the CN and SANs

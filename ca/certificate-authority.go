@@ -296,7 +296,7 @@ func (ca *CertificateAuthorityImpl) NewCertificateRequest(req core.CertificateRe
 		return emptyCertRequest, err
 	}
 
-	// Check that there aren't too many name
+	// Check that there aren't too many names
 	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
 		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
 		ca.Log.WarningErr(err)
@@ -475,6 +475,7 @@ func (ca *CertificateAuthorityImpl) signCertificate(csr *x509.CertificateRequest
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 	signRequest.Serial = serialBigInt
+	logEvent.SerialNumber = serialHex
 
 	certPEM, err := ca.Signer.Sign(signRequest)
 	if err != nil {
@@ -541,7 +542,6 @@ func (ca *CertificateAuthorityImpl) signCertificate(csr *x509.CertificateRequest
 	// Here's where we finally declare success
 	// Now that the certificate has been committed, we can fill out
 	// the rest of the log event and mark it as successful
-	logEvent.SerialNumber = cert.Serial
 	logEvent.CommonName = certObj.Subject.CommonName
 	logEvent.Names = certObj.DNSNames
 	logEvent.NotBefore = certObj.NotBefore
