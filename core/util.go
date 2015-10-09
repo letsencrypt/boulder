@@ -472,11 +472,12 @@ func GetBuildHost() (retID string) {
 	return
 }
 
-// UniqueNames returns the set of all unique names in the input.
-func UniqueNames(names []string) (unique []string) {
+// UniqueLowerNames returns the set of all unique names in the input after all
+// of them are lowercased. The returned names will be in their lowercased form.
+func UniqueLowerNames(names []string) (unique []string) {
 	nameMap := make(map[string]int, len(names))
 	for _, name := range names {
-		nameMap[name] = 1
+		nameMap[strings.ToLower(name)] = 1
 	}
 
 	unique = make([]string, 0, len(nameMap))

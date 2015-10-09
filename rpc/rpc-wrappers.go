@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -61,6 +62,7 @@ const (
 	MethodAlreadyDeniedCSR                  = "AlreadyDeniedCSR"                  // SA
 	MethodCountCertificatesRange            = "CountCertificatesRange"            // SA
 	MethodCountCertificatesByNames          = "CountCertificatesByNames"          // SA
+	MethodCountRegistrationsByIP            = "CountRegistrationsByIP"            // SA
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
@@ -145,6 +147,12 @@ type countRequest struct {
 
 type countCertificatesByNamesRequest struct {
 	Names    []string
+	Earliest time.Time
+	Latest   time.Time
+}
+
+type countRegistrationsByIPRequest struct {
+	IP       net.IP
 	Earliest time.Time
 	Latest   time.Time
 }
@@ -1010,6 +1018,20 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return json.Marshal(counts)
 	})
 
+	rpc.Handle(MethodCountRegistrationsByIP, func(req []byte) (response []byte, err error) {
+		var cReq countRegistrationsByIPRequest
+		err = json.Unmarshal(req, &cReq)
+		if err != nil {
+			return
+		}
+
+		count, err := impl.CountRegistrationsByIP(cReq.IP, cReq.Earliest, cReq.Latest)
+		if err != nil {
+			return
+		}
+		return json.Marshal(count)
+	})
+
 	rpc.Handle(MethodGetSCTReceipt, func(req []byte) (response []byte, err error) {
 		var gsctReq struct {
 			Serial string
@@ -1024,7 +1046,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		}
 
 		sct, err := impl.GetSCTReceipt(gsctReq.Serial, gsctReq.LogID)
-		jsonResponse, err := json.Marshal(core.SignedCertificateTimestamp(sct))
+		jsonResponse, err := json.Marshal(core.RPCSignedCertificateTimestamp(sct))
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetSCTReceipt, err, req)
@@ -1035,7 +1057,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	})
 
 	rpc.Handle(MethodAddSCTReceipt, func(req []byte) (response []byte, err error) {
-		var sct core.SignedCertificateTimestamp
+		var sct core.RPCSignedCertificateTimestamp
 		err = json.Unmarshal(req, &sct)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
@@ -1334,6 +1356,23 @@ func (cac StorageAuthorityClient) CountCertificatesByNames(names []string, earli
 		return
 	}
 	err = json.Unmarshal(response, &counts)
+	return
+}
+
+// CountRegistrationsByIP calls CountRegistrationsByIP on the remote
+// StorageAuthority.
+func (cac StorageAuthorityClient) CountRegistrationsByIP(ip net.IP, earliest, latest time.Time) (count int, err error) {
+	var cReq countRegistrationsByIPRequest
+	cReq.IP, cReq.Earliest, cReq.Latest = ip, earliest, latest
+	data, err := json.Marshal(cReq)
+	if err != nil {
+		return
+	}
+	response, err := cac.rpc.DispatchSync(MethodCountRegistrationsByIP, data)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(response, &count)
 	return
 }
 

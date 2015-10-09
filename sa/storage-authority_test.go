@@ -15,6 +15,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/big"
+	"net"
+	"net/url"
 	"testing"
 	"time"
 
@@ -41,7 +44,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	dbMap.TraceOn("SQL: ", &SQLLogger{log})
 
 	fc := clock.NewFake()
-	fc.Add(1 * time.Hour)
+	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
 	sa, err := NewSQLStorageAuthority(dbMap, fc)
 	if err != nil {
@@ -60,7 +63,7 @@ var (
 )
 
 func TestAddRegistration(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
 	jwk := satest.GoodJWK()
@@ -71,8 +74,9 @@ func TestAddRegistration(t *testing.T) {
 	}
 	contacts := []*core.AcmeURL{contact}
 	reg, err := sa.NewRegistration(core.Registration{
-		Key:     jwk,
-		Contact: contacts,
+		Key:       jwk,
+		Contact:   contacts,
+		InitialIP: net.ParseIP("43.34.43.34"),
 	})
 	if err != nil {
 		t.Fatalf("Couldn't create new registration: %s", err)
@@ -87,15 +91,23 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
 	expectedReg := core.Registration{
-		ID:  reg.ID,
-		Key: jwk,
+		ID:        reg.ID,
+		Key:       jwk,
+		InitialIP: net.ParseIP("43.34.43.34"),
+		CreatedAt: clk.Now(),
 	}
 	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
 	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
 
 	u, _ := core.ParseAcmeURL("test.com")
 
-	newReg := core.Registration{ID: reg.ID, Key: jwk, Contact: []*core.AcmeURL{u}, Agreement: "yes"}
+	newReg := core.Registration{
+		ID:        reg.ID,
+		Key:       jwk,
+		Contact:   []*core.AcmeURL{u},
+		InitialIP: net.ParseIP("72.72.72.72"),
+		Agreement: "yes",
+	}
 	err = sa.UpdateRegistration(newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 	dbReg, err = sa.GetRegistrationByKey(jwk)
@@ -559,4 +571,49 @@ func TestCountCertificates(t *testing.T) {
 	count, err = sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
 	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
 	test.AssertEquals(t, count, int64(0))
+}
+
+func TestCountRegistrationsByIP(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	contact := core.AcmeURL(url.URL{
+		Scheme: "mailto",
+		Opaque: "foo@example.com",
+	})
+
+	_, err := sa.NewRegistration(core.Registration{
+		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		Contact:   []*core.AcmeURL{&contact},
+		InitialIP: net.ParseIP("43.34.43.34"),
+	})
+	test.AssertNotError(t, err, "Couldn't insert registration")
+	_, err = sa.NewRegistration(core.Registration{
+		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
+		Contact:   []*core.AcmeURL{&contact},
+		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
+	})
+	test.AssertNotError(t, err, "Couldn't insert registration")
+	_, err = sa.NewRegistration(core.Registration{
+		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
+		Contact:   []*core.AcmeURL{&contact},
+		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
+	})
+	test.AssertNotError(t, err, "Couldn't insert registration")
+
+	earliest := fc.Now().Add(-time.Hour * 24)
+	latest := fc.Now()
+
+	count, err := sa.CountRegistrationsByIP(net.ParseIP("1.1.1.1"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 0)
+	count, err = sa.CountRegistrationsByIP(net.ParseIP("43.34.43.34"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 1)
+	count, err = sa.CountRegistrationsByIP(net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 2)
+	count, err = sa.CountRegistrationsByIP(net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 2)
 }
