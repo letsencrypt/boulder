@@ -51,12 +51,13 @@ type RegistrationAuthorityImpl struct {
 	clk         clock.Clock
 	log         *blog.AuditLogger
 	// How long before a newly created authorization expires.
-	authorizationLifetime time.Duration
-	rlPolicies            cmd.RateLimitConfig
-	tiMu                  *sync.RWMutex
-	totalIssuedCache      int
-	lastIssuedCount       *time.Time
-	maxContactsPerReg     int
+	authorizationLifetime        time.Duration
+	pendingAuthorizationLifetime time.Duration
+	rlPolicies                   cmd.RateLimitConfig
+	tiMu                         *sync.RWMutex
+	totalIssuedCache             int
+	lastIssuedCount              *time.Time
+	maxContactsPerReg            int
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.

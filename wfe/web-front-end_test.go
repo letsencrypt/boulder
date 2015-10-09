@@ -698,6 +698,16 @@ func TestChallenge(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Body.String(),
 		`{"type":"dns","uri":"/acme/challenge/valid/23"}`)
+
+	// Expired challenges should be inaccessible
+	challengeURL = "/acme/challenge/expired/23"
+	responseWriter = httptest.NewRecorder()
+	wfe.Challenge(responseWriter,
+		makePostRequestWithPath(challengeURL,
+			signRequest(t, `{"resource":"challenge"}`, &wfe.nonceService)))
+	test.AssertEquals(t, responseWriter.Code, http.StatusGone)
+	test.AssertEquals(t, responseWriter.Body.String(),
+		`{"type":"urn:acme:error:serverInternal","detail":"Expired authorization"}`)
 }
 
 func TestNewRegistration(t *testing.T) {
@@ -1084,6 +1094,17 @@ func TestAuthorization(t *testing.T) {
 	var authz core.Authorization
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
+
+	// Expired authorizations should be inaccessible
+	authzURL := "/acme/authz/expired"
+	responseWriter = httptest.NewRecorder()
+	wfe.Authorization(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(authzURL),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusGone)
+	test.AssertEquals(t, responseWriter.Body.String(),
+		`{"type":"urn:acme:error:serverInternal","detail":"Expired authorization"}`)
 }
 
 func contains(s []string, e string) bool {

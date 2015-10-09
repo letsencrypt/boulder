@@ -194,24 +194,32 @@ func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Regi
 
 // GetAuthorization is a mock
 func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, error) {
+	authz := core.Authorization{
+		ID:             "valid",
+		Status:         core.StatusValid,
+		RegistrationID: 1,
+		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
+		Challenges: []core.Challenge{
+			core.Challenge{
+				ID:   23,
+				Type: "dns",
+			},
+		},
+	}
+
 	if id == "valid" {
 		exp := time.Now().AddDate(100, 0, 0)
-		return core.Authorization{
-			ID:             "valid",
-			Status:         core.StatusValid,
-			RegistrationID: 1,
-			Expires:        &exp,
-			Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
-			Challenges: []core.Challenge{
-				core.Challenge{
-					ID:   23,
-					Type: "dns",
-					URI:  "http://localhost:4300/acme/challenge/valid/23",
-				},
-			},
-		}, nil
+		authz.Expires = &exp
+		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/valid/23"
+		return authz, nil
+	} else if id == "expired" {
+		exp := time.Now().AddDate(0, -1, 0)
+		authz.Expires = &exp
+		authz.Challenges[0].URI = "http://localhost:4300/acme/challenge/expired/23"
+		return authz, nil
 	}
-	return core.Authorization{}, nil
+
+	return core.Authorization{}, fmt.Errorf("authz not found")
 }
 
 // GetCertificate is a mock
