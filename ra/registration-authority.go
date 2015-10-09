@@ -270,8 +270,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		Status:         core.StatusPending,
 		Combinations:   combinations,
 		Challenges:     challenges,
-		// TODO(jsha): Pending authz should expire earlier than finalized authz.
-		Expires: &expires,
+		Expires:        &expires,
 	}
 
 	// Get a pending Auth first so we can get our ID back, then update with challenges
@@ -609,6 +608,11 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 
 // UpdateAuthorization updates an authorization with new values.
 func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization, challengeIndex int, response core.Challenge) (authz core.Authorization, err error) {
+	// Refuse to update expired authorizations
+	if base.Expires == nil || base.Expires.Before(time.Now()) {
+		err = core.MalformedRequestError("Expired authorization")
+	}
+
 	// Copy information over that the client is allowed to supply
 	authz = base
 	if challengeIndex >= len(authz.Challenges) {
