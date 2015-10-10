@@ -112,6 +112,7 @@ type StorageGetter interface {
 	AlreadyDeniedCSR([]string) (bool, error)
 	CountCertificatesRange(time.Time, time.Time) (int64, error)
 	CountCertificatesByNames([]string, time.Time, time.Time) (map[string]int, error)
+	CountRegistrationsByIP(net.IP, time.Time, time.Time) (int, error)
 	GetSCTReceipt(string, string) (SignedCertificateTimestamp, error)
 }
 

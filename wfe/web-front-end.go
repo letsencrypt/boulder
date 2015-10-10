@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -547,6 +548,17 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 	init.Key = *key
+	init.InitialIP = net.ParseIP(request.Header.Get("X-Real-IP"))
+	if init.InitialIP == nil {
+		host, _, err := net.SplitHostPort(request.RemoteAddr)
+		if err == nil {
+			init.InitialIP = net.ParseIP(host)
+		} else {
+			logEvent.Error = "Couldn't parse RemoteAddr"
+			wfe.sendError(response, logEvent.Error, nil, http.StatusInternalServerError)
+			return
+		}
+	}
 
 	reg, err := wfe.RA.NewRegistration(init)
 	if err != nil {
