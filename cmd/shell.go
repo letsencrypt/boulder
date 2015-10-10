@@ -99,6 +99,8 @@ type Config struct {
 
 		MaxConcurrentRPCServerRequests int64
 
+		MaxContactsPerRegistration int
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
