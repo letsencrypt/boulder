@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net"
 	"testing"
 	"text/template"
 	"time"
@@ -56,11 +57,11 @@ func (m *mockMail) SendMail(to []string, msg string) (err error) {
 }
 
 type fakeRegStore struct {
-	RegById map[int64]core.Registration
+	RegByID map[int64]core.Registration
 }
 
 func (f fakeRegStore) GetRegistration(id int64) (core.Registration, error) {
-	r, ok := f.RegById[id]
+	r, ok := f.RegByID[id]
 	if !ok {
 		msg := fmt.Sprintf("no such registration %d", id)
 		return r, core.NoSuchRegistrationError(msg)
@@ -69,7 +70,7 @@ func (f fakeRegStore) GetRegistration(id int64) (core.Registration, error) {
 }
 
 func newFakeRegStore() fakeRegStore {
-	return fakeRegStore{RegById: make(map[int64]core.Registration)}
+	return fakeRegStore{RegByID: make(map[int64]core.Registration)}
 }
 
 const testTmpl = `hi, cert for DNS names {{.DNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`
@@ -171,14 +172,16 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Contact: []*core.AcmeURL{
 			emailA,
 		},
-		Key: keyA,
+		Key:       keyA,
+		InitialIP: net.ParseIP("2.3.2.3"),
 	}
 	regB := core.Registration{
 		ID: 2,
 		Contact: []*core.AcmeURL{
 			emailB,
 		},
-		Key: keyB,
+		Key:       keyB,
+		InitialIP: net.ParseIP("2.3.2.3"),
 	}
 	regA, err = ctx.ssa.NewRegistration(regA)
 	if err != nil {
@@ -298,7 +301,8 @@ func TestLifetimeOfACert(t *testing.T) {
 		Contact: []*core.AcmeURL{
 			emailA,
 		},
-		Key: keyA,
+		Key:       keyA,
+		InitialIP: net.ParseIP("1.2.2.1"),
 	}
 	regA, err = ctx.ssa.NewRegistration(regA)
 	if err != nil {
@@ -401,7 +405,8 @@ func TestDontFindRevokedCert(t *testing.T) {
 		Contact: []*core.AcmeURL{
 			emailA,
 		},
-		Key: keyA,
+		Key:       keyA,
+		InitialIP: net.ParseIP("6.5.5.6"),
 	}
 	regA, err = ctx.ssa.NewRegistration(regA)
 	if err != nil {

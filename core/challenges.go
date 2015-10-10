@@ -38,9 +38,11 @@ func HTTPChallenge01(accountKey *jose.JsonWebKey) Challenge {
 	return newChallenge(ChallengeTypeHTTP01, accountKey)
 }
 
-// DvsniChallenge01 constructs a random tls-sni-00 challenge
+// TLSSNIChallenge01 constructs a random tls-sni-00 challenge
 func TLSSNIChallenge01(accountKey *jose.JsonWebKey) Challenge {
-	return newChallenge(ChallengeTypeTLSSNI01, accountKey)
+	chall := newChallenge(ChallengeTypeTLSSNI01, accountKey)
+	chall.N = 25
+	return chall
 }
 
 // DNSChallenge01 constructs a random DNS challenge

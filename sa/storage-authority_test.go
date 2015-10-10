@@ -15,6 +15,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/big"
+	"net"
+	"net/url"
 	"testing"
 	"time"
 
@@ -41,7 +44,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	dbMap.TraceOn("SQL: ", &SQLLogger{log})
 
 	fc := clock.NewFake()
-	fc.Add(1 * time.Hour)
+	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
 	sa, err := NewSQLStorageAuthority(dbMap, fc)
 	if err != nil {
@@ -60,7 +63,7 @@ var (
 )
 
 func TestAddRegistration(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
 	jwk := satest.GoodJWK()
@@ -71,8 +74,9 @@ func TestAddRegistration(t *testing.T) {
 	}
 	contacts := []*core.AcmeURL{contact}
 	reg, err := sa.NewRegistration(core.Registration{
-		Key:     jwk,
-		Contact: contacts,
+		Key:       jwk,
+		Contact:   contacts,
+		InitialIP: net.ParseIP("43.34.43.34"),
 	})
 	if err != nil {
 		t.Fatalf("Couldn't create new registration: %s", err)
@@ -87,15 +91,23 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
 	expectedReg := core.Registration{
-		ID:  reg.ID,
-		Key: jwk,
+		ID:        reg.ID,
+		Key:       jwk,
+		InitialIP: net.ParseIP("43.34.43.34"),
+		CreatedAt: clk.Now(),
 	}
 	test.AssertEquals(t, dbReg.ID, expectedReg.ID)
 	test.Assert(t, core.KeyDigestEquals(dbReg.Key, expectedReg.Key), "Stored key != expected")
 
 	u, _ := core.ParseAcmeURL("test.com")
 
-	newReg := core.Registration{ID: reg.ID, Key: jwk, Contact: []*core.AcmeURL{u}, Agreement: "yes"}
+	newReg := core.Registration{
+		ID:        reg.ID,
+		Key:       jwk,
+		Contact:   []*core.AcmeURL{u},
+		InitialIP: net.ParseIP("72.72.72.72"),
+		Agreement: "yes",
+	}
 	err = sa.UpdateRegistration(newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 	dbReg, err = sa.GetRegistrationByKey(jwk)
@@ -168,10 +180,10 @@ func TestAddAuthorization(t *testing.T) {
 }
 
 func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) (authz core.Authorization) {
-	return CreateDomainAuthWithRegId(t, domainName, sa, 42)
+	return CreateDomainAuthWithRegID(t, domainName, sa, 42)
 }
 
-func CreateDomainAuthWithRegId(t *testing.T, domainName string, sa *SQLStorageAuthority, regID int64) (authz core.Authorization) {
+func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAuthority, regID int64) (authz core.Authorization) {
 
 	// create pending auth
 	authz, err := sa.NewPendingAuthorization(core.Authorization{RegistrationID: regID, Challenges: []core.Challenge{core.Challenge{}}})
@@ -212,7 +224,7 @@ func TestGetLatestValidAuthorizationBasic(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 
 	// authorize "example.org"
-	authz = CreateDomainAuthWithRegId(t, "example.org", sa, reg.ID)
+	authz = CreateDomainAuthWithRegID(t, "example.org", sa, reg.ID)
 
 	// finalize auth
 	authz.Status = core.StatusValid
@@ -243,7 +255,7 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	// create invalid authz
-	authz := CreateDomainAuthWithRegId(t, domain, sa, reg.ID)
+	authz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
 	exp := time.Now().AddDate(0, 0, 10) // expire in 10 day
 	authz.Expires = &exp
 	authz.Status = core.StatusInvalid
@@ -255,7 +267,7 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 	test.AssertError(t, err, "Should not have found a valid auth for "+domain)
 
 	// create valid auth
-	authz = CreateDomainAuthWithRegId(t, domain, sa, reg.ID)
+	authz = CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
 	exp = time.Now().AddDate(0, 0, 1) // expire in 1 day
 	authz.Expires = &exp
 	authz.Status = core.StatusValid
@@ -271,7 +283,7 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 	test.AssertEquals(t, authz.RegistrationID, reg.ID)
 
 	// create a newer auth
-	newAuthz := CreateDomainAuthWithRegId(t, domain, sa, reg.ID)
+	newAuthz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
 	exp = time.Now().AddDate(0, 0, 2) // expire in 2 day
 	newAuthz.Expires = &exp
 	newAuthz.Status = core.StatusValid
@@ -333,7 +345,7 @@ func TestAddCertificate(t *testing.T) {
 	test.Assert(t, certificateStatus2.OCSPLastUpdated.IsZero(), "OCSPLastUpdated should be nil")
 }
 
-func TestCountCertificatesByName(t *testing.T) {
+func TestCountCertificatesByNames(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 	// Test cert generated locally by Boulder / CFSSL, names [example.com,
@@ -352,9 +364,10 @@ func TestCountCertificatesByName(t *testing.T) {
 	tomorrow := clk.Now().Add(24 * time.Hour)
 
 	// Count for a name that doesn't have any certs
-	count, err := sa.CountCertificatesByName("example.com", yesterday, now)
+	counts, err := sa.CountCertificatesByNames([]string{"example.com"}, yesterday, now)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, len(counts), 1)
+	test.AssertEquals(t, counts["example.com"], 0)
 
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -362,20 +375,34 @@ func TestCountCertificatesByName(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
 	// Time range including now should find the cert
-	count, err = sa.CountCertificatesByName("example.com", yesterday, now)
-	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, count, 1)
+	counts, err = sa.CountCertificatesByNames([]string{"example.com"}, yesterday, now)
+	test.AssertEquals(t, len(counts), 1)
+	test.AssertEquals(t, counts["example.com"], 1)
 
 	// Time range between two days ago and yesterday should not.
-	count, err = sa.CountCertificatesByName("example.com", twoDaysAgo, yesterday)
+	counts, err = sa.CountCertificatesByNames([]string{"example.com"}, twoDaysAgo, yesterday)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, len(counts), 1)
+	test.AssertEquals(t, counts["example.com"], 0)
 
 	// Time range between now and tomorrow also should not (time ranges are
 	// inclusive at the tail end, but not the beginning end).
-	count, err = sa.CountCertificatesByName("example.com", now, tomorrow)
+	counts, err = sa.CountCertificatesByNames([]string{"example.com"}, now, tomorrow)
 	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, count, 0)
+	test.AssertEquals(t, len(counts), 1)
+	test.AssertEquals(t, counts["example.com"], 0)
+
+	// Add a second test cert (for example.co.bn) and query for multiple names.
+	certDER2, err := ioutil.ReadFile("test-cert2.der")
+	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
+	_, err = sa.AddCertificate(certDER2, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
+	counts, err = sa.CountCertificatesByNames([]string{"example.com", "foo.com", "example.co.bn"}, yesterday, now.Add(10000*time.Hour))
+	test.AssertNotError(t, err, "Error counting certs.")
+	test.AssertEquals(t, len(counts), 3)
+	test.AssertEquals(t, counts["foo.com"], 0)
+	test.AssertEquals(t, counts["example.com"], 1)
+	test.AssertEquals(t, counts["example.co.bn"], 1)
 }
 
 func TestDeniedCSR(t *testing.T) {
@@ -566,4 +593,49 @@ func TestCountCertificates(t *testing.T) {
 	count, err = sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
 	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
 	test.AssertEquals(t, count, int64(0))
+}
+
+func TestCountRegistrationsByIP(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	contact := core.AcmeURL(url.URL{
+		Scheme: "mailto",
+		Opaque: "foo@example.com",
+	})
+
+	_, err := sa.NewRegistration(core.Registration{
+		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
+		Contact:   []*core.AcmeURL{&contact},
+		InitialIP: net.ParseIP("43.34.43.34"),
+	})
+	test.AssertNotError(t, err, "Couldn't insert registration")
+	_, err = sa.NewRegistration(core.Registration{
+		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
+		Contact:   []*core.AcmeURL{&contact},
+		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
+	})
+	test.AssertNotError(t, err, "Couldn't insert registration")
+	_, err = sa.NewRegistration(core.Registration{
+		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
+		Contact:   []*core.AcmeURL{&contact},
+		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
+	})
+	test.AssertNotError(t, err, "Couldn't insert registration")
+
+	earliest := fc.Now().Add(-time.Hour * 24)
+	latest := fc.Now()
+
+	count, err := sa.CountRegistrationsByIP(net.ParseIP("1.1.1.1"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 0)
+	count, err = sa.CountRegistrationsByIP(net.ParseIP("43.34.43.34"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 1)
+	count, err = sa.CountRegistrationsByIP(net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 2)
+	count, err = sa.CountRegistrationsByIP(net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000"), earliest, latest)
+	test.AssertNotError(t, err, "Failed to count registrations")
+	test.AssertEquals(t, count, 2)
 }

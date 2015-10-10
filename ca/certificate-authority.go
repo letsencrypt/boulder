@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
@@ -223,7 +224,8 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 }
 
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
-// enforcing all policies.
+// enforcing all policies. Names (domains) in the CertificateRequest will be
+// lowercased before storage.
 func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
@@ -253,10 +255,10 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	hostNames := make([]string, len(csr.DNSNames))
 	copy(hostNames, csr.DNSNames)
 	if len(csr.Subject.CommonName) > 0 {
-		commonName = csr.Subject.CommonName
-		hostNames = append(hostNames, csr.Subject.CommonName)
+		commonName = strings.ToLower(csr.Subject.CommonName)
+		hostNames = append(hostNames, commonName)
 	} else if len(hostNames) > 0 {
-		commonName = hostNames[0]
+		commonName = strings.ToLower(hostNames[0])
 	} else {
 		err = core.MalformedRequestError("Cannot issue a certificate without a hostname.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
@@ -265,7 +267,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Collapse any duplicate names.  Note that this operation may re-order the names
-	hostNames = core.UniqueNames(hostNames)
+	hostNames = core.UniqueLowerNames(hostNames)
 	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
 		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
 		ca.log.WarningErr(err)

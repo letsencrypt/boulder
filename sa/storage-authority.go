@@ -12,6 +12,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
+	"net"
 	"sort"
 	"strings"
 	"time"
@@ -212,16 +214,16 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 }
 
 // GetLatestValidAuthorization gets the valid authorization with biggest expire date for a given domain and registrationId
-func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	ident, err := json.Marshal(identifier)
 	if err != nil {
 		return
 	}
 	var auth core.Authorization
 	err = ssa.dbMap.SelectOne(&auth, "SELECT id FROM authz "+
-		"WHERE identifier = :identifier AND registrationID = :registrationId AND status = 'valid' "+
+		"WHERE identifier = :identifier AND registrationID = :registrationID AND status = 'valid' "+
 		"ORDER BY expires DESC LIMIT 1",
-		map[string]interface{}{"identifier": string(ident), "registrationId": registrationId})
+		map[string]interface{}{"identifier": string(ident), "registrationID": registrationID})
 	if err != nil {
 		return
 	}
@@ -229,19 +231,114 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationId int64
 	return ssa.GetAuthorization(auth.ID)
 }
 
+// incrementIP returns a copy of `ip` incremented at a bit index `index`,
+// or in other words the first IP of the next highest subnet given a mask of
+// length `index`.
+// In order to easily account for overflow, we treat ip as a big.Int and add to
+// it. If the increment overflows the max size of a net.IP, return the highest
+// possible net.IP.
+func incrementIP(ip net.IP, index int) net.IP {
+	bigInt := new(big.Int)
+	bigInt.SetBytes([]byte(ip))
+	incr := new(big.Int).Lsh(big.NewInt(1), 128-uint(index))
+	bigInt.Add(bigInt, incr)
+	// bigInt.Bytes can be shorter than 16 bytes, so stick it into a
+	// full-sized net.IP.
+	resultBytes := bigInt.Bytes()
+	if len(resultBytes) > 16 {
+		return net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
+	}
+	result := make(net.IP, 16)
+	copy(result[16-len(resultBytes):], resultBytes)
+	return result
+}
+
+// ipRange returns a range of IP addresses suitable for querying MySQL for the
+// purpose of rate limiting using a range that is inclusive on the lower end and
+// exclusive at the higher end. If ip is an IPv4 address, it returns that address,
+// plus the one immediately higher than it. If ip is an IPv6 address, it applies
+// a /48 mask to it and returns the lowest IP in the resulting network, and the
+// first IP outside of the resulting network.
+func ipRange(ip net.IP) (net.IP, net.IP) {
+	ip = ip.To16()
+	// For IPv6, match on a certain subnet range, since one person can commonly
+	// have an entire /48 to themselves.
+	maskLength := 48
+	// For IPv4 addresses, do a match on exact address, so begin = ip and end =
+	// next higher IP.
+	if ip.To4() != nil {
+		maskLength = 128
+	}
+
+	mask := net.CIDRMask(maskLength, 128)
+	begin := ip.Mask(mask)
+	end := incrementIP(begin, maskLength)
+
+	return begin, end
+}
+
+// CountRegistrationsByIP returns the number of registrations created in the
+// time range in an IP range. For IPv4 addresses, that range is limited to the
+// single IP. For IPv6 addresses, that range is a /48, since it's not uncommon
+// for one person to have a /48 to themselves.
+func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ip net.IP, earliest time.Time, latest time.Time) (int, error) {
+	var count int64
+	beginIP, endIP := ipRange(ip)
+	err := ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM registrations
+		 WHERE 
+		 :beginIP <= initialIP AND
+		 initialIP < :endIP AND
+		 :earliest < createdAt AND
+		 createdAt <= :latest`,
+		map[string]interface{}{
+			"ip":       ip.String(),
+			"earliest": earliest,
+			"latest":   latest,
+			"beginIP":  []byte(beginIP),
+			"endIP":    []byte(endIP),
+		})
+	if err != nil {
+		return -1, err
+	}
+	return int(count), nil
+}
+
+// TooManyCertificatesError indicates that the number of certificates returned by
+// CountCertificates exceeded the hard-coded limit of 10,000 certificates.
 type TooManyCertificatesError string
 
 func (t TooManyCertificatesError) Error() string {
 	return string(t)
 }
 
-// CountCertificates returns the number of certificates issued within a time
-// period containing DNSNames that are equal to, or subdomains of, the given
-// domain name.
+// CountCertificatesByNames counts, for each input domain, the number of
+// certificates issued in the given time range for that domain and its
+// subdomains. It returns a map from domains to counts, which is guaranteed to
+// contain an entry for each input domain, so long as err is nil.
 // The highest count this function can return is 10,000. If there are more
-// certificates than that matching the provided domain name, it will return
+// certificates than that matching one ofthe provided domain names, it will return
 // TooManyCertificatesError.
-func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) CountCertificatesByNames(domains []string, earliest, latest time.Time) (map[string]int, error) {
+	ret := make(map[string]int, len(domains))
+	for _, domain := range domains {
+		currentCount, err := ssa.countCertificatesByName(domain, earliest, latest)
+		if err != nil {
+			return ret, err
+		}
+		ret[domain] = currentCount
+	}
+	return ret, nil
+}
+
+// countCertificatesByNames returns, for a single domain, the count of
+// certificates issued in the given time range for that domain and its
+// subdomains.
+// The highest count this function can return is 10,000. If there are more
+// certificates than that matching one ofthe provided domain names, it will return
+// TooManyCertificatesError.
+func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
 	var count int64
 	const max = 10000
 	var serials []struct {
@@ -260,10 +357,12 @@ func (ssa *SQLStorageAuthority) CountCertificatesByName(domain string, earliest,
 			"latest":         latest,
 			"limit":          max + 1,
 		})
-	if err != nil {
+	if err == sql.ErrNoRows {
+		return 0, nil
+	} else if err != nil {
 		return -1, err
 	} else if count > max {
-		return -1, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
+		return max, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
 	}
 	serialMap := make(map[string]struct{}, len(serials))
 	for _, s := range serials {
@@ -321,6 +420,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (core.Reg
 	if err != nil {
 		return reg, err
 	}
+	rm.CreatedAt = ssa.clk.Now()
 	err = ssa.dbMap.Insert(rm)
 	if err != nil {
 		return reg, err
@@ -423,17 +523,32 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, ocspRespon
 
 // UpdateRegistration stores an updated Registration
 func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) error {
-	rm, err := registrationToModel(&reg)
+	lookupResult, err := ssa.dbMap.Get(regModel{}, reg.ID)
 	if err != nil {
 		return err
 	}
+	if lookupResult == nil {
+		msg := fmt.Sprintf("No registrations with ID %d", reg.ID)
+		return core.NoSuchRegistrationError(msg)
+	}
+	existingRegModel, ok := lookupResult.(*regModel)
+	if !ok {
+		// Shouldn't happen
+		return fmt.Errorf("Incorrect type returned from registration lookup")
+	}
 
-	n, err := ssa.dbMap.Update(rm)
+	updatedRegModel, err := registrationToModel(&reg)
+	if err != nil {
+		return err
+	}
+	updatedRegModel.LockCol = existingRegModel.LockCol
+
+	n, err := ssa.dbMap.Update(updatedRegModel)
 	if err != nil {
 		return err
 	}
 	if n == 0 {
-		msg := fmt.Sprintf("Requested registration not found %v", reg.ID)
+		msg := fmt.Sprintf("Requested registration not found %d", reg.ID)
 		return core.NoSuchRegistrationError(msg)
 	}
 

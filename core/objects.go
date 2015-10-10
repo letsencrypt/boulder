@@ -168,6 +168,12 @@ type Registration struct {
 
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty"`
+
+	// InitialIP is the IP address from which the registration was created
+	InitialIP net.IP `json:"initialIp"`
+
+	// CreatedAt is the time the registration was created.
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // MergeUpdate copies a subset of information from the input Registration
@@ -318,6 +324,9 @@ type Challenge struct {
 
 	// Used by dvsni challenges
 	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
+
+	// used by tls-sni-01
+	N int64
 
 	// Used by http-00, tls-sni-00, and dns-00 challenges
 	KeyAuthorization *KeyAuthorization `json:"keyAuthorization,omitempty"`
@@ -617,11 +626,6 @@ type Certificate struct {
 	Expires time.Time `db:"expires"`
 }
 
-type IssuedCertIdentifierData struct {
-	ReversedName string
-	Serial       string
-}
-
 // IdentifierData holds information about what certificates are known for a
 // given identifier. This is used to present Proof of Posession challenges in
 // the case where a certificate already exists. The DB table holding
@@ -724,6 +728,8 @@ type OCSPSigningRequest struct {
 	RevokedAt time.Time
 }
 
+// SignedCertificateTimestamp represents objects used by Certificate Transparency
+// to demonstrate that a certificate was submitted to a CT log. See RFC 6962.
 type SignedCertificateTimestamp struct {
 	ID int `db:"id"`
 	// The version of the protocol to which the SCT conforms
@@ -744,6 +750,11 @@ type SignedCertificateTimestamp struct {
 	LockCol int64
 }
 
+// RPCSignedCertificateTimestamp is a wrapper around SignedCertificateTimestamp
+// so that it can be passed through the RPC layer properly. Without this wrapper
+// the UnmarshalJSON method below will be used when marshaling/unmarshaling the
+// object, which is not what we want as it is not symmetrical (as it is intended
+// to unmarshal a rawSignedCertificateTimestamp into a SignedCertificateTimestamp)
 type RPCSignedCertificateTimestamp SignedCertificateTimestamp
 
 type rawSignedCertificateTimestamp struct {
@@ -754,6 +765,9 @@ type rawSignedCertificateTimestamp struct {
 	Extensions string `json:"extensions"`
 }
 
+// UnmarshalJSON parses the add-chain response from a CT log. It fills all of
+// the fields in the SignedCertificateTimestamp struct except for ID and
+// CertificateSerial, which are used for local recordkeeping in the Boulder DB.
 func (sct *SignedCertificateTimestamp) UnmarshalJSON(data []byte) error {
 	var err error
 	var rawSCT rawSignedCertificateTimestamp
@@ -815,20 +829,6 @@ func (sct *SignedCertificateTimestamp) CheckSignature() error {
 
 // RevocationCode is used to specify a certificate revocation reason
 type RevocationCode int
-
-type RevocationCodes []RevocationCode
-
-func (rc RevocationCodes) Len() int {
-	return len(rc)
-}
-
-func (rc RevocationCodes) Less(i, j int) bool {
-	return rc[i] < rc[j]
-}
-
-func (rc RevocationCodes) Swap(i, j int) {
-	rc[i], rc[j] = rc[j], rc[i]
-}
 
 // RevocationReasons provides a map from reason code to string explaining the
 // code

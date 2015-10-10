@@ -20,17 +20,17 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
-// MockDNS is a mock
-type MockDNS struct {
+// DNSResolver is a mock
+type DNSResolver struct {
 }
 
 // ExchangeOne is a mock
-func (mock *MockDNS) ExchangeOne(hostname string, qt uint16) (rsp *dns.Msg, rtt time.Duration, err error) {
+func (mock *DNSResolver) ExchangeOne(hostname string, qt uint16) (rsp *dns.Msg, rtt time.Duration, err error) {
 	return nil, 0, nil
 }
 
 // LookupTXT is a mock
-func (mock *MockDNS) LookupTXT(hostname string) ([]string, time.Duration, error) {
+func (mock *DNSResolver) LookupTXT(hostname string) ([]string, time.Duration, error) {
 	if hostname == "_acme-challenge.servfail.com" {
 		return nil, 0, fmt.Errorf("SERVFAIL")
 	}
@@ -38,7 +38,7 @@ func (mock *MockDNS) LookupTXT(hostname string) ([]string, time.Duration, error)
 }
 
 // LookupHost is a mock
-func (mock *MockDNS) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
+func (mock *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
 	if hostname == "always.invalid" || hostname == "invalid.invalid" {
 		return []net.IP{}, 0, nil
 	}
@@ -47,7 +47,7 @@ func (mock *MockDNS) LookupHost(hostname string) ([]net.IP, time.Duration, error
 }
 
 // LookupCNAME is a mock
-func (mock *MockDNS) LookupCNAME(domain string) (string, time.Duration, error) {
+func (mock *DNSResolver) LookupCNAME(domain string) (string, time.Duration, error) {
 	switch strings.TrimRight(domain, ".") {
 	case "cname-absent.com":
 		return "absent.com.", 30, nil
@@ -76,7 +76,7 @@ func (mock *MockDNS) LookupCNAME(domain string) (string, time.Duration, error) {
 }
 
 // LookupDNAME is a mock
-func (mock *MockDNS) LookupDNAME(domain string) (string, time.Duration, error) {
+func (mock *DNSResolver) LookupDNAME(domain string) (string, time.Duration, error) {
 	switch strings.TrimRight(domain, ".") {
 	case "cname-and-dname.com", "dname-present.com":
 		return "dname-target.present.com.", time.Minute, nil
@@ -94,7 +94,7 @@ func (mock *MockDNS) LookupDNAME(domain string) (string, time.Duration, error) {
 }
 
 // LookupCAA is a mock
-func (mock *MockDNS) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error) {
+func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error) {
 	var results []*dns.CAA
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
@@ -118,7 +118,7 @@ func (mock *MockDNS) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error)
 }
 
 // LookupMX is a mock
-func (mock *MockDNS) LookupMX(domain string) ([]string, time.Duration, error) {
+func (mock *DNSResolver) LookupMX(domain string) ([]string, time.Duration, error) {
 	switch strings.TrimRight(domain, ".") {
 	case "letsencrypt.org":
 		fallthrough
@@ -128,8 +128,8 @@ func (mock *MockDNS) LookupMX(domain string) ([]string, time.Duration, error) {
 	return nil, 0, nil
 }
 
-// MockSA is a mock
-type MockSA struct {
+// StorageAuthority is a mock
+type StorageAuthority struct {
 	authorizedDomains map[string]bool
 }
 
@@ -149,7 +149,7 @@ const (
 )
 
 // GetRegistration is a mock
-func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
+func (sa *StorageAuthority) GetRegistration(id int64) (core.Registration, error) {
 	if id == 100 {
 		// Tag meaning "Missing"
 		return core.Registration{}, errors.New("missing")
@@ -163,11 +163,17 @@ func (sa *MockSA) GetRegistration(id int64) (core.Registration, error) {
 	var parsedKey jose.JsonWebKey
 	parsedKey.UnmarshalJSON(keyJSON)
 
-	return core.Registration{ID: id, Key: parsedKey, Agreement: agreementURL}, nil
+	return core.Registration{
+		ID:        id,
+		Key:       parsedKey,
+		Agreement: agreementURL,
+		InitialIP: net.ParseIP("5.6.7.8"),
+		CreatedAt: time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC),
+	}, nil
 }
 
 // GetRegistrationByKey is a mock
-func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
+func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
 	var test1KeyPublic jose.JsonWebKey
 	var test2KeyPublic jose.JsonWebKey
 	test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
@@ -187,7 +193,7 @@ func (sa *MockSA) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, 
 }
 
 // GetAuthorization is a mock
-func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
+func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, error) {
 	if id == "valid" {
 		exp := time.Now().AddDate(100, 0, 0)
 		return core.Authorization{
@@ -209,7 +215,7 @@ func (sa *MockSA) GetAuthorization(id string) (core.Authorization, error) {
 }
 
 // GetCertificate is a mock
-func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
+func (sa *StorageAuthority) GetCertificate(serial string) (core.Certificate, error) {
 	// Serial ee == 238.crt
 	if serial == "0000000000000000000000000000000000ee" {
 		certPemBytes, _ := ioutil.ReadFile("test/238.crt")
@@ -231,7 +237,7 @@ func (sa *MockSA) GetCertificate(serial string) (core.Certificate, error) {
 }
 
 // GetCertificateStatus is a mock
-func (sa *MockSA) GetCertificateStatus(serial string) (core.CertificateStatus, error) {
+func (sa *StorageAuthority) GetCertificateStatus(serial string) (core.CertificateStatus, error) {
 	// Serial ee == 238.crt
 	if serial == "0000000000000000000000000000000000ee" {
 		return core.CertificateStatus{
@@ -247,57 +253,57 @@ func (sa *MockSA) GetCertificateStatus(serial string) (core.CertificateStatus, e
 }
 
 // AlreadyDeniedCSR is a mock
-func (sa *MockSA) AlreadyDeniedCSR([]string) (bool, error) {
+func (sa *StorageAuthority) AlreadyDeniedCSR([]string) (bool, error) {
 	return false, nil
 }
 
 // AddCertificate is a mock
-func (sa *MockSA) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
+func (sa *StorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
 	return
 }
 
 // FinalizeAuthorization is a mock
-func (sa *MockSA) FinalizeAuthorization(authz core.Authorization) (err error) {
+func (sa *StorageAuthority) FinalizeAuthorization(authz core.Authorization) (err error) {
 	return
 }
 
 // MarkCertificateRevoked is a mock
-func (sa *MockSA) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
+func (sa *StorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
 	return
 }
 
 // UpdateOCSP is a mock
-func (sa *MockSA) UpdateOCSP(serial string, ocspResponse []byte) (err error) {
+func (sa *StorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (err error) {
 	return
 }
 
 // NewPendingAuthorization is a mock
-func (sa *MockSA) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
+func (sa *StorageAuthority) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
 	return
 }
 
 // NewRegistration is a mock
-func (sa *MockSA) NewRegistration(reg core.Registration) (regR core.Registration, err error) {
+func (sa *StorageAuthority) NewRegistration(reg core.Registration) (regR core.Registration, err error) {
 	return
 }
 
 // UpdatePendingAuthorization is a mock
-func (sa *MockSA) UpdatePendingAuthorization(authz core.Authorization) (err error) {
+func (sa *StorageAuthority) UpdatePendingAuthorization(authz core.Authorization) (err error) {
 	return
 }
 
 // UpdateRegistration is a mock
-func (sa *MockSA) UpdateRegistration(reg core.Registration) (err error) {
+func (sa *StorageAuthority) UpdateRegistration(reg core.Registration) (err error) {
 	return
 }
 
 // GetSCTReceipt  is a mock
-func (sa *MockSA) GetSCTReceipt(serial string, logID string) (sct core.SignedCertificateTimestamp, err error) {
+func (sa *StorageAuthority) GetSCTReceipt(serial string, logID string) (sct core.SignedCertificateTimestamp, err error) {
 	return
 }
 
 // AddSCTReceipt is a mock
-func (sa *MockSA) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error) {
+func (sa *StorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error) {
 	if sct.Signature == nil {
 		err = fmt.Errorf("Bad times")
 	}
@@ -305,8 +311,8 @@ func (sa *MockSA) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error)
 }
 
 // GetLatestValidAuthorization is a mock
-func (sa *MockSA) GetLatestValidAuthorization(registrationId int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
-	if registrationId == 1 && identifier.Type == "dns" {
+func (sa *StorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+	if registrationID == 1 && identifier.Type == "dns" {
 		if sa.authorizedDomains[identifier.Value] || identifier.Value == "not-an-example.com" {
 			exp := time.Now().AddDate(100, 0, 0)
 			return core.Authorization{Status: core.StatusValid, RegistrationID: 1, Expires: &exp, Identifier: identifier}, nil
@@ -316,16 +322,26 @@ func (sa *MockSA) GetLatestValidAuthorization(registrationId int64, identifier c
 }
 
 // CountCertificatesRange is a mock
-func (sa *MockSA) CountCertificatesRange(_, _ time.Time) (int64, error) {
+func (sa *StorageAuthority) CountCertificatesRange(_, _ time.Time) (int64, error) {
 	return 0, nil
 }
 
-// MockPublisher is a mock
-type MockPublisher struct {
+// CountCertificatesByNames is a mock
+func (sa *StorageAuthority) CountCertificatesByNames(_ []string, _, _ time.Time) (ret map[string]int, err error) {
+	return
+}
+
+// CountRegistrationsByIP is a mock
+func (sa *StorageAuthority) CountRegistrationsByIP(_ net.IP, _, _ time.Time) (int, error) {
+	return 0, nil
+}
+
+// Publisher is a mock
+type Publisher struct {
 	// empty
 }
 
 // SubmitToCT is a mock
-func (*MockPublisher) SubmitToCT([]byte) error {
+func (*Publisher) SubmitToCT([]byte) error {
 	return nil
 }

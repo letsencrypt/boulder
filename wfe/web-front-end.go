@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -38,10 +39,14 @@ const (
 	IssuerPath     = "/acme/issuer-cert"
 	BuildIDPath    = "/build"
 
-	// Not included in net/http
+	// StatusRateLimited is not in net/http
 	StatusRateLimited = 429
 )
 
+// WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
+// i.e., ACME.  Its members configure the paths for various ACME functions,
+// plus a few other data items used in ACME.  Its methods are primarily handlers
+// for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
@@ -113,7 +118,7 @@ func statusCodeFromError(err interface{}) int {
 type requestEvent struct {
 	ID           string          `json:",omitempty"`
 	RealIP       string          `json:",omitempty"`
-	ForwardedFor string          `json:",omitempty"`
+	ClientAddr   string          `json:",omitempty"`
 	Endpoint     string          `json:",omitempty"`
 	Method       string          `json:",omitempty"`
 	RequestTime  time.Time       `json:",omitempty"`
@@ -302,6 +307,8 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", age))
 }
 
+// Directory is an HTTP request handler that simply provides the directory
+// object stored in the WFE's DirectoryJSON member.
 func (wfe *WebFrontEndImpl) Directory(response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json")
 	response.Write(wfe.DirectoryJSON)
@@ -541,6 +548,17 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 		return
 	}
 	init.Key = *key
+	init.InitialIP = net.ParseIP(request.Header.Get("X-Real-IP"))
+	if init.InitialIP == nil {
+		host, _, err := net.SplitHostPort(request.RemoteAddr)
+		if err == nil {
+			init.InitialIP = net.ParseIP(host)
+		} else {
+			logEvent.Error = "Couldn't parse RemoteAddr"
+			wfe.sendError(response, logEvent.Error, nil, http.StatusInternalServerError)
+			return
+		}
+	}
 
 	reg, err := wfe.RA.NewRegistration(init)
 	if err != nil {
@@ -553,8 +571,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(response http.ResponseWriter, reques
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
-	var id int64 = reg.ID
-	regURL := fmt.Sprintf("%s%d", wfe.RegBase, id)
+	regURL := fmt.Sprintf("%s%d", wfe.RegBase, reg.ID)
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
 		logEvent.Error = err.Error()
@@ -730,13 +747,13 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 }
 
-func (wfe *WebFrontEndImpl) logCsr(remoteAddr string, cr core.CertificateRequest, registration core.Registration) {
+func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, registration core.Registration) {
 	var csrLog = struct {
-		RemoteAddr   string
+		ClientAddr   string
 		CsrBase64    []byte
 		Registration core.Registration
 	}{
-		RemoteAddr:   remoteAddr,
+		ClientAddr:   getClientAddr(request),
 		CsrBase64:    cr.Bytes,
 		Registration: registration,
 	}
@@ -778,7 +795,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
-	wfe.logCsr(request.RemoteAddr, certificateRequest, reg)
+	wfe.logCsr(request, certificateRequest, reg)
 	// Check that the key in the CSR is good. This will also be checked in the CA
 	// component, but we want to discard CSRs with bad keys as early as possible
 	// because (a) it's an easy check and we can save unnecessary requests and
@@ -833,6 +850,8 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	}
 }
 
+// Challenge handles POST requests to challenge URLs.  Such requests are clients'
+// responses to the server's challenges.
 func (wfe *WebFrontEndImpl) Challenge(
 	response http.ResponseWriter,
 	request *http.Request) {
@@ -1298,15 +1317,26 @@ func (wfe *WebFrontEndImpl) logRequestDetails(logEvent *requestEvent) {
 
 func (wfe *WebFrontEndImpl) populateRequestEvent(request *http.Request) (logEvent requestEvent) {
 	logEvent = requestEvent{
-		ID:           core.NewToken(),
-		RealIP:       request.Header.Get("X-Real-IP"),
-		ForwardedFor: request.Header.Get("X-Forwarded-For"),
-		Method:       request.Method,
-		RequestTime:  time.Now(),
-		Extra:        make(map[string]interface{}, 0),
+		ID:          core.NewToken(),
+		RealIP:      request.Header.Get("X-Real-IP"),
+		ClientAddr:  getClientAddr(request),
+		Method:      request.Method,
+		RequestTime: time.Now(),
+		Extra:       make(map[string]interface{}, 0),
 	}
 	if request.URL != nil {
 		logEvent.Endpoint = request.URL.String()
 	}
 	return
+}
+
+// Comma-separated list of HTTP clients involved in making this
+// request, starting with the original requestor and ending with the
+// remote end of our TCP connection (which is typically our own
+// proxy).
+func getClientAddr(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		return xff + "," + r.RemoteAddr
+	}
+	return r.RemoteAddr
 }

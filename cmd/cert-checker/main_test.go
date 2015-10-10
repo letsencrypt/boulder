@@ -145,7 +145,7 @@ func TestCheckCert(t *testing.T) {
 		}
 		delete(problemsMap, p)
 	}
-	for k, _ := range problemsMap {
+	for k := range problemsMap {
 		t.Errorf("Found unexpected problem '%s'.", k)
 	}
 
@@ -205,9 +205,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		BasicConstraintsValid: true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
-	reg, err := sa.NewRegistration(core.Registration{
-		Key: satest.GoodJWK(),
-	})
+	reg := satest.CreateWorkingRegistration(t, sa)
 	test.AssertNotError(t, err, "Couldn't create registration")
 	for i := int64(0); i < 5; i++ {
 		rawCert.SerialNumber = big.NewInt(i)

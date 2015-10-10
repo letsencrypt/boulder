@@ -46,7 +46,8 @@ func main() {
 		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
 		cmd.FailOnError(err, "Couldn't load rate limit policies file")
 
-		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats, rateLimitPolicies)
+		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats,
+			rateLimitPolicies, c.RA.MaxContactsPerRegistration)
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
