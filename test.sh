@@ -10,6 +10,11 @@ fi
 # Order doesn't matter.
 RUN=${RUN:-vet lint fmt migrations unit integration}
 
+# By default, in the event of a test failure, we proceed to the end of the unit
+# tests before quitting.  Setting HARDFAIL to something non-zero will cause the
+# script to fail after any individual test fails.
+HARDFAIL="${HARDFAIL}0"
+
 FAILURE=0
 
 TESTPATHS=$(go list -f '{{ .ImportPath }}' ./...)
@@ -33,6 +38,13 @@ start_context() {
 
 end_context() {
   printf "[%16s] Done\n" ${CONTEXT}
+  if [ ${FAILURE} != 0 ] && [ ${HARDFAIL} != 0 ]; then
+    echo "--------------------------------------------------"
+    echo "---        A unit test or tool failed.         ---"
+    echo "---   Stopping before running further tests.   ---"
+    echo "--------------------------------------------------"
+    exit ${FAILURE}
+  fi
   CONTEXT=""
 }
 
@@ -65,7 +77,7 @@ function run() {
 function run_and_comment() {
   echo "$@"
   result=$("$@" 2>&1)
-  echo ${result}
+  cat <<<"${result}"
 
   if [ "x${result}" == "x" ]; then
     update_status --state success
@@ -167,7 +179,7 @@ fi
 #
 if [[ "$RUN" =~ "lint" ]] ; then
   start_context "test/golint"
-  run_and_comment golint -min_confidence=0.81 ./...
+  run_and_comment golint -min_confidence=0.80 ./...
   end_context #test/golint
 fi
 
