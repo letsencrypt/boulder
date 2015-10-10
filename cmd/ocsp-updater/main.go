@@ -71,6 +71,7 @@ func newUpdater(
 		clk:                 clk,
 		dbMap:               dbMap,
 		cac:                 ca,
+		sac:                 sac,
 		log:                 blog.GetAuditLogger(),
 		numLogs:             numLogs,
 		ocspMinTimeToExpiry: config.OCSPMinTimeToExpiry.Duration,
@@ -194,8 +195,35 @@ func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (cor
 	return status, nil
 }
 
-func (updater *OCSPUpdater) storeResponse(status core.CertificateStatus) error {
-	// Record the response.
+func (updater *OCSPUpdater) generateRevokedResponse(status core.CertificateStatus) (core.CertificateStatus, error) {
+	cert, err := updater.sac.GetCertificate(status.Serial)
+	if err != nil {
+		return core.CertificateStatus{}, err
+	}
+
+	signRequest := core.OCSPSigningRequest{
+		CertDER:   cert.DER,
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    status.RevokedReason,
+		RevokedAt: status.RevokedDate,
+	}
+
+	ocspResponse, err := updater.cac.GenerateOCSP(signRequest)
+	if err != nil {
+		return core.CertificateStatus{}, err
+	}
+
+	now := updater.clk.Now()
+	status.OCSPLastUpdated = now
+	status.OCSPResponse = ocspResponse
+	return status, nil
+}
+
+func (updater *OCSPUpdater) storeResponse(status core.CertificateStatus, statusGuard core.OCSPStatus) error {
+	// Update the certificateStatus table with the new OCSP response, the status
+	// WHERE is used make sure we don't overwrite a revoked response with a one
+	// containing a 'good' status and that we don't do the inverse when the OCSP
+	// status should be 'good'.
 	_, err := updater.dbMap.Exec(
 		`UPDATE certificateStatus
 		 SET ocspResponse=?,ocspLastUpdated=?
@@ -204,7 +232,7 @@ func (updater *OCSPUpdater) storeResponse(status core.CertificateStatus) error {
 		status.OCSPResponse,
 		status.OCSPLastUpdated,
 		status.Serial,
-		string(core.OCSPStatusGood),
+		string(statusGuard),
 	)
 	return err
 }
@@ -240,53 +268,6 @@ func (updater *OCSPUpdater) findRevokedCertificates(batchSize int) ([]core.Certi
 	return statuses, err
 }
 
-func (updater *OCSPUpdater) generateRevokedResponse(status core.CertificateStatus) (core.CertificateStatus, error) {
-	var cert core.Certificate
-	err := updater.dbMap.SelectOne(
-		&cert,
-		`SELECT * FROM certificates
-			 WHERE serial = :serial`,
-		map[string]interface{}{"serial": status.Serial},
-	)
-	if err != nil {
-		return core.CertificateStatus{}, err
-	}
-
-	signRequest := core.OCSPSigningRequest{
-		CertDER:   cert.DER,
-		Status:    string(core.OCSPStatusRevoked),
-		Reason:    status.RevokedReason,
-		RevokedAt: status.RevokedDate,
-	}
-
-	ocspResponse, err := updater.cac.GenerateOCSP(signRequest)
-	if err != nil {
-		return core.CertificateStatus{}, err
-	}
-
-	now := updater.clk.Now()
-	status.OCSPLastUpdated = now
-	status.OCSPResponse = ocspResponse
-	return status, nil
-}
-
-func (updater *OCSPUpdater) storeRevokedResponse(status core.CertificateStatus) error {
-	// Record the response.
-	_, err := updater.dbMap.Exec(
-		`UPDATE certificateStatus
-		 SET ocspResponse=?,ocspLastUpdated=?,revokedDate=?,revokedReason=?
-		 WHERE serial=?
-		 AND status=?`,
-		status.OCSPResponse,
-		status.OCSPLastUpdated,
-		status.RevokedDate,
-		status.RevokedReason,
-		status.Serial,
-		string(core.OCSPStatusRevoked),
-	)
-	return err
-}
-
 func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) {
 	statuses, err := updater.findRevokedCertificates(batchSize)
 	if err != nil {
@@ -302,7 +283,7 @@ func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) {
 			updater.stats.Inc("OCSP.Errors.RevokedResponseGeneration", 1, 1.0)
 			continue
 		}
-		err = updater.storeRevokedResponse(meta)
+		err = updater.storeResponse(meta, core.OCSPStatusRevoked)
 		if err != nil {
 			updater.stats.Inc("OCSP.Errors.StoreRevokedResponse", 1, 1.0)
 			updater.log.AuditErr(fmt.Errorf("Failed to store OCSP response: %s", err))
@@ -320,7 +301,7 @@ func (updater *OCSPUpdater) generateOCSPResponses(statuses []core.CertificateSta
 			continue
 		}
 		updater.stats.Inc("OCSP.GeneratedResponses", 1, 1.0)
-		err = updater.storeResponse(meta)
+		err = updater.storeResponse(meta, core.OCSPStatusGood)
 		if err != nil {
 			updater.log.AuditErr(fmt.Errorf("Failed to store OCSP response: %s", err))
 			updater.stats.Inc("OCSP.Errors.StoreResponse", 1, 1.0)

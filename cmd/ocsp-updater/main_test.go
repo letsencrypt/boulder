@@ -93,7 +93,7 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 
 	meta, err := updater.generateResponse(status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	err = updater.storeResponse(meta)
+	err = updater.storeResponse(meta, core.OCSPStatusGood)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
 
 	newStatus, err := sa.GetCertificateStatus(status.Serial)
@@ -147,7 +147,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 
 	meta, err := updater.generateResponse(status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	err = updater.storeResponse(meta)
+	err = updater.storeResponse(meta, core.OCSPStatusGood)
 	test.AssertNotError(t, err, "Couldn't store OCSP response")
 
 	certs, err = updater.findStaleOCSPResponses(earliest, 10)
