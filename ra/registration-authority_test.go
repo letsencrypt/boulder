@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"net"
 	"net/url"
 	"testing"
 	"time"
@@ -212,7 +213,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	csrDER, _ := hex.DecodeString(CSRhex)
 	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
 
-	Registration, _ = ssa.NewRegistration(core.Registration{Key: AccountKeyA})
+	Registration, _ = ssa.NewRegistration(core.Registration{
+		Key:       AccountKeyA,
+		InitialIP: net.ParseIP("3.2.3.3"),
+	})
 
 	stats, _ := statsd.NewNoopClient()
 	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats, cmd.RateLimitConfig{
@@ -220,7 +224,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 			Threshold: 100,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
-	})
+	}, 1)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = &ca
@@ -255,30 +259,34 @@ func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
 }
 
 func TestValidateContacts(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
 	tel, _ := core.ParseAcmeURL("tel:")
 	ansible, _ := core.ParseAcmeURL("ansible:earth.sol.milkyway.laniakea/letsencrypt")
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
 	invalidEmail, _ := core.ParseAcmeURL("mailto:admin@example.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	nStats, _ := statsd.NewNoopClient()
-
-	err := validateContacts([]*core.AcmeURL{}, &mocks.DNSResolver{}, nStats)
+	err := ra.validateContacts([]*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = validateContacts([]*core.AcmeURL{tel}, &mocks.DNSResolver{}, nStats)
+	err = ra.validateContacts([]*core.AcmeURL{tel, validEmail})
+	test.AssertError(t, err, "Too Many Contacts")
+
+	err = ra.validateContacts([]*core.AcmeURL{tel})
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = validateContacts([]*core.AcmeURL{validEmail}, &mocks.DNSResolver{}, nStats)
+	err = ra.validateContacts([]*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = validateContacts([]*core.AcmeURL{invalidEmail}, &mocks.DNSResolver{}, nStats)
+	err = ra.validateContacts([]*core.AcmeURL{invalidEmail})
 	test.AssertError(t, err, "Invalid Email")
 
-	err = validateContacts([]*core.AcmeURL{malformedEmail}, &mocks.DNSResolver{}, nStats)
+	err = ra.validateContacts([]*core.AcmeURL{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = validateContacts([]*core.AcmeURL{ansible}, &mocks.DNSResolver{}, nStats)
+	err = ra.validateContacts([]*core.AcmeURL{ansible})
 	test.AssertError(t, err, "Unknown scehme")
 }
 
@@ -303,8 +311,9 @@ func TestNewRegistration(t *testing.T) {
 	defer cleanUp()
 	mailto, _ := core.ParseAcmeURL("mailto:foo@letsencrypt.org")
 	input := core.Registration{
-		Contact: []*core.AcmeURL{mailto},
-		Key:     AccountKeyB,
+		Contact:   []*core.AcmeURL{mailto},
+		Key:       AccountKeyB,
+		InitialIP: net.ParseIP("7.6.6.5"),
 	}
 
 	result, err := ra.NewRegistration(input)
@@ -332,6 +341,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 		Key:       AccountKeyC,
 		Contact:   []*core.AcmeURL{mailto},
 		Agreement: "I agreed",
+		InitialIP: net.ParseIP("5.0.5.0"),
 	}
 
 	result, err := ra.NewRegistration(input)
@@ -401,6 +411,25 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Challenges[3].IsSane(false), "Challenge 3 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
+}
+
+func TestNewAuthorizationCapitalLetters(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	authzReq := core.Authorization{
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: "NOT-example.COM",
+		},
+	}
+	authz, err := ra.NewAuthorization(authzReq, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+	test.AssertEquals(t, "not-example.com", authz.Identifier.Value)
+
+	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	assertAuthzEqual(t, authz, dbAuthz)
 }
 
 func TestUpdateAuthorization(t *testing.T) {

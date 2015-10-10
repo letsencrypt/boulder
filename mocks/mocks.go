@@ -163,7 +163,13 @@ func (sa *StorageAuthority) GetRegistration(id int64) (core.Registration, error)
 	var parsedKey jose.JsonWebKey
 	parsedKey.UnmarshalJSON(keyJSON)
 
-	return core.Registration{ID: id, Key: parsedKey, Agreement: agreementURL}, nil
+	return core.Registration{
+		ID:        id,
+		Key:       parsedKey,
+		Agreement: agreementURL,
+		InitialIP: net.ParseIP("5.6.7.8"),
+		CreatedAt: time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC),
+	}, nil
 }
 
 // GetRegistrationByKey is a mock
@@ -323,6 +329,11 @@ func (sa *StorageAuthority) CountCertificatesRange(_, _ time.Time) (int64, error
 // CountCertificatesByNames is a mock
 func (sa *StorageAuthority) CountCertificatesByNames(_ []string, _, _ time.Time) (ret map[string]int, err error) {
 	return
+}
+
+// CountRegistrationsByIP is a mock
+func (sa *StorageAuthority) CountRegistrationsByIP(_ net.IP, _, _ time.Time) (int, error) {
+	return 0, nil
 }
 
 // Publisher is a mock

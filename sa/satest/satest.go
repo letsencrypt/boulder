@@ -2,7 +2,9 @@ package satest
 
 import (
 	"encoding/json"
+	"net"
 	"testing"
+	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
@@ -42,8 +44,10 @@ func CreateWorkingRegistration(t *testing.T, sa core.StorageAuthority) core.Regi
 	}
 	contacts := []*core.AcmeURL{contact}
 	reg, err := sa.NewRegistration(core.Registration{
-		Key:     GoodJWK(),
-		Contact: contacts,
+		Key:       GoodJWK(),
+		Contact:   contacts,
+		InitialIP: net.ParseIP("88.77.66.11"),
+		CreatedAt: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("Unable to create new registration")
