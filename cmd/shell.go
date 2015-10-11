@@ -374,8 +374,8 @@ func FailOnError(err error, msg string) {
 // ProfileCmd runs forever, sending Go runtime statistics to StatsD.
 func ProfileCmd(profileName string, stats statsd.Statter) {
 	c := time.Tick(1 * time.Second)
+	var memoryStats runtime.MemStats
 	for range c {
-		var memoryStats runtime.MemStats
 		runtime.ReadMemStats(&memoryStats)
 
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
