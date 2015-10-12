@@ -224,3 +224,25 @@ func TestMissingReceiptsTick(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't get number of receipts")
 	test.AssertEquals(t, count, 1)
 }
+
+func TestStoreResponseGuard(t *testing.T) {
+	updater, sa, _, _, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	parsedCert, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	status, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	test.AssertNotError(t, err, "Failed to get certificate status")
+
+	status.Status = core.OCSPStatusRevoked
+	err = updater.storeResponse(&status, core.OCSPStatusGood)
+	test.AssertNotError(t, err, "Failed ot update certificate status")
+
+	unchangedStatus, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	test.AssertNotError(t, err, "Failed to get certificate status")
+	test.AssertEquals(t, unchangedStatus.Status, core.OCSPStatusGood)
+}
