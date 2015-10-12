@@ -43,10 +43,12 @@ type OCSPUpdater struct {
 	// Number of CT logs we expect to have receipts from
 	numLogs int
 
-	newCertificatesLoop     *looper
-	oldOCSPResponsesLoop    *looper
-	missingSCTReceiptsLoop  *looper
-	revokedCertificatesLoop *looper
+	loops []looper
+
+	// newCertificatesLoop     *looper
+	// oldOCSPResponsesLoop    *looper
+	// missingSCTReceiptsLoop  *looper
+	// revokedCertificatesLoop *looper
 }
 
 // This is somewhat gross but can be pared down a bit once the publisher and this
@@ -79,37 +81,39 @@ func newUpdater(
 	}
 
 	// Setup loops
-	updater.newCertificatesLoop = &looper{
-		clk:       clk,
-		stats:     stats,
-		batchSize: config.NewCertificateBatchSize,
-		tickDur:   config.NewCertificateWindow.Duration,
-		tickFunc:  updater.newCertificateTick,
-		name:      "NewCertificates",
-	}
-	updater.oldOCSPResponsesLoop = &looper{
-		clk:       clk,
-		stats:     stats,
-		batchSize: config.OldOCSPBatchSize,
-		tickDur:   config.OldOCSPWindow.Duration,
-		tickFunc:  updater.oldOCSPResponsesTick,
-		name:      "OldOCSPResponses",
-	}
-	updater.missingSCTReceiptsLoop = &looper{
-		clk:       clk,
-		stats:     stats,
-		batchSize: config.MissingSCTBatchSize,
-		tickDur:   config.MissingSCTWindow.Duration,
-		tickFunc:  updater.missingReceiptsTick,
-		name:      "MissingSCTReceipts",
-	}
-	updater.revokedCertificatesLoop = &looper{
-		clk:       clk,
-		stats:     stats,
-		batchSize: config.RevokedCertificateBatchSize,
-		tickDur:   config.RevokedCertificateWindow.Duration,
-		tickFunc:  updater.revokedCertificatesTick,
-		name:      "RevokedCertificates",
+	updater.loops = []looper{
+		looper{
+			clk:       clk,
+			stats:     stats,
+			batchSize: config.NewCertificateBatchSize,
+			tickDur:   config.NewCertificateWindow.Duration,
+			tickFunc:  updater.newCertificateTick,
+			name:      "NewCertificates",
+		},
+		looper{
+			clk:       clk,
+			stats:     stats,
+			batchSize: config.OldOCSPBatchSize,
+			tickDur:   config.OldOCSPWindow.Duration,
+			tickFunc:  updater.oldOCSPResponsesTick,
+			name:      "OldOCSPResponses",
+		},
+		looper{
+			clk:       clk,
+			stats:     stats,
+			batchSize: config.MissingSCTBatchSize,
+			tickDur:   config.MissingSCTWindow.Duration,
+			tickFunc:  updater.missingReceiptsTick,
+			name:      "MissingSCTReceipts",
+		},
+		looper{
+			clk:       clk,
+			stats:     stats,
+			batchSize: config.RevokedCertificateBatchSize,
+			tickDur:   config.RevokedCertificateWindow.Duration,
+			tickFunc:  updater.revokedCertificatesTick,
+			name:      "RevokedCertificates",
+		},
 	}
 
 	updater.ocspMinTimeToExpiry = config.OCSPMinTimeToExpiry.Duration
@@ -162,7 +166,7 @@ type responseMeta struct {
 	*core.CertificateStatus
 }
 
-func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (core.CertificateStatus, error) {
+func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (*core.CertificateStatus, error) {
 	var cert core.Certificate
 	err := updater.dbMap.SelectOne(
 		&cert,
@@ -170,12 +174,12 @@ func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (cor
 		map[string]interface{}{"serial": status.Serial},
 	)
 	if err != nil {
-		return core.CertificateStatus{}, err
+		return nil, err
 	}
 
 	_, err = x509.ParseCertificate(cert.DER)
 	if err != nil {
-		return core.CertificateStatus{}, err
+		return nil, err
 	}
 
 	signRequest := core.OCSPSigningRequest{
@@ -187,18 +191,18 @@ func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (cor
 
 	ocspResponse, err := updater.cac.GenerateOCSP(signRequest)
 	if err != nil {
-		return core.CertificateStatus{}, err
+		return nil, err
 	}
 
 	status.OCSPLastUpdated = updater.clk.Now()
 	status.OCSPResponse = ocspResponse
-	return status, nil
+	return &status, nil
 }
 
-func (updater *OCSPUpdater) generateRevokedResponse(status core.CertificateStatus) (core.CertificateStatus, error) {
+func (updater *OCSPUpdater) generateRevokedResponse(status core.CertificateStatus) (*core.CertificateStatus, error) {
 	cert, err := updater.sac.GetCertificate(status.Serial)
 	if err != nil {
-		return core.CertificateStatus{}, err
+		return nil, err
 	}
 
 	signRequest := core.OCSPSigningRequest{
@@ -210,16 +214,16 @@ func (updater *OCSPUpdater) generateRevokedResponse(status core.CertificateStatu
 
 	ocspResponse, err := updater.cac.GenerateOCSP(signRequest)
 	if err != nil {
-		return core.CertificateStatus{}, err
+		return nil, err
 	}
 
 	now := updater.clk.Now()
 	status.OCSPLastUpdated = now
 	status.OCSPResponse = ocspResponse
-	return status, nil
+	return &status, nil
 }
 
-func (updater *OCSPUpdater) storeResponse(status core.CertificateStatus, statusGuard core.OCSPStatus) error {
+func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus, statusGuard core.OCSPStatus) error {
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
 	// containing a 'good' status and that we don't do the inverse when the OCSP
@@ -252,7 +256,7 @@ func (updater *OCSPUpdater) newCertificateTick(batchSize int) {
 	updater.generateOCSPResponses(statuses)
 }
 
-func (updater *OCSPUpdater) findRevokedCertificates(batchSize int) ([]core.CertificateStatus, error) {
+func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
 	var statuses []core.CertificateStatus
 	_, err := updater.dbMap.Select(
 		&statuses,
@@ -269,7 +273,7 @@ func (updater *OCSPUpdater) findRevokedCertificates(batchSize int) ([]core.Certi
 }
 
 func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) {
-	statuses, err := updater.findRevokedCertificates(batchSize)
+	statuses, err := updater.findRevokedCertificatesToUpdate(batchSize)
 	if err != nil {
 		updater.stats.Inc("OCSP.Errors.FindRevokedCertificates", 1, 1.0)
 		updater.log.AuditErr(fmt.Errorf("Failed to find revoked certificates: %s", err))
@@ -486,10 +490,9 @@ func main() {
 			len(c.Common.CT.Logs),
 		)
 
-		go updater.newCertificatesLoop.loop()
-		go updater.oldOCSPResponsesLoop.loop()
-		go updater.missingSCTReceiptsLoop.loop()
-		go updater.revokedCertificatesLoop.loop()
+		for _, l := range updater.loops {
+			go l.loop()
+		}
 
 		cmd.FailOnError(err, "Failed to create updater")
 

@@ -94,7 +94,10 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 		"SELECT ocspResponse FROM certificateStatus WHERE serial = :serial",
 		map[string]interface{}{"serial": serialString},
 	)
+	// TODO(#970): Delete this ocspResponses check once the table has been removed
 	if len(response) == 0 {
+		// Ignoring possible error, if response hasn't been filled, attempt to find
+		// response in old table
 		err = src.dbMap.SelectOne(
 			&response,
 			"SELECT response from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
