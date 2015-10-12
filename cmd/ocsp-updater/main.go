@@ -44,11 +44,6 @@ type OCSPUpdater struct {
 	numLogs int
 
 	loops []*looper
-
-	// newCertificatesLoop     *looper
-	// oldOCSPResponsesLoop    *looper
-	// missingSCTReceiptsLoop  *looper
-	// revokedCertificatesLoop *looper
 }
 
 // This is somewhat gross but can be pared down a bit once the publisher and this
