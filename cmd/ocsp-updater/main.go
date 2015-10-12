@@ -43,7 +43,7 @@ type OCSPUpdater struct {
 	// Number of CT logs we expect to have receipts from
 	numLogs int
 
-	loops []looper
+	loops []*looper
 
 	// newCertificatesLoop     *looper
 	// oldOCSPResponsesLoop    *looper
@@ -81,8 +81,8 @@ func newUpdater(
 	}
 
 	// Setup loops
-	updater.loops = []looper{
-		looper{
+	updater.loops = []*looper{
+		&looper{
 			clk:       clk,
 			stats:     stats,
 			batchSize: config.NewCertificateBatchSize,
@@ -90,7 +90,7 @@ func newUpdater(
 			tickFunc:  updater.newCertificateTick,
 			name:      "NewCertificates",
 		},
-		looper{
+		&looper{
 			clk:       clk,
 			stats:     stats,
 			batchSize: config.OldOCSPBatchSize,
@@ -98,7 +98,7 @@ func newUpdater(
 			tickFunc:  updater.oldOCSPResponsesTick,
 			name:      "OldOCSPResponses",
 		},
-		looper{
+		&looper{
 			clk:       clk,
 			stats:     stats,
 			batchSize: config.MissingSCTBatchSize,
@@ -106,7 +106,7 @@ func newUpdater(
 			tickFunc:  updater.missingReceiptsTick,
 			name:      "MissingSCTReceipts",
 		},
-		looper{
+		&looper{
 			clk:       clk,
 			stats:     stats,
 			batchSize: config.RevokedCertificateBatchSize,
