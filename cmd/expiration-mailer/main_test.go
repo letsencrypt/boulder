@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net"
 	"testing"
 	"text/template"
 	"time"
@@ -171,14 +172,16 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Contact: []*core.AcmeURL{
 			emailA,
 		},
-		Key: keyA,
+		Key:       keyA,
+		InitialIP: net.ParseIP("2.3.2.3"),
 	}
 	regB := core.Registration{
 		ID: 2,
 		Contact: []*core.AcmeURL{
 			emailB,
 		},
-		Key: keyB,
+		Key:       keyB,
+		InitialIP: net.ParseIP("2.3.2.3"),
 	}
 	regA, err = ctx.ssa.NewRegistration(regA)
 	if err != nil {
@@ -292,7 +295,8 @@ func TestLifetimeOfACert(t *testing.T) {
 		Contact: []*core.AcmeURL{
 			emailA,
 		},
-		Key: keyA,
+		Key:       keyA,
+		InitialIP: net.ParseIP("1.2.2.1"),
 	}
 	regA, err = ctx.ssa.NewRegistration(regA)
 	if err != nil {
@@ -409,7 +413,8 @@ func TestDontFindRevokedCert(t *testing.T) {
 		Contact: []*core.AcmeURL{
 			emailA,
 		},
-		Key: keyA,
+		Key:       keyA,
+		InitialIP: net.ParseIP("6.5.5.6"),
 	}
 	regA, err = ctx.ssa.NewRegistration(regA)
 	if err != nil {

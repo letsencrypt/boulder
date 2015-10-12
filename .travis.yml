@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.5
+  - 1.5.1
 
 addons:
   hosts:
@@ -56,3 +56,4 @@ env:
 
 script:
   - bash test.sh
+

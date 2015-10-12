@@ -435,6 +435,7 @@ func main() {
 
 		go updater.newCertificatesLoop.loop()
 		go updater.oldOCSPResponsesLoop.loop()
+		go updater.missingSCTReceiptsLoop.loop()
 
 		cmd.FailOnError(err, "Failed to create updater")
 

@@ -18,6 +18,7 @@ import (
 	"math/big"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
@@ -231,10 +232,10 @@ func uniqueHostNames(csr *x509.CertificateRequest) (commonName string, hostNames
 		hostNames = append(hostNames, csr.Subject.CommonName)
 	}
 
-	hostNames = core.UniqueNames(hostNames)
+	hostNames = core.UniqueLowerNames(hostNames)
 
 	if len(csr.Subject.CommonName) > 0 {
-		commonName = csr.Subject.CommonName
+		commonName = strings.ToLower(csr.Subject.CommonName)
 	} else if len(hostNames) > 0 {
 		commonName = hostNames[0]
 	}
@@ -598,7 +599,7 @@ func (ca *CertificateAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509.
 	if len(csr.Subject.CommonName) > 0 {
 		hostNames = append(hostNames, csr.Subject.CommonName)
 	}
-	hostNames = core.UniqueNames(hostNames)
+	hostNames = core.UniqueLowerNames(hostNames)
 
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
 		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
