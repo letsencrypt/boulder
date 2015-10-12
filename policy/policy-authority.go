@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -23,7 +24,6 @@ type PolicyAuthorityImpl struct {
 	DB  *PolicyAuthorityDatabaseImpl
 
 	EnforceWhitelist bool
-	PublicSuffixList map[string]bool // A copy of the DNS root zone
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
@@ -40,7 +40,6 @@ func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool) (*PolicyAu
 		log:              logger,
 		DB:               padb,
 		EnforceWhitelist: enforceWhitelist,
-		PublicSuffixList: PublicSuffixList,
 	}
 
 	return &pa, nil
@@ -99,6 +98,9 @@ type SyntaxError struct{}
 // Internet.
 type NonPublicError struct{}
 
+// TLDError indicates that one or more identifiers was an ICANN-managed TLD
+type TLDError struct{}
+
 // ErrBlacklisted indicates we have blacklisted one or more of these
 // identifiers.
 var ErrBlacklisted = errors.New("Name is blacklisted")
@@ -110,6 +112,7 @@ var ErrNotWhitelisted = errors.New("Name is not whitelisted")
 func (e InvalidIdentifierError) Error() string { return "Invalid identifier type" }
 func (e SyntaxError) Error() string            { return "Syntax error" }
 func (e NonPublicError) Error() string         { return "Name does not end in a public suffix" }
+func (e TLDError) Error() string               { return "Name is an ICANN TLD" }
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier. It expects domains in id to be lowercase to prevent mismatched
@@ -171,9 +174,13 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 		}
 	}
 
-	// Require match to PSL, plus at least one label
-	if !suffixMatch(labels, pa.PublicSuffixList, true) {
+	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
+	icannTLD, err := publicsuffix.ICANNTLD(domain)
+	if err != nil {
 		return NonPublicError{}
+	}
+	if icannTLD == domain {
+		return TLDError{}
 	}
 
 	// Use the domain whitelist if the PA has been asked to. However, if the
