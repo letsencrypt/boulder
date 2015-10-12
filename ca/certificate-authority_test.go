@@ -6,7 +6,6 @@
 package ca
 
 import (
-	"bytes"
 	"crypto/x509"
 	"encoding/asn1"
 	"fmt"
@@ -161,7 +160,7 @@ func setup(t *testing.T) *testCtx {
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{
 					profileName: &cfsslConfig.SigningProfile{
-						Usage:     []string{"server auth"},
+						Usage:     []string{"server auth", "client auth"},
 						CA:        false,
 						IssuerURL: []string{"http://not-example.com/issuer-url"},
 						OCSP:      "http://not-example.com/ocsp",
@@ -195,6 +194,36 @@ func setup(t *testing.T) *testCtx {
 	return &testCtx{ssa, caConfig, reg, pa, fc, cleanUp}
 }
 
+func (ctx *testCtx) importCSR(csr []byte) core.CertificateRequest {
+	return core.CertificateRequest{
+		RegistrationID: ctx.reg.ID,
+		Created:        ctx.fc.Now(),
+		Expires:        ctx.fc.Now().AddDate(1, 0, 0),
+		Status:         core.StatusValid,
+		CSR:            csr,
+	}
+}
+
+// Use this function to wait for the IssueCertificate->sign->SA handoff
+//
+//   Note: No need to use this for negative tests ("Test that the CA
+//   rejects...").  If IssueCertificate() returns without an error, then
+//   the CA has agreed to issue the certificate, which is already a
+//   failure for these cases.
+func (ctx *testCtx) attemptToIssue(t *testing.T, ca *CertificateAuthorityImpl, csr []byte) (cert core.Certificate, found bool) {
+	req := ctx.importCSR(csr)
+	req, err := ca.NewCertificateRequest(req)
+	test.AssertNotError(t, err, "Failed to import CSR")
+
+	err = ca.IssueCertificate(req.ID, "bogusLogEvent")
+	test.AssertNotError(t, err, "CA did not agree to issue under this request")
+
+	cert, err = ctx.sa.GetLatestCertificateForRequest(req.ID)
+	test.AssertNotError(t, err, "Error retrieving issued certificate")
+	found = (err == nil)
+	return
+}
+
 func TestFailNoSerial(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
@@ -213,9 +242,8 @@ func TestRevoke(t *testing.T) {
 	ca.SA = ctx.sa
 	ca.Publisher = &mocks.Publisher{}
 
-	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
-	certObj, err := ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertNotError(t, err, "Failed to sign certificate")
+	certObj, found := ctx.attemptToIssue(t, ca, CNandSANCSR)
+	test.Assert(t, found, "Promised cert failed to appear")
 
 	cert, err := x509.ParseCertificate(certObj.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
@@ -265,14 +293,9 @@ func TestIssueCertificate(t *testing.T) {
 
 	csrs := [][]byte{CNandSANCSR, NoSANCSR, NoCNCSR}
 	for _, csrDER := range csrs {
-		csr, _ := x509.ParseCertificateRequest(csrDER)
-
 		// Sign CSR
-		issuedCert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
-		test.AssertNotError(t, err, "Failed to sign certificate")
-		if err != nil {
-			continue
-		}
+		issuedCert, found := ctx.attemptToIssue(t, ca, csrDER)
+		test.Assert(t, found, "Promised cert failed to appear")
 
 		// Verify cert contents
 		cert, err := x509.ParseCertificate(issuedCert.DER)
@@ -312,7 +335,7 @@ func TestIssueCertificate(t *testing.T) {
 		storedCert, err := ctx.sa.GetCertificate(serialString)
 		test.AssertNotError(t, err,
 			fmt.Sprintf("Certificate %s not found in database", serialString))
-		test.Assert(t, bytes.Equal(issuedCert.DER, storedCert.DER), "Retrieved cert not equal to issued cert.")
+		test.AssertByteEquals(t, issuedCert.DER, storedCert.DER)
 
 		certStatus, err := ctx.sa.GetCertificateStatus(serialString)
 		test.AssertNotError(t, err,
@@ -332,8 +355,8 @@ func TestRejectNoName(t *testing.T) {
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects CSRs with no names
-	csr, _ := x509.ParseCertificateRequest(NoNameCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	req := ctx.importCSR(NoNameCSR)
+	_, err = ca.NewCertificateRequest(req)
 	test.AssertError(t, err, "CA improperly agreed to create a certificate with no name")
 	_, ok := err.(core.MalformedRequestError)
 	test.Assert(t, ok, "Incorrect error type returned")
@@ -349,8 +372,8 @@ func TestRejectTooManyNames(t *testing.T) {
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects a CSR with too many names
-	csr, _ := x509.ParseCertificateRequest(TooManyNameCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	req := ctx.importCSR(TooManyNameCSR)
+	_, err = ca.NewCertificateRequest(req)
 	test.AssertError(t, err, "Issued certificate with too many names")
 	_, ok := err.(core.MalformedRequestError)
 	test.Assert(t, ok, "Incorrect error type returned")
@@ -366,9 +389,8 @@ func TestDeduplication(t *testing.T) {
 	ca.SA = ctx.sa
 
 	// Test that the CA collapses duplicate names
-	csr, _ := x509.ParseCertificateRequest(DupeNameCSR)
-	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with duplicate names")
+	cert, found := ctx.attemptToIssue(t, ca, DupeNameCSR)
+	test.Assert(t, found, "Promised cert failed to appear")
 
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
@@ -390,9 +412,12 @@ func TestRejectValidityTooLong(t *testing.T) {
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	csr, _ := x509.ParseCertificateRequest(NoCNCSR)
 	ca.NotAfter = ctx.fc.Now()
-	_, err = ca.IssueCertificate(*csr, 1)
+	req := ctx.importCSR(NoCNCSR)
+	req, err = ca.NewCertificateRequest(req)
+	test.AssertNotError(t, err, "Failed to import CSR")
+
+	err = ca.IssueCertificate(req.ID, "bogusLogEvent")
 	test.AssertEquals(t, err.Error(), "Cannot issue a certificate that expires after the intermediate certificate.")
 	_, ok := err.(core.InternalServerError)
 	test.Assert(t, ok, "Incorrect error type returned")
@@ -407,8 +432,8 @@ func TestShortKey(t *testing.T) {
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	csr, _ := x509.ParseCertificateRequest(ShortKeyCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	req := ctx.importCSR(ShortKeyCSR)
+	_, err = ca.NewCertificateRequest(req)
 	test.AssertError(t, err, "Issued a certificate with too short a key.")
 	_, ok := err.(core.MalformedRequestError)
 	test.Assert(t, ok, "Incorrect error type returned")
@@ -423,8 +448,8 @@ func TestRejectBadAlgorithm(t *testing.T) {
 	ca.SA = ctx.sa
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	csr, _ := x509.ParseCertificateRequest(BadAlgorithmCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	req := ctx.importCSR(BadAlgorithmCSR)
+	_, err = ca.NewCertificateRequest(req)
 	test.AssertError(t, err, "Issued a certificate based on a CSR with a weak algorithm.")
 	_, ok := err.(core.MalformedRequestError)
 	test.Assert(t, ok, "Incorrect error type returned")
@@ -439,9 +464,8 @@ func TestCapitalizedLetters(t *testing.T) {
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
-	csr, _ := x509.ParseCertificateRequest(CapitalizedCSR)
-	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with capitalized names")
+	cert, found := ctx.attemptToIssue(t, ca, CapitalizedCSR)
+	test.Assert(t, found, "Failed to issue certificate")
 
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Error parsing certificate produced by CA")

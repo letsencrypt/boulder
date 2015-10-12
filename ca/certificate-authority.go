@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/big"
+	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -57,9 +59,9 @@ type CertificateAuthorityImpl struct {
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
 	Publisher      core.Publisher
-	Clk            clock.Clock // TODO(jmhodges): should be private, like log
-	log            *blog.AuditLogger
-	Prefix         int // Prepended to the serial number
+	Clk            clock.Clock       // TODO(jmhodges): should be private
+	Log            *blog.AuditLogger // TODO(bifurcation): should be private
+	Prefix         int               // Prepended to the serial number
 	ValidityPeriod time.Duration
 	NotAfter       time.Time
 	MaxNames       int
@@ -130,7 +132,7 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, issuerCer
 		profile:    config.Profile,
 		Prefix:     config.SerialPrefix,
 		Clk:        clk,
-		log:        logger,
+		Log:        logger,
 		NotAfter:   issuer.NotAfter,
 	}
 
@@ -177,7 +179,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.AuditErr(err)
+		ca.Log.AuditErr(err)
 		return nil, err
 	}
 
@@ -197,13 +199,13 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 	coreCert, err := ca.SA.GetCertificate(serial)
 	if err != nil {
 		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
-		ca.log.AuditErr(err)
+		ca.Log.AuditErr(err)
 		return err
 	}
 	cert, err := x509.ParseCertificate(coreCert.DER)
 	if err != nil {
 		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
-		ca.log.AuditErr(err)
+		ca.Log.AuditErr(err)
 		return err
 	}
 
@@ -216,90 +218,190 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
 	if err != nil {
 		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
-		ca.log.AuditErr(err)
+		ca.Log.AuditErr(err)
 		return err
 	}
 	err = ca.SA.MarkCertificateRevoked(serial, ocspResponse, reasonCode)
 	return err
 }
 
-// IssueCertificate attempts to convert a CSR into a signed Certificate, while
-// enforcing all policies. Names (domains) in the CertificateRequest will be
-// lowercased before storage.
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
-	emptyCert := core.Certificate{}
-	var err error
+func uniqueHostNames(csr *x509.CertificateRequest) (commonName string, hostNames []string) {
+	hostNames = make([]string, len(csr.DNSNames))
+	copy(hostNames, csr.DNSNames)
+	if len(csr.Subject.CommonName) > 0 {
+		hostNames = append(hostNames, csr.Subject.CommonName)
+	}
+
+	hostNames = core.UniqueLowerNames(hostNames)
+
+	if len(csr.Subject.CommonName) > 0 {
+		commonName = strings.ToLower(csr.Subject.CommonName)
+	} else if len(hostNames) > 0 {
+		commonName = hostNames[0]
+	}
+	return
+}
+
+// NewCertificateRequest vets a CSR, and if it's one that we're willing to
+// issue under, creates a CertificateRequest so that it can be used for
+// issuance later.
+func (ca *CertificateAuthorityImpl) NewCertificateRequest(req core.CertificateRequest) (core.CertificateRequest, error) {
+	emptyCertRequest := core.CertificateRequest{}
+
+	// Check that enough of the request has been filled out
+	if !req.ReadyForCA() {
+		err := core.MalformedRequestError("Incomplete certificate request forwarded to CA.")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
+	}
+
+	// Parse the CSR
+	csr, err := x509.ParseCertificateRequest(req.CSR)
+	if err != nil {
+		err = core.MalformedRequestError("Malformed CSR.")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
+	}
+
+	// Verify that the public key in the CSR is acceptable
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
 		err = core.MalformedRequestError("Invalid public key in CSR.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
 	}
 	if err = core.GoodKey(key); err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid public key in CSR: %s", err.Error()))
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
 	}
 	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
 		err = core.MalformedRequestError("Invalid signature algorithm in CSR")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
 	}
 
+	// Verify that the hostnames in the CSR are ones that we will issue for
 	// Pull hostnames from CSR
 	// Authorization is checked by the RA
-	commonName := ""
-	hostNames := make([]string, len(csr.DNSNames))
-	copy(hostNames, csr.DNSNames)
-	if len(csr.Subject.CommonName) > 0 {
-		commonName = strings.ToLower(csr.Subject.CommonName)
-		hostNames = append(hostNames, commonName)
-	} else if len(hostNames) > 0 {
-		commonName = strings.ToLower(hostNames[0])
-	} else {
+	commonName, hostNames := uniqueHostNames(csr)
+	if len(hostNames) == 0 {
 		err = core.MalformedRequestError("Cannot issue a certificate without a hostname.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
 	}
 
-	// Collapse any duplicate names.  Note that this operation may re-order the names
-	hostNames = core.UniqueLowerNames(hostNames)
+	// Check that there aren't too many names
 	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
 		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
-		ca.log.WarningErr(err)
-		return emptyCert, err
+		ca.Log.WarningErr(err)
+		return emptyCertRequest, err
 	}
 
 	// Verify that names are allowed by policy
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
-	if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
+	if err = ca.PA.WillingToIssue(identifier, req.RegistrationID); err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", commonName))
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
 	}
 	for _, name := range hostNames {
 		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
-		if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
+		if err = ca.PA.WillingToIssue(identifier, req.RegistrationID); err != nil {
 			err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", name))
 			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-			ca.log.AuditErr(err)
-			return emptyCert, err
+			ca.Log.AuditErr(err)
+			return emptyCertRequest, err
 		}
 	}
 
-	notAfter := ca.Clk.Now().Add(ca.ValidityPeriod)
+	// Fill in the creation time on the request
+	// The expiry time, regID, and CSR are set by the RA on the way in.
+	req.Created = ca.Clk.Now()
+	req.Status = core.StatusValid
 
-	if ca.NotAfter.Before(notAfter) {
-		err = core.InternalServerError("Cannot issue a certificate that expires after the intermediate certificate.")
+	fullReq, err := ca.SA.NewCertificateRequest(req)
+	if err != nil {
+		err = core.InternalServerError(fmt.Sprintf("Failed to store certificate request: %v", err))
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
 	}
+	if !fullReq.Complete() {
+		err = core.InternalServerError("Storage authority returned an incomplete certificate request")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return emptyCertRequest, err
+	}
+
+	return fullReq, nil
+}
+
+// IssueCertificate fetches a certificate request by ID and passes it to a
+// goroutine for asynchronous issuance.  This method attempts to catch more
+// minor errors; errors in the core signing routines will be reflected by
+// making the CertificateRequest invalid.
+//
+// This method marks the certificateRequest as "pending".  If the certificate
+// is successfully issued, the state will move to "valid".  If there is an
+// error in issuance, the state will move to "invalid".  That is, the
+// "invalid" state on certificate requests indicates that an issuance error
+// has occurred (and nothing more).
+//
+// Because issuance errors at this level are likely to be sensitive, We make
+// no attempt to automatically recover from these errors, but instead will
+// refuse to issue from the request until the state is "valid" again.
+func (ca *CertificateAuthorityImpl) IssueCertificate(requestID string, logEventID string) error {
+	logEventResult := "error"
+	logEvent := blog.CertificateRequestEvent{
+		ID:          logEventID + ".issueCertificate",
+		RequestTime: time.Now(),
+	}
+
+	// No matter what, log the request
+	defer func() {
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
+	}()
+
+	req, err := ca.SA.GetCertificateRequest(requestID)
+	if err != nil {
+		err = core.InternalServerError("Unable to retrieve certificate request returned from DB")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return err
+	}
+
+	if !req.Complete() {
+		err = core.InternalServerError("Incomplete certificate request returned from DB")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return err
+	}
+
+	if req.Status != core.StatusValid {
+		err = core.InternalServerError("Cannot issue; certificate request is not valid")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return err
+	}
+
+	// Extract hostnames from the CSR
+	csr, err := x509.ParseCertificateRequest(req.CSR)
+	if err != nil {
+		err = core.InternalServerError("Malformed CSR in cached certificate request")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return err
+	}
+	commonName, hostNames := uniqueHostNames(csr)
 
 	// Convert the CSR to PEM
 	csrPEM := string(pem.EncodeToMemory(&pem.Block{
@@ -307,86 +409,246 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Bytes: csr.Raw,
 	}))
 
-	// We want 136 bits of random number, plus an 8-bit instance id prefix.
-	const randBits = 136
-	serialBytes := make([]byte, randBits/8+1)
-	serialBytes[0] = byte(ca.Prefix)
-	_, err = rand.Read(serialBytes[1:])
-	if err != nil {
-		err = core.InternalServerError(err.Error())
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
-		return emptyCert, err
-	}
-	serialHex := hex.EncodeToString(serialBytes)
-	serialBigInt := big.NewInt(0)
-	serialBigInt = serialBigInt.SetBytes(serialBytes)
+	// Assign the validity dates
+	notAfter := ca.Clk.Now().Add(ca.ValidityPeriod)
 
-	// Send the cert off for signing
-	req := signer.SignRequest{
+	if ca.NotAfter.Before(notAfter) {
+		err = core.InternalServerError("Cannot issue a certificate that expires after the intermediate certificate.")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return err
+	}
+
+	if req.Expires.Before(ca.Clk.Now()) {
+		err = core.InternalServerError("Cannot issue on an expired request.")
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditErr(err)
+		return err
+	}
+
+	err = ca.SA.UpdateCertificateRequestStatus(requestID, core.StatusPending)
+	if err != nil {
+		return err
+	}
+
+	signRequest := signer.SignRequest{
 		Request: csrPEM,
 		Profile: ca.profile,
 		Hosts:   hostNames,
 		Subject: &signer.Subject{
 			CN: commonName,
 		},
-		Serial: serialBigInt,
 	}
 
-	certPEM, err := ca.Signer.Sign(req)
+	// TODO(rlb): Run this in a goroutine to make it async
+	ca.signCertificate(csr, signRequest, requestID, logEventID)
+
+	logEventResult = "successful"
+	return nil
+}
+
+func (ca *CertificateAuthorityImpl) signCertificate(csr *x509.CertificateRequest, signRequest signer.SignRequest, requestID string, logEventID string) {
+	logEventResult := "error"
+	logEvent := blog.CertificateRequestEvent{
+		ID:          logEventID + ".signCertificate",
+		RequestTime: time.Now(),
+	}
+
+	// No matter what, log the request
+	defer func() {
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.Log.AuditObject(fmt.Sprintf("Certificate request - %s", logEventResult), logEvent)
+	}()
+
+	// Generate a new random serial number
+	// We want 136 bits of random number, plus an 8-bit instance id prefix.
+	const randBits = 136
+	serialBytes := make([]byte, randBits/8+1)
+	serialBytes[0] = byte(ca.Prefix)
+	_, err := rand.Read(serialBytes[1:])
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("Signer failed, rolling back: serial=[%s] err=[%v]", serialHex, err))
-		return emptyCert, err
+		ca.Log.Audit(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
+		return
+	}
+	serialHex := hex.EncodeToString(serialBytes)
+	serialBigInt := big.NewInt(0)
+	serialBigInt = serialBigInt.SetBytes(serialBytes)
+	signRequest.Serial = serialBigInt
+	logEvent.SerialNumber = serialHex
+
+	certPEM, err := ca.Signer.Sign(signRequest)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.Log.Audit(fmt.Sprintf("Signer failed, rolling back: serial=[%s] err=[%v]", serialHex, err))
+		ca.SA.UpdateCertificateRequestStatus(requestID, core.StatusInvalid)
+		return
 	}
 
 	if len(certPEM) == 0 {
 		err = core.InternalServerError("No certificate returned by server")
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("PEM empty from Signer, rolling back: serial=[%s] err=[%v]", serialHex, err))
-		return emptyCert, err
+		ca.Log.Audit(fmt.Sprintf("PEM empty from Signer, rolling back: serial=[%s] err=[%v]", serialHex, err))
+		ca.SA.UpdateCertificateRequestStatus(requestID, core.StatusInvalid)
+		return
 	}
 
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = core.InternalServerError("Invalid certificate value returned")
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("PEM decode error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
-		return emptyCert, err
+		ca.Log.Audit(fmt.Sprintf("PEM decode error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
+		ca.SA.UpdateCertificateRequestStatus(requestID, core.StatusInvalid)
+		return
 	}
 	certDER := block.Bytes
-
-	cert := core.Certificate{
-		DER: certDER,
-	}
 
 	// This is one last check for uncaught errors
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("Uncaught error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
-		return emptyCert, err
+		ca.Log.Audit(fmt.Sprintf("Uncaught error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
+		ca.SA.UpdateCertificateRequestStatus(requestID, core.StatusInvalid)
+		return
 	}
 
 	// Store the cert with the certificate authority, if provided
-	_, err = ca.SA.AddCertificate(certDER, regID)
+	cert, err := ca.SA.AddCertificate(certDER, requestID)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("Failed RPC to store at SA, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
-		return emptyCert, err
+		ca.Log.Audit(fmt.Sprintf("Failed RPC to store at SA, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
+		ca.SA.UpdateCertificateRequestStatus(requestID, core.StatusInvalid)
+		return
+	}
+
+	// Perform post-issuance checks
+	certObj, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		ca.Log.Warning(fmt.Sprintf("Post-Issuance OCSP failed parsing Certificate: %s", err))
+		return
+	}
+
+	err = ca.MatchesCSR(cert, csr)
+	if err != nil {
+		err = core.InternalServerError(err.Error())
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		ca.Log.Audit(fmt.Sprintf("Failed RPC to store at SA, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
+		ca.SA.UpdateCertificateRequestStatus(requestID, core.StatusInvalid)
+		return
+	}
+
+	// Here's where we finally declare success
+	// Now that the certificate has been committed, we can fill out
+	// the rest of the log event and mark it as successful
+	logEvent.CommonName = certObj.Subject.CommonName
+	logEvent.Names = certObj.DNSNames
+	logEvent.NotBefore = certObj.NotBefore
+	logEvent.NotAfter = certObj.NotAfter
+	logEvent.ResponseTime = cert.Issued
+	logEventResult = "successful"
+	ca.SA.UpdateCertificateRequestStatus(requestID, core.StatusValid)
+
+	// Attempt to generate the OCSP Response now. If this raises an error, it is
+	// logged but is not returned to the caller, as an error at this point does
+	// not constitute an issuance failure.
+	serial := core.SerialToString(certObj.SerialNumber)
+	ocspRequest := ocsp.SignRequest{
+		Certificate: certObj,
+		Status:      string(core.OCSPStatusGood),
+	}
+
+	ocspResponse, err := ca.OCSPSigner.Sign(ocspRequest)
+	if err != nil {
+		ca.Log.Warning(fmt.Sprintf("Post-Issuance OCSP failed signing: %s", err))
+		return
+	}
+
+	err = ca.SA.UpdateOCSP(serial, ocspResponse)
+	if err != nil {
+		ca.Log.Warning(fmt.Sprintf("Post-Issuance OCSP failed storing: %s", err))
+		return
 	}
 
 	// Submit the certificate to any configured CT logs
-	certObj, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed parsing Certificate: %s", err))
-		return cert, nil
-	}
-	go ca.Publisher.SubmitToCT(certObj.Raw)
+	ca.Publisher.SubmitToCT(certObj.Raw)
 
-	// Do not return an err at this point; caller must know that the Certificate
-	// was issued. (Also, it should be impossible for err to be non-nil here)
-	return cert, nil
+	return
+}
+
+// MatchesCSR tests the contents of a generated certificate to make sure
+// that the PublicKey, CommonName, and DNSNames match those provided in
+// the CSR that was used to generate the certificate. It also checks the
+// following fields for:
+//		* notBefore is not more than 24 hours ago
+//		* BasicConstraintsValid is true
+//		* IsCA is false
+//		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
+//		* Subject only contains CommonName & Names
+func (ca *CertificateAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509.CertificateRequest) (err error) {
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	if err != nil {
+		return
+	}
+
+	// Check issued certificate matches what was expected from the CSR
+	hostNames := make([]string, len(csr.DNSNames))
+	copy(hostNames, csr.DNSNames)
+	if len(csr.Subject.CommonName) > 0 {
+		hostNames = append(hostNames, csr.Subject.CommonName)
+	}
+	hostNames = core.UniqueLowerNames(hostNames)
+
+	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
+		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
+		return
+	}
+	if len(csr.Subject.CommonName) > 0 && parsedCertificate.Subject.CommonName != csr.Subject.CommonName {
+		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
+		return
+	}
+	// Sort both slices of names before comparison.
+	parsedNames := parsedCertificate.DNSNames
+	sort.Strings(parsedNames)
+	sort.Strings(hostNames)
+	if !reflect.DeepEqual(parsedNames, hostNames) {
+		err = core.InternalServerError("Generated certificate DNSNames don't match CSR DNSNames")
+		return
+	}
+	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
+		err = core.InternalServerError("Generated certificate IPAddresses don't match CSR IPAddresses")
+		return
+	}
+	if !reflect.DeepEqual(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
+		err = core.InternalServerError("Generated certificate EmailAddresses don't match CSR EmailAddresses")
+		return
+	}
+	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
+		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
+		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
+		len(parsedCertificate.Subject.PostalCode) > 0 || len(parsedCertificate.Subject.SerialNumber) > 0 {
+		err = core.InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
+		return
+	}
+	now := ca.Clk.Now()
+	if now.Sub(parsedCertificate.NotBefore) > time.Hour*24 {
+		err = core.InternalServerError(fmt.Sprintf("Generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore)))
+		return
+	}
+	if !parsedCertificate.BasicConstraintsValid {
+		err = core.InternalServerError("Generated certificate doesn't have basic constraints set")
+		return
+	}
+	if parsedCertificate.IsCA {
+		err = core.InternalServerError("Generated certificate can sign other certificates")
+		return
+	}
+	if !reflect.DeepEqual(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+		err = core.InternalServerError("Generated certificate doesn't have correct key usage extensions")
+		return
+	}
+
+	return
 }

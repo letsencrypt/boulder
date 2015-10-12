@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 
@@ -58,6 +59,34 @@ func TestKeyAuthorization(t *testing.T) {
 	test.Assert(t, !ka1.Match(ka1.Token, jwk2), "Authorized key should not match a different key")
 	test.Assert(t, !ka1.Match(ka2.Token, jwk1), "Authorized key should not match a different token")
 	test.Assert(t, !ka1.Match(ka2.Token, jwk2), "Authorized key should not match a completely different key")
+}
+
+func TestCertificateRequestReadiness(t *testing.T) {
+	req := CertificateRequest{}
+	test.Assert(t, !req.ReadyForRA(), "Incomplete request marked as RA-ready")
+	test.Assert(t, !req.ReadyForCA(), "Incomplete request marked as CA-ready")
+	test.Assert(t, !req.ReadyForSA(), "Incomplete request marked as SA-ready")
+	test.Assert(t, !req.Complete(), "Incomplete request marked as RA-ready")
+
+	req.RegistrationID = 5
+	req.CSR = []byte{1, 2, 3}
+	test.Assert(t, req.ReadyForRA(), "RA-ready request rejected as incomplete")
+	test.Assert(t, !req.ReadyForCA(), "Incomplete request marked as CA-ready")
+	test.Assert(t, !req.ReadyForSA(), "Incomplete request marked as SA-ready")
+	test.Assert(t, !req.Complete(), "Incomplete request marked as Complete")
+
+	req.Expires = time.Now()
+	test.Assert(t, req.ReadyForCA(), "CA-ready request rejected as incomplete")
+	test.Assert(t, !req.ReadyForSA(), "Incomplete request marked as SA-ready")
+	test.Assert(t, !req.Complete(), "Incomplete request marked as Complete")
+
+	req.Created = time.Now()
+	req.Status = StatusPending
+	test.Assert(t, req.ReadyForSA(), "SA-ready request rejected as incomplete")
+	test.Assert(t, !req.Complete(), "Incomplete request marked as Complete")
+
+	req.ID = "1ighy_l2vWh2FHi0gRoFRHUC2v-kuoCK4-tEQUSth1A"
+	test.Assert(t, req.Complete(), "Complete request rejected as incomplete")
 }
 
 func TestRecordSanityCheck(t *testing.T) {

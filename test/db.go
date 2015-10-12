@@ -67,6 +67,21 @@ func deleteEverythingInAllTables(db CleanUpDB) error {
 // migrations) or the ones describing the internal configuration of
 // the server. To be used only in test code.
 func allTableNamesInDB(db CleanUpDB) ([]string, error) {
+	// Because of FOREIGN KEY dependencies, these tables need to be
+	// truncated in the indicated order.
+	overrides := []string{
+		"certificates",
+		"certificateRequests",
+		"authz",
+		"pendingAuthorizations",
+		"registrations",
+	}
+	isOverride := map[string]bool{}
+	for _, table := range overrides {
+		isOverride[table] = true
+	}
+	overrideInDB := map[string]bool{}
+
 	r, err := db.Query("select table_name from information_schema.tables t where t.table_schema = DATABASE() and t.table_name != 'goose_db_version';")
 	if err != nil {
 		return nil, err
@@ -78,7 +93,22 @@ func allTableNamesInDB(db CleanUpDB) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		ts = append(ts, tableName)
+
+		// Skip tables that are overridden
+		if !isOverride[tableName] {
+			ts = append(ts, tableName)
+		} else {
+			overrideInDB[tableName] = true
+		}
 	}
-	return ts, r.Err()
+
+	// Prepend overrides that are in the DB in the proper order
+	tables := []string{}
+	for _, table := range overrides {
+		if overrideInDB[table] {
+			tables = append(tables, table)
+		}
+	}
+
+	return append(tables, ts...), r.Err()
 }

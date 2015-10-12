@@ -20,6 +20,9 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
+// RequestID is a fixed value we will use as an ID for certificate requests
+var RequestID = "MZRFBNh06n5VfFPRL1vlE50j9UK4QT7ZUZC7TcN0zqQ"
+
 // DNSResolver is a mock
 type DNSResolver struct {
 }
@@ -214,6 +217,15 @@ func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, err
 	return core.Authorization{}, nil
 }
 
+// GetCertificateRequest is a mock
+func (sa *StorageAuthority) GetCertificateRequest(requestID string) (core.CertificateRequest, error) {
+	return core.CertificateRequest{
+		ID:             requestID,
+		RegistrationID: 1,
+		CSR:            []byte{},
+	}, nil
+}
+
 // GetCertificate is a mock
 func (sa *StorageAuthority) GetCertificate(serial string) (core.Certificate, error) {
 	// Serial ee == 238.crt
@@ -231,9 +243,20 @@ func (sa *StorageAuthority) GetCertificate(serial string) (core.Certificate, err
 			RegistrationID: 1,
 			DER:            certBlock.Bytes,
 		}, nil
-	} else {
-		return core.Certificate{}, errors.New("No cert")
+	} else if serial == "0000ff0000000000000e4b4f67d86e818c46" {
+		certPemBytes, _ := ioutil.ReadFile("test/not-an-example.com.crt")
+		certBlock, _ := pem.Decode(certPemBytes)
+		return core.Certificate{
+			RegistrationID: 1,
+			DER:            certBlock.Bytes,
+		}, nil
 	}
+	return core.Certificate{}, errors.New("No cert")
+}
+
+// GetLatestCertificateForRequest is a mock
+func (sa *StorageAuthority) GetLatestCertificateForRequest(requestID string) (core.Certificate, error) {
+	return sa.GetCertificate("0000ff0000000000000e4b4f67d86e818c46")
 }
 
 // GetCertificateStatus is a mock
@@ -257,8 +280,19 @@ func (sa *StorageAuthority) AlreadyDeniedCSR([]string) (bool, error) {
 	return false, nil
 }
 
+// NewCertificateRequest is a mock
+func (sa *StorageAuthority) NewCertificateRequest(req core.CertificateRequest) (out core.CertificateRequest, err error) {
+	req.ID = RequestID
+	return req, nil
+}
+
+// UpdateCertificateRequestStatus is a mock
+func (sa *StorageAuthority) UpdateCertificateRequestStatus(reqID string, status core.AcmeStatus) (err error) {
+	return
+}
+
 // AddCertificate is a mock
-func (sa *StorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
+func (sa *StorageAuthority) AddCertificate(certDER []byte, reqID string) (cert core.Certificate, err error) {
 	return
 }
 

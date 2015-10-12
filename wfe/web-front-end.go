@@ -32,7 +32,9 @@ const (
 	NewAuthzPath   = "/acme/new-authz"
 	AuthzPath      = "/acme/authz/"
 	ChallengePath  = "/acme/challenge/"
-	NewCertPath    = "/acme/new-cert"
+	NewCertReqPath = "/acme/new-cert-req"
+	CertReqPath    = "/acme/cert-req/"
+	NewCertPath    = "/acme/new-cert" // TODO(#934): Delete
 	CertPath       = "/acme/cert/"
 	RevokeCertPath = "/acme/revoke-cert"
 	TermsPath      = "/terms"
@@ -60,6 +62,8 @@ type WebFrontEndImpl struct {
 	NewAuthz      string
 	AuthzBase     string
 	ChallengeBase string
+	NewCertReq    string
+	CertReqBase   string
 	NewCert       string
 	CertBase      string
 
@@ -227,14 +231,16 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.NewAuthz = wfe.BaseURL + NewAuthzPath
 	wfe.AuthzBase = wfe.BaseURL + AuthzPath
 	wfe.ChallengeBase = wfe.BaseURL + ChallengePath
-	wfe.NewCert = wfe.BaseURL + NewCertPath
+	wfe.NewCertReq = wfe.BaseURL + NewCertReqPath
+	wfe.CertReqBase = wfe.BaseURL + CertReqPath
+	wfe.NewCert = wfe.BaseURL + NewCertPath // TODO(#934): Delete
 	wfe.CertBase = wfe.BaseURL + CertPath
 
 	// Only generate directory once
 	directory := map[string]string{
 		"new-reg":     wfe.NewReg,
 		"new-authz":   wfe.NewAuthz,
-		"new-cert":    wfe.NewCert,
+		"new-cert":    wfe.NewCert, // TODO(#934): Point to NewCertReq
 		"revoke-cert": wfe.BaseURL + RevokeCertPath,
 	}
 	directoryJSON, err := json.Marshal(directory)
@@ -247,10 +253,12 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
 	wfe.HandleFunc(m, NewRegPath, wfe.NewRegistration, "POST")
 	wfe.HandleFunc(m, NewAuthzPath, wfe.NewAuthorization, "POST")
-	wfe.HandleFunc(m, NewCertPath, wfe.NewCertificate, "POST")
+	wfe.HandleFunc(m, NewCertReqPath, wfe.NewCertificateRequest, "POST")
+	wfe.HandleFunc(m, NewCertPath, wfe.NewCertificate, "POST") // TODO(#934): Delete
 	wfe.HandleFunc(m, RegPath, wfe.Registration, "POST")
 	wfe.HandleFunc(m, AuthzPath, wfe.Authorization, "GET")
 	wfe.HandleFunc(m, ChallengePath, wfe.Challenge, "GET", "POST")
+	wfe.HandleFunc(m, CertReqPath, wfe.CertificateRequest, "GET")
 	wfe.HandleFunc(m, CertPath, wfe.Certificate, "GET")
 	wfe.HandleFunc(m, RevokeCertPath, wfe.RevokeCertificate, "POST")
 	wfe.HandleFunc(m, TermsPath, wfe.Terms, "GET")
@@ -648,6 +656,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(response http.ResponseWriter, reque
 	}
 
 	response.Header().Add("Location", authzURL)
+	// TODO(#934): Point to NewCertReq
 	response.Header().Add("Link", link(wfe.NewCert, "next"))
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(http.StatusCreated)
@@ -747,21 +756,23 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(response http.ResponseWriter, requ
 	}
 }
 
-func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, registration core.Registration) {
+func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.AcmeCertificateRequest, registration core.Registration) {
 	var csrLog = struct {
 		ClientAddr   string
 		CsrBase64    []byte
 		Registration core.Registration
 	}{
 		ClientAddr:   getClientAddr(request),
-		CsrBase64:    cr.Bytes,
+		CsrBase64:    cr.CSR.Raw,
 		Registration: registration,
 	}
 	wfe.log.AuditObject("Certificate request", csrLog)
 }
 
-// NewCertificate is used by clients to request the issuance of a cert for an
-// authorized identifier.
+// NewCertificate is the synchronous interface used by clients to request the
+// issuance of a cert for an authorized identifier.
+//
+// TODO(#934): Delete this method
 func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
@@ -789,7 +800,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		return
 	}
 
-	var certificateRequest core.CertificateRequest
+	var certificateRequest core.AcmeCertificateRequest
 	if err = json.Unmarshal(body, &certificateRequest); err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
@@ -812,12 +823,26 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
 
 	// Create new certificate and return
-	// TODO IMPORTANT: The RA trusts the WFE to provide the correct key. If the
-	// WFE is compromised, *and* the attacker knows the public key of an account
+	// TODO(#954): The RA trusts the WFE to provide the correct key. If the WFE
+	// is compromised, *and* the attacker knows the public key of an account
 	// authorized for target site, they could cause issuance for that site by
-	// lying to the RA. We should probably pass a copy of the whole rquest to the
-	// RA for secondary validation.
-	cert, err := wfe.RA.NewCertificate(certificateRequest, reg.ID)
+	// lying to the RA. We should probably pass a copy of the whole request to
+	// the RA for secondary validation.
+	req := core.CertificateRequest{
+		RegistrationID: reg.ID,
+		CSR:            certificateRequest.CSR.Raw,
+	}
+	req, err = wfe.RA.NewCertificate(req)
+	if err != nil {
+		logEvent.Error = err.Error()
+		wfe.sendError(response, "Error creating new cert", err, statusCodeFromError(err))
+		return
+	}
+
+	// Since issuance is still currently synchronous, we know that by the time
+	// the method returns, the cert will be in the database.  So we just need to
+	// fetch it here.
+	cert, err := wfe.SA.GetLatestCertificateForRequest(req.ID)
 	if err != nil {
 		logEvent.Error = err.Error()
 		wfe.sendError(response, "Error creating new cert", err, statusCodeFromError(err))
@@ -839,7 +864,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 	serial := parsedCertificate.SerialNumber
 	certURL := wfe.CertBase + core.SerialToString(serial)
 
-	// TODO Content negotiation
+	// TODO(#956): Content negotiation
 	response.Header().Add("Location", certURL)
 	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
@@ -848,6 +873,86 @@ func (wfe *WebFrontEndImpl) NewCertificate(response http.ResponseWriter, request
 		logEvent.Error = err.Error()
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
+}
+
+// NewCertificateRequest is the asynchronous interface used by clients to
+// request the issuance of a cert for an authorized identifier.
+func (wfe *WebFrontEndImpl) NewCertificateRequest(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
+	body, _, reg, err := wfe.verifyPOST(request, true, core.ResourceNewCert)
+	if err != nil {
+		logEvent.Error = err.Error()
+		respMsg := malformedJWS
+		respCode := statusCodeFromError(err)
+		if _, ok := err.(core.NoSuchRegistrationError); ok {
+			respMsg = unknownKey
+			respCode = http.StatusForbidden
+		}
+		wfe.sendError(response, respMsg, err, respCode)
+		return
+	}
+	logEvent.Requester = reg.ID
+	logEvent.Contacts = reg.Contact
+	// Any version of the agreement is acceptable here. Version match is enforced in
+	// wfe.Registration when agreeing the first time. Agreement updates happen
+	// by mailing subscribers and don't require a registration update.
+	if reg.Agreement == "" {
+		logEvent.Error = "Must agree to subscriber agreement before any further actions"
+		wfe.sendError(response, logEvent.Error, nil, http.StatusForbidden)
+		return
+	}
+
+	var certificateRequest core.AcmeCertificateRequest
+	if err = json.Unmarshal(body, &certificateRequest); err != nil {
+		logEvent.Error = err.Error()
+		wfe.sendError(response, "Error unmarshaling certificate request", err, http.StatusBadRequest)
+		return
+	}
+	wfe.logCsr(request, certificateRequest, reg)
+	// Check that the key in the CSR is good. This will also be checked in the CA
+	// component, but we want to discard CSRs with bad keys as early as possible
+	// because (a) it's an easy check and we can save unnecessary requests and
+	// bytes on the wire, and (b) the CA logs all rejections as audit events, but
+	// a bad key from the client is just a malformed request and doesn't need to
+	// be audited.
+	if err = core.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
+		logEvent.Error = err.Error()
+		wfe.sendError(response, "Invalid key in certificate request", err, http.StatusBadRequest)
+		return
+	}
+	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
+	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
+	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
+
+	// Create new certificate and return
+	// TODO(#954): The RA trusts the WFE to provide the correct key. If the WFE
+	// is compromised, *and* the attacker knows the public key of an account
+	// authorized for target site, they could cause issuance for that site by
+	// lying to the RA. We should probably pass a copy of the whole request to
+	// the RA for secondary validation.
+	req := core.CertificateRequest{
+		RegistrationID: reg.ID,
+		CSR:            certificateRequest.CSR.Raw,
+	}
+	req, err = wfe.RA.NewCertificate(req)
+	if err != nil {
+		logEvent.Error = err.Error()
+		wfe.sendError(response, "Error creating new cert", err, statusCodeFromError(err))
+		return
+	}
+
+	// Make a URL for this certificate request, using its ID
+	reqURL := fmt.Sprintf("%s%s", wfe.CertReqBase, req.ID)
+
+	// TODO(#956): Content negotiation
+	response.Header().Add("Location", reqURL)
+	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
+	response.WriteHeader(http.StatusCreated)
+
+	// incr cert stat
+	wfe.stats.Inc("Certificates", 1, 1.0)
 }
 
 // Challenge handles POST requests to challenge URLs.  Such requests are clients'
@@ -1160,8 +1265,90 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 
 var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
-// Certificate is used by clients to request a copy of their current certificate, or to
-// request a reissuance of the certificate.
+// CertificateRequest is used by clients to request a copy of the current certificate
+// for a request, or to request a reissuance of the certificate.
+func (wfe *WebFrontEndImpl) CertificateRequest(response http.ResponseWriter, request *http.Request) {
+	logEvent := wfe.populateRequestEvent(request)
+	defer wfe.logRequestDetails(&logEvent)
+
+	path := request.URL.Path
+	// Certificate paths consist of the CertReqBase path, plus a token
+	if !strings.HasPrefix(path, CertReqPath) {
+		logEvent.Error = "Certificate not found"
+		wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
+		addNoCacheHeader(response)
+		return
+	}
+	reqID := path[len(CertReqPath):]
+	if !core.LooksLikeAToken(reqID) {
+		logEvent.Error = "Certificate not found"
+		wfe.sendError(response, logEvent.Error, reqID, http.StatusNotFound)
+		addNoCacheHeader(response)
+		return
+	}
+	wfe.log.Debug(fmt.Sprintf("Requested certificate request ID %s", reqID))
+	logEvent.Extra["RequestedRequestID"] = reqID
+
+	// First retrieve the request (to check its status)
+	req, err := wfe.SA.GetCertificateRequest(reqID)
+	if err != nil {
+		logEvent.Error = "Certificate not found"
+		wfe.sendError(response, logEvent.Error, path, http.StatusNotFound)
+		addNoCacheHeader(response)
+		return
+	}
+
+	if req.Status == core.StatusPending {
+		addNoCacheHeader(response)
+		response.WriteHeader(http.StatusAccepted)
+		return
+	} else if req.Status == core.StatusInvalid {
+		logEvent.Error = "Error in certificate issuance"
+		wfe.sendError(response, logEvent.Error, path, http.StatusInternalServerError)
+		addNoCacheHeader(response)
+		return
+	}
+
+	// Then try to retrieve the certificate
+	cert, err := wfe.SA.GetLatestCertificateForRequest(reqID)
+	if err != nil {
+		logEvent.Error = err.Error()
+		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
+			wfe.sendError(response, "Multiple certificates with same serial", err, http.StatusConflict)
+		} else {
+			addNoCacheHeader(response)
+			wfe.sendError(response, "Certificate not found", err, http.StatusNotFound)
+		}
+		return
+	}
+
+	addCacheHeader(response, wfe.CertCacheDuration.Seconds())
+
+	// Form a URL for the specific certificate from its serial number
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	if err != nil {
+		logEvent.Error = err.Error()
+		wfe.sendError(response,
+			"Error fetching cert", err,
+			http.StatusBadRequest)
+		return
+	}
+	serial := parsedCertificate.SerialNumber
+	certURL := wfe.CertBase + core.SerialToString(serial)
+
+	// TODO Content negotiation
+	response.Header().Set("Content-Type", "application/pkix-cert")
+	response.Header().Set("Content-Location", certURL)
+	response.Header().Add("Link", link(IssuerPath, "up"))
+	response.WriteHeader(http.StatusOK)
+	if _, err = response.Write(cert.DER); err != nil {
+		logEvent.Error = err.Error()
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	}
+	return
+}
+
+// Certificate is used by clients to request a copy of a specific certificate
 func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *http.Request) {
 	logEvent := wfe.populateRequestEvent(request)
 	defer wfe.logRequestDetails(&logEvent)
@@ -1189,7 +1376,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 	if err != nil {
 		logEvent.Error = err.Error()
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
-			wfe.sendError(response, "Multiple certificates with same short serial", err, http.StatusConflict)
+			wfe.sendError(response, "Multiple certificates with same serial", err, http.StatusConflict)
 		} else {
 			addNoCacheHeader(response)
 			wfe.sendError(response, "Certificate not found", err, http.StatusNotFound)
@@ -1199,7 +1386,7 @@ func (wfe *WebFrontEndImpl) Certificate(response http.ResponseWriter, request *h
 
 	addCacheHeader(response, wfe.CertCacheDuration.Seconds())
 
-	// TODO Content negotiation
+	// TODO(#956): Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.Header().Add("Link", link(IssuerPath, "up"))
 	response.WriteHeader(http.StatusOK)
@@ -1226,7 +1413,7 @@ func (wfe *WebFrontEndImpl) Issuer(response http.ResponseWriter, request *http.R
 
 	addCacheHeader(response, wfe.IssuerCacheDuration.Seconds())
 
-	// TODO Content negotiation
+	// TODO(#956): Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusOK)
 	if _, err := response.Write(wfe.IssuerCert); err != nil {

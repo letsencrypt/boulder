@@ -124,8 +124,8 @@ func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, 
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
-	return core.Certificate{}, nil
+func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest) (core.CertificateRequest, error) {
+	return core.CertificateRequest{}, nil
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistration(reg core.Registration, updated core.Registration) (core.Registration, error) {
@@ -150,15 +150,13 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization
 
 type MockCA struct{}
 
-func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
-	// Return a basic certificate so NewCertificate can continue
-	certPtr, err := core.LoadCert("test/not-an-example.com.crt")
-	if err != nil {
-		return core.Certificate{}, err
-	}
-	return core.Certificate{
-		DER: certPtr.Raw,
-	}, nil
+func (ca *MockCA) NewCertificateRequest(req core.CertificateRequest) (core.CertificateRequest, error) {
+	req.ID = mocks.RequestID
+	return req, nil
+}
+
+func (ca *MockCA) IssueCertificate(string, string) error {
+	return nil
 }
 
 func (ca *MockCA) GenerateOCSP(xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
@@ -622,48 +620,102 @@ func TestIssueCertificate(t *testing.T) {
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Invalid signature on CSR"}`)
 
-	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=meep.com | b64url
+	// Test the success case with the sync API
+	// TODO(#934): Delete this test
 	mockLog.Clear()
-	responseWriter.Body.Reset()
+	responseWriter = httptest.NewRecorder()
 	wfe.NewCertificate(responseWriter,
 		makePostRequest(signRequest(t, `{
 			"resource":"new-cert",
-			"csr": "MIICWDCCAUACAQAwEzERMA8GA1UEAwwIbWVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCaqzue57mgXEoGTZZoVkkCZraebWgXI8irX2BgQB1A3iZa9onxGPMcWQMxhSuUisbEJi4UkMcVST12HX01rUwhj41UuBxJvI1w4wvdstssTAaa9c9tsQ5-UED2bFRL1MsyBdbmCF_-pu3i-ZIYqWgiKbjVBe3nlAVbo77zizwp3Y4Tp1_TBOwTAuFkHePmkNT63uPm9My_hNzsSm1o-Q519Cf7ry-JQmOVgz_jIgFVGFYJ17EV3KUIpUuDShuyCFATBQspgJSN2DoXRUlQjXXkNTj23OxxdT_cVLcLJjytyG6e5izME2R2aCkDBWIc1a4_sRJ0R396auPXG6KhJ7o_AgMBAAGgADANBgkqhkiG9w0BAQsFAAOCAQEALu046p76aKgvoAEHFINkMTgKokPXf9mZ4IZx_BKz-qs1MPMxVtPIrQDVweBH6tYT7Hfj2naLry6SpZ3vUNP_FYeTFWgW1V03LiqacX-QQgbEYtn99Dt3ScGyzb7EH833ztb3vDJ_-ha_CJplIrg-kHBBrlLFWXhh-I9K1qLRTNpbhZ18ooFde4Sbhkw9o9fKivGhx9aYr7ZbjRsNtKit_DsG1nwEXz53TMJ2vB9IQY29coJv_n5NFLkvBfzbG5faRNiFcimPYBO2jFdaA2mWzfxltLtwMF_dBwzTXDpMo3TVT9zEdV8YpsWqr63igqGDZVpKenlkqvRTeGJVayVuMA"
-		}`, &wfe.nonceService)))
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Authorizations for these names not found or expired: meep.com"}`)
-	assertCsrLogged(t, mockLog)
-
-	mockLog.Clear()
-	responseWriter.Body.Reset()
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
-	wfe.NewCertificate(responseWriter,
-		makePostRequest(signRequest(t, `{
-			"resource":"new-cert",
-			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
+			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo"
 		}`, &wfe.nonceService)))
 	assertCsrLogged(t, mockLog)
-	cert, err := core.LoadCert("test/not-an-example.com.crt")
-	test.AssertNotError(t, err, "Could not load cert")
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		string(cert.Raw))
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
 		"/acme/cert/0000ff0000000000000e4b4f67d86e818c46")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
 		`</acme/issuer-cert>;rel="up"`)
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Content-Type"),
-		"application/pkix-cert")
 	reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
 	test.AssertEquals(t, len(reqlogs), 1)
 	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_NOTICE)
 	test.AssertContains(t, reqlogs[0].Message, `[AUDIT] `)
 	test.AssertContains(t, reqlogs[0].Message, `"CommonName":"not-an-example.com",`)
+
+	cert, err := core.LoadCert("test/not-an-example.com.crt")
+	test.AssertNotError(t, err, "Could not load cert")
+
+	body := make([]byte, responseWriter.Body.Len())
+	_, err = responseWriter.Body.Read(body)
+	test.AssertNotError(t, err, "Failed to read body")
+	test.AssertByteEquals(t, cert.Raw, body)
+
+	// Test the success case with the async API
+	mockLog.Clear()
+	responseWriter = httptest.NewRecorder()
+	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
+	wfe.NewCertificateRequest(responseWriter,
+		makePostRequest(signRequest(t, `{
+			"resource":"new-cert",
+			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo"
+		}`, &wfe.nonceService)))
+	assertCsrLogged(t, mockLog)
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Location"),
+		"/acme/cert-req/"+mocks.RequestID)
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		`</acme/issuer-cert>;rel="up"`)
+	reqlogs = mockLog.GetAllMatching(`Certificate request - successful`)
+	test.AssertEquals(t, len(reqlogs), 1)
+	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_NOTICE)
+	test.AssertContains(t, reqlogs[0].Message, `[AUDIT] `)
+	test.AssertContains(t, reqlogs[0].Message, `"CommonName":"not-an-example.com",`)
+
+	certReqURL := responseWriter.Header().Get("Location")
+
+	// Verify that the certificate is returned from a GET to the certificate request URL
+	mockLog.Clear()
+	responseWriter.Body.Reset()
+	wfe.CertificateRequest(responseWriter,
+		&http.Request{
+			Method:     "GET",
+			RemoteAddr: "1.1.1.1",
+			URL:        mustParseURL(certReqURL),
+		})
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		`</acme/issuer-cert>;rel="up"`)
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Content-Type"),
+		"application/pkix-cert")
+
+	body = make([]byte, responseWriter.Body.Len())
+	_, err = responseWriter.Body.Read(body)
+	test.AssertNotError(t, err, "Failed to read body")
+	test.AssertByteEquals(t, cert.Raw, body)
+
+	certURL := responseWriter.Header().Get("Content-Location")
+
+	// Verify that the same certificate is returned from a GET to the certificate URL
+	mockLog.Clear()
+	responseWriter.Body.Reset()
+	wfe.Certificate(responseWriter,
+		&http.Request{
+			Method:     "GET",
+			RemoteAddr: "1.1.1.1",
+			URL:        mustParseURL(certURL),
+		})
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Link"),
+		`</acme/issuer-cert>;rel="up"`)
+	test.AssertEquals(
+		t, responseWriter.Header().Get("Content-Type"),
+		"application/pkix-cert")
+	body2 := make([]byte, responseWriter.Body.Len())
+	_, err = responseWriter.Body.Read(body2)
+	test.AssertNotError(t, err, "Failed to read body")
+	test.AssertByteEquals(t, body, body2)
 }
 
 func TestGetChallenge(t *testing.T) {
@@ -1336,7 +1388,7 @@ func TestLogCsrPem(t *testing.T) {
 		"csr": "MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca-fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB-6dp48xkcX7Z_KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD-eeu8-z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7_C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT_DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq_Bbe7TBGVYZabUEh-LOskYwhgcOuThVN7tHnH5rhN-gb7cEdysjTb1QL-vOUwYgV75CB6PE5JVYK-cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub-fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G_W-Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd-L3IcyvHVKxNhIJXZVH0AOqh_1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY"
 	}`
 	wfe := setupWFE(t)
-	var certificateRequest core.CertificateRequest
+	var certificateRequest core.AcmeCertificateRequest
 	err := json.Unmarshal([]byte(certificateRequestJSON), &certificateRequest)
 	test.AssertNotError(t, err, "Unable to parse certificateRequest")
 

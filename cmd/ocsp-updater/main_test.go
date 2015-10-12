@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/x509"
 	"testing"
 	"time"
 
@@ -19,8 +18,12 @@ import (
 
 type mockCA struct{}
 
-func (ca *mockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
-	return core.Certificate{}, nil
+func (ca *mockCA) NewCertificateRequest(req core.CertificateRequest) (core.CertificateRequest, error) {
+	return core.CertificateRequest{}, nil
+}
+
+func (ca *mockCA) IssueCertificate(requestID string, logEventID string) error {
+	return nil
 }
 
 func (ca *mockCA) GenerateOCSP(xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
@@ -83,9 +86,10 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(parsedCert.Raw, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	status, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
@@ -114,13 +118,14 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(parsedCert.Raw, req.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 	parsedCert, err = core.LoadCert("test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(parsedCert.Raw, req.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
 
 	earliest := fc.Now().Add(-time.Hour)
@@ -140,9 +145,10 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(parsedCert.Raw, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	earliest := fc.Now().Add(-time.Hour)
@@ -172,9 +178,10 @@ func TestGetCertificatesWithMissingResponses(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
 	cert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(cert.Raw, reg.ID)
+	_, err = sa.AddCertificate(cert.Raw, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	statuses, err := updater.getCertificatesWithMissingResponses(10)
@@ -187,9 +194,10 @@ func TestNewCertificateTick(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(parsedCert.Raw, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	prev := fc.Now().Add(-time.Hour)
@@ -205,9 +213,10 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(parsedCert.Raw, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	updater.ocspMinTimeToExpiry = 1 * time.Hour
@@ -223,9 +232,10 @@ func TestMissingReceiptsTick(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+	req := satest.CreateWorkingCertificateRequest(t, sa, reg)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(parsedCert.Raw, req.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	updater.numLogs = 1

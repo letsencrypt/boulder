@@ -1309,8 +1309,8 @@ func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, 
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
-	return core.Certificate{}, nil
+func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest) (core.CertificateRequest, error) {
+	return core.CertificateRequest{}, nil
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistration(reg core.Registration, updated core.Registration) (core.Registration, error) {

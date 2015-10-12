@@ -91,4 +91,42 @@ Acme.prototype.post = function(url, body, callback) {
   return req;
 }
 
+Acme.prototype.get = function(url, callback) {
+  console.log('Sending GET to', url, ':');
+  var req = request.get({
+    url: url,
+    // Return body as buffer, needed for certificate response
+    encoding: null,
+  }, function(error, response, body) {
+    if (error) {
+      console.error(error);
+      process.exit(1);
+    }
+    if (response) {
+      console.log(("HTTP/1.1 " + response.statusCode).yellow)
+    }
+    Object.keys(response.headers).forEach(function(key) {
+      var value = response.headers[key];
+      var upcased = key.charAt(0).toUpperCase() + key.slice(1);
+      console.log((upcased + ": " + value).yellow)
+    });
+    console.log()
+
+    // Don't print non-ASCII characters (like DER-encoded cert) to the terminal
+    if (body && !body.toString().match(/[^\x00-\x7F]/)) {
+      try {
+        var parsed = JSON.parse(body);
+        console.log(JSON.stringify(parsed, null, 2).cyan);
+      } catch (e) {
+        console.log(body.toString().cyan);
+      }
+    }
+
+    callback(error, response, body)
+  }.bind(this));
+  req.on('response', function(response) {
+  })
+  return req;
+}
+
 module.exports = Acme;
