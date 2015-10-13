@@ -91,8 +91,12 @@ func TestWillingToIssue(t *testing.T) {
 		`CapitalizedLetters.com`,
 	}
 
-	shouldBeNonPublic := []string{
+	shouldBeTLDError := []string{
 		`co.uk`,
+		`foo.bn`,
+	}
+
+	shouldBeNonPublic := []string{
 		`example.acting`,
 		`example.internal`,
 		// All-numeric final label not okay.
@@ -145,7 +149,16 @@ func TestWillingToIssue(t *testing.T) {
 		}
 	}
 
-	// Test public suffix matching
+	// Test domains that are equal to public suffixes
+	for _, domain := range shouldBeTLDError {
+		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
+		err := pa.WillingToIssue(identifier, 100)
+		if err != ErrICANNTLD {
+			t.Error("Identifier was not correctly forbidden: ", identifier, err)
+		}
+	}
+
+	// Test domains that don't end in public suffixes
 	for _, domain := range shouldBeNonPublic {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
 		err := pa.WillingToIssue(identifier, 100)
