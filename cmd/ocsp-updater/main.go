@@ -398,9 +398,9 @@ type looper struct {
 	name      string
 }
 
-func (l *looper) loop() {
+func (l *looper) loop() error {
 	if l.batchSize == 0 || l.tickDur == 0 {
-		return
+		return fmt.Errorf("Both batch size and tick duration are required, not running '%s' loop", l.name)
 	}
 	for {
 		tickStart := l.clk.Now()
@@ -489,7 +489,12 @@ func main() {
 		)
 
 		for _, l := range updater.loops {
-			go l.loop()
+			go func(loop *looper) {
+				err = loop.loop()
+				if err != nil {
+					auditlogger.AuditErr(err)
+				}
+			}(l)
 		}
 
 		cmd.FailOnError(err, "Failed to create updater")
