@@ -32,10 +32,10 @@ import (
 // TODO(jsha): Read from a config file.
 const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
 
-// 1 week default pending authorization lifetime.  If you can't respond to a
+// 36 hour default pending authorization lifetime.  If you can't respond to a
 // challenge this quickly, then you need to request a new challenge.
 // TODO(rlb): Read from a config file
-const DefaultPendingAuthorizationLifetime = 7 * 24 * time.Hour
+const DefaultPendingAuthorizationLifetime = 36 * time.Hour
 
 // RegistrationAuthorityImpl defines an RA.
 //
