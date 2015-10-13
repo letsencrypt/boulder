@@ -111,6 +111,10 @@ func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, er
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org"
 		results = append(results, &record)
+	case "com":
+		// Nothing should ever call this, since CAA checking should stop when it
+		// reaches a public suffix.
+		fallthrough
 	case "servfail.com":
 		return results, 0, fmt.Errorf("SERVFAIL")
 	}
