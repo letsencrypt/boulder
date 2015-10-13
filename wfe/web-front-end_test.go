@@ -666,6 +666,44 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertContains(t, reqlogs[0].Message, `"CommonName":"not-an-example.com",`)
 }
 
+func TestGetChallenge(t *testing.T) {
+	wfe := setupWFE(t)
+
+	wfe.RA = &MockRegistrationAuthority{}
+	wfe.SA = &mocks.StorageAuthority{}
+
+	challengeURL := "/acme/challenge/valid/23"
+
+	for _, method := range []string{"GET", "HEAD"} {
+		resp := httptest.NewRecorder()
+
+		req, err := http.NewRequest(method, challengeURL, nil)
+		test.AssertNotError(t, err, "Could not make NewRequest")
+
+		wfe.Challenge(resp, req)
+		test.AssertEquals(t,
+			resp.Code,
+			http.StatusAccepted)
+		test.AssertEquals(t,
+			resp.Header().Get("Location"),
+			challengeURL)
+		test.AssertEquals(t,
+			resp.Header().Get("Content-Type"),
+			"application/json")
+		test.AssertEquals(t,
+			resp.Header().Get("Link"),
+			`</acme/authz/valid>;rel="up"`)
+		// Body is only relevant for GET. For HEAD, body will
+		// be discarded by HandleFunc() anyway, so it doesn't
+		// matter what Challenge() writes to it.
+		if method == "GET" {
+			test.AssertEquals(
+				t, resp.Body.String(),
+				`{"type":"dns","uri":"/acme/challenge/valid/23"}`)
+		}
+	}
+}
+
 func TestChallenge(t *testing.T) {
 	wfe := setupWFE(t)
 
