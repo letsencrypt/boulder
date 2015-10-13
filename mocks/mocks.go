@@ -268,7 +268,7 @@ func (sa *StorageAuthority) FinalizeAuthorization(authz core.Authorization) (err
 }
 
 // MarkCertificateRevoked is a mock
-func (sa *StorageAuthority) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
+func (sa *StorageAuthority) MarkCertificateRevoked(serial string, reasonCode core.RevocationCode) (err error) {
 	return
 }
 
