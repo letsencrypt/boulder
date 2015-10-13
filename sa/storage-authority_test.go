@@ -505,13 +505,7 @@ func TestUpdateOCSP(t *testing.T) {
 	test.Assert(t,
 		certificateStatus.OCSPLastUpdated.After(beforeUpdate.OCSPLastUpdated),
 		fmt.Sprintf("UpdateOCSP did not take. before: %s; after: %s", beforeUpdate.OCSPLastUpdated, certificateStatus.OCSPLastUpdated))
-
-	var fetchedOcspResponse core.OCSPResponse
-	err = sa.dbMap.SelectOne(&fetchedOcspResponse,
-		`SELECT * from ocspResponses where serial = ? order by createdAt DESC limit 1;`,
-		serial)
-	test.AssertNotError(t, err, "Failed to fetch OCSP response")
-	test.AssertEquals(t, ocspResponse, string(fetchedOcspResponse.Response))
+	test.AssertEquals(t, ocspResponse, string(certificateStatus.OCSPResponse))
 }
 
 func TestMarkCertificateRevoked(t *testing.T) {
@@ -535,7 +529,7 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	fc.Add(1 * time.Hour)
 
 	code := core.RevocationCode(1)
-	err = sa.MarkCertificateRevoked(serial, []byte(ocspResponse), code)
+	err = sa.MarkCertificateRevoked(serial, code)
 	test.AssertNotError(t, err, "MarkCertificateRevoked failed")
 
 	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
@@ -547,22 +541,6 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	}
 	if !fc.Now().Equal(afterStatus.RevokedDate) {
 		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), afterStatus.RevokedDate)
-	}
-	if !fc.Now().Equal(afterStatus.OCSPLastUpdated) {
-		t.Errorf("OCSPLastUpdated, expected %s, got %s", fc.Now(), afterStatus.OCSPLastUpdated)
-	}
-
-	if !afterStatus.OCSPLastUpdated.After(beforeStatus.OCSPLastUpdated) {
-		t.Errorf("OCSPLastUpdated did not update correctly. before: %s; after: %s",
-			beforeStatus.OCSPLastUpdated, afterStatus.OCSPLastUpdated)
-	}
-	var fetched core.OCSPResponse
-	err = sa.dbMap.SelectOne(&fetched,
-		`SELECT * from ocspResponses where serial = ? order by createdAt DESC limit 1;`,
-		serial)
-	test.AssertNotError(t, err, "Failed to fetch OCSP response")
-	if ocspResponse != string(fetched.Response) {
-		t.Errorf("OCSPResponse response, expected %#v, got %#v", ocspResponse, string(fetched.Response))
 	}
 }
 

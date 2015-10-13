@@ -676,6 +676,9 @@ type CertificateStatus struct {
 
 	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
+	// The encoded and signed OCSP response.
+	OCSPResponse []byte `db:"ocspResponse"`
+
 	LockCol int64 `json:"-"`
 }
 

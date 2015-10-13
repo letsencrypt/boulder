@@ -283,13 +283,15 @@ type Queue struct {
 type OCSPUpdaterConfig struct {
 	DBConnect string
 
-	NewCertificateWindow ConfigDuration
-	OldOCSPWindow        ConfigDuration
-	MissingSCTWindow     ConfigDuration
+	NewCertificateWindow     ConfigDuration
+	OldOCSPWindow            ConfigDuration
+	MissingSCTWindow         ConfigDuration
+	RevokedCertificateWindow ConfigDuration
 
-	NewCertificateBatchSize int
-	OldOCSPBatchSize        int
-	MissingSCTBatchSize     int
+	NewCertificateBatchSize     int
+	OldOCSPBatchSize            int
+	MissingSCTBatchSize         int
+	RevokedCertificateBatchSize int
 
 	OCSPMinTimeToExpiry ConfigDuration
 	OldestIssuedSCT     ConfigDuration
