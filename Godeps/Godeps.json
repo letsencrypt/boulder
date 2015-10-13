@@ -125,8 +125,8 @@
 			"Rev": "287a1d87db5d649b01d6193bd9d07e909f08094c"
 		},
 		{
-			"ImportPath": "golang.org/x/net/publicsuffix",
-			"Rev": "db8e4de5b2d6653f66aea53094624468caad15d2"
+			"ImportPath": "github.com/letsencrypt/net/publicsuffix",
+			"Rev": "b1959d2ce5b815bfc7aa5ca2d2af62293eb4abd5"
 		},
 		{
 			"ImportPath": "gopkg.in/gorp.v1",
