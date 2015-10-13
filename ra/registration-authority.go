@@ -610,7 +610,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization, challengeIndex int, response core.Challenge) (authz core.Authorization, err error) {
 	// Refuse to update expired authorizations
 	if base.Expires == nil || base.Expires.Before(ra.clk.Now()) {
-		err = core.MalformedRequestError("Expired authorization")
+		err = fmt.Errorf("Expired authorization")
 		return
 	}
 
