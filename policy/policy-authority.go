@@ -99,7 +99,7 @@ type SyntaxError struct{}
 type NonPublicError struct{}
 
 // TLDError indicates that one or more identifiers was an ICANN-managed TLD
-type TLDError struct{}
+var ErrICANNTLD = errors.New("Name is an ICANN TLD")
 
 // ErrBlacklisted indicates we have blacklisted one or more of these
 // identifiers.
@@ -112,7 +112,6 @@ var ErrNotWhitelisted = errors.New("Name is not whitelisted")
 func (e InvalidIdentifierError) Error() string { return "Invalid identifier type" }
 func (e SyntaxError) Error() string            { return "Syntax error" }
 func (e NonPublicError) Error() string         { return "Name does not end in a public suffix" }
-func (e TLDError) Error() string               { return "Name is an ICANN TLD" }
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier. It expects domains in id to be lowercase to prevent mismatched
@@ -180,7 +179,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 		return NonPublicError{}
 	}
 	if icannTLD == domain {
-		return TLDError{}
+		return ErrICANNTLD
 	}
 
 	// Use the domain whitelist if the PA has been asked to. However, if the

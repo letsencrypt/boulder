@@ -24,8 +24,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -789,9 +789,9 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 			return nil, errors.New("both CNAME and DNAME exist for " + label)
 		}
 		if cname != "" {
-			label = cname
+			label = strings.TrimRight(cname, ".")
 		} else {
-			label = dname
+			label = strings.TrimRight(dname, ".")
 		}
 		if cnames++; cnames > maxCNAME {
 			return nil, ErrTooManyCNAME

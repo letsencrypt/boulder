@@ -153,8 +153,7 @@ func TestWillingToIssue(t *testing.T) {
 	for _, domain := range shouldBeTLDError {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
 		err := pa.WillingToIssue(identifier, 100)
-		_, ok := err.(TLDError)
-		if !ok {
+		if err != ErrICANNTLD {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
 	}
