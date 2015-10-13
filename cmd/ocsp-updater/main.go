@@ -399,6 +399,9 @@ type looper struct {
 }
 
 func (l *looper) loop() {
+	if l.batchSize == 0 || l.tickDur == 0 {
+		return
+	}
 	for {
 		tickStart := l.clk.Now()
 		l.tickFunc(l.batchSize)
