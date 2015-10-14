@@ -32,16 +32,6 @@ func TestChallenges(t *testing.T) {
 		t.Errorf("Error unmarshaling JWK: %v", err)
 	}
 
-	simpleHTTP := SimpleHTTPChallenge(accountKey)
-	if !simpleHTTP.IsSane(false) {
-		t.Errorf("New HTTP challenge is not sane: %v", simpleHTTP)
-	}
-
-	dvsni := DvsniChallenge(accountKey)
-	if !dvsni.IsSane(false) {
-		t.Errorf("New DVSNI challenge is not sane: %v", dvsni)
-	}
-
 	http01 := HTTPChallenge01(accountKey)
 	if !http01.IsSane(false) {
 		t.Errorf("New http-01 challenge is not sane: %v", http01)
@@ -96,28 +86,33 @@ func TestCertificateRequest(t *testing.T) {
 }
 
 func TestMergeChallenge(t *testing.T) {
-	tls := true
 	t1 := time.Now()
 	t2 := time.Now().Add(-5 * time.Hour)
 	challenge := Challenge{
-		Type:      ChallengeTypeSimpleHTTP,
+		Type:      ChallengeTypeHTTP01,
 		Status:    StatusPending,
 		Validated: &t1,
 		Token:     "asdf",
 	}
 	response := Challenge{
-		Type:      ChallengeTypeSimpleHTTP,
+		Type:      ChallengeTypeHTTP01,
 		Status:    StatusValid,
 		Validated: &t2,
 		Token:     "qwer",
-		TLS:       &tls,
+		KeyAuthorization: &KeyAuthorization{
+			Token:      "zxcv",
+			Thumbprint: "1234",
+		},
 	}
 	merged := Challenge{
-		Type:      ChallengeTypeSimpleHTTP,
+		Type:      ChallengeTypeHTTP01,
 		Status:    StatusPending,
 		Validated: &t1,
 		Token:     "asdf",
-		TLS:       &tls,
+		KeyAuthorization: &KeyAuthorization{
+			Token:      "zxcv",
+			Thumbprint: "1234",
+		},
 	}
 
 	probe := challenge.MergeResponse(response)
@@ -127,11 +122,8 @@ func TestMergeChallenge(t *testing.T) {
 	if probe.Validated != merged.Validated {
 		t.Errorf("MergeChallenge allowed response to overwrite completed time")
 	}
-	if probe.KeyAuthorization != merged.KeyAuthorization {
+	if probe.KeyAuthorization.String() != merged.KeyAuthorization.String() {
 		t.Errorf("MergeChallenge allowed response to overwrite authorized key")
-	}
-	if probe.TLS != merged.TLS {
-		t.Errorf("MergeChallenge failed to overwrite TLS")
 	}
 }
 

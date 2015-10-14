@@ -150,9 +150,9 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
 	test.AssertNotError(t, err, "Failed to unmarshal JWK")
 
-	simpleHTTP := core.SimpleHTTPChallenge(&AccountKeyA)
-	dvsni := core.DvsniChallenge(&AccountKeyA)
-	AuthzInitial.Challenges = []core.Challenge{simpleHTTP, dvsni}
+	httpChallenge := core.HTTPChallenge01(&AccountKeyA)
+	tlssniChallenge := core.TLSSNIChallenge01(&AccountKeyA)
+	AuthzInitial.Challenges = []core.Challenge{httpChallenge, tlssniChallenge}
 
 	fc := clock.NewFake()
 
@@ -394,21 +394,12 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these lines
-	test.Assert(t, len(authz.Challenges) == 4, "Incorrect number of challenges returned")
-	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
-	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
-	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeHTTP01, "Challenge 2 not http-00")
-	test.Assert(t, authz.Challenges[3].Type == core.ChallengeTypeTLSSNI01, "Challenge 3 not tlssni-00")
+	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
+	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeHTTP01, "Challenge 0 not http-00")
+	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeTLSSNI01, "Challenge 1 not tlssni-00")
 
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
-	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 2 is not sane")
-	test.Assert(t, authz.Challenges[3].IsSane(false), "Challenge 3 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
 }
@@ -494,7 +485,7 @@ func TestOnValidationUpdateSuccess(t *testing.T) {
 	authzUpdated.Expires = &expires
 	sa.UpdatePendingAuthorization(authzUpdated)
 
-	// Simulate a successful simpleHTTP challenge
+	// Simulate a successful challenge
 	authzFromVA := authzUpdated
 	authzFromVA.Challenges[0].Status = core.StatusValid
 

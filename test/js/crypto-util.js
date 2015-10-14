@@ -323,31 +323,6 @@ module.exports = {
     return bytesToBuffer(der);
   },
 
-  generateDvsniCertificate: function(keyPair, nonceName, zName) {
-    var cert = forge.pki.createCertificate();
-    cert.publicKey = importPublicKey(keyPair.publicKey);
-    cert.serialNumber = '01';
-    cert.validity.notBefore = new Date();
-    cert.validity.notAfter = new Date();
-    cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);
-    cert.setSubject([{ name: "commonName", value: nonceName }]);
-    cert.setIssuer([{ name: "commonName", value: nonceName }]);
-    cert.setExtensions([
-      { name: "basicConstraints", cA: false },
-      { name: "keyUsage", digitalSignature: true, keyEncipherment: true },
-      { name: "extKeyUsage", serverAuth: true },
-      { name: "subjectAltName", altNames: [
-          { type: 2, value: nonceName },
-          { type: 2, value: zName }
-      ]}
-    ]);
-    cert.sign(importPrivateKey(keyPair.privateKey));
-
-    // Return base64-encoded DER, as above
-    var der = forge.asn1.toDer(forge.pki.certificateToAsn1(cert));
-    return util.b64enc(bytesToBuffer(der));
-  },
-
   ///// TLS CONTEXT GENERATION
 
   createContext: function(keyPair, cert) {

@@ -18,21 +18,6 @@ func newChallenge(challengeType string, accountKey *jose.JsonWebKey) Challenge {
 	}
 }
 
-// SimpleHTTPChallenge constructs a random HTTP challenge
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func SimpleHTTPChallenge(accountKey *jose.JsonWebKey) Challenge {
-	challenge := newChallenge(ChallengeTypeSimpleHTTP, accountKey)
-	tls := true
-	challenge.TLS = &tls
-	return challenge
-}
-
-// DvsniChallenge constructs a random DVSNI challenge
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func DvsniChallenge(accountKey *jose.JsonWebKey) Challenge {
-	return newChallenge(ChallengeTypeDVSNI, accountKey)
-}
-
 // HTTPChallenge01 constructs a random http-01 challenge
 func HTTPChallenge01(accountKey *jose.JsonWebKey) Challenge {
 	return newChallenge(ChallengeTypeHTTP01, accountKey)
