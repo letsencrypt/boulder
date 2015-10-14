@@ -43,9 +43,7 @@ type OCSPUpdater struct {
 	// Number of CT logs we expect to have receipts from
 	numLogs int
 
-	newCertificatesLoop    *looper
-	oldOCSPResponsesLoop   *looper
-	missingSCTReceiptsLoop *looper
+	loops []*looper
 }
 
 // This is somewhat gross but can be pared down a bit once the publisher and this
@@ -61,8 +59,14 @@ func newUpdater(
 	numLogs int,
 ) (*OCSPUpdater, error) {
 	if config.NewCertificateBatchSize == 0 ||
-		config.OldOCSPBatchSize == 0 {
-		return nil, fmt.Errorf("Batch sizes must be non-zero")
+		config.OldOCSPBatchSize == 0 ||
+		config.MissingSCTBatchSize == 0 {
+		return nil, fmt.Errorf("Loop batch sizes must be non-zero")
+	}
+	if config.NewCertificateWindow.Duration == 0 ||
+		config.OldOCSPWindow.Duration == 0 ||
+		config.MissingSCTWindow.Duration == 0 {
+		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
 
 	updater := OCSPUpdater{
@@ -70,6 +74,7 @@ func newUpdater(
 		clk:                 clk,
 		dbMap:               dbMap,
 		cac:                 ca,
+		sac:                 sac,
 		log:                 blog.GetAuditLogger(),
 		numLogs:             numLogs,
 		ocspMinTimeToExpiry: config.OCSPMinTimeToExpiry.Duration,
@@ -77,29 +82,42 @@ func newUpdater(
 	}
 
 	// Setup loops
-	updater.newCertificatesLoop = &looper{
-		clk:       clk,
-		stats:     stats,
-		batchSize: config.NewCertificateBatchSize,
-		tickDur:   config.NewCertificateWindow.Duration,
-		tickFunc:  updater.newCertificateTick,
-		name:      "NewCertificates",
+	updater.loops = []*looper{
+		&looper{
+			clk:       clk,
+			stats:     stats,
+			batchSize: config.NewCertificateBatchSize,
+			tickDur:   config.NewCertificateWindow.Duration,
+			tickFunc:  updater.newCertificateTick,
+			name:      "NewCertificates",
+		},
+		&looper{
+			clk:       clk,
+			stats:     stats,
+			batchSize: config.OldOCSPBatchSize,
+			tickDur:   config.OldOCSPWindow.Duration,
+			tickFunc:  updater.oldOCSPResponsesTick,
+			name:      "OldOCSPResponses",
+		},
+		&looper{
+			clk:       clk,
+			stats:     stats,
+			batchSize: config.MissingSCTBatchSize,
+			tickDur:   config.MissingSCTWindow.Duration,
+			tickFunc:  updater.missingReceiptsTick,
+			name:      "MissingSCTReceipts",
+		},
 	}
-	updater.oldOCSPResponsesLoop = &looper{
-		clk:       clk,
-		stats:     stats,
-		batchSize: config.OldOCSPBatchSize,
-		tickDur:   config.OldOCSPWindow.Duration,
-		tickFunc:  updater.oldOCSPResponsesTick,
-		name:      "OldOCSPResponses",
-	}
-	updater.missingSCTReceiptsLoop = &looper{
-		clk:       clk,
-		stats:     stats,
-		batchSize: config.MissingSCTBatchSize,
-		tickDur:   config.MissingSCTWindow.Duration,
-		tickFunc:  updater.missingReceiptsTick,
-		name:      "MissingSCTReceipts",
+	if config.RevokedCertificateBatchSize != 0 &&
+		config.RevokedCertificateWindow.Duration != 0 {
+		updater.loops = append(updater.loops, &looper{
+			clk:       clk,
+			stats:     stats,
+			batchSize: config.RevokedCertificateBatchSize,
+			tickDur:   config.RevokedCertificateWindow.Duration,
+			tickFunc:  updater.revokedCertificatesTick,
+			name:      "RevokedCertificates",
+		})
 	}
 
 	updater.ocspMinTimeToExpiry = config.OCSPMinTimeToExpiry.Duration
@@ -152,7 +170,7 @@ type responseMeta struct {
 	*core.CertificateStatus
 }
 
-func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (responseMeta, error) {
+func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (*core.CertificateStatus, error) {
 	var cert core.Certificate
 	err := updater.dbMap.SelectOne(
 		&cert,
@@ -160,12 +178,12 @@ func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (res
 		map[string]interface{}{"serial": status.Serial},
 	)
 	if err != nil {
-		return responseMeta{}, err
+		return nil, err
 	}
 
 	_, err = x509.ParseCertificate(cert.DER)
 	if err != nil {
-		return responseMeta{}, err
+		return nil, err
 	}
 
 	signRequest := core.OCSPSigningRequest{
@@ -177,34 +195,54 @@ func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (res
 
 	ocspResponse, err := updater.cac.GenerateOCSP(signRequest)
 	if err != nil {
-		return responseMeta{}, err
+		return nil, err
 	}
 
-	timestamp := updater.clk.Now()
-	status.OCSPLastUpdated = timestamp
-	ocspResp := &core.OCSPResponse{
-		Serial:    cert.Serial,
-		CreatedAt: timestamp,
-		Response:  ocspResponse,
-	}
-	return responseMeta{ocspResp, &status}, nil
+	status.OCSPLastUpdated = updater.clk.Now()
+	status.OCSPResponse = ocspResponse
+	return &status, nil
 }
 
-func (updater *OCSPUpdater) storeResponse(tx *gorp.Transaction, meta responseMeta) error {
-	// Record the response.
-	err := tx.Insert(meta.OCSPResponse)
+func (updater *OCSPUpdater) generateRevokedResponse(status core.CertificateStatus) (*core.CertificateStatus, error) {
+	cert, err := updater.sac.GetCertificate(status.Serial)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Reset the update clock
-	_, err = tx.Update(meta.CertificateStatus)
-	if err != nil {
-		return err
+	signRequest := core.OCSPSigningRequest{
+		CertDER:   cert.DER,
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    status.RevokedReason,
+		RevokedAt: status.RevokedDate,
 	}
 
-	// Done
-	return nil
+	ocspResponse, err := updater.cac.GenerateOCSP(signRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	now := updater.clk.Now()
+	status.OCSPLastUpdated = now
+	status.OCSPResponse = ocspResponse
+	return &status, nil
+}
+
+func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus, statusGuard core.OCSPStatus) error {
+	// Update the certificateStatus table with the new OCSP response, the status
+	// WHERE is used make sure we don't overwrite a revoked response with a one
+	// containing a 'good' status and that we don't do the inverse when the OCSP
+	// status should be 'good'.
+	_, err := updater.dbMap.Exec(
+		`UPDATE certificateStatus
+		 SET ocspResponse=?,ocspLastUpdated=?
+		 WHERE serial=?
+		 AND status=?`,
+		status.OCSPResponse,
+		status.OCSPLastUpdated,
+		status.Serial,
+		string(statusGuard),
+	)
+	return err
 }
 
 // newCertificateTick checks for certificates issued since the last tick and
@@ -214,14 +252,55 @@ func (updater *OCSPUpdater) newCertificateTick(batchSize int) {
 	// OCSP responses
 	statuses, err := updater.getCertificatesWithMissingResponses(batchSize)
 	if err != nil {
+		updater.stats.Inc("OCSP.Errors.FindMissingResponses", 1, 1.0)
+		updater.log.AuditErr(fmt.Errorf("Failed to find certificates with missing OCSP responses: %s", err))
 		return
 	}
 
 	updater.generateOCSPResponses(statuses)
 }
 
+func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
+	var statuses []core.CertificateStatus
+	_, err := updater.dbMap.Select(
+		&statuses,
+		`SELECT * FROM certificateStatus
+		 WHERE status = :revoked
+		 AND ocspLastUpdated <= revokedDate
+		 LIMIT :limit`,
+		map[string]interface{}{
+			"revoked": string(core.OCSPStatusRevoked),
+			"limit":   batchSize,
+		},
+	)
+	return statuses, err
+}
+
+func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) {
+	statuses, err := updater.findRevokedCertificatesToUpdate(batchSize)
+	if err != nil {
+		updater.stats.Inc("OCSP.Errors.FindRevokedCertificates", 1, 1.0)
+		updater.log.AuditErr(fmt.Errorf("Failed to find revoked certificates: %s", err))
+		return
+	}
+
+	for _, status := range statuses {
+		meta, err := updater.generateRevokedResponse(status)
+		if err != nil {
+			updater.log.AuditErr(fmt.Errorf("Failed to generate revoked OCSP response: %s", err))
+			updater.stats.Inc("OCSP.Errors.RevokedResponseGeneration", 1, 1.0)
+			continue
+		}
+		err = updater.storeResponse(meta, core.OCSPStatusRevoked)
+		if err != nil {
+			updater.stats.Inc("OCSP.Errors.StoreRevokedResponse", 1, 1.0)
+			updater.log.AuditErr(fmt.Errorf("Failed to store OCSP response: %s", err))
+			continue
+		}
+	}
+}
+
 func (updater *OCSPUpdater) generateOCSPResponses(statuses []core.CertificateStatus) {
-	responses := []responseMeta{}
 	for _, status := range statuses {
 		meta, err := updater.generateResponse(status)
 		if err != nil {
@@ -229,33 +308,15 @@ func (updater *OCSPUpdater) generateOCSPResponses(statuses []core.CertificateSta
 			updater.stats.Inc("OCSP.Errors.ResponseGeneration", 1, 1.0)
 			continue
 		}
-		responses = append(responses, meta)
 		updater.stats.Inc("OCSP.GeneratedResponses", 1, 1.0)
-	}
-
-	tx, err := updater.dbMap.Begin()
-	if err != nil {
-		updater.log.AuditErr(fmt.Errorf("Failed to open OCSP response transaction: %s", err))
-		updater.stats.Inc("OCSP.Errors.OpenTransaction", 1, 1.0)
-		return
-	}
-	for _, meta := range responses {
-		err = updater.storeResponse(tx, meta)
+		err = updater.storeResponse(meta, core.OCSPStatusGood)
 		if err != nil {
 			updater.log.AuditErr(fmt.Errorf("Failed to store OCSP response: %s", err))
 			updater.stats.Inc("OCSP.Errors.StoreResponse", 1, 1.0)
-			tx.Rollback()
-			return
+			continue
 		}
+		updater.stats.Inc("OCSP.StoredResponses", 1, 1.0)
 	}
-	err = tx.Commit()
-	if err != nil {
-		updater.log.AuditErr(fmt.Errorf("Failed to commit OCSP response transaction: %s", err))
-		updater.stats.Inc("OCSP.Errors.CommitTransaction", 1, 1.0)
-		return
-	}
-	updater.stats.Inc("OCSP.StoredResponses", int64(len(responses)), 1.0)
-
 	return
 }
 
@@ -346,7 +407,10 @@ type looper struct {
 	name      string
 }
 
-func (l *looper) loop() {
+func (l *looper) loop() error {
+	if l.batchSize == 0 || l.tickDur == 0 {
+		return fmt.Errorf("Both batch size and tick duration are required, not running '%s' loop", l.name)
+	}
 	for {
 		tickStart := l.clk.Now()
 		l.tickFunc(l.batchSize)
@@ -433,9 +497,14 @@ func main() {
 			len(c.Common.CT.Logs),
 		)
 
-		go updater.newCertificatesLoop.loop()
-		go updater.oldOCSPResponsesLoop.loop()
-		go updater.missingSCTReceiptsLoop.loop()
+		for _, l := range updater.loops {
+			go func(loop *looper) {
+				err = loop.loop()
+				if err != nil {
+					auditlogger.AuditErr(err)
+				}
+			}(l)
+		}
 
 		cmd.FailOnError(err, "Failed to create updater")
 

@@ -660,7 +660,7 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode core.R
 // RevokeCertificateWithReg terminates trust in the certificate provided.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(cert x509.Certificate, revocationCode core.RevocationCode, regID int64) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err = ra.CA.RevokeCertificate(serialString, revocationCode)
+	err = ra.SA.MarkCertificateRevoked(serialString, revocationCode)
 
 	state := "Failure"
 	defer func() {
@@ -693,7 +693,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(cert x509.Certific
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(cert x509.Certificate, revocationCode core.RevocationCode, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.CA.RevokeCertificate(serialString, revocationCode)
+	err := ra.SA.MarkCertificateRevoked(serialString, revocationCode)
 
 	state := "Failure"
 	defer func() {
