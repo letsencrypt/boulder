@@ -91,6 +91,7 @@ type ValidationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
+	RevokeCertificate(string, RevocationCode) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
 

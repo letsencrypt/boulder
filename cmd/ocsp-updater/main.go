@@ -59,8 +59,14 @@ func newUpdater(
 	numLogs int,
 ) (*OCSPUpdater, error) {
 	if config.NewCertificateBatchSize == 0 ||
-		config.OldOCSPBatchSize == 0 {
-		return nil, fmt.Errorf("Batch sizes must be non-zero")
+		config.OldOCSPBatchSize == 0 ||
+		config.MissingSCTBatchSize == 0 {
+		return nil, fmt.Errorf("Loop batch sizes must be non-zero")
+	}
+	if config.NewCertificateWindow.Duration == 0 ||
+		config.OldOCSPWindow.Duration == 0 ||
+		config.MissingSCTWindow.Duration == 0 {
+		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
 
 	updater := OCSPUpdater{
@@ -101,14 +107,17 @@ func newUpdater(
 			tickFunc:  updater.missingReceiptsTick,
 			name:      "MissingSCTReceipts",
 		},
-		&looper{
+	}
+	if config.RevokedCertificateBatchSize != 0 &&
+		config.RevokedCertificateWindow.Duration != 0 {
+		updater.loops = append(updater.loops, &looper{
 			clk:       clk,
 			stats:     stats,
 			batchSize: config.RevokedCertificateBatchSize,
 			tickDur:   config.RevokedCertificateWindow.Duration,
 			tickFunc:  updater.revokedCertificatesTick,
 			name:      "RevokedCertificates",
-		},
+		})
 	}
 
 	updater.ocspMinTimeToExpiry = config.OCSPMinTimeToExpiry.Duration
@@ -398,7 +407,10 @@ type looper struct {
 	name      string
 }
 
-func (l *looper) loop() {
+func (l *looper) loop() error {
+	if l.batchSize == 0 || l.tickDur == 0 {
+		return fmt.Errorf("Both batch size and tick duration are required, not running '%s' loop", l.name)
+	}
 	for {
 		tickStart := l.clk.Now()
 		l.tickFunc(l.batchSize)
@@ -486,7 +498,12 @@ func main() {
 		)
 
 		for _, l := range updater.loops {
-			go l.loop()
+			go func(loop *looper) {
+				err = loop.loop()
+				if err != nil {
+					auditlogger.AuditErr(err)
+				}
+			}(l)
 		}
 
 		cmd.FailOnError(err, "Failed to create updater")

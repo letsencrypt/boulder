@@ -192,6 +192,12 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 	return ocspResponse, err
 }
 
+// RevokeCertificate revokes the trust of the Cert referred to by the provided Serial.
+func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
+	err = ca.SA.MarkCertificateRevoked(serial, reasonCode)
+	return err
+}
+
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
 // enforcing all policies. Names (domains) in the CertificateRequest will be
 // lowercased before storage.
