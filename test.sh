@@ -10,6 +10,11 @@ fi
 # Order doesn't matter.
 RUN=${RUN:-vet lint fmt migrations unit integration}
 
+# The list of segments to hard fail on, as opposed to continuing to the end of
+# the unit tests before failing.  By defuault, we only hard-fail for gofmt,
+# since its errors are common and easy to fix.
+HARDFAIL=${HARDFAIL:-fmt}
+
 FAILURE=0
 
 TESTPATHS=$(go list -f '{{ .ImportPath }}' ./...)
@@ -33,6 +38,13 @@ start_context() {
 
 end_context() {
   printf "[%16s] Done\n" ${CONTEXT}
+  if [ ${FAILURE} != 0 ] && [[ ${HARDFAIL} =~ ${CONTEXT} ]]; then
+    echo "--------------------------------------------------"
+    echo "---        A unit test or tool failed.         ---"
+    echo "---   Stopping before running further tests.   ---"
+    echo "--------------------------------------------------"
+    exit ${FAILURE}
+  fi
   CONTEXT=""
 }
 
@@ -65,7 +77,7 @@ function run() {
 function run_and_comment() {
   echo "$@"
   result=$("$@" 2>&1)
-  echo ${result}
+  cat <<<"${result}"
 
   if [ "x${result}" == "x" ]; then
     update_status --state success
@@ -157,25 +169,25 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 # Run Go Vet, a correctness-focused static analysis tool
 #
 if [[ "$RUN" =~ "vet" ]] ; then
-  start_context "test/vet"
+  start_context "vet"
   run_and_comment go vet ./...
-  end_context #test/vet
+  end_context #vet
 fi
 
 #
 # Run Go Lint, a style-focused static analysis tool
 #
 if [[ "$RUN" =~ "lint" ]] ; then
-  start_context "test/golint"
+  start_context "lint"
   run_and_comment golint -min_confidence=0.81 ./...
-  end_context #test/golint
+  end_context #lint
 fi
 
 #
 # Ensure all files are formatted per the `go fmt` tool
 #
 if [[ "$RUN" =~ "fmt" ]] ; then
-  start_context "test/gofmt"
+  start_context "fmt"
   check_gofmt() {
     unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1 gofmt -l)
     if [ "x${unformatted}" == "x" ] ; then
@@ -196,13 +208,13 @@ if [[ "$RUN" =~ "fmt" ]] ; then
   }
 
   run_and_comment check_gofmt
-  end_context #test/gofmt
+  end_context #fmt
 fi
 
 if [[ "$RUN" =~ "migrations" ]] ; then
-  start_context "test/migrations"
+  start_context "migrations"
   run_and_comment ./test/test-no-outdated-migrations.sh
-  end_context "test/migrations"
+  end_context #"migrations"
 fi
 
 #
@@ -232,7 +244,7 @@ fi
 #
 if [[ "$RUN" =~ "integration" ]] ; then
   # Set context to integration, and force a pending state
-  start_context "test/integration"
+  start_context "integration"
   update_status --state pending --description "Integration Tests in progress"
 
   if [ -z "$LETSENCRYPT_PATH" ]; then
@@ -265,7 +277,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
       FAILURE=1
       ;;
   esac
-  end_context #test/integration
+  end_context #integration
 fi
 
 exit ${FAILURE}

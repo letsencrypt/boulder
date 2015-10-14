@@ -109,7 +109,7 @@ loop:
 		u >>= childrenBitsNodeType
 		wildcard = u&(1<<childrenBitsWildcard-1) != 0
 
- 		if dot == -1 {
+		if dot == -1 {
 			break
 		}
 	}

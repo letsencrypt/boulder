@@ -24,11 +24,11 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/policy"
 )
 
 const maxCNAME = 16 // Prevents infinite loops. Same limit as BIND.
@@ -178,15 +178,11 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 
 // resolveAndConstructDialer gets the prefered address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
-func (va *ValidationAuthorityImpl) resolveAndConstructDialer(name, defaultPort string) (dialer, *core.ProblemDetails) {
-	port := fmt.Sprintf("%d", va.httpPort)
-	if defaultPort != "" {
-		port = defaultPort
-	}
+func (va *ValidationAuthorityImpl) resolveAndConstructDialer(name string, port int) (dialer, *core.ProblemDetails) {
 	d := dialer{
 		record: core.ValidationRecord{
 			Hostname: name,
-			Port:     port,
+			Port:     strconv.Itoa(port),
 		},
 	}
 
@@ -212,12 +208,16 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		scheme = "https"
 		port = va.httpsPort
 	}
-	portString := strconv.Itoa(port)
-	hostPort := net.JoinHostPort(host, portString)
+
+	urlHost := host
+	if !((scheme == "http" && port == 80) ||
+		(scheme == "https" && port == 443)) {
+		urlHost = net.JoinHostPort(host, strconv.Itoa(port))
+	}
 
 	url := &url.URL{
 		Scheme: scheme,
-		Host:   hostPort,
+		Host:   urlHost,
 		Path:   path,
 	}
 
@@ -238,8 +238,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		httpRequest.Header["User-Agent"] = []string{va.UserAgent}
 	}
 
-	httpRequest.Host = hostPort
-	dialer, prob := va.resolveAndConstructDialer(host, portString)
+	dialer, prob := va.resolveAndConstructDialer(host, port)
 	dialer.record.URL = url.String()
 	challenge.ValidationRecord = append(challenge.ValidationRecord, dialer.record)
 	if prob != nil {
@@ -266,22 +265,20 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		}
 
 		reqHost := req.URL.Host
-		reqPort := ""
-		if strings.Contains(reqHost, ":") {
-			splitHost := strings.SplitN(reqHost, ":", 2)
-			if len(splitHost) <= 1 {
-				return fmt.Errorf("Malformed host")
-			}
-			reqHost, reqPort = splitHost[0], splitHost[1]
-			portNum, err := strconv.Atoi(reqPort)
+		var reqPort int
+		if h, p, err := net.SplitHostPort(reqHost); err == nil {
+			reqHost = h
+			reqPort, err = strconv.Atoi(p)
 			if err != nil {
 				return err
 			}
-			if portNum < 0 || portNum > 65535 {
-				return fmt.Errorf("Invalid port number in redirect")
+			if reqPort <= 0 || reqPort > 65535 {
+				return fmt.Errorf("Invalid port number %d in redirect", reqPort)
 			}
 		} else if strings.ToLower(req.URL.Scheme) == "https" {
-			reqPort = "443"
+			reqPort = 443
+		} else {
+			reqPort = 80
 		}
 
 		dialer, err := va.resolveAndConstructDialer(reqHost, reqPort)
@@ -754,7 +751,8 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 			// Reached TLD
 			break
 		}
-		if _, present := policy.PublicSuffixList[label]; present {
+		// Break if we've reached an ICANN TLD.
+		if tld, err := publicsuffix.ICANNTLD(label); err != nil || tld == label {
 			break
 		}
 		CAAs, caaRtt, err := va.DNSResolver.LookupCAA(label)
@@ -788,9 +786,9 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 			return nil, errors.New("both CNAME and DNAME exist for " + label)
 		}
 		if cname != "" {
-			label = cname
+			label = strings.TrimRight(cname, ".")
 		} else {
-			label = dname
+			label = strings.TrimRight(dname, ".")
 		}
 		if cnames++; cnames > maxCNAME {
 			return nil, ErrTooManyCNAME

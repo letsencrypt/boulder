@@ -79,7 +79,7 @@ func setup(t *testing.T) (OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock
 }
 
 func TestGenerateAndStoreOCSPResponse(t *testing.T) {
-	updater, sa, dbMap, _, cleanUp := setup(t)
+	updater, sa, _, _, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -93,20 +93,17 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 
 	meta, err := updater.generateResponse(status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	tx, err := dbMap.Begin()
-	test.AssertNotError(t, err, "Couldn't open a transaction")
-	err = updater.storeResponse(tx, meta)
-	test.AssertNotError(t, err, "Couldn't store OCSP response")
-	err = tx.Commit()
-	test.AssertNotError(t, err, "Couldn't close transaction")
+	err = updater.storeResponse(meta, core.OCSPStatusGood)
+	test.AssertNotError(t, err, "Couldn't store certificate status")
 
-	var ocspResponse core.OCSPResponse
-	err = dbMap.SelectOne(
-		&ocspResponse,
-		"SELECT * from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
-		map[string]interface{}{"serial": status.Serial},
-	)
-	test.AssertNotError(t, err, "Couldn't get OCSP response from database")
+	secondMeta, err := updater.generateRevokedResponse(status)
+	test.AssertNotError(t, err, "Couldn't generate revoked OCSP response")
+	err = updater.storeResponse(secondMeta, core.OCSPStatusGood)
+	test.AssertNotError(t, err, "Couldn't store certificate status")
+
+	newStatus, err := sa.GetCertificateStatus(status.Serial)
+	test.AssertNotError(t, err, "Couldn't retrieve certificate status")
+	test.AssertByteEquals(t, meta.OCSPResponse, newStatus.OCSPResponse)
 }
 
 func TestGenerateOCSPResponses(t *testing.T) {
@@ -136,7 +133,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 }
 
 func TestFindStaleOCSPResponses(t *testing.T) {
-	updater, sa, dbMap, fc, cleanUp := setup(t)
+	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -155,12 +152,8 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 
 	meta, err := updater.generateResponse(status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	tx, err := dbMap.Begin()
-	test.AssertNotError(t, err, "Couldn't open a transaction")
-	err = updater.storeResponse(tx, meta)
+	err = updater.storeResponse(meta, core.OCSPStatusGood)
 	test.AssertNotError(t, err, "Couldn't store OCSP response")
-	err = tx.Commit()
-	test.AssertNotError(t, err, "Couldn't close transaction")
 
 	certs, err = updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
@@ -179,6 +172,28 @@ func TestGetCertificatesWithMissingResponses(t *testing.T) {
 
 	statuses, err := updater.getCertificatesWithMissingResponses(10)
 	test.AssertNotError(t, err, "Couldn't get status")
+	test.AssertEquals(t, len(statuses), 1)
+}
+
+func TestFindRevokedCertificatesToUpdate(t *testing.T) {
+	updater, sa, _, _, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	cert, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	_, err = sa.AddCertificate(cert.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	statuses, err := updater.findRevokedCertificatesToUpdate(10)
+	test.AssertNotError(t, err, "Failed to find revoked certificates")
+	test.AssertEquals(t, len(statuses), 0)
+
+	err = sa.MarkCertificateRevoked(core.SerialToString(cert.SerialNumber), core.RevocationCode(1))
+	test.AssertNotError(t, err, "Failed to revoke certificate")
+
+	statuses, err = updater.findRevokedCertificatesToUpdate(10)
+	test.AssertNotError(t, err, "Failed to find revoked certificates")
 	test.AssertEquals(t, len(statuses), 1)
 }
 
@@ -235,4 +250,58 @@ func TestMissingReceiptsTick(t *testing.T) {
 	count, err := updater.getNumberOfReceipts("00")
 	test.AssertNotError(t, err, "Couldn't get number of receipts")
 	test.AssertEquals(t, count, 1)
+}
+
+func TestRevokedCertificatesTick(t *testing.T) {
+	updater, sa, _, _, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	parsedCert, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	err = sa.MarkCertificateRevoked(core.SerialToString(parsedCert.SerialNumber), core.RevocationCode(1))
+	test.AssertNotError(t, err, "Failed to revoke certificate")
+
+	statuses, err := updater.findRevokedCertificatesToUpdate(10)
+	test.AssertNotError(t, err, "Failed to find revoked certificates")
+	test.AssertEquals(t, len(statuses), 1)
+
+	updater.revokedCertificatesTick(10)
+
+	status, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	test.AssertNotError(t, err, "Failed to get certificate status")
+	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
+	test.Assert(t, len(status.OCSPResponse) != 0, "Certificate status doesn't contain OCSP response")
+}
+
+func TestStoreResponseGuard(t *testing.T) {
+	updater, sa, _, _, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	parsedCert, err := core.LoadCert("test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	status, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	test.AssertNotError(t, err, "Failed to get certificate status")
+
+	status.OCSPResponse = []byte{0}
+	err = updater.storeResponse(&status, core.OCSPStatusRevoked)
+	test.AssertNotError(t, err, "Failed to update certificate status")
+
+	unchangedStatus, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	test.AssertNotError(t, err, "Failed to get certificate status")
+	test.AssertEquals(t, len(unchangedStatus.OCSPResponse), 0)
+
+	err = updater.storeResponse(&status, core.OCSPStatusGood)
+	test.AssertNotError(t, err, "Failed to updated certificate status")
+
+	changedStatus, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	test.AssertNotError(t, err, "Failed to get certificate status")
+	test.AssertEquals(t, len(changedStatus.OCSPResponse), 1)
 }
