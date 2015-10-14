@@ -146,7 +146,7 @@ var testKey = rsa.PrivateKey{
 	Primes:    []*big.Int{p, q},
 }
 
-const dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+const dbConnStr = "mysql+tcp://mailer@localhost:3306/boulder_sa_test"
 
 func TestFindExpiringCertificates(t *testing.T) {
 	ctx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
@@ -256,17 +256,18 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Status: core.OCSPStatusGood,
 	}
 
-	err = ctx.dbMap.Insert(certA)
+	setupDBMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
+	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
-	err = ctx.dbMap.Insert(certB)
+	err = setupDBMap.Insert(certB)
 	test.AssertNotError(t, err, "Couldn't add certB")
-	err = ctx.dbMap.Insert(certC)
+	err = setupDBMap.Insert(certC)
 	test.AssertNotError(t, err, "Couldn't add certC")
-	err = ctx.dbMap.Insert(certStatusA)
+	err = setupDBMap.Insert(certStatusA)
 	test.AssertNotError(t, err, "Couldn't add certStatusA")
-	err = ctx.dbMap.Insert(certStatusB)
+	err = setupDBMap.Insert(certStatusB)
 	test.AssertNotError(t, err, "Couldn't add certStatusB")
-	err = ctx.dbMap.Insert(certStatusC)
+	err = setupDBMap.Insert(certStatusC)
 	test.AssertNotError(t, err, "Couldn't add certStatusC")
 
 	log.Clear()
@@ -330,9 +331,10 @@ func TestLifetimeOfACert(t *testing.T) {
 		Status: core.OCSPStatusGood,
 	}
 
-	err = ctx.dbMap.Insert(certA)
+	setupDBMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
+	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
-	err = ctx.dbMap.Insert(certStatusA)
+	err = setupDBMap.Insert(certStatusA)
 	test.AssertNotError(t, err, "unable to insert CertificateStatus")
 
 	type lifeTest struct {
@@ -434,9 +436,10 @@ func TestDontFindRevokedCert(t *testing.T) {
 		Status: core.OCSPStatusRevoked,
 	}
 
-	err = ctx.dbMap.Insert(certA)
+	setupDBMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
+	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
-	err = ctx.dbMap.Insert(certStatusA)
+	err = setupDBMap.Insert(certStatusA)
 	test.AssertNotError(t, err, "unable to insert CertificateStatus")
 
 	err = ctx.m.findExpiringCertificates()
@@ -449,7 +452,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 
 type testCtx struct {
 	dbMap   *gorp.DbMap
-	ssa     *sa.SQLStorageAuthority
+	ssa     core.StorageAdder
 	mc      *mockMail
 	fc      clock.FakeClock
 	m       *mailer
@@ -457,7 +460,9 @@ type testCtx struct {
 }
 
 func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
-	dbMap, err := sa.NewDbMap(dbConnStr)
+	// We use the test_setup user (which has full permissions to everything)
+	// because the SA we return is used for inserting data to set up the test.
+	dbMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}
@@ -466,7 +471,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
-	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	cleanUp := test.ResetSATestDatabase(t)
 
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := &mockMail{}

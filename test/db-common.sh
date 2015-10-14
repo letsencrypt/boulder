@@ -8,6 +8,5 @@ function die() {
 
 SERVICES="sa
 policy"
-DBENVS="development
-test
+DBENVS="test
 integration"
