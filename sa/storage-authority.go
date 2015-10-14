@@ -776,6 +776,20 @@ func (ssa *SQLStorageAuthority) CountCertificatesRange(start, end time.Time) (co
 	return count, err
 }
 
+// CountPendingAuthorizations returns the number of pending, unexpired
+// authorizations for the give registration.
+func (ssa *SQLStorageAuthority) CountPendingAuthorizations(regID int64) (count int, err error) {
+	err = ssa.dbMap.SelectOne(&count,
+		`SELECT count(1) FROM pendingAuthorizations
+		 WHERE registrationID = :regID AND
+				expires > :now`,
+		map[string]interface{}{
+			"regID": regID,
+			"now":   ssa.clk.Now(),
+		})
+	return
+}
+
 // ErrNoReceipt is a error type for non-existent SCT receipt
 type ErrNoReceipt string
 

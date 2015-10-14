@@ -221,6 +221,22 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 	return
 }
 
+func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *cmd.RateLimitPolicy, regID int64) error {
+	if limit.Enabled() {
+		count, err := sa.CountPendingAuthorizations(regID)
+		if err != nil {
+			return err
+		}
+		// Most rate limits have a key for overrides, but there is no meaningful key
+		// here.
+		noKey := ""
+		if count > limit.GetThreshold(noKey, regID) {
+			return core.RateLimitedError("Too many currently pending authorizations.")
+		}
+	}
+	return nil
+}
+
 // NewAuthorization constuct a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
@@ -236,6 +252,11 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Check that the identifier is present and appropriate
 	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
 		err = core.UnauthorizedError(err.Error())
+		return authz, err
+	}
+
+	limit := &ra.rlPolicies.PendingAuthorizationsPerAccount
+	if err = checkPendingAuthorizationLimit(ra.SA, limit, regID); err != nil {
 		return authz, err
 	}
 
