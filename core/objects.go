@@ -317,12 +317,6 @@ type Challenge struct {
 	// Used by http-00, tls-sni-00, and dns-00 challenges
 	Token string `json:"token,omitempty"`
 
-	// NOT USED
-	TLS *bool `json:"tls,omitempty"`
-
-	// NOT USED
-	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
-
 	// Used by http-00, tls-sni-00, and dns-00 challenges
 	KeyAuthorization *KeyAuthorization `json:"keyAuthorization,omitempty"`
 

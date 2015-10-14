@@ -41,7 +41,9 @@ type regModel struct {
 
 // challModel is the description of a core.Challenge in the database
 //
-// The Validation field is a stub; the column is only there for backward compatibility.
+// XXX(#983): The TLS field is a stub; the column is only there for backward
+// compatibility until the column is dropped from the table.  This file always
+// sets it to false.
 type challModel struct {
 	ID              int64  `db:"id"`
 	AuthorizationID string `db:"authorizationID"`
@@ -111,7 +113,6 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		Status:          c.Status,
 		Validated:       c.Validated,
 		Token:           c.Token,
-		TLS:             c.TLS,
 	}
 	if c.KeyAuthorization != nil {
 		kaString := c.KeyAuthorization.String()
@@ -160,7 +161,6 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		Status:    cm.Status,
 		Validated: cm.Validated,
 		Token:     cm.Token,
-		TLS:       cm.TLS,
 	}
 	if len(cm.KeyAuthorization) > 0 {
 		ka, err := core.NewKeyAuthorizationFromString(cm.KeyAuthorization)

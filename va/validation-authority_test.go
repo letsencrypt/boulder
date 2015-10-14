@@ -720,8 +720,6 @@ func TestDNSValidationNotSane(t *testing.T) {
 	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
 
 	chal2 := core.DNSChallenge01(accountKey)
-	chal2.TLS = new(bool)
-	*chal2.TLS = true
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
