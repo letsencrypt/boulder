@@ -119,9 +119,8 @@ type revokeCertificateRequest struct {
 }
 
 type markCertificateRevokedRequest struct {
-	Serial       string
-	OCSPResponse []byte
-	ReasonCode   core.RevocationCode
+	Serial     string
+	ReasonCode core.RevocationCode
 }
 
 type caaRequest struct {
@@ -982,7 +981,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 			return
 		}
 
-		err = impl.MarkCertificateRevoked(mcrReq.Serial, mcrReq.OCSPResponse, mcrReq.ReasonCode)
+		err = impl.MarkCertificateRevoked(mcrReq.Serial, mcrReq.ReasonCode)
 		return
 	})
 
@@ -1212,11 +1211,10 @@ func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.C
 }
 
 // MarkCertificateRevoked sends a request to mark a certificate as revoked
-func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
+func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, reasonCode core.RevocationCode) (err error) {
 	var mcrReq markCertificateRevokedRequest
 
 	mcrReq.Serial = serial
-	mcrReq.OCSPResponse = ocspResponse
 	mcrReq.ReasonCode = reasonCode
 
 	data, err := json.Marshal(mcrReq)

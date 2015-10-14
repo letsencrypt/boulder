@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
@@ -80,10 +81,14 @@ func main() {
 				cmd.FailOnError(err, "Couldn't unmarshal rules list")
 				rs := policy.RuleSet{}
 				for _, r := range rules.Blacklist {
-					rs.Blacklist = append(rs.Blacklist, policy.BlacklistRule{Host: r})
+					rs.Blacklist = append(rs.Blacklist, policy.BlacklistRule{
+						Host: strings.ToLower(r),
+					})
 				}
 				for _, r := range rules.Whitelist {
-					rs.Whitelist = append(rs.Whitelist, policy.WhitelistRule{Host: r})
+					rs.Whitelist = append(rs.Whitelist, policy.WhitelistRule{
+						Host: strings.ToLower(r),
+					})
 				}
 
 				err = padb.LoadRules(rs)

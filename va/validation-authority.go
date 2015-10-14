@@ -24,11 +24,11 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/policy"
 )
 
 const maxCNAME = 16 // Prevents infinite loops. Same limit as BIND.
@@ -754,7 +754,8 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 			// Reached TLD
 			break
 		}
-		if _, present := policy.PublicSuffixList[label]; present {
+		// Break if we've reached an ICANN TLD.
+		if tld, err := publicsuffix.ICANNTLD(label); err != nil || tld == label {
 			break
 		}
 		CAAs, caaRtt, err := va.DNSResolver.LookupCAA(label)
@@ -788,9 +789,9 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 			return nil, errors.New("both CNAME and DNAME exist for " + label)
 		}
 		if cname != "" {
-			label = cname
+			label = strings.TrimRight(cname, ".")
 		} else {
-			label = dname
+			label = strings.TrimRight(dname, ".")
 		}
 		if cnames++; cnames > maxCNAME {
 			return nil, ErrTooManyCNAME
