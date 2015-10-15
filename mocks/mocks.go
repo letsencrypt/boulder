@@ -340,6 +340,11 @@ func (sa *StorageAuthority) CountRegistrationsByIP(_ net.IP, _, _ time.Time) (in
 	return 0, nil
 }
 
+// CountPendingAuthorizations is a mock
+func (sa *StorageAuthority) CountPendingAuthorizations(_ int64) (int, error) {
+	return 0, nil
+}
+
 // Publisher is a mock
 type Publisher struct {
 	// empty
