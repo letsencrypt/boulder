@@ -60,7 +60,7 @@ const (
 	// to skip the domain whitelist (but not the blacklist). This is for an
 	// early partner integration during the beta period and should be removed
 	// later.
-	whitelistedPartnerRegID = -1
+	whitelistedPartnerRegID = 131
 )
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
