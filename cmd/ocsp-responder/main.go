@@ -21,7 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/metrics"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -56,34 +55,38 @@ serialNumber field, since we will always query on it.
 
 */
 type DBSource struct {
-	dbMap     *gorp.DbMap
+	dbMap     dbMapInterface
 	caKeyHash []byte
+	log       *blog.AuditLogger
+}
+
+type dbMapInterface interface {
+	SelectOne(holder interface{}, query string, args ...interface{}) error
+	Insert(list ...interface{}) error
 }
 
 // NewSourceFromDatabase produces a DBSource representing the binding of a
 // given DB schema to a CA key.
-func NewSourceFromDatabase(dbMap *gorp.DbMap, caKeyHash []byte) (src *DBSource, err error) {
-	src = &DBSource{dbMap: dbMap, caKeyHash: caKeyHash}
+func NewSourceFromDatabase(dbMap dbMapInterface, caKeyHash []byte, log *blog.AuditLogger) (src *DBSource, err error) {
+	src = &DBSource{dbMap: dbMap, caKeyHash: caKeyHash, log: log}
 	return
 }
 
 // Response is called by the HTTP server to handle a new OCSP request.
 func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
-	log := blog.GetAuditLogger()
-
 	// Check that this request is for the proper CA
 	if bytes.Compare(req.IssuerKeyHash, src.caKeyHash) != 0 {
-		log.Debug(fmt.Sprintf("Request intended for CA Cert ID: %s", hex.EncodeToString(req.IssuerKeyHash)))
+		src.log.Debug(fmt.Sprintf("Request intended for CA Cert ID: %s", hex.EncodeToString(req.IssuerKeyHash)))
 		return nil, false
 	}
 
 	serialString := core.SerialToString(req.SerialNumber)
-	log.Debug(fmt.Sprintf("Searching for OCSP issued by us for serial %s", serialString))
+	src.log.Debug(fmt.Sprintf("Searching for OCSP issued by us for serial %s", serialString))
 
 	var response []byte
 	defer func() {
 		if len(response) != 0 {
-			log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
+			src.log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 		}
 	}()
 	// Note: we first check for an OCSP response in the certificateStatus table (
@@ -96,7 +99,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 		map[string]interface{}{"serial": serialString},
 	)
 	if err != nil && err != sql.ErrNoRows {
-		log.Err(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
+		src.log.Err(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
 	}
 	// TODO(#970): Delete this ocspResponses check once the table has been removed
 	if len(response) == 0 {
@@ -108,7 +111,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 			map[string]interface{}{"serial": serialString},
 		)
 		if err != nil && err != sql.ErrNoRows {
-			log.Err(fmt.Sprintf("Failed to retrieve response from ocspResponses table: %s", err))
+			src.log.Err(fmt.Sprintf("Failed to retrieve response from ocspResponses table: %s", err))
 		}
 	}
 	if err != nil {
@@ -118,14 +121,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	return response, true
 }
 
-func makeDBSource(dbConnect, issuerCert string, sqlDebug bool) (*DBSource, error) {
-	// Configure DB
-	dbMap, err := sa.NewDbMap(dbConnect)
-	if err != nil {
-		return nil, fmt.Errorf("Could not connect to database: %s", err)
-	}
-	sa.SetSQLDebug(dbMap, sqlDebug)
-
+func makeDBSource(dbMap dbMapInterface, issuerCert string, log *blog.AuditLogger) (*DBSource, error) {
 	// Load the CA's key so we can store its SubjectKey in the DB
 	caCertDER, err := cmd.LoadCert(issuerCert)
 	if err != nil {
@@ -140,7 +136,7 @@ func makeDBSource(dbConnect, issuerCert string, sqlDebug bool) (*DBSource, error
 	}
 
 	// Construct source from DB
-	return NewSourceFromDatabase(dbMap, caCert.SubjectKeyId)
+	return NewSourceFromDatabase(dbMap, caCert.SubjectKeyId, log)
 }
 
 func main() {
@@ -170,7 +166,16 @@ func main() {
 
 		if url.Scheme == "mysql+tcp" {
 			auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
-			source, err = makeDBSource(config.Source, c.Common.IssuerCert, c.SQL.SQLDebug)
+			dbMap, err := sa.NewDbMap(config.Source)
+			cmd.FailOnError(err, "Could not connect to database")
+			if c.SQL.SQLDebug {
+				sa.SetSQLDebug(dbMap, true)
+			}
+			source, err = makeDBSource(
+				dbMap,
+				c.Common.IssuerCert,
+				auditlogger,
+			)
 			cmd.FailOnError(err, "Couldn't load OCSP DB")
 		} else if url.Scheme == "file" {
 			filename := url.Path

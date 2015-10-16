@@ -12,7 +12,12 @@ import (
 
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
+	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/sa"
+
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -61,11 +66,13 @@ func TestHandler(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	src, err := makeDBSource("mysql+tcp://boulder@localhost:3306/boulder_sa_test", "./testdata/test-ca.der.pem", false)
+	dbMap, err := sa.NewDbMap("mysql+tcp://boulder@localhost:3306/boulder_sa_test")
+	cmd.FailOnError(err, "Could not connect to database")
+	src, err := makeDBSource(dbMap, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
 	if err != nil {
 		t.Fatalf("makeDBSource: %s", err)
 	}
-	defer test.ResetTestDatabase(t, src.dbMap.Db)
+	defer test.ResetTestDatabase(t, dbMap.Db)
 	ocspResp, err := ocsp.ParseResponse(resp, nil)
 	if err != nil {
 		t.Fatalf("ocsp.ParseResponse: %s", err)
@@ -94,7 +101,33 @@ func TestDBHandler(t *testing.T) {
 	if !bytes.Equal(w.Body.Bytes(), resp) {
 		t.Errorf("Mismatched body: want %#v, got %#v", resp, w.Body.Bytes())
 	}
+}
 
+type brokenMap struct{}
+
+func (bm brokenMap) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
+	return fmt.Errorf("Failure!")
+}
+
+func (bm brokenMap) Insert(_ ...interface{}) error {
+	return nil
+}
+
+func TestErrorLog(t *testing.T) {
+	src, err := makeDBSource(brokenMap{}, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
+	test.AssertNotError(t, err, "Failed to create broken dbMap")
+
+	src.log.SyslogWriter = mocks.NewSyslogWriter()
+	mockLog := src.log.SyslogWriter.(*mocks.SyslogWriter)
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to parse OCSP request")
+
+	_, found := src.Response(ocspReq)
+	test.Assert(t, !found, "Somehow found OCSP response")
+
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Failed to retrieve response from certificateStatus table")), 1)
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Failed to retrieve response from ocspResponses table")), 1)
 }
 
 func mustRead(path string) []byte {
