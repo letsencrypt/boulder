@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"crypto/x509"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -94,6 +95,9 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 		"SELECT ocspResponse FROM certificateStatus WHERE serial = :serial",
 		map[string]interface{}{"serial": serialString},
 	)
+	if err != nil && err != sql.ErrNoRows {
+		log.Err(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
+	}
 	// TODO(#970): Delete this ocspResponses check once the table has been removed
 	if len(response) == 0 {
 		// Ignoring possible error, if response hasn't been filled, attempt to find
@@ -103,6 +107,9 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 			"SELECT response from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
 			map[string]interface{}{"serial": serialString},
 		)
+		if err != nil && err != sql.ErrNoRows {
+			log.Err(fmt.Sprintf("Failed to retrieve response from ocspResponses table: %s", err))
+		}
 	}
 	if err != nil {
 		return nil, false
