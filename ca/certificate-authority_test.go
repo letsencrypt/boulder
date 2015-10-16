@@ -98,8 +98,8 @@ const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
 
 const (
-	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
-	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+	paDBConnStr = "mysql+tcp://policy@localhost:3306/boulder_policy_test"
+	saDBConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
 )
 
 func mustRead(path string) []byte {
@@ -131,13 +131,13 @@ func setup(t *testing.T) *testCtx {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	saDBCleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	saDBCleanUp := test.ResetSATestDatabase(t)
 
 	paDbMap, err := sa.NewDbMap(paDBConnStr)
 	test.AssertNotError(t, err, "Could not construct dbMap")
 	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
 	test.AssertNotError(t, err, "Couldn't create PADB")
-	paDBCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
+	paDBCleanUp := test.ResetPolicyTestDatabase(t)
 
 	cleanUp := func() {
 		saDBCleanUp()

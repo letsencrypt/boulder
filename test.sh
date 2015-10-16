@@ -91,7 +91,7 @@ function run_and_comment() {
   # If this is a travis PR run, post a comment
   if [ "x${TRAVIS}" != "x" ] && [ "${TRAVIS_PULL_REQUEST}" != "false" ] && [ -f "${GITHUB_SECRET_FILE}" ] ; then
     # If the output is non-empty, post a comment and mark this as a failure
-    if [ "x${result}" -ne "x" ] ; then
+    if [ -n "${result}" ] ; then
       echo $'```\n'${result}$'\n```' | github-pr-status --authfile $GITHUB_SECRET_FILE \
         --owner "letsencrypt" --repo "boulder" \
         comment --pr "${TRAVIS_PULL_REQUEST}" -b -

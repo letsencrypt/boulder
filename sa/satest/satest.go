@@ -50,7 +50,7 @@ func CreateWorkingRegistration(t *testing.T, sa core.StorageAuthority) core.Regi
 		CreatedAt: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
-		t.Fatalf("Unable to create new registration")
+		t.Fatalf("Unable to create new registration: %s", err)
 	}
 	return reg
 }
