@@ -29,8 +29,8 @@ import (
 )
 
 var (
-	saDbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
-	paDbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
+	saDbConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
+	paDbConnStr = "mysql+tcp://policy@localhost:3306/boulder_policy_test"
 )
 
 func BenchmarkCheckCert(b *testing.B) {
@@ -80,10 +80,10 @@ func BenchmarkCheckCert(b *testing.B) {
 func TestCheckCert(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(saDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	saCleanup := test.ResetTestDatabase(t, saDbMap.Db)
+	saCleanup := test.ResetSATestDatabase(t)
 	paDbMap, err := sa.NewDbMap(paDbConnStr)
 	test.AssertNotError(t, err, "Couldn't connect to policy database")
-	paCleanup := test.ResetTestDatabase(t, paDbMap.Db)
+	paCleanup := test.ResetPolicyTestDatabase(t)
 	defer func() {
 		saCleanup()
 		paCleanup()
@@ -188,8 +188,8 @@ func TestGetAndProcessCerts(t *testing.T) {
 	checker := newChecker(saDbMap, paDbMap, fc, false)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
-	saCleanUp := test.ResetTestDatabase(t, saDbMap.Db)
-	paCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
+	saCleanUp := test.ResetSATestDatabase(t)
+	paCleanUp := test.ResetPolicyTestDatabase(t)
 	defer func() {
 		saCleanUp()
 		paCleanUp()

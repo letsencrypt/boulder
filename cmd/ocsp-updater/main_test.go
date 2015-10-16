@@ -47,7 +47,7 @@ func (p *mockPub) SubmitToCT(_ []byte) error {
 	})
 }
 
-const dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+const dbConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
 
 var log = mocks.UseMockLog()
 
@@ -61,7 +61,7 @@ func setup(t *testing.T) (OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock
 	sa, err := sa.NewSQLStorageAuthority(dbMap, fc)
 	test.AssertNotError(t, err, "Failed to create SA")
 
-	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	cleanUp := test.ResetSATestDatabase(t)
 
 	stats, _ := statsd.NewNoopClient(nil)
 
