@@ -12,7 +12,6 @@ import (
 
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 
@@ -67,7 +66,7 @@ func TestHandler(t *testing.T) {
 
 func TestDBHandler(t *testing.T) {
 	dbMap, err := sa.NewDbMap("mysql+tcp://boulder@localhost:3306/boulder_sa_test")
-	cmd.FailOnError(err, "Could not connect to database")
+	test.AssertNotError(t, err, "Could not connect to database")
 	src, err := makeDBSource(dbMap, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
 	if err != nil {
 		t.Fatalf("makeDBSource: %s", err)
@@ -83,7 +82,7 @@ func TestDBHandler(t *testing.T) {
 		OCSPLastUpdated: time.Now(),
 		OCSPResponse:    resp,
 	}
-	err = src.dbMap.Insert(status)
+	err = dbMap.Insert(status)
 	if err != nil {
 		t.Fatalf("unable to insert response: %s", err)
 	}

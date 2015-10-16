@@ -55,19 +55,18 @@ serialNumber field, since we will always query on it.
 
 */
 type DBSource struct {
-	dbMap     dbMapInterface
+	dbMap     dbSelector
 	caKeyHash []byte
 	log       *blog.AuditLogger
 }
 
-type dbMapInterface interface {
+type dbSelector interface {
 	SelectOne(holder interface{}, query string, args ...interface{}) error
-	Insert(list ...interface{}) error
 }
 
 // NewSourceFromDatabase produces a DBSource representing the binding of a
 // given DB schema to a CA key.
-func NewSourceFromDatabase(dbMap dbMapInterface, caKeyHash []byte, log *blog.AuditLogger) (src *DBSource, err error) {
+func NewSourceFromDatabase(dbMap dbSelector, caKeyHash []byte, log *blog.AuditLogger) (src *DBSource, err error) {
 	src = &DBSource{dbMap: dbMap, caKeyHash: caKeyHash, log: log}
 	return
 }
@@ -121,7 +120,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	return response, true
 }
 
-func makeDBSource(dbMap dbMapInterface, issuerCert string, log *blog.AuditLogger) (*DBSource, error) {
+func makeDBSource(dbMap dbSelector, issuerCert string, log *blog.AuditLogger) (*DBSource, error) {
 	// Load the CA's key so we can store its SubjectKey in the DB
 	caCertDER, err := cmd.LoadCert(issuerCert)
 	if err != nil {
