@@ -64,6 +64,7 @@ const (
 	MethodCountCertificatesRange            = "CountCertificatesRange"            // SA
 	MethodCountCertificatesByNames          = "CountCertificatesByNames"          // SA
 	MethodCountRegistrationsByIP            = "CountRegistrationsByIP"            // SA
+	MethodCountPendingAuthorizations        = "CountPendingAuthorizations"        // SA
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
@@ -156,6 +157,10 @@ type countRegistrationsByIPRequest struct {
 	IP       net.IP
 	Earliest time.Time
 	Latest   time.Time
+}
+
+type countPendingAuthorizationsRequest struct {
+	RegID int64
 }
 
 // Response structs
@@ -1063,6 +1068,20 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return json.Marshal(count)
 	})
 
+	rpc.Handle(MethodCountPendingAuthorizations, func(req []byte) (response []byte, err error) {
+		var cReq countPendingAuthorizationsRequest
+		err = json.Unmarshal(req, &cReq)
+		if err != nil {
+			return
+		}
+
+		count, err := impl.CountPendingAuthorizations(cReq.RegID)
+		if err != nil {
+			return
+		}
+		return json.Marshal(count)
+	})
+
 	rpc.Handle(MethodGetSCTReceipt, func(req []byte) (response []byte, err error) {
 		var gsctReq struct {
 			Serial string
@@ -1400,6 +1419,23 @@ func (cac StorageAuthorityClient) CountRegistrationsByIP(ip net.IP, earliest, la
 		return
 	}
 	response, err := cac.rpc.DispatchSync(MethodCountRegistrationsByIP, data)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(response, &count)
+	return
+}
+
+// CountPendingAuthorizations calls CountPendingAuthorizations on the remote
+// StorageAuthority.
+func (cac StorageAuthorityClient) CountPendingAuthorizations(regID int64) (count int, err error) {
+	var cReq countPendingAuthorizationsRequest
+	cReq.RegID = regID
+	data, err := json.Marshal(cReq)
+	if err != nil {
+		return
+	}
+	response, err := cac.rpc.DispatchSync(MethodCountPendingAuthorizations, data)
 	if err != nil {
 		return
 	}
