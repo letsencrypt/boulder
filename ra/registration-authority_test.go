@@ -122,8 +122,8 @@ var (
 )
 
 const (
-	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
-	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+	paDBConnStr = "mysql+tcp://policy@localhost:3306/boulder_policy_test"
+	saDBConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
@@ -165,7 +165,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 
-	saDBCleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	saDBCleanUp := test.ResetSATestDatabase(t)
 
 	va := &DummyValidationAuthority{}
 
@@ -192,7 +192,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	policyDBCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
+	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
 	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ca := ca.CertificateAuthorityImpl{

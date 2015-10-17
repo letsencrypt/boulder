@@ -115,7 +115,7 @@
   },
 
   "pa": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
+    "dbConnect": "mysql+tcp://policy@localhost:3306/boulder_policy_integration"
   },
 
   "ra": {
@@ -126,7 +126,7 @@
   },
 
   "sa": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
+    "dbConnect": "mysql+tcp://sa@localhost:3306/boulder_sa_integration",
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8003"
   },
@@ -147,11 +147,11 @@
   },
 
   "revoker": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration"
+    "dbConnect": "mysql+tcp://revoker@localhost:3306/boulder_sa_integration"
   },
 
   "ocspResponder": {
-    "source": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
+    "source": "mysql+tcp://ocsp_resp@localhost:3306/boulder_sa_integration",
     "path": "/",
     "listenAddress": "localhost:4002",
     "maxAge": "10s",
@@ -161,7 +161,7 @@
   },
 
   "ocspUpdater": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
+    "dbConnect": "mysql+tcp://ocsp_update@localhost:3306/boulder_sa_integration",
     "newCertificateWindow": "1s",
     "oldOCSPWindow": "2s",
     "missingSCTWindow": "1m",
@@ -184,7 +184,7 @@
     "port": "25",
     "username": "cert-master@example.com",
     "password": "password",
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration",
+    "dbConnect": "mysql+tcp://mailer@localhost:3306/boulder_sa_integration",
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "emailTemplate": "test/example-expiration-template",
@@ -216,7 +216,7 @@
   },
 
   "certChecker": {
-    "dbConnect": "mysql+tcp://boulder@localhost:3306/boulder_sa_integration"
+    "dbConnect": "mysql+tcp://cert_checker@localhost:3306/boulder_sa_integration"
   },
 
   "subscriberAgreementURL": "http://localhost:4001/terms/v1"

@@ -30,7 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-const dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+const dbConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
 
 var log = mocks.UseMockLog()
 
@@ -50,7 +50,8 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+
+	cleanUp := test.ResetSATestDatabase(t)
 	return sa, fc, cleanUp
 }
 
