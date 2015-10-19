@@ -26,9 +26,9 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// 10 month default authorization lifetime. When used with a 90-day cert
-// lifetime, this allows creation of certs that will cover a whole year,
-// plus a grace period of a month.
+// DefaultAuthorizationLifetime is the 10 month default authorization lifetime.
+// When used with a 90-day cert lifetime, this allows creation of certs that will
+// cover a whole year, plus a grace period of a month.
 // TODO(jsha): Read from a config file.
 const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
 
