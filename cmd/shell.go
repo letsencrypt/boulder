@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
@@ -394,14 +395,10 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 		// Gather various GC related metrics
 		if memoryStats.NumGC > 0 {
 			totalRecentGC := uint64(0)
-			buffSize := 0
 			for _, pause := range memoryStats.PauseNs {
-				if pause != 0 {
-					totalRecentGC += pause
-					buffSize++
-				}
+				totalRecentGC += pause
 			}
-			gcPauseAvg := int64(totalRecentGC) / int64(buffSize)
+			gcPauseAvg := int64(totalRecentGC) / int64(math.Min(256.0, float64(memoryStats.NumGC)))
 			lastGC := int64(memoryStats.PauseNs[(memoryStats.NumGC+255)%256])
 			stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
 			stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPause", profileName), lastGC, 1.0)
@@ -410,9 +407,8 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 		// Send both a counter and a gauge here we can much more easily observe
 		// the GC rate (versus the raw number of GCs) in graphing tools that don't
 		// like deltas
-		gcInc := int64(memoryStats.NumGC)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.Count", profileName), gcInc, 1.0)
-		gcInc -= prevNumGC
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.Count", profileName), int64(memoryStats.NumGC), 1.0)
+		gcInc := int64(memoryStats.NumGC) - prevNumGC
 		stats.Inc(fmt.Sprintf("%s.Gostats.Gc.Rate", profileName), gcInc, 1.0)
 		prevNumGC += gcInc
 	}
