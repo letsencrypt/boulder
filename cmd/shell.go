@@ -375,25 +375,35 @@ func FailOnError(err error, msg string) {
 
 // ProfileCmd runs forever, sending Go runtime statistics to StatsD.
 func ProfileCmd(profileName string, stats statsd.Statter) {
+	var memoryStats runtime.MemStats
+	prevNumGC := int64(0)
 	c := time.Tick(1 * time.Second)
 	for range c {
-		var memoryStats runtime.MemStats
 		runtime.ReadMemStats(&memoryStats)
 
+		// Gather goroutine count
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Goroutines", profileName), int64(runtime.NumGoroutine()), 1.0)
 
+		// Gather various heap metrics
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Alloc", profileName), int64(memoryStats.HeapAlloc), 1.0)
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Objects", profileName), int64(memoryStats.HeapObjects), 1.0)
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Idle", profileName), int64(memoryStats.HeapIdle), 1.0)
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.InUse", profileName), int64(memoryStats.HeapInuse), 1.0)
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Heap.Released", profileName), int64(memoryStats.HeapReleased), 1.0)
 
-		// Calculate average and last and convert from nanoseconds to milliseconds
-		gcPauseAvg := (int64(memoryStats.PauseTotalNs) / int64(len(memoryStats.PauseNs))) / 1000000
-		lastGC := int64(memoryStats.PauseNs[(memoryStats.NumGC+255)%256]) / 1000000
-		stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
-		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPauseLatency", profileName), lastGC, 1.0)
+		// Gather various GC related metrics
+		if memoryStats.NumGC > 0 {
+			gcPauseAvg := (int64(memoryStats.PauseTotalNs) / int64(memoryStats.NumGC))
+			lastGC := int64(memoryStats.PauseNs[(memoryStats.NumGC+255)%256])
+			stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
+			stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPause", profileName), lastGC, 1.0)
+		}
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
+		// By using a counter instead of a gauge here we can much more easily observe
+		// the GC rate (versus the raw number of GCs)
+		gcInc := int64(memoryStats.NumGC) - prevNumGC
+		prevNumGC += gcInc
+		stats.Inc(fmt.Sprintf("%s.Gostats.Gc.Count", profileName), gcInc, 1.0)
 	}
 }
 
