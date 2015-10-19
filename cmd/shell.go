@@ -399,11 +399,14 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 			stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPause", profileName), lastGC, 1.0)
 		}
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
-		// By using a counter instead of a gauge here we can much more easily observe
-		// the GC rate (versus the raw number of GCs)
-		gcInc := int64(memoryStats.NumGC) - prevNumGC
+		// Send both a counter and a gauge here we can much more easily observe
+		// the GC rate (versus the raw number of GCs) in graphing tools that don't
+		// like deltas
+		gcInc := int64(memoryStats.NumGC)
+		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.Count", profileName), gcInc, 1.0)
+		gcInc -= prevNumGC
+		stats.Inc(fmt.Sprintf("%s.Gostats.Gc.Rate", profileName), gcInc, 1.0)
 		prevNumGC += gcInc
-		stats.Inc(fmt.Sprintf("%s.Gostats.Gc.Count", profileName), gcInc, 1.0)
 	}
 }
 
