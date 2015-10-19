@@ -98,7 +98,7 @@ type SyntaxError struct{}
 // Internet.
 type NonPublicError struct{}
 
-// TLDError indicates that one or more identifiers was an ICANN-managed TLD
+// ErrICANNTLD indicates that one or more identifiers was an ICANN-managed TLD
 var ErrICANNTLD = errors.New("Name is an ICANN TLD")
 
 // ErrBlacklisted indicates we have blacklisted one or more of these
