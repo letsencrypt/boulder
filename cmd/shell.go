@@ -393,7 +393,15 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 
 		// Gather various GC related metrics
 		if memoryStats.NumGC > 0 {
-			gcPauseAvg := (int64(memoryStats.PauseTotalNs) / int64(memoryStats.NumGC))
+			totalRecentGC := uint64(0)
+			buffSize := 0
+			for _, pause := range memoryStats.PauseNs {
+				if pause != 0 {
+					totalRecentGC += pause
+					buffSize++
+				}
+			}
+			gcPauseAvg := int64(totalRecentGC) / int64(buffSize)
 			lastGC := int64(memoryStats.PauseNs[(memoryStats.NumGC+255)%256])
 			stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
 			stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPause", profileName), lastGC, 1.0)
