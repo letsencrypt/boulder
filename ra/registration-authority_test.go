@@ -465,10 +465,10 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 	defer cleanUp()
 
 	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	expiry := fc.Now().Add(-2 * time.Hour)
 	authz.Expires = &expiry
-	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	response, err := makeResponse(authz.Challenges[ResponseIndex])
 
