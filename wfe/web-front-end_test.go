@@ -743,9 +743,9 @@ func TestChallenge(t *testing.T) {
 	wfe.Challenge(responseWriter,
 		makePostRequestWithPath(challengeURL,
 			signRequest(t, `{"resource":"challenge"}`, &wfe.nonceService)))
-	test.AssertEquals(t, responseWriter.Code, http.StatusGone)
+	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	test.AssertEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:serverInternal","detail":"Expired authorization"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Expired authorization"}`)
 }
 
 func TestNewRegistration(t *testing.T) {
@@ -1140,9 +1140,9 @@ func TestAuthorization(t *testing.T) {
 		Method: "GET",
 		URL:    mustParseURL(authzURL),
 	})
-	test.AssertEquals(t, responseWriter.Code, http.StatusGone)
+	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	test.AssertEquals(t, responseWriter.Body.String(),
-		`{"type":"urn:acme:error:serverInternal","detail":"Expired authorization"}`)
+		`{"type":"urn:acme:error:malformed","detail":"Expired authorization"}`)
 }
 
 func contains(s []string, e string) bool {

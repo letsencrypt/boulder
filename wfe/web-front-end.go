@@ -888,7 +888,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	// After expiring, challenges are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(time.Now()) {
 		logEvent.Error = fmt.Sprintf("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
-		wfe.sendError(response, "Expired authorization", logEvent.Error, http.StatusGone)
+		wfe.sendError(response, "Expired authorization", logEvent.Error, http.StatusNotFound)
 		return
 	}
 
@@ -1151,7 +1151,7 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 	// After expiring, authorizations are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(time.Now()) {
 		logEvent.Error = fmt.Sprintf("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
-		wfe.sendError(response, "Expired authorization", logEvent.Error, http.StatusGone)
+		wfe.sendError(response, "Expired authorization", logEvent.Error, http.StatusNotFound)
 		return
 	}
 
