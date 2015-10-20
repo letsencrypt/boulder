@@ -94,12 +94,13 @@ func createValidation(token string, enableTLS bool) string {
 // TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
 func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 	m := http.NewServeMux()
+	server := httptest.NewUnstartedServer(m)
 
 	defaultToken := token
 	currentToken := defaultToken
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.Host, "localhost:") && r.Host != "other.valid" && r.Host != "other.valid:8080" {
+		if !strings.HasPrefix(r.Host, "localhost:") && !strings.HasPrefix(r.Host, "other.valid:") {
 			t.Errorf("Bad Host header: " + r.Host)
 		}
 		if strings.HasSuffix(r.URL.Path, path404) {
@@ -128,7 +129,9 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 			if currentToken == defaultToken {
 				currentToken = pathReLookup
 			}
-			http.Redirect(w, r, "http://other.valid/path", 302)
+			port, err := getPort(server)
+			test.AssertNotError(t, err, "failed to get server test port")
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid:%d/path", port), 302)
 		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
 			t.Logf("SIMPLESRV: Got a redirect req to a invalid hostname\n")
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
@@ -144,8 +147,6 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 			currentToken = defaultToken
 		}
 	})
-
-	server := httptest.NewUnstartedServer(m)
 
 	if !enableTLS {
 		server.Start()
@@ -407,7 +408,7 @@ func TestSimpleHttpRedirectLookup(t *testing.T) {
 	finChall, err = va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid/path"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid:\d+/path"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
@@ -527,12 +528,13 @@ func TestDVSNIWithTLSError(t *testing.T) {
 
 func httpSrv(t *testing.T, token string) *httptest.Server {
 	m := http.NewServeMux()
+	server := httptest.NewUnstartedServer(m)
 
 	defaultToken := token
 	currentToken := defaultToken
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.Host, "localhost:") && r.Host != "other.valid" && r.Host != "other.valid:8080" {
+		if !strings.HasPrefix(r.Host, "localhost:") && !strings.HasPrefix(r.Host, "other.valid:") {
 			t.Errorf("Bad Host header: " + r.Host)
 		}
 		if strings.HasSuffix(r.URL.Path, path404) {
@@ -561,7 +563,9 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 			if currentToken == defaultToken {
 				currentToken = pathReLookup
 			}
-			http.Redirect(w, r, "http://other.valid/path", 302)
+			port, err := getPort(server)
+			test.AssertNotError(t, err, "failed to get server test port")
+			http.Redirect(w, r, fmt.Sprintf("http://other.valid:%d/path", port), 302)
 		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
 			t.Logf("HTTPSRV: Got a redirect req to a invalid hostname\n")
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
@@ -583,7 +587,6 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 		}
 	})
 
-	server := httptest.NewUnstartedServer(m)
 	server.Start()
 	return server
 }
@@ -775,7 +778,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	finChall, err = va.validateHTTP01(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
 	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid/path"`)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid:\d+/path"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 

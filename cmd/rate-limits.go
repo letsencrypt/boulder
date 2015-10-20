@@ -21,6 +21,9 @@ type RateLimitConfig struct {
 	// Note: Since this is checked before a registration is created, setting a
 	// RegistrationOverride on it has no effect.
 	RegistrationsPerIP RateLimitPolicy `yaml:"registrationsPerIP"`
+	// Number of pending authorizations that can exist per account. Overrides by
+	// key are not applied, but overrides by registration are.
+	PendingAuthorizationsPerAccount RateLimitPolicy `yaml:"pendingAuthorizationsPerAccount"`
 }
 
 // RateLimitPolicy describes a general limiting policy

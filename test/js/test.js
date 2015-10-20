@@ -380,9 +380,9 @@ function getReadyToValidate(err, resp, body) {
   }
   state.httpServer = http.createServer(httpResponder)
   if (/localhost/.test(state.newRegistrationURL)) {
-    state.httpServer.listen(5001)
+    state.httpServer.listen(5002)
   } else {
-    state.httpServer.listen(443)
+    state.httpServer.listen(80)
   }
 
   cli.spinner("Validating domain");

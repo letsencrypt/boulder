@@ -97,10 +97,10 @@ const (
 	ChallengeTypeDNS01      = "dns-01"
 )
 
-// The suffix appended to pseudo-domain names in DVSNI challenges
+// TLSSNISuffix is appended to pseudo-domain names in DVSNI challenges
 const TLSSNISuffix = "acme.invalid"
 
-// The label attached to DNS names in DNS challenges
+// DNSPrefix is attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
 
 func (pd *ProblemDetails) Error() string {
@@ -675,6 +675,9 @@ type CertificateStatus struct {
 	RevokedReason RevocationCode `db:"revokedReason"`
 
 	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
+
+	// The encoded and signed OCSP response.
+	OCSPResponse []byte `db:"ocspResponse"`
 
 	LockCol int64 `json:"-"`
 }

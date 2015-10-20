@@ -98,8 +98,8 @@ const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
 
 const (
-	paDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
-	saDBConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+	paDBConnStr = "mysql+tcp://policy@localhost:3306/boulder_policy_test"
+	saDBConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
 )
 
 func mustRead(path string) []byte {
@@ -131,13 +131,13 @@ func setup(t *testing.T) *testCtx {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	saDBCleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	saDBCleanUp := test.ResetSATestDatabase(t)
 
 	paDbMap, err := sa.NewDbMap(paDBConnStr)
 	test.AssertNotError(t, err, "Could not construct dbMap")
 	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
 	test.AssertNotError(t, err, "Couldn't create PADB")
-	paDBCleanUp := test.ResetTestDatabase(t, paDbMap.Db)
+	paDBCleanUp := test.ResetPolicyTestDatabase(t)
 
 	cleanUp := func() {
 		saDBCleanUp()
@@ -202,47 +202,6 @@ func TestFailNoSerial(t *testing.T) {
 	ctx.caConfig.SerialPrefix = 0
 	_, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
-}
-
-func TestRevoke(t *testing.T) {
-	ctx := setup(t)
-	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
-	test.AssertNotError(t, err, "Failed to create CA")
-	ca.PA = ctx.pa
-	ca.SA = ctx.sa
-	ca.Publisher = &mocks.Publisher{}
-
-	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
-	certObj, err := ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertNotError(t, err, "Failed to sign certificate")
-
-	cert, err := x509.ParseCertificate(certObj.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	serialString := core.SerialToString(cert.SerialNumber)
-
-	beforeRevoke, err := ctx.sa.GetCertificateStatus(serialString)
-	test.AssertNotError(t, err, "Failed to get cert status")
-
-	ctx.fc.Add(1 * time.Hour)
-
-	err = ca.RevokeCertificate(serialString, 0)
-	test.AssertNotError(t, err, "Revocation failed")
-
-	status, err := ctx.sa.GetCertificateStatus(serialString)
-	test.AssertNotError(t, err, "Failed to get cert status")
-
-	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
-
-	if !ctx.fc.Now().Equal(status.OCSPLastUpdated) {
-		t.Errorf("OCSPLastUpdated, expected %s, got %s",
-			ctx.fc.Now(),
-			status.OCSPLastUpdated)
-	}
-	if !status.OCSPLastUpdated.After(beforeRevoke.OCSPLastUpdated) {
-		t.Errorf("OCSPLastUpdated, before revocation: %s; after: %s", beforeRevoke.OCSPLastUpdated, status.OCSPLastUpdated)
-	}
-
 }
 
 func TestIssueCertificate(t *testing.T) {
