@@ -197,9 +197,10 @@ func signRequest(t *testing.T, req string, nonceService *core.NonceService) stri
 	return ret
 }
 
-func setupWFE(t *testing.T) WebFrontEndImpl {
+func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
+	fc := clock.NewFake()
 	stats, _ := statsd.NewNoopClient()
-	wfe, err := NewWebFrontEndImpl(stats)
+	wfe, err := NewWebFrontEndImpl(stats, fc)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.NewReg = wfe.BaseURL + NewRegPath
@@ -213,11 +214,10 @@ func setupWFE(t *testing.T) WebFrontEndImpl {
 	wfe.log.SyslogWriter = mocks.NewSyslogWriter()
 
 	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.StorageAuthority{}
+	wfe.SA = mocks.NewStorageAuthority(fc)
 	wfe.stats, _ = statsd.NewNoopClient()
-	wfe.SubscriberAgreementURL = agreementURL
 
-	return wfe
+	return wfe, fc
 }
 
 // makePostRequest creates an http.Request with method POST, the provided body,
@@ -263,7 +263,7 @@ func addHeadIfGet(s []string) []string {
 }
 
 func TestHandleFunc(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	var mux *http.ServeMux
 	var rw *httptest.ResponseRecorder
 	var stubCalled bool
@@ -460,7 +460,7 @@ func TestHandleFunc(t *testing.T) {
 }
 
 func TestIndexPOST(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 	url, _ := url.Parse("/")
 	wfe.Index(responseWriter, &http.Request{
@@ -471,7 +471,7 @@ func TestIndexPOST(t *testing.T) {
 }
 
 func TestPOST404(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 	url, _ := url.Parse("/foobar")
 	wfe.Index(responseWriter, &http.Request{
@@ -482,7 +482,7 @@ func TestPOST404(t *testing.T) {
 }
 
 func TestIndex(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	wfe.IndexCacheDuration = time.Second * 10
 
 	responseWriter := httptest.NewRecorder()
@@ -510,7 +510,7 @@ func TestIndex(t *testing.T) {
 }
 
 func TestDirectory(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
@@ -530,7 +530,7 @@ func TestDirectory(t *testing.T) {
 // TODO: Write additional test cases for:
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, fc := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
@@ -538,20 +538,18 @@ func TestIssueCertificate(t *testing.T) {
 	// The mock CA we use always returns the same test certificate, with a Not
 	// Before of 2015-09-22. Since we're currently using a real RA instead of a
 	// mock (see below), that date would trigger failures for excessive
-	// backdating. So we set the fakeClock's time to a time that matches that test
-	// certificate.
-	fakeClock := clock.NewFake()
+	// backdating. So we set the fake clock's time to a time that matches that
+	// test certificate.
 	testTime := time.Date(2015, 9, 9, 22, 56, 0, 0, time.UTC)
-	fakeClock.Add(fakeClock.Now().Sub(testTime))
+	fc.Add(fc.Now().Sub(testTime))
 
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
-	ra := ra.NewRegistrationAuthorityImpl(fakeClock, wfe.log, stats, cmd.RateLimitConfig{}, 0)
-	ra.SA = &mocks.StorageAuthority{}
+	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, cmd.RateLimitConfig{}, 0)
+	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}
-	wfe.SA = &mocks.StorageAuthority{}
 	wfe.RA = &ra
 	responseWriter := httptest.NewRecorder()
 
@@ -667,10 +665,7 @@ func TestIssueCertificate(t *testing.T) {
 }
 
 func TestGetChallenge(t *testing.T) {
-	wfe := setupWFE(t)
-
-	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.StorageAuthority{}
+	wfe, _ := setupWFE(t)
 
 	challengeURL := "/acme/challenge/valid/23"
 
@@ -705,10 +700,7 @@ func TestGetChallenge(t *testing.T) {
 }
 
 func TestChallenge(t *testing.T) {
-	wfe := setupWFE(t)
-
-	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.StorageAuthority{}
+	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 
 	var key jose.JsonWebKey
@@ -736,17 +728,22 @@ func TestChallenge(t *testing.T) {
 	test.AssertEquals(
 		t, responseWriter.Body.String(),
 		`{"type":"dns","uri":"/acme/challenge/valid/23"}`)
+
+	// Expired challenges should be inaccessible
+	challengeURL = "/acme/challenge/expired/23"
+	responseWriter = httptest.NewRecorder()
+	wfe.Challenge(responseWriter,
+		makePostRequestWithPath(challengeURL,
+			signRequest(t, `{"resource":"challenge"}`, &wfe.nonceService)))
+	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
+	test.AssertEquals(t, responseWriter.Body.String(),
+		`{"type":"urn:acme:error:malformed","detail":"Expired authorization"}`)
 }
 
 func TestNewRegistration(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
-
-	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.StorageAuthority{}
-	wfe.stats, _ = statsd.NewNoopClient()
-	wfe.SubscriberAgreementURL = agreementURL
 
 	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
@@ -917,7 +914,7 @@ func makeRevokeRequestJSON() ([]byte, error) {
 // registration when GetRegistrationByKey is called, and we want to get a
 // NoSuchRegistrationError for tests that pass regCheck = false to verifyPOST.
 type mockSANoSuchRegistration struct {
-	mocks.StorageAuthority
+	core.StorageGetter
 }
 
 func (msa mockSANoSuchRegistration) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
@@ -939,8 +936,8 @@ func TestRevokeCertificateCertKey(t *testing.T) {
 	revokeRequestJSON, err := makeRevokeRequestJSON()
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	wfe := setupWFE(t)
-	wfe.SA = &mockSANoSuchRegistration{mocks.StorageAuthority{}}
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	responseWriter := httptest.NewRecorder()
 
 	nonce, err := wfe.nonceService.Nonce()
@@ -958,7 +955,7 @@ func TestRevokeCertificateAccountKey(t *testing.T) {
 	revokeRequestJSON, err := makeRevokeRequestJSON()
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 
 	test1JWK, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
@@ -978,7 +975,7 @@ func TestRevokeCertificateAccountKey(t *testing.T) {
 
 // A revocation request signed by an unauthorized key.
 func TestRevokeCertificateWrongKey(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	nonce, err := wfe.nonceService.Nonce()
 	test.AssertNotError(t, err, "Unable to create nonce")
 	responseWriter := httptest.NewRecorder()
@@ -1027,12 +1024,10 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to marshal request")
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
-	wfe := setupWFE(t)
+	wfe, fc := setupWFE(t)
 
-	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mockSANoSuchRegistration{mocks.StorageAuthority{}}
+	wfe.SA = &mockSANoSuchRegistration{mocks.NewStorageAuthority(fc)}
 	wfe.stats, _ = statsd.NewNoopClient()
-	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
 	responseWriter.Body.Reset()
 	nonce, err := wfe.nonceService.Nonce()
@@ -1046,13 +1041,10 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 }
 
 func TestAuthorization(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
-	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.StorageAuthority{}
-	wfe.stats, _ = statsd.NewNoopClient()
 	responseWriter := httptest.NewRecorder()
 
 	// GET instead of POST should be rejected
@@ -1122,6 +1114,17 @@ func TestAuthorization(t *testing.T) {
 	var authz core.Authorization
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
+
+	// Expired authorizations should be inaccessible
+	authzURL := "/acme/authz/expired"
+	responseWriter = httptest.NewRecorder()
+	wfe.Authorization(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(authzURL),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
+	test.AssertEquals(t, responseWriter.Body.String(),
+		`{"type":"urn:acme:error:malformed","detail":"Expired authorization"}`)
 }
 
 func contains(s []string, e string) bool {
@@ -1134,14 +1137,9 @@ func contains(s []string, e string) bool {
 }
 
 func TestRegistration(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
-
-	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.StorageAuthority{}
-	wfe.stats, _ = statsd.NewNoopClient()
-	wfe.SubscriberAgreementURL = agreementURL
 	responseWriter := httptest.NewRecorder()
 
 	// Test invalid method
@@ -1227,13 +1225,7 @@ func TestRegistration(t *testing.T) {
 }
 
 func TestTermsRedirect(t *testing.T) {
-	wfe := setupWFE(t)
-
-	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = &mocks.StorageAuthority{}
-	wfe.stats, _ = statsd.NewNoopClient()
-	wfe.SubscriberAgreementURL = agreementURL
-
+	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 
 	path, _ := url.Parse("/terms")
@@ -1248,7 +1240,7 @@ func TestTermsRedirect(t *testing.T) {
 }
 
 func TestIssuer(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	wfe.IssuerCacheDuration = time.Second * 10
 	wfe.IssuerCert = []byte{0, 0, 1}
 
@@ -1263,10 +1255,9 @@ func TestIssuer(t *testing.T) {
 }
 
 func TestGetCertificate(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	wfe.CertCacheDuration = time.Second * 10
 	wfe.CertNoCacheExpirationWindow = time.Hour * 24 * 7
-	wfe.SA = &mocks.StorageAuthority{}
 
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	certBlock, _ := pem.Decode(certPemBytes)
@@ -1335,12 +1326,12 @@ func TestLogCsrPem(t *testing.T) {
 	const certificateRequestJSON = `{
 		"csr": "MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca-fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB-6dp48xkcX7Z_KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD-eeu8-z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7_C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT_DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq_Bbe7TBGVYZabUEh-LOskYwhgcOuThVN7tHnH5rhN-gb7cEdysjTb1QL-vOUwYgV75CB6PE5JVYK-cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub-fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G_W-Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd-L3IcyvHVKxNhIJXZVH0AOqh_1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY"
 	}`
-	wfe := setupWFE(t)
+	wfe, fc := setupWFE(t)
 	var certificateRequest core.CertificateRequest
 	err := json.Unmarshal([]byte(certificateRequestJSON), &certificateRequest)
 	test.AssertNotError(t, err, "Unable to parse certificateRequest")
 
-	mockSA := mocks.StorageAuthority{}
+	mockSA := mocks.NewStorageAuthority(fc)
 	reg, err := mockSA.GetRegistration(789)
 	test.AssertNotError(t, err, "Unable to get registration")
 
@@ -1358,7 +1349,7 @@ func TestLogCsrPem(t *testing.T) {
 }
 
 func TestLengthRequired(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	_, _, _, err := wfe.verifyPOST(&http.Request{
 		Method: "POST",
 		URL:    mustParseURL("/"),
@@ -1369,7 +1360,7 @@ func TestLengthRequired(t *testing.T) {
 }
 
 type mockSADifferentStoredKey struct {
-	mocks.StorageAuthority
+	core.StorageGetter
 }
 
 func (sa mockSADifferentStoredKey) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
@@ -1383,8 +1374,8 @@ func (sa mockSADifferentStoredKey) GetRegistrationByKey(jwk jose.JsonWebKey) (co
 }
 
 func TestVerifyPOSTUsesStoredKey(t *testing.T) {
-	wfe := setupWFE(t)
-	wfe.SA = &mockSADifferentStoredKey{mocks.StorageAuthority{}}
+	wfe, fc := setupWFE(t)
+	wfe.SA = &mockSADifferentStoredKey{mocks.NewStorageAuthority(fc)}
 	// signRequest signs with test1Key, but our special mock returns a
 	// registration with test2Key
 	_, _, _, err := wfe.verifyPOST(makePostRequest(signRequest(t, `{"resource":"foo"}`, &wfe.nonceService)), true, "foo")
@@ -1392,7 +1383,7 @@ func TestVerifyPOSTUsesStoredKey(t *testing.T) {
 }
 
 func TestBadKeyCSR(t *testing.T) {
-	wfe := setupWFE(t)
+	wfe, _ := setupWFE(t)
 	responseWriter := httptest.NewRecorder()
 
 	// CSR with a bad (512 bit RSA) key.

@@ -32,6 +32,11 @@ import (
 // TODO(jsha): Read from a config file.
 const DefaultAuthorizationLifetime = 300 * 24 * time.Hour
 
+// DefaultPendingAuthorizationLifetime is one week.  If you can't respond to a
+// challenge this quickly, then you need to request a new challenge.
+// TODO(rlb): Read from a config file
+const DefaultPendingAuthorizationLifetime = 7 * 24 * time.Hour
+
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -46,12 +51,13 @@ type RegistrationAuthorityImpl struct {
 	clk         clock.Clock
 	log         *blog.AuditLogger
 	// How long before a newly created authorization expires.
-	authorizationLifetime time.Duration
-	rlPolicies            cmd.RateLimitConfig
-	tiMu                  *sync.RWMutex
-	totalIssuedCache      int
-	lastIssuedCount       *time.Time
-	maxContactsPerReg     int
+	authorizationLifetime        time.Duration
+	pendingAuthorizationLifetime time.Duration
+	rlPolicies                   cmd.RateLimitConfig
+	tiMu                         *sync.RWMutex
+	totalIssuedCache             int
+	lastIssuedCount              *time.Time
+	maxContactsPerReg            int
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -60,10 +66,11 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 		stats: stats,
 		clk:   clk,
 		log:   logger,
-		authorizationLifetime: DefaultAuthorizationLifetime,
-		rlPolicies:            policies,
-		tiMu:                  new(sync.RWMutex),
-		maxContactsPerReg:     maxContactsPerReg,
+		authorizationLifetime:        DefaultAuthorizationLifetime,
+		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
+		rlPolicies:                   policies,
+		tiMu:                         new(sync.RWMutex),
+		maxContactsPerReg:            maxContactsPerReg,
 	}
 	return ra
 }
@@ -275,7 +282,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	// Create validations. The WFE will  update them with URIs before sending them out.
 	challenges, combinations, err := ra.PA.ChallengesFor(identifier, &reg.Key)
 
-	expires := ra.clk.Now().Add(ra.authorizationLifetime)
+	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 
 	// Partially-filled object
 	authz = core.Authorization{
@@ -284,8 +291,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		Status:         core.StatusPending,
 		Combinations:   combinations,
 		Challenges:     challenges,
-		// TODO(jsha): Pending authz should expire earlier than finalized authz.
-		Expires: &expires,
+		Expires:        &expires,
 	}
 
 	// Get a pending Auth first so we can get our ID back, then update with challenges
@@ -623,6 +629,12 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 
 // UpdateAuthorization updates an authorization with new values.
 func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization, challengeIndex int, response core.Challenge) (authz core.Authorization, err error) {
+	// Refuse to update expired authorizations
+	if base.Expires == nil || base.Expires.Before(ra.clk.Now()) {
+		err = core.NotFoundError("Expired authorization")
+		return
+	}
+
 	// Copy information over that the client is allowed to supply
 	authz = base
 	if challengeIndex >= len(authz.Challenges) {
