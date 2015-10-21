@@ -60,6 +60,10 @@ type DBSource struct {
 	log       *blog.AuditLogger
 }
 
+// Since the only thing we use from gorp is the SelectOne method on the
+// gorp.DbMap object, we just define the interface an interface with that method
+// instead of importing all of gorp. This also allows us to simulate MySQL failures
+// by mocking the interface.
 type dbSelector interface {
 	SelectOne(holder interface{}, query string, args ...interface{}) error
 }
@@ -170,11 +174,7 @@ func main() {
 			if c.SQL.SQLDebug {
 				sa.SetSQLDebug(dbMap, true)
 			}
-			source, err = makeDBSource(
-				dbMap,
-				c.Common.IssuerCert,
-				auditlogger,
-			)
+			source, err = makeDBSource(dbMap, c.Common.IssuerCert, auditlogger)
 			cmd.FailOnError(err, "Couldn't load OCSP DB")
 		} else if url.Scheme == "file" {
 			filename := url.Path

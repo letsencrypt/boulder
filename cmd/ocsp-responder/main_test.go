@@ -107,18 +107,16 @@ func TestDBHandler(t *testing.T) {
 	}
 }
 
-type brokenMap struct{}
+// brokenSelector allows us to test what happens when gorp SelectOne statements
+// throw errors and satisfies the dbSelector interface
+type brokenSelector struct{}
 
-func (bm brokenMap) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
+func (bs brokenSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
 	return fmt.Errorf("Failure!")
 }
 
-func (bm brokenMap) Insert(_ ...interface{}) error {
-	return nil
-}
-
 func TestErrorLog(t *testing.T) {
-	src, err := makeDBSource(brokenMap{}, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
+	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
 	test.AssertNotError(t, err, "Failed to create broken dbMap")
 
 	src.log.SyslogWriter = mocks.NewSyslogWriter()
