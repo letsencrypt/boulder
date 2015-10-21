@@ -240,8 +240,7 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
-	hsmFault := ca.checkHSMFault()
-	if hsmFault {
+	if ca.checkHSMFault() {
 		err := fmt.Errorf("GenerateOCSP call rejected; HSM is unavailable")
 		ca.log.WarningErr(err)
 		return nil, err
