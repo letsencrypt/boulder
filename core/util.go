@@ -93,6 +93,10 @@ type RateLimitedError string
 // limit
 type TooManyRPCRequestsError string
 
+// ServiceUnavailableError indicates that a component is not available to
+// satisfy a request
+type ServiceUnavailableError string
+
 func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
 func (e MalformedRequestError) Error() string    { return string(e) }
@@ -105,6 +109,7 @@ func (e CertificateIssuanceError) Error() string { return string(e) }
 func (e NoSuchRegistrationError) Error() string  { return string(e) }
 func (e RateLimitedError) Error() string         { return string(e) }
 func (e TooManyRPCRequestsError) Error() string  { return string(e) }
+func (e ServiceUnavailableError) Error() string  { return string(e) }
 
 // Base64 functions
 

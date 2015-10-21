@@ -207,7 +207,7 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
 	if ca.checkHSMFault() {
-		err := fmt.Errorf("GenerateOCSP call rejected; HSM is unavailable")
+		err := core.ServiceUnavailableError("GenerateOCSP call rejected; HSM is unavailable")
 		ca.log.WarningErr(err)
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	var err error
 
 	if ca.checkHSMFault() {
-		err := fmt.Errorf("IssueCertificate call rejected; HSM is unavailable")
+		err := core.ServiceUnavailableError("IssueCertificate call rejected; HSM is unavailable")
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
