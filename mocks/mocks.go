@@ -402,7 +402,7 @@ func (bhs BadHSMSigner) SigAlgo() x509.SignatureAlgorithm {
 // Sign always returns a PKCS#11 error, in the format used by
 // github.com/miekg/pkcs11
 func (bhs BadHSMSigner) Sign(req signer.SignRequest) (cert []byte, err error) {
-	return nil, fmt.Errorf("pkcs11: " + string(bhs))
+	return nil, fmt.Errorf(string(bhs))
 }
 
 // BadHSMOCSPSigner represents a CFSSL OCSP signer that always returns a
@@ -412,5 +412,5 @@ type BadHSMOCSPSigner string
 // Sign always returns a PKCS#11 error, in the format used by
 // github.com/miekg/pkcs11
 func (bhos BadHSMOCSPSigner) Sign(ocsp.SignRequest) ([]byte, error) {
-	return nil, fmt.Errorf("pkcs11: " + string(bhos))
+	return nil, fmt.Errorf(string(bhos))
 }

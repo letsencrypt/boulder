@@ -223,11 +223,6 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 		return
 	}
 
-	if !strings.HasPrefix(err.Error(), "pkcs11:") {
-		// Not an HSM error; nothing to do
-		return
-	}
-
 	// Otherwise, things are broken, and we should back off
 	ca.hsmFault = true
 	ca.hsmFaultLastObserved = ca.Clk.Now()
