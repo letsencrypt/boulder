@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -52,6 +53,7 @@ type WebFrontEndImpl struct {
 	SA    core.StorageGetter
 	stats statsd.Statter
 	log   *blog.AuditLogger
+	clk   clock.Clock
 
 	// URL configuration parameters
 	BaseURL       string
@@ -131,7 +133,7 @@ type requestEvent struct {
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
-func NewWebFrontEndImpl(stats statsd.Statter) (WebFrontEndImpl, error) {
+func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock) (WebFrontEndImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 
@@ -142,6 +144,7 @@ func NewWebFrontEndImpl(stats statsd.Statter) (WebFrontEndImpl, error) {
 
 	return WebFrontEndImpl{
 		log:          logger,
+		clk:          clk,
 		nonceService: nonceService,
 		stats:        stats,
 	}, nil
@@ -884,6 +887,14 @@ func (wfe *WebFrontEndImpl) Challenge(
 		notFound()
 		return
 	}
+
+	// After expiring, challenges are inaccessible
+	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
+		logEvent.Error = fmt.Sprintf("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
+		wfe.sendError(response, "Expired authorization", logEvent.Error, http.StatusNotFound)
+		return
+	}
+
 	// Check that the requested challenge exists within the authorization
 	challengeIndex := authz.FindChallenge(challengeID)
 	if challengeIndex == -1 {
@@ -1140,6 +1151,13 @@ func (wfe *WebFrontEndImpl) Authorization(response http.ResponseWriter, request 
 	logEvent.Extra["AuthorizationStatus"] = authz.Status
 	logEvent.Extra["AuthorizationExpires"] = authz.Expires
 
+	// After expiring, authorizations are inaccessible
+	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
+		logEvent.Error = fmt.Sprintf("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
+		wfe.sendError(response, "Expired authorization", logEvent.Error, http.StatusNotFound)
+		return
+	}
+
 	wfe.prepAuthorizationForDisplay(&authz)
 
 	jsonReply, err := json.Marshal(authz)
@@ -1305,7 +1323,7 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 }
 
 func (wfe *WebFrontEndImpl) logRequestDetails(logEvent *requestEvent) {
-	logEvent.ResponseTime = time.Now()
+	logEvent.ResponseTime = wfe.clk.Now()
 	var msg string
 	if logEvent.Error != "" {
 		msg = "Terminated request"
@@ -1321,7 +1339,7 @@ func (wfe *WebFrontEndImpl) populateRequestEvent(request *http.Request) (logEven
 		RealIP:      request.Header.Get("X-Real-IP"),
 		ClientAddr:  getClientAddr(request),
 		Method:      request.Method,
-		RequestTime: time.Now(),
+		RequestTime: wfe.clk.Now(),
 		Extra:       make(map[string]interface{}, 0),
 	}
 	if request.URL != nil {
