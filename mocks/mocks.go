@@ -6,6 +6,7 @@
 package mocks
 
 import (
+	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -14,6 +15,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -369,4 +373,33 @@ type Publisher struct {
 // SubmitToCT is a mock
 func (*Publisher) SubmitToCT([]byte) error {
 	return nil
+}
+
+// BadHSMSigner represents a CFSSL signer that always returns a PKCS#11 error.
+type BadHSMSigner string
+
+// Info is a mock
+func (bhs BadHSMSigner) Info(info.Req) (*info.Resp, error) {
+	return nil, nil
+}
+
+// Policy is a mock
+func (bhs BadHSMSigner) Policy() *config.Signing {
+	return nil
+}
+
+// SetPolicy is a mock
+func (bhs BadHSMSigner) SetPolicy(*config.Signing) {
+	return
+}
+
+// SigAlgo is a mock
+func (bhs BadHSMSigner) SigAlgo() x509.SignatureAlgorithm {
+	return x509.UnknownSignatureAlgorithm
+}
+
+// Sign always returns a PKCS#11 error, in the format used by
+// github.com/miekg/pkcs11
+func (bhs BadHSMSigner) Sign(req signer.SignRequest) (cert []byte, err error) {
+	return nil, fmt.Errorf("pkcs11: " + string(bhs))
 }

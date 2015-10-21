@@ -409,3 +409,52 @@ func TestCapitalizedLetters(t *testing.T) {
 	expected := []string{"capitalizedletters.com", "evenmorecaps.com", "morecaps.com"}
 	test.AssertDeepEquals(t, expected, parsedCert.DNSNames)
 }
+
+func TestHSMFaultTimeout(t *testing.T) {
+	ctx := setup(t)
+	defer ctx.cleanUp()
+
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca.Publisher = &mocks.Publisher{}
+	ca.PA = ctx.pa
+	ca.SA = ctx.sa
+
+	// Issue a certificate so that we can use it later
+	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
+	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+	ocspRequest := core.OCSPSigningRequest{
+		CertDER: cert.DER,
+		Status:  "good",
+	}
+
+	// Swap in a bad signer
+	goodSigner := ca.Signer
+	badHSMErrorMessage := "This is really serious.  You should wait"
+	ca.Signer = mocks.BadHSMSigner(badHSMErrorMessage)
+
+	// Cause the CA to enter the HSM fault condition
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertError(t, err, "CA failed to return HSM error")
+	test.AssertEquals(t, err.Error(), "pkcs11: "+badHSMErrorMessage)
+
+	// Check that the CA rejects the next call as the HSM being down
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertError(t, err, "CA failed to persist HSM fault")
+	test.AssertEquals(t, err.Error(), "IssueCertificate call rejected; HSM is unavailable")
+
+	_, err = ca.GenerateOCSP(ocspRequest)
+	test.AssertError(t, err, "CA failed to persist HSM fault")
+	test.AssertEquals(t, err.Error(), "GenerateOCSP call rejected; HSM is unavailable")
+
+	// Swap in a good signer and move the clock forward to clear the fault
+	ca.Signer = goodSigner
+	ctx.fc.Add(ca.hsmFaultTimeout)
+	ctx.fc.Add(10 * time.Second)
+
+	// Check that the CA has recovered
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertNotError(t, err, "CA failed to recover from HSM fault")
+
+	_, err = ca.GenerateOCSP(ocspRequest)
+	test.AssertNotError(t, err, "CA failed to recover from HSM fault")
+}

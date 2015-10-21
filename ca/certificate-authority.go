@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
@@ -48,6 +49,12 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA1:             true,
 }
 
+// HSM faults tend to be persistent.  If we observe one, we will set a flag and
+// throttle requests according to an exponential back-off, bounded by these min
+// and max delay values.
+const hsmFaultMinTimeout = time.Second
+const hsmFaultMaxTimeout = 128 * time.Second
+
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
@@ -63,6 +70,28 @@ type CertificateAuthorityImpl struct {
 	ValidityPeriod time.Duration
 	NotAfter       time.Time
 	MaxNames       int
+
+	hsmFault             bool
+	hsmFaultLock         sync.Mutex
+	hsmFaultLastObserved time.Time
+	hsmFaultTimeout      time.Duration
+}
+
+// checkHSMFault checks whether there has been an HSM fault observed within the
+// timeout window.  CA methods that use the HSM should call this method right
+// away, to minimize the performance impact of HSM outages.
+func (ca *CertificateAuthorityImpl) checkHSMFault() bool {
+	ca.hsmFaultLock.Lock()
+	defer ca.hsmFaultLock.Unlock()
+
+	now := ca.Clk.Now()
+	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
+	if timeout.Before(now) {
+		// Go ahead and try again
+		return false
+	}
+
+	return ca.hsmFault
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -172,8 +201,52 @@ func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
 	return
 }
 
+// noteHSMFault updates the CA's state with regard to HSM faults.  CA methods
+// that use an HSM should pass errors that might be HSM errors to this method.
+// We distinguish HSM errors from other errors by looking for a string that the
+// PKCS#11 library appends to its errors.
+//
+// XXX(rlb): It would be better to directly check that the error is of the
+// PKCS#11 library's local Error type.  But that would be messier, since we
+// would have to import that library, which we don't now.
+func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
+	ca.hsmFaultLock.Lock()
+	defer ca.hsmFaultLock.Unlock()
+
+	// If err == nil, the HSM is working, reset the timeout
+	// Note that we don't check if the HSM is the source of this error,
+	// since it doesn't matter.  If everything worked, then in particular,
+	// the HSM worked.
+	if err == nil {
+		ca.hsmFault = false
+		ca.hsmFaultTimeout = hsmFaultMinTimeout
+		return
+	}
+
+	if !strings.HasPrefix(err.Error(), "pkcs11:") {
+		// Not an HSM error; nothing to do
+		return
+	}
+
+	// Otherwise, things are broken, and we should back off
+	ca.hsmFault = true
+	ca.hsmFaultLastObserved = ca.Clk.Now()
+	if ca.hsmFaultTimeout < hsmFaultMaxTimeout {
+		ca.hsmFaultTimeout *= 2
+	}
+
+	return
+}
+
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
+	hsmFault := ca.checkHSMFault()
+	if hsmFault {
+		err := fmt.Errorf("GenerateOCSP call rejected; HSM is unavailable")
+		ca.log.WarningErr(err)
+		return nil, err
+	}
+
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -204,6 +277,13 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
+
+	if ca.checkHSMFault() {
+		err := fmt.Errorf("IssueCertificate call rejected; HSM is unavailable")
+		ca.log.WarningErr(err)
+		return emptyCert, err
+	}
+
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
 		err = core.MalformedRequestError("Invalid public key in CSR.")
@@ -310,6 +390,10 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	certPEM, err := ca.Signer.Sign(req)
 	if err != nil {
+		// Since we just used the HSM (if we're using one), note whether it worked
+		// or not.
+		ca.noteHSMFault(err)
+
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Signer failed, rolling back: serial=[%s] err=[%v]", serialHex, err))
