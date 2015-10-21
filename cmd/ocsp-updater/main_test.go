@@ -93,12 +93,12 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 
 	meta, err := updater.generateResponse(status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	err = updater.storeResponse(meta, core.OCSPStatusGood)
+	err = updater.storeResponse(meta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
 
 	secondMeta, err := updater.generateRevokedResponse(status)
 	test.AssertNotError(t, err, "Couldn't generate revoked OCSP response")
-	err = updater.storeResponse(secondMeta, core.OCSPStatusGood)
+	err = updater.storeResponse(secondMeta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
 
 	newStatus, err := sa.GetCertificateStatus(status.Serial)
@@ -152,7 +152,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 
 	meta, err := updater.generateResponse(status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	err = updater.storeResponse(meta, core.OCSPStatusGood)
+	err = updater.storeResponse(meta)
 	test.AssertNotError(t, err, "Couldn't store OCSP response")
 
 	certs, err = updater.findStaleOCSPResponses(earliest, 10)
@@ -290,18 +290,27 @@ func TestStoreResponseGuard(t *testing.T) {
 	status, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
 
-	status.OCSPResponse = []byte{0}
-	err = updater.storeResponse(&status, core.OCSPStatusRevoked)
+	err = sa.MarkCertificateRevoked(core.SerialToString(parsedCert.SerialNumber), 0)
+	test.AssertNotError(t, err, "Failed to revoked certificate")
+
+	// Attempt to update OCSP response where status.Status is good but stored status
+	// is revoked, this should fail silently
+	status.OCSPResponse = []byte{0, 1, 1}
+	err = updater.storeResponse(&status)
 	test.AssertNotError(t, err, "Failed to update certificate status")
 
+	// Make sure the OCSP response hasn't actually changed
 	unchangedStatus, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
 	test.AssertEquals(t, len(unchangedStatus.OCSPResponse), 0)
 
-	err = updater.storeResponse(&status, core.OCSPStatusGood)
+	// Changing the status to the stored status should allow the update to occur
+	status.Status = core.OCSPStatusRevoked
+	err = updater.storeResponse(&status)
 	test.AssertNotError(t, err, "Failed to updated certificate status")
 
+	// Make sure the OCSP response has been updated
 	changedStatus, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
-	test.AssertEquals(t, len(changedStatus.OCSPResponse), 1)
+	test.AssertEquals(t, len(changedStatus.OCSPResponse), 3)
 }
