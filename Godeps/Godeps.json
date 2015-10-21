@@ -126,7 +126,7 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/net/publicsuffix",
-			"Rev": "b1959d2ce5b815bfc7aa5ca2d2af62293eb4abd5"
+			"Rev": "edf0080f92131f2a12f1c7763d74ae60e3ebf550"
 		},
 		{
 			"ImportPath": "gopkg.in/gorp.v1",
