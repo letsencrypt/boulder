@@ -175,7 +175,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 	mux.Handle(pattern, &wfeTopHandler{
 		log: wfe.log,
 		clk: clock.Default(),
-		h: wfeHandlerFunc(func(e *requestEvent, response http.ResponseWriter, request *http.Request) {
+		h: wfeHandlerFunc(func(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 			// We do not propagate errors here, because (1) they should be
 			// transient, and (2) they fail closed.
 			nonce, err := wfe.nonceService.Nonce()
@@ -196,7 +196,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 
 			if !methodsMap[request.Method] {
 				msg := "Method not allowed"
-				e.AddError(msg)
+				logEvent.AddError(msg)
 				response.Header().Set("Allow", methodsStr)
 				wfe.sendError(response, msg, request.Method, http.StatusMethodNotAllowed)
 				return
@@ -205,7 +205,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 			wfe.setCORSHeaders(response, request, "")
 
 			// Call the wrapped handler.
-			h(e, response, request)
+			h(logEvent, response, request)
 		}),
 	})
 }
@@ -301,7 +301,7 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 
 // Directory is an HTTP request handler that simply provides the directory
 // object stored in the WFE's DirectoryJSON member.
-func (wfe *WebFrontEndImpl) Directory(e *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Directory(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json")
 	response.Write(wfe.DirectoryJSON)
 }
@@ -329,7 +329,7 @@ const (
 // the key itself.  verifyPOST also appends its errors to requestEvent.Errors so
 // code calling it does not need to if they imediately return a response to the
 // user.
-func (wfe *WebFrontEndImpl) verifyPOST(e *requestEvent, request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
+func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, error) {
 	var err error
 	// TODO: We should return a pointer to a registration, which can be nil,
 	// rather the a registration value with a sentinel value.
@@ -339,7 +339,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(e *requestEvent, request *http.Request, r
 	if _, ok := request.Header["Content-Length"]; !ok {
 		err = core.LengthRequiredError("Content-Length header is required for POST.")
 		wfe.stats.Inc("WFE.HTTP.ClientErrors.LengthRequiredError", 1, 1.0)
-		e.AddError("missing Content-Length header on POST")
+		logEvent.AddError("missing Content-Length header on POST")
 		return nil, nil, reg, err
 	}
 
@@ -347,7 +347,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(e *requestEvent, request *http.Request, r
 	if request.Body == nil {
 		err = core.MalformedRequestError("No body on POST")
 		wfe.stats.Inc("WFE.Errors.NoPOSTBody", 1, 1.0)
-		e.AddError("no body on POST")
+		logEvent.AddError("no body on POST")
 		return nil, nil, reg, err
 	}
 
@@ -355,7 +355,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(e *requestEvent, request *http.Request, r
 	if err != nil {
 		err = core.InternalServerError("unable to read request body")
 		wfe.stats.Inc("WFE.Errors.UnableToReadRequestBody", 1, 1.0)
-		e.AddError("unable to read request body")
+		logEvent.AddError("unable to read request body")
 		return nil, nil, reg, err
 	}
 
@@ -365,7 +365,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(e *requestEvent, request *http.Request, r
 	if err != nil {
 		puberr := core.SignatureValidationError("Parse error reading JWS")
 		wfe.stats.Inc("WFE.Errors.UnableToParseJWS", 1, 1.0)
-		e.AddError("could not JSON parse body into JWS: %s", err)
+		logEvent.AddError("could not JSON parse body into JWS: %s", err)
 		return nil, nil, reg, puberr
 	}
 
@@ -378,20 +378,20 @@ func (wfe *WebFrontEndImpl) verifyPOST(e *requestEvent, request *http.Request, r
 	if len(parsedJws.Signatures) > 1 {
 		err = core.SignatureValidationError("Too many signatures in POST body")
 		wfe.stats.Inc("WFE.Errors.TooManyJWSSignaturesInPOST", 1, 1.0)
-		e.AddError("too many signatures in POST body: %d", len(parsedJws.Signatures))
+		logEvent.AddError("too many signatures in POST body: %d", len(parsedJws.Signatures))
 		return nil, nil, reg, err
 	}
 	if len(parsedJws.Signatures) == 0 {
 		err = core.SignatureValidationError("POST JWS not signed")
 		wfe.stats.Inc("WFE.Errors.JWSNotSignedInPOST", 1, 1.0)
-		e.AddError("no signatures in POST body")
+		logEvent.AddError("no signatures in POST body")
 		return nil, nil, reg, err
 	}
 	submittedKey := parsedJws.Signatures[0].Header.JsonWebKey
 	if submittedKey == nil {
 		err = core.SignatureValidationError("No JWK in JWS header")
 		wfe.stats.Inc("WFE.Errors.NoJWKInJWSSignatureHeader", 1, 1.0)
-		e.AddError("no JWK in JWS signature header in POST body")
+		logEvent.AddError("no JWK in JWS signature header in POST body")
 		return nil, nil, reg, err
 	}
 
@@ -406,20 +406,20 @@ func (wfe *WebFrontEndImpl) verifyPOST(e *requestEvent, request *http.Request, r
 		// to check its quality before doing the verify.
 		if err = core.GoodKey(submittedKey.Key); err != nil {
 			wfe.stats.Inc("WFE.Errors.JWKRejectedByGoodKey", 1, 1.0)
-			e.AddError("JWK in request was rejected by GoodKey: %s", err)
+			logEvent.AddError("JWK in request was rejected by GoodKey: %s", err)
 			return nil, nil, reg, err
 		}
 		key = submittedKey
 	} else if err != nil {
 		// For all other errors, or if regCheck is true, return error immediately.
 		wfe.stats.Inc("WFE.Errors.UnableToGetRegistrationByKey", 1, 1.0)
-		e.AddError("unable to fetch registration by the given JWK: %s", err)
+		logEvent.AddError("unable to fetch registration by the given JWK: %s", err)
 		return nil, nil, reg, err
 	} else {
 		// If the lookup was successful, use that key.
 		key = &reg.Key
-		e.Requester = reg.ID
-		e.Contacts = reg.Contact
+		logEvent.RegistrationID = reg.ID
+		logEvent.Contacts = reg.Contact
 	}
 
 	payload, header, err := parsedJws.Verify(key)
@@ -430,7 +430,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(e *requestEvent, request *http.Request, r
 		if n > 100 {
 			n = 100
 		}
-		e.AddError("verification of JWS with the JWK failed: %v; body: %s", err, body[:n])
+		logEvent.AddError("verification of JWS with the JWK failed: %v; body: %s", err, body[:n])
 		return nil, nil, reg, puberr
 	}
 
@@ -438,12 +438,12 @@ func (wfe *WebFrontEndImpl) verifyPOST(e *requestEvent, request *http.Request, r
 	// i.e., Nonce is in protected header and
 	if err != nil || len(header.Nonce) == 0 {
 		wfe.stats.Inc("WFE.Errors.JWSMissingNonce", 1, 1.0)
-		e.AddError("JWS is missing an anti-replay nonce")
+		logEvent.AddError("JWS is missing an anti-replay nonce")
 		err = core.SignatureValidationError("JWS has no anti-replay nonce")
 		return nil, nil, reg, err
 	} else if !wfe.nonceService.Valid(header.Nonce) {
 		wfe.stats.Inc("WFE.Errors.JWSInvalidNonce", 1, 1.0)
-		e.AddError("JWS has an invalid anti-replay nonce")
+		logEvent.AddError("JWS has an invalid anti-replay nonce")
 		err = core.SignatureValidationError(fmt.Sprintf("JWS has invalid anti-replay nonce"))
 		return nil, nil, reg, err
 	}
@@ -455,18 +455,18 @@ func (wfe *WebFrontEndImpl) verifyPOST(e *requestEvent, request *http.Request, r
 	err = json.Unmarshal([]byte(payload), &parsedRequest)
 	if err != nil {
 		wfe.stats.Inc("WFE.Errors.UnparsableJWSPayload", 1, 1.0)
-		e.AddError("unable to JSON parse resource from JWS payload: %s", err)
+		logEvent.AddError("unable to JSON parse resource from JWS payload: %s", err)
 		puberr := core.SignatureValidationError("Request payload did not parse as JSON")
 		return nil, nil, reg, puberr
 	}
 	if parsedRequest.Resource == "" {
 		wfe.stats.Inc("WFE.Errors.NoResourceInJWSPayload", 1, 1.0)
-		e.AddError("JWS request payload does not specifiy a resource")
+		logEvent.AddError("JWS request payload does not specifiy a resource")
 		err = core.MalformedRequestError("Request payload does not specify a resource")
 		return nil, nil, reg, err
 	} else if resource != core.AcmeResource(parsedRequest.Resource) {
 		wfe.stats.Inc("WFE.Errors.MismatchedResourceInJWSPayload", 1, 1.0)
-		e.AddError("JWS request payload does not match resource")
+		logEvent.AddError("JWS request payload does not match resource")
 		err = core.MalformedRequestError(fmt.Sprintf("JWS resource payload does not match the HTTP resource: %s != %s", parsedRequest.Resource, resource))
 		return nil, nil, reg, err
 	}
@@ -581,7 +581,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(logEvent *requestEvent, response htt
 		wfe.sendError(response, "Error creating new registration", err, statusCodeFromError(err))
 		return
 	}
-	logEvent.Requester = reg.ID
+	logEvent.RegistrationID = reg.ID
 	logEvent.Contacts = reg.Contact
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains

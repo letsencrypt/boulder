@@ -179,6 +179,10 @@ func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	return nil
 }
 
+func newRequestEvent() *requestEvent {
+	return &requestEvent{Extra: make(map[string]interface{})}
+}
+
 func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
@@ -1280,11 +1284,10 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/pkix-cert")
 	test.Assert(t, bytes.Compare(responseWriter.Body.Bytes(), certBlock.Bytes) == 0, "Certificates don't match")
 
-	t.Logf("UGH %#v", mockLog.GetAll()[0])
 	reqlogs := mockLog.GetAllMatching(`Successful request`)
 	test.AssertEquals(t, len(reqlogs), 1)
 	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_INFO)
-	test.AssertContains(t, reqlogs[0].Message, `"ClientAddr":"192.168.0.1"`)
+	test.AssertContains(t, reqlogs[0].Message, `"ClientAddr":"192.168.0.1,,"`)
 
 	// Unused serial, no cache
 	mockLog.Clear()
@@ -1300,7 +1303,7 @@ func TestGetCertificate(t *testing.T) {
 	reqlogs = mockLog.GetAllMatching(`Terminated request`)
 	test.AssertEquals(t, len(reqlogs), 1)
 	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_INFO)
-	test.AssertContains(t, reqlogs[0].Message, `"ClientAddr":"192.168.99.99,192.168.0.1"`)
+	test.AssertContains(t, reqlogs[0].Message, `"ClientAddr":"192.168.0.1,192.168.99.99,"`)
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
@@ -1426,8 +1429,4 @@ func TestStatusCodeFromError(t *testing.T) {
 			t.Errorf("Incorrect status code for %s. Expected %d, got %d", reflect.TypeOf(c.err).Name(), c.statusCode, got)
 		}
 	}
-}
-
-func newRequestEvent() *requestEvent {
-	return &requestEvent{Extra: make(map[string]interface{})}
 }
