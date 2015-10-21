@@ -16,6 +16,7 @@ type requestEvent struct {
 	ClientAddr     string    `json:",omitempty"`
 	Path           string    `json:",omitempty"`
 	Method         string    `json:",omitempty"`
+	Status         int       `json:",omitEmpty"`
 	RequestTime    time.Time `json:",omitempty"`
 	ResponseTime   time.Time `json:",omitempty"`
 	Errors         []string
