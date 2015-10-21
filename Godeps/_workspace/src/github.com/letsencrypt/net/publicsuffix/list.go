@@ -73,7 +73,7 @@ func getSuffix(domain string, icannOnly bool) (publicSuffix string, icann bool) 
 	s, suffix, wildcard := domain, len(domain), false
 	var dot int
 loop:
-	for ;; s = s[:dot] {
+	for {
 		dot = strings.LastIndex(s, ".")
 		if wildcard {
 			suffix = 1 + dot
@@ -91,6 +91,10 @@ loop:
 		// If we're only interested in ICANN suffixes, ignore any matches that are
 		// not ICANN.
 		if icannOnly && !icann {
+			if dot == -1 {
+				break
+			}
+			s = s[:dot]
 			continue
 		}
 		u >>= nodesBitsICANN
@@ -109,9 +113,10 @@ loop:
 		u >>= childrenBitsNodeType
 		wildcard = u&(1<<childrenBitsWildcard-1) != 0
 
- 		if dot == -1 {
+		if dot == -1 {
 			break
 		}
+		s = s[:dot]
 	}
 	if icannOnly && suffix < len(domain) {
 		icann = true

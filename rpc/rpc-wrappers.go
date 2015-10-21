@@ -64,6 +64,7 @@ const (
 	MethodCountCertificatesRange            = "CountCertificatesRange"            // SA
 	MethodCountCertificatesByNames          = "CountCertificatesByNames"          // SA
 	MethodCountRegistrationsByIP            = "CountRegistrationsByIP"            // SA
+	MethodCountPendingAuthorizations        = "CountPendingAuthorizations"        // SA
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
@@ -119,9 +120,8 @@ type revokeCertificateRequest struct {
 }
 
 type markCertificateRevokedRequest struct {
-	Serial       string
-	OCSPResponse []byte
-	ReasonCode   core.RevocationCode
+	Serial     string
+	ReasonCode core.RevocationCode
 }
 
 type caaRequest struct {
@@ -157,6 +157,10 @@ type countRegistrationsByIPRequest struct {
 	IP       net.IP
 	Earliest time.Time
 	Latest   time.Time
+}
+
+type countPendingAuthorizationsRequest struct {
+	RegID int64
 }
 
 // Response structs
@@ -982,7 +986,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 			return
 		}
 
-		err = impl.MarkCertificateRevoked(mcrReq.Serial, mcrReq.OCSPResponse, mcrReq.ReasonCode)
+		err = impl.MarkCertificateRevoked(mcrReq.Serial, mcrReq.ReasonCode)
 		return
 	})
 
@@ -1058,6 +1062,20 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		}
 
 		count, err := impl.CountRegistrationsByIP(cReq.IP, cReq.Earliest, cReq.Latest)
+		if err != nil {
+			return
+		}
+		return json.Marshal(count)
+	})
+
+	rpc.Handle(MethodCountPendingAuthorizations, func(req []byte) (response []byte, err error) {
+		var cReq countPendingAuthorizationsRequest
+		err = json.Unmarshal(req, &cReq)
+		if err != nil {
+			return
+		}
+
+		count, err := impl.CountPendingAuthorizations(cReq.RegID)
 		if err != nil {
 			return
 		}
@@ -1212,11 +1230,10 @@ func (cac StorageAuthorityClient) GetCertificateStatus(id string) (status core.C
 }
 
 // MarkCertificateRevoked sends a request to mark a certificate as revoked
-func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode core.RevocationCode) (err error) {
+func (cac StorageAuthorityClient) MarkCertificateRevoked(serial string, reasonCode core.RevocationCode) (err error) {
 	var mcrReq markCertificateRevokedRequest
 
 	mcrReq.Serial = serial
-	mcrReq.OCSPResponse = ocspResponse
 	mcrReq.ReasonCode = reasonCode
 
 	data, err := json.Marshal(mcrReq)
@@ -1402,6 +1419,23 @@ func (cac StorageAuthorityClient) CountRegistrationsByIP(ip net.IP, earliest, la
 		return
 	}
 	response, err := cac.rpc.DispatchSync(MethodCountRegistrationsByIP, data)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(response, &count)
+	return
+}
+
+// CountPendingAuthorizations calls CountPendingAuthorizations on the remote
+// StorageAuthority.
+func (cac StorageAuthorityClient) CountPendingAuthorizations(regID int64) (count int, err error) {
+	var cReq countPendingAuthorizationsRequest
+	cReq.RegID = regID
+	data, err := json.Marshal(cReq)
+	if err != nil {
+		return
+	}
+	response, err := cac.rpc.DispatchSync(MethodCountPendingAuthorizations, data)
 	if err != nil {
 		return
 	}

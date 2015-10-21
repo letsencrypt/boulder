@@ -30,7 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-const dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_sa_test"
+const dbConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
 
 var log = mocks.UseMockLog()
 
@@ -50,7 +50,8 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+
+	cleanUp := test.ResetSATestDatabase(t)
 	return sa, fc, cleanUp
 }
 
@@ -142,6 +143,29 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	if _, ok := err.(core.NoSuchRegistrationError); !ok {
 		t.Errorf("UpdateRegistration: expected a NoSuchRegistrationError, got %T type error (%v)", err, err)
 	}
+}
+
+func TestCountPendingAuthorizations(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+	expires := fc.Now().Add(time.Hour)
+	pendingAuthz := core.Authorization{
+		RegistrationID: reg.ID,
+		Expires:        &expires,
+	}
+
+	pendingAuthz, err := sa.NewPendingAuthorization(pendingAuthz)
+	test.AssertNotError(t, err, "Couldn't create new pending authorization")
+	count, err := sa.CountPendingAuthorizations(reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 1)
+
+	fc.Add(2 * time.Hour)
+	count, err = sa.CountPendingAuthorizations(reg.ID)
+	test.AssertNotError(t, err, "Couldn't count pending authorizations")
+	test.AssertEquals(t, count, 0)
 }
 
 func TestAddAuthorization(t *testing.T) {
@@ -505,13 +529,7 @@ func TestUpdateOCSP(t *testing.T) {
 	test.Assert(t,
 		certificateStatus.OCSPLastUpdated.After(beforeUpdate.OCSPLastUpdated),
 		fmt.Sprintf("UpdateOCSP did not take. before: %s; after: %s", beforeUpdate.OCSPLastUpdated, certificateStatus.OCSPLastUpdated))
-
-	var fetchedOcspResponse core.OCSPResponse
-	err = sa.dbMap.SelectOne(&fetchedOcspResponse,
-		`SELECT * from ocspResponses where serial = ? order by createdAt DESC limit 1;`,
-		serial)
-	test.AssertNotError(t, err, "Failed to fetch OCSP response")
-	test.AssertEquals(t, ocspResponse, string(fetchedOcspResponse.Response))
+	test.AssertEquals(t, ocspResponse, string(certificateStatus.OCSPResponse))
 }
 
 func TestMarkCertificateRevoked(t *testing.T) {
@@ -535,7 +553,7 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	fc.Add(1 * time.Hour)
 
 	code := core.RevocationCode(1)
-	err = sa.MarkCertificateRevoked(serial, []byte(ocspResponse), code)
+	err = sa.MarkCertificateRevoked(serial, code)
 	test.AssertNotError(t, err, "MarkCertificateRevoked failed")
 
 	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
@@ -547,22 +565,6 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	}
 	if !fc.Now().Equal(afterStatus.RevokedDate) {
 		t.Errorf("RevokedData, expected %s, got %s", fc.Now(), afterStatus.RevokedDate)
-	}
-	if !fc.Now().Equal(afterStatus.OCSPLastUpdated) {
-		t.Errorf("OCSPLastUpdated, expected %s, got %s", fc.Now(), afterStatus.OCSPLastUpdated)
-	}
-
-	if !afterStatus.OCSPLastUpdated.After(beforeStatus.OCSPLastUpdated) {
-		t.Errorf("OCSPLastUpdated did not update correctly. before: %s; after: %s",
-			beforeStatus.OCSPLastUpdated, afterStatus.OCSPLastUpdated)
-	}
-	var fetched core.OCSPResponse
-	err = sa.dbMap.SelectOne(&fetched,
-		`SELECT * from ocspResponses where serial = ? order by createdAt DESC limit 1;`,
-		serial)
-	test.AssertNotError(t, err, "Failed to fetch OCSP response")
-	if ocspResponse != string(fetched.Response) {
-		t.Errorf("OCSPResponse response, expected %#v, got %#v", ocspResponse, string(fetched.Response))
 	}
 }
 

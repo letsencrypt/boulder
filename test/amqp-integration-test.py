@@ -69,7 +69,7 @@ def get_ocsp(cert_file, url):
     with open(ocsp_resp_file, "w") as f:
         f.write(get_response)
 
-    ocsp_verify_cmd = "%s -CAfile ../test-ca.pem -respin %s" % (openssl_ocsp, ocsp_resp_file)
+    ocsp_verify_cmd = "%s -CAfile ../test-root.pem -respin %s" % (openssl_ocsp, ocsp_resp_file)
     print ocsp_verify_cmd
     try:
         output = subprocess.check_output(ocsp_verify_cmd, shell=True)
@@ -84,6 +84,10 @@ def get_ocsp(cert_file, url):
 
 def verify_ocsp_good(certFile, url):
     output = get_ocsp(certFile, url)
+    # Check if the output contains either ': good' or
+    # ' unauthorized (6)', if openssl produces something else fail out
+    # since these are the only two responses we expect. This
+    # allows the check to be looped until successful.
     if not re.search(": good", output):
         if not re.search(" unauthorized \(6\)", output):
             print "Expected OCSP response 'unauthorized', got something else."
@@ -93,10 +97,16 @@ def verify_ocsp_good(certFile, url):
 
 def verify_ocsp_revoked(certFile, url):
     output = get_ocsp(certFile, url)
+    # Check if the output contains either ': revoked' or
+    # ': good', if openssl produces something else fail out
+    # since these are the only two responses we expect. This
+    # allows the check to be looped until successful.
     if not re.search(": revoked", output):
-        print "Expected OCSP response 'revoked', got something else."
-        die(ExitStatus.OCSPFailure)
-    pass
+        if not re.search(": good", output):
+            print "Expected OCSP response 'good', got something else."
+            die(ExitStatus.OCSPFailure)
+        return False
+    return True
 
 # loop_check expects the function passed as action will return True/False to indicate
 # success/failure
@@ -160,8 +170,7 @@ def run_node_test():
         print("\nRevoking failed")
         die(ExitStatus.NodeFailure)
 
-    verify_ocsp_revoked(certFile, ee_ocsp_url)
-
+    loop_check(ExitStatus.OCSPFailure, verify_ocsp_revoked, certFile, ee_ocsp_url)
     return 0
 
 
@@ -171,7 +180,7 @@ def run_client_tests():
         "Please set LETSENCRYPT_PATH env variable to point at "
         "initialized (virtualenv) client repo root")
     test_script_path = os.path.join(root, 'tests', 'boulder-integration.sh')
-    cmd = "source %s/venv/bin/activate && %s" % (root, test_script_path)
+    cmd = "source %s/venv/bin/activate && SIMPLE_HTTP_PORT=5002 %s" % (root, test_script_path)
     if subprocess.Popen(cmd, shell=True, cwd=root, executable='/bin/bash').wait() != 0:
         die(ExitStatus.PythonFailure)
 

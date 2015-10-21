@@ -113,6 +113,7 @@ type StorageGetter interface {
 	CountCertificatesRange(time.Time, time.Time) (int64, error)
 	CountCertificatesByNames([]string, time.Time, time.Time) (map[string]int, error)
 	CountRegistrationsByIP(net.IP, time.Time, time.Time) (int, error)
+	CountPendingAuthorizations(regID int64) (int, error)
 	GetSCTReceipt(string, string) (SignedCertificateTimestamp, error)
 }
 
@@ -124,7 +125,7 @@ type StorageAdder interface {
 	NewPendingAuthorization(Authorization) (Authorization, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
-	MarkCertificateRevoked(serial string, ocspResponse []byte, reasonCode RevocationCode) error
+	MarkCertificateRevoked(serial string, reasonCode RevocationCode) error
 	UpdateOCSP(serial string, ocspResponse []byte) error
 
 	AddCertificate([]byte, int64) (string, error)

@@ -194,32 +194,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 
 // RevokeCertificate revokes the trust of the Cert referred to by the provided Serial.
 func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
-	coreCert, err := ca.SA.GetCertificate(serial)
-	if err != nil {
-		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
-		ca.log.AuditErr(err)
-		return err
-	}
-	cert, err := x509.ParseCertificate(coreCert.DER)
-	if err != nil {
-		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
-		ca.log.AuditErr(err)
-		return err
-	}
-
-	signRequest := ocsp.SignRequest{
-		Certificate: cert,
-		Status:      string(core.OCSPStatusRevoked),
-		Reason:      int(reasonCode),
-		RevokedAt:   ca.Clk.Now(),
-	}
-	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
-	if err != nil {
-		// AUDIT[ Revocation Requests ] 4e85d791-09c0-4ab3-a837-d3d67e945134
-		ca.log.AuditErr(err)
-		return err
-	}
-	err = ca.SA.MarkCertificateRevoked(serial, ocspResponse, reasonCode)
+	err = ca.SA.MarkCertificateRevoked(serial, reasonCode)
 	return err
 }
 

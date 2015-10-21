@@ -19,7 +19,7 @@ import (
 )
 
 var log = mocks.UseMockLog()
-var dbConnStr = "mysql+tcp://boulder@localhost:3306/boulder_policy_test"
+var dbConnStr = "mysql+tcp://policy@localhost:3306/boulder_policy_test"
 
 func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
 	dbMap, cleanUp := paDBMap(t)
@@ -34,7 +34,7 @@ func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
 func paDBMap(t *testing.T) (*gorp.DbMap, func()) {
 	dbMap, err := sa.NewDbMap(dbConnStr)
 	test.AssertNotError(t, err, "Could not construct dbMap")
-	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	cleanUp := test.ResetPolicyTestDatabase(t)
 	return dbMap, cleanUp
 }
 
@@ -91,8 +91,12 @@ func TestWillingToIssue(t *testing.T) {
 		`CapitalizedLetters.com`,
 	}
 
-	shouldBeNonPublic := []string{
+	shouldBeTLDError := []string{
 		`co.uk`,
+		`foo.bn`,
+	}
+
+	shouldBeNonPublic := []string{
 		`example.acting`,
 		`example.internal`,
 		// All-numeric final label not okay.
@@ -145,7 +149,16 @@ func TestWillingToIssue(t *testing.T) {
 		}
 	}
 
-	// Test public suffix matching
+	// Test domains that are equal to public suffixes
+	for _, domain := range shouldBeTLDError {
+		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
+		err := pa.WillingToIssue(identifier, 100)
+		if err != ErrICANNTLD {
+			t.Error("Identifier was not correctly forbidden: ", identifier, err)
+		}
+	}
+
+	// Test domains that don't end in public suffixes
 	for _, domain := range shouldBeNonPublic {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
 		err := pa.WillingToIssue(identifier, 100)

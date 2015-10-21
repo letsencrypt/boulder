@@ -19,7 +19,7 @@ func padbImpl(t *testing.T) (*PolicyAuthorityDatabaseImpl, func()) {
 	padb, err := NewPolicyAuthorityDatabaseImpl(dbMap)
 	test.AssertNotError(t, err, "Couldn't create PADB")
 
-	cleanUp := test.ResetTestDatabase(t, dbMap.Db)
+	cleanUp := test.ResetPolicyTestDatabase(t)
 
 	return padb, cleanUp
 }

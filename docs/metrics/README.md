@@ -97,16 +97,19 @@ This list is split up into metric topics with the names of the clients that subm
 * Client performance profiling (`cmd/boulder-*`)
 
     ```
-	[gauge]  Boulder.{cmd-name}.Gostats.Goroutines
-  [gauge]  Boulder.{cmd-name}.Gostats.Heap.Alloc
-	[gauge]  Boulder.{cmd-name}.Gostats.Heap.Objects
-	[gauge]  Boulder.{cmd-name}.Gostats.Heap.Idle
-	[gauge]  Boulder.{cmd-name}.Gostats.Heap.InUse
-	[gauge]  Boulder.{cmd-name}.Gostats.Heap.Released
-  [gauge]  Boulder.{cmd-name}.Gostats.Gc.NextAt
-	[gauge]  Boulder.{cmd-name}.Gostats.Gc.LastPauseLatency
+	[counter] Boulder.{cmd-name}.Gostats.Gc.Rate
 
-	[timing] Boulder.{cmd-name}.Gostats.Gc.PauseAvg
+	[gauge]   Boulder.{cmd-name}.Gostats.Goroutines
+	[gauge]   Boulder.{cmd-name}.Gostats.Heap.Alloc
+	[gauge]   Boulder.{cmd-name}.Gostats.Heap.Objects
+	[gauge]   Boulder.{cmd-name}.Gostats.Heap.Idle
+	[gauge]   Boulder.{cmd-name}.Gostats.Heap.InUse
+	[gauge]   Boulder.{cmd-name}.Gostats.Heap.Released
+	[gauge]   Boulder.{cmd-name}.Gostats.Gc.NextAt
+	[gauge]   Boulder.{cmd-name}.Gostats.Gc.Count
+	[gauge]   Boulder.{cmd-name}.Gostats.Gc.LastPause
+
+	[timing]  Boulder.{cmd-name}.Gostats.Gc.PauseAvg
 	  ```
 
 * External certificate store loading (`cmd/external-cert-importer`)

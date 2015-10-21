@@ -2,6 +2,7 @@ package test
 
 import (
 	"database/sql"
+	"fmt"
 	"io"
 	"testing"
 )
@@ -20,15 +21,30 @@ type CleanUpDB interface {
 	io.Closer
 }
 
-// ResetTestDatabase deletes all rows in all tables available to the
-// passed in CleanUpDB, failing the tests if that errors and returning
-// a clean up function that will attempt the same plus close the
-// database.  "Tables available" means all tables that can be seen in
-// the MariaDB configuration by the database user except for ones that
-// are configuration only like goose_db_version (for migrations) or
-// the ones describing the internal configuration of the server.To be
+// ResetSATestDatabase deletes all rows in all tables in the SA DB.
+// If fails the tests if that errors and returns a clean up function
+// that will delete all rows again and close the database.
+// "Tables available" means all tables that can be seen in the MariaDB
+// configuration by the database user except for ones that are
+// configuration only like goose_db_version (for migrations) or
+// the ones describing the internal configuration of the server. To be
 // used only in test code.
-func ResetTestDatabase(t *testing.T, db CleanUpDB) func() {
+func ResetSATestDatabase(t *testing.T) func() {
+	return resetTestDatabase(t, "sa")
+}
+
+// ResetPolicyTestDatabase deletes all rows in all tables in the Policy DB. It
+// acts the same as ResetSATestDatabase.
+func ResetPolicyTestDatabase(t *testing.T) func() {
+	return resetTestDatabase(t, "policy")
+}
+
+func resetTestDatabase(t *testing.T, dbType string) func() {
+	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(localhost:3306)/boulder_%s_test", dbType))
+	if err != nil {
+		t.Fatalf("Couldn't create db: %s", err)
+	}
+	fmt.Printf("db %#v\n", db)
 	if err := deleteEverythingInAllTables(db); err != nil {
 		t.Fatalf("Failed to delete everything: %s", err)
 	}
@@ -47,7 +63,7 @@ func ResetTestDatabase(t *testing.T, db CleanUpDB) func() {
 func deleteEverythingInAllTables(db CleanUpDB) error {
 	ts, err := allTableNamesInDB(db)
 	if err != nil {
-		return nil
+		return err
 	}
 	for _, tn := range ts {
 		// 1 = 1 here prevents the MariaDB i_am_a_dummy setting from
@@ -57,7 +73,7 @@ func deleteEverythingInAllTables(db CleanUpDB) error {
 			return err
 		}
 	}
-	return nil
+	return err
 }
 
 // allTableNamesInDB returns the names of the tables available to the
