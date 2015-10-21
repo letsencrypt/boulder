@@ -17,6 +17,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
@@ -402,4 +403,12 @@ func (bhs BadHSMSigner) SigAlgo() x509.SignatureAlgorithm {
 // github.com/miekg/pkcs11
 func (bhs BadHSMSigner) Sign(req signer.SignRequest) (cert []byte, err error) {
 	return nil, fmt.Errorf("pkcs11: " + string(bhs))
+}
+
+// BadHSMOCSPSigner represents a CFSSL OCSP signer that always returns a
+// PKCS#11 error
+type BadHSMOCSPSigner string
+
+func (bhos BadHSMOCSPSigner) Sign(ocsp.SignRequest) ([]byte, error) {
+	return nil, fmt.Errorf("pkcs11: " + string(bhos))
 }

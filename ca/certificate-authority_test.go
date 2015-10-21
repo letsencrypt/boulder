@@ -430,9 +430,11 @@ func TestHSMFaultTimeout(t *testing.T) {
 	// Swap in a bad signer
 	goodSigner := ca.Signer
 	badHSMErrorMessage := "This is really serious.  You should wait"
-	ca.Signer = mocks.BadHSMSigner(badHSMErrorMessage)
+	badSigner := mocks.BadHSMSigner(badHSMErrorMessage)
+	badOCSPSigner := mocks.BadHSMOCSPSigner(badHSMErrorMessage)
 
 	// Cause the CA to enter the HSM fault condition
+	ca.Signer = badSigner
 	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertError(t, err, "CA failed to return HSM error")
 	test.AssertEquals(t, err.Error(), "pkcs11: "+badHSMErrorMessage)
@@ -454,9 +456,21 @@ func TestHSMFaultTimeout(t *testing.T) {
 	// Check that the CA has recovered
 	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertNotError(t, err, "CA failed to recover from HSM fault")
-
 	_, err = ca.GenerateOCSP(ocspRequest)
 	test.AssertNotError(t, err, "CA failed to recover from HSM fault")
-
 	test.AssertEquals(t, ca.hsmFaultTimeout, hsmFaultMinTimeout)
+
+	// Check that GenerateOCSP can also trigger an HSM failure, in the same way
+	ca.OCSPSigner = badOCSPSigner
+	_, err = ca.GenerateOCSP(ocspRequest)
+	test.AssertError(t, err, "CA failed to return HSM error")
+	test.AssertEquals(t, err.Error(), "pkcs11: "+badHSMErrorMessage)
+
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertError(t, err, "CA failed to persist HSM fault")
+	test.AssertEquals(t, err.Error(), "IssueCertificate call rejected; HSM is unavailable")
+
+	_, err = ca.GenerateOCSP(ocspRequest)
+	test.AssertError(t, err, "CA failed to persist HSM fault")
+	test.AssertEquals(t, err.Error(), "GenerateOCSP call rejected; HSM is unavailable")
 }
