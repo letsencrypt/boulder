@@ -69,7 +69,7 @@ def get_ocsp(cert_file, url):
     with open(ocsp_resp_file, "w") as f:
         f.write(get_response)
 
-    ocsp_verify_cmd = "%s -CAfile ../test-ca.pem -respin %s" % (openssl_ocsp, ocsp_resp_file)
+    ocsp_verify_cmd = "%s -CAfile ../test-root.pem -respin %s" % (openssl_ocsp, ocsp_resp_file)
     print ocsp_verify_cmd
     try:
         output = subprocess.check_output(ocsp_verify_cmd, shell=True)

@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
@@ -196,7 +198,7 @@ func setup(t *testing.T, port, retries int) (PublisherImpl, *x509.Certificate) {
 	})
 	test.AssertNotError(t, err, "Couldn't create new Publisher")
 	pub.issuerBundle = append(pub.issuerBundle, base64.StdEncoding.EncodeToString(intermediatePEM.Bytes))
-	pub.SA = &mocks.StorageAuthority{}
+	pub.SA = mocks.NewStorageAuthority(clock.NewFake())
 
 	leafPEM, _ := pem.Decode([]byte(testLeaf))
 	leaf, err := x509.ParseCertificate(leafPEM.Bytes)
