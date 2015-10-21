@@ -394,17 +394,17 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 		// Gather various GC related metrics
 		if memoryStats.NumGC > 0 {
 			totalRecentGC := uint64(0)
-			numGC := int64(256)
+			realBufSize := uint32(256)
 			if memoryStats.NumGC < 256 {
-				numGC = int64(memoryStats.NumGC)
+				realBufSize = memoryStats.NumGC
 			}
 			for _, pause := range memoryStats.PauseNs {
 				totalRecentGC += pause
 			}
-			gcPauseAvg := int64(totalRecentGC) / numGC
-			lastGC := int64(memoryStats.PauseNs[(memoryStats.NumGC+255)%256])
-			stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), gcPauseAvg, 1.0)
-			stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPause", profileName), lastGC, 1.0)
+			gcPauseAvg := totalRecentGC / uint64(realBufSize)
+			lastGC := memoryStats.PauseNs[(memoryStats.NumGC+255)%256]
+			stats.Timing(fmt.Sprintf("%s.Gostats.Gc.PauseAvg", profileName), int64(gcPauseAvg), 1.0)
+			stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.LastPause", profileName), int64(lastGC), 1.0)
 		}
 		stats.Gauge(fmt.Sprintf("%s.Gostats.Gc.NextAt", profileName), int64(memoryStats.NextGC), 1.0)
 		// Send both a counter and a gauge here we can much more easily observe
