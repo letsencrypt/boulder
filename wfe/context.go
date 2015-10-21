@@ -40,13 +40,13 @@ type wfeHandler interface {
 	ServeHTTP(e *requestEvent, w http.ResponseWriter, r *http.Request)
 }
 
-type wfeTopHandler struct {
-	h   wfeHandler
+type topHandler struct {
+	wfe wfeHandler
 	log *blog.AuditLogger
 	clk clock.Clock
 }
 
-func (t *wfeTopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEvent := &requestEvent{
 		ID:          core.NewToken(),
 		ClientAddr:  getClientAddr(r),
@@ -57,20 +57,20 @@ func (t *wfeTopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL != nil {
 		logEvent.Path = r.URL.String()
 	}
-	defer t.logEvent(logEvent)
+	defer th.logEvent(logEvent)
 
-	t.h.ServeHTTP(logEvent, w, r)
+	th.wfe.ServeHTTP(logEvent, w, r)
 }
 
-func (t *wfeTopHandler) logEvent(logEvent *requestEvent) {
-	logEvent.ResponseTime = t.clk.Now()
+func (th *topHandler) logEvent(logEvent *requestEvent) {
+	logEvent.ResponseTime = th.clk.Now()
 	var msg string
 	if len(logEvent.Errors) != 0 {
 		msg = "Terminated request"
 	} else {
 		msg = "Successful request"
 	}
-	t.log.InfoObject(msg, logEvent)
+	th.log.InfoObject(msg, logEvent)
 }
 
 // Comma-separated list of HTTP clients involved in making this request,
