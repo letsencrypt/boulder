@@ -261,6 +261,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 	}
 
 	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
+	ca.noteHSMFault(err)
 	return ocspResponse, err
 }
 
@@ -388,10 +389,10 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	certPEM, err := ca.Signer.Sign(req)
+	ca.noteHSMFault(err)
 	if err != nil {
 		// Since we just used the HSM (if we're using one), note whether it worked
 		// or not.
-		ca.noteHSMFault(err)
 
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3

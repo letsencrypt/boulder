@@ -457,4 +457,6 @@ func TestHSMFaultTimeout(t *testing.T) {
 
 	_, err = ca.GenerateOCSP(ocspRequest)
 	test.AssertNotError(t, err, "CA failed to recover from HSM fault")
+
+	test.AssertEquals(t, ca.hsmFaultTimeout, hsmFaultMinTimeout)
 }
