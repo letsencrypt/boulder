@@ -53,6 +53,7 @@ type WebFrontEndImpl struct {
 	SA    core.StorageGetter
 	stats statsd.Statter
 	log   *blog.AuditLogger
+	clk   clock.Clock
 
 	// URL configuration parameters
 	BaseURL       string
@@ -117,7 +118,7 @@ func statusCodeFromError(err interface{}) int {
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
-func NewWebFrontEndImpl(stats statsd.Statter) (WebFrontEndImpl, error) {
+func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock) (WebFrontEndImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 
@@ -128,6 +129,7 @@ func NewWebFrontEndImpl(stats statsd.Statter) (WebFrontEndImpl, error) {
 
 	return WebFrontEndImpl{
 		log:          logger,
+		clk:          clk,
 		nonceService: nonceService,
 		stats:        stats,
 	}, nil
@@ -881,6 +883,15 @@ func (wfe *WebFrontEndImpl) Challenge(
 		notFound()
 		return
 	}
+
+	// After expiring, challenges are inaccessible
+	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
+		msg := fmt.Sprintf("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
+		logEvent.AddError(msg)
+		wfe.sendError(response, "Expired authorization", msg, http.StatusNotFound)
+		return
+	}
+
 	// Check that the requested challenge exists within the authorization
 	challengeIndex := authz.FindChallenge(challengeID)
 	if challengeIndex == -1 {
@@ -1129,6 +1140,14 @@ func (wfe *WebFrontEndImpl) Authorization(logEvent *requestEvent, response http.
 	logEvent.Extra["AuthorizationIdentifier"] = authz.Identifier
 	logEvent.Extra["AuthorizationStatus"] = authz.Status
 	logEvent.Extra["AuthorizationExpires"] = authz.Expires
+
+	// After expiring, authorizations are inaccessible
+	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
+		msg := fmt.Sprintf("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
+		logEvent.AddError(msg)
+		wfe.sendError(response, "Expired authorization", msg, http.StatusNotFound)
+		return
+	}
 
 	wfe.prepAuthorizationForDisplay(&authz)
 

@@ -460,6 +460,22 @@ func TestUpdateAuthorization(t *testing.T) {
 	t.Log("DONE TestUpdateAuthorization")
 }
 
+func TestUpdateAuthorizationExpired(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	expiry := fc.Now().Add(-2 * time.Hour)
+	authz.Expires = &expiry
+
+	response, err := makeResponse(authz.Challenges[ResponseIndex])
+
+	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	test.AssertError(t, err, "Updated expired authorization")
+}
+
 func TestUpdateAuthorizationReject(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()

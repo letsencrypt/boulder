@@ -227,7 +227,7 @@ func (updater *OCSPUpdater) generateRevokedResponse(status core.CertificateStatu
 	return &status, nil
 }
 
-func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus, statusGuard core.OCSPStatus) error {
+func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error {
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
 	// containing a 'good' status and that we don't do the inverse when the OCSP
@@ -240,7 +240,7 @@ func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus, status
 		status.OCSPResponse,
 		status.OCSPLastUpdated,
 		status.Serial,
-		string(statusGuard),
+		string(status.Status),
 	)
 	return err
 }
@@ -291,7 +291,7 @@ func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) {
 			updater.stats.Inc("OCSP.Errors.RevokedResponseGeneration", 1, 1.0)
 			continue
 		}
-		err = updater.storeResponse(meta, core.OCSPStatusRevoked)
+		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.stats.Inc("OCSP.Errors.StoreRevokedResponse", 1, 1.0)
 			updater.log.AuditErr(fmt.Errorf("Failed to store OCSP response: %s", err))
@@ -309,7 +309,7 @@ func (updater *OCSPUpdater) generateOCSPResponses(statuses []core.CertificateSta
 			continue
 		}
 		updater.stats.Inc("OCSP.GeneratedResponses", 1, 1.0)
-		err = updater.storeResponse(meta, core.OCSPStatusGood)
+		err = updater.storeResponse(meta)
 		if err != nil {
 			updater.log.AuditErr(fmt.Errorf("Failed to store OCSP response: %s", err))
 			updater.stats.Inc("OCSP.Errors.StoreResponse", 1, 1.0)
