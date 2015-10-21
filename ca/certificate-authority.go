@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -49,6 +50,15 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA1:             true,
 }
 
+// Metrics for CA statistics
+const (
+	// Increments when CA observes an HSM fault
+	metricHSMFaultObserved = "CA.OCSP.HSMFault.Observed"
+
+	// Increments when CA rejects a request due to an HSM fault
+	metricHSMFaultRejected = "CA.OCSP.HSMFault.Rejected"
+)
+
 // HSM faults tend to be persistent.  If we observe one, we will refuse any
 // further requests for signing (certificates or OCSP) for this period.
 const hsmFaultTimeout = 5 * 60 * time.Second
@@ -64,6 +74,7 @@ type CertificateAuthorityImpl struct {
 	Publisher      core.Publisher
 	Clk            clock.Clock // TODO(jmhodges): should be private, like log
 	log            *blog.AuditLogger
+	stats          statsd.Statter
 	Prefix         int // Prepended to the serial number
 	ValidityPeriod time.Duration
 	NotAfter       time.Time
@@ -79,7 +90,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, issuerCert string) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats statsd.Statter, issuerCert string) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -139,6 +150,7 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, issuerCer
 		Prefix:     config.SerialPrefix,
 		Clk:        clk,
 		log:        logger,
+		stats:      stats,
 		NotAfter:   issuer.NotAfter,
 	}
 
@@ -199,6 +211,7 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 	defer ca.hsmFaultLock.Unlock()
 
 	if err != nil {
+		ca.stats.Inc(metricHSMFaultObserved, 1, 1.0)
 		ca.hsmFaultLastObserved = ca.Clk.Now()
 	}
 	return
@@ -209,6 +222,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 	if ca.checkHSMFault() {
 		err := core.ServiceUnavailableError("GenerateOCSP call rejected; HSM is unavailable")
 		ca.log.WarningErr(err)
+		ca.stats.Inc(metricHSMFaultRejected, 1, 1.0)
 		return nil, err
 	}
 
@@ -247,6 +261,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if ca.checkHSMFault() {
 		err := core.ServiceUnavailableError("IssueCertificate call rejected; HSM is unavailable")
 		ca.log.WarningErr(err)
+		ca.stats.Inc(metricHSMFaultRejected, 1, 1.0)
 		return emptyCert, err
 	}
 

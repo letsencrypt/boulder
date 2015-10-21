@@ -116,6 +116,7 @@ type testCtx struct {
 	reg      core.Registration
 	pa       core.PolicyAuthority
 	fc       clock.FakeClock
+	stats    *mocks.Statter
 	cleanUp  func()
 }
 
@@ -192,7 +193,10 @@ func setup(t *testing.T) *testCtx {
 			},
 		},
 	}
-	return &testCtx{ssa, caConfig, reg, pa, fc, cleanUp}
+
+	stats := mocks.NewStatter()
+
+	return &testCtx{ssa, caConfig, reg, pa, fc, &stats, cleanUp}
 }
 
 func TestFailNoSerial(t *testing.T) {
@@ -200,14 +204,14 @@ func TestFailNoSerial(t *testing.T) {
 	defer ctx.cleanUp()
 
 	ctx.caConfig.SerialPrefix = 0
-	_, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	_, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
 func TestIssueCertificate(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -284,7 +288,7 @@ func TestIssueCertificate(t *testing.T) {
 func TestRejectNoName(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -301,7 +305,7 @@ func TestRejectNoName(t *testing.T) {
 func TestRejectTooManyNames(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -318,7 +322,7 @@ func TestRejectTooManyNames(t *testing.T) {
 func TestDeduplication(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -342,7 +346,7 @@ func TestDeduplication(t *testing.T) {
 func TestRejectValidityTooLong(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -360,7 +364,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 func TestShortKey(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -376,7 +380,7 @@ func TestShortKey(t *testing.T) {
 func TestRejectBadAlgorithm(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -393,7 +397,7 @@ func TestCapitalizedLetters(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ctx.caConfig.MaxNames = 3
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -414,7 +418,7 @@ func TestHSMFaultTimeout(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -471,4 +475,8 @@ func TestHSMFaultTimeout(t *testing.T) {
 	_, err = ca.GenerateOCSP(ocspRequest)
 	test.AssertError(t, err, "CA failed to persist HSM fault")
 	test.AssertEquals(t, err.Error(), "GenerateOCSP call rejected; HSM is unavailable")
+
+	// Verify that the appropriate stats got recorded for all this
+	test.AssertEquals(t, ctx.stats.Counters[metricHSMFaultObserved], int64(2))
+	test.AssertEquals(t, ctx.stats.Counters[metricHSMFaultRejected], int64(4))
 }

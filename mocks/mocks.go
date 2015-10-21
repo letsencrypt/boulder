@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
@@ -413,4 +414,23 @@ type BadHSMOCSPSigner string
 // github.com/miekg/pkcs11
 func (bhos BadHSMOCSPSigner) Sign(ocsp.SignRequest) ([]byte, error) {
 	return nil, fmt.Errorf(string(bhos))
+}
+
+// Statter is a stat counter that is a no-op except for locally handling Inc
+// calls (which are most of what we use).
+type Statter struct {
+	statsd.NoopClient
+	Counters map[string]int64
+}
+
+// Inc increments the indicated metric by the indicated value, in the Counters
+// map maintained by the statter
+func (s *Statter) Inc(metric string, value int64, rate float32) error {
+	s.Counters[metric] += value
+	return nil
+}
+
+// NewStatter returns an empty statter with all counters zero
+func NewStatter() Statter {
+	return Statter{statsd.NoopClient{}, map[string]int64{}}
 }
