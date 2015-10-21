@@ -49,11 +49,9 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA1:             true,
 }
 
-// HSM faults tend to be persistent.  If we observe one, we will set a flag and
-// throttle requests according to an exponential back-off, bounded by these min
-// and max delay values.
-const hsmFaultMinTimeout = time.Second
-const hsmFaultMaxTimeout = 128 * time.Second
+// HSM faults tend to be persistent.  If we observe one, we will refuse any
+// further requests for signing (certificates or OCSP) for this period.
+const hsmFaultTimeout = 5 * 60 * time.Second
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
@@ -71,10 +69,8 @@ type CertificateAuthorityImpl struct {
 	NotAfter       time.Time
 	MaxNames       int
 
-	hsmFault             bool
 	hsmFaultLock         sync.Mutex
 	hsmFaultLastObserved time.Time
-	hsmFaultTimeout      time.Duration
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -192,44 +188,19 @@ func (ca *CertificateAuthorityImpl) checkHSMFault() bool {
 	defer ca.hsmFaultLock.Unlock()
 
 	now := ca.Clk.Now()
-	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
-	if timeout.Before(now) {
-		// Go ahead and try again
-		return false
-	}
-
-	return ca.hsmFault
+	timeout := ca.hsmFaultLastObserved.Add(hsmFaultTimeout)
+	return now.Before(timeout)
 }
 
 // noteHSMFault updates the CA's state with regard to HSM faults.  CA methods
 // that use an HSM should pass errors that might be HSM errors to this method.
-// We distinguish HSM errors from other errors by looking for a string that the
-// PKCS#11 library appends to its errors.
-//
-// XXX(rlb): It would be better to directly check that the error is of the
-// PKCS#11 library's local Error type.  But that would be messier, since we
-// would have to import that library, which we don't now.
 func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 	ca.hsmFaultLock.Lock()
 	defer ca.hsmFaultLock.Unlock()
 
-	// If err == nil, the HSM is working, reset the timeout
-	// Note that we don't check if the HSM is the source of this error,
-	// since it doesn't matter.  If everything worked, then in particular,
-	// the HSM worked.
-	if err == nil {
-		ca.hsmFault = false
-		ca.hsmFaultTimeout = hsmFaultMinTimeout
-		return
+	if err != nil {
+		ca.hsmFaultLastObserved = ca.Clk.Now()
 	}
-
-	// Otherwise, things are broken, and we should back off
-	ca.hsmFault = true
-	ca.hsmFaultLastObserved = ca.Clk.Now()
-	if ca.hsmFaultTimeout < hsmFaultMaxTimeout {
-		ca.hsmFaultTimeout *= 2
-	}
-
 	return
 }
 
