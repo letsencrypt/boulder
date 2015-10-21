@@ -145,7 +145,7 @@ def run_node_test():
     domain = subprocess.check_output("openssl rand -hex 6", shell=True).strip()
     if subprocess.Popen('''
         node test.js --email foo@letsencrypt.org --agree true \
-          --domains www.%s.com --new-reg http://localhost:4000/acme/new-reg \
+          --domains www.%s-TEST.com --new-reg http://localhost:4000/acme/new-reg \
           --certKey %s --cert %s
         ''' % (domain, keyFile, certFile), shell=True).wait() != 0:
         print("\nIssuing failed")
