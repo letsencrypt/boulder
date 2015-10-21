@@ -21,13 +21,10 @@ cd $(dirname $0)/..
 if [ -z "${FAKE_DNS}" ] ; then
   FAKE_DNS=$(ifconfig docker0 | sed -n 's/ *inet addr:\([0-9.]\+\).*/\1/p')
 fi
-docker build --tag boulder .
-# The -i command makes the instance interactive, so you can kill start.py with Ctrl-C.
-docker run \
-  --interactive \
-  --tty \
-  --rm=true \
-  --publish 4000-4001:4000-4001 \
-  --publish 8000-8100:8000-8100 \
-  --env FAKE_DNS="${FAKE_DNS}" \
-  boulder
+
+# build the docker images
+docker-compose build
+
+# The excluding `-d` command makes the instance interactive, so you can kill
+# all containers with Ctrl-C.
+docker-compose up

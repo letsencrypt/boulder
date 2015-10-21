@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
 func TestCacheControl(t *testing.T) {
@@ -65,7 +66,7 @@ func TestHandler(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	dbMap, err := sa.NewDbMap("mysql+tcp://ocsp_resp@localhost:3306/boulder_sa_test")
+	dbMap, err := sa.NewDbMap(vars.DBConnSAOcspResp)
 	test.AssertNotError(t, err, "Could not connect to database")
 	src, err := makeDBSource(dbMap, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
 	if err != nil {

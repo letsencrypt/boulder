@@ -26,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
 var (
@@ -97,11 +98,6 @@ const profileName = "ee"
 const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
 
-const (
-	paDBConnStr = "mysql+tcp://policy@localhost:3306/boulder_policy_test"
-	saDBConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
-)
-
 func mustRead(path string) []byte {
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -122,7 +118,7 @@ type testCtx struct {
 
 func setup(t *testing.T) *testCtx {
 	// Create an SA
-	dbMap, err := sa.NewDbMap(saDBConnStr)
+	dbMap, err := sa.NewDbMap(vars.DBConnSA)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
@@ -134,7 +130,7 @@ func setup(t *testing.T) *testCtx {
 	}
 	saDBCleanUp := test.ResetSATestDatabase(t)
 
-	paDbMap, err := sa.NewDbMap(paDBConnStr)
+	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	test.AssertNotError(t, err, "Could not construct dbMap")
 	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
 	test.AssertNotError(t, err, "Couldn't create PADB")
