@@ -409,6 +409,8 @@ func (bhs BadHSMSigner) Sign(req signer.SignRequest) (cert []byte, err error) {
 // PKCS#11 error
 type BadHSMOCSPSigner string
 
+// Sign always returns a PKCS#11 error, in the format used by
+// github.com/miekg/pkcs11
 func (bhos BadHSMOCSPSigner) Sign(ocsp.SignRequest) ([]byte, error) {
 	return nil, fmt.Errorf("pkcs11: " + string(bhos))
 }
