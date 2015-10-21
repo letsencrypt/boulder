@@ -77,23 +77,6 @@ type CertificateAuthorityImpl struct {
 	hsmFaultTimeout      time.Duration
 }
 
-// checkHSMFault checks whether there has been an HSM fault observed within the
-// timeout window.  CA methods that use the HSM should call this method right
-// away, to minimize the performance impact of HSM outages.
-func (ca *CertificateAuthorityImpl) checkHSMFault() bool {
-	ca.hsmFaultLock.Lock()
-	defer ca.hsmFaultLock.Unlock()
-
-	now := ca.Clk.Now()
-	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
-	if timeout.Before(now) {
-		// Go ahead and try again
-		return false
-	}
-
-	return ca.hsmFault
-}
-
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
 // instance.  (To use a local signer, simply instantiate CertificateAuthorityImpl
 // directly.)  Communications with the CA are authenticated with MACs,
@@ -199,6 +182,23 @@ func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
 	priv, err = pkcs11key.New(pkcs11Config.Module,
 		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel)
 	return
+}
+
+// checkHSMFault checks whether there has been an HSM fault observed within the
+// timeout window.  CA methods that use the HSM should call this method right
+// away, to minimize the performance impact of HSM outages.
+func (ca *CertificateAuthorityImpl) checkHSMFault() bool {
+	ca.hsmFaultLock.Lock()
+	defer ca.hsmFaultLock.Unlock()
+
+	now := ca.Clk.Now()
+	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
+	if timeout.Before(now) {
+		// Go ahead and try again
+		return false
+	}
+
+	return ca.hsmFault
 }
 
 // noteHSMFault updates the CA's state with regard to HSM faults.  CA methods
