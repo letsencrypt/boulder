@@ -454,7 +454,7 @@ func TestHSMFaultTimeout(t *testing.T) {
 
 	// Swap in a good signer and move the clock forward to clear the fault
 	ca.Signer = goodSigner
-	ctx.fc.Add(hsmFaultTimeout)
+	ctx.fc.Add(ca.hsmFaultTimeout)
 	ctx.fc.Add(10 * time.Second)
 
 	// Check that the CA has recovered

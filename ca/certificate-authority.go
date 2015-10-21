@@ -59,9 +59,7 @@ const (
 	metricHSMFaultRejected = "CA.OCSP.HSMFault.Rejected"
 )
 
-// HSM faults tend to be persistent.  If we observe one, we will refuse any
-// further requests for signing (certificates or OCSP) for this period.
-const hsmFaultTimeout = 5 * 60 * time.Second
+const defaultHSMFaultTimeout = 5 * 60 * time.Second
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
@@ -82,6 +80,7 @@ type CertificateAuthorityImpl struct {
 
 	hsmFaultLock         sync.Mutex
 	hsmFaultLastObserved time.Time
+	hsmFaultTimeout      time.Duration
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -136,6 +135,16 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats sta
 		return nil, err
 	}
 
+	var hsmFaultTimeout time.Duration
+	if config.HSMFaultTimeout == "" {
+		hsmFaultTimeout = defaultHSMFaultTimeout
+	} else {
+		hsmFaultTimeout, err = time.ParseDuration(config.HSMFaultTimeout)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Set up our OCSP signer. Note this calls for both the issuer cert and the
 	// OCSP signing cert, which are the same in our case.
 	ocspSigner, err := ocsp.NewSigner(issuer, issuer, priv, lifespanOCSP)
@@ -144,14 +153,15 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats sta
 	}
 
 	ca = &CertificateAuthorityImpl{
-		Signer:     signer,
-		OCSPSigner: ocspSigner,
-		profile:    config.Profile,
-		Prefix:     config.SerialPrefix,
-		Clk:        clk,
-		log:        logger,
-		stats:      stats,
-		NotAfter:   issuer.NotAfter,
+		Signer:          signer,
+		OCSPSigner:      ocspSigner,
+		profile:         config.Profile,
+		Prefix:          config.SerialPrefix,
+		Clk:             clk,
+		log:             logger,
+		stats:           stats,
+		NotAfter:        issuer.NotAfter,
+		hsmFaultTimeout: hsmFaultTimeout,
 	}
 
 	if config.Expiry == "" {
@@ -200,7 +210,7 @@ func (ca *CertificateAuthorityImpl) checkHSMFault() bool {
 	defer ca.hsmFaultLock.Unlock()
 
 	now := ca.Clk.Now()
-	timeout := ca.hsmFaultLastObserved.Add(hsmFaultTimeout)
+	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
 	return now.Before(timeout)
 }
 
