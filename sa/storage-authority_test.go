@@ -28,16 +28,15 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
-
-const dbConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
 
 var log = mocks.UseMockLog()
 
 // initSA constructs a SQLStorageAuthority and a clean up function
 // that should be defer'ed to the end of the test.
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
-	dbMap, err := NewDbMap(dbConnStr)
+	dbMap, err := NewDbMap(vars.DBConnSA)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}

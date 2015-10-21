@@ -32,6 +32,7 @@ import (
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
 type DummyValidationAuthority struct {
@@ -121,11 +122,6 @@ var (
 	log = mocks.UseMockLog()
 )
 
-const (
-	paDBConnStr = "mysql+tcp://policy@localhost:3306/boulder_policy_test"
-	saDBConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
-)
-
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
 	keyAuthorization, err := core.NewKeyAuthorization(ch.Token, ch.AccountKey)
 	if err != nil {
@@ -156,7 +152,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	fc := clock.NewFake()
 
-	dbMap, err := sa.NewDbMap(saDBConnStr)
+	dbMap, err := sa.NewDbMap(vars.DBConnSA)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
@@ -188,7 +184,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	}
 	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
 	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
-	paDbMap, err := sa.NewDbMap(paDBConnStr)
+	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}

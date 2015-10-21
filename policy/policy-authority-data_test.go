@@ -10,10 +10,11 @@ import (
 
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
 func padbImpl(t *testing.T) (*PolicyAuthorityDatabaseImpl, func()) {
-	dbMap, err := sa.NewDbMap(dbConnStr)
+	dbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	test.AssertNotError(t, err, "Could not construct dbMap")
 
 	padb, err := NewPolicyAuthorityDatabaseImpl(dbMap)

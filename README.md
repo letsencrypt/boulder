@@ -17,6 +17,9 @@ in a Docker container, run:
 
     ./test/run-docker.sh
 
+**NOTE:** You will need to have `docker-compose` installed locally. Directions
+for installing can be found at [docs.docker.com/compose/install](https://docs.docker.com/compose/install/).
+
 Slow start
 ----------
 
