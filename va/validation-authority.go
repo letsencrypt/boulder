@@ -36,7 +36,7 @@ const maxRedirect = 10
 
 var validationTimeout = time.Second * 5
 
-// Returned by CheckCAARecords if it has to follow too many
+// ErrTooManyCNAME is returned by CheckCAARecords if it has to follow too many
 // consecutive CNAME lookups.
 var ErrTooManyCNAME = errors.New("too many CNAME/DNAME lookups")
 
