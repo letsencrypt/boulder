@@ -380,6 +380,7 @@ func ProfileCmd(profileName string, stats statsd.Statter) {
 	var memoryStats runtime.MemStats
 	prevNumGC := int64(0)
 	c := time.Tick(1 * time.Second)
+	var memoryStats runtime.MemStats
 	for range c {
 		runtime.ReadMemStats(&memoryStats)
 
