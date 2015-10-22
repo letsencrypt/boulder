@@ -37,87 +37,111 @@ def die(status):
     exit_status = status
     sys.exit(exit_status)
 
-# Fetch an OCSP response, parse it with OpenSSL, and return the output.
-def get_ocsp(cert_file, url):
-    ocsp_req_file = os.path.join(tempdir, "ocsp.req")
-    ocsp_resp_file = os.path.join(tempdir, "ocsp.resp")
-    # First generate the OCSP request in DER form
-    openssl_ocsp = "openssl ocsp -issuer ../test-ca.pem -cert %s.pem" % cert_file
-    openssl_ocsp_cmd = ("""
-      openssl x509 -in %s -out %s.pem -inform der -outform pem;
-      %s -no_nonce -reqout %s
-    """ % (cert_file, cert_file, openssl_ocsp, ocsp_req_file))
-    print openssl_ocsp_cmd
-    subprocess.check_output(openssl_ocsp_cmd, shell=True)
-    with open(ocsp_req_file) as f:
-        ocsp_req = f.read()
-    ocsp_req_b64 = base64.b64encode(ocsp_req)
+def fetch_ocsp(request_bytes, url):
+    """Fetch an OCSP response using POST, GET, and GET with URL encoding.
+
+    Returns a tuple of the responses.
+    """
+    ocsp_req_b64 = base64.b64encode(request_bytes)
 
     # Make the OCSP request three different ways: by POST, by GET, and by GET with
     # URL-encoded parameters. All three should have an identical response.
     get_response = urllib2.urlopen("%s/%s" % (url, ocsp_req_b64)).read()
     get_encoded_response = urllib2.urlopen("%s/%s" % (url, urllib.quote(ocsp_req_b64, safe = ""))).read()
-    post_response = urllib2.urlopen("%s/" % (url), ocsp_req).read()
+    post_response = urllib2.urlopen("%s/" % (url), request_bytes).read()
 
-    if get_response != get_encoded_response:
-        print "OCSP responses for GET and URL-encoded GET differed."
-        die(ExitStatus.OCSPFailure)
-    elif get_response != post_response:
-        print "OCSP responses for GET and POST differed."
-        die(ExitStatus.OCSPFailure)
+    return (post_response, get_response, get_encoded_response)
 
+def make_ocsp_req(cert_file, issuer_file):
+    """Return the bytes of an OCSP request for the given certificate file."""
+    ocsp_req_file = os.path.join(tempdir, "ocsp.req")
+    # First generate the OCSP request in DER form
+    cmd = ("openssl ocsp -no_nonce -issuer %s -cert %s -reqout %s" % (
+        issuer_file, cert_file, ocsp_req_file))
+    print cmd
+    subprocess.check_output(cmd, shell=True)
+    with open(ocsp_req_file) as f:
+        ocsp_req = f.read()
+    return ocsp_req
+
+def fetch_until(cert_file, issuer_file, url, initial, final):
+    """Fetch OCSP for cert_file until OCSP status goes from initial to final.
+
+    Initial and final are treated as regular expressions. Any OCSP response
+    whose OpenSSL OCSP verify output doesn't match either initial or final is
+    a fatal error.
+
+    If OCSP responses by the three methods (POST, GET, URL-encoded GET) differ
+    from each other, that is a fatal error.
+
+    If we loop for more than five seconds, that is a fatal error.
+
+    Returns nothing on success.
+    """
+    ocsp_request = make_ocsp_req(cert_file, issuer_file)
+    timeout = time.time() + 5
+    while True:
+        time.sleep(0.25)
+        if time.time() > timeout:
+            print("Timed out waiting for OCSP to go from '%s' to '%s'" % (
+                initial, final))
+            die(ExitStatus.OCSPFailure)
+        responses = fetch_ocsp(ocsp_request, url)
+        # This variable will be true at the end of the loop if all the responses
+        # matched the final state.
+        all_final = True
+        for resp in responses:
+            verify_output = ocsp_verify(cert_file, issuer_file, resp)
+            if re.search(initial, verify_output):
+                all_final = False
+                break
+            elif re.search(final, verify_output):
+                continue
+            else:
+                print verify_output
+                print("OCSP response didn't match '%s' or '%s'" %(
+                    initial, final))
+                die(ExitStatus.OCSPFailure)
+        if all_final:
+            # Check that all responses were equal to each other.
+            for resp in responses:
+                if resp != responses[0]:
+                    print "OCSP responses differed:"
+                    print(base64.b64encode(responses[0]))
+                    print(" vs ")
+                    print(base64.b64encode(resp))
+                    die(ExitStatus.OCSPFailure)
+            return
+
+def ocsp_verify(cert_file, issuer_file, ocsp_response):
+    ocsp_resp_file = os.path.join(tempdir, "ocsp.resp")
     with open(ocsp_resp_file, "w") as f:
-        f.write(get_response)
-
-    ocsp_verify_cmd = "%s -CAfile ../test-root.pem -respin %s" % (openssl_ocsp, ocsp_resp_file)
+        f.write(ocsp_response)
+    ocsp_verify_cmd = """openssl ocsp -no_nonce -issuer %s -cert %s \
+      -verify_other %s -CAfile ../test-root.pem \
+      -respin %s""" % (issuer_file, cert_file, issuer_file, ocsp_resp_file)
     print ocsp_verify_cmd
     try:
-        output = subprocess.check_output(ocsp_verify_cmd, shell=True)
+        output = subprocess.check_output(ocsp_verify_cmd,
+            shell=True, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
         output = e.output
         print output
         print "subprocess returned non-zero: %s" % e
         die(ExitStatus.OCSPFailure)
-
-    print output
+    # OpenSSL doesn't always return non-zero when response verify fails, so we
+    # also look for the string "Response Verify Failure"
+    verify_failure = "Response Verify Failure"
+    if re.search(verify_failure, output):
+        print output
+        die(ExitStatus.OCSPFailure)
     return output
 
-def verify_ocsp_good(certFile, url):
-    output = get_ocsp(certFile, url)
-    # Check if the output contains either ': good' or
-    # ' unauthorized (6)', if openssl produces something else fail out
-    # since these are the only two responses we expect. This
-    # allows the check to be looped until successful.
-    if not re.search(": good", output):
-        if not re.search(" unauthorized \(6\)", output):
-            print "Expected OCSP response 'unauthorized', got something else."
-            die(ExitStatus.OCSPFailure)
-        return False
-    return True
+def wait_for_ocsp_good(cert_file, issuer_file, url):
+    fetch_until(cert_file, issuer_file, url, " unauthorized", ": good")
 
-def verify_ocsp_revoked(certFile, url):
-    output = get_ocsp(certFile, url)
-    # Check if the output contains either ': revoked' or
-    # ': good', if openssl produces something else fail out
-    # since these are the only two responses we expect. This
-    # allows the check to be looped until successful.
-    if not re.search(": revoked", output):
-        if not re.search(": good", output):
-            print "Expected OCSP response 'good', got something else."
-            die(ExitStatus.OCSPFailure)
-        return False
-    return True
-
-# loop_check expects the function passed as action will return True/False to indicate
-# success/failure
-def loop_check(failureStatus, action, *args):
-    timeout = time.time() + 5
-    while True:
-        if action(*args):
-            break
-        if time.time() > timeout:
-            die(failureStatus)
-        time.sleep(0.25)
+def wait_for_ocsp_revoked(cert_file, issuer_file, url):
+    fetch_until(cert_file, issuer_file, url, ": good", ": revoked")
 
 def verify_ct_submission(expectedSubmissions, url):
     resp = urllib2.urlopen(url)
@@ -139,38 +163,42 @@ def run_node_test():
     if subprocess.Popen('npm install', shell=True).wait() != 0:
         print("\n Installing NPM modules failed")
         die(ExitStatus.Error)
-    certFile = os.path.join(tempdir, "cert.der")
-    keyFile = os.path.join(tempdir, "key.pem")
+    cert_file = os.path.join(tempdir, "cert.der")
+    cert_file_pem = os.path.join(tempdir, "cert.pem")
+    key_file = os.path.join(tempdir, "key.pem")
     # Pick a random hostname so we don't run into certificate rate limiting.
     domain = subprocess.check_output("openssl rand -hex 6", shell=True).strip()
+    # Issue the certificate and transform it from DER-encoded to PEM-encoded.
     if subprocess.Popen('''
         node test.js --email foo@letsencrypt.org --agree true \
           --domains www.%s-TEST.com --new-reg http://localhost:4000/acme/new-reg \
-          --certKey %s --cert %s
-        ''' % (domain, keyFile, certFile), shell=True).wait() != 0:
+          --certKey %s --cert %s && \
+        openssl x509 -in %s -out %s -inform der -outform pem
+        ''' % (domain, key_file, cert_file, cert_file, cert_file_pem),
+        shell=True).wait() != 0:
         print("\nIssuing failed")
         die(ExitStatus.NodeFailure)
 
     ee_ocsp_url = "http://localhost:4002"
     issuer_ocsp_url = "http://localhost:4003"
 
-    # Also verify that the static OCSP responder, which answers with a
-    # pre-signed, long-lived response for the CA cert, also works.
-    verify_ocsp_good("../test-ca.der", issuer_ocsp_url)
-
-    # As OCSP-Updater is generating responses indepedantly of the CA we sit in a loop
+    # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    loop_check(ExitStatus.OCSPFailure, verify_ocsp_good, certFile, ee_ocsp_url)
+    wait_for_ocsp_good(cert_file_pem, "../test-ca.pem", ee_ocsp_url)
+
+    # Verify that the static OCSP responder, which answers with a
+    # pre-signed, long-lived response for the CA cert, works.
+    wait_for_ocsp_good("../test-ca.pem", "../test-root.pem", issuer_ocsp_url)
 
     verify_ct_submission(1, "http://localhost:4500/submissions")
 
     if subprocess.Popen('''
         node revoke.js %s %s http://localhost:4000/acme/revoke-cert
-        ''' % (certFile, keyFile), shell=True).wait() != 0:
+        ''' % (cert_file, key_file), shell=True).wait() != 0:
         print("\nRevoking failed")
         die(ExitStatus.NodeFailure)
 
-    loop_check(ExitStatus.OCSPFailure, verify_ocsp_revoked, certFile, ee_ocsp_url)
+    wait_for_ocsp_revoked(cert_file_pem, "../test-ca.pem", ee_ocsp_url)
     return 0
 
 

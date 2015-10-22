@@ -5,8 +5,8 @@
 # occurs last in the file will take priority.
 #
 # The response were generated with:
-# openssl x509 -outform der -in test/test-ca.pem  -out test/test-ca.der
-# single-ocsp --issuer test/test-ca.der --responder test/test-ca.der \
+# openssl x509 -outform der -in test/test-root.pem  -out test/test-root.der
+# single-ocsp --issuer test/test-root.der --responder test/test-root.der \
 #   --target test/test-ca.der --template template.json  --pkcs11 ~/pkcs11.json \
 #   --out ocsp.rsp
 # base64 ocsp.rsp | tr -d '\n' > issuer-ocsp-responses.txt
