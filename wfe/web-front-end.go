@@ -568,6 +568,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(logEvent *requestEvent, response htt
 		if err == nil {
 			init.InitialIP = net.ParseIP(host)
 		} else {
+			logEvent.AddError("Couldn't parse RemoteAddr: %s", request.RemoteAddr)
 			wfe.sendError(response, logEvent, "couldn't parse the remote (that is, the client's) address", nil, http.StatusInternalServerError)
 			return
 		}
@@ -575,6 +576,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(logEvent *requestEvent, response htt
 
 	reg, err := wfe.RA.NewRegistration(init)
 	if err != nil {
+		logEvent.AddError("unable to create new registration: %s", err)
 		wfe.sendError(response, logEvent, "Error creating new registration", err, statusCodeFromError(err))
 		return
 	}
@@ -587,6 +589,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(logEvent *requestEvent, response htt
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
 		// StatusInternalServerError because we just created this registration, it should be OK.
+		logEvent.AddError("unable to marsh registration: %s", err)
 		wfe.sendError(response, logEvent, "Error marshaling registration", err, http.StatusInternalServerError)
 		return
 	}
@@ -626,6 +629,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(logEvent *requestEvent, response ht
 
 	var init core.Authorization
 	if err = json.Unmarshal(body, &init); err != nil {
+		logEvent.AddError("unable to JSON unmarshal Authorization: %s", err)
 		wfe.sendError(response, logEvent, "Error unmarshaling JSON", err, http.StatusBadRequest)
 		return
 	}
@@ -634,6 +638,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(logEvent *requestEvent, response ht
 	// Create new authz and return
 	authz, err := wfe.RA.NewAuthorization(init, currReg.ID)
 	if err != nil {
+		logEvent.AddError("unable to create new authz: %s", err)
 		wfe.sendError(response, logEvent, "Error creating new authz", err, statusCodeFromError(err))
 		return
 	}
@@ -676,13 +681,13 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response h
 	}
 	var revokeRequest RevokeRequest
 	if err = json.Unmarshal(body, &revokeRequest); err != nil {
-		wfe.log.Debug(fmt.Sprintf("Couldn't unmarshal in revoke request %s", string(body)))
+		logEvent.AddError(fmt.Sprintf("Couldn't unmarshal in revoke request %s", string(body)))
 		wfe.sendError(response, logEvent, "Unable to read/verify body", err, http.StatusBadRequest)
 		return
 	}
 	providedCert, err := x509.ParseCertificate(revokeRequest.CertificateDER)
 	if err != nil {
-		wfe.log.Debug("Couldn't parse cert in revoke request.")
+		logEvent.AddError("unable to parse revoke certificate DER: %s", err)
 		wfe.sendError(response, logEvent, "Unable to read/verify body", err, http.StatusBadRequest)
 		return
 	}
@@ -707,12 +712,14 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response h
 
 	certStatus, err := wfe.SA.GetCertificateStatus(serial)
 	if err != nil {
+		logEvent.AddError("unable to get certificate status: %s", err)
 		wfe.sendError(response, logEvent, "Certificate status not yet available", err, http.StatusNotFound)
 		return
 	}
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
 
 	if certStatus.Status == core.OCSPStatusRevoked {
+		logEvent.AddError("Certificate already revoked: %#v", serial)
 		wfe.sendError(response, logEvent, "Certificate already revoked", "", http.StatusConflict)
 		return
 	}
@@ -730,6 +737,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response h
 	// Use revocation code 0, meaning "unspecified"
 	err = wfe.RA.RevokeCertificateWithReg(*parsedCertificate, 0, registration.ID)
 	if err != nil {
+		logEvent.AddError("failed to revoke certificate: %s", err)
 		wfe.sendError(response, logEvent, "Failed to revoke certificate", err, statusCodeFromError(err))
 	} else {
 		wfe.log.Debug(fmt.Sprintf("Revoked %v", serial))
@@ -775,6 +783,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(logEvent *requestEvent, response http
 
 	var certificateRequest core.CertificateRequest
 	if err = json.Unmarshal(body, &certificateRequest); err != nil {
+		logEvent.AddError("unable to JSON unmarshal CertificateRequest: %s", err)
 		wfe.sendError(response, logEvent, "Error unmarshaling certificate request", err, http.StatusBadRequest)
 		return
 	}
@@ -786,6 +795,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(logEvent *requestEvent, response http
 	// a bad key from the client is just a malformed request and doesn't need to
 	// be audited.
 	if err = core.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
+		logEvent.AddError("CSR public key failed GoodKey: %s", err)
 		wfe.sendError(response, logEvent, "Invalid key in certificate request", err, http.StatusBadRequest)
 		return
 	}
@@ -801,6 +811,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(logEvent *requestEvent, response http
 	// RA for secondary validation.
 	cert, err := wfe.RA.NewCertificate(certificateRequest, reg.ID)
 	if err != nil {
+		logEvent.AddError("unable to create new cert: %s", err)
 		wfe.sendError(response, logEvent, "Error creating new cert", err, statusCodeFromError(err))
 		return
 	}
@@ -811,6 +822,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(logEvent *requestEvent, response http
 	// enumerate and mirror our certificates.
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
+		logEvent.AddError("unable to parse certificate: %s", err)
 		wfe.sendError(response, logEvent, "Error creating new cert", err, http.StatusBadRequest)
 		return
 	}
@@ -928,6 +940,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	if err != nil {
 		// InternalServerError because this is a failure to decode data passed in
 		// by the caller, which got it from the DB.
+		logEvent.AddError("unable to marshal challenge: %s", err)
 		wfe.sendError(response, logEvent, "Failed to marshal challenge", err, http.StatusInternalServerError)
 		return
 	}
@@ -973,6 +986,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// Check that the registration ID matching the key used matches
 	// the registration ID on the authz object
 	if currReg.ID != authz.RegistrationID {
+		logEvent.AddError("User registration id: %d != Authorization registration id: %v", currReg.ID, authz.RegistrationID)
 		wfe.sendError(response, logEvent, "User registration ID doesn't match registration ID in authorization",
 			"",
 			http.StatusForbidden)
@@ -981,6 +995,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 	var challengeUpdate core.Challenge
 	if err = json.Unmarshal(body, &challengeUpdate); err != nil {
+		logEvent.AddError("error JSON unmarshalling challenge response: %s", err)
 		wfe.sendError(response, logEvent, "Error unmarshaling challenge response", err, http.StatusBadRequest)
 		return
 	}
@@ -988,6 +1003,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// Ask the RA to update this authorization
 	updatedAuthorization, err := wfe.RA.UpdateAuthorization(authz, challengeIndex, challengeUpdate)
 	if err != nil {
+		logEvent.AddError("unable to update challenge: %s", err)
 		wfe.sendError(response, logEvent, "Unable to update challenge", err, statusCodeFromError(err))
 		return
 	}
@@ -998,6 +1014,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	jsonReply, err := json.Marshal(challenge)
 	if err != nil {
 		// StatusInternalServerError because we made the challenges, they should be OK
+		logEvent.AddError("failed to marshal challenge: %s", err)
 		wfe.sendError(response, logEvent, "Failed to marshal challenge", err, http.StatusInternalServerError)
 		return
 	}
@@ -1035,12 +1052,15 @@ func (wfe *WebFrontEndImpl) Registration(logEvent *requestEvent, response http.R
 	idStr := parseIDFromPath(request.URL.Path)
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
+		logEvent.AddError("registration ID must be an integer, was %#v", idStr)
 		wfe.sendError(response, logEvent, "Registration ID must be an integer", err, http.StatusBadRequest)
 		return
 	} else if id <= 0 {
+		logEvent.AddError("Registration ID must be a positive non-zero integer, was %d", id)
 		wfe.sendError(response, logEvent, "Registration ID must be a positive non-zero integer", id, http.StatusBadRequest)
 		return
 	} else if id != currReg.ID {
+		logEvent.AddError("Request signing key did not match registration key: %d != %d", id, currReg.ID)
 		wfe.sendError(response, logEvent, "Request signing key did not match registration key", "", http.StatusForbidden)
 		return
 	}
@@ -1048,6 +1068,7 @@ func (wfe *WebFrontEndImpl) Registration(logEvent *requestEvent, response http.R
 	var update core.Registration
 	err = json.Unmarshal(body, &update)
 	if err != nil {
+		logEvent.AddError("unable to JSON parse registration: %s", err)
 		wfe.sendError(response, logEvent, "Error unmarshaling registration", err, http.StatusBadRequest)
 		return
 	}
@@ -1068,6 +1089,7 @@ func (wfe *WebFrontEndImpl) Registration(logEvent *requestEvent, response http.R
 	// Ask the RA to update this authorization.
 	updatedReg, err := wfe.RA.UpdateRegistration(currReg, update)
 	if err != nil {
+		logEvent.AddError("unable to update registration: %s", err)
 		wfe.sendError(response, logEvent, "Unable to update registration", err, statusCodeFromError(err))
 		return
 	}
@@ -1075,6 +1097,7 @@ func (wfe *WebFrontEndImpl) Registration(logEvent *requestEvent, response http.R
 	jsonReply, err := json.Marshal(updatedReg)
 	if err != nil {
 		// StatusInternalServerError because we just generated the reg, it should be OK
+		logEvent.AddError("unable to marshal updated registration: %s", err)
 		wfe.sendError(response, logEvent, "Failed to marshal registration", err, http.StatusInternalServerError)
 		return
 	}
@@ -1094,6 +1117,7 @@ func (wfe *WebFrontEndImpl) Authorization(logEvent *requestEvent, response http.
 	id := parseIDFromPath(request.URL.Path)
 	authz, err := wfe.SA.GetAuthorization(id)
 	if err != nil {
+		logEvent.AddError("No such authorization at id %s", id)
 		wfe.sendError(response, logEvent, "Unable to find authorization", err, http.StatusNotFound)
 		return
 	}
@@ -1115,6 +1139,7 @@ func (wfe *WebFrontEndImpl) Authorization(logEvent *requestEvent, response http.
 	jsonReply, err := json.Marshal(authz)
 	if err != nil {
 		// InternalServerError because this is a failure to decode from our DB.
+		logEvent.AddError("Failed to JSON marshal authz: %s", err)
 		wfe.sendError(response, logEvent, "Failed to JSON marshal authz", err, http.StatusInternalServerError)
 		return
 	}
@@ -1122,7 +1147,7 @@ func (wfe *WebFrontEndImpl) Authorization(logEvent *requestEvent, response http.
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(jsonReply); err != nil {
-		logEvent.AddError("unable to write authorization update response: %s", err)
+		logEvent.AddError(err.Error())
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 }
@@ -1137,12 +1162,14 @@ func (wfe *WebFrontEndImpl) Certificate(logEvent *requestEvent, response http.Re
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
 	// digits.
 	if !strings.HasPrefix(path, CertPath) {
+		logEvent.AddError("this request path should not have gotten to Certificate: %#v is not a prefix of %#v", path, CertPath)
 		wfe.sendError(response, logEvent, "Certificate not found", path, http.StatusNotFound)
 		addNoCacheHeader(response)
 		return
 	}
 	serial := path[len(CertPath):]
 	if !core.ValidSerial(serial) {
+		logEvent.AddError("certificate serial provided was not valid: %s", serial)
 		wfe.sendError(response, logEvent, "Certificate not found", serial, http.StatusNotFound)
 		addNoCacheHeader(response)
 		return
@@ -1151,6 +1178,7 @@ func (wfe *WebFrontEndImpl) Certificate(logEvent *requestEvent, response http.Re
 
 	cert, err := wfe.SA.GetCertificate(serial)
 	if err != nil {
+		logEvent.AddError("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
 			wfe.sendError(response, logEvent, "Multiple certificates with same short serial", err, http.StatusConflict)
 		} else {
@@ -1167,6 +1195,7 @@ func (wfe *WebFrontEndImpl) Certificate(logEvent *requestEvent, response http.Re
 	response.Header().Add("Link", link(IssuerPath, "up"))
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(cert.DER); err != nil {
+		logEvent.AddError(err.Error())
 		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
 	}
 	return
