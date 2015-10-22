@@ -205,7 +205,10 @@ func (ca *CertificateAuthorityImpl) checkHSMFault() error {
 	now := ca.Clk.Now()
 	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
 	if now.Before(timeout) {
-		return core.ServiceUnavailableError("HSM is unavailable")
+		err := core.ServiceUnavailableError("HSM is unavailable")
+		ca.log.WarningErr(err)
+		ca.stats.Inc(metricHSMFaultRejected, 1, 1.0)
+		return err
 	}
 	return nil
 }
@@ -226,8 +229,6 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
 	if err := ca.checkHSMFault(); err != nil {
-		ca.log.WarningErr(err)
-		ca.stats.Inc(metricHSMFaultRejected, 1, 1.0)
 		return nil, err
 	}
 
@@ -264,8 +265,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	var err error
 
 	if err := ca.checkHSMFault(); err != nil {
-		ca.log.WarningErr(err)
-		ca.stats.Inc(metricHSMFaultRejected, 1, 1.0)
 		return emptyCert, err
 	}
 
