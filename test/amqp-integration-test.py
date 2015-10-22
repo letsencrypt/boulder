@@ -171,7 +171,7 @@ def run_node_test():
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
     if subprocess.Popen('''
         node test.js --email foo@letsencrypt.org --agree true \
-          --domains www.%s.com --new-reg http://localhost:4000/acme/new-reg \
+          --domains www.%s-TEST.com --new-reg http://localhost:4000/acme/new-reg \
           --certKey %s --cert %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
         ''' % (domain, key_file, cert_file, cert_file, cert_file_pem),

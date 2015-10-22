@@ -325,9 +325,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 //		* IsCA is false
 //		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
 //		* Subject only contains CommonName & Names
-func (ra *RegistrationAuthorityImpl) MatchesCSR(
-	cert core.Certificate,
-	csr *x509.CertificateRequest) (err error) {
+func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509.CertificateRequest) (err error) {
 	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
 	if err != nil {
 		return
@@ -345,7 +343,8 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(
 		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
 		return
 	}
-	if len(csr.Subject.CommonName) > 0 && parsedCertificate.Subject.CommonName != csr.Subject.CommonName {
+	if len(csr.Subject.CommonName) > 0 &&
+		parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
 		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
 		return
 	}

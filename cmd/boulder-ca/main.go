@@ -39,7 +39,7 @@ func main() {
 		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		cai, err := ca.NewCertificateAuthorityImpl(c.CA, clock.Default(), c.Common.IssuerCert)
+		cai, err := ca.NewCertificateAuthorityImpl(c.CA, clock.Default(), stats, c.Common.IssuerCert)
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.PA = pa
 
