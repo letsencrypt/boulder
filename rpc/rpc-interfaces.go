@@ -12,7 +12,6 @@ import (
 // Client describes the functions an RPC Client performs
 type Client interface {
 	SetTimeout(time.Duration)
-	Dispatch(string, []byte) chan []byte
 	DispatchSync(string, []byte) ([]byte, error)
 }
 

@@ -14,7 +14,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -23,17 +22,11 @@ import (
 	"github.com/letsencrypt/boulder/wfe"
 )
 
-func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient, chan *amqp.Error) {
-	ch, err := rpc.AmqpChannel(c)
-	cmd.FailOnError(err, "Could not connect to AMQP")
-	logger.Info(" [!] Connected to AMQP")
-
-	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
-
-	raRPC, err := rpc.NewAmqpRPCClient("WFE->RA", c.AMQP.RA.Server, ch, stats)
+func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient) {
+	raRPC, err := rpc.NewAmqpRPCClient("WFE->RA", c.AMQP.RA.Server, c, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
-	saRPC, err := rpc.NewAmqpRPCClient("WFE->SA", c.AMQP.SA.Server, ch, stats)
+	saRPC, err := rpc.NewAmqpRPCClient("WFE->SA", c.AMQP.SA.Server, c, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
@@ -42,7 +35,7 @@ func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (rpc
 	sac, err := rpc.NewStorageAuthorityClient(saRPC)
 	cmd.FailOnError(err, "Unable to create SA client")
 
-	return rac, sac, closeChan
+	return rac, sac
 }
 
 func main() {
@@ -78,7 +71,7 @@ func main() {
 
 		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default())
 		cmd.FailOnError(err, "Unable to create WFE")
-		rac, sac, closeChan := setupWFE(c, auditlogger, stats)
+		rac, sac := setupWFE(c, auditlogger, stats)
 		wfe.RA = &rac
 		wfe.SA = &sac
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
@@ -103,21 +96,6 @@ func main() {
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
 		go cmd.ProfileCmd("WFE", stats)
-
-		go func() {
-			// sit around and reconnect to AMQP if the channel
-			// drops for some reason and repopulate the wfe object
-			// with new RA and SA rpc clients.
-			for {
-				for err := range closeChan {
-					auditlogger.Warning(fmt.Sprintf(" [!] AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
-					time.Sleep(time.Second * 5)
-					rac, sac, closeChan = setupWFE(c, auditlogger, stats)
-					wfe.RA = &rac
-					wfe.SA = &sac
-				}
-			}
-		}()
 
 		// Set up paths
 		wfe.BaseURL = c.Common.BaseURL

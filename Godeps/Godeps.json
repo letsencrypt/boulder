@@ -97,6 +97,10 @@
 			"Rev": "a197e5d40516f2e9f74dcee085a5f2d4604e94df"
 		},
 		{
+			"ImportPath": "github.com/golang/mock/gomock",
+			"Rev": "06883d979f10cc178f2716846215c8cf90f9e363"
+		},
+		{
 			"ImportPath": "github.com/jmhodges/clock",
 			"Rev": "3c4ebd218625c9364c33db6d39c276d80c3090c6"
 		},

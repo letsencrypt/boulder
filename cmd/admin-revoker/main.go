@@ -48,10 +48,7 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.
 	cmd.FailOnError(err, "Could not connect to Syslog")
 	blog.SetAuditLogger(auditlogger)
 
-	ch, err := rpc.AmqpChannel(c)
-	cmd.FailOnError(err, "Could not connect to AMQP")
-
-	raRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->RA", c.AMQP.RA.Server, ch, stats)
+	raRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->RA", c.AMQP.RA.Server, c, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
@@ -60,7 +57,7 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.
 	dbMap, err := sa.NewDbMap(c.Revoker.DBConnect)
 	cmd.FailOnError(err, "Couldn't setup database connection")
 
-	saRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->SA", c.AMQP.SA.Server, ch, stats)
+	saRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->SA", c.AMQP.SA.Server, c, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	sac, err := rpc.NewStorageAuthorityClient(saRPC)
