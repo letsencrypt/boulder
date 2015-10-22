@@ -151,9 +151,10 @@ func setup(t *testing.T) *testCtx {
 		Key: cmd.KeyConfig{
 			File: caKeyFile,
 		},
-		Expiry:       "8760h",
-		LifespanOCSP: "45m",
-		MaxNames:     2,
+		Expiry:          "8760h",
+		LifespanOCSP:    "45m",
+		MaxNames:        2,
+		HSMFaultTimeout: cmd.ConfigDuration{60 * time.Second},
 		CFSSL: cfsslConfig.Config{
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{
@@ -442,11 +443,11 @@ func TestHSMFaultTimeout(t *testing.T) {
 	// Check that the CA rejects the next call as the HSM being down
 	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertError(t, err, "CA failed to persist HSM fault")
-	test.AssertEquals(t, err.Error(), "IssueCertificate call rejected; HSM is unavailable")
+	test.AssertEquals(t, err.Error(), "HSM is unavailable")
 
 	_, err = ca.GenerateOCSP(ocspRequest)
 	test.AssertError(t, err, "CA failed to persist HSM fault")
-	test.AssertEquals(t, err.Error(), "GenerateOCSP call rejected; HSM is unavailable")
+	test.AssertEquals(t, err.Error(), "HSM is unavailable")
 
 	// Swap in a good signer and move the clock forward to clear the fault
 	ca.Signer = goodSigner
@@ -466,11 +467,11 @@ func TestHSMFaultTimeout(t *testing.T) {
 
 	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertError(t, err, "CA failed to persist HSM fault")
-	test.AssertEquals(t, err.Error(), "IssueCertificate call rejected; HSM is unavailable")
+	test.AssertEquals(t, err.Error(), "HSM is unavailable")
 
 	_, err = ca.GenerateOCSP(ocspRequest)
 	test.AssertError(t, err, "CA failed to persist HSM fault")
-	test.AssertEquals(t, err.Error(), "GenerateOCSP call rejected; HSM is unavailable")
+	test.AssertEquals(t, err.Error(), "HSM is unavailable")
 
 	// Verify that the appropriate stats got recorded for all this
 	test.AssertEquals(t, ctx.stats.Counters[metricHSMFaultObserved], int64(2))

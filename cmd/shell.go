@@ -240,7 +240,7 @@ type CAConfig struct {
 
 	MaxConcurrentRPCServerRequests int64
 
-	HSMFaultTimeout string
+	HSMFaultTimeout ConfigDuration
 
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string

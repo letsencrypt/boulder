@@ -59,8 +59,6 @@ const (
 	metricHSMFaultRejected = "CA.OCSP.HSMFault.Rejected"
 )
 
-const defaultHSMFaultTimeout = 5 * 60 * time.Second
-
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
@@ -135,16 +133,6 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats sta
 		return nil, err
 	}
 
-	var hsmFaultTimeout time.Duration
-	if config.HSMFaultTimeout == "" {
-		hsmFaultTimeout = defaultHSMFaultTimeout
-	} else {
-		hsmFaultTimeout, err = time.ParseDuration(config.HSMFaultTimeout)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	// Set up our OCSP signer. Note this calls for both the issuer cert and the
 	// OCSP signing cert, which are the same in our case.
 	ocspSigner, err := ocsp.NewSigner(issuer, issuer, priv, lifespanOCSP)
@@ -161,7 +149,7 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats sta
 		log:             logger,
 		stats:           stats,
 		NotAfter:        issuer.NotAfter,
-		hsmFaultTimeout: hsmFaultTimeout,
+		hsmFaultTimeout: config.HSMFaultTimeout.Duration,
 	}
 
 	if config.Expiry == "" {
@@ -205,13 +193,21 @@ func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
 // checkHSMFault checks whether there has been an HSM fault observed within the
 // timeout window.  CA methods that use the HSM should call this method right
 // away, to minimize the performance impact of HSM outages.
-func (ca *CertificateAuthorityImpl) checkHSMFault() bool {
+func (ca *CertificateAuthorityImpl) checkHSMFault() error {
 	ca.hsmFaultLock.Lock()
 	defer ca.hsmFaultLock.Unlock()
 
+	// If no timeout is set, never gate on a fault
+	if ca.hsmFaultTimeout == 0 {
+		return nil
+	}
+
 	now := ca.Clk.Now()
 	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
-	return now.Before(timeout)
+	if now.Before(timeout) {
+		return core.ServiceUnavailableError("HSM is unavailable")
+	}
+	return nil
 }
 
 // noteHSMFault updates the CA's state with regard to HSM faults.  CA methods
@@ -229,8 +225,7 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
-	if ca.checkHSMFault() {
-		err := core.ServiceUnavailableError("GenerateOCSP call rejected; HSM is unavailable")
+	if err := ca.checkHSMFault(); err != nil {
 		ca.log.WarningErr(err)
 		ca.stats.Inc(metricHSMFaultRejected, 1, 1.0)
 		return nil, err
@@ -268,8 +263,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	emptyCert := core.Certificate{}
 	var err error
 
-	if ca.checkHSMFault() {
-		err := core.ServiceUnavailableError("IssueCertificate call rejected; HSM is unavailable")
+	if err := ca.checkHSMFault(); err != nil {
 		ca.log.WarningErr(err)
 		ca.stats.Inc(metricHSMFaultRejected, 1, 1.0)
 		return emptyCert, err
@@ -382,9 +376,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	certPEM, err := ca.Signer.Sign(req)
 	ca.noteHSMFault(err)
 	if err != nil {
-		// Since we just used the HSM (if we're using one), note whether it worked
-		// or not.
-
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.Audit(fmt.Sprintf("Signer failed, rolling back: serial=[%s] err=[%v]", serialHex, err))
