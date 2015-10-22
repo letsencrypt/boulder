@@ -417,7 +417,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 	} else {
 		// If the lookup was successful, use that key.
 		key = &reg.Key
-		logEvent.RegistrationID = reg.ID
+		logEvent.Requester = reg.ID
 		logEvent.Contacts = reg.Contact
 	}
 
@@ -498,7 +498,6 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 	}
 
 	// Record details to the log event
-	logEvent.Status = code
 	logEvent.AddError(msg)
 
 	// Only audit log internal errors so users cannot purposefully cause
@@ -579,7 +578,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(logEvent *requestEvent, response htt
 		wfe.sendError(response, logEvent, "Error creating new registration", err, statusCodeFromError(err))
 		return
 	}
-	logEvent.RegistrationID = reg.ID
+	logEvent.Requester = reg.ID
 	logEvent.Contacts = reg.Contact
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains

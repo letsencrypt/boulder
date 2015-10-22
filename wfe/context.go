@@ -3,7 +3,6 @@ package wfe
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
@@ -12,16 +11,16 @@ import (
 )
 
 type requestEvent struct {
-	ID             string    `json:",omitempty"`
-	ClientAddr     string    `json:",omitempty"`
-	Path           string    `json:",omitempty"`
-	Method         string    `json:",omitempty"`
-	Status         int       `json:",omitEmpty"`
-	RequestTime    time.Time `json:",omitempty"`
-	ResponseTime   time.Time `json:",omitempty"`
-	Errors         []string
-	RegistrationID int64           `json:",omitempty"`
-	Contacts       []*core.AcmeURL `json:",omitempty"`
+	ID           string    `json:",omitempty"`
+	RealIP       string    `json:",omitempty"`
+	ClientAddr   string    `json:",omitempty"`
+	Endpoint     string    `json:",omitempty"`
+	Method       string    `json:",omitempty"`
+	RequestTime  time.Time `json:",omitempty"`
+	ResponseTime time.Time `json:",omitempty"`
+	Errors       []string
+	Requester    int64           `json:",omitempty"`
+	Contacts     []*core.AcmeURL `json:",omitempty"`
 
 	Extra map[string]interface{} `json:",omitempty"`
 }
@@ -49,13 +48,14 @@ type topHandler struct {
 func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEvent := &requestEvent{
 		ID:          core.NewToken(),
+		RealIP:      r.Header.Get("X-Real-IP"),
 		ClientAddr:  getClientAddr(r),
 		Method:      r.Method,
 		RequestTime: time.Now(),
 		Extra:       make(map[string]interface{}, 0),
 	}
 	if r.URL != nil {
-		logEvent.Path = r.URL.String()
+		logEvent.Endpoint = r.URL.String()
 	}
 	defer th.logEvent(logEvent)
 
@@ -73,14 +73,13 @@ func (th *topHandler) logEvent(logEvent *requestEvent) {
 	th.log.InfoObject(msg, logEvent)
 }
 
-// Comma-separated list of HTTP clients involved in making this request,
-// including the remote end of our TCP connection (which is typically our own
-// proxy) as well as addresses from the X-Forwarded-For and X-Real-IP headers.
+// Comma-separated list of HTTP clients involved in making this
+// request, starting with the original requestor and ending with the
+// remote end of our TCP connection (which is typically our own
+// proxy).
 func getClientAddr(r *http.Request) string {
-	addrs := []string{
-		r.RemoteAddr,
-		r.Header.Get("X-Forwarded-For"),
-		r.Header.Get("X-Real-IP"),
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		return xff + "," + r.RemoteAddr
 	}
-	return strings.Join(addrs, ",")
+	return r.RemoteAddr
 }
