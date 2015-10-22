@@ -111,7 +111,8 @@
         }
       }
     },
-    "maxConcurrentRPCServerRequests": 16
+    "maxConcurrentRPCServerRequests": 16,
+    "hsmFaultTimeout": "300s"
   },
 
   "pa": {

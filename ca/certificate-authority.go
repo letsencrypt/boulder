@@ -17,8 +17,10 @@ import (
 	"io/ioutil"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -48,6 +50,15 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA1:             true,
 }
 
+// Metrics for CA statistics
+const (
+	// Increments when CA observes an HSM fault
+	metricHSMFaultObserved = "CA.OCSP.HSMFault.Observed"
+
+	// Increments when CA rejects a request due to an HSM fault
+	metricHSMFaultRejected = "CA.OCSP.HSMFault.Rejected"
+)
+
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
@@ -59,10 +70,15 @@ type CertificateAuthorityImpl struct {
 	Publisher      core.Publisher
 	Clk            clock.Clock // TODO(jmhodges): should be private, like log
 	log            *blog.AuditLogger
+	stats          statsd.Statter
 	Prefix         int // Prepended to the serial number
 	ValidityPeriod time.Duration
 	NotAfter       time.Time
 	MaxNames       int
+
+	hsmFaultLock         sync.Mutex
+	hsmFaultLastObserved time.Time
+	hsmFaultTimeout      time.Duration
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -71,7 +87,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, issuerCert string) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats statsd.Statter, issuerCert string) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -125,13 +141,15 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, issuerCer
 	}
 
 	ca = &CertificateAuthorityImpl{
-		Signer:     signer,
-		OCSPSigner: ocspSigner,
-		profile:    config.Profile,
-		Prefix:     config.SerialPrefix,
-		Clk:        clk,
-		log:        logger,
-		NotAfter:   issuer.NotAfter,
+		Signer:          signer,
+		OCSPSigner:      ocspSigner,
+		profile:         config.Profile,
+		Prefix:          config.SerialPrefix,
+		Clk:             clk,
+		log:             logger,
+		stats:           stats,
+		NotAfter:        issuer.NotAfter,
+		hsmFaultTimeout: config.HSMFaultTimeout.Duration,
 	}
 
 	if config.Expiry == "" {
@@ -172,8 +190,48 @@ func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
 	return
 }
 
+// checkHSMFault checks whether there has been an HSM fault observed within the
+// timeout window.  CA methods that use the HSM should call this method right
+// away, to minimize the performance impact of HSM outages.
+func (ca *CertificateAuthorityImpl) checkHSMFault() error {
+	ca.hsmFaultLock.Lock()
+	defer ca.hsmFaultLock.Unlock()
+
+	// If no timeout is set, never gate on a fault
+	if ca.hsmFaultTimeout == 0 {
+		return nil
+	}
+
+	now := ca.Clk.Now()
+	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
+	if now.Before(timeout) {
+		err := core.ServiceUnavailableError("HSM is unavailable")
+		ca.log.WarningErr(err)
+		ca.stats.Inc(metricHSMFaultRejected, 1, 1.0)
+		return err
+	}
+	return nil
+}
+
+// noteHSMFault updates the CA's state with regard to HSM faults.  CA methods
+// that use an HSM should pass errors that might be HSM errors to this method.
+func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
+	ca.hsmFaultLock.Lock()
+	defer ca.hsmFaultLock.Unlock()
+
+	if err != nil {
+		ca.stats.Inc(metricHSMFaultObserved, 1, 1.0)
+		ca.hsmFaultLastObserved = ca.Clk.Now()
+	}
+	return
+}
+
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
+	if err := ca.checkHSMFault(); err != nil {
+		return nil, err
+	}
+
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -189,6 +247,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 	}
 
 	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
+	ca.noteHSMFault(err)
 	return ocspResponse, err
 }
 
@@ -204,6 +263,11 @@ func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode 
 func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	var err error
+
+	if err := ca.checkHSMFault(); err != nil {
+		return emptyCert, err
+	}
+
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
 		err = core.MalformedRequestError("Invalid public key in CSR.")
@@ -309,6 +373,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	certPEM, err := ca.Signer.Sign(req)
+	ca.noteHSMFault(err)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
