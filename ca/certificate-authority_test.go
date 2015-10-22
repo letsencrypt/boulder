@@ -112,6 +112,7 @@ type testCtx struct {
 	reg      core.Registration
 	pa       core.PolicyAuthority
 	fc       clock.FakeClock
+	stats    *mocks.Statter
 	cleanUp  func()
 }
 
@@ -150,9 +151,10 @@ func setup(t *testing.T) *testCtx {
 		Key: cmd.KeyConfig{
 			File: caKeyFile,
 		},
-		Expiry:       "8760h",
-		LifespanOCSP: "45m",
-		MaxNames:     2,
+		Expiry:          "8760h",
+		LifespanOCSP:    "45m",
+		MaxNames:        2,
+		HSMFaultTimeout: cmd.ConfigDuration{Duration: 60 * time.Second},
 		CFSSL: cfsslConfig.Config{
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{
@@ -188,7 +190,10 @@ func setup(t *testing.T) *testCtx {
 			},
 		},
 	}
-	return &testCtx{ssa, caConfig, reg, pa, fc, cleanUp}
+
+	stats := mocks.NewStatter()
+
+	return &testCtx{ssa, caConfig, reg, pa, fc, &stats, cleanUp}
 }
 
 func TestFailNoSerial(t *testing.T) {
@@ -196,14 +201,14 @@ func TestFailNoSerial(t *testing.T) {
 	defer ctx.cleanUp()
 
 	ctx.caConfig.SerialPrefix = 0
-	_, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	_, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
 func TestIssueCertificate(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -280,7 +285,7 @@ func TestIssueCertificate(t *testing.T) {
 func TestRejectNoName(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -297,7 +302,7 @@ func TestRejectNoName(t *testing.T) {
 func TestRejectTooManyNames(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -314,7 +319,7 @@ func TestRejectTooManyNames(t *testing.T) {
 func TestDeduplication(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -338,7 +343,7 @@ func TestDeduplication(t *testing.T) {
 func TestRejectValidityTooLong(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -356,7 +361,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 func TestShortKey(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -372,7 +377,7 @@ func TestShortKey(t *testing.T) {
 func TestRejectBadAlgorithm(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -389,7 +394,7 @@ func TestCapitalizedLetters(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ctx.caConfig.MaxNames = 3
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -404,4 +409,71 @@ func TestCapitalizedLetters(t *testing.T) {
 	sort.Strings(parsedCert.DNSNames)
 	expected := []string{"capitalizedletters.com", "evenmorecaps.com", "morecaps.com"}
 	test.AssertDeepEquals(t, expected, parsedCert.DNSNames)
+}
+
+func TestHSMFaultTimeout(t *testing.T) {
+	ctx := setup(t)
+	defer ctx.cleanUp()
+
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca.Publisher = &mocks.Publisher{}
+	ca.PA = ctx.pa
+	ca.SA = ctx.sa
+
+	// Issue a certificate so that we can use it later
+	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
+	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+	ocspRequest := core.OCSPSigningRequest{
+		CertDER: cert.DER,
+		Status:  "good",
+	}
+
+	// Swap in a bad signer
+	goodSigner := ca.Signer
+	badHSMErrorMessage := "This is really serious.  You should wait"
+	badSigner := mocks.BadHSMSigner(badHSMErrorMessage)
+	badOCSPSigner := mocks.BadHSMOCSPSigner(badHSMErrorMessage)
+
+	// Cause the CA to enter the HSM fault condition
+	ca.Signer = badSigner
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertError(t, err, "CA failed to return HSM error")
+	test.AssertEquals(t, err.Error(), badHSMErrorMessage)
+
+	// Check that the CA rejects the next call as the HSM being down
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertError(t, err, "CA failed to persist HSM fault")
+	test.AssertEquals(t, err.Error(), "HSM is unavailable")
+
+	_, err = ca.GenerateOCSP(ocspRequest)
+	test.AssertError(t, err, "CA failed to persist HSM fault")
+	test.AssertEquals(t, err.Error(), "HSM is unavailable")
+
+	// Swap in a good signer and move the clock forward to clear the fault
+	ca.Signer = goodSigner
+	ctx.fc.Add(ca.hsmFaultTimeout)
+	ctx.fc.Add(10 * time.Second)
+
+	// Check that the CA has recovered
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertNotError(t, err, "CA failed to recover from HSM fault")
+	_, err = ca.GenerateOCSP(ocspRequest)
+
+	// Check that GenerateOCSP can also trigger an HSM failure, in the same way
+	ca.OCSPSigner = badOCSPSigner
+	_, err = ca.GenerateOCSP(ocspRequest)
+	test.AssertError(t, err, "CA failed to return HSM error")
+	test.AssertEquals(t, err.Error(), badHSMErrorMessage)
+
+	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	test.AssertError(t, err, "CA failed to persist HSM fault")
+	test.AssertEquals(t, err.Error(), "HSM is unavailable")
+
+	_, err = ca.GenerateOCSP(ocspRequest)
+	test.AssertError(t, err, "CA failed to persist HSM fault")
+	test.AssertEquals(t, err.Error(), "HSM is unavailable")
+
+	// Verify that the appropriate stats got recorded for all this
+	test.AssertEquals(t, ctx.stats.Counters[metricHSMFaultObserved], int64(2))
+	test.AssertEquals(t, ctx.stats.Counters[metricHSMFaultRejected], int64(4))
 }
