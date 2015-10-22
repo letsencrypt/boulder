@@ -589,7 +589,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(logEvent *requestEvent, response htt
 	responseBody, err := json.Marshal(reg)
 	if err != nil {
 		// StatusInternalServerError because we just created this registration, it should be OK.
-		logEvent.AddError("unable to marsh registration: %s", err)
+		logEvent.AddError("unable to marshal registration: %s", err)
 		wfe.sendError(response, logEvent, "Error marshaling registration", err, http.StatusInternalServerError)
 		return
 	}
