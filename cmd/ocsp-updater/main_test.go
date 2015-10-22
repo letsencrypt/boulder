@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
 type mockCA struct{}
@@ -47,12 +48,10 @@ func (p *mockPub) SubmitToCT(_ []byte) error {
 	})
 }
 
-const dbConnStr = "mysql+tcp://sa@localhost:3306/boulder_sa_test"
-
 var log = mocks.UseMockLog()
 
 func setup(t *testing.T) (OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
-	dbMap, err := sa.NewDbMap(dbConnStr)
+	dbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Failed to create dbMap")
 
 	fc := clock.NewFake()

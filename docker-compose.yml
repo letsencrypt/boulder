@@ -1,0 +1,19 @@
+boulder:
+    build: .
+    dockerfile: Dockerfile
+    net: "host"
+    ports:
+        - "4000:4000"
+    environment:
+        MYSQL_CONTAINER: "yes"
+mysql:
+    image: mariadb:10
+    net: host
+    ports:
+        - "3306:3306"
+    environment:
+        MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+rabbitmq:
+    image: rabbitmq:3
+    ports:
+        - "5672:5672"

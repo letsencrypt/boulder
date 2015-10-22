@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
 func bigIntFromB64(b64 string) *big.Int {
@@ -50,7 +51,7 @@ func (m *mockMail) Clear() {
 }
 
 func (m *mockMail) SendMail(to []string, msg string) (err error) {
-	for _ = range to {
+	for range to {
 		m.Messages = append(m.Messages, msg)
 	}
 	return
@@ -145,8 +146,6 @@ var testKey = rsa.PrivateKey{
 	D:         d,
 	Primes:    []*big.Int{p, q},
 }
-
-const dbConnStr = "mysql+tcp://mailer@localhost:3306/boulder_sa_test"
 
 func TestFindExpiringCertificates(t *testing.T) {
 	ctx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
@@ -462,7 +461,7 @@ type testCtx struct {
 func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	// We use the test_setup user (which has full permissions to everything)
 	// because the SA we return is used for inserting data to set up the test.
-	dbMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}

@@ -75,9 +75,9 @@
             "backdate": "1h",
             "is_ca": false,
             "issuer_urls": [
-              "http://localhost:4000/acme/issuer-cert"
+              "http://127.0.0.1:4000/acme/issuer-cert"
             ],
-            "ocsp_url": "http://localhost:4002/ocsp",
+            "ocsp_url": "http://127.0.0.1:4002/ocsp",
             "crl_url": "http://example.com/crl",
             "policies": [
               {
@@ -197,7 +197,7 @@
   },
 
   "common": {
-    "baseURL": "http://localhost:4000",
+    "baseURL": "http://127.0.0.1:4000",
     "issuerCert": "test/test-ca.pem",
     "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "10s",
@@ -219,5 +219,5 @@
     "dbConnect": "mysql+tcp://cert_checker@localhost:3306/boulder_sa_integration"
   },
 
-  "subscriberAgreementURL": "http://localhost:4001/terms/v1"
+  "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1"
 }
