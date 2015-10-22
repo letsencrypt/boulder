@@ -606,6 +606,8 @@ func TestNewCertificate(t *testing.T) {
 	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
 	sa.FinalizeAuthorization(authzFinalWWW)
 
+	// Check that we don't fail on case mismatches
+	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
 	certRequest := core.CertificateRequest{
 		CSR: ExampleCSR,
 	}
