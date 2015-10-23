@@ -27,6 +27,11 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+// How much earlier (than configured nag intervals) to send reminders,
+// to account for the expected delay before the next expiration-mailer
+// invocation.
+const nagMargin = 24 * time.Hour
+
 type emailContent struct {
 	ExpirationDate   time.Time
 	DaysToExpiration int
@@ -50,7 +55,7 @@ type mailer struct {
 }
 
 func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []*core.AcmeURL) error {
-	expiresIn := int(parsedCert.NotAfter.Sub(m.clk.Now()).Hours()/24) + 1
+	expiresIn := int(parsedCert.NotAfter.Sub(m.clk.Now()).Hours() / 24)
 	emails := []string{}
 	for _, contact := range contacts {
 		if contact.Scheme == "mailto" {
@@ -152,9 +157,10 @@ func (m *mailer) findExpiringCertificates() error {
 	now := m.clk.Now()
 	// E.g. m.NagTimes = [1, 3, 7, 14] days from expiration
 	for i, expiresIn := range m.nagTimes {
+		expiresIn += nagMargin
 		left := now
 		if i > 0 {
-			left = left.Add(m.nagTimes[i-1])
+			left = left.Add(m.nagTimes[i-1] + nagMargin)
 		}
 		right := now.Add(expiresIn)
 
