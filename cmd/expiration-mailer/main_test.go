@@ -484,6 +484,11 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := &mockMail{}
 
+	offsetNags := make([]time.Duration, len(nagTimes))
+	for i, t := range nagTimes {
+		offsetNags[i] = t + defaultNagCheckInterval
+	}
+
 	m := &mailer{
 		log:           blog.GetAuditLogger(),
 		stats:         stats,
@@ -491,7 +496,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		emailTemplate: tmpl,
 		dbMap:         dbMap,
 		rs:            ssa,
-		nagTimes:      nagTimes,
+		nagTimes:      offsetNags,
 		limit:         100,
 		clk:           fc,
 	}

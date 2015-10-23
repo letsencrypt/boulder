@@ -154,6 +154,10 @@ type Config struct {
 
 		CertLimit int
 		NagTimes  []string
+		// How much earlier (than configured nag intervals) to
+		// send reminders, to account for the expected delay
+		// before the next expiration-mailer invocation.
+		NagCheckInterval string
 		// Path to a text/template email template
 		EmailTemplate string
 

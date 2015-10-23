@@ -27,10 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-// How much earlier (than configured nag intervals) to send reminders,
-// to account for the expected delay before the next expiration-mailer
-// invocation.
-const nagMargin = 24 * time.Hour
+const defaultNagCheckInterval = 24 * time.Hour
 
 type emailContent struct {
 	ExpirationDate   time.Time
@@ -155,12 +152,11 @@ func (m *mailer) processCerts(certs []core.Certificate) {
 
 func (m *mailer) findExpiringCertificates() error {
 	now := m.clk.Now()
-	// E.g. m.NagTimes = [1, 3, 7, 14] days from expiration
+	// E.g. m.nagTimes = [2, 4, 8, 15] days from expiration
 	for i, expiresIn := range m.nagTimes {
-		expiresIn += nagMargin
 		left := now
 		if i > 0 {
-			left = left.Add(m.nagTimes[i-1] + nagMargin)
+			left = left.Add(m.nagTimes[i-1])
 		}
 		right := now.Add(expiresIn)
 
@@ -266,6 +262,15 @@ func main() {
 
 		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, c.Mailer.Password)
 
+		nagCheckInterval := defaultNagCheckInterval
+		if s := c.Mailer.NagCheckInterval; s != "" {
+			nagCheckInterval, err = time.ParseDuration(s)
+			if err != nil {
+				auditlogger.Err(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
+				return
+			}
+		}
+
 		var nags durationSlice
 		for _, nagDuration := range c.Mailer.NagTimes {
 			dur, err := time.ParseDuration(nagDuration)
@@ -273,7 +278,7 @@ func main() {
 				auditlogger.Err(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
 				return
 			}
-			nags = append(nags, dur)
+			nags = append(nags, dur+nagCheckInterval)
 		}
 		// Make sure durations are sorted in increasing order
 		sort.Sort(nags)
