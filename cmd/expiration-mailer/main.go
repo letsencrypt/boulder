@@ -158,7 +158,7 @@ func (m *mailer) findExpiringCertificates() error {
 		}
 		right := now.Add(expiresIn)
 
-		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s", left, right))
+		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry", left, right, expiresIn))
 		var certs []core.Certificate
 		_, err := m.dbMap.Select(
 			&certs,
@@ -168,13 +168,13 @@ func (m *mailer) findExpiringCertificates() error {
 			 AND cert.expires > :cutoffA
 			 AND cert.expires <= :cutoffB
 			 AND cs.status != "revoked"
-			 AND cs.lastExpirationNagSent <= :nagCutoff
+			 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
 			 ORDER BY cert.expires ASC
 			 LIMIT :limit`,
 			map[string]interface{}{
 				"cutoffA":   left,
 				"cutoffB":   right,
-				"nagCutoff": m.clk.Now().Add(-expiresIn),
+				"nagCutoff": expiresIn.Seconds(),
 				"limit":     m.limit,
 			},
 		)

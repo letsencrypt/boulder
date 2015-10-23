@@ -191,12 +191,12 @@ func TestFindExpiringCertificates(t *testing.T) {
 		t.Fatalf("Couldn't store regB: %s", err)
 	}
 
+	// Expires in <1d, last nag was the 4d nag
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy A",
 		},
-		// This is slightly within the ultime nag window (one day)
-		NotAfter:     ctx.fc.Now().AddDate(0, 0, 1).Add(-time.Hour),
+		NotAfter:     ctx.fc.Now().Add(23 * time.Hour),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -207,12 +207,13 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
-	// Already sent a nag but too long ago
 	certStatusA := &core.CertificateStatus{
 		Serial:                "001",
-		LastExpirationNagSent: ctx.fc.Now().Add(-time.Hour * 24 * 3),
+		LastExpirationNagSent: ctx.fc.Now().AddDate(0, 0, -3),
 		Status:                core.OCSPStatusGood,
 	}
+
+	// Expires in 3d, already sent 4d nag
 	rawCertB := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy B",
@@ -228,18 +229,18 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
-	// Already sent a nag for this period
 	certStatusB := &core.CertificateStatus{
 		Serial:                "002",
-		LastExpirationNagSent: ctx.fc.Now().Add(-time.Hour * 24 * 3),
+		LastExpirationNagSent: ctx.fc.Now().Add(-23 * time.Hour),
 		Status:                core.OCSPStatusGood,
 	}
+
+	// Expires in exactly 7d, no nag sent at all yet
 	rawCertC := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy C",
 		},
-		// This is within the earliest nag window (7 days)
-		NotAfter:     ctx.fc.Now().AddDate(0, 0, 6),
+		NotAfter:     ctx.fc.Now().AddDate(0, 0, 7),
 		DNSNames:     []string{"example-c.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -359,12 +360,12 @@ func TestLifetimeOfACert(t *testing.T) {
 			"The 7 day email was already sent.",
 		},
 		{
-			3 * 24 * time.Hour, // 3 days before, the mailer wasn't run the day before
+			(4*24 - 1) * time.Hour, // <4 days before, the mailer was run late
 			2,
 			"Sent 1 for the 7 day notice, and 1 for the 4 day notice.",
 		},
 		{
-			1 * 24 * time.Hour,
+			24 * time.Hour,
 			3,
 			"Sent 1 for the 7 day notice, 1 for the 4 day notice, and 1 for the 1 day notice.",
 		},
