@@ -74,6 +74,17 @@ func newFakeRegStore() fakeRegStore {
 	return fakeRegStore{RegByID: make(map[int64]core.Registration)}
 }
 
+func newFakeClock(t *testing.T) clock.FakeClock {
+	const fakeTimeFormat = "2006-01-02T15:04:05.999999999Z"
+	ft, err := time.Parse(fakeTimeFormat, fakeTimeFormat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc := clock.NewFake()
+	fc.Set(ft.UTC())
+	return fc
+}
+
 const testTmpl = `hi, cert for DNS names {{.DNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`
 
 var (
@@ -95,8 +106,7 @@ func TestSendNags(t *testing.T) {
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := mockMail{}
 	rs := newFakeRegStore()
-	fc := clock.NewFake()
-	fc.Add(7 * 24 * time.Hour)
+	fc := newFakeClock(t)
 
 	m := mailer{
 		stats:         stats,
@@ -120,14 +130,14 @@ func TestSendNags(t *testing.T) {
 	err := m.sendNags(cert, []*core.AcmeURL{email})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 3 days (%s)`, cert.NotAfter), mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
 
 	mc.Clear()
 	err = m.sendNags(cert, []*core.AcmeURL{email, emailB})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 3 days (%s)`, cert.NotAfter), mc.Messages[0])
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 3 days (%s)`, cert.NotAfter), mc.Messages[1])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[1])
 
 	mc.Clear()
 	err = m.sendNags(cert, []*core.AcmeURL{})
@@ -149,8 +159,6 @@ var testKey = rsa.PrivateKey{
 
 func TestFindExpiringCertificates(t *testing.T) {
 	ctx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
-
-	ctx.fc.Add(7 * 24 * time.Hour)
 
 	log.Clear()
 	err := ctx.m.findExpiringCertificates()
@@ -191,12 +199,12 @@ func TestFindExpiringCertificates(t *testing.T) {
 		t.Fatalf("Couldn't store regB: %s", err)
 	}
 
+	// Expires in <1d, last nag was the 4d nag
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy A",
 		},
-		// This is slightly within the ultime nag window (one day)
-		NotAfter:     ctx.fc.Now().AddDate(0, 0, 1).Add(-time.Hour),
+		NotAfter:     ctx.fc.Now().Add(23 * time.Hour),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -207,12 +215,13 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
-	// Already sent a nag but too long ago
 	certStatusA := &core.CertificateStatus{
 		Serial:                "001",
-		LastExpirationNagSent: ctx.fc.Now().Add(-time.Hour * 24 * 3),
+		LastExpirationNagSent: ctx.fc.Now().AddDate(0, 0, -3),
 		Status:                core.OCSPStatusGood,
 	}
+
+	// Expires in 3d, already sent 4d nag at 4.5d
 	rawCertB := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy B",
@@ -228,18 +237,18 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
-	// Already sent a nag for this period
 	certStatusB := &core.CertificateStatus{
 		Serial:                "002",
-		LastExpirationNagSent: ctx.fc.Now().Add(-time.Hour * 24 * 3),
+		LastExpirationNagSent: ctx.fc.Now().Add(-36 * time.Hour),
 		Status:                core.OCSPStatusGood,
 	}
+
+	// Expires in 7d and change, no nag sent at all yet
 	rawCertC := x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "happy C",
 		},
-		// This is within the earliest nag window (7 days)
-		NotAfter:     ctx.fc.Now().AddDate(0, 0, 6),
+		NotAfter:     ctx.fc.Now().Add((7*24 + 1) * time.Hour),
 		DNSNames:     []string{"example-c.com"},
 		SerialNumber: big.NewInt(1337),
 	}
@@ -275,7 +284,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	// Should get 001 and 003
 	test.AssertEquals(t, len(ctx.mc.Messages), 2)
 
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 1 days (%s)`, rawCertA.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), ctx.mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 0 days (%s)`, rawCertA.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), ctx.mc.Messages[0])
 	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (%s)`, rawCertC.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), ctx.mc.Messages[1])
 
 	// A consecutive run shouldn't find anything
@@ -343,28 +352,28 @@ func TestLifetimeOfACert(t *testing.T) {
 	}
 	tests := []lifeTest{
 		{
-			timeLeft: 8 * 24 * time.Hour, // 8 days before expiration
+			timeLeft: 9 * 24 * time.Hour, // 9 days before expiration
 
 			numMsgs: 0,
 			context: "Expected no emails sent because we are more than 7 days out.",
 		},
 		{
-			7 * 24 * time.Hour, // 7 days before
+			(7*24 + 12) * time.Hour, // 7.5 days before
 			1,
 			"Sent 1 for 7 day notice.",
 		},
 		{
-			5 * 24 * time.Hour,
+			7 * 24 * time.Hour,
 			1,
 			"The 7 day email was already sent.",
 		},
 		{
-			3 * 24 * time.Hour, // 3 days before, the mailer wasn't run the day before
+			(4*24 - 1) * time.Hour, // <4 days before, the mailer did not run yesterday
 			2,
 			"Sent 1 for the 7 day notice, and 1 for the 4 day notice.",
 		},
 		{
-			1 * 24 * time.Hour,
+			36 * time.Hour, // within 1day + nagMargin
 			3,
 			"Sent 1 for the 7 day notice, 1 for the 4 day notice, and 1 for the 1 day notice.",
 		},
@@ -465,7 +474,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}
-	fc := clock.NewFake()
+	fc := newFakeClock(t)
 	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
@@ -475,6 +484,11 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	stats, _ := statsd.NewNoopClient(nil)
 	mc := &mockMail{}
 
+	offsetNags := make([]time.Duration, len(nagTimes))
+	for i, t := range nagTimes {
+		offsetNags[i] = t + defaultNagCheckInterval
+	}
+
 	m := &mailer{
 		log:           blog.GetAuditLogger(),
 		stats:         stats,
@@ -482,7 +496,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		emailTemplate: tmpl,
 		dbMap:         dbMap,
 		rs:            ssa,
-		nagTimes:      nagTimes,
+		nagTimes:      offsetNags,
 		limit:         100,
 		clk:           fc,
 	}

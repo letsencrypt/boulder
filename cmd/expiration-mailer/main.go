@@ -27,6 +27,8 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+const defaultNagCheckInterval = 24 * time.Hour
+
 type emailContent struct {
 	ExpirationDate   time.Time
 	DaysToExpiration int
@@ -50,7 +52,7 @@ type mailer struct {
 }
 
 func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []*core.AcmeURL) error {
-	expiresIn := int(parsedCert.NotAfter.Sub(m.clk.Now()).Hours()/24) + 1
+	expiresIn := int(parsedCert.NotAfter.Sub(m.clk.Now()).Hours() / 24)
 	emails := []string{}
 	for _, contact := range contacts {
 		if contact.Scheme == "mailto" {
@@ -150,7 +152,7 @@ func (m *mailer) processCerts(certs []core.Certificate) {
 
 func (m *mailer) findExpiringCertificates() error {
 	now := m.clk.Now()
-	// E.g. m.NagTimes = [1, 3, 7, 14] days from expiration
+	// E.g. m.nagTimes = [2, 4, 8, 15] days from expiration
 	for i, expiresIn := range m.nagTimes {
 		left := now
 		if i > 0 {
@@ -158,7 +160,7 @@ func (m *mailer) findExpiringCertificates() error {
 		}
 		right := now.Add(expiresIn)
 
-		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s", left, right))
+		m.log.Info(fmt.Sprintf("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry", left, right, expiresIn))
 		var certs []core.Certificate
 		_, err := m.dbMap.Select(
 			&certs,
@@ -168,13 +170,13 @@ func (m *mailer) findExpiringCertificates() error {
 			 AND cert.expires > :cutoffA
 			 AND cert.expires <= :cutoffB
 			 AND cs.status != "revoked"
-			 AND cs.lastExpirationNagSent <= :nagCutoff
+			 AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cert.expires) > :nagCutoff, 1)
 			 ORDER BY cert.expires ASC
 			 LIMIT :limit`,
 			map[string]interface{}{
 				"cutoffA":   left,
 				"cutoffB":   right,
-				"nagCutoff": m.clk.Now().Add(-expiresIn),
+				"nagCutoff": expiresIn.Seconds(),
 				"limit":     m.limit,
 			},
 		)
@@ -260,6 +262,15 @@ func main() {
 
 		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, c.Mailer.Password)
 
+		nagCheckInterval := defaultNagCheckInterval
+		if s := c.Mailer.NagCheckInterval; s != "" {
+			nagCheckInterval, err = time.ParseDuration(s)
+			if err != nil {
+				auditlogger.Err(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
+				return
+			}
+		}
+
 		var nags durationSlice
 		for _, nagDuration := range c.Mailer.NagTimes {
 			dur, err := time.ParseDuration(nagDuration)
@@ -267,7 +278,7 @@ func main() {
 				auditlogger.Err(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
 				return
 			}
-			nags = append(nags, dur)
+			nags = append(nags, dur+nagCheckInterval)
 		}
 		// Make sure durations are sorted in increasing order
 		sort.Sort(nags)
