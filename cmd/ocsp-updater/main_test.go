@@ -321,3 +321,44 @@ func TestStoreResponseGuard(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get certificate status")
 	test.AssertEquals(t, len(changedStatus.OCSPResponse), 3)
 }
+
+func TestLoopTickBackoff(t *testing.T) {
+	fc := clock.NewFake()
+	stats, _ := statsd.NewNoopClient(nil)
+	l := looper{
+		clk:                  fc,
+		stats:                stats,
+		failureBackoffFactor: 1.5,
+		failureBackoffMax:    10 * time.Minute,
+		tickDur:              time.Minute,
+		tickFunc:             func(_ int) error { return core.ServiceUnavailableError("sad HSM") },
+	}
+
+	start := l.clk.Now()
+	l.tick()
+	// Expected to sleep for 1m
+	backoff := float64(60000000000)
+	maxJittered := backoff * 1.2
+	test.AssertBetween(t, l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
+
+	start = l.clk.Now()
+	l.tick()
+	// Expected to sleep for 1m30s
+	backoff = 90000000000
+	maxJittered = backoff * 1.2
+	test.AssertBetween(t, l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
+
+	l.failures = 6
+	start = l.clk.Now()
+	l.tick()
+	// Expected to sleep for 11m23.4375s, should be truncated to 10m
+	backoff = 600000000000
+	maxJittered = backoff * 1.2
+	test.AssertBetween(t, l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
+
+	l.tickFunc = func(_ int) error { return nil }
+	start = l.clk.Now()
+	l.tick()
+	test.AssertEquals(t, l.failures, 0)
+	test.AssertEquals(t, l.clk.Now(), start)
+}
