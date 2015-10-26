@@ -8,9 +8,9 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/letsencrypt/boulder/cmd"
 
 	"github.com/letsencrypt/boulder/core"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -50,7 +50,7 @@ func (p *mockPub) SubmitToCT(_ []byte) error {
 
 var log = mocks.UseMockLog()
 
-func setup(t *testing.T) (OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
+func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Failed to create dbMap")
 
@@ -64,15 +64,23 @@ func setup(t *testing.T) (OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock
 
 	stats, _ := statsd.NewNoopClient(nil)
 
-	updater := OCSPUpdater{
-		dbMap: dbMap,
-		clk:   fc,
-		cac:   &mockCA{},
-		pubc:  &mockPub{sa},
-		sac:   sa,
-		stats: stats,
-		log:   blog.GetAuditLogger(),
-	}
+	updater, err := newUpdater(
+		stats,
+		fc,
+		dbMap,
+		&mockCA{},
+		&mockPub{sa},
+		sa,
+		cmd.OCSPUpdaterConfig{
+			NewCertificateBatchSize: 1,
+			OldOCSPBatchSize:        1,
+			MissingSCTBatchSize:     1,
+			NewCertificateWindow:    cmd.ConfigDuration{Duration: time.Second},
+			OldOCSPWindow:           cmd.ConfigDuration{Duration: time.Second},
+			MissingSCTWindow:        cmd.ConfigDuration{Duration: time.Second},
+		},
+		0,
+	)
 
 	return updater, sa, dbMap, fc, cleanUp
 }
