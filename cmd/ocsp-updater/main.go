@@ -75,6 +75,7 @@ func newUpdater(
 		dbMap:               dbMap,
 		cac:                 ca,
 		sac:                 sac,
+		pubc:                pub,
 		log:                 blog.GetAuditLogger(),
 		numLogs:             numLogs,
 		ocspMinTimeToExpiry: config.OCSPMinTimeToExpiry.Duration,
