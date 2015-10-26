@@ -133,3 +133,10 @@ func AssertSeverity(t *testing.T, data string, severity int) {
 	expected := fmt.Sprintf("\"severity\":%d", severity)
 	AssertContains(t, data, expected)
 }
+
+// AssertBetween determines if a is between b and c
+func AssertBetween(t *testing.T, a, b, c int64) {
+	if a < b || a > c {
+		t.Fatalf("%d is not between %d and %d", a, b, c)
+	}
+}

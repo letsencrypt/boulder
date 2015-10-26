@@ -302,6 +302,9 @@ type OCSPUpdaterConfig struct {
 	OCSPMinTimeToExpiry ConfigDuration
 	OldestIssuedSCT     ConfigDuration
 
+	SignFailureBackoffFactor float64
+	SignFailureBackoffMax    ConfigDuration
+
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
 }

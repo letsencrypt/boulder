@@ -85,21 +85,27 @@ func newUpdater(
 	// Setup loops
 	updater.loops = []*looper{
 		&looper{
-			clk:       clk,
-			stats:     stats,
-			batchSize: config.NewCertificateBatchSize,
-			tickDur:   config.NewCertificateWindow.Duration,
-			tickFunc:  updater.newCertificateTick,
-			name:      "NewCertificates",
+			clk:                  clk,
+			stats:                stats,
+			batchSize:            config.NewCertificateBatchSize,
+			tickDur:              config.NewCertificateWindow.Duration,
+			tickFunc:             updater.newCertificateTick,
+			name:                 "NewCertificates",
+			failureBackoffFactor: config.SignFailureBackoffFactor,
+			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
 		},
 		&looper{
-			clk:       clk,
-			stats:     stats,
-			batchSize: config.OldOCSPBatchSize,
-			tickDur:   config.OldOCSPWindow.Duration,
-			tickFunc:  updater.oldOCSPResponsesTick,
-			name:      "OldOCSPResponses",
+			clk:                  clk,
+			stats:                stats,
+			batchSize:            config.OldOCSPBatchSize,
+			tickDur:              config.OldOCSPWindow.Duration,
+			tickFunc:             updater.oldOCSPResponsesTick,
+			name:                 "OldOCSPResponses",
+			failureBackoffFactor: config.SignFailureBackoffFactor,
+			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
 		},
+		// The missing SCT loop doesn't need to know about failureBackoffFactor or
+		// failureBackoffMax as it doesn't make any calls to the CA
 		&looper{
 			clk:       clk,
 			stats:     stats,
@@ -112,12 +118,14 @@ func newUpdater(
 	if config.RevokedCertificateBatchSize != 0 &&
 		config.RevokedCertificateWindow.Duration != 0 {
 		updater.loops = append(updater.loops, &looper{
-			clk:       clk,
-			stats:     stats,
-			batchSize: config.RevokedCertificateBatchSize,
-			tickDur:   config.RevokedCertificateWindow.Duration,
-			tickFunc:  updater.revokedCertificatesTick,
-			name:      "RevokedCertificates",
+			clk:                  clk,
+			stats:                stats,
+			batchSize:            config.RevokedCertificateBatchSize,
+			tickDur:              config.RevokedCertificateWindow.Duration,
+			tickFunc:             updater.revokedCertificatesTick,
+			name:                 "RevokedCertificates",
+			failureBackoffFactor: config.SignFailureBackoffFactor,
+			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
 		})
 	}
 
@@ -248,17 +256,17 @@ func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error 
 
 // newCertificateTick checks for certificates issued since the last tick and
 // generates and stores OCSP responses for these certs
-func (updater *OCSPUpdater) newCertificateTick(batchSize int) {
+func (updater *OCSPUpdater) newCertificateTick(batchSize int) error {
 	// Check for anything issued between now and previous tick and generate first
 	// OCSP responses
 	statuses, err := updater.getCertificatesWithMissingResponses(batchSize)
 	if err != nil {
 		updater.stats.Inc("OCSP.Errors.FindMissingResponses", 1, 1.0)
 		updater.log.AuditErr(fmt.Errorf("Failed to find certificates with missing OCSP responses: %s", err))
-		return
+		return err
 	}
 
-	updater.generateOCSPResponses(statuses)
+	return updater.generateOCSPResponses(statuses)
 }
 
 func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]core.CertificateStatus, error) {
@@ -277,12 +285,12 @@ func (updater *OCSPUpdater) findRevokedCertificatesToUpdate(batchSize int) ([]co
 	return statuses, err
 }
 
-func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) {
+func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) error {
 	statuses, err := updater.findRevokedCertificatesToUpdate(batchSize)
 	if err != nil {
 		updater.stats.Inc("OCSP.Errors.FindRevokedCertificates", 1, 1.0)
 		updater.log.AuditErr(fmt.Errorf("Failed to find revoked certificates: %s", err))
-		return
+		return err
 	}
 
 	for _, status := range statuses {
@@ -290,7 +298,7 @@ func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) {
 		if err != nil {
 			updater.log.AuditErr(fmt.Errorf("Failed to generate revoked OCSP response: %s", err))
 			updater.stats.Inc("OCSP.Errors.RevokedResponseGeneration", 1, 1.0)
-			continue
+			return err
 		}
 		err = updater.storeResponse(meta)
 		if err != nil {
@@ -299,15 +307,16 @@ func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) {
 			continue
 		}
 	}
+	return nil
 }
 
-func (updater *OCSPUpdater) generateOCSPResponses(statuses []core.CertificateStatus) {
+func (updater *OCSPUpdater) generateOCSPResponses(statuses []core.CertificateStatus) error {
 	for _, status := range statuses {
 		meta, err := updater.generateResponse(status)
 		if err != nil {
 			updater.log.AuditErr(fmt.Errorf("Failed to generate OCSP response: %s", err))
 			updater.stats.Inc("OCSP.Errors.ResponseGeneration", 1, 1.0)
-			continue
+			return err
 		}
 		updater.stats.Inc("OCSP.GeneratedResponses", 1, 1.0)
 		err = updater.storeResponse(meta)
@@ -318,21 +327,21 @@ func (updater *OCSPUpdater) generateOCSPResponses(statuses []core.CertificateSta
 		}
 		updater.stats.Inc("OCSP.StoredResponses", 1, 1.0)
 	}
-	return
+	return nil
 }
 
 // oldOCSPResponsesTick looks for certificates with stale OCSP responses and
 // generates/stores new ones
-func (updater *OCSPUpdater) oldOCSPResponsesTick(batchSize int) {
+func (updater *OCSPUpdater) oldOCSPResponsesTick(batchSize int) error {
 	now := time.Now()
 	statuses, err := updater.findStaleOCSPResponses(now.Add(-updater.ocspMinTimeToExpiry), batchSize)
 	if err != nil {
 		updater.stats.Inc("OCSP.Errors.FindStaleResponses", 1, 1.0)
 		updater.log.AuditErr(fmt.Errorf("Failed to find stale OCSP responses: %s", err))
-		return
+		return err
 	}
 
-	updater.generateOCSPResponses(statuses)
+	return updater.generateOCSPResponses(statuses)
 }
 
 func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int) ([]string, error) {
@@ -366,13 +375,13 @@ func (updater *OCSPUpdater) getNumberOfReceipts(serial string) (int, error) {
 
 // missingReceiptsTick looks for certificates without the correct number of SCT
 // receipts and retrieves them
-func (updater *OCSPUpdater) missingReceiptsTick(batchSize int) {
+func (updater *OCSPUpdater) missingReceiptsTick(batchSize int) error {
 	now := updater.clk.Now()
 	since := now.Add(-updater.oldestIssuedSCT)
 	serials, err := updater.getSerialsIssuedSince(since, batchSize)
 	if err != nil {
 		updater.log.AuditErr(fmt.Errorf("Failed to get certificate serials: %s", err))
-		return
+		return err
 	}
 
 	for _, serial := range serials {
@@ -396,16 +405,50 @@ func (updater *OCSPUpdater) missingReceiptsTick(batchSize int) {
 			continue
 		}
 	}
-
+	return nil
 }
 
 type looper struct {
-	clk       clock.Clock
-	stats     statsd.Statter
-	batchSize int
-	tickDur   time.Duration
-	tickFunc  func(int)
-	name      string
+	clk                  clock.Clock
+	stats                statsd.Statter
+	batchSize            int
+	tickDur              time.Duration
+	tickFunc             func(int) error
+	name                 string
+	failureBackoffFactor float64
+	failureBackoffMax    time.Duration
+	failures             int
+}
+
+func (l *looper) tick() {
+	tickStart := l.clk.Now()
+	err := l.tickFunc(l.batchSize)
+	l.stats.TimingDuration(fmt.Sprintf("OCSP.%s.TickDuration", l.name), time.Since(tickStart), 1.0)
+	l.stats.Inc(fmt.Sprintf("OCSP.%s.Ticks", l.name), 1, 1.0)
+	tickEnd := tickStart.Add(time.Since(tickStart))
+	expectedTickEnd := tickStart.Add(l.tickDur)
+	if tickEnd.After(expectedTickEnd) {
+		l.stats.Inc(fmt.Sprintf("OCSP.%s.LongTicks", l.name), 1, 1.0)
+	}
+
+	// After we have all the stats stuff out of the way let's check if the tick
+	// function failed, if the reason is the HSM is dead increase the length of
+	// sleepDur using the exponentially increasing duration returned by core.RetryBackoff.
+	sleepDur := expectedTickEnd.Sub(tickEnd)
+	if err != nil {
+		l.stats.Inc(fmt.Sprintf("OCSP.%s.FailedTicks", l.name), 1, 1.0)
+		if _, ok := err.(core.ServiceUnavailableError); ok && (l.failureBackoffFactor > 0 && l.failureBackoffMax > 0) {
+			l.failures++
+			sleepDur = core.RetryBackoff(l.failures, l.tickDur, l.failureBackoffMax, l.failureBackoffFactor)
+		}
+	} else if l.failures > 0 {
+		// If the tick was successful and previously there were failures reset
+		// counter to 0
+		l.failures = 0
+	}
+
+	// Sleep for the remaining tick period or for the backoff time
+	l.clk.Sleep(sleepDur)
 }
 
 func (l *looper) loop() error {
@@ -413,18 +456,7 @@ func (l *looper) loop() error {
 		return fmt.Errorf("Both batch size and tick duration are required, not running '%s' loop", l.name)
 	}
 	for {
-		tickStart := l.clk.Now()
-		l.tickFunc(l.batchSize)
-		l.stats.TimingDuration(fmt.Sprintf("OCSP.%s.TickDuration", l.name), time.Since(tickStart), 1.0)
-		l.stats.Inc(fmt.Sprintf("OCSP.%s.Ticks", l.name), 1, 1.0)
-		tickEnd := tickStart.Add(time.Since(tickStart))
-		expectedTickEnd := tickStart.Add(l.tickDur)
-		if tickEnd.After(expectedTickEnd) {
-			l.stats.Inc(fmt.Sprintf("OCSP.%s.LongTicks", l.name), 1, 1.0)
-		}
-		// Sleep for the remaining tick period (if this is a negative number sleep
-		// will not do anything and carry on)
-		l.clk.Sleep(expectedTickEnd.Sub(tickEnd))
+		l.tick()
 	}
 }
 
