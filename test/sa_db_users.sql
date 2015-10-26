@@ -35,6 +35,7 @@ GRANT SELECT ON ocspResponses TO 'ocsp_resp'@'127.0.0.1';
 GRANT INSERT ON ocspResponses TO 'ocsp_update'@'127.0.0.1';
 GRANT SELECT ON certificates TO 'ocsp_update'@'127.0.0.1';
 GRANT SELECT,UPDATE ON certificateStatus TO 'ocsp_update'@'127.0.0.1';
+GRANT SELECT ON sctReceipts TO 'ocsp_update'@'127.0.0.1';
 
 -- Revoker Tool
 GRANT SELECT ON registrations TO 'revoker'@'127.0.0.1';
