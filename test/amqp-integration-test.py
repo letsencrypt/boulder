@@ -228,6 +228,8 @@ tempdir = tempfile.mkdtemp()
 if not startservers.start(race_detection=True):
     die(ExitStatus.Error)
 run_node_test()
+# Simulate a disconnection from RabbitMQ to make sure reconnects work.
+startservers.bounce_forward()
 run_client_tests()
 if not startservers.check():
     die(ExitStatus.Error)

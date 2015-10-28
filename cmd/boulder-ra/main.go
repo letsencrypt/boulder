@@ -59,31 +59,29 @@ func main() {
 
 		go cmd.ProfileCmd("RA", stats)
 
-		connectionHandler := func(srv *rpc.AmqpRPCServer) {
-			vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, srv.Channel, stats)
-			cmd.FailOnError(err, "Unable to create RPC client")
+		vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, c, stats)
+		cmd.FailOnError(err, "Unable to create RPC client")
 
-			caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, srv.Channel, stats)
-			cmd.FailOnError(err, "Unable to create RPC client")
+		caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, c, stats)
+		cmd.FailOnError(err, "Unable to create RPC client")
 
-			saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, srv.Channel, stats)
-			cmd.FailOnError(err, "Unable to create RPC client")
+		saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, c, stats)
+		cmd.FailOnError(err, "Unable to create RPC client")
 
-			vac, err := rpc.NewValidationAuthorityClient(vaRPC)
-			cmd.FailOnError(err, "Unable to create VA client")
+		vac, err := rpc.NewValidationAuthorityClient(vaRPC)
+		cmd.FailOnError(err, "Unable to create VA client")
 
-			cac, err := rpc.NewCertificateAuthorityClient(caRPC)
-			cmd.FailOnError(err, "Unable to create CA client")
+		cac, err := rpc.NewCertificateAuthorityClient(caRPC)
+		cmd.FailOnError(err, "Unable to create CA client")
 
-			sac, err := rpc.NewStorageAuthorityClient(saRPC)
-			cmd.FailOnError(err, "Unable to create SA client")
+		sac, err := rpc.NewStorageAuthorityClient(saRPC)
+		cmd.FailOnError(err, "Unable to create SA client")
 
-			rai.VA = &vac
-			rai.CA = &cac
-			rai.SA = &sac
-		}
+		rai.VA = &vac
+		rai.CA = &cac
+		rai.SA = &sac
 
-		ras, err := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, connectionHandler, c.RA.MaxConcurrentRPCServerRequests)
+		ras, err := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, c.RA.MaxConcurrentRPCServerRequests, c)
 		cmd.FailOnError(err, "Unable to create RA RPC server")
 		rpc.NewRegistrationAuthorityServer(ras, &rai)
 

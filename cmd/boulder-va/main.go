@@ -62,17 +62,15 @@ func main() {
 		}
 		vai.UserAgent = c.VA.UserAgent
 
-		connectionHandler := func(srv *rpc.AmqpRPCServer) {
-			raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, srv.Channel, stats)
-			cmd.FailOnError(err, "Unable to create RPC client")
+		raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, c, stats)
+		cmd.FailOnError(err, "Unable to create RPC client")
 
-			rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
-			cmd.FailOnError(err, "Unable to create RA client")
+		rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
+		cmd.FailOnError(err, "Unable to create RA client")
 
-			vai.RA = &rac
-		}
+		vai.RA = &rac
 
-		vas, err := rpc.NewAmqpRPCServer(c.AMQP.VA.Server, connectionHandler, c.VA.MaxConcurrentRPCServerRequests)
+		vas, err := rpc.NewAmqpRPCServer(c.AMQP.VA.Server, c.VA.MaxConcurrentRPCServerRequests, c)
 		cmd.FailOnError(err, "Unable to create VA RPC server")
 		rpc.NewValidationAuthorityServer(vas, vai)
 

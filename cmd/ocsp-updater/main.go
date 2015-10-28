@@ -9,12 +9,10 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -464,32 +462,26 @@ func setupClients(c cmd.Config, stats statsd.Statter) (
 	core.CertificateAuthority,
 	core.Publisher,
 	core.StorageAuthority,
-	chan *amqp.Error,
 ) {
-	ch, err := rpc.AmqpChannel(c)
-	cmd.FailOnError(err, "Could not connect to AMQP")
-
-	closeChan := ch.NotifyClose(make(chan *amqp.Error, 1))
-
-	caRPC, err := rpc.NewAmqpRPCClient("OCSP->CA", c.AMQP.CA.Server, ch, stats)
+	caRPC, err := rpc.NewAmqpRPCClient("OCSP->CA", c.AMQP.CA.Server, c, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	cac, err := rpc.NewCertificateAuthorityClient(caRPC)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	pubRPC, err := rpc.NewAmqpRPCClient("OCSP->Publisher", c.AMQP.Publisher.Server, ch, stats)
+	pubRPC, err := rpc.NewAmqpRPCClient("OCSP->Publisher", c.AMQP.Publisher.Server, c, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	pubc, err := rpc.NewPublisherClient(pubRPC)
 	cmd.FailOnError(err, "Unable to create Publisher client")
 
-	saRPC, err := rpc.NewAmqpRPCClient("OCSP->SA", c.AMQP.SA.Server, ch, stats)
+	saRPC, err := rpc.NewAmqpRPCClient("OCSP->SA", c.AMQP.SA.Server, c, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
 	sac, err := rpc.NewStorageAuthorityClient(saRPC)
 	cmd.FailOnError(err, "Unable to create Publisher client")
 
-	return cac, pubc, sac, closeChan
+	return cac, pubc, sac
 }
 
 func main() {
@@ -516,7 +508,7 @@ func main() {
 		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		cac, pubc, sac, closeChan := setupClients(c, stats)
+		cac, pubc, sac := setupClients(c, stats)
 
 		updater, err := newUpdater(
 			stats,
@@ -530,6 +522,8 @@ func main() {
 			len(c.Common.CT.Logs),
 		)
 
+		cmd.FailOnError(err, "Failed to create updater")
+
 		for _, l := range updater.loops {
 			go func(loop *looper) {
 				err = loop.loop()
@@ -539,15 +533,8 @@ func main() {
 			}(l)
 		}
 
-		cmd.FailOnError(err, "Failed to create updater")
-
-		// TODO(): When the channel falls over so do we for now, if the AMQP channel
-		// has already closed there is no real cleanup we can do. This is due to
-		// really needing to change the underlying AMQP Server/Client reconnection
-		// logic.
-		err = <-closeChan
-		auditlogger.AuditErr(fmt.Errorf(" [!] AMQP Channel closed, exiting: [%s]", err))
-		os.Exit(1)
+		// Sleep forever (until signaled)
+		select {}
 	}
 
 	app.Run()

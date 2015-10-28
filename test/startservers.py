@@ -58,6 +58,7 @@ def start(race_detection):
     up explicitly by calling stop(), or automatically atexit.
     """
     global processes
+    forward()
     t = ToSServerThread()
     t.daemon = True
     t.start()
@@ -119,6 +120,19 @@ def start(race_detection):
     print "All servers running. Hit ^C to kill."
     return True
 
+def forward():
+    """Add a TCP forwarder between Boulder and RabbitMQ to simulate failures."""
+    cmd = """exec listenbuddy -listen :5673 -speak localhost:5672"""
+    p = subprocess.Popen(cmd, shell=True)
+    p.cmd = cmd
+    print('started %s with pid %d' % (p.cmd, p.pid))
+    global processes
+    processes.insert(0, p)
+
+def bounce_forward():
+    """Kill all forwarded TCP connections."""
+    global processes
+    processes[0].send_signal(signal.SIGUSR1)
 
 def check():
     """Return true if all started processes are still alive.

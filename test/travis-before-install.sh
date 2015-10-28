@@ -19,7 +19,8 @@ travis_retry go get \
   github.com/golang/lint/golint \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
-  github.com/jcjones/github-pr-status &
+  github.com/jcjones/github-pr-status \
+  github.com/jsha/listenbuddy &
 
 (wget https://github.com/jsha/boulder-tools/raw/master/goose.gz &&
  mkdir $GOPATH/bin &&

@@ -52,12 +52,13 @@ const (
 	AmqpAutoAck      = true
 	AmqpMandatory    = false
 	AmqpImmediate    = false
+	consumerName     = "boulder"
 )
 
 // AMQPDeclareExchange attempts to declare the configured AMQP exchange,
 // returning silently if already declared, erroring if nonexistant and
 // unable to create.
-func AMQPDeclareExchange(conn *amqp.Connection) error {
+func amqpDeclareExchange(conn *amqp.Connection) error {
 	var err error
 	var ch *amqp.Channel
 	log := blog.GetAuditLogger()
@@ -77,7 +78,7 @@ func AMQPDeclareExchange(conn *amqp.Connection) error {
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		log.Info(fmt.Sprintf("Exchange %s does not exist on AMQP server, attempting to create. (err=%s)", AmqpExchange, err))
+		log.Info(fmt.Sprintf("Exchange %s does not exist on AMQP server, creating.", AmqpExchange))
 
 		// Channel is invalid at this point, so recreate
 		ch.Close()
@@ -100,6 +101,7 @@ func AMQPDeclareExchange(conn *amqp.Connection) error {
 			ch.Close()
 			return err
 		}
+		log.Info(fmt.Sprintf("Created exchange %s.", AmqpExchange))
 	}
 
 	ch.Close()
@@ -107,7 +109,7 @@ func AMQPDeclareExchange(conn *amqp.Connection) error {
 }
 
 // A simplified way to declare and subscribe to an AMQP queue
-func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog.AuditLogger) (<-chan amqp.Delivery, error) {
+func amqpSubscribe(ch amqpChannel, name string) (<-chan amqp.Delivery, error) {
 	var err error
 
 	_, err = ch.QueueDeclare(
@@ -118,8 +120,7 @@ func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		log.Crit(fmt.Sprintf("Could not declare queue: %s", err))
-		return nil, err
+		return nil, fmt.Errorf("could not declare queue: %s", err)
 	}
 
 	routingKey := name
@@ -131,13 +132,12 @@ func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog
 		false,
 		nil)
 	if err != nil {
-		log.Crit(fmt.Sprintf("Could not bind to queue [%s]. NOTE: You may need to delete %s to re-trigger the bind attempt after fixing permissions, or manually bind the queue to %s.", name, name, routingKey))
+		err = fmt.Errorf(
+			"Could not bind to queue [%s]. NOTE: You may need to delete %s to re-trigger the bind attempt after fixing permissions, or manually bind the queue to %s.",
+			name, name, routingKey)
 		return nil, err
 	}
 
-	// A consumer name is used so that the specific consumer can be cancelled later
-	// if signalled. If no name is used a UID is used which cannot be retrieved (as
-	// far as I can tell).
 	msgs, err := ch.Consume(
 		name,
 		consumerName,
@@ -147,11 +147,10 @@ func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog
 		AmqpNoWait,
 		nil)
 	if err != nil {
-		log.Crit(fmt.Sprintf("Could not subscribe to queue: %s", err))
-		return nil, err
+		return nil, fmt.Errorf("Could not subscribe to queue: %s", err)
 	}
 
-	return msgs, err
+	return msgs, nil
 }
 
 // AmqpRPCServer listens on a specified queue within an AMQP channel.
@@ -162,14 +161,12 @@ func amqpSubscribe(ch *amqp.Channel, name string, consumerName string, log *blog
 // method to add specific actions.
 type AmqpRPCServer struct {
 	serverQueue                    string
-	Channel                        *amqp.Channel
+	connection                     *amqpConnector
 	log                            *blog.AuditLogger
 	dispatchTable                  map[string]func([]byte) ([]byte, error)
-	connectionHandler              func(*AmqpRPCServer)
-	consumerName                   string
 	connected                      bool
 	done                           bool
-	dMu                            sync.Mutex
+	mu                             sync.RWMutex
 	currentGoroutines              int64
 	maxConcurrentRPCServerRequests int64
 	tooManyRequestsResponse        []byte
@@ -177,20 +174,23 @@ type AmqpRPCServer struct {
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
-func NewAmqpRPCServer(serverQueue string, handler func(*AmqpRPCServer), maxConcurrentRPCServerRequests int64) (*AmqpRPCServer, error) {
+func NewAmqpRPCServer(serverQueue string, maxConcurrentRPCServerRequests int64, c cmd.Config) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
-	b := make([]byte, 4)
-	_, err := rand.Read(b)
-	if err != nil {
-		return nil, err
+
+	reconnectBase := c.AMQP.ReconnectTimeouts.Base.Duration
+	if reconnectBase == 0 {
+		reconnectBase = 20 * time.Millisecond
 	}
-	consumerName := fmt.Sprintf("%s.%x", serverQueue, b)
+	reconnectMax := c.AMQP.ReconnectTimeouts.Max.Duration
+	if reconnectMax == 0 {
+		reconnectMax = time.Minute
+	}
+
 	return &AmqpRPCServer{
 		serverQueue:                    serverQueue,
+		connection:                     newAMQPConnector(serverQueue, reconnectBase, reconnectMax),
 		log:                            log,
 		dispatchTable:                  make(map[string]func([]byte) ([]byte, error)),
-		connectionHandler:              handler,
-		consumerName:                   consumerName,
 		maxConcurrentRPCServerRequests: maxConcurrentRPCServerRequests,
 	}, nil
 }
@@ -349,7 +349,7 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 		return nil, err
 	}
 
-	err = AMQPDeclareExchange(conn)
+	err = amqpDeclareExchange(conn)
 	if err != nil {
 		return nil, err
 	}
@@ -380,31 +380,23 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 		rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] %s failed, replying: %s (%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, response.Error.Value, response.Error.Type, msg.CorrelationId))
 	}
 	rpc.log.Debug(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(jsonResponse), msg.CorrelationId))
-	rpc.Channel.Publish(
-		AmqpExchange,
+	rpc.connection.publish(
 		msg.ReplyTo,
-		AmqpMandatory,
-		AmqpImmediate,
-		amqp.Publishing{
-			CorrelationId: msg.CorrelationId,
-			Type:          msg.Type,
-			Body:          jsonResponse, // XXX-JWS: jws.Sign(privKey, body)
-			Expiration:    "30000",
-		})
+		msg.CorrelationId,
+		"30000",
+		"",
+		msg.Type,
+		jsonResponse)
 }
 
-func (rpc *AmqpRPCServer) replyTooManyRequests(msg amqp.Delivery) {
-	rpc.Channel.Publish(
-		AmqpExchange,
+func (rpc *AmqpRPCServer) replyTooManyRequests(msg amqp.Delivery) error {
+	return rpc.connection.publish(
 		msg.ReplyTo,
-		AmqpMandatory,
-		AmqpImmediate,
-		amqp.Publishing{
-			CorrelationId: msg.CorrelationId,
-			Type:          msg.Type,
-			Body:          rpc.tooManyRequestsResponse,
-			Expiration:    "1000",
-		})
+		msg.CorrelationId,
+		"1000",
+		"",
+		msg.Type,
+		rpc.tooManyRequestsResponse)
 }
 
 // Start starts the AMQP-RPC server and handles reconnections, this will block
@@ -420,56 +412,45 @@ func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
 	}
 	rpc.tooManyRequestsResponse = tooManyRequestsResponse
 
+	err = rpc.connection.connect(c)
+	if err != nil {
+		return err
+	}
+	rpc.mu.Lock()
+	rpc.connected = true
+	rpc.mu.Unlock()
+
 	go rpc.catchSignals()
+
 	for {
-		rpc.dMu.Lock()
-		if rpc.done {
-			rpc.dMu.Unlock()
-			break
-		}
-		rpc.dMu.Unlock()
-		var err error
-		rpc.Channel, err = AmqpChannel(c)
-		if err != nil {
-			return err
-		}
-		rpc.connectionHandler(rpc)
-
-		msgs, err := amqpSubscribe(rpc.Channel, rpc.serverQueue, rpc.consumerName, rpc.log)
-		if err != nil {
-			return err
-		}
-		rpc.connected = true
-		rpc.log.Info(" [!] Connected to AMQP")
-
-		closeChan := rpc.Channel.NotifyClose(make(chan *amqp.Error, 1))
-		for blocking := true; blocking; {
-			select {
-			case msg, ok := <-msgs:
-				if ok {
-					if rpc.maxConcurrentRPCServerRequests > 0 && atomic.LoadInt64(&rpc.currentGoroutines) >= rpc.maxConcurrentRPCServerRequests {
-						rpc.replyTooManyRequests(msg)
-						break // this breaks the select, not the for
-					}
-					go func() {
-						atomic.AddInt64(&rpc.currentGoroutines, 1)
-						defer atomic.AddInt64(&rpc.currentGoroutines, -1)
-						rpc.processMessage(msg)
-					}()
-				} else {
-					// chan has been closed by rpc.channel.Cancel
+		select {
+		case msg, ok := <-rpc.connection.messages():
+			if ok {
+				if rpc.maxConcurrentRPCServerRequests > 0 && atomic.LoadInt64(&rpc.currentGoroutines) >= rpc.maxConcurrentRPCServerRequests {
+					rpc.replyTooManyRequests(msg)
+					break // this breaks the select, not the for
+				}
+				go func() {
+					atomic.AddInt64(&rpc.currentGoroutines, 1)
+					defer atomic.AddInt64(&rpc.currentGoroutines, -1)
+					rpc.processMessage(msg)
+				}()
+			} else {
+				rpc.mu.RLock()
+				if rpc.done {
+					// chan has been closed by rpc.connection.Cancel
 					rpc.log.Info(" [!] Finished processing messages")
+					rpc.mu.RUnlock()
 					return nil
 				}
-			case err = <-closeChan:
-				rpc.connected = false
-				rpc.log.Warning(fmt.Sprintf(" [!] AMQP Channel closed, will reconnect in 5 seconds: [%s]", err))
-				time.Sleep(time.Second * 5)
-				blocking = false
+				rpc.mu.RUnlock()
+				rpc.log.Info(" [!] Got channel close, but no signal to shut down. Continuing.")
 			}
+		case err = <-rpc.connection.closeChannel():
+			rpc.log.Info(fmt.Sprintf(" [!] Server channel closed: %s", rpc.serverQueue))
+			rpc.connection.reconnect(c, rpc.log)
 		}
 	}
-	return nil
 }
 
 var signalToName = map[os.Signal]string{
@@ -494,39 +475,36 @@ func (rpc *AmqpRPCServer) catchSignals() {
 // continue blocking until it has processed any messages that have already been
 // retrieved.
 func (rpc *AmqpRPCServer) Stop() {
+	rpc.mu.Lock()
+	rpc.done = true
+	rpc.mu.Unlock()
 	if rpc.connected {
 		rpc.log.Info(" [!] Shutting down RPC server, stopping new deliveries and processing remaining messages")
-		rpc.Channel.Cancel(rpc.consumerName, false)
+		rpc.connection.cancel()
 	} else {
 		rpc.log.Info("[!] Shutting down RPC server, nothing to clean up")
-		rpc.dMu.Lock()
-		rpc.done = true
-		rpc.dMu.Unlock()
 	}
 }
 
 // AmqpRPCCLient is an AMQP-RPC client that sends requests to a specific server
 // queue, and uses a dedicated response queue for responses.
 //
-// To implement specific functionality, using code uses the Dispatch()
+// To implement specific functionality, using code uses the DispatchSync()
 // method to send a method name and body, and get back a response. So
 // you end up with wrapper methods of the form:
 //
 // ```
 //   request = /* serialize request to []byte */
-//   response = <-AmqpRPCCLient.Dispatch(method, request)
+//   response = AmqpRPCCLient.Dispatch(method, request)
 //   return /* deserialized response */
 // ```
 //
-// Callers that don't care about the response can just call Dispatch()
-// and ignore the return value.
-//
 // DispatchSync will manage the channel for you, and also enforce a
-// timeout on the transaction (default 60 seconds)
+// timeout on the transaction.
 type AmqpRPCCLient struct {
 	serverQueue string
 	clientQueue string
-	channel     *amqp.Channel
+	connection  *amqpConnector
 	timeout     time.Duration
 	log         *blog.AuditLogger
 
@@ -537,7 +515,7 @@ type AmqpRPCCLient struct {
 }
 
 // NewAmqpRPCClient constructs an RPC client using AMQP
-func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Channel, stats statsd.Statter) (rpc *AmqpRPCCLient, err error) {
+func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, c cmd.Config, stats statsd.Statter) (rpc *AmqpRPCCLient, err error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -550,40 +528,59 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, channel *amqp.Chann
 	}
 	clientQueue := fmt.Sprintf("%s.%s.%x", clientQueuePrefix, hostname, randID)
 
+	reconnectBase := c.AMQP.ReconnectTimeouts.Base.Duration
+	if reconnectBase == 0 {
+		reconnectBase = 20 * time.Millisecond
+	}
+	reconnectMax := c.AMQP.ReconnectTimeouts.Max.Duration
+	if reconnectMax == 0 {
+		reconnectMax = time.Minute
+	}
+
 	rpc = &AmqpRPCCLient{
 		serverQueue: serverQueue,
 		clientQueue: clientQueue,
-		channel:     channel,
+		connection:  newAMQPConnector(clientQueue, reconnectBase, reconnectMax),
 		pending:     make(map[string]chan []byte),
 		timeout:     10 * time.Second,
 		log:         blog.GetAuditLogger(),
 		stats:       stats,
 	}
 
-	// Subscribe to the response queue and dispatch
-	msgs, err := amqpSubscribe(rpc.channel, clientQueue, "", rpc.log)
+	err = rpc.connection.connect(c)
 	if err != nil {
 		return nil, err
 	}
 
 	go func() {
-		for msg := range msgs {
-			// XXX-JWS: jws.Sign(privKey, body)
-			corrID := msg.CorrelationId
-			rpc.mu.RLock()
-			responseChan, present := rpc.pending[corrID]
-			rpc.mu.RUnlock()
+		for {
+			select {
+			case msg, ok := <-rpc.connection.messages():
+				if ok {
+					corrID := msg.CorrelationId
+					rpc.mu.RLock()
+					responseChan, present := rpc.pending[corrID]
+					rpc.mu.RUnlock()
 
-			rpc.log.Debug(fmt.Sprintf(" [c<][%s] response %s(%s) [%s]", clientQueue, msg.Type, core.B64enc(msg.Body), corrID))
-			if !present {
-				// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
-				rpc.log.Audit(fmt.Sprintf(" [c<][%s] Misrouted message: %s - %s - %s", clientQueue, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
-				continue
+					rpc.log.Debug(fmt.Sprintf(" [c<][%s] response %s(%s) [%s]", clientQueue, msg.Type, core.B64enc(msg.Body), corrID))
+					if !present {
+						// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
+						rpc.log.Audit(fmt.Sprintf(" [c<][%s] Misrouted message: %s - %s - %s", clientQueue, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
+						continue
+					}
+					responseChan <- msg.Body
+					rpc.mu.Lock()
+					delete(rpc.pending, corrID)
+					rpc.mu.Unlock()
+				} else {
+					// chan has been closed by rpc.connection.Cancel
+					rpc.log.Info(fmt.Sprintf(" [!] Client reply channel closed: %s", rpc.clientQueue))
+					continue
+				}
+			case err = <-rpc.connection.closeChannel():
+				rpc.log.Info(fmt.Sprintf(" [!] Client reply channel closed : %s", rpc.clientQueue))
+				rpc.connection.reconnect(c, rpc.log)
 			}
-			responseChan <- msg.Body
-			rpc.mu.Lock()
-			delete(rpc.pending, corrID)
-			rpc.mu.Unlock()
 		}
 	}()
 
@@ -596,10 +593,10 @@ func (rpc *AmqpRPCCLient) SetTimeout(ttl time.Duration) {
 	rpc.timeout = ttl
 }
 
-// Dispatch sends a body to the destination, and returns a response channel
+// dispatch sends a body to the destination, and returns a response channel
 // that can be used to monitor for responses, or discarded for one-shot
 // actions.
-func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
+func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) chan []byte {
 	// Create a channel on which to direct the response
 	// At least in some cases, it's important that this channel
 	// be buffered to avoid deadlock
@@ -611,18 +608,13 @@ func (rpc *AmqpRPCCLient) Dispatch(method string, body []byte) chan []byte {
 
 	// Send the request
 	rpc.log.Debug(fmt.Sprintf(" [c>][%s] requesting %s(%s) [%s]", rpc.clientQueue, method, core.B64enc(body), corrID))
-	rpc.channel.Publish(
-		AmqpExchange,
+	rpc.connection.publish(
 		rpc.serverQueue,
-		AmqpMandatory,
-		AmqpImmediate,
-		amqp.Publishing{
-			CorrelationId: corrID,
-			ReplyTo:       rpc.clientQueue,
-			Type:          method,
-			Body:          body, // XXX-JWS: jws.Sign(privKey, body)
-			Expiration:    "30000",
-		})
+		corrID,
+		"30000",
+		rpc.clientQueue,
+		method,
+		body)
 
 	return responseChan
 }
@@ -635,7 +627,7 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 	defer rpc.stats.GaugeDelta("RPC.CallsWaiting", -1, 1.0)
 	callStarted := time.Now()
 	select {
-	case jsonResponse := <-rpc.Dispatch(method, body):
+	case jsonResponse := <-rpc.dispatch(method, body):
 		var rpcResponse rpcResponse
 		err = json.Unmarshal(jsonResponse, &rpcResponse)
 		if err != nil {

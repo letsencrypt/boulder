@@ -45,24 +45,22 @@ func main() {
 
 		go cmd.ProfileCmd("CA", stats)
 
-		connectionHandler := func(srv *rpc.AmqpRPCServer) {
-			saRPC, err := rpc.NewAmqpRPCClient("CA->SA", c.AMQP.SA.Server, srv.Channel, stats)
-			cmd.FailOnError(err, "Unable to create RPC client")
+		saRPC, err := rpc.NewAmqpRPCClient("CA->SA", c.AMQP.SA.Server, c, stats)
+		cmd.FailOnError(err, "Unable to create RPC client")
 
-			sac, err := rpc.NewStorageAuthorityClient(saRPC)
-			cmd.FailOnError(err, "Failed to create SA client")
+		sac, err := rpc.NewStorageAuthorityClient(saRPC)
+		cmd.FailOnError(err, "Failed to create SA client")
 
-			pubRPC, err := rpc.NewAmqpRPCClient("CA->Publisher", c.AMQP.Publisher.Server, srv.Channel, stats)
-			cmd.FailOnError(err, "Unable to create RPC client")
+		pubRPC, err := rpc.NewAmqpRPCClient("CA->Publisher", c.AMQP.Publisher.Server, c, stats)
+		cmd.FailOnError(err, "Unable to create RPC client")
 
-			pubc, err := rpc.NewPublisherClient(pubRPC)
-			cmd.FailOnError(err, "Failed to create Publisher client")
+		pubc, err := rpc.NewPublisherClient(pubRPC)
+		cmd.FailOnError(err, "Failed to create Publisher client")
 
-			cai.Publisher = &pubc
-			cai.SA = &sac
-		}
+		cai.Publisher = &pubc
+		cai.SA = &sac
 
-		cas, err := rpc.NewAmqpRPCServer(c.AMQP.CA.Server, connectionHandler, c.CA.MaxConcurrentRPCServerRequests)
+		cas, err := rpc.NewAmqpRPCServer(c.AMQP.CA.Server, c.CA.MaxConcurrentRPCServerRequests, c)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
 		rpc.NewCertificateAuthorityServer(cas, cai)
 

@@ -36,17 +36,15 @@ func main() {
 		go cmd.DebugServer(c.Publisher.DebugAddr)
 		go cmd.ProfileCmd("Publisher", stats)
 
-		connectionHandler := func(srv *rpc.AmqpRPCServer) {
-			saRPC, err := rpc.NewAmqpRPCClient("Publisher->SA", c.AMQP.SA.Server, srv.Channel, stats)
-			cmd.FailOnError(err, "Unable to create SA RPC client")
+		saRPC, err := rpc.NewAmqpRPCClient("Publisher->SA", c.AMQP.SA.Server, c, stats)
+		cmd.FailOnError(err, "Unable to create SA RPC client")
 
-			sac, err := rpc.NewStorageAuthorityClient(saRPC)
-			cmd.FailOnError(err, "Unable to create SA client")
+		sac, err := rpc.NewStorageAuthorityClient(saRPC)
+		cmd.FailOnError(err, "Unable to create SA client")
 
-			pubi.SA = &sac
-		}
+		pubi.SA = &sac
 
-		pubs, err := rpc.NewAmqpRPCServer(c.AMQP.Publisher.Server, connectionHandler, c.Publisher.MaxConcurrentRPCServerRequests)
+		pubs, err := rpc.NewAmqpRPCServer(c.AMQP.Publisher.Server, c.Publisher.MaxConcurrentRPCServerRequests, c)
 		cmd.FailOnError(err, "Unable to create Publisher RPC server")
 		rpc.NewPublisherServer(pubs, &pubi)
 
