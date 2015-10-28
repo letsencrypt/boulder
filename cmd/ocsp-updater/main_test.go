@@ -80,6 +80,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 			MissingSCTWindow:        cmd.ConfigDuration{Duration: time.Second},
 		},
 		0,
+		"",
 	)
 
 	return updater, sa, dbMap, fc, cleanUp

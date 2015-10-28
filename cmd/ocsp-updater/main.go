@@ -8,13 +8,18 @@ package main
 import (
 	"crypto/x509"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
+	"net/url"
+	"path"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
+	"github.com/letsencrypt/boulder/akamai"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -42,6 +47,9 @@ type OCSPUpdater struct {
 	numLogs int
 
 	loops []*looper
+
+	ccu    *akamai.CachePurgeClient
+	issuer *x509.Certificate
 }
 
 // This is somewhat gross but can be pared down a bit once the publisher and this
@@ -55,6 +63,7 @@ func newUpdater(
 	sac core.StorageAuthority,
 	config cmd.OCSPUpdaterConfig,
 	numLogs int,
+	issuerPath string,
 ) (*OCSPUpdater, error) {
 	if config.NewCertificateBatchSize == 0 ||
 		config.OldOCSPBatchSize == 0 ||
@@ -67,14 +76,16 @@ func newUpdater(
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
 
+	log := blog.GetAuditLogger()
+
 	updater := OCSPUpdater{
 		stats:               stats,
 		clk:                 clk,
 		dbMap:               dbMap,
 		cac:                 ca,
+		log:                 log,
 		sac:                 sac,
 		pubc:                pub,
-		log:                 blog.GetAuditLogger(),
 		numLogs:             numLogs,
 		ocspMinTimeToExpiry: config.OCSPMinTimeToExpiry.Duration,
 		oldestIssuedSCT:     config.OldestIssuedSCT.Duration,
@@ -127,9 +138,59 @@ func newUpdater(
 		})
 	}
 
-	updater.ocspMinTimeToExpiry = config.OCSPMinTimeToExpiry.Duration
+	// TODO(#1050): Remove this gate and the nil ccu checks below
+	if config.AkamaiBaseURL != "" {
+		issuer, err := core.LoadCert(issuerPath)
+		ccu, err := akamai.NewCachePurgeClient(
+			config.AkamaiBaseURL,
+			config.AkamaiClientToken,
+			config.AkamaiClientSecret,
+			config.AkamaiAccessToken,
+			config.AkamaiPurgeRetries,
+			config.AkamaiPurgeRetryBackoff.Duration,
+			log,
+			stats,
+		)
+		if err != nil {
+			return nil, err
+		}
+		updater.ccu = ccu
+		updater.issuer = issuer
+	}
 
 	return &updater, nil
+}
+
+// sendPurge should only be called as a Goroutine as it will block until the purge
+// request is successful
+func (updater *OCSPUpdater) sendPurge(der []byte) {
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		updater.log.AuditErr(fmt.Errorf("Failed to parse certificate for cache purge: %s", err))
+		return
+	}
+
+	req, err := ocsp.CreateRequest(cert, updater.issuer, nil)
+	if err != nil {
+		updater.log.AuditErr(fmt.Errorf("Failed to create OCSP request for cache purge: %s", err))
+		return
+	}
+
+	// Create a GET style OCSP url for each endpoint in cert.OCSPServer (still waiting
+	// on word from Akamai on how to properly purge cached POST requests, for now just
+	// do GET)
+	urls := []string{}
+	for _, ocspServer := range cert.OCSPServer {
+		urls = append(
+			urls,
+			path.Join(ocspServer, url.QueryEscape(base64.StdEncoding.EncodeToString(req))),
+		)
+	}
+
+	err = updater.ccu.Purge(urls)
+	if err != nil {
+		updater.log.AuditErr(fmt.Errorf("Failed to purge OCSP response from CDN: %s", err))
+	}
 }
 
 func (updater *OCSPUpdater) findStaleOCSPResponses(oldestLastUpdatedTime time.Time, batchSize int) ([]core.CertificateStatus, error) {
@@ -207,6 +268,12 @@ func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (*co
 
 	status.OCSPLastUpdated = updater.clk.Now()
 	status.OCSPResponse = ocspResponse
+
+	// Purge OCSP response from CDN, gated on client having been initialized
+	if updater.ccu != nil {
+		go updater.sendPurge(cert.DER)
+	}
+
 	return &status, nil
 }
 
@@ -231,6 +298,12 @@ func (updater *OCSPUpdater) generateRevokedResponse(status core.CertificateStatu
 	now := updater.clk.Now()
 	status.OCSPLastUpdated = now
 	status.OCSPResponse = ocspResponse
+
+	// Purge OCSP response from CDN, gated on client having been initialized
+	if updater.ccu != nil {
+		go updater.sendPurge(cert.DER)
+	}
+
 	return &status, nil
 }
 
@@ -520,6 +593,7 @@ func main() {
 			// Necessary evil for now
 			c.OCSPUpdater,
 			len(c.Common.CT.Logs),
+			c.Common.IssuerCert,
 		)
 
 		cmd.FailOnError(err, "Failed to create updater")
