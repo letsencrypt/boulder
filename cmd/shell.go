@@ -306,6 +306,13 @@ type OCSPUpdaterConfig struct {
 	OCSPMinTimeToExpiry ConfigDuration
 	OldestIssuedSCT     ConfigDuration
 
+	AkamaiBaseURL           string
+	AkamaiClientToken       string
+	AkamaiClientSecret      string
+	AkamaiAccessToken       string
+	AkamaiPurgeRetries      int
+	AkamaiPurgeRetryBackoff ConfigDuration
+
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    ConfigDuration
 
