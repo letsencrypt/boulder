@@ -209,6 +209,6 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, acco
 		core.HTTPChallenge01(accountKey),
 		core.TLSSNIChallenge01(accountKey),
 	}
-	combinations = [][]int{[]int{0}, []int{1}, []int{2}, []int{3}}
+	combinations = [][]int{[]int{0}, []int{1}}
 	return
 }
