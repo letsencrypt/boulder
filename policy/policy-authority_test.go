@@ -208,16 +208,13 @@ func TestChallengesFor(t *testing.T) {
 	}
 
 	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these tests
-	if len(challenges) != 4 ||
-		challenges[0].Type != core.ChallengeTypeSimpleHTTP ||
-		challenges[1].Type != core.ChallengeTypeDVSNI ||
-		challenges[2].Type != core.ChallengeTypeHTTP01 ||
-		challenges[3].Type != core.ChallengeTypeTLSSNI01 {
+	if len(challenges) != 2 ||
+		challenges[0].Type != core.ChallengeTypeHTTP01 ||
+		challenges[1].Type != core.ChallengeTypeTLSSNI01 {
 		t.Error("Incorrect challenges returned")
 	}
-	if len(combinations) != 4 ||
-		combinations[0][0] != 0 || combinations[1][0] != 1 ||
-		combinations[2][0] != 2 || combinations[3][0] != 3 {
+	if len(combinations) != 2 ||
+		combinations[0][0] != 0 || combinations[1][0] != 1 {
 		t.Error("Incorrect combinations returned")
 	}
 }
