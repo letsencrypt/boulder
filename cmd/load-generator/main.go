@@ -14,7 +14,7 @@ import (
 func main() {
 	app := cli.NewApp()
 	app.Name = "load-generator"
-	app.Usage = "boulder-wfe based load generator"
+	app.Usage = "Load generating tool for boulders publicly facing services"
 	app.Version = cmd.Version()
 	app.Author = "Boulder contributors"
 	app.Email = "ca-dev@letsencrypt.org"
@@ -54,8 +54,14 @@ func main() {
 					Usage: "Base label for randomly generated domains",
 					Value: "com",
 				},
+				cli.StringFlag{
+					Name:  "runtime",
+					Usage: "",
+				},
 			},
 			Action: func(c *cli.Context) {
+				runtime, err := time.ParseDuration(c.String("runtime"))
+				cmd.FailOnError(err, "Failed to parse runtime")
 				s, err := wfe.New(
 					c.Int("httpOnePort"),
 					c.String("apiBase"),
@@ -63,10 +69,12 @@ func main() {
 					c.Int("maxRegs"),
 					c.Int("certKeySize"),
 					c.String("domainBase"),
+					runtime,
 				)
 				cmd.FailOnError(err, "Failed to create WFE generator")
 
 				s.Run()
+				s.Dump("")
 			},
 		},
 		{
@@ -93,6 +101,7 @@ func main() {
 				cli.StringFlag{
 					Name:  "dbURI",
 					Usage: "",
+					Value: "mysql+tcp://sa@localhost:3306/boulder_sa_integration",
 				},
 				cli.StringFlag{
 					Name:  "issuerPath",
@@ -118,6 +127,7 @@ func main() {
 				cmd.FailOnError(err, "Failed to create OCSP-Responder generator")
 
 				s.Run()
+				s.Dump("")
 			},
 		},
 	}

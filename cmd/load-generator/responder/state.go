@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
 	"golang.org/x/crypto/ocsp"
@@ -26,6 +27,7 @@ type State struct {
 	issuer      *x509.Certificate
 	runtime     time.Duration
 	client      *http.Client
+	callLatency *latency.Map
 }
 
 func New(maxRequests int, ocspBase string, getRate int, postRate int, dbURI string, issuerPath string, runtime time.Duration) (*State, error) {
@@ -42,6 +44,7 @@ func New(maxRequests int, ocspBase string, getRate int, postRate int, dbURI stri
 		runtime:     runtime,
 		client:      new(http.Client),
 		issuer:      issuer,
+		callLatency: latency.New(0, (time.Second * 5).Nanoseconds(), 5),
 	}, nil
 }
 
@@ -87,6 +90,15 @@ func (s *State) Run() {
 	stop <- true
 }
 
+func (s *State) Dump(jsonPath string) {
+	fmt.Println("OCSP-Responder latency histograms")
+	fmt.Printf("######################\n%s", s.callLatency)
+
+	if jsonPath != "" {
+		// Something something
+	}
+}
+
 const query = "SELECT der FROM certificates"
 
 func (s *State) warmup() error {
@@ -129,19 +141,29 @@ func (s *State) warmup() error {
 }
 
 func (s *State) sendGET() {
-	_, err := s.client.Get(s.ocspBase + base64.StdEncoding.EncodeToString(s.requests[rand.Intn(s.numRequests)]))
+	started := time.Now()
+	resp, err := s.client.Get(s.ocspBase + base64.StdEncoding.EncodeToString(s.requests[rand.Intn(s.numRequests)]))
+	s.callLatency.Add("GET", time.Since(started))
 	if err != nil {
 		fmt.Printf("[FAILED] GET: %s\n", err)
 		return
 	}
-	// fmt.Println(resp) // or you know... something
+	if resp.StatusCode != 200 {
+		fmt.Printf("[FAILED] GET: incorrect status code %d\n", resp.StatusCode)
+		return
+	}
 }
 
 func (s *State) sendPOST() {
-	_, err := s.client.Post(s.ocspBase, "application/ocsp-request", bytes.NewBuffer(s.requests[rand.Intn(s.numRequests)]))
+	started := time.Now()
+	resp, err := s.client.Post(s.ocspBase, "application/ocsp-request", bytes.NewBuffer(s.requests[rand.Intn(s.numRequests)]))
+	s.callLatency.Add("POST", time.Since(started))
 	if err != nil {
 		fmt.Printf("[FAILED] POST: %s\n", err)
 		return
 	}
-	// fmt.Println(resp) // or you know... something
+	if resp.StatusCode != 200 {
+		fmt.Printf("[FAILED] POST: incorrect status code %d\n", resp.StatusCode)
+		return
+	}
 }

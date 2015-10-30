@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
 
 	"github.com/letsencrypt/boulder/core"
 )
@@ -43,9 +44,13 @@ type State struct {
 
 	certKey    *rsa.PrivateKey
 	domainBase string
+
+	callLatency *latency.Map
+
+	runtime time.Duration
 }
 
-func New(httpOnePort int, apiBase string, rate int, maxRegs int, keySize int, domainBase string) (*State, error) {
+func New(httpOnePort int, apiBase string, rate int, maxRegs int, keySize int, domainBase string, runtime time.Duration) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, err
@@ -62,6 +67,8 @@ func New(httpOnePort int, apiBase string, rate int, maxRegs int, keySize int, do
 		maxRegs:           maxRegs,
 		certKey:           certKey,
 		domainBase:        domainBase,
+		callLatency:       latency.New(0, (time.Second * 5).Nanoseconds(), 5),
+		runtime:           runtime,
 	}, nil
 }
 
@@ -70,9 +77,29 @@ func (s *State) Run() {
 	go s.httpOneServer()
 
 	// Run sending loop
-	for {
-		go s.sendCall()
-		time.Sleep(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&s.throughput)))
+	stop := make(chan bool, 1)
+	go func() {
+		select {
+		case <-stop:
+			return
+		default:
+			for {
+				go s.sendCall()
+				time.Sleep(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&s.throughput)))
+			}
+		}
+	}()
+
+	time.Sleep(s.runtime)
+	stop <- true
+}
+
+func (s *State) Dump(jsonPath string) {
+	fmt.Println("WFE latency histograms")
+	fmt.Printf("######################\n%s", s.callLatency)
+
+	if jsonPath != "" {
+		// Something something
 	}
 }
 
@@ -114,7 +141,9 @@ func (s *State) getNonce() (string, error) {
 	s.nMu.Lock()
 	defer s.nMu.Unlock()
 	if len(s.noncePool) == 0 {
+		started := time.Now()
 		resp, err := s.client.Head(fmt.Sprintf("%s/directory", s.apiBase))
+		s.callLatency.Add("HEAD /directory", time.Since(started))
 		if err != nil {
 			return "", err
 		}

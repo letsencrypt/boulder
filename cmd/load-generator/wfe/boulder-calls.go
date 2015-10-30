@@ -40,7 +40,9 @@ func (s *State) newRegistration(_ *registration) {
 		return
 	}
 
+	started := time.Now()
 	resp, err := s.post(fmt.Sprintf("%s/acme/new-reg", s.apiBase), requestPayload)
+	s.callLatency.Add("POST /acme/new-reg", time.Since(started))
 	if err != nil {
 		fmt.Printf("[FAILED] new-reg, post failed: %s\n", err)
 		return
@@ -65,7 +67,9 @@ func (s *State) newRegistration(_ *registration) {
 		return
 	}
 
+	started = time.Now()
 	resp, err = s.post(resp.Header.Get("Location"), requestPayload)
+	s.callLatency.Add("POST /acme/reg/", time.Since(started))
 	if err != nil {
 		fmt.Printf("[FAILED] reg, post failed: %s\n", err)
 		return
@@ -100,7 +104,9 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 		return err
 	}
 
+	started := time.Now()
 	resp, err := s.post(chall.URI, requestPayload)
+	s.callLatency.Add("POST /acme/challenge/", time.Since(started))
 	if err != nil {
 		return err
 	}
@@ -110,7 +116,9 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 	// Sit and spin until status valid or invalid
 	var newAuthz core.Authorization
 	for {
+		started = time.Now()
 		resp, err = s.client.Get(authURI)
+		s.callLatency.Add("GET /acme/authz/", time.Since(started))
 		if err != nil {
 			fmt.Printf("[FAILED] authzer: %s\n", err)
 			return err
@@ -158,7 +166,9 @@ func (s *State) newAuthorization(reg *registration) {
 		return
 	}
 
+	started := time.Now()
 	resp, err := s.post(fmt.Sprintf("%s/acme/new-authz", s.apiBase), requestPayload)
+	s.callLatency.Add("POST /acme/new-authz", time.Since(started))
 	if err != nil {
 		fmt.Printf("[FAILED] new-authz: %s\n", err)
 		return
@@ -229,7 +239,9 @@ func (s *State) newCertificate(reg *registration) {
 		return
 	}
 
+	started := time.Now()
 	resp, err := s.post(fmt.Sprintf("%s/acme/new-cert", s.apiBase), requestPayload)
+	s.callLatency.Add("POST /acme/new-cert", time.Since(started))
 	if err != nil {
 		fmt.Printf("[FAILED] new-cert: %s\n", err)
 		return
@@ -283,7 +295,9 @@ func (s *State) revokeCertificate(reg *registration) {
 		return
 	}
 
+	started := time.Now()
 	resp, err = s.post(fmt.Sprintf("%s/acme/revoke-cert", s.apiBase), requestPayload)
+	s.callLatency.Add("POST /acme/revoke-cert", time.Since(started))
 	if err != nil {
 		fmt.Printf("[FAILED] revoke-cert: %s\n", err)
 		return
