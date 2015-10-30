@@ -46,6 +46,7 @@ type ValidationAuthorityImpl struct {
 	log          *blog.AuditLogger
 	DNSResolver  core.DNSResolver
 	IssuerDomain string
+	SafeBrowsing SafeBrowsing
 	httpPort     int
 	httpsPort    int
 	tlsPort      int
@@ -63,16 +64,17 @@ type PortConfig struct {
 }
 
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *PortConfig, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *PortConfig, sbc SafeBrowsing, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
 	return &ValidationAuthorityImpl{
-		log:       logger,
-		httpPort:  pc.HTTPPort,
-		httpsPort: pc.HTTPSPort,
-		tlsPort:   pc.TLSPort,
-		stats:     stats,
-		clk:       clk,
+		SafeBrowsing: sbc,
+		log:          logger,
+		httpPort:     pc.HTTPPort,
+		httpsPort:    pc.HTTPSPort,
+		tlsPort:      pc.TLSPort,
+		stats:        stats,
+		clk:          clk,
 	}
 }
 

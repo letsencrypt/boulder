@@ -36,8 +36,10 @@ import (
 )
 
 type DummyValidationAuthority struct {
-	Called   bool
-	Argument core.Authorization
+	Called          bool
+	Argument        core.Authorization
+	IsNotSafe       bool
+	IsSafeDomainErr error
 }
 
 func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
@@ -48,6 +50,13 @@ func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization,
 
 func (dva *DummyValidationAuthority) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	return false, true, nil
+}
+
+func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+	if dva.IsSafeDomainErr != nil {
+		return nil, dva.IsSafeDomainErr
+	}
+	return &core.IsSafeDomainResponse{!dva.IsNotSafe}, nil
 }
 
 var (
@@ -215,12 +224,16 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	})
 
 	stats, _ := statsd.NewNoopClient()
-	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats, cmd.RateLimitConfig{
-		TotalCertificates: cmd.RateLimitPolicy{
-			Threshold: 100,
-			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		},
-	}, 1)
+	ra := NewRegistrationAuthorityImpl(fc,
+		blog.GetAuditLogger(),
+		stats,
+		&DomainCheck{va},
+		cmd.RateLimitConfig{
+			TotalCertificates: cmd.RateLimitPolicy{
+				Threshold: 100,
+				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+			},
+		}, 1)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = &ca
@@ -235,7 +248,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	AuthzFinal.Expires = &exp
 	AuthzFinal.Challenges[0].Status = "valid"
 
-	return va, ssa, &ra, fc, cleanUp
+	return va, ssa, ra, fc, cleanUp
 }
 
 func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
