@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.5.1",
 	"Packages": [
 		"./..."
 	],
@@ -101,12 +101,25 @@
 			"Rev": "06883d979f10cc178f2716846215c8cf90f9e363"
 		},
 		{
+			"ImportPath": "github.com/golang/protobuf/proto",
+			"Rev": "a1dfa5ef89a13a0aa4be5a6f81179db10bfeea36"
+		},
+		{
 			"ImportPath": "github.com/jmhodges/clock",
 			"Rev": "3c4ebd218625c9364c33db6d39c276d80c3090c6"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/go-jose",
 			"Rev": "e7bd87a386998d423741e8e370af1a22638767e0"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/go-safe-browsing-api",
+			"Comment": "2.0.0-2-g814cea4",
+			"Rev": "814cea4d6d3063540dc15c3d93754eff4eaa756b"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/net/publicsuffix",
+			"Rev": "adbe5512bf2d8766546da71cf90b681c519cb39f"
 		},
 		{
 			"ImportPath": "github.com/miekg/dns",
@@ -125,8 +138,8 @@
 			"Rev": "287a1d87db5d649b01d6193bd9d07e909f08094c"
 		},
 		{
-			"ImportPath": "github.com/letsencrypt/net/publicsuffix",
-			"Rev": "adbe5512bf2d8766546da71cf90b681c519cb39f"
+			"ImportPath": "golang.org/x/net/publicsuffix",
+			"Rev": "ce84af2e5bf21582345e478b116afc7d4efaba3d"
 		},
 		{
 			"ImportPath": "gopkg.in/gorp.v1",
