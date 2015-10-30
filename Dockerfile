@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y \
 # Boulder exposes its web application at port TCP 4000
 EXPOSE 4000
 
+# Install port forwarder
+RUN go get github.com/jsha/listenbuddy
 # get database migration tool
 RUN go get bitbucket.org/liamstask/goose/cmd/goose
 # install go lint
