@@ -6,8 +6,10 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	mrand "math/rand"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -94,13 +96,21 @@ func (s *State) Run() {
 	stop <- true
 }
 
-func (s *State) Dump(jsonPath string) {
+func (s *State) Dump(jsonPath string) error {
 	fmt.Println("WFE latency histograms")
 	fmt.Printf("######################\n%s", s.callLatency)
 
 	if jsonPath != "" {
-		// Something something
+		data, err := json.Marshal(s.callLatency)
+		if err != nil {
+			return err
+		}
+		err = ioutil.WriteFile(jsonPath, data, os.ModePerm)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // HTTP utils

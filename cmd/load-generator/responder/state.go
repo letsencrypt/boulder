@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -90,13 +93,22 @@ func (s *State) Run() {
 	stop <- true
 }
 
-func (s *State) Dump(jsonPath string) {
+func (s *State) Dump(jsonPath string) error {
 	fmt.Println("OCSP-Responder latency histograms")
 	fmt.Printf("######################\n%s", s.callLatency)
 
 	if jsonPath != "" {
-		// Something something
+		data, err := json.Marshal(s.callLatency)
+		if err != nil {
+			return err
+		}
+		err = ioutil.WriteFile(jsonPath, data, os.ModePerm)
+		if err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 const query = "SELECT der FROM certificates"

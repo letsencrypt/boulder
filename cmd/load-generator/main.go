@@ -58,6 +58,10 @@ func main() {
 					Name:  "runtime",
 					Usage: "",
 				},
+				cli.StringFlag{
+					Name:  "latencyDataPath",
+					Usage: "Filename of latency chart data to save",
+				},
 			},
 			Action: func(c *cli.Context) {
 				runtime, err := time.ParseDuration(c.String("runtime"))
@@ -74,7 +78,8 @@ func main() {
 				cmd.FailOnError(err, "Failed to create WFE generator")
 
 				s.Run()
-				s.Dump("")
+				err = s.Dump(c.String("latencyDataPath"))
+				cmd.FailOnError(err, "Failed to dump latency data")
 			},
 		},
 		{
@@ -111,6 +116,10 @@ func main() {
 					Name:  "runtime",
 					Usage: "",
 				},
+				cli.StringFlag{
+					Name:  "latencyDataPath",
+					Usage: "Filename of latency chart data to save",
+				},
 			},
 			Action: func(c *cli.Context) {
 				runtime, err := time.ParseDuration(c.String("runtime"))
@@ -127,7 +136,8 @@ func main() {
 				cmd.FailOnError(err, "Failed to create OCSP-Responder generator")
 
 				s.Run()
-				s.Dump("")
+				err = s.Dump(c.String("latencyDataPath"))
+				cmd.FailOnError(err, "Failed to dump latency data")
 			},
 		},
 	}
