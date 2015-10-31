@@ -164,6 +164,10 @@ func (s *State) sendGET() {
 		fmt.Printf("[FAILED] GET: incorrect status code %d\n", resp.StatusCode)
 		return
 	}
+	if _, err := ioutil.ReadAll(resp.Body); err != nil {
+		fmt.Printf("[FAILED] GET: bad body, %s\n", err)
+		return
+	}
 }
 
 func (s *State) sendPOST() {
@@ -176,6 +180,10 @@ func (s *State) sendPOST() {
 	}
 	if resp.StatusCode != 200 {
 		fmt.Printf("[FAILED] POST: incorrect status code %d\n", resp.StatusCode)
+		return
+	}
+	if _, err := ioutil.ReadAll(resp.Body); err != nil {
+		fmt.Printf("[FAILED] POST: bad body, %s\n", err)
 		return
 	}
 }
