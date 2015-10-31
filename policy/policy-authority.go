@@ -44,6 +44,7 @@ func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool, challengeT
 	}
 
 	// Take note of which challenges to offer
+	pa.supportedChallenges = map[string]bool{}
 	for _, challengeType := range challengeTypes {
 		pa.supportedChallenges[challengeType] = true
 	}
