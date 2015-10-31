@@ -21,9 +21,11 @@ import (
 
 var log = mocks.UseMockLog()
 
+var supportedChallenges = []string{core.ChallengeTypeHTTP01, core.ChallengeTypeTLSSNI01}
+
 func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
 	dbMap, cleanUp := paDBMap(t)
-	pa, err := NewPolicyAuthorityImpl(dbMap, false, []string{core.ChallengeTypeHTTP01, core.ChallengeTypeTLSSNI01})
+	pa, err := NewPolicyAuthorityImpl(dbMap, false, supportedChallenges)
 	if err != nil {
 		cleanUp()
 		t.Fatalf("Couldn't create policy implementation: %s", err)
@@ -207,18 +209,11 @@ func TestChallengesFor(t *testing.T) {
 		t.Errorf("Error generating challenges: %v", err)
 	}
 
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these tests
-	if len(challenges) != 4 ||
-		challenges[0].Type != core.ChallengeTypeSimpleHTTP ||
-		challenges[1].Type != core.ChallengeTypeDVSNI ||
-		challenges[2].Type != core.ChallengeTypeHTTP01 ||
-		challenges[3].Type != core.ChallengeTypeTLSSNI01 {
-		t.Error("Incorrect challenges returned")
-	}
-	if len(combinations) != 4 ||
-		combinations[0][0] != 0 || combinations[1][0] != 1 ||
-		combinations[2][0] != 2 || combinations[3][0] != 3 {
-		t.Error("Incorrect combinations returned")
+	test.Assert(t, len(challenges) == len(supportedChallenges), "Wrong number of challenges returned")
+	test.Assert(t, len(combinations) == len(supportedChallenges), "Wrong number of combinations returned")
+	for i, challenge := range challenges {
+		test.Assert(t, challenges[i].Type == supportedChallenges[i], fmt.Sprintf("Challenge %d has incorrect type", i))
+		test.Assert(t, len(combinations[i]) == 1 && combinations[i][0] == i, fmt.Sprintf("Combination %d is incorrect", i))
 	}
 }
 

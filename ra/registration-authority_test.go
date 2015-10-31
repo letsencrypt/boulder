@@ -51,6 +51,8 @@ func (dva *DummyValidationAuthority) CheckCAARecords(identifier core.AcmeIdentif
 }
 
 var (
+	SupportedChallenges = []string{core.ChallengeTypeHTTP01, core.ChallengeTypeTLSSNI01}
+
 	// These values we simulate from the client
 	AccountKeyJSONA = []byte(`{
 		"kty":"RSA",
@@ -189,7 +191,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
-	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false, []string{core.ChallengeTypeHTTP01, core.ChallengeTypeTLSSNI01})
+	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false, SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
@@ -390,10 +392,9 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these lines
-	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
-	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeHTTP01, "Challenge 0 not SimpleHTTP")
-	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeTLSSNI01, "Challenge 1 not DVSNI")
+	test.Assert(t, len(authz.Challenges) == len(SupportedChallenges), "Incorrect number of challenges returned")
+	test.Assert(t, authz.Challenges[0].Type == SupportedChallenges[0], "Challenge 0 not http-01")
+	test.Assert(t, authz.Challenges[1].Type == SupportedChallenges[1], "Challenge 1 not tls-sni-01")
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
 
