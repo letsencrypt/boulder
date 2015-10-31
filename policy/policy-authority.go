@@ -23,11 +23,12 @@ type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
 	DB  *PolicyAuthorityDatabaseImpl
 
-	EnforceWhitelist bool
+	EnforceWhitelist    bool
+	supportedChallenges map[string]bool
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool) (*PolicyAuthorityImpl, error) {
+func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool, challengeTypes []string) (*PolicyAuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
@@ -40,6 +41,11 @@ func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool) (*PolicyAu
 		log:              logger,
 		DB:               padb,
 		EnforceWhitelist: enforceWhitelist,
+	}
+
+	// Take note of which challenges to offer
+	for _, challengeType := range challengeTypes {
+		pa.supportedChallenges[challengeType] = true
 	}
 
 	return &pa, nil
@@ -204,13 +210,34 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 //
 // Note: Current implementation is static, but future versions may not be.
 func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int, err error) {
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these lines
-	challenges = []core.Challenge{
-		core.SimpleHTTPChallenge(accountKey),
-		core.DvsniChallenge(accountKey),
-		core.HTTPChallenge01(accountKey),
-		core.TLSSNIChallenge01(accountKey),
+	challenges = []core.Challenge{}
+	combinations = [][]int{}
+
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
+	if pa.supportedChallenges[core.ChallengeTypeSimpleHTTP] {
+		challenges = append(challenges, core.SimpleHTTPChallenge(accountKey))
 	}
-	combinations = [][]int{[]int{0}, []int{1}, []int{2}, []int{3}}
+
+	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
+	if pa.supportedChallenges[core.ChallengeTypeDVSNI] {
+		challenges = append(challenges, core.SimpleHTTPChallenge(accountKey))
+	}
+
+	if pa.supportedChallenges[core.ChallengeTypeHTTP01] {
+		challenges = append(challenges, core.DvsniChallenge(accountKey))
+	}
+
+	if pa.supportedChallenges[core.ChallengeTypeTLSSNI01] {
+		challenges = append(challenges, core.HTTPChallenge01(accountKey))
+	}
+
+	if pa.supportedChallenges[core.ChallengeTypeDNS01] {
+		challenges = append(challenges, core.TLSSNIChallenge01(accountKey))
+	}
+
+	combinations = make([][]int, len(challenges))
+	for i := range combinations {
+		combinations[i] = []int{i}
+	}
 	return
 }

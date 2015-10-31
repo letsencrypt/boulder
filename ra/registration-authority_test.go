@@ -189,7 +189,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
-	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
+	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false, []string{core.ChallengeTypeHTTP01, core.ChallengeTypeTLSSNI01})
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
@@ -391,20 +391,11 @@ func TestNewAuthorization(t *testing.T) {
 
 	// TODO Verify that challenges are correct
 	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these lines
-	test.Assert(t, len(authz.Challenges) == 4, "Incorrect number of challenges returned")
-	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
-	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
-	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeHTTP01, "Challenge 2 not http-00")
-	test.Assert(t, authz.Challenges[3].Type == core.ChallengeTypeTLSSNI01, "Challenge 3 not tlssni-00")
-
+	test.Assert(t, len(authz.Challenges) == 2, "Incorrect number of challenges returned")
+	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeHTTP01, "Challenge 0 not SimpleHTTP")
+	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeTLSSNI01, "Challenge 1 not DVSNI")
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
-	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 2 is not sane")
-	test.Assert(t, authz.Challenges[3].IsSane(false), "Challenge 3 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
 }

@@ -10,13 +10,14 @@ if [[ ! -z "MYSQL_CONTAINER" ]]; then
 fi
 
 # Drop all users to get a fresh start
-mysql $dbconn < test/drop_users.sql
+#mysql $dbconn < test/drop_users.sql
 
 for svc in $SERVICES; do
 	for dbenv in $DBENVS; do
 		(
 		db="boulder_${svc}_${dbenv}"
 		create_script="drop database if exists \`${db}\`; create database if not exists \`${db}\`;"
+    echo $create_script
 
 		mysql $dbconn -e "$create_script" || die "unable to create ${db}"
 

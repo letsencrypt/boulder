@@ -255,10 +255,12 @@ type CAConfig struct {
 }
 
 // PAConfig specifies how a policy authority should connect to its
-// database, and what policies it should enforce.
+// database, what policies it should enforce, and what challenges
+// it should offer.
 type PAConfig struct {
 	DBConnect              string
 	EnforcePolicyWhitelist bool
+	ChallengeTypes         []string
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,
