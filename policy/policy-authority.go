@@ -221,7 +221,7 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, acco
 
 	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
 	if pa.supportedChallenges[core.ChallengeTypeDVSNI] {
-		challenges = append(challenges, core.SimpleHTTPChallenge(accountKey))
+		challenges = append(challenges, core.DvsniChallenge(accountKey))
 	}
 
 	if pa.supportedChallenges[core.ChallengeTypeHTTP01] {
@@ -233,7 +233,7 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, acco
 	}
 
 	if pa.supportedChallenges[core.ChallengeTypeDNS01] {
-		challenges = append(challenges, core.TLSSNIChallenge01(accountKey))
+		challenges = append(challenges, core.DNSChallenge01(accountKey))
 	}
 
 	combinations = make([][]int, len(challenges))
