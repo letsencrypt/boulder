@@ -148,10 +148,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
 	test.AssertNotError(t, err, "Failed to unmarshal JWK")
 
-	simpleHTTP := core.SimpleHTTPChallenge(&AccountKeyA)
-	dvsni := core.DvsniChallenge(&AccountKeyA)
-	AuthzInitial.Challenges = []core.Challenge{simpleHTTP, dvsni}
-
 	fc := clock.NewFake()
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA)
@@ -230,6 +226,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.DNSResolver = &mocks.DNSResolver{}
 
 	AuthzInitial.RegistrationID = Registration.ID
+
+    challenges, combinations, err := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
+	AuthzInitial.Challenges = challenges
+    AuthzInitial.Combinations = combinations
 
 	AuthzFinal = AuthzInitial
 	AuthzFinal.Status = "valid"
@@ -393,8 +393,8 @@ func TestNewAuthorization(t *testing.T) {
 
 	// TODO Verify that challenges are correct
 	test.Assert(t, len(authz.Challenges) == len(SupportedChallenges), "Incorrect number of challenges returned")
-	test.Assert(t, authz.Challenges[0].Type == SupportedChallenges[0], "Challenge 0 not http-01")
-	test.Assert(t, authz.Challenges[1].Type == SupportedChallenges[1], "Challenge 1 not tls-sni-01")
+	test.AssertEquals(t, authz.Challenges[0].Type, SupportedChallenges[0])
+	test.AssertEquals(t, authz.Challenges[1].Type, SupportedChallenges[1])
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
 

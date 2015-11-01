@@ -212,8 +212,9 @@ func TestChallengesFor(t *testing.T) {
 	test.Assert(t, len(challenges) == len(supportedChallenges), "Wrong number of challenges returned")
 	test.Assert(t, len(combinations) == len(supportedChallenges), "Wrong number of combinations returned")
 	for i, challenge := range challenges {
-		test.Assert(t, challenges[i].Type == supportedChallenges[i], fmt.Sprintf("Challenge %d has incorrect type", i))
-		test.Assert(t, len(combinations[i]) == 1 && combinations[i][0] == i, fmt.Sprintf("Combination %d is incorrect", i))
+		test.AssertEquals(t, challenge.Type, supportedChallenges[i])
+		test.AssertEquals(t, len(combinations[i]), 1)
+        test.AssertEquals(t, combinations[i][0], i)
 	}
 }
 

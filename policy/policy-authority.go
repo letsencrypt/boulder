@@ -225,11 +225,11 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, acco
 	}
 
 	if pa.supportedChallenges[core.ChallengeTypeHTTP01] {
-		challenges = append(challenges, core.DvsniChallenge(accountKey))
+		challenges = append(challenges, core.HTTPChallenge01(accountKey))
 	}
 
 	if pa.supportedChallenges[core.ChallengeTypeTLSSNI01] {
-		challenges = append(challenges, core.HTTPChallenge01(accountKey))
+		challenges = append(challenges, core.TLSSNIChallenge01(accountKey))
 	}
 
 	if pa.supportedChallenges[core.ChallengeTypeDNS01] {
