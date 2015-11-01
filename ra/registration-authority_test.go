@@ -227,9 +227,9 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-    challenges, combinations, err := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
+	challenges, combinations, err := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
 	AuthzInitial.Challenges = challenges
-    AuthzInitial.Combinations = combinations
+	AuthzInitial.Combinations = combinations
 
 	AuthzFinal = AuthzInitial
 	AuthzFinal.Status = "valid"

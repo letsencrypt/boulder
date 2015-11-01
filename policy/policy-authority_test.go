@@ -214,7 +214,7 @@ func TestChallengesFor(t *testing.T) {
 	for i, challenge := range challenges {
 		test.AssertEquals(t, challenge.Type, supportedChallenges[i])
 		test.AssertEquals(t, len(combinations[i]), 1)
-        test.AssertEquals(t, combinations[i][0], i)
+		test.AssertEquals(t, combinations[i][0], i)
 	}
 }
 
