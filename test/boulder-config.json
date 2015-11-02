@@ -117,7 +117,7 @@
 
   "pa": {
     "dbConnect": "mysql+tcp://policy@localhost:3306/boulder_policy_integration",
-    "challengeTypes": ["dvsni", "http-01", "tls-sni-01"]
+    "challengeTypes": ["simpleHttp", "http-01", "tls-sni-01"]
   },
 
   "ra": {
