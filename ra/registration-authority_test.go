@@ -51,7 +51,10 @@ func (dva *DummyValidationAuthority) CheckCAARecords(identifier core.AcmeIdentif
 }
 
 var (
-	SupportedChallenges = []string{core.ChallengeTypeHTTP01, core.ChallengeTypeTLSSNI01}
+	SupportedChallenges = map[string]bool{
+		core.ChallengeTypeHTTP01:   true,
+		core.ChallengeTypeTLSSNI01: true,
+	}
 
 	// These values we simulate from the client
 	AccountKeyJSONA = []byte(`{
@@ -393,8 +396,8 @@ func TestNewAuthorization(t *testing.T) {
 
 	// TODO Verify that challenges are correct
 	test.Assert(t, len(authz.Challenges) == len(SupportedChallenges), "Incorrect number of challenges returned")
-	test.AssertEquals(t, authz.Challenges[0].Type, SupportedChallenges[0])
-	test.AssertEquals(t, authz.Challenges[1].Type, SupportedChallenges[1])
+	test.Assert(t, SupportedChallenges[authz.Challenges[0].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[0].Type))
+	test.Assert(t, SupportedChallenges[authz.Challenges[1].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[1].Type))
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
 

@@ -260,7 +260,36 @@ type CAConfig struct {
 type PAConfig struct {
 	DBConnect              string
 	EnforcePolicyWhitelist bool
-	ChallengeTypes         []string
+
+	EnableSimpleHTTP bool // TODO(#894) Remove this line
+	EnableDVSNI      bool // TODO(#894) Remove this line
+	EnableHTTP01     bool
+	EnableTLSSNI01   bool
+	EnableDNS01      bool
+}
+
+// SupportedChallenges returns the set of challenges supported by the
+// configuration, as a map[string]bool.
+func (pa PAConfig) SupportedChallenges() map[string]bool {
+	challenges := map[string]bool{}
+
+	if pa.EnableSimpleHTTP {
+		challenges[core.ChallengeTypeSimpleHTTP] = true
+	}
+	if pa.EnableDVSNI {
+		challenges[core.ChallengeTypeDVSNI] = true
+	}
+	if pa.EnableHTTP01 {
+		challenges[core.ChallengeTypeHTTP01] = true
+	}
+	if pa.EnableTLSSNI01 {
+		challenges[core.ChallengeTypeTLSSNI01] = true
+	}
+	if pa.EnableDNS01 {
+		challenges[core.ChallengeTypeDNS01] = true
+	}
+
+	return challenges
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,

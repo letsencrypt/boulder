@@ -21,7 +21,13 @@ import (
 
 var log = mocks.UseMockLog()
 
-var supportedChallenges = []string{core.ChallengeTypeHTTP01, core.ChallengeTypeTLSSNI01}
+var supportedChallenges = map[string]bool{
+	core.ChallengeTypeSimpleHTTP: true,
+	core.ChallengeTypeDVSNI:      true,
+	core.ChallengeTypeHTTP01:     true,
+	core.ChallengeTypeTLSSNI01:   true,
+	core.ChallengeTypeDNS01:      true,
+}
 
 func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
 	dbMap, cleanUp := paDBMap(t)
@@ -212,7 +218,7 @@ func TestChallengesFor(t *testing.T) {
 	test.Assert(t, len(challenges) == len(supportedChallenges), "Wrong number of challenges returned")
 	test.Assert(t, len(combinations) == len(supportedChallenges), "Wrong number of combinations returned")
 	for i, challenge := range challenges {
-		test.AssertEquals(t, challenge.Type, supportedChallenges[i])
+		test.Assert(t, supportedChallenges[challenge.Type], "Unsupported challenge returned")
 		test.AssertEquals(t, len(combinations[i]), 1)
 		test.AssertEquals(t, combinations[i][0], i)
 	}

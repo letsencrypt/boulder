@@ -40,7 +40,7 @@ func main() {
 
 		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
 		cmd.FailOnError(err, "Couldn't connect to policy database")
-		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.ChallengeTypes)
+		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.SupportedChallenges())
 		cmd.FailOnError(err, "Couldn't create PA")
 
 		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)

@@ -28,7 +28,7 @@ type PolicyAuthorityImpl struct {
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool, challengeTypes []string) (*PolicyAuthorityImpl, error) {
+func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool, challengeTypes map[string]bool) (*PolicyAuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
@@ -38,15 +38,10 @@ func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool, challengeT
 		return nil, err
 	}
 	pa := PolicyAuthorityImpl{
-		log:              logger,
-		DB:               padb,
-		EnforceWhitelist: enforceWhitelist,
-	}
-
-	// Take note of which challenges to offer
-	pa.supportedChallenges = map[string]bool{}
-	for _, challengeType := range challengeTypes {
-		pa.supportedChallenges[challengeType] = true
+		log:                 logger,
+		DB:                  padb,
+		EnforceWhitelist:    enforceWhitelist,
+		supportedChallenges: challengeTypes,
 	}
 
 	return &pa, nil
