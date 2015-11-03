@@ -743,19 +743,19 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 }
 
 func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
-	label := strings.TrimRight(hostname, ".")
-	cnames := 0
+	hostname = strings.TrimRight(hostname, ".")
+	labels := strings.Split(hostname, ".")
 	// See RFC 6844 "Certification Authority Processing" for pseudocode.
-	for {
-		if strings.IndexRune(label, '.') == -1 {
-			// Reached TLD
-			break
-		}
+	// Essentially: check CAA records for the FDQN to be issued, and all parent
+	// domains.
+	// We depend on our resolver to snap CNAME and DNAME records.
+	for i := 0; i < len(labels); i++ {
+		name := strings.Join(labels[i:len(labels)], ".")
 		// Break if we've reached an ICANN TLD.
-		if tld, err := publicsuffix.ICANNTLD(label); err != nil || tld == label {
+		if tld, err := publicsuffix.ICANNTLD(name); err != nil || tld == name {
 			break
 		}
-		CAAs, caaRtt, err := va.DNSResolver.LookupCAA(label)
+		CAAs, caaRtt, err := va.DNSResolver.LookupCAA(name)
 		if err != nil {
 			return nil, err
 		}
@@ -763,35 +763,6 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 		if len(CAAs) > 0 {
 			return newCAASet(CAAs), nil
-		}
-		cname, cnameRtt, err := va.DNSResolver.LookupCNAME(label)
-		if err != nil {
-			return nil, err
-		}
-		va.stats.TimingDuration("VA.DNS.RTT.CNAME", cnameRtt, 1.0)
-		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
-		dname, dnameRtt, err := va.DNSResolver.LookupDNAME(label)
-		if err != nil {
-			return nil, err
-		}
-		va.stats.TimingDuration("VA.DNS.RTT.DNAME", dnameRtt, 1.0)
-		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
-		if cname == "" && dname == "" {
-			// Try parent domain (note we confirmed
-			// earlier that label contains '.')
-			label = label[strings.IndexRune(label, '.')+1:]
-			continue
-		}
-		if cname != "" && dname != "" && cname != dname {
-			return nil, errors.New("both CNAME and DNAME exist for " + label)
-		}
-		if cname != "" {
-			label = strings.TrimRight(cname, ".")
-		} else {
-			label = strings.TrimRight(dname, ".")
-		}
-		if cnames++; cnames > maxCNAME {
-			return nil, ErrTooManyCNAME
 		}
 	}
 	// no CAA records found
