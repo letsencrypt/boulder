@@ -8,7 +8,6 @@ package metrics
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -45,27 +44,10 @@ func (h *HTTPMonitor) watchAndServe(w http.ResponseWriter, r *http.Request) {
 	inFlight := atomic.AddInt64(&h.connectionsInFlight, 1)
 	h.stats.Gauge(fmt.Sprintf("%s.HTTP.OpenConnections", h.statsPrefix), inFlight, 1.0)
 
-	cOpened := time.Now()
 	h.handler.ServeHTTP(w, r)
-	cClosed := time.Since(cOpened)
 
 	inFlight = atomic.AddInt64(&h.connectionsInFlight, -1)
 	h.stats.Gauge(fmt.Sprintf("%s.HTTP.ConnectionsInFlight", h.statsPrefix), inFlight, 1.0)
-
-	endpoint := ""
-	// If request fails don't record the endpoint as an attacker could use this to
-	// eat up all our memory by just hitting 404s all day
-	if w.Header().Get("Content-Type") == "application/problem+json" {
-		endpoint = "Failed"
-	} else {
-		// If r.URL has more than two segments throw the rest away to simplify metrics
-		segments := strings.Split(r.URL.Path, "/")
-		if len(segments) > 3 {
-			segments = segments[:3]
-		}
-		endpoint = strings.Join(segments, "/")
-	}
-	h.stats.TimingDuration(fmt.Sprintf("%s.HTTP.ResponseTime.%s", h.statsPrefix, endpoint), cClosed, 1.0)
 }
 
 // FBAdapter provides a facebookgo/stats client interface that sends metrics via
