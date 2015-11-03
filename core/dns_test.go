@@ -176,9 +176,6 @@ func TestDNSLookupsNoServer(t *testing.T) {
 	_, _, err = obj.LookupHost("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
-	_, _, err = obj.LookupCNAME("letsencrypt.org")
-	test.AssertError(t, err, "No servers")
-
 	_, _, err = obj.LookupCAA("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 }
@@ -189,9 +186,6 @@ func TestDNSServFail(t *testing.T) {
 
 	_, _, err := obj.LookupTXT(bad)
 	test.AssertError(t, err, "LookupTXT didn't return an error")
-
-	_, _, err = obj.LookupCNAME(bad)
-	test.AssertError(t, err, "LookupCNAME didn't return an error")
 
 	_, _, err = obj.LookupHost(bad)
 	test.AssertError(t, err, "LookupHost didn't return an error")
@@ -261,28 +255,4 @@ func TestDNSLookupCAA(t *testing.T) {
 	caas, _, err = obj.LookupCAA("cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
-}
-
-func TestDNSLookupCNAME(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
-
-	target, _, err := obj.LookupCNAME("cps.letsencrypt.org")
-	test.AssertNotError(t, err, "CNAME lookup failed")
-	test.AssertEquals(t, target, "")
-
-	target, _, err = obj.LookupCNAME("cname.letsencrypt.org")
-	test.AssertNotError(t, err, "CNAME lookup failed")
-	test.AssertEquals(t, target, "cps.letsencrypt.org.")
-}
-
-func TestDNSLookupDNAME(t *testing.T) {
-	obj := NewDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr})
-
-	target, _, err := obj.LookupDNAME("cps.letsencrypt.org")
-	test.AssertNotError(t, err, "DNAME lookup failed")
-	test.AssertEquals(t, target, "")
-
-	target, _, err = obj.LookupDNAME("dname.letsencrypt.org")
-	test.AssertNotError(t, err, "DNAME lookup failed")
-	test.AssertEquals(t, target, "cps.letsencrypt.org.")
 }
