@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,7 @@ type State struct {
 	runtime     time.Duration
 	client      *http.Client
 	callLatency *latency.Map
+	wg          *sync.WaitGroup
 }
 
 func New(maxRequests int, ocspBase string, getRate int, postRate int, dbURI string, issuerPath string, runtime time.Duration) (*State, error) {
@@ -47,7 +49,8 @@ func New(maxRequests int, ocspBase string, getRate int, postRate int, dbURI stri
 		runtime:     runtime,
 		client:      new(http.Client),
 		issuer:      issuer,
-		callLatency: latency.New(0, (time.Second * 5).Nanoseconds(), 5),
+		callLatency: latency.New(),
+		wg:          new(sync.WaitGroup),
 	}, nil
 }
 
@@ -68,6 +71,7 @@ func (s *State) Run() {
 				case <-stop:
 					return
 				default:
+					s.wg.Add(1)
 					go s.sendGET()
 					time.Sleep(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&s.getRate)))
 				}
@@ -81,6 +85,7 @@ func (s *State) Run() {
 				case <-stop:
 					return
 				default:
+					s.wg.Add(1)
 					go s.sendPOST()
 					time.Sleep(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&s.postRate)))
 				}
@@ -91,12 +96,12 @@ func (s *State) Run() {
 	time.Sleep(s.runtime)
 	stop <- true
 	stop <- true
+	fmt.Println("sent stop signals, waiting")
+	s.wg.Wait()
+	fmt.Println("all calls finished")
 }
 
 func (s *State) Dump(jsonPath string) error {
-	fmt.Println("OCSP-Responder latency histograms")
-	fmt.Printf("######################\n%s", s.callLatency)
-
 	if jsonPath != "" {
 		data, err := json.Marshal(s.callLatency)
 		if err != nil {
@@ -153,37 +158,51 @@ func (s *State) warmup() error {
 }
 
 func (s *State) sendGET() {
+	defer s.wg.Done()
 	started := time.Now()
 	resp, err := s.client.Get(s.ocspBase + base64.StdEncoding.EncodeToString(s.requests[rand.Intn(s.numRequests)]))
-	s.callLatency.Add("GET", time.Since(started))
+	finished := time.Now()
+	state := "good"
+	defer func() { s.callLatency.Add("GET", started, finished, state) }()
 	if err != nil {
 		fmt.Printf("[FAILED] GET: %s\n", err)
+		state = "error"
 		return
 	}
 	if resp.StatusCode != 200 {
 		fmt.Printf("[FAILED] GET: incorrect status code %d\n", resp.StatusCode)
+		state = "unexpected status"
 		return
 	}
 	if _, err := ioutil.ReadAll(resp.Body); err != nil {
 		fmt.Printf("[FAILED] GET: bad body, %s\n", err)
+		state = "read error"
 		return
 	}
 }
 
 func (s *State) sendPOST() {
+	defer s.wg.Done()
 	started := time.Now()
 	resp, err := s.client.Post(s.ocspBase, "application/ocsp-request", bytes.NewBuffer(s.requests[rand.Intn(s.numRequests)]))
-	s.callLatency.Add("POST", time.Since(started))
+	// doing this here seems to ignore the time it takes to read the response...
+	// should it be replace with a time.Now() in the defer?
+	finished := time.Now()
+	state := "good"
+	defer func() { s.callLatency.Add("POST", started, finished, state) }()
 	if err != nil {
 		fmt.Printf("[FAILED] POST: %s\n", err)
+		state = "error"
 		return
 	}
 	if resp.StatusCode != 200 {
 		fmt.Printf("[FAILED] POST: incorrect status code %d\n", resp.StatusCode)
+		state = "unexpected status"
 		return
 	}
 	if _, err := ioutil.ReadAll(resp.Body); err != nil {
 		fmt.Printf("[FAILED] POST: bad body, %s\n", err)
+		state = "read error"
 		return
 	}
 }

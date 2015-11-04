@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -50,6 +51,66 @@ type State struct {
 	callLatency *latency.Map
 
 	runtime time.Duration
+
+	wg *sync.WaitGroup
+}
+
+type rawRegistration struct {
+	Certs  []string             `json:"certs"`
+	Auths  []core.Authorization `json:"auths"`
+	RawKey []byte               `json:"rawKey"`
+}
+
+type snapshot struct {
+	Registrations     []rawRegistration
+	HttpOneChallenges map[string]string
+}
+
+func (s *State) Snapshot() ([]byte, error) {
+	s.rMu.Lock()
+	s.hoMu.Lock()
+	defer s.rMu.Unlock()
+	defer s.hoMu.Unlock()
+	snap := snapshot{HttpOneChallenges: s.httpOneChallenges}
+	rawRegs := []rawRegistration{}
+	for _, r := range s.regs {
+		rawRegs = append(rawRegs, rawRegistration{
+			Certs:  r.certs,
+			Auths:  r.auths,
+			RawKey: x509.MarshalPKCS1PrivateKey(r.key),
+		})
+	}
+	return json.Marshal(snap)
+}
+
+func (s *State) Restore(content []byte) error {
+	s.rMu.Lock()
+	s.hoMu.Lock()
+	defer s.rMu.Unlock()
+	defer s.hoMu.Unlock()
+	snap := snapshot{}
+	err := json.Unmarshal(content, &snap)
+	if err != nil {
+		return err
+	}
+	s.httpOneChallenges = snap.HttpOneChallenges
+	for _, r := range snap.Registrations {
+		key, err := x509.ParsePKCS1PrivateKey(r.RawKey)
+		if err != nil {
+			continue
+		}
+		signer, err := jose.NewSigner(jose.RS256, key)
+		if err != nil {
+			continue
+		}
+		s.regs = append(s.regs, &registration{
+			key:    key,
+			signer: signer,
+			certs:  r.Certs,
+			auths:  r.Auths,
+		})
+	}
+	return nil
 }
 
 func New(httpOnePort int, apiBase string, rate int, maxRegs int, keySize int, domainBase string, runtime time.Duration) (*State, error) {
@@ -69,8 +130,9 @@ func New(httpOnePort int, apiBase string, rate int, maxRegs int, keySize int, do
 		maxRegs:           maxRegs,
 		certKey:           certKey,
 		domainBase:        domainBase,
-		callLatency:       latency.New(0, (time.Second * 5).Nanoseconds(), 5),
+		callLatency:       latency.New(),
 		runtime:           runtime,
+		wg:                new(sync.WaitGroup),
 	}, nil
 }
 
@@ -80,6 +142,7 @@ func (s *State) Run() {
 
 	// Run sending loop
 	stop := make(chan bool, 1)
+	s.callLatency.Started = time.Now()
 	go func() {
 		select {
 		case <-stop:
@@ -94,12 +157,11 @@ func (s *State) Run() {
 
 	time.Sleep(s.runtime)
 	stop <- true
+	s.wg.Wait()
+	s.callLatency.Stopped = time.Now()
 }
 
 func (s *State) Dump(jsonPath string) error {
-	fmt.Println("WFE latency histograms")
-	fmt.Printf("######################\n%s", s.callLatency)
-
 	if jsonPath != "" {
 		data, err := json.Marshal(s.callLatency)
 		if err != nil {
@@ -153,13 +215,17 @@ func (s *State) getNonce() (string, error) {
 	if len(s.noncePool) == 0 {
 		started := time.Now()
 		resp, err := s.client.Head(fmt.Sprintf("%s/directory", s.apiBase))
-		s.callLatency.Add("HEAD /directory", time.Since(started))
+		finished := time.Now()
+		state := "good"
+		defer func() { s.callLatency.Add("HEAD /directory", started, finished, state) }()
 		if err != nil {
+			state = "error"
 			return "", err
 		}
 		if nonce := resp.Header.Get("Replay-Nonce"); nonce != "" {
 			return nonce, nil
 		}
+		state = "error"
 		return "", fmt.Errorf("Nonce header not supplied!")
 	}
 	nonce := s.noncePool[0]
@@ -219,7 +285,9 @@ func (s *State) sendCall() {
 	}
 
 	if len(actions) > 0 {
+		s.wg.Add(1)
 		actions[mrand.Intn(len(actions))](reg)
+		s.wg.Done()
 	} else {
 		fmt.Println("wat")
 	}

@@ -25,6 +25,7 @@ func (s *State) newRegistration(_ *registration) {
 		fmt.Println(err)
 		return
 	}
+	signKey.Precompute()
 	signer, err := jose.NewSigner(jose.RS256, signKey)
 	if err != nil {
 		fmt.Println(err)
@@ -40,15 +41,19 @@ func (s *State) newRegistration(_ *registration) {
 		return
 	}
 
-	started := time.Now()
+	nStarted := time.Now()
 	resp, err := s.post(fmt.Sprintf("%s/acme/new-reg", s.apiBase), requestPayload)
-	s.callLatency.Add("POST /acme/new-reg", time.Since(started))
+	nFinished := time.Now()
+	nState := "good"
+	defer func() { s.callLatency.Add("POST /acme/new-reg", nStarted, nFinished, nState) }()
 	if err != nil {
 		fmt.Printf("[FAILED] new-reg, post failed: %s\n", err)
+		nState = "error"
 		return
 	}
 	if resp.StatusCode != 201 {
 		body, err := ioutil.ReadAll(resp.Body)
+		nState = "error"
 		if err != nil {
 			// just fail
 			return
@@ -67,19 +72,24 @@ func (s *State) newRegistration(_ *registration) {
 		return
 	}
 
-	started = time.Now()
+	tStarted := time.Now()
 	resp, err = s.post(resp.Header.Get("Location"), requestPayload)
-	s.callLatency.Add("POST /acme/reg/", time.Since(started))
+	tFinished := time.Now()
+	tState := "good"
+	defer func() { s.callLatency.Add("POST /acme/reg/", tStarted, tFinished, tState) }()
 	if err != nil {
 		fmt.Printf("[FAILED] reg, post failed: %s\n", err)
+		tState = "error"
 		return
 	}
 	if resp.StatusCode != 202 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			// just fail
+			tState = "error"
 			return
 		}
+		tState = "status"
 		fmt.Printf("[FAILED] reg, bad response: %s\n", string(body))
 		return
 	}
@@ -104,33 +114,42 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 		return err
 	}
 
-	started := time.Now()
+	cStarted := time.Now()
 	resp, err := s.post(chall.URI, requestPayload)
-	s.callLatency.Add("POST /acme/challenge/", time.Since(started))
+	cFinished := time.Now()
+	cState := "good"
+	defer func() { s.callLatency.Add("POST /acme/challenge/", cStarted, cFinished, cState) }()
 	if err != nil {
+		cState = "error"
 		return err
 	}
 	if resp.StatusCode != 202 {
+		cState = "error"
 		return fmt.Errorf("Unexpected error code")
 	}
 	// Sit and spin until status valid or invalid
 	var newAuthz core.Authorization
-	for {
-		started = time.Now()
+	for i := 0; i < 3; i++ {
+		aStarted := time.Now()
 		resp, err = s.client.Get(authURI)
-		s.callLatency.Add("GET /acme/authz/", time.Since(started))
+		aFinished := time.Now()
+		aState := "good"
+		defer func() { s.callLatency.Add("GET /acme/authz/", aStarted, aFinished, aState) }()
 		if err != nil {
 			fmt.Printf("[FAILED] authzer: %s\n", err)
+			aState = "error"
 			return err
 		}
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			// just fail
+			aState = "error"
 			return err
 		}
 		err = json.Unmarshal(body, &newAuthz)
 		if err != nil {
 			fmt.Printf("[FAILED] authz: %s\n", string(body))
+			aState = "error"
 			return err
 		}
 		if newAuthz.Status == "valid" {
@@ -168,9 +187,12 @@ func (s *State) newAuthorization(reg *registration) {
 
 	started := time.Now()
 	resp, err := s.post(fmt.Sprintf("%s/acme/new-authz", s.apiBase), requestPayload)
-	s.callLatency.Add("POST /acme/new-authz", time.Since(started))
+	finished := time.Now()
+	state := "good"
+	defer func() { s.callLatency.Add("POST /acme/new-authz", started, finished, state) }()
 	if err != nil {
 		fmt.Printf("[FAILED] new-authz: %s\n", err)
+		state = "error"
 		return
 	}
 	if resp.StatusCode != 201 {
@@ -178,14 +200,17 @@ func (s *State) newAuthorization(reg *registration) {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			// just fail
+			state = "error"
 			return
 		}
+		state = "error"
 		fmt.Printf("[FAILED] new-authz: %s\n", string(body))
 		return
 	}
 	location := resp.Header.Get("Location")
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		state = "error"
 		// just fail
 		return
 	}
@@ -194,6 +219,7 @@ func (s *State) newAuthorization(reg *registration) {
 	err = json.Unmarshal(body, &authz)
 	if err != nil {
 		fmt.Println(err)
+		state = "error"
 		return
 	}
 
@@ -241,17 +267,22 @@ func (s *State) newCertificate(reg *registration) {
 
 	started := time.Now()
 	resp, err := s.post(fmt.Sprintf("%s/acme/new-cert", s.apiBase), requestPayload)
-	s.callLatency.Add("POST /acme/new-cert", time.Since(started))
+	finished := time.Now()
+	state := "good"
+	defer func() { s.callLatency.Add("POST /acme/new-cert", started, finished, state) }()
 	if err != nil {
 		fmt.Printf("[FAILED] new-cert: %s\n", err)
+		state = "error"
 		return
 	}
 	if resp.StatusCode != 201 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Printf("WELP, bad body: %s\n", err)
+			state = "error"
 			return
 		}
+		state = "error"
 		fmt.Printf("[FAILED] new-cert: %s\n", string(body))
 		return
 	}
@@ -297,17 +328,22 @@ func (s *State) revokeCertificate(reg *registration) {
 
 	started := time.Now()
 	resp, err = s.post(fmt.Sprintf("%s/acme/revoke-cert", s.apiBase), requestPayload)
-	s.callLatency.Add("POST /acme/revoke-cert", time.Since(started))
+	finished := time.Now()
+	state := "good"
+	s.callLatency.Add("POST /acme/revoke-cert", started, finished, state)
 	if err != nil {
 		fmt.Printf("[FAILED] revoke-cert: %s\n", err)
+		state = "error"
 		return
 	}
 	if resp.StatusCode != 200 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Printf("WELP, bad body: %s\n", err)
+			state = "error"
 			return
 		}
+		state = "error"
 		fmt.Printf("[FAILED] revoke-cert: %s\n", string(body))
 		return
 	}
