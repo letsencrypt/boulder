@@ -4,34 +4,31 @@ import matplotlib.pyplot as plt
 import datetime
 import json
 import pandas
+import matplotlib
+import argparse
+import os
 matplotlib.style.use('ggplot')
 
-# with open('/home/roland/Dropbox/code/go/src/github.com/letsencrypt/boulder/responder-test.json') as data_file:
-#     stuff = json.load(data_file)
-
-# with open('/home/roland/Dropbox/code/go/src/github.com/letsencrypt/boulder/wfe-test.json') as data_file:
-#     stuff = json.load(data_file)
-
-with open('/home/roland/Dropbox/code/go/src/github.com/letsencrypt/boulder/quick-test.json') as data_file:
-    stuff = json.load(data_file)
-
+# sacrifical plot for single legend
 matplotlib.rcParams['figure.figsize'] = 1, 1
 randFig = plt.figure()
 randAx = plt.subplot()
-randAx.plot(0, 0, color='green', label='good call', marker='+')
-randAx.plot(0, 0, color='red', label='failed call', marker='x')
+randAx.plot(0, 0, color='green', label='good', marker='+')
+randAx.plot(0, 0, color='red', label='failed', marker='x')
+randAx.plot(0, 0, color='black', label='sent', linestyle='--')
 randAx.plot(0, 0, color='orange', label='value at quantile')
 randAx.plot(0, 0, color='teal', label='count at quantile')
 handles, labels = randAx.get_legend_handles_labels()
 x = [0, 0.1, 0.5, 0.75, 0.9, 0.99, 0.999, 0.9999, 0.99999]
 xStandIn = range(len(x))
 
-def plot_section(data):
+# big ol' plotting method
+def plot_section(data, outputPath):
     h = len(data.keys())
     matplotlib.rcParams['figure.figsize'] = 24, 4 * h
     fig = plt.figure()
-    fig.suptitle('duuuurh', fontsize=20)
-    fig.legend(handles, labels, loc=9, ncol=4, fontsize=16, framealpha=0)
+    fig.suptitle('placeholder for now', fontsize=20)
+    fig.legend(handles, labels, loc=9, ncol=5, fontsize=16, framealpha=0)
     plt.subplots_adjust(wspace=0.275, hspace=0.5, top=0.95)
 
     i = 1
@@ -110,10 +107,19 @@ def plot_section(data):
         ax4.set_ylabel('Latency (ms)')
         ax3.set_xlabel('Quantile')
 
-        fig.savefig('test.png')
+        fig.savefig(outputPath)
+
+# and the main event
+parser = argparse.ArgumentParser()
+parser.add_argument('chartData', type=str, help='Path to file containing JSON chart output from load-generator')
+parser.add_argument('--output', type=str, help='Path to save output to', default='latency-chart.png')
+args = parser.parse_args()
+
+with open(args.chartData) as data_file:
+    stuff = json.load(data_file)
 
 if not stuff.get('metrics', False):
     print "BAD"
     os.exit(1)
 
-plot_section(stuff['metrics'])
+plot_section(stuff['metrics'], args.output)
