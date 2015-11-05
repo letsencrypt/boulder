@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	mrand "math/rand"
+	"net"
 	"net/http"
 	"os"
 	"sync"
@@ -118,13 +119,23 @@ func New(httpOnePort int, apiBase string, rate int, maxRegs int, keySize int, do
 	if err != nil {
 		return nil, err
 	}
+	client := &http.Client{
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   3 * time.Second,
+				KeepAlive: 0,
+			}).Dial,
+			TLSHandshakeTimeout: 2 * time.Second,
+			DisableKeepAlives:   true,
+		},
+	}
 	return &State{
 		rMu:               new(sync.RWMutex),
 		nMu:               new(sync.Mutex),
 		hoMu:              new(sync.RWMutex),
 		httpOneChallenges: make(map[string]string),
 		httpOnePort:       httpOnePort,
-		client:            new(http.Client),
+		client:            client,
 		apiBase:           apiBase,
 		throughput:        int64(rate),
 		maxRegs:           maxRegs,
@@ -143,12 +154,14 @@ func (s *State) Run() {
 	// Run sending loop
 	stop := make(chan bool, 1)
 	s.callLatency.Started = time.Now()
+
 	go func() {
-		select {
-		case <-stop:
-			return
-		default:
-			for {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				s.wg.Add(1)
 				go s.sendCall()
 				time.Sleep(time.Duration(time.Second.Nanoseconds() / atomic.LoadInt64(&s.throughput)))
 			}
@@ -156,8 +169,11 @@ func (s *State) Run() {
 	}()
 
 	time.Sleep(s.runtime)
+	fmt.Println("READ END")
 	stop <- true
+	fmt.Println("SENT STOP")
 	s.wg.Wait()
+	fmt.Println("ALL DONE")
 	s.callLatency.Stopped = time.Now()
 }
 
@@ -285,10 +301,9 @@ func (s *State) sendCall() {
 	}
 
 	if len(actions) > 0 {
-		s.wg.Add(1)
 		actions[mrand.Intn(len(actions))](reg)
-		s.wg.Done()
 	} else {
 		fmt.Println("wat")
 	}
+	s.wg.Done()
 }

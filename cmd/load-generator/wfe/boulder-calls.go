@@ -129,6 +129,7 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 	}
 	// Sit and spin until status valid or invalid
 	var newAuthz core.Authorization
+	done := false
 	for i := 0; i < 3; i++ {
 		aStarted := time.Now()
 		resp, err = s.client.Get(authURI)
@@ -153,9 +154,13 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 			return err
 		}
 		if newAuthz.Status == "valid" {
+			done = true
 			break
 		}
 		time.Sleep(3 * time.Second) // XXX: Mimics client behaviour
+	}
+	if !done {
+		return nil
 	}
 	reg.iMu.Lock()
 	reg.auths = append(reg.auths, newAuthz)
@@ -169,7 +174,7 @@ func (s *State) newAuthorization(reg *registration) {
 	// generate a random domain name
 	var buff bytes.Buffer
 	mrand.Seed(time.Now().UnixNano())
-	randLen := mrand.Intn(60 - len(s.domainBase))
+	randLen := mrand.Intn(59-len(s.domainBase)) + 1
 	for i := 0; i < randLen; i++ {
 		buff.WriteByte(dnsLetters[mrand.Intn(len(dnsLetters))])
 	}

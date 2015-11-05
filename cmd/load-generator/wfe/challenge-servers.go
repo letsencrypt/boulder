@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func (s *State) addHTTPOneChallenge(token, content string) {
@@ -27,18 +28,25 @@ func (s *State) getHTTPOneChallenge(token string) (string, bool) {
 	return content, present
 }
 
-func (s *State) httpOneServer() error {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		requestPath := r.URL.Path
-		if strings.HasPrefix(requestPath, "/.well-known/acme-challenge/") {
-			token := requestPath[28:]
-			if auth, found := s.getHTTPOneChallenge(token); found {
-				// fmt.Printf("http-0 challenge request for %s\n", token)
-				fmt.Fprintf(w, "%s", auth)
-				s.deleteHTTPOneChallenge(token)
-			}
+func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	requestPath := r.URL.Path
+	if strings.HasPrefix(requestPath, "/.well-known/acme-challenge/") {
+		token := requestPath[28:]
+		if auth, found := s.getHTTPOneChallenge(token); found {
+			// fmt.Printf("http-0 challenge request for %s\n", token)
+			fmt.Fprintf(w, "%s", auth)
+			s.deleteHTTPOneChallenge(token)
 		}
-	})
+	}
+}
 
-	return http.ListenAndServe(fmt.Sprintf(":%d", s.httpOnePort), nil)
+func (s *State) httpOneServer() error {
+	srv := &http.Server{
+		Addr:         fmt.Sprintf(":%d", s.httpOnePort),
+		Handler:      s,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+	}
+	srv.SetKeepAlivesEnabled(false)
+	return srv.ListenAndServe()
 }

@@ -23,20 +23,26 @@ x = [0, 0.1, 0.5, 0.75, 0.9, 0.99, 0.999, 0.9999, 0.99999]
 xStandIn = range(len(x))
 
 # big ol' plotting method
-def plot_section(data, outputPath):
+def plot_section(data, started, stopped, outputPath):
     h = len(data.keys())
     matplotlib.rcParams['figure.figsize'] = 24, 4 * h
     fig = plt.figure()
-    fig.suptitle('placeholder for now', fontsize=20)
+    fig.suptitle('30m test at 3 base actions / second (across 250 registrations)', fontsize=20)
     fig.legend(handles, labels, loc=9, ncol=5, fontsize=16, framealpha=0)
     plt.subplots_adjust(wspace=0.275, hspace=0.5, top=0.95)
+
+    # figure out left and right datetime bounds from started and stopped
+    started = pandas.to_datetime(started)
+    stopped = pandas.to_datetime(stopped)
 
     i = 1
     for section in data.keys():
         ax = plt.subplot(h, 3, i)
         ax.set_title(section)
+        ax.set_xlim(started, stopped)
         i += 1
         ax2 = plt.subplot(h, 3, i)
+        ax2.set_xlim(started, stopped)
         i += 1
 
         calls = pandas.DataFrame(data[section])
@@ -118,8 +124,8 @@ args = parser.parse_args()
 with open(args.chartData) as data_file:
     stuff = json.load(data_file)
 
-if not stuff.get('metrics', False):
+if not stuff.get('metrics', False) or not stuff.get('started', False) or not stuff.get('stopped', False):
     print "BAD"
     os.exit(1)
 
-plot_section(stuff['metrics'], args.output)
+plot_section(stuff['metrics'], stuff['started'], stuff['stopped'], args.output)
