@@ -3,7 +3,6 @@ package universal
 
 import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
 	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
@@ -52,11 +51,11 @@ func pkcs11Signer(root *Root, policy *config.Signing) (signer.Signer, bool, erro
 		return nil, true, cferr.New(cferr.PrivateKeyError, cferr.Unavailable)
 	}
 
-	conf := pkcs11key.Config{
-		Module:          module,
-		TokenLabel:      tokenLabel,
-		PrivateKeyLabel: privateKeyLabel,
-		PIN:             userPIN,
+	conf := pkcs11.Config{
+		Module: module,
+		Token:  tokenLabel,
+		Label:  privateKeyLabel,
+		PIN:    userPIN,
 	}
 
 	s, err := pkcs11.New(certFile, policy, &conf)
