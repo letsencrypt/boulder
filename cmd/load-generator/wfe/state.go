@@ -18,15 +18,13 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
-
-	"github.com/letsencrypt/boulder/core"
 )
 
 type registration struct {
 	key    *rsa.PrivateKey
 	signer jose.Signer
 	iMu    *sync.RWMutex
-	auths  []core.Authorization
+	auths  []string
 	certs  []string
 }
 
@@ -37,7 +35,7 @@ type State struct {
 	client  *http.Client
 	apiBase string
 
-	nMu       *sync.Mutex
+	nMu       *sync.RWMutex
 	noncePool []string
 
 	throughput int64
@@ -57,9 +55,9 @@ type State struct {
 }
 
 type rawRegistration struct {
-	Certs  []string             `json:"certs"`
-	Auths  []core.Authorization `json:"auths"`
-	RawKey []byte               `json:"rawKey"`
+	Certs  []string `json:"certs"`
+	Auths  []string `json:"auths"`
+	RawKey []byte   `json:"rawKey"`
 }
 
 type snapshot struct {
@@ -114,7 +112,7 @@ func (s *State) Restore(content []byte) error {
 	return nil
 }
 
-func New(httpOnePort int, apiBase string, rate int, maxRegs int, keySize int, domainBase string, runtime time.Duration) (*State, error) {
+func New(httpOnePort int, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, err
@@ -131,17 +129,16 @@ func New(httpOnePort int, apiBase string, rate int, maxRegs int, keySize int, do
 	}
 	return &State{
 		rMu:               new(sync.RWMutex),
-		nMu:               new(sync.Mutex),
+		nMu:               new(sync.RWMutex),
 		hoMu:              new(sync.RWMutex),
 		httpOneChallenges: make(map[string]string),
 		httpOnePort:       httpOnePort,
 		client:            client,
 		apiBase:           apiBase,
 		throughput:        int64(rate),
-		maxRegs:           maxRegs,
 		certKey:           certKey,
 		domainBase:        domainBase,
-		callLatency:       latency.New(),
+		callLatency:       latency.New(fmt.Sprintf("WFE -- %s test at %d base actions / second", runtime, rate)),
 		runtime:           runtime,
 		wg:                new(sync.WaitGroup),
 	}, nil
@@ -213,8 +210,8 @@ func (s *State) post(endpoint string, payload []byte) (*http.Response, error) {
 // Nonce utils, these methods are used to generate/store/retrieve the nonces
 // required for the required form of JWS
 
-func (s *State) signWithNonce(payload []byte, signer jose.Signer) ([]byte, error) {
-	nonce, err := s.getNonce()
+func (s *State) signWithNonce(endpoint string, alwaysNew bool, payload []byte, signer jose.Signer) ([]byte, error) {
+	nonce, err := s.getNonce(endpoint, alwaysNew)
 	if err != nil {
 		return nil, err
 	}
@@ -225,15 +222,15 @@ func (s *State) signWithNonce(payload []byte, signer jose.Signer) ([]byte, error
 	return json.Marshal(jws)
 }
 
-func (s *State) getNonce() (string, error) {
-	s.nMu.Lock()
-	defer s.nMu.Unlock()
-	if len(s.noncePool) == 0 {
+func (s *State) getNonce(from string, alwaysNew bool) (string, error) {
+	s.nMu.RLock()
+	if len(s.noncePool) == 0 || alwaysNew {
+		s.nMu.RUnlock()
 		started := time.Now()
-		resp, err := s.client.Head(fmt.Sprintf("%s/directory", s.apiBase))
+		resp, err := s.client.Head(fmt.Sprintf("%s%s", s.apiBase, from))
 		finished := time.Now()
 		state := "good"
-		defer func() { s.callLatency.Add("HEAD /directory", started, finished, state) }()
+		defer func() { s.callLatency.Add(fmt.Sprintf("HEAD %s", from), started, finished, state) }()
 		if err != nil {
 			state = "error"
 			return "", err
@@ -244,6 +241,9 @@ func (s *State) getNonce() (string, error) {
 		state = "error"
 		return "", fmt.Errorf("Nonce header not supplied!")
 	}
+	s.nMu.RUnlock()
+	s.nMu.Lock()
+	defer s.nMu.Unlock()
 	nonce := s.noncePool[0]
 	s.noncePool = s.noncePool[1:]
 	return nonce, nil
@@ -279,31 +279,43 @@ func (s *State) getReg() (*registration, bool) {
 
 // Call sender, it sends the calls!
 
-func (s *State) sendCall() {
-	actions := []func(*registration){}
-	s.rMu.RLock()
-	if len(s.regs) < s.maxRegs || s.maxRegs == 0 {
-		actions = append(actions, s.newRegistration)
+type probabilityProfile struct {
+	prob   int
+	action func(*registration)
+}
+
+func weightedCall(setup []probabilityProfile) func(*registration) {
+	choices := make(map[int]func(*registration))
+	n := 0
+	for _, pp := range setup {
+		for i := 0; i < pp.prob; i++ {
+			choices[i+n] = pp.action
+		}
+		n += pp.prob
 	}
-	s.rMu.RUnlock()
+	if len(choices) == 0 {
+		return nil
+	}
+
+	return choices[mrand.Intn(n)]
+}
+
+func (s *State) sendCall() {
+	actionList := []probabilityProfile{probabilityProfile{2, s.newRegistration}}
 
 	reg, found := s.getReg()
 	if found {
-		actions = append(actions, s.newAuthorization)
+		actionList = append(actionList, probabilityProfile{4, s.newAuthorization})
 		reg.iMu.RLock()
 		if len(reg.auths) > 0 {
-			actions = append(actions, s.newCertificate)
+			actionList = append(actionList, probabilityProfile{4, s.newCertificate})
 		}
-		if len(reg.certs) > 2 { // XXX: makes life more interesting
-			actions = append(actions, s.revokeCertificate)
+		if len(reg.certs) > 0 {
+			actionList = append(actionList, probabilityProfile{3, s.revokeCertificate})
 		}
 		reg.iMu.RUnlock()
 	}
 
-	if len(actions) > 0 {
-		actions[mrand.Intn(len(actions))](reg)
-	} else {
-		fmt.Println("wat")
-	}
+	weightedCall(actionList)(reg)
 	s.wg.Done()
 }

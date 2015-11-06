@@ -35,11 +35,6 @@ func main() {
 					Value: 1,
 				},
 				cli.IntFlag{
-					Name:  "maxRegs",
-					Usage: "Maximum number of registrations to generate",
-					Value: 100,
-				},
-				cli.IntFlag{
 					Name:  "certKeySize",
 					Usage: "Bit size of the key to sign certificates with",
 					Value: 2048,
@@ -70,7 +65,6 @@ func main() {
 					c.Int("httpOnePort"),
 					c.String("apiBase"),
 					c.Int("rate"),
-					c.Int("maxRegs"),
 					c.Int("certKeySize"),
 					c.String("domainBase"),
 					runtime,

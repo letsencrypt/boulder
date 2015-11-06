@@ -18,13 +18,15 @@ type Map struct {
 	Metrics map[string][]point `json:"metrics"`
 	Started time.Time          `json:"started"`
 	Stopped time.Time          `json:"stopped"`
+	Title   string             `json:"title"`
 }
 
 // New returns a new latency metrics map
-func New() *Map {
+func New(title string) *Map {
 	return &Map{
 		mu:      new(sync.Mutex),
 		Metrics: make(map[string][]point),
+		Title:   title,
 	}
 }
 

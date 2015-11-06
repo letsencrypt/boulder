@@ -49,7 +49,7 @@ func New(maxRequests int, ocspBase string, getRate int, postRate int, dbURI stri
 		runtime:     runtime,
 		client:      new(http.Client),
 		issuer:      issuer,
-		callLatency: latency.New(),
+		callLatency: latency.New("OCSP Responder test"),
 		wg:          new(sync.WaitGroup),
 	}, nil
 }

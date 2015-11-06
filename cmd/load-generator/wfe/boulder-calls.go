@@ -35,7 +35,7 @@ func (s *State) newRegistration(_ *registration) {
 	// create the registration object
 	regStr := []byte(`{"resource":"new-reg","contact":[]}`)
 	// build the JWS object
-	requestPayload, err := s.signWithNonce(regStr, signer)
+	requestPayload, err := s.signWithNonce("/acme/new-reg", true, regStr, signer)
 	if err != nil {
 		fmt.Printf("[FAILED] new-reg, sign failed: %s\n", err)
 		return
@@ -66,7 +66,7 @@ func (s *State) newRegistration(_ *registration) {
 	regStr = []byte(fmt.Sprintf(`{"resource":"reg","agreement":"%s"}`, termsURL))
 
 	// build the JWS object
-	requestPayload, err = s.signWithNonce(regStr, signer)
+	requestPayload, err = s.signWithNonce("/acme/reg", false, regStr, signer)
 	if err != nil {
 		fmt.Printf("[FAILED] reg, sign failed: %s\n", err)
 		return
@@ -76,7 +76,7 @@ func (s *State) newRegistration(_ *registration) {
 	resp, err = s.post(resp.Header.Get("Location"), requestPayload)
 	tFinished := time.Now()
 	tState := "good"
-	defer func() { s.callLatency.Add("POST /acme/reg/", tStarted, tFinished, tState) }()
+	defer func() { s.callLatency.Add("POST /acme/reg/{ID}", tStarted, tFinished, tState) }()
 	if err != nil {
 		fmt.Printf("[FAILED] reg, post failed: %s\n", err)
 		tState = "error"
@@ -109,7 +109,7 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 	)
 
 	update := fmt.Sprintf(`{"resource":"challenge","keyAuthorization":"%s"}`, authStr)
-	requestPayload, err := s.signWithNonce([]byte(update), signer)
+	requestPayload, err := s.signWithNonce("/acme/challenge", false, []byte(update), signer)
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 	resp, err := s.post(chall.URI, requestPayload)
 	cFinished := time.Now()
 	cState := "good"
-	defer func() { s.callLatency.Add("POST /acme/challenge/", cStarted, cFinished, cState) }()
+	defer func() { s.callLatency.Add("POST /acme/challenge/{ID}", cStarted, cFinished, cState) }()
 	if err != nil {
 		cState = "error"
 		return err
@@ -135,7 +135,7 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 		resp, err = s.client.Get(authURI)
 		aFinished := time.Now()
 		aState := "good"
-		defer func() { s.callLatency.Add("GET /acme/authz/", aStarted, aFinished, aState) }()
+		defer func() { s.callLatency.Add("GET /acme/authz/{ID}", aStarted, aFinished, aState) }()
 		if err != nil {
 			fmt.Printf("[FAILED] authzer: %s\n", err)
 			aState = "error"
@@ -157,13 +157,16 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 			done = true
 			break
 		}
+		if newAuthz.Status == "invalid" {
+			break
+		}
 		time.Sleep(3 * time.Second) // XXX: Mimics client behaviour
 	}
 	if !done {
 		return nil
 	}
 	reg.iMu.Lock()
-	reg.auths = append(reg.auths, newAuthz)
+	reg.auths = append(reg.auths, newAuthz.Identifier.Value)
 	reg.iMu.Unlock()
 	return nil
 }
@@ -184,7 +187,11 @@ func (s *State) newAuthorization(reg *registration) {
 	initAuth := fmt.Sprintf(`{"resource":"new-authz","identifier":{"type":"dns","value":"%s"}}`, randomDomain)
 
 	// build the JWS object
-	requestPayload, err := s.signWithNonce([]byte(initAuth), reg.signer)
+	getNew := false
+	if mrand.Intn(1) == 0 {
+		getNew = true
+	}
+	requestPayload, err := s.signWithNonce("/acme/new-authz", getNew, []byte(initAuth), reg.signer)
 	if err != nil {
 		fmt.Printf("[FAILED] new-authz: %s\n", err)
 		return
@@ -246,7 +253,7 @@ func (s *State) newCertificate(reg *registration) {
 	num := mrand.Intn(authsLen)
 	dnsNames := []string{}
 	for i := 0; i <= num; i++ {
-		dnsNames = append(dnsNames, reg.auths[mrand.Intn(authsLen)].Identifier.Value)
+		dnsNames = append(dnsNames, reg.auths[mrand.Intn(authsLen)])
 	}
 	csr, err := x509.CreateCertificateRequest(
 		rand.Reader,
@@ -264,7 +271,7 @@ func (s *State) newCertificate(reg *registration) {
 	)
 
 	// build the JWS object
-	requestPayload, err := s.signWithNonce([]byte(request), reg.signer)
+	requestPayload, err := s.signWithNonce("/acme/new-cert", false, []byte(request), reg.signer)
 	if err != nil {
 		fmt.Printf("[FAILED] new-cert: %s\n", err)
 		return
@@ -325,7 +332,7 @@ func (s *State) revokeCertificate(reg *registration) {
 	}
 
 	request := fmt.Sprintf(`{"resource":"revoke-cert","certificate":"%s"}`, core.B64enc(body))
-	requestPayload, err := s.signWithNonce([]byte(request), reg.signer)
+	requestPayload, err := s.signWithNonce("/acme/revoke-cert", false, []byte(request), reg.signer)
 	if err != nil {
 		fmt.Printf("[FAILED] revoke-cert: %s\n", err)
 		return
