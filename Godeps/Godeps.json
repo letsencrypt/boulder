@@ -117,10 +117,6 @@
 			"Rev": "88c9f842544e629ec046105d7fb50d5daafae737"
 		},
 		{
-			"ImportPath": "github.com/square/go-jose/cipher",
-			"Rev": "2f4e4fff85a98acc176ac2712c31394ac1acb7e8"
-		},
-		{
 			"ImportPath": "github.com/streadway/amqp",
 			"Rev": "150b7f24d6ad507e6026c13d85ce1f1391ac7400"
 		},
