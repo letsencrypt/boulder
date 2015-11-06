@@ -7,7 +7,6 @@ package wfe
 
 import (
 	"bytes"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
@@ -317,38 +316,6 @@ const (
 	malformedJWS = "Unable to read/verify body"
 )
 
-func algorithmForKey(key *jose.JsonWebKey) (string, error) {
-	// TODO(https://github.com/letsencrypt/boulder/issues/792): Support EC.
-	switch key.Key.(type) {
-	case *rsa.PublicKey:
-		return "RS256", nil
-	}
-	return "", core.SignatureValidationError("no signature algorithms suitable for given key type")
-}
-
-// Check that (1) there is a suitable algorithm for the provided key based on its
-// Golang type, (2) the Algorithm field on the JWK is either absent, or matches
-// that algorithm, and (3) the Algorithm field on the JWK is present and matches
-// that algorithm.
-func checkAlgorithm(key *jose.JsonWebKey, parsedJws *jose.JsonWebSignature) (string, error) {
-	algorithm, err := algorithmForKey(key)
-	if err != nil {
-		return "NoAlgorithmForKey", err
-	}
-	jwsAlgorithm := parsedJws.Signatures[0].Header.Algorithm
-	if jwsAlgorithm != algorithm {
-		return "InvalidJWSAlgorithm",
-			core.SignatureValidationError(fmt.Sprintf(
-				"algorithm '%s' in JWS header not acceptable", jwsAlgorithm))
-	}
-	if key.Algorithm != "" && key.Algorithm != algorithm {
-		return "InvalidAlgorithmOnKey",
-			core.SignatureValidationError(fmt.Sprintf(
-				"algorithm '%s' on JWK is unacceptable", key.Algorithm))
-	}
-	return "", nil
-}
-
 // verifyPOST reads and parses the request body, looks up the Registration
 // corresponding to its JWK, verifies the JWS signature, checks that the
 // resource field is present and correct in the JWS protected header, and
@@ -456,7 +423,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 	}
 
 	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
-		wfe.stats.Inc(fmt.Sprintf("WFE.Errors.%s", statName), 1, 1.0)
+		wfe.stats.Inc(statName, 1, 1.0)
 		return nil, nil, reg, err
 	}
 
