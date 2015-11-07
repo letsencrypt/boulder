@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/test"
 )
 
 // challenges.go
@@ -56,6 +57,15 @@ func TestChallenges(t *testing.T) {
 	if !dns01.IsSane(false) {
 		t.Errorf("New dns-01 challenge is not sane: %v", dns01)
 	}
+
+	// TODO(#894): Remove these lines
+	test.Assert(t, ValidChallenge(ChallengeTypeSimpleHTTP), "Refused valid challenge")
+	test.Assert(t, ValidChallenge(ChallengeTypeDVSNI), "Refused valid challenge")
+
+	test.Assert(t, ValidChallenge(ChallengeTypeHTTP01), "Refused valid challenge")
+	test.Assert(t, ValidChallenge(ChallengeTypeTLSSNI01), "Refused valid challenge")
+	test.Assert(t, ValidChallenge(ChallengeTypeDNS01), "Refused valid challenge")
+	test.Assert(t, !ValidChallenge("nonsense-71"), "Accepted invalid challenge")
 }
 
 // objects.go

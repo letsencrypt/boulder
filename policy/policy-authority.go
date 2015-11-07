@@ -23,8 +23,8 @@ type PolicyAuthorityImpl struct {
 	log *blog.AuditLogger
 	DB  *PolicyAuthorityDatabaseImpl
 
-	EnforceWhitelist    bool
-	supportedChallenges map[string]bool
+	EnforceWhitelist  bool
+	enabledChallenges map[string]bool
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
@@ -37,11 +37,12 @@ func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool, challengeT
 	if err != nil {
 		return nil, err
 	}
+
 	pa := PolicyAuthorityImpl{
-		log:                 logger,
-		DB:                  padb,
-		EnforceWhitelist:    enforceWhitelist,
-		supportedChallenges: challengeTypes,
+		log:               logger,
+		DB:                padb,
+		EnforceWhitelist:  enforceWhitelist,
+		enabledChallenges: challengeTypes,
 	}
 
 	return &pa, nil
@@ -210,24 +211,24 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, acco
 	combinations = [][]int{}
 
 	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
-	if pa.supportedChallenges[core.ChallengeTypeSimpleHTTP] {
+	if pa.enabledChallenges[core.ChallengeTypeSimpleHTTP] {
 		challenges = append(challenges, core.SimpleHTTPChallenge(accountKey))
 	}
 
 	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
-	if pa.supportedChallenges[core.ChallengeTypeDVSNI] {
+	if pa.enabledChallenges[core.ChallengeTypeDVSNI] {
 		challenges = append(challenges, core.DvsniChallenge(accountKey))
 	}
 
-	if pa.supportedChallenges[core.ChallengeTypeHTTP01] {
+	if pa.enabledChallenges[core.ChallengeTypeHTTP01] {
 		challenges = append(challenges, core.HTTPChallenge01(accountKey))
 	}
 
-	if pa.supportedChallenges[core.ChallengeTypeTLSSNI01] {
+	if pa.enabledChallenges[core.ChallengeTypeTLSSNI01] {
 		challenges = append(challenges, core.TLSSNIChallenge01(accountKey))
 	}
 
-	if pa.supportedChallenges[core.ChallengeTypeDNS01] {
+	if pa.enabledChallenges[core.ChallengeTypeDNS01] {
 		challenges = append(challenges, core.DNSChallenge01(accountKey))
 	}
 

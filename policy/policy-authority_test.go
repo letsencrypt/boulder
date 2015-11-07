@@ -21,7 +21,7 @@ import (
 
 var log = mocks.UseMockLog()
 
-var supportedChallenges = map[string]bool{
+var enabledChallenges = map[string]bool{
 	core.ChallengeTypeSimpleHTTP: true,
 	core.ChallengeTypeDVSNI:      true,
 	core.ChallengeTypeHTTP01:     true,
@@ -31,7 +31,7 @@ var supportedChallenges = map[string]bool{
 
 func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
 	dbMap, cleanUp := paDBMap(t)
-	pa, err := NewPolicyAuthorityImpl(dbMap, false, supportedChallenges)
+	pa, err := NewPolicyAuthorityImpl(dbMap, false, enabledChallenges)
 	if err != nil {
 		cleanUp()
 		t.Fatalf("Couldn't create policy implementation: %s", err)
@@ -215,10 +215,10 @@ func TestChallengesFor(t *testing.T) {
 		t.Errorf("Error generating challenges: %v", err)
 	}
 
-	test.Assert(t, len(challenges) == len(supportedChallenges), "Wrong number of challenges returned")
-	test.Assert(t, len(combinations) == len(supportedChallenges), "Wrong number of combinations returned")
+	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
+	test.Assert(t, len(combinations) == len(enabledChallenges), "Wrong number of combinations returned")
 	for i, challenge := range challenges {
-		test.Assert(t, supportedChallenges[challenge.Type], "Unsupported challenge returned")
+		test.Assert(t, enabledChallenges[challenge.Type], "Unsupported challenge returned")
 		test.AssertEquals(t, len(combinations[i]), 1)
 		test.AssertEquals(t, combinations[i][0], i)
 	}

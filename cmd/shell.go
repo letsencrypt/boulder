@@ -265,36 +265,42 @@ type CAConfig struct {
 type PAConfig struct {
 	DBConnect              string
 	EnforcePolicyWhitelist bool
-
-	EnableSimpleHTTP bool // TODO(#894) Remove this line
-	EnableDVSNI      bool // TODO(#894) Remove this line
-	EnableHTTP01     bool
-	EnableTLSSNI01   bool
-	EnableDNS01      bool
+	Challenges             map[string]bool
 }
 
-// SupportedChallenges returns the set of challenges supported by the
-// configuration, as a map[string]bool.
-func (pa PAConfig) SupportedChallenges() map[string]bool {
-	challenges := map[string]bool{}
-
-	if pa.EnableSimpleHTTP {
-		challenges[core.ChallengeTypeSimpleHTTP] = true
-	}
-	if pa.EnableDVSNI {
-		challenges[core.ChallengeTypeDVSNI] = true
-	}
-	if pa.EnableHTTP01 {
-		challenges[core.ChallengeTypeHTTP01] = true
-	}
-	if pa.EnableTLSSNI01 {
-		challenges[core.ChallengeTypeTLSSNI01] = true
-	}
-	if pa.EnableDNS01 {
-		challenges[core.ChallengeTypeDNS01] = true
+// UnmarshalJSON is really actually vanilla, but with some validity checks and
+// default setting added
+func (pc *PAConfig) UnmarshalJSON(b []byte) error {
+	raw := struct {
+		DBConnect              string
+		EnforcePolicyWhitelist bool
+		Challenges             map[string]bool
+	}{}
+	err := json.Unmarshal(b, &raw)
+	if err != nil {
+		return err
 	}
 
-	return challenges
+	// Set a default list of challenges if non are provided
+	if len(raw.Challenges) == 0 {
+		raw.Challenges = map[string]bool{}
+		raw.Challenges[core.ChallengeTypeSimpleHTTP] = true
+		raw.Challenges[core.ChallengeTypeDVSNI] = true
+		raw.Challenges[core.ChallengeTypeHTTP01] = true
+		raw.Challenges[core.ChallengeTypeTLSSNI01] = true
+	}
+
+	// Check that the entries in the challenges map are valid
+	for name := range raw.Challenges {
+		if !core.ValidChallenge(name) {
+			return fmt.Errorf("Invalid challenge in PA config: %s", name)
+		}
+	}
+
+	pc.DBConnect = raw.DBConnect
+	pc.EnforcePolicyWhitelist = raw.EnforcePolicyWhitelist
+	pc.Challenges = raw.Challenges
+	return nil
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,
