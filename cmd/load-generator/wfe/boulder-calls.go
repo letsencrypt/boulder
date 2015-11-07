@@ -17,8 +17,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
-var termsURL = "http://127.0.0.1:4001/terms/v1"
-
 func (s *State) newRegistration(_ *registration) {
 	signKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -63,7 +61,7 @@ func (s *State) newRegistration(_ *registration) {
 	}
 
 	// agree to terms
-	regStr = []byte(fmt.Sprintf(`{"resource":"reg","agreement":"%s"}`, termsURL))
+	regStr = []byte(fmt.Sprintf(`{"resource":"reg","agreement":"%s"}`, s.termsURL))
 
 	// build the JWS object
 	requestPayload, err = s.signWithNonce("/acme/reg", false, regStr, signer)
@@ -128,8 +126,7 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 		return fmt.Errorf("Unexpected error code")
 	}
 	// Sit and spin until status valid or invalid
-	var newAuthz core.Authorization
-	done := false
+	ident := ""
 	for i := 0; i < 3; i++ {
 		aStarted := time.Now()
 		resp, err = s.client.Get(authURI)
@@ -147,6 +144,7 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 			aState = "error"
 			return err
 		}
+		var newAuthz core.Authorization
 		err = json.Unmarshal(body, &newAuthz)
 		if err != nil {
 			fmt.Printf("[FAILED] authz: %s\n", string(body))
@@ -154,7 +152,7 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 			return err
 		}
 		if newAuthz.Status == "valid" {
-			done = true
+			ident = newAuthz.Identifier.Value
 			break
 		}
 		if newAuthz.Status == "invalid" {
@@ -162,11 +160,11 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 		}
 		time.Sleep(3 * time.Second) // XXX: Mimics client behaviour
 	}
-	if !done {
+	if ident == "" {
 		return nil
 	}
 	reg.iMu.Lock()
-	reg.auths = append(reg.auths, newAuthz.Identifier.Value)
+	reg.auths = append(reg.auths, ident)
 	reg.iMu.Unlock()
 	return nil
 }

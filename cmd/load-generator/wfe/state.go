@@ -29,11 +29,12 @@ type registration struct {
 }
 
 type State struct {
-	rMu     *sync.RWMutex
-	regs    []*registration
-	maxRegs int
-	client  *http.Client
-	apiBase string
+	rMu      *sync.RWMutex
+	regs     []*registration
+	maxRegs  int
+	client   *http.Client
+	apiBase  string
+	termsURL string
 
 	nMu       *sync.RWMutex
 	noncePool []string

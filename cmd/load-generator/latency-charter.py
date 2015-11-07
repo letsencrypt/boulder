@@ -16,11 +16,11 @@ randAx = plt.subplot()
 randAx.plot(0, 0, color='green', label='good', marker='+')
 randAx.plot(0, 0, color='red', label='failed', marker='x')
 randAx.plot(0, 0, color='black', label='sent', linestyle='--')
-randAx.plot(0, 0, color='orange', label='value at quantile')
-randAx.plot(0, 0, color='teal', label='count at quantile')
+randAx.plot(0, 0, color='green', label='50th quantile')
+randAx.plot(0, 0, color='yellow', label='90th quantile')
+randAx.plot(0, 0, color='orange', label='99th quantile')
+randAx.plot(0, 0, color='red', label='99.9th quantile')
 handles, labels = randAx.get_legend_handles_labels()
-x = [0, 0.1, 0.5, 0.75, 0.9, 0.99, 0.999, 0.9999, 0.99999]
-xStandIn = range(len(x))
 
 # big ol' plotting method
 def plot_section(data, started, stopped, title, outputPath):
@@ -28,7 +28,7 @@ def plot_section(data, started, stopped, title, outputPath):
     matplotlib.rcParams['figure.figsize'] = 18, 3 * h
 
     fig, axes = plt.subplots(h, 3)
-    fig.legend(handles, labels, loc=9, ncol=5, fontsize=16, framealpha=0)
+    fig.legend(handles, labels, loc=9, ncol=7, fontsize=16, framealpha=0)
     fig.suptitle(title, fontsize=20)
     plt.subplots_adjust(wspace=0.275, hspace=0.5, top=0.95, left=0.05, right=0.95, bottom=0.04)
 
@@ -87,29 +87,21 @@ def plot_section(data, started, stopped, title, outputPath):
         ax2.set_ylabel('Rate (per second)')
 
         ax3 = axes[i][2]
-        ax4 = ax3.twinx()
-        qs = []
-        counts = []
-        for n, q in enumerate(x):
-            tq = calls['took'].quantile(q)
-            qs.append(tq)
-            if n > 0:
-                prev = qs[n-1]
-                count = len(calls[calls['took'] >= prev])
-                count -= len(calls[calls['took'] > tq])
-            else:
-                count = len(calls[calls['took'] == tq])
-            counts.append(count)
-        ax4.plot(xStandIn, qs, color='orange')
-        ax3.plot(xStandIn, counts, color='teal')
+        ax3.set_xlim(started, stopped)
 
-        ax3.set_xticks(xStandIn)
-        ax3.set_xticklabels([str(s) for s in x])
+        calls = calls.set_index('finished')
+        calls = calls.sort_index()
+        calls['50'] = pandas.rolling_quantile(calls['took'], 10, 0.5).fillna(0)
+        calls['90'] = pandas.rolling_quantile(calls['took'], 10, 0.9).fillna(0)
+        calls['99'] = pandas.rolling_quantile(calls['took'], 10, 0.99).fillna(0)
+        calls['999'] = pandas.rolling_quantile(calls['took'], 10, 0.999).fillna(0)
+        ax3.plot(calls.index, calls['50'], color='green')
+        ax3.plot(calls.index, calls['90'], color='yellow')
+        ax3.plot(calls.index, calls['99'], color='orange')
+        ax3.plot(calls.index, calls['999'], color='red')
+
         ax3.grid(False)
-        ax4.grid(False)
-        ax3.set_ylabel('Count')
-        ax4.set_ylabel('Latency (ms)')
-        ax3.set_xlabel('Quantile')
+        ax3.set_ylabel('Latency (ms)')
 
         i += 1
 

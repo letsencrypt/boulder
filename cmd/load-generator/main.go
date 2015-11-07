@@ -57,6 +57,11 @@ func main() {
 					Name:  "latencyDataPath",
 					Usage: "Filename of latency chart data to save",
 				},
+				cli.StringFlag{
+					Name:  "termsURL",
+					Usage: "The terms URL to agree too",
+					Value: "http://127.0.0.1:4001/terms/v1",
+				},
 			},
 			Action: func(c *cli.Context) {
 				runtime, err := time.ParseDuration(c.String("runtime"))
