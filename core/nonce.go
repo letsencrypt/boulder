@@ -9,12 +9,16 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"errors"
 	"math/big"
 )
 
 // MaxUsed defines the maximum number of Nonces we're willing to hold in
 // memory.
 const MaxUsed = 65536
+const NonceLen = 12
+
+var InvalidNonceLength = errors.New("invalid nonce length")
 
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
@@ -48,7 +52,7 @@ func NewNonceService() (NonceService, error) {
 
 func (ns NonceService) encrypt(counter int64) (string, error) {
 	// Generate a nonce with upper 4 bytes zero
-	nonce := make([]byte, 12)
+	nonce := make([]byte, NonceLen)
 	for i := 0; i < 4; i++ {
 		nonce[i] = 0
 	}
@@ -74,6 +78,9 @@ func (ns NonceService) decrypt(nonce string) (int64, error) {
 	decoded, err := B64dec(nonce)
 	if err != nil {
 		return 0, err
+	}
+	if len(decoded) != NonceLen {
+		return 0, InvalidNonceLength
 	}
 
 	n := make([]byte, 12)
