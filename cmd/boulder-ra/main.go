@@ -46,17 +46,6 @@ func main() {
 		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
 		cmd.FailOnError(err, "Couldn't load rate limit policies file")
 
-		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats,
-			rateLimitPolicies, c.RA.MaxContactsPerRegistration)
-		rai.PA = pa
-		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
-		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
-		if !c.Common.DNSAllowLoopbackAddresses {
-			rai.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
-		} else {
-			rai.DNSResolver = core.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
-		}
-
 		go cmd.ProfileCmd("RA", stats)
 
 		vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, c, stats)
@@ -77,13 +66,29 @@ func main() {
 		sac, err := rpc.NewStorageAuthorityClient(saRPC)
 		cmd.FailOnError(err, "Unable to create SA client")
 
+		var dc *ra.DomainCheck
+		if c.RA.UseIsSafeDomain {
+			dc = &ra.DomainCheck{&vac}
+		}
+
+		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats,
+			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration)
+		rai.PA = pa
+		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
+		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
+		if !c.Common.DNSAllowLoopbackAddresses {
+			rai.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
+		} else {
+			rai.DNSResolver = core.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
+		}
+
 		rai.VA = &vac
 		rai.CA = &cac
 		rai.SA = &sac
 
 		ras, err := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, c.RA.MaxConcurrentRPCServerRequests, c)
 		cmd.FailOnError(err, "Unable to create RA RPC server")
-		rpc.NewRegistrationAuthorityServer(ras, &rai)
+		rpc.NewRegistrationAuthorityServer(ras, rai)
 
 		err = ras.Start(c)
 		cmd.FailOnError(err, "Unable to run RA RPC server")

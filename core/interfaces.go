@@ -80,13 +80,6 @@ type RegistrationAuthority interface {
 	OnValidationUpdate(Authorization) error
 }
 
-// ValidationAuthority defines the public interface for the Boulder VA
-type ValidationAuthority interface {
-	// [RegistrationAuthority]
-	UpdateValidations(Authorization, int) error
-	CheckCAARecords(AcmeIdentifier) (bool, bool, error)
-}
-
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]

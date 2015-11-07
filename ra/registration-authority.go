@@ -50,6 +50,7 @@ type RegistrationAuthorityImpl struct {
 	DNSResolver core.DNSResolver
 	clk         clock.Clock
 	log         *blog.AuditLogger
+	dc          *DomainCheck
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
@@ -61,11 +62,12 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, policies cmd.RateLimitConfig, maxContactsPerReg int) RegistrationAuthorityImpl {
-	ra := RegistrationAuthorityImpl{
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int) *RegistrationAuthorityImpl {
+	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
+		dc:    dc,
 		authorizationLifetime:        DefaultAuthorizationLifetime,
 		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
 		rlPolicies:                   policies,
@@ -265,6 +267,18 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	limit := &ra.rlPolicies.PendingAuthorizationsPerAccount
 	if err = checkPendingAuthorizationLimit(ra.SA, limit, regID); err != nil {
 		return authz, err
+	}
+
+	if identifier.Type == core.IdentifierDNS {
+		isSafe, err := ra.dc.IsSafe(identifier.Value)
+		if err != nil {
+			outErr := core.InternalServerError("unable to determine if domain was safe")
+			ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), err))
+			return authz, outErr
+		}
+		if !isSafe {
+			return authz, core.UnauthorizedError(fmt.Sprintf("%#v was considered an unsafe domain by a third-party API", identifier.Value))
+		}
 	}
 
 	// Check CAA records for the requested identifier

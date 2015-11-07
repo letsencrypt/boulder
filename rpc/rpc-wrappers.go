@@ -46,6 +46,7 @@ const (
 	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
 	MethodUpdateValidations                 = "UpdateValidations"                 // VA
 	MethodCheckCAARecords                   = "CheckCAARecords"                   // VA
+	MethodIsSafeDomain                      = "IsSafeDomain"                      // VA
 	MethodIssueCertificate                  = "IssueCertificate"                  // CA
 	MethodGenerateOCSP                      = "GenerateOCSP"                      // CA
 	MethodGetRegistration                   = "GetRegistration"                   // SA
@@ -547,6 +548,24 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 		return
 	})
 
+	rpc.Handle(MethodIsSafeDomain, func(req []byte) ([]byte, error) {
+		r := &core.IsSafeDomainRequest{}
+		if err := json.Unmarshal(req, r); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodIsSafeDomain, err, req)
+			return nil, err
+		}
+		resp, err := impl.IsSafeDomain(r)
+		if err != nil {
+			return nil, err
+		}
+		jsonResp, err := json.Marshal(resp)
+		if err != nil {
+			return nil, err
+		}
+		return jsonResp, nil
+	})
+
 	return nil
 }
 
@@ -599,6 +618,25 @@ func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) 
 	present = caaResp.Present
 	valid = caaResp.Valid
 	return
+}
+
+// IsSafeDomain returns true if the domain given is determined to be safe by an
+// third-party safe browsing API.
+func (vac ValidationAuthorityClient) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	jsonResp, err := vac.rpc.DispatchSync(MethodIsSafeDomain, data)
+	if err != nil {
+		return nil, err
+	}
+	resp := &core.IsSafeDomainResponse{}
+	err = json.Unmarshal(jsonResp, resp)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // NewPublisherServer creates a new server that wraps a CT publisher
