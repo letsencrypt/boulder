@@ -386,6 +386,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 		logEvent.AddError("no signatures in POST body")
 		return nil, nil, reg, err
 	}
+
 	submittedKey := parsedJws.Signatures[0].Header.JsonWebKey
 	if submittedKey == nil {
 		err = core.SignatureValidationError("No JWK in JWS header")
@@ -419,6 +420,11 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 		key = &reg.Key
 		logEvent.Requester = reg.ID
 		logEvent.Contacts = reg.Contact
+	}
+
+	if statName, err := checkAlgorithm(key, parsedJws); err != nil {
+		wfe.stats.Inc(statName, 1, 1.0)
+		return nil, nil, reg, err
 	}
 
 	payload, header, err := parsedJws.Verify(key)

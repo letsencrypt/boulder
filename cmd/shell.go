@@ -105,6 +105,9 @@ type Config struct {
 
 		MaxContactsPerRegistration int
 
+		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
+		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
+
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string
 	}
@@ -124,6 +127,8 @@ type Config struct {
 		PortConfig va.PortConfig
 
 		MaxConcurrentRPCServerRequests int64
+
+		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
 
 		// DebugAddr is the address to run the /debug handlers on.
 		DebugAddr string

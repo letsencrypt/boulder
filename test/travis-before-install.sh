@@ -23,7 +23,7 @@ travis_retry go get \
   github.com/jsha/listenbuddy &
 
 (wget https://github.com/jsha/boulder-tools/raw/master/goose.gz &&
- mkdir $GOPATH/bin &&
+ mkdir -p $GOPATH/bin &&
  zcat goose.gz > $GOPATH/bin/goose &&
  chmod +x $GOPATH/bin/goose) &
 

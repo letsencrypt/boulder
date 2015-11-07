@@ -52,7 +52,8 @@ func main() {
 		if c.VA.PortConfig.TLSPort != 0 {
 			pc.TLSPort = c.VA.PortConfig.TLSPort
 		}
-		vai := va.NewValidationAuthorityImpl(pc, stats, clock.Default())
+		sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
+		vai := va.NewValidationAuthorityImpl(pc, sbc, stats, clock.Default())
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		if !c.Common.DNSAllowLoopbackAddresses {
