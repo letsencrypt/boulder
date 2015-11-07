@@ -259,7 +259,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
     build_letsencrypt
   fi
 
-  python test/amqp-integration-test.py
+  python test/amqp-integration-test.py --all
   case $? in
     0) # Success
       update_status --state success

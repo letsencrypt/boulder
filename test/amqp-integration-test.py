@@ -1,4 +1,5 @@
 #!/usr/bin/env python2.7
+import argparse
 import atexit
 import base64
 import os
@@ -16,7 +17,7 @@ import startservers
 
 
 class ExitStatus:
-    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure = range(6)
+    OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs = range(7)
 
 
 class ProcInfo:
@@ -222,14 +223,34 @@ def cleanup():
     else:
         print("\n\nFAILURE %d" % exit_status)
 
-
 exit_status = ExitStatus.OK
 tempdir = tempfile.mkdtemp()
+
+parser = argparse.ArgumentParser(description='Run integration tests')
+parser.add_argument('--all', dest="run_all", action="store_true",
+                    help="run all of the clients' integration tests")
+parser.add_argument('--letsencrypt', dest='run_letsencrypt', action='store_true',
+                    help="run the letsencrypt's (the python client's) integration tests")
+parser.add_argument('--node', dest="run_node", action="store_true",
+                    help="run the node client's integration tests")
+parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
+args = parser.parse_args()
+
+if not (args.run_all or args.run_letsencrypt or args.run_node):
+    print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, or --node"
+    die(ExitStatus.IncorrectCommandLineArgs)
+
 if not startservers.start(race_detection=True):
     die(ExitStatus.Error)
-run_node_test()
+
+if args.run_all or args.run_node:
+    run_node_test()
+
 # Simulate a disconnection from RabbitMQ to make sure reconnects work.
 startservers.bounce_forward()
-run_client_tests()
+
+if args.run_all or args.run_letsencrypt:
+    run_client_tests()
+
 if not startservers.check():
     die(ExitStatus.Error)
