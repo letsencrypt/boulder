@@ -119,10 +119,10 @@ func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase strin
 	client := &http.Client{
 		Transport: &http.Transport{
 			Dial: (&net.Dialer{
-				Timeout:   3 * time.Second,
+				Timeout:   5 * time.Second,
 				KeepAlive: 0,
 			}).Dial,
-			TLSHandshakeTimeout: 2 * time.Second,
+			TLSHandshakeTimeout: 5 * time.Second,
 			DisableKeepAlives:   true,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
