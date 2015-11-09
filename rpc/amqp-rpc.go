@@ -436,7 +436,7 @@ func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
 		select {
 		case msg, ok := <-rpc.connection.messages():
 			if ok {
-				rpc.stats.TimingDuration(fmt.Sprintf("RPC.MessageLag.%s", msg.Type), rpc.clk.Now().Sub(msg.Timestamp), 1.0)
+				rpc.stats.TimingDuration(fmt.Sprintf("RPC.MessageLag.%s", rpc.serverQueue), rpc.clk.Now().Sub(msg.Timestamp), 1.0)
 				if rpc.maxConcurrentRPCServerRequests > 0 && atomic.LoadInt64(&rpc.currentGoroutines) >= rpc.maxConcurrentRPCServerRequests {
 					rpc.replyTooManyRequests(msg)
 					break // this breaks the select, not the for
