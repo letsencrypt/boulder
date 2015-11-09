@@ -31,6 +31,10 @@ func main() {
 		cmd.FailOnError(err, "Could not connect to Syslog")
 		auditlogger.Info(app.VersionString())
 
+		// Validate PA config and set defaults if needed
+		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
+		c.PA.SetDefaultChallengesIfEmpty()
+
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
 

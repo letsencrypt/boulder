@@ -25,15 +25,20 @@ var (
 )
 
 func TestPAConfigUnmarshal(t *testing.T) {
-	var pc PAConfig
+	var pc1 PAConfig
+	err := json.Unmarshal(validPAConfig, &pc1)
+	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
+	test.AssertNotError(t, pc1.CheckChallenges(), "Flagged valid challenges as bad")
 
-	err := json.Unmarshal(validPAConfig, &pc)
-	test.AssertNotError(t, err, "Failed to unmarshal valid PAConfig")
+	var pc2 PAConfig
+	err = json.Unmarshal(invalidPAConfig, &pc2)
+	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
+	test.AssertError(t, pc2.CheckChallenges(), "Considered invalid challenges as good")
 
-	err = json.Unmarshal(invalidPAConfig, &pc)
-	test.AssertError(t, err, "Failed to reject invalid PAConfig")
-
-	err = json.Unmarshal(noChallengesPAConfig, &pc)
-	test.AssertNotError(t, err, "Failed to unmarshal valid PAConfig")
-	test.Assert(t, len(pc.Challenges) == 4, "Incorrect number of challenges in default set")
+	var pc3 PAConfig
+	err = json.Unmarshal(noChallengesPAConfig, &pc3)
+	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
+	test.AssertNotError(t, pc3.CheckChallenges(), "Somehow found a bad challenge among none")
+	pc3.SetDefaultChallengesIfEmpty()
+	test.Assert(t, len(pc3.Challenges) == 4, "Incorrect number of challenges in default set")
 }

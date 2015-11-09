@@ -268,39 +268,29 @@ type PAConfig struct {
 	Challenges             map[string]bool
 }
 
-// UnmarshalJSON is really actually vanilla, but with some validity checks and
-// default setting added
-func (pc *PAConfig) UnmarshalJSON(b []byte) error {
-	raw := struct {
-		DBConnect              string
-		EnforcePolicyWhitelist bool
-		Challenges             map[string]bool
-	}{}
-	err := json.Unmarshal(b, &raw)
-	if err != nil {
-		return err
-	}
-
-	// Set a default list of challenges if non are provided
-	if len(raw.Challenges) == 0 {
-		raw.Challenges = map[string]bool{}
-		raw.Challenges[core.ChallengeTypeSimpleHTTP] = true
-		raw.Challenges[core.ChallengeTypeDVSNI] = true
-		raw.Challenges[core.ChallengeTypeHTTP01] = true
-		raw.Challenges[core.ChallengeTypeTLSSNI01] = true
-	}
-
-	// Check that the entries in the challenges map are valid
-	for name := range raw.Challenges {
+// CheckChallenges checks whether the list of challenges in the PA config
+// actually contains valid challenge names
+func (pc PAConfig) CheckChallenges() error {
+	for name := range pc.Challenges {
 		if !core.ValidChallenge(name) {
 			return fmt.Errorf("Invalid challenge in PA config: %s", name)
 		}
 	}
-
-	pc.DBConnect = raw.DBConnect
-	pc.EnforcePolicyWhitelist = raw.EnforcePolicyWhitelist
-	pc.Challenges = raw.Challenges
 	return nil
+}
+
+// SetDefaultChallengesIfEmpty sets a default list of challenges if no
+// challenges are enabled in the PA config.  The set of challenges specified
+// corresponds to the set that was hard-coded before these configuration
+// options were added.
+func (pc *PAConfig) SetDefaultChallengesIfEmpty() {
+	if len(pc.Challenges) == 0 {
+		pc.Challenges = map[string]bool{}
+		pc.Challenges[core.ChallengeTypeSimpleHTTP] = true
+		pc.Challenges[core.ChallengeTypeDVSNI] = true
+		pc.Challenges[core.ChallengeTypeHTTP01] = true
+		pc.Challenges[core.ChallengeTypeTLSSNI01] = true
+	}
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,

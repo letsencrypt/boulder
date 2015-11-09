@@ -235,6 +235,10 @@ func main() {
 	}
 
 	app.Action = func(c cmd.Config) {
+		// Validate PA config and set defaults if needed
+		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
+		c.PA.SetDefaultChallengesIfEmpty()
+
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 		cmd.FailOnError(err, "Couldn't connect to statsd")
 
