@@ -127,6 +127,8 @@ function build_letsencrypt() {
   run ./venv/bin/pip install -U pip
   run ./venv/bin/pip install -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
 
+  source ./venv/bin/activate
+
   cd -
 }
 

@@ -209,7 +209,7 @@ def run_client_tests():
         "Please set LETSENCRYPT_PATH env variable to point at "
         "initialized (virtualenv) client repo root")
     test_script_path = os.path.join(root, 'tests', 'boulder-integration.sh')
-    cmd = "source %s/venv/bin/activate && SIMPLE_HTTP_PORT=5002 %s" % (root, test_script_path)
+    cmd = "SIMPLE_HTTP_PORT=5002 %s" % (test_script_path)
     if subprocess.Popen(cmd, shell=True, cwd=root, executable='/bin/bash').wait() != 0:
         die(ExitStatus.PythonFailure)
 
