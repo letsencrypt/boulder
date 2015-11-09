@@ -48,8 +48,6 @@ or
 
     sudo port install libtool mariadb-server rabbitmq-server
 
-Note: 
-
 (On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
    
     > go get bitbucket.org/liamstask/goose/cmd/goose
