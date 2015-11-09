@@ -41,7 +41,7 @@ def plot_section(data, started, stopped, title, outputPath):
         ax = axes[i][0]
         ax.set_title(section)
         ax.set_xlim(started, stopped)
-        ax2 = axes[i][1]
+        ax2 = axes[i][2]
         ax2.set_xlim(started, stopped)
 
         calls = pandas.DataFrame(data[section])
@@ -88,7 +88,7 @@ def plot_section(data, started, stopped, title, outputPath):
         ax2.grid(False)
         ax2.set_ylabel('Rate (per second)')
 
-        ax3 = axes[i][2]
+        ax3 = axes[i][1]
         ax3.set_xlim(started, stopped)
         ax3.set_ylim(0, tookMax+tookMax*0.1)
 
