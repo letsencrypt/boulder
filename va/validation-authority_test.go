@@ -1053,6 +1053,20 @@ func TestUpdateValidations(t *testing.T) {
 	test.Assert(t, (took < (time.Second * 3)), "UpdateValidations blocked")
 }
 
+func TestCAATimeout(t *testing.T) {
+	stats, _ := statsd.NewNoopClient()
+	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va.DNSResolver = &mocks.DNSResolver{}
+	va.IssuerDomain = "letsencrypt.org"
+	err := va.checkCAA(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, 101)
+	if err.Type != core.ConnectionProblem {
+		t.Errorf("Expected timeout error type %s, got %s", core.ConnectionProblem, err.Type)
+	}
+	if err.Detail != detailDNSTimeout {
+		t.Errorf("Expected timeout error detail %s, got %s", detailDNSTimeout, err.Detail)
+	}
+}
+
 func TestCAAChecking(t *testing.T) {
 	type CAATest struct {
 		Domain  string
