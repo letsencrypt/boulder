@@ -71,6 +71,10 @@ func main() {
 					Name:  "dontRunChallSrv",
 					Usage: "Don't manage spawning and killing of the challenge server",
 				},
+				cli.StringFlag{
+					Name:  "realIP",
+					Usage: "IP to set X-Real-IP header to",
+				},
 			},
 			Action: func(c *cli.Context) {
 				runtime, err := time.ParseDuration(c.String("runtime"))
@@ -83,6 +87,7 @@ func main() {
 					c.String("domainBase"),
 					runtime,
 					c.String("termsURL"),
+					c.String("realIP"),
 				)
 				cmd.FailOnError(err, "Failed to create WFE generator")
 

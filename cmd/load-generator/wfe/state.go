@@ -38,6 +38,8 @@ type State struct {
 	apiBase  string
 	termsURL string
 
+	realIP string
+
 	nMu       *sync.RWMutex
 	noncePool []string
 
@@ -109,7 +111,7 @@ func (s *State) Restore(content []byte) error {
 	return nil
 }
 
-func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string) (*State, error) {
+func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, err
@@ -140,6 +142,7 @@ func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase strin
 		runtime:      runtime,
 		termsURL:     termsURL,
 		wg:           new(sync.WaitGroup),
+		realIP:       realIP,
 	}, nil
 }
 
@@ -203,11 +206,12 @@ func (s *State) Dump(jsonPath string) error {
 // HTTP utils
 
 func (s *State) post(endpoint string, payload []byte) (*http.Response, error) {
-	resp, err := s.client.Post(
-		endpoint,
-		"application/json",
-		bytes.NewBuffer(payload),
-	)
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("X-Real-IP", s.realIP)
+	resp, err := s.client.Do(req)
 	if resp != nil {
 		if newNonce := resp.Header.Get("Replay-Nonce"); newNonce != "" {
 			s.addNonce(newNonce)
