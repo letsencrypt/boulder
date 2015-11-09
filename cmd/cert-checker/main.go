@@ -76,8 +76,8 @@ type certChecker struct {
 	issuedReport report
 }
 
-func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool) certChecker {
-	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, enforceWhitelist)
+func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool) certChecker {
+	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, enforceWhitelist, challengeTypes)
 	cmd.FailOnError(err, "Failed to create PA")
 	c := certChecker{
 		pa:    pa,
@@ -235,6 +235,10 @@ func main() {
 	}
 
 	app.Action = func(c cmd.Config) {
+		// Validate PA config and set defaults if needed
+		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
+		c.PA.SetDefaultChallengesIfEmpty()
+
 		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
 		cmd.FailOnError(err, "Couldn't connect to statsd")
 
@@ -250,7 +254,7 @@ func main() {
 		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
 		cmd.FailOnError(err, "Could not connect to policy database")
 
-		checker := newChecker(saDbMap, paDbMap, clock.Default(), c.PA.EnforcePolicyWhitelist)
+		checker := newChecker(saDbMap, paDbMap, clock.Default(), c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
 		auditlogger.Info("# Getting certificates issued in the last 90 days")
 
 		// Since we grab certificates in batches we don't want this to block, when it
