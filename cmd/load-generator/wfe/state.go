@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
@@ -121,6 +122,9 @@ func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase strin
 			}).Dial,
 			TLSHandshakeTimeout: 2 * time.Second,
 			DisableKeepAlives:   true,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
 		},
 	}
 	return &State{
