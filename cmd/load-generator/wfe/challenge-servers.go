@@ -2,33 +2,72 @@ package wfe
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
-func (s *State) addHTTPOneChallenge(token, content string) {
-	s.hoMu.Lock()
-	defer s.hoMu.Unlock()
-	s.httpOneChallenges[token] = content
+type ChallSrv struct {
+	hoMu        *sync.RWMutex
+	httpOne     map[string]string
+	httpOneAddr string
+
+	rpcAddr string
 }
 
-func (s *State) deleteHTTPOneChallenge(token string) {
-	s.hoMu.Lock()
-	defer s.hoMu.Unlock()
-	if _, ok := s.httpOneChallenges[token]; ok {
-		delete(s.httpOneChallenges, token)
+func NewChallSrv(hoAddr, rpcAddr string) *ChallSrv {
+	return &ChallSrv{
+		hoMu:        new(sync.RWMutex),
+		httpOne:     make(map[string]string),
+		httpOneAddr: hoAddr,
+		rpcAddr:     rpcAddr,
 	}
 }
 
-func (s *State) getHTTPOneChallenge(token string) (string, bool) {
+func (s *ChallSrv) Run() {
+	go func() {
+		err := s.httpOneServer()
+		if err != nil {
+			fmt.Printf("Failed to run http-0 challenge server: %s\n", err)
+			os.Exit(1)
+		}
+	}()
+	go func() {
+		err := s.rpcServer()
+		if err != nil {
+			fmt.Printf("Failed to run RPC server: %s\n", err)
+			os.Exit(1)
+		}
+	}()
+	forever := make(chan struct{}, 1)
+	<-forever
+}
+
+func (s *ChallSrv) addHTTPOneChallenge(token, content string) {
+	s.hoMu.Lock()
+	defer s.hoMu.Unlock()
+	s.httpOne[token] = content
+}
+
+func (s *ChallSrv) deleteHTTPOneChallenge(token string) {
+	s.hoMu.Lock()
+	defer s.hoMu.Unlock()
+	if _, ok := s.httpOne[token]; ok {
+		delete(s.httpOne, token)
+	}
+}
+
+func (s *ChallSrv) getHTTPOneChallenge(token string) (string, bool) {
 	s.hoMu.RLock()
 	defer s.hoMu.RUnlock()
-	content, present := s.httpOneChallenges[token]
+	content, present := s.httpOne[token]
 	return content, present
 }
 
-func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestPath := r.URL.Path
 	if strings.HasPrefix(requestPath, "/.well-known/acme-challenge/") {
 		token := requestPath[28:]
@@ -40,13 +79,30 @@ func (s *State) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *State) httpOneServer() error {
+func (s *ChallSrv) httpOneServer() error {
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", s.httpOnePort),
+		Addr:         s.httpOneAddr,
 		Handler:      s,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	}
 	srv.SetKeepAlivesEnabled(false)
 	return srv.ListenAndServe()
+}
+
+func (s *ChallSrv) hoRPC(w http.ResponseWriter, r *http.Request) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fmt.Println("BADD RPC CALL")
+		w.WriteHeader(400)
+		return
+	}
+	fields := strings.Split(string(body), ";;")
+	s.addHTTPOneChallenge(fields[0], fields[1])
+	w.WriteHeader(200)
+}
+
+func (s *ChallSrv) rpcServer() error {
+	http.HandleFunc("/ho", s.hoRPC)
+	return http.ListenAndServe(s.rpcAddr, nil)
 }

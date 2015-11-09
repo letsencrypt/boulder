@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,9 +42,7 @@ type State struct {
 
 	throughput int64
 
-	hoMu              *sync.RWMutex
-	httpOneChallenges map[string]string
-	httpOnePort       int
+	challRPCAddr string
 
 	certKey    *rsa.PrivateKey
 	domainBase string
@@ -51,6 +50,8 @@ type State struct {
 	callLatency *latency.Map
 
 	runtime time.Duration
+
+	challSrvProc *os.Process
 
 	wg *sync.WaitGroup
 }
@@ -62,16 +63,13 @@ type rawRegistration struct {
 }
 
 type snapshot struct {
-	Registrations     []rawRegistration
-	HttpOneChallenges map[string]string
+	Registrations []rawRegistration
 }
 
 func (s *State) Snapshot() ([]byte, error) {
 	s.rMu.Lock()
-	s.hoMu.Lock()
 	defer s.rMu.Unlock()
-	defer s.hoMu.Unlock()
-	snap := snapshot{HttpOneChallenges: s.httpOneChallenges}
+	snap := snapshot{}
 	rawRegs := []rawRegistration{}
 	for _, r := range s.regs {
 		rawRegs = append(rawRegs, rawRegistration{
@@ -85,15 +83,12 @@ func (s *State) Snapshot() ([]byte, error) {
 
 func (s *State) Restore(content []byte) error {
 	s.rMu.Lock()
-	s.hoMu.Lock()
 	defer s.rMu.Unlock()
-	defer s.hoMu.Unlock()
 	snap := snapshot{}
 	err := json.Unmarshal(content, &snap)
 	if err != nil {
 		return err
 	}
-	s.httpOneChallenges = snap.HttpOneChallenges
 	for _, r := range snap.Registrations {
 		key, err := x509.ParsePKCS1PrivateKey(r.RawKey)
 		if err != nil {
@@ -113,7 +108,7 @@ func (s *State) Restore(content []byte) error {
 	return nil
 }
 
-func New(httpOnePort int, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration) (*State, error) {
+func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, err
@@ -129,25 +124,31 @@ func New(httpOnePort int, apiBase string, rate int, keySize int, domainBase stri
 		},
 	}
 	return &State{
-		rMu:               new(sync.RWMutex),
-		nMu:               new(sync.RWMutex),
-		hoMu:              new(sync.RWMutex),
-		httpOneChallenges: make(map[string]string),
-		httpOnePort:       httpOnePort,
-		client:            client,
-		apiBase:           apiBase,
-		throughput:        int64(rate),
-		certKey:           certKey,
-		domainBase:        domainBase,
-		callLatency:       latency.New(fmt.Sprintf("WFE -- %s test at %d base actions / second", runtime, rate)),
-		runtime:           runtime,
-		wg:                new(sync.WaitGroup),
+		rMu:          new(sync.RWMutex),
+		nMu:          new(sync.RWMutex),
+		challRPCAddr: rpcAddr,
+		client:       client,
+		apiBase:      apiBase,
+		throughput:   int64(rate),
+		certKey:      certKey,
+		domainBase:   domainBase,
+		callLatency:  latency.New(fmt.Sprintf("WFE -- %s test at %d base actions / second", runtime, rate)),
+		runtime:      runtime,
+		termsURL:     termsURL,
+		wg:           new(sync.WaitGroup),
 	}, nil
 }
 
-func (s *State) Run() {
-	// Run http-0 challenge server
-	go s.httpOneServer()
+func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) error {
+	// Start chall server process
+	if !dontRunChallSrv {
+		cmd := exec.Command(binName, "chall-srv", "--rpcAddr="+s.challRPCAddr, "--httpOneAddr="+httpOneAddr)
+		err := cmd.Start()
+		if err != nil {
+			return err
+		}
+		s.challSrvProc = cmd.Process
+	}
 
 	// Run sending loop
 	stop := make(chan bool, 1)
@@ -171,8 +172,14 @@ func (s *State) Run() {
 	stop <- true
 	fmt.Println("SENT STOP")
 	s.wg.Wait()
+	fmt.Println("KILLING CHALL SERVER")
+	err := s.challSrvProc.Kill()
+	if err != nil {
+		fmt.Printf("Error killing challenge server: %s\n", err)
+	}
 	fmt.Println("ALL DONE")
 	s.callLatency.Stopped = time.Now()
+	return nil
 }
 
 func (s *State) Dump(jsonPath string) error {

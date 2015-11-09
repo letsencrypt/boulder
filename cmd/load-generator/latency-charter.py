@@ -48,6 +48,8 @@ def plot_section(data, started, stopped, title, outputPath):
         calls['finished'] = pandas.to_datetime(calls['finished']).astype(datetime.datetime)
         calls['sent'] = pandas.to_datetime(calls['sent']).astype(datetime.datetime)
         calls['took'] = calls['took'].divide(1000000)
+        tookMax = calls['took'].max()
+        ax.set_ylim(0, tookMax+tookMax*0.1)
 
         groups = calls.groupby('type')
         if groups.groups.get('error', False):
@@ -88,6 +90,7 @@ def plot_section(data, started, stopped, title, outputPath):
 
         ax3 = axes[i][2]
         ax3.set_xlim(started, stopped)
+        ax3.set_ylim(0, tookMax+tookMax*0.1)
 
         calls = calls.set_index('finished')
         calls = calls.sort_index()

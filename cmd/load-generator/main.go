@@ -39,11 +39,6 @@ func main() {
 					Usage: "Bit size of the key to sign certificates with",
 					Value: 2048,
 				},
-				cli.IntFlag{
-					Name:  "httpOnePort",
-					Usage: "Port to run the http-0 challenge server on",
-					Value: 5002,
-				},
 				cli.StringFlag{
 					Name:  "domainBase",
 					Usage: "Base label for randomly generated domains",
@@ -62,21 +57,37 @@ func main() {
 					Usage: "The terms URL to agree too",
 					Value: "http://127.0.0.1:4001/terms/v1",
 				},
+				cli.StringFlag{
+					Name:  "challRPCAddr",
+					Usage: "Address to send RPC calls",
+					Value: "localhost:6060",
+				},
+				cli.StringFlag{
+					Name:  "httpOneAddr",
+					Usage: "Address for the http-0 challenge server to listen on",
+					Value: "localhost:5002",
+				},
+				cli.BoolFlag{
+					Name:  "dontRunChallSrv",
+					Usage: "Don't manage spawning and killing of the challenge server",
+				},
 			},
 			Action: func(c *cli.Context) {
 				runtime, err := time.ParseDuration(c.String("runtime"))
 				cmd.FailOnError(err, "Failed to parse runtime")
 				s, err := wfe.New(
-					c.Int("httpOnePort"),
+					c.String("challRPCAddr"),
 					c.String("apiBase"),
 					c.Int("rate"),
 					c.Int("certKeySize"),
 					c.String("domainBase"),
 					runtime,
+					c.String("termsURL"),
 				)
 				cmd.FailOnError(err, "Failed to create WFE generator")
 
-				s.Run()
+				err = s.Run(os.Args[0], c.Bool("dontRunChallSrv"), c.String("httpOneAddr"))
+				cmd.FailOnError(err, "Failed to run WFE load generator")
 				err = s.Dump(c.String("latencyDataPath"))
 				cmd.FailOnError(err, "Failed to dump latency data")
 			},
@@ -137,6 +148,26 @@ func main() {
 				s.Run()
 				err = s.Dump(c.String("latencyDataPath"))
 				cmd.FailOnError(err, "Failed to dump latency data")
+			},
+		},
+		{
+			Name:  "chall-srv",
+			Usage: "The challenge server for WFE mode",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "rpcAddr",
+					Usage: "Address to listen for RPC calls from WFE load-generator",
+					Value: "localhost:6060",
+				},
+				cli.StringFlag{
+					Name:  "httpOneAddr",
+					Usage: "Address for the http-0 challenge server to listen on",
+					Value: "localhost:5002",
+				},
+			},
+			Action: func(c *cli.Context) {
+				srv := wfe.NewChallSrv(c.String("httpOneAddr"), c.String("rpcAddr"))
+				srv.Run()
 			},
 		},
 	}

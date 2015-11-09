@@ -95,16 +95,30 @@ func (s *State) newRegistration(_ *registration) {
 	s.addReg(&registration{key: signKey, signer: signer, iMu: new(sync.RWMutex)})
 }
 
+func (s *State) sendHTTPOneChallenge(token, content string) error {
+	resp, err := s.client.Post(fmt.Sprintf("http://%s/ho", s.challRPCAddr), "application/text", bytes.NewBufferString(fmt.Sprintf("%s;;%s", token, content)))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("Invalid response code for http-0 RPC call: %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jose.Signer, authURI string) error {
 	keyAuthz, err := core.NewKeyAuthorization(chall.Token, &jose.JsonWebKey{Key: &reg.key.PublicKey})
 	if err != nil {
 		return err
 	}
 	authStr := fmt.Sprintf("%s.%s", keyAuthz.Token, keyAuthz.Thumbprint)
-	s.addHTTPOneChallenge(
+	err = s.sendHTTPOneChallenge(
 		chall.Token,
 		authStr,
 	)
+	if err != nil {
+		return err
+	}
 
 	update := fmt.Sprintf(`{"resource":"challenge","keyAuthorization":"%s"}`, authStr)
 	requestPayload, err := s.signWithNonce("/acme/challenge", false, []byte(update), signer)
