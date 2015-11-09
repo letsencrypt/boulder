@@ -225,55 +225,6 @@ func (dnsResolver *DNSResolverImpl) LookupHost(hostname string) ([]net.IP, time.
 	return addrs, rtt, nil
 }
 
-// LookupCNAME returns the target name if a CNAME record exists for
-// the given domain name. If the CNAME does not exist (NXDOMAIN,
-// NXRRSET, or a successful response with no CNAME records), it
-// returns the empty string and a nil error.
-func (dnsResolver *DNSResolverImpl) LookupCNAME(hostname string) (string, time.Duration, error) {
-	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeCNAME)
-	if err != nil {
-		return "", 0, err
-	}
-	if r.Rcode == dns.RcodeNXRrset || r.Rcode == dns.RcodeNameError {
-		return "", rtt, nil
-	}
-	if r.Rcode != dns.RcodeSuccess {
-		err = fmt.Errorf("DNS failure: %d-%s for CNAME query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return "", rtt, err
-	}
-
-	for _, answer := range r.Answer {
-		if cname, ok := answer.(*dns.CNAME); ok {
-			return cname.Target, rtt, nil
-		}
-	}
-
-	return "", rtt, nil
-}
-
-// LookupDNAME is LookupCNAME, but for DNAME.
-func (dnsResolver *DNSResolverImpl) LookupDNAME(hostname string) (string, time.Duration, error) {
-	r, rtt, err := dnsResolver.ExchangeOne(hostname, dns.TypeDNAME)
-	if err != nil {
-		return "", 0, err
-	}
-	if r.Rcode == dns.RcodeNXRrset || r.Rcode == dns.RcodeNameError {
-		return "", rtt, nil
-	}
-	if r.Rcode != dns.RcodeSuccess {
-		err = fmt.Errorf("DNS failure: %d-%s for DNAME query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return "", rtt, err
-	}
-
-	for _, answer := range r.Answer {
-		if cname, ok := answer.(*dns.DNAME); ok {
-			return cname.Target, rtt, nil
-		}
-	}
-
-	return "", rtt, nil
-}
-
 // LookupCAA sends a DNS query to find all CAA records associated with
 // the provided hostname. If the response code from the resolver is
 // SERVFAIL an empty slice of CAA records is returned.

@@ -53,53 +53,6 @@ func (mock *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, e
 	return []net.IP{ip}, 0, nil
 }
 
-// LookupCNAME is a mock
-func (mock *DNSResolver) LookupCNAME(domain string) (string, time.Duration, error) {
-	switch strings.TrimRight(domain, ".") {
-	case "cname-absent.com":
-		return "absent.com.", 30, nil
-	case "cname-critical.com":
-		return "critical.com.", 30, nil
-	case "cname-present.com", "cname-and-dname.com":
-		return "cname-target.present.com.", 30, nil
-	case "cname2-present.com":
-		return "cname-present.com.", 30, nil
-	case "a.cname-loop.com":
-		return "b.cname-loop.com.", 30, nil
-	case "b.cname-loop.com":
-		return "a.cname-loop.com.", 30, nil
-	case "www.caa-loop.com":
-		// nothing wrong with CNAME, but prevents CAA algorithm from terminating
-		return "oops.www.caa-loop.com.", 30, nil
-	case "cname2servfail.com":
-		return "servfail.com.", 30, nil
-	case "cname-servfail.com":
-		return "", 0, fmt.Errorf("SERVFAIL")
-	case "cname2dname.com":
-		return "dname2cname.com.", 30, nil
-	default:
-		return "", 0, nil
-	}
-}
-
-// LookupDNAME is a mock
-func (mock *DNSResolver) LookupDNAME(domain string) (string, time.Duration, error) {
-	switch strings.TrimRight(domain, ".") {
-	case "cname-and-dname.com", "dname-present.com":
-		return "dname-target.present.com.", time.Minute, nil
-	case "a.dname-loop.com":
-		return "b.dname-loop.com.", time.Minute, nil
-	case "b.dname-loop.com":
-		return "a.dname-loop.com.", time.Minute, nil
-	case "dname2cname.com":
-		return "cname2-present.com.", time.Minute, nil
-	case "dname-servfail.com":
-		return "", time.Minute, fmt.Errorf("SERVFAIL")
-	default:
-		return "", 0, nil
-	}
-}
-
 // LookupCAA is a mock
 func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error) {
 	var results []*dns.CAA
