@@ -56,7 +56,7 @@ func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest)
 	if dva.IsSafeDomainErr != nil {
 		return nil, dva.IsSafeDomainErr
 	}
-	return &core.IsSafeDomainResponse{!dva.IsNotSafe}, nil
+	return &core.IsSafeDomainResponse{IsSafe: !dva.IsNotSafe}, nil
 }
 
 var (
