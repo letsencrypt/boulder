@@ -68,7 +68,7 @@ func main() {
 
 		var dc *ra.DomainCheck
 		if c.RA.UseIsSafeDomain {
-			dc = &ra.DomainCheck{&vac}
+			dc = &ra.DomainCheck{VA: &vac}
 		}
 
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats,
