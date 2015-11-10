@@ -30,6 +30,7 @@ recent version.
 
 Also, Boulder requires Go 1.5. As of September 2015 this version is not yet
 available in OS repositories, so you will have to install from https://golang.org/dl/.
+Add ```${GOPATH}/bin``` to your path.
 
 Ubuntu:
 
@@ -48,19 +49,21 @@ or
     sudo port install libtool mariadb-server rabbitmq-server
 
 (On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
-
+   
     > go get bitbucket.org/liamstask/goose/cmd/goose
+    > go get github.com/jsha/listenbuddy
     > go get github.com/letsencrypt/boulder/ # Ignore errors about no buildable files
     > cd $GOPATH/src/github.com/letsencrypt/boulder
     > ./test/create_db.sh
     # This starts each Boulder component with test configs. Ctrl-C kills all.
     > ./start.py
     # Run tests
+    > go get -u github.com/golang/lint/golint
     > ./test.sh
 
-Note: `create_db.sh` it uses the root MariaDB user, so if you
-have disabled that account you may have to adjust the file or
-recreate the commands.
+Note: `create_db.sh` it uses the root MariaDB user with the default
+password, so if you have disabled that account or changed the password
+you may have to adjust the file or recreate the commands.
 
 You can also check out the official client from
 https://github.com/letsencrypt/letsencrypt/ and follow the setup

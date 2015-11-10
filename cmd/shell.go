@@ -260,10 +260,37 @@ type CAConfig struct {
 }
 
 // PAConfig specifies how a policy authority should connect to its
-// database, and what policies it should enforce.
+// database, what policies it should enforce, and what challenges
+// it should offer.
 type PAConfig struct {
 	DBConnect              string
 	EnforcePolicyWhitelist bool
+	Challenges             map[string]bool
+}
+
+// CheckChallenges checks whether the list of challenges in the PA config
+// actually contains valid challenge names
+func (pc PAConfig) CheckChallenges() error {
+	for name := range pc.Challenges {
+		if !core.ValidChallenge(name) {
+			return fmt.Errorf("Invalid challenge in PA config: %s", name)
+		}
+	}
+	return nil
+}
+
+// SetDefaultChallengesIfEmpty sets a default list of challenges if no
+// challenges are enabled in the PA config.  The set of challenges specified
+// corresponds to the set that was hard-coded before these configuration
+// options were added.
+func (pc *PAConfig) SetDefaultChallengesIfEmpty() {
+	if len(pc.Challenges) == 0 {
+		pc.Challenges = map[string]bool{}
+		pc.Challenges[core.ChallengeTypeSimpleHTTP] = true
+		pc.Challenges[core.ChallengeTypeDVSNI] = true
+		pc.Challenges[core.ChallengeTypeHTTP01] = true
+		pc.Challenges[core.ChallengeTypeTLSSNI01] = true
+	}
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,

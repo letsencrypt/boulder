@@ -97,6 +97,27 @@ const (
 	ChallengeTypeDNS01      = "dns-01"
 )
 
+// ValidChallenge tests whether the provided string names a known challenge
+func ValidChallenge(name string) bool {
+	switch name {
+	// TODO(#894): Delete these lines
+	case ChallengeTypeSimpleHTTP:
+		fallthrough
+	case ChallengeTypeDVSNI:
+		fallthrough
+
+	case ChallengeTypeHTTP01:
+		fallthrough
+	case ChallengeTypeTLSSNI01:
+		fallthrough
+	case ChallengeTypeDNS01:
+		return true
+
+	default:
+		return false
+	}
+}
+
 // TLSSNISuffix is appended to pseudo-domain names in DVSNI challenges
 const TLSSNISuffix = "acme.invalid"
 
