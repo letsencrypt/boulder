@@ -653,13 +653,11 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 			rpc.stats.Inc(fmt.Sprintf("RPC.ClientCallLatency.%s.Error", method), 1, 1.0)
 			return
 		}
-		rpc.stats.Inc("RPC.Rate.Success", 1, 1.0)
 		rpc.stats.TimingDuration(fmt.Sprintf("RPC.ClientCallLatency.%s.Success", method), time.Since(callStarted), 1.0)
 		response = rpcResponse.ReturnVal
 		return
 	case <-time.After(rpc.timeout):
 		rpc.stats.TimingDuration(fmt.Sprintf("RPC.ClientCallLatency.%s.Timeout", method), time.Since(callStarted), 1.0)
-		rpc.stats.Inc("RPC.Rate.Timeouts", 1, 1.0)
 		rpc.log.Warning(fmt.Sprintf(" [c!][%s] AMQP-RPC timeout [%s]", rpc.clientQueue, method))
 		rpc.mu.Lock()
 		delete(rpc.pending, corrID)
