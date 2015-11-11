@@ -10,6 +10,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"math/big"
+	"sync"
 )
 
 // MaxUsed defines the maximum number of Nonces we're willing to hold in
@@ -18,6 +19,7 @@ const MaxUsed = 65536
 
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
+	mu       sync.Mutex
 	latest   int64
 	earliest int64
 	used     map[int64]bool
@@ -32,10 +34,14 @@ func NewNonceService() (NonceService, error) {
 		return NonceService{}, err
 	}
 
-	// It is safe to ignore these errors because they only happen
-	// on key size and block size mismatches.
-	c, _ := aes.NewCipher(key)
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		panic("Failure in NewCipher")
+	}
 	gcm, _ := cipher.NewGCM(c)
+	if err != nil {
+		panic("Failure in NewGCM")
+	}
 
 	return NonceService{
 		earliest: 0,
@@ -94,10 +100,15 @@ func (ns NonceService) decrypt(nonce string) (int64, error) {
 
 // Nonce provides a new Nonce.
 func (ns *NonceService) Nonce() (string, error) {
+	ns.mu.Lock()
 	ns.latest++
-	return ns.encrypt(ns.latest)
+	latest := ns.latest
+	ns.mu.Unlock()
+	return ns.encrypt(latest)
 }
 
+// minUsed returns the lowest key in the used map. Requires that a lock be held
+// by caller.
 func (ns *NonceService) minUsed() int64 {
 	min := ns.latest
 	for t := range ns.used {
@@ -116,6 +127,8 @@ func (ns *NonceService) Valid(nonce string) bool {
 		return false
 	}
 
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
 	if c > ns.latest {
 		return false
 	}
