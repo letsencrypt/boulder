@@ -518,7 +518,7 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 			return
 		}
 
-		err = impl.UpdateValidations(vaReq.Authz, vaReq.Index)
+		impl.UpdateValidations(vaReq.Authz, vaReq.Index)
 		return
 	})
 
@@ -581,18 +581,18 @@ func NewValidationAuthorityClient(client Client) (vac ValidationAuthorityClient,
 }
 
 // UpdateValidations sends an Update Validations request
-func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization, index int) error {
+func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization, index int) {
 	vaReq := validationRequest{
 		Authz: authz,
 		Index: index,
 	}
 	data, err := json.Marshal(vaReq)
 	if err != nil {
-		return err
+		panic("failed to marshal vaReq")
 	}
 
 	_, err = vac.rpc.DispatchSync(MethodUpdateValidations, data)
-	return nil
+	return
 }
 
 // CheckCAARecords sends a request to check CAA records

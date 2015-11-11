@@ -8,7 +8,7 @@ package core
 // ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
-	UpdateValidations(Authorization, int) error
+	UpdateValidations(Authorization, int)
 	CheckCAARecords(AcmeIdentifier) (bool, bool, error)
 	IsSafeDomain(*IsSafeDomainRequest) (*IsSafeDomainResponse, error)
 }
