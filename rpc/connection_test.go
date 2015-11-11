@@ -31,6 +31,7 @@ func setup(t *testing.T) (*amqpConnector, *MockamqpChannel, func()) {
 		},
 		queueName:        "fooqueue",
 		retryTimeoutBase: time.Second,
+		clk:              clock.NewFake(),
 	}
 	return &ac, mockChannel, func() { mockCtrl.Finish() }
 }
@@ -125,6 +126,7 @@ func TestPublish(t *testing.T) {
 			Expiration:    "3000",
 			ReplyTo:       "replyTo",
 			Type:          "testMsg",
+			Timestamp:     ac.clk.Now(),
 		})
 	ac.publish("fooqueue", "03c52e", "3000", "replyTo", "testMsg", []byte("body"))
 }
