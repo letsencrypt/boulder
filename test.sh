@@ -127,8 +127,6 @@ function build_letsencrypt() {
   run ./venv/bin/pip install -U pip
   run ./venv/bin/pip install -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
 
-  source ./venv/bin/activate
-
   cd -
 }
 
@@ -260,6 +258,8 @@ if [[ "$RUN" =~ "integration" ]] ; then
   elif [ ! -d "${LETSENCRYPT_PATH}" ]; then
     build_letsencrypt
   fi
+
+  source ${LETSENCRYPT_PATH}/venv/bin/activate
 
   python test/integration-test.py --all
   case $? in
