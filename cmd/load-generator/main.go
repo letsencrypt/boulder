@@ -1,7 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
@@ -10,6 +13,35 @@ import (
 	"github.com/letsencrypt/boulder/cmd/load-generator/responder"
 	"github.com/letsencrypt/boulder/cmd/load-generator/wfe"
 )
+
+func eventParser(description string) ([]wfe.RatePeriod, time.Duration, error) {
+	periods := []wfe.RatePeriod{}
+	sections := strings.Split(description, ":")
+	runtime := time.Duration(0)
+	for _, s := range sections {
+		fields := strings.Split(s, ",")
+		if len(fields) != 2 {
+			return nil, 0, fmt.Errorf("Invalid event format")
+		}
+		dur, err := time.ParseDuration(fields[1])
+		if err != nil {
+			return nil, 0, err
+		}
+		rate, err := strconv.Atoi(fields[0])
+		if err != nil {
+			return nil, 0, err
+		}
+		if rate <= 0 {
+			return nil, 0, fmt.Errorf("rate must be a positive non-zero integer")
+		}
+		periods = append(periods, wfe.RatePeriod{
+			For:  dur,
+			Rate: int64(rate),
+		})
+		runtime += dur
+	}
+	return periods, runtime, nil
+}
 
 func main() {
 	app := cli.NewApp()
@@ -75,19 +107,41 @@ func main() {
 					Name:  "realIP",
 					Usage: "IP to set X-Real-IP header to",
 				},
+				cli.StringFlag{
+					Name:  "plan",
+					Usage: "Alternative to --rate and --runtime, allows definition of a test where the base action rate changes. Format is '{throughput},{duration for}:{next throughput},{duration for}' etc. E.g. '2,5m:3,5m:4,5m:5,5m'",
+				},
 			},
 			Action: func(c *cli.Context) {
-				runtime, err := time.ParseDuration(c.String("runtime"))
-				cmd.FailOnError(err, "Failed to parse runtime")
+				var runtime time.Duration
+				var rate int
+				var runPlan []wfe.RatePeriod
+				var err error
+				if c.String("runtime") != "" && c.Int("rate") != 0 || c.String("plan") != "" {
+					if c.String("plan") != "" {
+						rate = 1
+						runPlan, runtime, err = eventParser(c.String("plan"))
+						cmd.FailOnError(err, "Failed to parse plan")
+					} else {
+						rate = c.Int("rate")
+						runtime, err = time.ParseDuration(c.String("runtime"))
+						cmd.FailOnError(err, "Failed to parse runtime")
+					}
+				} else {
+					fmt.Println("Either (--runtime and --rate) or --plan is required")
+					os.Exit(1)
+				}
+
 				s, err := wfe.New(
 					c.String("challRPCAddr"),
 					c.String("apiBase"),
-					c.Int("rate"),
+					rate,
 					c.Int("certKeySize"),
 					c.String("domainBase"),
 					runtime,
 					c.String("termsURL"),
 					c.String("realIP"),
+					runPlan,
 				)
 				cmd.FailOnError(err, "Failed to create WFE generator")
 

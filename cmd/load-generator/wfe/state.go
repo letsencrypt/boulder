@@ -22,6 +22,11 @@ import (
 	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
 )
 
+type RatePeriod struct {
+	For  time.Duration
+	Rate int64
+}
+
 type registration struct {
 	key    *rsa.PrivateKey
 	signer jose.Signer
@@ -57,6 +62,8 @@ type State struct {
 	challSrvProc *os.Process
 
 	wg *sync.WaitGroup
+
+	runPlan []RatePeriod
 }
 
 type rawRegistration struct {
@@ -111,7 +118,7 @@ func (s *State) Restore(content []byte) error {
 	return nil
 }
 
-func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string) (*State, error) {
+func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string, runPlan []RatePeriod) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, err
@@ -143,7 +150,16 @@ func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase strin
 		termsURL:     termsURL,
 		wg:           new(sync.WaitGroup),
 		realIP:       realIP,
+		runPlan:      runPlan,
 	}, nil
+}
+
+func (s *State) executePlan() {
+	for _, p := range s.runPlan {
+		atomic.StoreInt64(&s.throughput, p.Rate)
+		fmt.Printf("Set base action rate to %d/s for %s\n", p.Rate, p.For)
+		time.Sleep(p.For)
+	}
 }
 
 func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) error {
@@ -155,6 +171,11 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 			return err
 		}
 		s.challSrvProc = cmd.Process
+	}
+
+	// If their is a run plan execute it
+	if len(s.runPlan) > 0 {
+		go s.executePlan()
 	}
 
 	// Run sending loop
