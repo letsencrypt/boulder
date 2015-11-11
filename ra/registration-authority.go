@@ -23,6 +23,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -79,8 +80,6 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 
 var errUnparseableEmail = errors.New("not a valid e-mail address")
 var errEmptyDNSResponse = errors.New("empty DNS response")
-var errDNSTimeout = errors.New("DNS timeout")
-var errDNSError = errors.New("DNS error")
 
 func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, err error) {
 	_, err = mail.ParseAddress(address)
@@ -93,11 +92,9 @@ func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration
 	if err == nil && len(result) == 0 {
 		err = errEmptyDNSResponse
 	}
-	if opErr, ok := err.(*net.OpError); ok && opErr != nil && opErr.Timeout() {
-		err = errDNSTimeout
-	}
-	if _, ok := err.(*net.OpError); ok {
-		err = errDNSError
+	if err != nil {
+		problem := dns.ProblemDetailsFromDNSError(err)
+		err = core.MalformedRequestError(problem.Detail)
 	}
 
 	return

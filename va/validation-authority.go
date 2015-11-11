@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
+	bdns "github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -118,28 +119,6 @@ func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.Jso
 	return nil
 }
 
-const detailDNSTimeout = "DNS query timed out"
-const detailTemporaryError = "Temporary network connectivity error"
-const detailServerFailure = "Server failure at resolver"
-
-// problemDetailsFromDNSError checks the error returned from Lookup...
-// methods and tests if the error was an underlying net.OpError or an error
-// caused by resolver returning SERVFAIL or other invalid Rcodes and returns
-// the relevant core.ProblemDetails.
-func problemDetailsFromDNSError(err error) *core.ProblemDetails {
-	problem := &core.ProblemDetails{Type: core.ConnectionProblem}
-	if netErr, ok := err.(*net.OpError); ok {
-		if netErr.Timeout() {
-			problem.Detail = detailDNSTimeout
-		} else if netErr.Temporary() {
-			problem.Detail = detailTemporaryError
-		}
-	} else {
-		problem.Detail = detailServerFailure
-	}
-	return problem
-}
-
 // getAddr will query for all A records associated with hostname and return the
 // prefered address, the first net.IP in the addrs slice, and all addresses resolved.
 // This is the same choice made by the Go internal resolution library used by
@@ -148,7 +127,7 @@ func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
 	addrs, rtt, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
-		problem = problemDetailsFromDNSError(err)
+		problem = bdns.ProblemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
 		return
 	}
@@ -618,7 +597,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		challenge.Error = problemDetailsFromDNSError(err)
+		challenge.Error = bdns.ProblemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
 		return challenge, challenge.Error
 	}
@@ -643,7 +622,7 @@ func (va *ValidationAuthorityImpl) checkCAA(identifier core.AcmeIdentifier, regI
 	present, valid, err := va.CheckCAARecords(identifier)
 	if err != nil {
 		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
-		return problemDetailsFromDNSError(err)
+		return bdns.ProblemDetailsFromDNSError(err)
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", identifier.Value, regID, present, valid))

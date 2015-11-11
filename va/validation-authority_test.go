@@ -1062,8 +1062,9 @@ func TestCAATimeout(t *testing.T) {
 	if err.Type != core.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", core.ConnectionProblem, err.Type)
 	}
-	if err.Detail != detailDNSTimeout {
-		t.Errorf("Expected timeout error detail %s, got %s", detailDNSTimeout, err.Detail)
+	expected := "DNS query timed out"
+	if err.Detail != expected {
+		t.Errorf("checkCAA: got %s, expected %s", err.Detail, expected)
 	}
 }
 

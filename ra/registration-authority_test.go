@@ -297,26 +297,28 @@ func TestValidateContacts(t *testing.T) {
 	test.AssertError(t, err, "Malformed Email")
 
 	err = ra.validateContacts([]*core.AcmeURL{ansible})
-	test.AssertError(t, err, "Unknown scehme")
+	test.AssertError(t, err, "Unknown scheme")
 }
 
 func TestValidateEmail(t *testing.T) {
 	testCases := []struct {
 		input    string
-		expected error
+		expected string
 	}{
-		{"an email`", errUnparseableEmail},
-		{"a@always.invalid", errEmptyDNSResponse},
-		{"a@always.timeout", errDNSTimeout},
-		{"a@always.error", errDNSError},
-		{"a@email.com", nil},
+		{"an email`", errUnparseableEmail.Error()},
+		{"a@always.invalid", "Server failure at resolver"},
+		{"a@always.timeout", "DNS query timed out"},
+		{"a@always.error", "DNS networking error"},
 	}
 	for _, tc := range testCases {
 		_, err := validateEmail(tc.input, &mocks.DNSResolver{})
-		if err != tc.expected {
+		if err.Error() != tc.expected {
 			t.Errorf("validateEmail(%q): got %#v, expected %#v",
 				tc.input, err, tc.expected)
 		}
+	}
+	if _, err := validateEmail("a@email.com", &mocks.DNSResolver{}); err != nil {
+		t.Errorf("Expected a@email.com to validate, but it failed: %s", err)
 	}
 }
 
