@@ -686,7 +686,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	}
 
 	// Dispatch to the VA for service
-	ra.VA.UpdateValidations(authz, challengeIndex)
+	go ra.VA.UpdateValidations(authz, challengeIndex)
 
 	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	return

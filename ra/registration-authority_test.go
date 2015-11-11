@@ -42,7 +42,7 @@ type DummyValidationAuthority struct {
 	IsSafeDomainErr error
 }
 
-func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
+func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) {
 	dva.Called = true
 	dva.Argument = authz
 	return

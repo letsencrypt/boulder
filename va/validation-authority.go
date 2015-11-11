@@ -640,9 +640,9 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 	return challenge, challenge.Error
 }
 
-// Overall validation process
-
-func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeIndex int) {
+// UpdateValidations attempts to validate a challenge, then calls back to the RA
+// to update the challenge's status.
+func (va *ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) {
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
@@ -693,12 +693,6 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 	va.log.Notice(fmt.Sprintf("Validations: %+v", authz))
 
 	va.RA.OnValidationUpdate(authz)
-}
-
-// UpdateValidations runs the validate() method asynchronously using goroutines.
-func (va *ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
-	go va.validate(authz, challengeIndex)
-	return nil
 }
 
 // CAASet consists of filtered CAA records

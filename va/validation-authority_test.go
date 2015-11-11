@@ -936,7 +936,7 @@ func TestValidateHTTP(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(authz, 0)
+	va.UpdateValidations(authz, 0)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -999,7 +999,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(authz, 0)
+	va.UpdateValidations(authz, 0)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -1021,7 +1021,7 @@ func TestValidateTLSSNINotSane(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(authz, 0)
+	va.UpdateValidations(authz, 0)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -1116,7 +1116,7 @@ func TestDNSValidationFailure(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(authz, 0)
+	va.UpdateValidations(authz, 0)
 
 	t.Logf("Resulting Authz: %+v", authz)
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
@@ -1145,7 +1145,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	va.validate(authz, 0)
+	va.UpdateValidations(authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -1177,7 +1177,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 
 	for i := 0; i < len(authz.Challenges); i++ {
-		va.validate(authz, i)
+		va.UpdateValidations(authz, i)
 		test.AssertEquals(t, authz.Challenges[i].Status, core.StatusInvalid)
 		test.AssertEquals(t, authz.Challenges[i].Error.Type, core.MalformedProblem)
 	}
@@ -1202,7 +1202,7 @@ func TestDNSValidationServFail(t *testing.T) {
 		Identifier:     badIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(authz, 0)
+	va.UpdateValidations(authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -1224,7 +1224,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(authz, 0)
+	va.UpdateValidations(authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -1262,7 +1262,7 @@ func TestDNSValidationLive(t *testing.T) {
 		Challenges:     []core.Challenge{goodChalDNS},
 	}
 
-	va.validate(authzGood, 0)
+	va.UpdateValidations(authzGood, 0)
 
 	if authzGood.Challenges[0].Status != core.StatusValid {
 		t.Logf("TestDNSValidationLive on Good did not succeed.")
@@ -1279,7 +1279,7 @@ func TestDNSValidationLive(t *testing.T) {
 		Challenges:     []core.Challenge{badChalDNS},
 	}
 
-	va.validate(authzBad, 0)
+	va.UpdateValidations(authzBad, 0)
 	if authzBad.Challenges[0].Status != core.StatusInvalid {
 		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
 	}
