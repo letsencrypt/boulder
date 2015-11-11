@@ -28,10 +28,10 @@ type NonceService struct {
 }
 
 // NewNonceService constructs a NonceService with defaults
-func NewNonceService() (NonceService, error) {
+func NewNonceService() (*NonceService, error) {
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
-		return NonceService{}, err
+		return nil, err
 	}
 
 	c, err := aes.NewCipher(key)
@@ -43,7 +43,7 @@ func NewNonceService() (NonceService, error) {
 		panic("Failure in NewGCM: " + err.Error())
 	}
 
-	return NonceService{
+	return &NonceService{
 		earliest: 0,
 		latest:   0,
 		used:     make(map[int64]bool, MaxUsed),

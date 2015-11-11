@@ -75,7 +75,7 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 
 	// Register of anti-replay nonces
-	nonceService core.NonceService
+	nonceService *core.NonceService
 
 	// Cache settings
 	CertCacheDuration           time.Duration
