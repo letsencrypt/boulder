@@ -17,14 +17,23 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestConstruction(t *testing.T) {
-	t.Parallel()
-	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
+const stdoutLevel = 7
+
+func setup(t *testing.T) *AuditLogger {
+	// Write all logs to UDP on a high port so as to not bother the system
+	// which is running the test, particularly for Emerg()
+	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
 	stats, _ := statsd.NewNoopClient(nil)
-	_, err = NewAuditLogger(writer, stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	audit, err := NewAuditLogger(writer, stats, stdoutLevel)
+	test.AssertNotError(t, err, "Could not construct syslog object")
+	return audit
+}
+
+func TestConstruction(t *testing.T) {
+	t.Parallel()
+	_ = setup(t)
 }
 
 func TestSingleton(t *testing.T) {
@@ -35,77 +44,47 @@ func TestSingleton(t *testing.T) {
 	log2 := GetAuditLogger()
 	test.AssertEquals(t, log1, log2)
 
-	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
-	test.AssertNotError(t, err, "Could not construct syslog object")
-
-	stats, _ := statsd.NewNoopClient(nil)
-	log3, err := NewAuditLogger(writer, stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	audit := setup(t)
 
 	// Should not work
-	err = SetAuditLogger(log3)
+	err := SetAuditLogger(audit)
 	test.AssertError(t, err, "Can't re-set")
 
 	// Verify no change
 	log4 := GetAuditLogger()
 
 	// Verify that log4 != log3
-	test.AssertNotEquals(t, log4, log3)
+	test.AssertNotEquals(t, log4, audit)
 
 	// Verify that log4 == log2 == log1
 	test.AssertEquals(t, log4, log2)
 	test.AssertEquals(t, log4, log1)
 }
 
-func TestDial(t *testing.T) {
-	t.Parallel()
-	stats, _ := statsd.NewNoopClient(nil)
-	_, err := Dial("", "", "tag", stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
-}
-
-func TestDialError(t *testing.T) {
-	t.Parallel()
-	stats, _ := statsd.NewNoopClient(nil)
-	_, err := Dial("_fail", "_fail", "tag", stats)
-	test.AssertError(t, err, "Audit Logger should have failed")
-}
-
 func TestConstructionNil(t *testing.T) {
 	t.Parallel()
 	stats, _ := statsd.NewNoopClient(nil)
-	_, err := NewAuditLogger(nil, stats)
+	_, err := NewAuditLogger(nil, stats, stdoutLevel)
 	test.AssertError(t, err, "Nil shouldn't be permitted.")
 }
 
 func TestEmit(t *testing.T) {
 	t.Parallel()
-	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
-	test.AssertNotError(t, err, "Could not construct syslog object")
-
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, err := NewAuditLogger(writer, stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	audit := setup(t)
 
 	audit.Audit("test message")
 }
 
 func TestEmitEmpty(t *testing.T) {
 	t.Parallel()
-	writer, err := syslog.New(syslog.LOG_EMERG|syslog.LOG_KERN, "tag")
-	test.AssertNotError(t, err, "Could not construct syslog object")
-
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, err := NewAuditLogger(writer, stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	audit := setup(t)
 
 	audit.Audit("")
 }
 
 func TestEmitErrors(t *testing.T) {
 	t.Parallel()
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, _ := Dial("", "", "tag", stats)
+	audit := setup(t)
 
 	audit.AuditErr(errors.New("Error Audit"))
 	audit.WarningErr(errors.New("Warning Audit"))
@@ -113,14 +92,7 @@ func TestEmitErrors(t *testing.T) {
 
 func TestSyslogMethods(t *testing.T) {
 	t.Parallel()
-	// Write all logs to UDP on a high port so as to not bother the system
-	// which is running the test, particularly for Emerg()
-	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
-	test.AssertNotError(t, err, "Could not construct syslog object")
-
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, err := NewAuditLogger(writer, stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	audit := setup(t)
 
 	audit.Audit("audit-logger_test.go: audit-notice")
 	audit.Crit("audit-logger_test.go: critical")
@@ -135,8 +107,7 @@ func TestSyslogMethods(t *testing.T) {
 
 func TestPanic(t *testing.T) {
 	t.Parallel()
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, _ := Dial("", "", "tag", stats)
+	audit := setup(t)
 	defer audit.AuditPanic()
 	panic("Test panic")
 	// Can't assert anything here or golint gets angry
@@ -144,8 +115,7 @@ func TestPanic(t *testing.T) {
 
 func TestAuditObject(t *testing.T) {
 	t.Parallel()
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, _ := Dial("", "", "tag", stats)
+	audit := setup(t)
 
 	// Test a simple object
 	err := audit.AuditObject("Prefix", "String")
@@ -171,19 +141,11 @@ func TestAuditObject(t *testing.T) {
 	var invalid = invalidObj{A: make(chan string)}
 	err = audit.AuditObject("Prefix", invalid)
 	test.AssertError(t, err, "Invalid objects should fail serialization")
-
 }
 
 func TestEmergencyExit(t *testing.T) {
 	t.Parallel()
-	// Write all logs to UDP on a high port so as to not bother the system
-	// which is running the test, particularly for Emerg()
-	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
-	test.AssertNotError(t, err, "Could not construct syslog object")
-
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, err := NewAuditLogger(writer, stats)
-	test.AssertNotError(t, err, "Could not construct audit logger")
+	audit := setup(t)
 
 	called := false
 
@@ -194,10 +156,8 @@ func TestEmergencyExit(t *testing.T) {
 
 func TestUnknownLoggingLevel(t *testing.T) {
 	t.Parallel()
-	stats, _ := statsd.NewNoopClient(nil)
-	audit, _ := Dial("", "", "tag", stats)
-
-	err := audit.logAtLevel("Logging.Unknown", "string")
+	audit := setup(t)
+	err := audit.logAtLevel(1000, "string")
 	test.AssertError(t, err, "Should have been unknown.")
 }
 
@@ -213,7 +173,7 @@ func TestTransmission(t *testing.T) {
 	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	test.AssertNotError(t, err, "Failed to find connect to log server")
 
-	audit, err := NewAuditLogger(writer, stats)
+	audit, err := NewAuditLogger(writer, stats, stdoutLevel)
 	test.AssertNotError(t, err, "Failed to construct audit logger")
 
 	data := make([]byte, 128)

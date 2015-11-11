@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/syslog"
 	"os"
+	"path"
 	"runtime"
 	"strings"
 	"sync"
@@ -62,24 +63,16 @@ func defaultEmergencyExit() {
 // should be classified as audit events.
 type AuditLogger struct {
 	SyslogWriter
-	Stats        statsd.Statter
-	exitFunction exitFunction
+	Stats          statsd.Statter
+	exitFunction   exitFunction
+	stdoutLogLevel int
 }
 
-// Dial establishes a connection to the log daemon by passing through
-// the parameters to the syslog.Dial method.
-// See http://golang.org/pkg/log/syslog/#Dial
-func Dial(network, raddr string, tag string, stats statsd.Statter) (*AuditLogger, error) {
-	syslogger, err := syslog.Dial(network, raddr, syslog.LOG_INFO|syslog.LOG_LOCAL0, tag)
-	if err != nil {
-		return nil, err
-	}
-	return NewAuditLogger(syslogger, stats)
-}
+const defaultPriority = syslog.LOG_INFO | syslog.LOG_LOCAL0
 
 // NewAuditLogger returns a new AuditLogger that uses the given
 // SyslogWriter as a backend.
-func NewAuditLogger(log SyslogWriter, stats statsd.Statter) (*AuditLogger, error) {
+func NewAuditLogger(log SyslogWriter, stats statsd.Statter, stdoutLogLevel int) (*AuditLogger, error) {
 	if log == nil {
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
@@ -87,6 +80,7 @@ func NewAuditLogger(log SyslogWriter, stats statsd.Statter) (*AuditLogger, error
 		log,
 		stats,
 		defaultEmergencyExit,
+		stdoutLogLevel,
 	}
 	return audit, nil
 }
@@ -97,7 +91,11 @@ func initializeAuditLogger() {
 	if err != nil {
 		panic(err)
 	}
-	audit, err := Dial("", "", "default", stats)
+	syslogger, err := syslog.Dial("", "", defaultPriority, "test")
+	if err != nil {
+		panic(err)
+	}
+	audit, err := NewAuditLogger(syslogger, stats, int(syslog.LOG_DEBUG))
 	if err != nil {
 		panic(err)
 	}
@@ -135,35 +133,39 @@ func GetAuditLogger() *AuditLogger {
 
 // Log the provided message at the appropriate level, writing to
 // both stdout and the Logger, as well as informing statsd.
-func (log *AuditLogger) logAtLevel(level, msg string) (err error) {
-	fmt.Printf("%s %s\n", time.Now().Format("2006/01/02 15:04:05"), msg)
-	log.Stats.Inc(level, 1, 1.0)
+func (log *AuditLogger) logAtLevel(level syslog.Priority, msg string) (err error) {
+	if int(level) <= log.stdoutLogLevel {
+		fmt.Printf("%s %11s %s\n",
+			time.Now().Format("15:04:05"),
+			path.Base(os.Args[0]),
+			msg)
+	}
 
 	switch level {
-	case "Logging.Alert":
+	case syslog.LOG_ALERT:
 		err = log.SyslogWriter.Alert(msg)
-	case "Logging.Crit":
+	case syslog.LOG_CRIT:
 		err = log.SyslogWriter.Crit(msg)
-	case "Logging.Debug":
+	case syslog.LOG_DEBUG:
 		err = log.SyslogWriter.Debug(msg)
-	case "Logging.Emerg":
+	case syslog.LOG_EMERG:
 		err = log.SyslogWriter.Emerg(msg)
-	case "Logging.Err":
+	case syslog.LOG_ERR:
 		err = log.SyslogWriter.Err(msg)
-	case "Logging.Info":
+	case syslog.LOG_INFO:
 		err = log.SyslogWriter.Info(msg)
-	case "Logging.Warning":
+	case syslog.LOG_WARNING:
 		err = log.SyslogWriter.Warning(msg)
-	case "Logging.Notice":
+	case syslog.LOG_NOTICE:
 		err = log.SyslogWriter.Notice(msg)
 	default:
-		err = fmt.Errorf("Unknown logging level: %s", level)
+		err = fmt.Errorf("Unknown logging level: %d", int(level))
 	}
 	return
 }
 
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-func (log *AuditLogger) auditAtLevel(level, msg string) (err error) {
+func (log *AuditLogger) auditAtLevel(level syslog.Priority, msg string) (err error) {
 	// Submit a separate counter that marks an Audit event
 	log.Stats.Inc("Logging.Audit", 1, 1.0)
 
@@ -198,60 +200,60 @@ func (log *AuditLogger) AuditPanic() {
 
 // WarningErr formats an error for the Warn level.
 func (log *AuditLogger) WarningErr(msg error) (err error) {
-	return log.logAtLevel("Logging.Warning", msg.Error())
+	return log.logAtLevel(syslog.LOG_WARNING, msg.Error())
 }
 
 // Alert level messages pass through normally.
 func (log *AuditLogger) Alert(msg string) (err error) {
-	return log.logAtLevel("Logging.Alert", msg)
+	return log.logAtLevel(syslog.LOG_ALERT, msg)
 }
 
 // Crit level messages are automatically marked for audit
 func (log *AuditLogger) Crit(msg string) (err error) {
-	return log.auditAtLevel("Logging.Crit", msg)
+	return log.auditAtLevel(syslog.LOG_CRIT, msg)
 }
 
 // Debug level messages pass through normally.
 func (log *AuditLogger) Debug(msg string) (err error) {
-	return log.logAtLevel("Logging.Debug", msg)
+	return log.logAtLevel(syslog.LOG_DEBUG, msg)
 }
 
 // Emerg level messages are automatically marked for audit
 func (log *AuditLogger) Emerg(msg string) (err error) {
-	return log.auditAtLevel("Logging.Emerg", msg)
+	return log.auditAtLevel(syslog.LOG_EMERG, msg)
 }
 
 // Err level messages are automatically marked for audit
 func (log *AuditLogger) Err(msg string) (err error) {
-	return log.auditAtLevel("Logging.Err", msg)
+	return log.auditAtLevel(syslog.LOG_ERR, msg)
 }
 
 // Info level messages pass through normally.
 func (log *AuditLogger) Info(msg string) (err error) {
-	return log.logAtLevel("Logging.Info", msg)
+	return log.logAtLevel(syslog.LOG_INFO, msg)
 }
 
 // Warning level messages pass through normally.
 func (log *AuditLogger) Warning(msg string) (err error) {
-	return log.logAtLevel("Logging.Warning", msg)
+	return log.logAtLevel(syslog.LOG_WARNING, msg)
 }
 
 // Notice level messages pass through normally.
 func (log *AuditLogger) Notice(msg string) (err error) {
-	return log.logAtLevel("Logging.Notice", msg)
+	return log.logAtLevel(syslog.LOG_NOTICE, msg)
 }
 
 // Audit sends a NOTICE-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
 func (log *AuditLogger) Audit(msg string) (err error) {
-	return log.auditAtLevel("Logging.Notice", msg)
+	return log.auditAtLevel(syslog.LOG_NOTICE, msg)
 }
 
 func (log *AuditLogger) formatObjectMessage(msg string, obj interface{}) (string, error) {
 	jsonObj, err := json.Marshal(obj)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		log.auditAtLevel("Logging.Err", fmt.Sprintf("Object could not be serialized to JSON. Raw: %+v", obj))
+		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object could not be serialized to JSON. Raw: %+v", obj))
 		return "", err
 	}
 
@@ -266,7 +268,7 @@ func (log *AuditLogger) AuditObject(msg string, obj interface{}) (err error) {
 		return logErr
 	}
 
-	return log.auditAtLevel("Logging.Notice", formattedEvent)
+	return log.auditAtLevel(syslog.LOG_NOTICE, formattedEvent)
 }
 
 // InfoObject sends a INFO-severity JSON-serialized object message.
@@ -276,13 +278,13 @@ func (log *AuditLogger) InfoObject(msg string, obj interface{}) (err error) {
 		return logErr
 	}
 
-	return log.logAtLevel("Logging.Info", formattedEvent)
+	return log.logAtLevel(syslog.LOG_INFO, formattedEvent)
 }
 
 // AuditErr can format an error for auditing; it does so at ERR level.
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *AuditLogger) AuditErr(msg error) (err error) {
-	return log.auditAtLevel("Logging.Err", msg.Error())
+	return log.auditAtLevel(syslog.LOG_ERR, msg.Error())
 }
 
 // SetEmergencyExitFunc changes the systems' behavior on an emergency exit.
@@ -296,6 +298,6 @@ func (log *AuditLogger) SetEmergencyExitFunc(exit exitFunction) {
 // should notice the Emerg level event and shut down all components.
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *AuditLogger) EmergencyExit(msg string) {
-	log.auditAtLevel("Logging.Emerg", msg)
+	log.auditAtLevel(syslog.LOG_EMERG, msg)
 	log.exitFunction()
 }

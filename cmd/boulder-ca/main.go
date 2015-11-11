@@ -18,15 +18,7 @@ import (
 
 func main() {
 	app := cmd.NewAppShell("boulder-ca", "Handles issuance operations")
-	app.Action = func(c cmd.Config) {
-		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-
-		// Set up logging
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-		cmd.FailOnError(err, "Could not connect to Syslog")
-		auditlogger.Info(app.VersionString())
-
+	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		// Validate PA config and set defaults if needed
 		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 		c.PA.SetDefaultChallengesIfEmpty()
