@@ -279,7 +279,6 @@ func TestValidateContacts(t *testing.T) {
 	tel, _ := core.ParseAcmeURL("tel:")
 	ansible, _ := core.ParseAcmeURL("ansible:earth.sol.milkyway.laniakea/letsencrypt")
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
-	invalidEmail, _ := core.ParseAcmeURL("mailto:admin@example.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
 	err := ra.validateContacts([]*core.AcmeURL{})
@@ -294,30 +293,33 @@ func TestValidateContacts(t *testing.T) {
 	err = ra.validateContacts([]*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts([]*core.AcmeURL{invalidEmail})
-	test.AssertError(t, err, "Invalid Email")
-
 	err = ra.validateContacts([]*core.AcmeURL{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
 	err = ra.validateContacts([]*core.AcmeURL{ansible})
-	test.AssertError(t, err, "Unknown scehme")
+	test.AssertError(t, err, "Unknown scheme")
 }
 
 func TestValidateEmail(t *testing.T) {
-	_, err := validateEmail("an email`", &mocks.DNSResolver{})
-	test.AssertError(t, err, "Malformed")
-
-	_, err = validateEmail("a@not.a.domain", &mocks.DNSResolver{})
-	test.AssertError(t, err, "Cannot resolve")
-	t.Logf("No Resolve: %s", err)
-
-	_, err = validateEmail("a@example.com", &mocks.DNSResolver{})
-	test.AssertError(t, err, "No MX Record")
-	t.Logf("No MX: %s", err)
-
-	_, err = validateEmail("a@email.com", &mocks.DNSResolver{})
-	test.AssertNotError(t, err, "Valid")
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{"an email`", errUnparseableEmail.Error()},
+		{"a@always.invalid", "Server failure at resolver"},
+		{"a@always.timeout", "DNS query timed out"},
+		{"a@always.error", "DNS networking error"},
+	}
+	for _, tc := range testCases {
+		_, err := validateEmail(tc.input, &mocks.DNSResolver{})
+		if err.Error() != tc.expected {
+			t.Errorf("validateEmail(%q): got %#v, expected %#v",
+				tc.input, err, tc.expected)
+		}
+	}
+	if _, err := validateEmail("a@email.com", &mocks.DNSResolver{}); err != nil {
+		t.Errorf("Expected a@email.com to validate, but it failed: %s", err)
+	}
 }
 
 func TestNewRegistration(t *testing.T) {

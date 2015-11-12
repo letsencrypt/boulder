@@ -23,6 +23,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -77,19 +78,23 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 	return ra
 }
 
+var errUnparseableEmail = errors.New("not a valid e-mail address")
+var errEmptyDNSResponse = errors.New("empty DNS response")
+
 func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, err error) {
 	_, err = mail.ParseAddress(address)
 	if err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("%s is not a valid e-mail address", address))
-		return
+		return time.Duration(0), errUnparseableEmail
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	var mx []string
-	mx, rtt, err = resolver.LookupMX(domain)
-	if err != nil || len(mx) == 0 {
-		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
-		return
+	result, rtt, err := resolver.LookupHost(domain)
+	if err == nil && len(result) == 0 {
+		err = errEmptyDNSResponse
+	}
+	if err != nil {
+		problem := dns.ProblemDetailsFromDNSError(err)
+		err = core.MalformedRequestError(problem.Detail)
 	}
 
 	return
@@ -216,10 +221,11 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 			continue
 		case "mailto":
 			rtt, err := validateEmail(contact.Opaque, ra.DNSResolver)
-			ra.stats.TimingDuration("RA.DNS.RTT.MX", rtt, 1.0)
+			ra.stats.TimingDuration("RA.DNS.RTT.A", rtt, 1.0)
 			ra.stats.Inc("RA.DNS.Rate", 1, 1.0)
 			if err != nil {
-				return err
+				return core.MalformedRequestError(fmt.Sprintf(
+					"Validation of contact %s failed: %s", contact, err))
 			}
 		default:
 			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
@@ -279,18 +285,6 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		if !isSafe {
 			return authz, core.UnauthorizedError(fmt.Sprintf("%#v was considered an unsafe domain by a third-party API", identifier.Value))
 		}
-	}
-
-	// Check CAA records for the requested identifier
-	present, valid, err := ra.VA.CheckCAARecords(identifier)
-	if err != nil {
-		return authz, err
-	}
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	ra.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", identifier.Value, regID, present, valid))
-	if !valid {
-		err = errors.New("CAA check for identifier failed")
-		return authz, err
 	}
 
 	// Create validations. The WFE will  update them with URIs before sending them out.
