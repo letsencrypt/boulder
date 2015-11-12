@@ -1,14 +1,12 @@
 package dns
 
 import (
-	"fmt"
 	"net"
 
 	"github.com/letsencrypt/boulder/core"
 )
 
 const detailDNSTimeout = "DNS query timed out"
-const detailTemporaryError = "Temporary network connectivity error"
 const detailDNSNetFailure = "DNS networking error"
 const detailServerFailure = "Server failure at resolver"
 
@@ -21,14 +19,11 @@ func ProblemDetailsFromDNSError(err error) *core.ProblemDetails {
 	if netErr, ok := err.(*net.OpError); ok {
 		if netErr.Timeout() {
 			problem.Detail = detailDNSTimeout
-		} else if netErr.Temporary() {
-			problem.Detail = detailTemporaryError
 		} else {
 			problem.Detail = detailDNSNetFailure
 		}
 	} else {
 		problem.Detail = detailServerFailure
 	}
-	fmt.Println(problem)
 	return problem
 }

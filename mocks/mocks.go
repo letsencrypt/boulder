@@ -45,8 +45,13 @@ func (mock *DNSResolver) LookupTXT(hostname string) ([]string, time.Duration, er
 	return []string{"hostname"}, 0, nil
 }
 
-// Timeout satisfies the internal interface necessary for net.OpError.Timeout()
-// to return true.
+// TimeoutError returns a a net.OpError for which Timeout() returns true.
+func TimeoutError() *net.OpError {
+	return &net.OpError{
+		Err: os.NewSyscallError("ugh timeout", timeoutError{}),
+	}
+}
+
 type timeoutError struct{}
 
 func (t timeoutError) Error() string {
@@ -62,9 +67,7 @@ func (mock *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, e
 		return []net.IP{}, 0, nil
 	}
 	if hostname == "always.timeout" {
-		return []net.IP{}, 0, &net.OpError{
-			Err: os.NewSyscallError("ugh timeout", timeoutError{}),
-		}
+		return []net.IP{}, 0, TimeoutError()
 	}
 	if hostname == "always.error" {
 		return []net.IP{}, 0, &net.OpError{
@@ -81,9 +84,7 @@ func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, er
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
 	case "caa-timeout.com":
-		return nil, 0, &net.OpError{
-			Err: os.NewSyscallError("ugh timeout", timeoutError{}),
-		}
+		return nil, 0, TimeoutError()
 	case "reserved.com":
 		record.Tag = "issue"
 		record.Value = "symantec.com"
