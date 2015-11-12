@@ -221,7 +221,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 			continue
 		case "mailto":
 			rtt, err := validateEmail(contact.Opaque, ra.DNSResolver)
-			ra.stats.TimingDuration("RA.DNS.RTT", rtt, 1.0)
+			ra.stats.TimingDuration("RA.DNS.RTT.A", rtt, 1.0)
 			ra.stats.Inc("RA.DNS.Rate", 1, 1.0)
 			if err != nil {
 				return core.MalformedRequestError(fmt.Sprintf(
