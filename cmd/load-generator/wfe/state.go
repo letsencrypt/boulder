@@ -174,6 +174,7 @@ func (s *State) warmup() {
 	for {
 		s.rMu.RLock()
 		if len(s.regs) >= s.warmupRegs {
+			s.rMu.RUnlock()
 			break
 		}
 		s.rMu.RUnlock()
