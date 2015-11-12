@@ -227,19 +227,6 @@ type Config struct {
 	SubscriberAgreementURL string
 }
 
-// SyslogConfig defines the config for syslogging.
-type SyslogConfig struct {
-	Network     string
-	Server      string
-	StdoutLevel *int
-}
-
-// StatsdConfig defines the config for Statsd.
-type StatsdConfig struct {
-	Server string
-	Prefix string
-}
-
 // CAConfig structs have configuration information for the certificate
 // authority, including database parameters as well as controls for
 // issued certificates.
