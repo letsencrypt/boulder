@@ -238,11 +238,25 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		Dial: dialer.Dial,
 	}
 
+	// Some of our users use mod_security. Mod_security sees a lack of Accept
+	// headers as bot behavior and rejects requests. While this is a bug in
+	// mod_security's rules (given that the HTTP specs disagree with that
+	// requirement), we add the Accept header now in order to fix our
+	// mod_security users' mysterious breakages. See
+	// <https://github.com/SpiderLabs/owasp-modsecurity-crs/issues/265> and
+	// <https://github.com/letsencrypt/boulder/issues/1019>. This was done
+	// because it's a one-line fix with no downside. We're not likely to want to
+	// do many more things to satisfy misunderstandings around HTTP.
+	httpRequest.Header.Set("Accept", "*/*")
+
 	logRedirect := func(req *http.Request, via []*http.Request) error {
 		if len(challenge.ValidationRecord) >= maxRedirect {
 			return fmt.Errorf("Too many redirects")
 		}
 
+		// Set Accept header for mod_security (see the other place the header is
+		// set)
+		req.Header.Set("Accept", "*/*")
 		reqHost := req.URL.Host
 		var reqPort int
 		if h, p, err := net.SplitHostPort(reqHost); err == nil {

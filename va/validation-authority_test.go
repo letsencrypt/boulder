@@ -103,6 +103,14 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 		if !strings.HasPrefix(r.Host, "localhost:") && !strings.HasPrefix(r.Host, "other.valid:") {
 			t.Errorf("Bad Host header: " + r.Host)
 		}
+
+		if r.Header.Get("Accept") != "*/*" {
+			t.Logf("SIMPLESRV: Missing Accept header, was %#v", r.Header.Get("Accept"))
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte("request forgot the Accept header"))
+			return
+		}
+
 		if strings.HasSuffix(r.URL.Path, path404) {
 			t.Logf("SIMPLESRV: Got a 404 req\n")
 			http.NotFound(w, r)
