@@ -234,19 +234,10 @@ func main() {
 		return config
 	}
 
-	app.Action = func(c cmd.Config) {
+	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		// Validate PA config and set defaults if needed
 		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 		c.PA.SetDefaultChallengesIfEmpty()
-
-		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-		cmd.FailOnError(err, "Could not connect to Syslog")
-		auditlogger.Info(app.VersionString())
-
-		blog.SetAuditLogger(auditlogger)
 
 		saDbMap, err := sa.NewDbMap(c.CertChecker.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")

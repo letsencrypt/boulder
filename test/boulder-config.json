@@ -2,7 +2,7 @@
   "syslog": {
     "network": "",
     "server": "",
-    "tag": "boulder"
+    "stdoutlevel": 7
   },
 
   "amqp": {
