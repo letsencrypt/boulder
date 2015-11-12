@@ -111,6 +111,19 @@ func main() {
 					Name:  "plan",
 					Usage: "Alternative to --rate and --runtime, allows definition of a test where the base action rate changes. Format is '{throughput},{duration for}:{next throughput},{duration for}' etc. E.g. '2,5m:3,5m:4,5m:5,5m'",
 				},
+				cli.IntFlag{
+					Name:  "warmupRegs",
+					Usage: "",
+				},
+				cli.IntFlag{
+					Name:  "warmupRate",
+					Usage: "",
+					Value: 1,
+				},
+				cli.IntFlag{
+					Name:  "maxRegs",
+					Usage: "",
+				},
 			},
 			Action: func(c *cli.Context) {
 				var runtime time.Duration
@@ -142,8 +155,13 @@ func main() {
 					c.String("termsURL"),
 					c.String("realIP"),
 					runPlan,
+					c.Int("maxRegs"),
+					c.Int("warmupRegs"),
+					c.Int("warmupRate"),
 				)
 				cmd.FailOnError(err, "Failed to create WFE generator")
+
+				// go cmd.DebugServer("localhost:7003")
 
 				err = s.Run(os.Args[0], c.Bool("dontRunChallSrv"), c.String("httpOneAddr"))
 				cmd.FailOnError(err, "Failed to run WFE load generator")
@@ -204,6 +222,8 @@ func main() {
 				)
 				cmd.FailOnError(err, "Failed to create OCSP-Responder generator")
 
+				// go cmd.DebugServer("localhost:7002")
+
 				s.Run()
 				err = s.Dump(c.String("latencyDataPath"))
 				cmd.FailOnError(err, "Failed to dump latency data")
@@ -225,6 +245,8 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) {
+				// go cmd.DebugServer("localhost:7001")
+
 				srv := wfe.NewChallSrv(c.String("httpOneAddr"), c.String("rpcAddr"))
 				srv.Run()
 			},

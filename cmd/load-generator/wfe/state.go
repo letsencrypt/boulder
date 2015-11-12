@@ -43,6 +43,9 @@ type State struct {
 	apiBase  string
 	termsURL string
 
+	warmupRegs int
+	warmupRate int
+
 	realIP string
 
 	nMu       *sync.RWMutex
@@ -118,7 +121,7 @@ func (s *State) Restore(content []byte) error {
 	return nil
 }
 
-func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string, runPlan []RatePeriod) (*State, error) {
+func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string, runPlan []RatePeriod, maxRegs, warmupRegs, warmupRate int) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, err
@@ -151,6 +154,9 @@ func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase strin
 		wg:           new(sync.WaitGroup),
 		realIP:       realIP,
 		runPlan:      runPlan,
+		maxRegs:      maxRegs,
+		warmupRate:   warmupRate,
+		warmupRegs:   warmupRegs,
 	}, nil
 }
 
@@ -162,7 +168,34 @@ func (s *State) executePlan() {
 	}
 }
 
+func (s *State) warmup() {
+	fmt.Printf("Beginning warmup, generating %d registrations at %d/s\n", s.warmupRegs, s.warmupRate)
+	wg := new(sync.WaitGroup)
+	for {
+		s.rMu.RLock()
+		if len(s.regs) >= s.warmupRegs {
+			break
+		}
+		s.rMu.RUnlock()
+
+		go func() {
+			wg.Add(1)
+			s.newRegistration(nil)
+			wg.Done()
+		}()
+		time.Sleep(time.Second / time.Duration(s.warmupRate))
+	}
+	wg.Wait()
+	fmt.Println("Finished warming up")
+}
+
 func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) error {
+	s.callLatency.Started = time.Now()
+	// If warmup, warmup
+	if s.warmupRegs > 0 {
+		s.warmup()
+	}
+
 	// Start chall server process
 	if !dontRunChallSrv {
 		cmd := exec.Command(binName, "chall-srv", "--rpcAddr="+s.challRPCAddr, "--httpOneAddr="+httpOneAddr)
@@ -180,7 +213,6 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 
 	// Run sending loop
 	stop := make(chan bool, 1)
-	s.callLatency.Started = time.Now()
 
 	go func() {
 		for {
@@ -338,17 +370,22 @@ func weightedCall(setup []probabilityProfile) func(*registration) {
 }
 
 func (s *State) sendCall() {
-	actionList := []probabilityProfile{probabilityProfile{2, s.newRegistration}}
+	actionList := []probabilityProfile{}
+	s.rMu.RLock()
+	if len(s.regs) < s.maxRegs {
+		actionList = append(actionList, probabilityProfile{1, s.newRegistration})
+	}
+	s.rMu.RUnlock()
 
 	reg, found := s.getReg()
 	if found {
-		actionList = append(actionList, probabilityProfile{4, s.newAuthorization})
+		actionList = append(actionList, probabilityProfile{3, s.newAuthorization})
 		reg.iMu.RLock()
 		if len(reg.auths) > 0 {
 			actionList = append(actionList, probabilityProfile{4, s.newCertificate})
 		}
 		if len(reg.certs) > 0 {
-			actionList = append(actionList, probabilityProfile{3, s.revokeCertificate})
+			actionList = append(actionList, probabilityProfile{2, s.revokeCertificate})
 		}
 		reg.iMu.RUnlock()
 	}
