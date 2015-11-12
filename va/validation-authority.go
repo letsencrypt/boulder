@@ -11,7 +11,6 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -28,17 +27,13 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
+	bdns "github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-const maxCNAME = 16 // Prevents infinite loops. Same limit as BIND.
 const maxRedirect = 10
 
 var validationTimeout = time.Second * 5
-
-// ErrTooManyCNAME is returned by CheckCAARecords if it has to follow too many
-// consecutive CNAME lookups.
-var ErrTooManyCNAME = errors.New("too many CNAME/DNAME lookups")
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
@@ -124,24 +119,6 @@ func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.Jso
 	return nil
 }
 
-// problemDetailsFromDNSError checks the error returned from Lookup...
-// methods and tests if the error was an underlying net.OpError or an error
-// caused by resolver returning SERVFAIL or other invalid Rcodes and returns
-// the relevant core.ProblemDetails.
-func problemDetailsFromDNSError(err error) *core.ProblemDetails {
-	problem := &core.ProblemDetails{Type: core.ConnectionProblem}
-	if netErr, ok := err.(*net.OpError); ok {
-		if netErr.Timeout() {
-			problem.Detail = "DNS query timed out"
-		} else if netErr.Temporary() {
-			problem.Detail = "Temporary network connectivity error"
-		}
-	} else {
-		problem.Detail = "Server failure at resolver"
-	}
-	return problem
-}
-
 // getAddr will query for all A records associated with hostname and return the
 // prefered address, the first net.IP in the addrs slice, and all addresses resolved.
 // This is the same choice made by the Go internal resolution library used by
@@ -150,7 +127,7 @@ func problemDetailsFromDNSError(err error) *core.ProblemDetails {
 func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
 	addrs, rtt, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
-		problem = problemDetailsFromDNSError(err)
+		problem = bdns.ProblemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
 		return
 	}
@@ -634,7 +611,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		challenge.Error = problemDetailsFromDNSError(err)
+		challenge.Error = bdns.ProblemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
 		return challenge, challenge.Error
 	}
@@ -652,6 +629,24 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 	}
 	challenge.Status = core.StatusInvalid
 	return challenge, challenge.Error
+}
+
+func (va *ValidationAuthorityImpl) checkCAA(identifier core.AcmeIdentifier, regID int64) *core.ProblemDetails {
+	// Check CAA records for the requested identifier
+	present, valid, err := va.CheckCAARecords(identifier)
+	if err != nil {
+		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
+		return bdns.ProblemDetailsFromDNSError(err)
+	}
+	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+	va.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", identifier.Value, regID, present, valid))
+	if !valid {
+		return &core.ProblemDetails{
+			Type:   core.ConnectionProblem,
+			Detail: "CAA check for identifier failed",
+		}
+	}
+	return nil
 }
 
 // Overall validation process
@@ -673,20 +668,7 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 		var err error
 
 		vStart := va.clk.Now()
-		switch authz.Challenges[challengeIndex].Type {
-		case core.ChallengeTypeSimpleHTTP:
-			// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
-			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
-		case core.ChallengeTypeDVSNI:
-			// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
-			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
-		case core.ChallengeTypeHTTP01:
-			authz.Challenges[challengeIndex], err = va.validateHTTP01(authz.Identifier, authz.Challenges[challengeIndex])
-		case core.ChallengeTypeTLSSNI01:
-			authz.Challenges[challengeIndex], err = va.validateTLSSNI01(authz.Identifier, authz.Challenges[challengeIndex])
-		case core.ChallengeTypeDNS01:
-			authz.Challenges[challengeIndex], err = va.validateDNS01(authz.Identifier, authz.Challenges[challengeIndex])
-		}
+		authz.Challenges[challengeIndex], err = va.validateChallengeAndCAA(authz.Identifier, authz.Challenges[challengeIndex], authz.RegistrationID)
 		va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", authz.Challenges[challengeIndex].Type, authz.Challenges[challengeIndex].Status), time.Since(vStart), 1.0)
 
 		if err != nil {
@@ -707,6 +689,42 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 	va.log.Notice(fmt.Sprintf("Validations: %+v", authz))
 
 	va.RA.OnValidationUpdate(authz)
+}
+
+func (va *ValidationAuthorityImpl) validateChallengeAndCAA(identifier core.AcmeIdentifier, challenge core.Challenge, regID int64) (core.Challenge, error) {
+	result, err := va.validateChallenge(identifier, challenge)
+	if err != nil {
+		return result, err
+	}
+
+	// Checking CAA happens after challenge validation because DNS errors affect
+	// both, and giving a DNS error on validation makes more sense than a DNS
+	// error on CAA.
+	problemDetails := va.checkCAA(identifier, regID)
+	if problemDetails != nil {
+		challenge.Error = problemDetails
+		challenge.Status = core.StatusInvalid
+		return result, problemDetails
+	}
+	return result, nil
+}
+
+func (va *ValidationAuthorityImpl) validateChallenge(identifier core.AcmeIdentifier, challenge core.Challenge) (core.Challenge, error) {
+	switch challenge.Type {
+	case core.ChallengeTypeSimpleHTTP:
+		// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
+		return va.validateSimpleHTTP(identifier, challenge)
+	case core.ChallengeTypeDVSNI:
+		// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
+		return va.validateDvsni(identifier, challenge)
+	case core.ChallengeTypeHTTP01:
+		return va.validateHTTP01(identifier, challenge)
+	case core.ChallengeTypeTLSSNI01:
+		return va.validateTLSSNI01(identifier, challenge)
+	case core.ChallengeTypeDNS01:
+		return va.validateDNS01(identifier, challenge)
+	}
+	return core.Challenge{}, fmt.Errorf("invalid challenge type %s", challenge.Type)
 }
 
 // UpdateValidations runs the validate() method asynchronously using goroutines.
