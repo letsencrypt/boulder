@@ -178,8 +178,8 @@ func (s *State) warmup() {
 		}
 		s.rMu.RUnlock()
 
+		wg.Add(1)
 		go func() {
-			wg.Add(1)
 			s.newRegistration(nil)
 			wg.Done()
 		}()
