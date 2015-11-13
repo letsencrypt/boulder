@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -179,21 +180,12 @@ func main() {
 					Value: "http://localhost:4000",
 				},
 				cli.IntFlag{
-					Name:  "maxRequests",
-					Usage: "The maximum number of OCSP request bodies to generate",
-				},
-				cli.IntFlag{
 					Name:  "getRate",
 					Usage: "",
 				},
 				cli.IntFlag{
 					Name:  "postRate",
 					Usage: "",
-				},
-				cli.StringFlag{
-					Name:  "dbURI",
-					Usage: "",
-					Value: "mysql+tcp://sa@localhost:3306/boulder_sa_integration",
 				},
 				cli.StringFlag{
 					Name:  "issuerPath",
@@ -207,18 +199,26 @@ func main() {
 					Name:  "latencyDataPath",
 					Usage: "Filename of latency chart data to save",
 				},
+				cli.StringFlag{
+					Name:  "serialsPath",
+					Usage: "Filename of serial CSV file to load",
+				},
 			},
 			Action: func(c *cli.Context) {
 				runtime, err := time.ParseDuration(c.String("runtime"))
 				cmd.FailOnError(err, "Failed to parse runtime")
+
+				cont, err := ioutil.ReadFile(c.String("serialsPath"))
+				cmd.FailOnError(err, "Failed to read serial CSV file")
+				serials := strings.Split(string(cont), "\n")
+
 				s, err := responder.New(
-					c.Int("maxRequests"),
 					c.String("ocspBase"),
 					c.Int("getRate"),
 					c.Int("postRate"),
-					c.String("dbURI"),
 					c.String("issuerPath"),
 					runtime,
+					serials,
 				)
 				cmd.FailOnError(err, "Failed to create OCSP-Responder generator")
 

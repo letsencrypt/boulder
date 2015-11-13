@@ -28,9 +28,13 @@ def plot_section(data, started, stopped, title, outputPath):
     matplotlib.rcParams['figure.figsize'] = 18, 3 * h
 
     fig, axes = plt.subplots(h, 3)
-    fig.legend(handles, labels, loc=9, ncol=7, fontsize=16, framealpha=0)
+    fig.legend(handles, labels, loc=9, ncol=6, fontsize=16, framealpha=0, bbox_to_anchor=[0.5, 0.95])
     fig.suptitle(title, fontsize=20)
-    plt.subplots_adjust(wspace=0.275, hspace=0.5, top=0.95, left=0.05, right=0.95, bottom=0.04)
+    plt.subplots_adjust(wspace=0.275, hspace=0.5) #, top=0.95, left=0.05, right=0.95, bottom=0.04)
+    if h < 3:
+        plt.subplots_adjust(top=0.8)
+    else:
+        plt.subplots_adjust(top=0.92)
 
     # figure out left and right datetime bounds from started and stopped
     started = pandas.to_datetime(started)

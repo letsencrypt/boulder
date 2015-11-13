@@ -2,22 +2,23 @@ package responder
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
+	"github.com/letsencrypt/boulder/core"
 	"io/ioutil"
+	"math/big"
 	"math/rand"
 	"net/http"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
-	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/sa"
-	"golang.org/x/crypto/ocsp"
 )
 
 type State struct {
@@ -28,41 +29,39 @@ type State struct {
 	getRate     int64
 	postRate    int64
 	dbURI       string
-	issuer      *x509.Certificate
 	runtime     time.Duration
 	client      *http.Client
 	callLatency *latency.Map
 	wg          *sync.WaitGroup
 }
 
-func New(maxRequests int, ocspBase string, getRate int, postRate int, dbURI string, issuerPath string, runtime time.Duration) (*State, error) {
+func New(ocspBase string, getRate int, postRate int, issuerPath string, runtime time.Duration, serials []string) (*State, error) {
 	issuer, err := core.LoadCert(issuerPath)
 	if err != nil {
 		return nil, err
 	}
-	return &State{
-		maxRequests: maxRequests,
+	s := &State{
 		ocspBase:    ocspBase,
 		getRate:     int64(getRate),
 		postRate:    int64(postRate),
-		dbURI:       dbURI,
 		runtime:     runtime,
 		client:      new(http.Client),
-		issuer:      issuer,
 		callLatency: latency.New("OCSP Responder test"),
 		wg:          new(sync.WaitGroup),
-	}, nil
+	}
+
+	fmt.Println("warming up")
+	err = s.warmup(serials, issuer)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("finished warm up")
+
+	return s, nil
 }
 
 func (s *State) Run() {
-	fmt.Println("warming up")
-	err := s.warmup()
-	if err != nil {
-		fmt.Printf("warm up failed: %s\n", err)
-		return
-	}
-	fmt.Println("finished warming up, sending requests")
-
+	s.callLatency.Started = time.Now()
 	stop := make(chan bool, 2)
 	if s.getRate > 0 {
 		go func() {
@@ -99,6 +98,7 @@ func (s *State) Run() {
 	fmt.Println("sent stop signals, waiting")
 	s.wg.Wait()
 	fmt.Println("all calls finished")
+	s.callLatency.Stopped = time.Now()
 }
 
 func (s *State) Dump(jsonPath string) error {
@@ -116,33 +116,18 @@ func (s *State) Dump(jsonPath string) error {
 	return nil
 }
 
-const query = "SELECT der FROM certificates"
-
-func (s *State) warmup() error {
-	// Load all(/some subset) of the certificates table and generate OCSP requests
-	dbMap, err := sa.NewDbMap(s.dbURI)
+func (s *State) warmup(serials []string, issuer *x509.Certificate) error {
+	issuerKeyHash, err := hashIssuerKey(issuer)
 	if err != nil {
 		return err
 	}
-
-	selectQuery := query
-	if s.maxRequests > 0 {
-		selectQuery = fmt.Sprintf("%s LIMIT %d", selectQuery, s.maxRequests)
-	}
-
-	var certs [][]byte
-	_, err = dbMap.Select(&certs, selectQuery)
-	if err != nil {
-		return err
-	}
-
 	var requests [][]byte
-	for _, c := range certs {
-		cert, err := x509.ParseCertificate(c)
+	for _, s := range serials {
+		serial, err := core.StringToSerial(s)
 		if err != nil {
 			continue
 		}
-		req, err := ocsp.CreateRequest(cert, s.issuer, nil)
+		req, err := minimalCreateRequest(serial, issuerKeyHash)
 		if err != nil {
 			continue
 		}
@@ -205,4 +190,64 @@ func (s *State) sendPOST() {
 		state = "read error"
 		return
 	}
+}
+
+// Extremely hacky minimal version of https://github.com/golang/crypto/blob/master/ocsp/ocsp.go#L445
+// that allows us to just input a serial number and issuer key hash! (includes all the private structs
+// etc required for ASN.1 marshaling).
+
+type certID struct {
+	HashAlgorithm pkix.AlgorithmIdentifier
+	NameHash      []byte
+	IssuerKeyHash []byte
+	SerialNumber  *big.Int
+}
+
+// https://tools.ietf.org/html/rfc2560#section-4.1.1
+type ocspRequest struct {
+	TBSRequest tbsRequest
+}
+
+type tbsRequest struct {
+	Version       int              `asn1:"explicit,tag:0,default:0,optional"`
+	RequestorName pkix.RDNSequence `asn1:"explicit,tag:1,optional"`
+	RequestList   []request
+}
+
+type request struct {
+	Cert certID
+}
+
+func hashIssuerKey(issuer *x509.Certificate) ([]byte, error) {
+	var publicKeyInfo struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(issuer.RawSubjectPublicKeyInfo, &publicKeyInfo); err != nil {
+		return nil, err
+	}
+
+	h := sha1.New()
+	h.Write(publicKeyInfo.PublicKey.RightAlign())
+	return h.Sum(nil), nil
+}
+
+func minimalCreateRequest(serial *big.Int, issuerKeyHash []byte) ([]byte, error) {
+	return asn1.Marshal(ocspRequest{
+		tbsRequest{
+			Version: 0,
+			RequestList: []request{
+				{
+					Cert: certID{
+						HashAlgorithm: pkix.AlgorithmIdentifier{
+							Algorithm:  asn1.ObjectIdentifier([]int{1, 3, 14, 3, 2, 26}), // SHA1
+							Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+						},
+						IssuerKeyHash: issuerKeyHash,
+						SerialNumber:  serial,
+					},
+				},
+			},
+		},
+	})
 }
