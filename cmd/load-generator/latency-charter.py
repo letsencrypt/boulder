@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import matplotlib.pyplot as plt
+import numpy as np
 import datetime
 import json
 import pandas
@@ -17,9 +18,8 @@ randAx.plot(0, 0, color='green', label='good', marker='+')
 randAx.plot(0, 0, color='red', label='failed', marker='x')
 randAx.plot(0, 0, color='black', label='sent', linestyle='--')
 randAx.plot(0, 0, color='green', label='50th quantile')
-randAx.plot(0, 0, color='yellow', label='90th quantile')
-randAx.plot(0, 0, color='orange', label='99th quantile')
-randAx.plot(0, 0, color='red', label='99.9th quantile')
+randAx.plot(0, 0, color='orange', label='90th quantile')
+randAx.plot(0, 0, color='red', label='99th quantile')
 handles, labels = randAx.get_legend_handles_labels()
 
 # big ol' plotting method
@@ -73,7 +73,7 @@ def plot_section(data, started, stopped, title, outputPath):
             rateMax = good_rate['rate'].max()
             ax2.plot_date(good_rate.index, good_rate['rate'], linestyle='-', marker='', color='green', label='good')
 
-        ax.grid(False)
+        # ax.grid(False)
         ax.set_ylabel('Latency (ms)')
 
         sent_rate = pandas.DataFrame(calls['sent'])
@@ -85,7 +85,7 @@ def plot_section(data, started, stopped, title, outputPath):
             rateMax = sent_rate['rate'].max()
         ax2.plot_date(sent_rate.index, sent_rate['rate'], linestyle='--', marker='', color='black', label='sent')
         ax2.set_ylim(0, rateMax+rateMax*0.1)
-        ax2.grid(False)
+        # ax2.grid(False)
         ax2.set_ylabel('Rate (per second)')
 
         ax3 = axes[i][1]
@@ -94,16 +94,13 @@ def plot_section(data, started, stopped, title, outputPath):
 
         calls = calls.set_index('finished')
         calls = calls.sort_index()
-        calls['50'] = pandas.rolling_quantile(calls['took'], 10, 0.5).fillna(0)
-        calls['90'] = pandas.rolling_quantile(calls['took'], 10, 0.9).fillna(0)
-        calls['99'] = pandas.rolling_quantile(calls['took'], 10, 0.99).fillna(0)
-        calls['999'] = pandas.rolling_quantile(calls['took'], 10, 0.999).fillna(0)
-        ax3.plot(calls.index, calls['50'], color='green')
-        ax3.plot(calls.index, calls['90'], color='yellow')
-        ax3.plot(calls.index, calls['99'], color='orange')
-        ax3.plot(calls.index, calls['999'], color='red')
+        quan = pandas.DataFrame(calls['took'])
+        for q, c in [[50, 'green'], [90, 'orange'], [99, 'red']]:
+            quanN = quan.resample('10S', how=lambda x: np.percentile(x, q=q)).fillna(0)
+            if len(quanN) > 0:
+                ax3.plot(quanN.index, quanN['took'], color=c)
 
-        ax3.grid(False)
+        # ax3.grid(False)
         ax3.set_ylabel('Latency (ms)')
 
         i += 1
