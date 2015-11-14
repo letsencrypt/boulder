@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,8 +44,8 @@ type State struct {
 	apiBase  string
 	termsURL string
 
-	warmupRegs int
-	warmupRate int
+	warmupRegs    int
+	warmupWorkers int
 
 	realIP string
 
@@ -121,7 +122,7 @@ func (s *State) Restore(content []byte) error {
 	return nil
 }
 
-func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string, runPlan []RatePeriod, maxRegs, warmupRegs, warmupRate int) (*State, error) {
+func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string, runPlan []RatePeriod, maxRegs, warmupRegs, warmupWorkers int) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
 		return nil, err
@@ -140,23 +141,23 @@ func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase strin
 		},
 	}
 	return &State{
-		rMu:          new(sync.RWMutex),
-		nMu:          new(sync.RWMutex),
-		challRPCAddr: rpcAddr,
-		client:       client,
-		apiBase:      apiBase,
-		throughput:   int64(rate),
-		certKey:      certKey,
-		domainBase:   domainBase,
-		callLatency:  latency.New(fmt.Sprintf("WFE -- %s test at %d base actions / second", runtime, rate)),
-		runtime:      runtime,
-		termsURL:     termsURL,
-		wg:           new(sync.WaitGroup),
-		realIP:       realIP,
-		runPlan:      runPlan,
-		maxRegs:      maxRegs,
-		warmupRate:   warmupRate,
-		warmupRegs:   warmupRegs,
+		rMu:           new(sync.RWMutex),
+		nMu:           new(sync.RWMutex),
+		challRPCAddr:  rpcAddr,
+		client:        client,
+		apiBase:       apiBase,
+		throughput:    int64(rate),
+		certKey:       certKey,
+		domainBase:    domainBase,
+		callLatency:   latency.New(fmt.Sprintf("WFE -- %s test at %d base actions / second", runtime, rate)),
+		runtime:       runtime,
+		termsURL:      termsURL,
+		wg:            new(sync.WaitGroup),
+		realIP:        realIP,
+		runPlan:       runPlan,
+		maxRegs:       maxRegs,
+		warmupWorkers: warmupWorkers,
+		warmupRegs:    warmupRegs,
 	}, nil
 }
 
@@ -169,25 +170,45 @@ func (s *State) executePlan() {
 }
 
 func (s *State) warmup() {
-	fmt.Printf("Beginning warmup, generating %d registrations at %d/s\n", s.warmupRegs, s.warmupRate)
+	fmt.Printf("Beginning warmup, generating %d registrations with %d workers\n", s.warmupRegs, s.warmupWorkers)
 	wg := new(sync.WaitGroup)
-	for {
-		s.rMu.RLock()
-		if len(s.regs) >= s.warmupRegs {
-			s.rMu.RUnlock()
-			break
-		}
-		s.rMu.RUnlock()
-
+	for i := 0; i < s.warmupWorkers; i++ {
 		wg.Add(1)
 		go func() {
-			s.newRegistration(nil)
+			for {
+				s.rMu.RLock()
+				if len(s.regs) >= s.warmupRegs {
+					s.rMu.RUnlock()
+					break
+				}
+				s.rMu.RUnlock()
+
+				s.newRegistration(nil)
+			}
 			wg.Done()
 		}()
-		time.Sleep(time.Second / time.Duration(s.warmupRate))
 	}
+	stopProg := make(chan bool, 1)
+	go func() {
+		var last string
+		for _ = range time.Tick(1 * time.Second) {
+			select {
+			case <-stopProg:
+				return
+			default:
+				if last != "" {
+					fmt.Fprintf(os.Stdout, strings.Repeat("\b", len(last)))
+				}
+				s.rMu.RLock()
+				last = fmt.Sprintf("%d/%d registrations generated", len(s.regs), s.warmupRegs)
+				fmt.Fprint(os.Stdout, last)
+				s.rMu.RUnlock()
+			}
+		}
+	}()
 	wg.Wait()
-	fmt.Println("Finished warming up")
+	stopProg <- true
+	fmt.Println("\nFinished warming up")
 }
 
 func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) error {

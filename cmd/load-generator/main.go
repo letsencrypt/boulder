@@ -117,7 +117,7 @@ func main() {
 					Usage: "",
 				},
 				cli.IntFlag{
-					Name:  "warmupRate",
+					Name:  "warmupWorkers",
 					Usage: "",
 					Value: 1,
 				},
@@ -158,7 +158,7 @@ func main() {
 					runPlan,
 					c.Int("maxRegs"),
 					c.Int("warmupRegs"),
-					c.Int("warmupRate"),
+					c.Int("warmupWorkers"),
 				)
 				cmd.FailOnError(err, "Failed to create WFE generator")
 
