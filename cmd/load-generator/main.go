@@ -125,6 +125,12 @@ func main() {
 					Name:  "maxRegs",
 					Usage: "",
 				},
+				cli.StringFlag{
+					Name: "loadRegsPath",
+				},
+				cli.StringFlag{
+					Name: "saveRegsPath",
+				},
 			},
 			Action: func(c *cli.Context) {
 				var runtime time.Duration
@@ -162,10 +168,21 @@ func main() {
 				)
 				cmd.FailOnError(err, "Failed to create WFE generator")
 
+				if c.String("loadRegsPath") != "" {
+					err = s.Restore(c.String("loadRegsPath"))
+					cmd.FailOnError(err, "Failed to load registration snapshot")
+				}
+
 				// go cmd.DebugServer("localhost:7003")
 
 				err = s.Run(os.Args[0], c.Bool("dontRunChallSrv"), c.String("httpOneAddr"))
 				cmd.FailOnError(err, "Failed to run WFE load generator")
+
+				if c.String("saveRegsPath") != "" {
+					err = s.Snapshot(c.String("saveRegsPath"))
+					cmd.FailOnError(err, "Failed to save registration snapshot")
+				}
+
 				err = s.Dump(c.String("latencyDataPath"))
 				cmd.FailOnError(err, "Failed to dump latency data")
 			},

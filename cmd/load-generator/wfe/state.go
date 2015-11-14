@@ -71,35 +71,42 @@ type State struct {
 }
 
 type rawRegistration struct {
-	Certs  []string `json:"certs"`
-	Auths  []string `json:"auths"`
-	RawKey []byte   `json:"rawKey"`
+	Certs []string `json:"certs"`
+	//	Auths  []string `json:"auths"`
+	RawKey []byte `json:"rawKey"`
 }
 
 type snapshot struct {
 	Registrations []rawRegistration
 }
 
-func (s *State) Snapshot() ([]byte, error) {
+func (s *State) Snapshot(filename string) error {
 	s.rMu.Lock()
 	defer s.rMu.Unlock()
 	snap := snapshot{}
-	rawRegs := []rawRegistration{}
 	for _, r := range s.regs {
-		rawRegs = append(rawRegs, rawRegistration{
-			Certs:  r.certs,
-			Auths:  r.auths,
+		snap.Registrations = append(snap.Registrations, rawRegistration{
+			Certs: r.certs,
+			//			Auths:  r.auths,
 			RawKey: x509.MarshalPKCS1PrivateKey(r.key),
 		})
 	}
-	return json.Marshal(snap)
+	cont, err := json.Marshal(snap)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(filename, cont, os.ModePerm)
 }
 
-func (s *State) Restore(content []byte) error {
+func (s *State) Restore(filename string) error {
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return err
+	}
 	s.rMu.Lock()
 	defer s.rMu.Unlock()
 	snap := snapshot{}
-	err := json.Unmarshal(content, &snap)
+	err = json.Unmarshal(content, &snap)
 	if err != nil {
 		return err
 	}
@@ -116,7 +123,8 @@ func (s *State) Restore(content []byte) error {
 			key:    key,
 			signer: signer,
 			certs:  r.Certs,
-			auths:  r.Auths,
+			//			auths:  r.Auths,
+			iMu: new(sync.RWMutex),
 		})
 	}
 	return nil
@@ -170,7 +178,7 @@ func (s *State) executePlan() {
 }
 
 func (s *State) warmup() {
-	fmt.Printf("Beginning warmup, generating %d registrations with %d workers\n", s.warmupRegs, s.warmupWorkers)
+	fmt.Printf("Beginning warmup, generating ~%d registrations with %d workers\n", s.warmupRegs, s.warmupWorkers)
 	wg := new(sync.WaitGroup)
 	for i := 0; i < s.warmupWorkers; i++ {
 		wg.Add(1)
@@ -214,7 +222,7 @@ func (s *State) warmup() {
 func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) error {
 	s.callLatency.Started = time.Now()
 	// If warmup, warmup
-	if s.warmupRegs > 0 {
+	if s.warmupRegs > len(s.regs) {
 		s.warmup()
 	}
 
