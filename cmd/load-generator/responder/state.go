@@ -21,6 +21,7 @@ import (
 	"time"
 )
 
+// State holds all the good stuff
 type State struct {
 	requests    [][]byte
 	numRequests int
@@ -35,6 +36,7 @@ type State struct {
 	wg          *sync.WaitGroup
 }
 
+// New returns a pointer to a new State struct, or an error
 func New(ocspBase string, getRate int, postRate int, issuerPath string, runtime time.Duration, serials []string) (*State, error) {
 	issuer, err := core.LoadCert(issuerPath)
 	if err != nil {
@@ -60,6 +62,7 @@ func New(ocspBase string, getRate int, postRate int, issuerPath string, runtime 
 	return s, nil
 }
 
+// Run runs the OCSP-Responder load generator for the configured runtime/rate
 func (s *State) Run() {
 	s.callLatency.Started = time.Now()
 	stop := make(chan bool, 2)
@@ -101,6 +104,7 @@ func (s *State) Run() {
 	s.callLatency.Stopped = time.Now()
 }
 
+// Dump saves the latency data as a JSON file to be consumed by latency-charter.py
 func (s *State) Dump(jsonPath string) error {
 	if jsonPath != "" {
 		data, err := json.Marshal(s.callLatency)
@@ -193,8 +197,8 @@ func (s *State) sendPOST() {
 }
 
 // Extremely hacky minimal version of https://github.com/golang/crypto/blob/master/ocsp/ocsp.go#L445
-// that allows us to just input a serial number and issuer key hash! (includes all the private structs
-// etc required for ASN.1 marshaling).
+// that allows us to just input a serial number and issuer key hash! (includes the private structs
+// required for marshaling the ASN.1 properly).
 
 type certID struct {
 	HashAlgorithm pkix.AlgorithmIdentifier

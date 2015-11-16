@@ -12,7 +12,7 @@ type point struct {
 	PType    string    `json:"type"`
 }
 
-// Map stuff
+// Map holds per endpoint metrics
 type Map struct {
 	mu      *sync.Mutex
 	Metrics map[string][]point `json:"metrics"`
@@ -30,7 +30,7 @@ func New(title string) *Map {
 	}
 }
 
-// Add stuff
+// Add a point to the map
 func (m *Map) Add(endpoint string, sent, finished time.Time, pType string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

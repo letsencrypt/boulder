@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// ChallSrv wraps a tiny challenge webserver
 type ChallSrv struct {
 	hoMu        *sync.RWMutex
 	httpOne     map[string]string
@@ -18,6 +19,7 @@ type ChallSrv struct {
 	rpcAddr string
 }
 
+// NewChallSrv returns a pointer to a new ChallSrv
 func NewChallSrv(hoAddr, rpcAddr string) *ChallSrv {
 	return &ChallSrv{
 		hoMu:        new(sync.RWMutex),
@@ -27,6 +29,7 @@ func NewChallSrv(hoAddr, rpcAddr string) *ChallSrv {
 	}
 }
 
+// Run runs the challenge server on the configured address
 func (s *ChallSrv) Run() {
 	go func() {
 		err := s.httpOneServer()

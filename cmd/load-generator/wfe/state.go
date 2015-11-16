@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd/load-generator/latency"
 )
 
+// RatePeriod describes how long a certain throughput should be maintained
 type RatePeriod struct {
 	For  time.Duration
 	Rate int64
@@ -36,6 +37,7 @@ type registration struct {
 	certs  []string
 }
 
+// State holds *all* the stuff
 type State struct {
 	rMu      *sync.RWMutex
 	regs     []*registration
@@ -80,6 +82,7 @@ type snapshot struct {
 	Registrations []rawRegistration
 }
 
+// Snapshot will save out generated registrations and certs (ignoring authorizations)
 func (s *State) Snapshot(filename string) error {
 	s.rMu.Lock()
 	defer s.rMu.Unlock()
@@ -98,6 +101,7 @@ func (s *State) Snapshot(filename string) error {
 	return ioutil.WriteFile(filename, cont, os.ModePerm)
 }
 
+// Restore previously generated registrations and certs
 func (s *State) Restore(filename string) error {
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -130,6 +134,7 @@ func (s *State) Restore(filename string) error {
 	return nil
 }
 
+// New returns a pointer to a new State struct, or an error
 func New(rpcAddr string, apiBase string, rate int, keySize int, domainBase string, runtime time.Duration, termsURL string, realIP string, runPlan []RatePeriod, maxRegs, warmupRegs, warmupWorkers int) (*State, error) {
 	certKey, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
@@ -218,6 +223,7 @@ func (s *State) warmup() {
 	fmt.Println("\nFinished warming up")
 }
 
+// Run runs the WFE load-generator for either the specified runtime/rate or the execution plan
 func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) error {
 	s.callLatency.Started = time.Now()
 	// If warmup, warmup
@@ -235,14 +241,13 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 		s.challSrvProc = cmd.Process
 	}
 
-	// If their is a run plan execute it
+	// If there is a run plan execute it
 	if len(s.runPlan) > 0 {
 		go s.executePlan()
 	}
 
 	// Run sending loop
 	stop := make(chan bool, 1)
-
 	go func() {
 		for {
 			select {
@@ -257,7 +262,7 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 	}()
 
 	time.Sleep(s.runtime)
-	fmt.Println("READ END")
+	fmt.Println("SLEEP END")
 	stop <- true
 	fmt.Println("SENT STOP")
 	s.wg.Wait()
@@ -271,6 +276,7 @@ func (s *State) Run(binName string, dontRunChallSrv bool, httpOneAddr string) er
 	return nil
 }
 
+// Dump saves the latency data out as a JSON file to be processed by latency-charter.py
 func (s *State) Dump(jsonPath string) error {
 	if jsonPath != "" {
 		data, err := json.Marshal(s.callLatency)
@@ -293,6 +299,7 @@ func (s *State) post(endpoint string, payload []byte) (*http.Response, error) {
 		return nil, err
 	}
 	req.Header.Add("X-Real-IP", s.realIP)
+	req.Header.Add("User-Agent", "load-generator -- heyo")
 	resp, err := s.client.Do(req)
 	if resp != nil {
 		if newNonce := resp.Header.Get("Replay-Nonce"); newNonce != "" {
@@ -306,7 +313,7 @@ func (s *State) post(endpoint string, payload []byte) (*http.Response, error) {
 }
 
 // Nonce utils, these methods are used to generate/store/retrieve the nonces
-// required for the required form of JWS
+// required for JWS
 
 func (s *State) signWithNonce(endpoint string, alwaysNew bool, payload []byte, signer jose.Signer) ([]byte, error) {
 	nonce, err := s.getNonce(endpoint, alwaysNew)
@@ -353,7 +360,7 @@ func (s *State) addNonce(nonce string) {
 	s.noncePool = append(s.noncePool, nonce)
 }
 
-// Reg object utils, used to add and randomly retrieve registration objects
+// Reg object utils, used to add and retrieve registration objects
 
 func (s *State) addReg(reg *registration) {
 	s.rMu.Lock()
@@ -361,18 +368,14 @@ func (s *State) addReg(reg *registration) {
 	s.regs = append(s.regs, reg)
 }
 
-func (s *State) getRandReg() (*registration, bool) {
+func (s *State) getReg() (*registration, bool) {
+	s.rMu.RLock()
+	defer s.rMu.RUnlock()
 	regsLength := len(s.regs)
 	if regsLength == 0 {
 		return nil, false
 	}
 	return s.regs[mrand.Intn(regsLength)], true
-}
-
-func (s *State) getReg() (*registration, bool) {
-	s.rMu.RLock()
-	defer s.rMu.RUnlock()
-	return s.getRandReg()
 }
 
 // Call sender, it sends the calls!
@@ -382,6 +385,7 @@ type probabilityProfile struct {
 	action func(*registration)
 }
 
+// this is pretty silly but idk...
 func weightedCall(setup []probabilityProfile) func(*registration) {
 	choices := make(map[int]func(*registration))
 	n := 0
@@ -401,7 +405,7 @@ func weightedCall(setup []probabilityProfile) func(*registration) {
 func (s *State) sendCall() {
 	actionList := []probabilityProfile{}
 	s.rMu.RLock()
-	if len(s.regs) < s.maxRegs {
+	if s.maxRegs == 0 || len(s.regs) < s.maxRegs {
 		actionList = append(actionList, probabilityProfile{1, s.newRegistration})
 	}
 	s.rMu.RUnlock()
