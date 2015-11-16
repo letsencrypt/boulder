@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	cfsslLog "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/core"
@@ -128,6 +129,11 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (statsd.Statte
 	}
 	auditlogger, err := blog.NewAuditLogger(syslogger, stats, level)
 	FailOnError(err, "Could not connect to Syslog")
+	// TODO(https://github.com/cloudflare/cfssl/issues/426):
+	// CFSSL's log facility always prints to stdout. Ideally we should send a
+	// patch that would allow us to have CFSSL use our log facility. In the
+	// meantime, inhibit debug and info-level logs from CFSSL.
+	cfsslLog.Level = cfsslLog.LevelWarning
 	blog.SetAuditLogger(auditlogger)
 	return stats, auditlogger
 }
@@ -227,6 +233,5 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server on %#v", addr)
 	}
-	log.Printf("booting debug server at %#v", addr)
-	log.Println(http.Serve(ln, nil))
+	http.Serve(ln, nil)
 }
