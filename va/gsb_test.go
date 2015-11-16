@@ -34,25 +34,25 @@ func TestIsSafeDomain(t *testing.T) {
 	sbc.EXPECT().IsListed("outofdate.com").Return("", safebrowsing.ErrOutOfDateHashes)
 	va := NewValidationAuthorityImpl(&PortConfig{}, sbc, stats, clock.NewFake())
 
-	resp, err := va.IsSafeDomain(&core.IsSafeDomainRequest{"good.com"})
+	resp, err := va.IsSafeDomain(&core.IsSafeDomainRequest{Domain: "good.com"})
 	if err != nil {
 		t.Errorf("good.com: want no error, got '%s'", err)
 	}
 	if !resp.IsSafe {
 		t.Errorf("good.com: want true, got %t", resp.IsSafe)
 	}
-	resp, err = va.IsSafeDomain(&core.IsSafeDomainRequest{"bad.com"})
+	resp, err = va.IsSafeDomain(&core.IsSafeDomainRequest{Domain: "bad.com"})
 	if err != nil {
 		t.Errorf("bad.com: want no error, got '%s'", err)
 	}
 	if resp.IsSafe {
 		t.Errorf("bad.com: want false, got %t", resp.IsSafe)
 	}
-	_, err = va.IsSafeDomain(&core.IsSafeDomainRequest{"errorful.com"})
+	_, err = va.IsSafeDomain(&core.IsSafeDomainRequest{Domain: "errorful.com"})
 	if err == nil {
 		t.Errorf("errorful.com: want error, got none")
 	}
-	resp, err = va.IsSafeDomain(&core.IsSafeDomainRequest{"outofdate.com"})
+	resp, err = va.IsSafeDomain(&core.IsSafeDomainRequest{Domain: "outofdate.com"})
 	if err != nil {
 		t.Errorf("outofdate.com: want no error, got '%s'", err)
 	}
@@ -67,7 +67,7 @@ func TestAllowNilInIsSafeDomain(t *testing.T) {
 
 	// Be cool with a nil SafeBrowsing. This will happen in prod when we have
 	// flag mismatch between the VA and RA.
-	resp, err := va.IsSafeDomain(&core.IsSafeDomainRequest{"example.com"})
+	resp, err := va.IsSafeDomain(&core.IsSafeDomainRequest{Domain: "example.com"})
 	if err != nil {
 		t.Errorf("nil SafeBrowsing, unexpected error: %s", err)
 	} else if !resp.IsSafe {

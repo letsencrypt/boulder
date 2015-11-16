@@ -129,6 +129,7 @@ func (ac *amqpConnector) publish(queueName, corrId, expiration, replyTo, msgType
 			Expiration:    expiration,
 			ReplyTo:       replyTo,
 			Type:          msgType,
+			Timestamp:     ac.clk.Now(),
 		})
 }
 

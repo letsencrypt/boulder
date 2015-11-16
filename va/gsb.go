@@ -29,7 +29,7 @@ func (va *ValidationAuthorityImpl) IsSafeDomain(req *core.IsSafeDomainRequest) (
 	va.stats.Inc("VA.IsSafeDomain.Requests", 1, 1.0)
 	if va.SafeBrowsing == nil {
 		va.stats.Inc("VA.IsSafeDomain.Skips", 1, 1.0)
-		return &core.IsSafeDomainResponse{true}, nil
+		return &core.IsSafeDomainResponse{IsSafe: true}, nil
 	}
 
 	list, err := va.SafeBrowsing.IsListed(req.Domain)
@@ -37,7 +37,7 @@ func (va *ValidationAuthorityImpl) IsSafeDomain(req *core.IsSafeDomainRequest) (
 		va.stats.Inc("VA.IsSafeDomain.Errors", 1, 1.0)
 		if err == safebrowsing.ErrOutOfDateHashes {
 			va.stats.Inc("VA.IsSafeDomain.OutOfDateHashErrors", 1, 1.0)
-			return &core.IsSafeDomainResponse{true}, nil
+			return &core.IsSafeDomainResponse{IsSafe: true}, nil
 		}
 		return nil, err
 	}
@@ -48,5 +48,5 @@ func (va *ValidationAuthorityImpl) IsSafeDomain(req *core.IsSafeDomainRequest) (
 	} else {
 		va.stats.Inc("VA.IsSafeDomain.Status.Bad", 1, 1.0)
 	}
-	return &core.IsSafeDomainResponse{status}, nil
+	return &core.IsSafeDomainResponse{IsSafe: status}, nil
 }
