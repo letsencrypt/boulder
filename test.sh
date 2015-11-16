@@ -259,6 +259,8 @@ if [[ "$RUN" =~ "integration" ]] ; then
     build_letsencrypt
   fi
 
+  source ${LETSENCRYPT_PATH}/venv/bin/activate
+
   python test/integration-test.py --all
   case $? in
     0) # Success

@@ -56,10 +56,15 @@ func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest)
 	if dva.IsSafeDomainErr != nil {
 		return nil, dva.IsSafeDomainErr
 	}
-	return &core.IsSafeDomainResponse{!dva.IsNotSafe}, nil
+	return &core.IsSafeDomainResponse{IsSafe: !dva.IsNotSafe}, nil
 }
 
 var (
+	SupportedChallenges = map[string]bool{
+		core.ChallengeTypeHTTP01:   true,
+		core.ChallengeTypeTLSSNI01: true,
+	}
+
 	// These values we simulate from the client
 	AccountKeyJSONA = []byte(`{
 		"kty":"RSA",
@@ -155,10 +160,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
 	test.AssertNotError(t, err, "Failed to unmarshal JWK")
 
-	simpleHTTP := core.SimpleHTTPChallenge(&AccountKeyA)
-	dvsni := core.DvsniChallenge(&AccountKeyA)
-	AuthzInitial.Challenges = []core.Challenge{simpleHTTP, dvsni}
-
 	fc := clock.NewFake()
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA)
@@ -198,7 +199,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
-	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
+	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false, SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ca := ca.CertificateAuthorityImpl{
 		Signer:         signer,
@@ -242,6 +243,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
+	challenges, combinations, err := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
+	AuthzInitial.Challenges = challenges
+	AuthzInitial.Combinations = combinations
+
 	AuthzFinal = AuthzInitial
 	AuthzFinal.Status = "valid"
 	exp := time.Now().Add(365 * 24 * time.Hour)
@@ -274,7 +279,6 @@ func TestValidateContacts(t *testing.T) {
 	tel, _ := core.ParseAcmeURL("tel:")
 	ansible, _ := core.ParseAcmeURL("ansible:earth.sol.milkyway.laniakea/letsencrypt")
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
-	invalidEmail, _ := core.ParseAcmeURL("mailto:admin@example.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
 	err := ra.validateContacts([]*core.AcmeURL{})
@@ -289,30 +293,33 @@ func TestValidateContacts(t *testing.T) {
 	err = ra.validateContacts([]*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts([]*core.AcmeURL{invalidEmail})
-	test.AssertError(t, err, "Invalid Email")
-
 	err = ra.validateContacts([]*core.AcmeURL{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
 	err = ra.validateContacts([]*core.AcmeURL{ansible})
-	test.AssertError(t, err, "Unknown scehme")
+	test.AssertError(t, err, "Unknown scheme")
 }
 
 func TestValidateEmail(t *testing.T) {
-	_, err := validateEmail("an email`", &mocks.DNSResolver{})
-	test.AssertError(t, err, "Malformed")
-
-	_, err = validateEmail("a@not.a.domain", &mocks.DNSResolver{})
-	test.AssertError(t, err, "Cannot resolve")
-	t.Logf("No Resolve: %s", err)
-
-	_, err = validateEmail("a@example.com", &mocks.DNSResolver{})
-	test.AssertError(t, err, "No MX Record")
-	t.Logf("No MX: %s", err)
-
-	_, err = validateEmail("a@email.com", &mocks.DNSResolver{})
-	test.AssertNotError(t, err, "Valid")
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{"an email`", errUnparseableEmail.Error()},
+		{"a@always.invalid", "Server failure at resolver"},
+		{"a@always.timeout", "DNS query timed out"},
+		{"a@always.error", "DNS networking error"},
+	}
+	for _, tc := range testCases {
+		_, err := validateEmail(tc.input, &mocks.DNSResolver{})
+		if err.Error() != tc.expected {
+			t.Errorf("validateEmail(%q): got %#v, expected %#v",
+				tc.input, err, tc.expected)
+		}
+	}
+	if _, err := validateEmail("a@email.com", &mocks.DNSResolver{}); err != nil {
+		t.Errorf("Expected a@email.com to validate, but it failed: %s", err)
+	}
 }
 
 func TestNewRegistration(t *testing.T) {
@@ -403,21 +410,11 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these lines
-	test.Assert(t, len(authz.Challenges) == 4, "Incorrect number of challenges returned")
-	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
-	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
-	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeHTTP01, "Challenge 2 not http-00")
-	test.Assert(t, authz.Challenges[3].Type == core.ChallengeTypeTLSSNI01, "Challenge 3 not tlssni-00")
-
+	test.Assert(t, len(authz.Challenges) == len(SupportedChallenges), "Incorrect number of challenges returned")
+	test.Assert(t, SupportedChallenges[authz.Challenges[0].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[0].Type))
+	test.Assert(t, SupportedChallenges[authz.Challenges[1].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[1].Type))
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
-	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 2 is not sane")
-	test.Assert(t, authz.Challenges[3].IsSane(false), "Challenge 3 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
 }

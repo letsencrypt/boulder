@@ -560,20 +560,7 @@ func setupClients(c cmd.Config, stats statsd.Statter) (
 func main() {
 	app := cmd.NewAppShell("ocsp-updater", "Generates and updates OCSP responses")
 
-	app.Action = func(c cmd.Config) {
-		// Set up logging
-		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-		cmd.FailOnError(err, "Could not connect to Syslog")
-		auditlogger.Info(app.VersionString())
-
-		blog.SetAuditLogger(auditlogger)
-
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
-
+	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.OCSPUpdater.DebugAddr)
 		go cmd.ProfileCmd("OCSP-Updater", stats)
 

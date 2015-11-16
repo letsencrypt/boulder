@@ -103,6 +103,14 @@ func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
 		if !strings.HasPrefix(r.Host, "localhost:") && !strings.HasPrefix(r.Host, "other.valid:") {
 			t.Errorf("Bad Host header: " + r.Host)
 		}
+
+		if r.Header.Get("Accept") != "*/*" {
+			t.Logf("SIMPLESRV: Missing Accept header, was %#v", r.Header.Get("Accept"))
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte("request forgot the Accept header"))
+			return
+		}
+
 		if strings.HasSuffix(r.URL.Path, path404) {
 			t.Logf("SIMPLESRV: Got a 404 req\n")
 			http.NotFound(w, r)
@@ -1051,6 +1059,21 @@ func TestUpdateValidations(t *testing.T) {
 
 	// Check that the call to va.UpdateValidations didn't block for 3 seconds
 	test.Assert(t, (took < (time.Second * 3)), "UpdateValidations blocked")
+}
+
+func TestCAATimeout(t *testing.T) {
+	stats, _ := statsd.NewNoopClient()
+	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va.DNSResolver = &mocks.DNSResolver{}
+	va.IssuerDomain = "letsencrypt.org"
+	err := va.checkCAA(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, 101)
+	if err.Type != core.ConnectionProblem {
+		t.Errorf("Expected timeout error type %s, got %s", core.ConnectionProblem, err.Type)
+	}
+	expected := "DNS query timed out"
+	if err.Detail != expected {
+		t.Errorf("checkCAA: got %s, expected %s", err.Detail, expected)
+	}
 }
 
 func TestCAAChecking(t *testing.T) {

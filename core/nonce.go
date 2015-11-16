@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"math/big"
+	"sync"
 )
 
 // MaxUsed defines the maximum number of Nonces we're willing to hold in
@@ -22,6 +23,7 @@ var errInvalidNonceLength = errors.New("invalid nonce length")
 
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
+	mu       sync.Mutex
 	latest   int64
 	earliest int64
 	used     map[int64]bool
@@ -30,18 +32,22 @@ type NonceService struct {
 }
 
 // NewNonceService constructs a NonceService with defaults
-func NewNonceService() (NonceService, error) {
+func NewNonceService() (*NonceService, error) {
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
-		return NonceService{}, err
+		return nil, err
 	}
 
-	// It is safe to ignore these errors because they only happen
-	// on key size and block size mismatches.
-	c, _ := aes.NewCipher(key)
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		panic("Failure in NewCipher: " + err.Error())
+	}
 	gcm, _ := cipher.NewGCM(c)
+	if err != nil {
+		panic("Failure in NewGCM: " + err.Error())
+	}
 
-	return NonceService{
+	return &NonceService{
 		earliest: 0,
 		latest:   0,
 		used:     make(map[int64]bool, MaxUsed),
@@ -50,7 +56,7 @@ func NewNonceService() (NonceService, error) {
 	}, nil
 }
 
-func (ns NonceService) encrypt(counter int64) (string, error) {
+func (ns *NonceService) encrypt(counter int64) (string, error) {
 	// Generate a nonce with upper 4 bytes zero
 	nonce := make([]byte, 12)
 	for i := 0; i < 4; i++ {
@@ -74,7 +80,7 @@ func (ns NonceService) encrypt(counter int64) (string, error) {
 	return B64enc(ret), nil
 }
 
-func (ns NonceService) decrypt(nonce string) (int64, error) {
+func (ns *NonceService) decrypt(nonce string) (int64, error) {
 	decoded, err := B64dec(nonce)
 	if err != nil {
 		return 0, err
@@ -101,10 +107,15 @@ func (ns NonceService) decrypt(nonce string) (int64, error) {
 
 // Nonce provides a new Nonce.
 func (ns *NonceService) Nonce() (string, error) {
+	ns.mu.Lock()
 	ns.latest++
-	return ns.encrypt(ns.latest)
+	latest := ns.latest
+	ns.mu.Unlock()
+	return ns.encrypt(latest)
 }
 
+// minUsed returns the lowest key in the used map. Requires that a lock be held
+// by caller.
 func (ns *NonceService) minUsed() int64 {
 	min := ns.latest
 	for t := range ns.used {
@@ -123,6 +134,8 @@ func (ns *NonceService) Valid(nonce string) bool {
 		return false
 	}
 
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
 	if c > ns.latest {
 		return false
 	}

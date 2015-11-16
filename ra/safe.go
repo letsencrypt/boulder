@@ -25,7 +25,7 @@ func (d *DomainCheck) IsSafe(domain string) (bool, error) {
 		return true, nil
 	}
 
-	resp, err := d.VA.IsSafeDomain(&core.IsSafeDomainRequest{domain})
+	resp, err := d.VA.IsSafeDomain(&core.IsSafeDomainRequest{Domain: domain})
 	if err != nil {
 		return false, err
 	}

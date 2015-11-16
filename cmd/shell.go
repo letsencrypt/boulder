@@ -28,306 +28,25 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"log/syslog"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
 	"os"
+	"path"
 	"runtime"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/publisher"
-	"github.com/letsencrypt/boulder/va"
 )
-
-// Config stores configuration parameters that applications
-// will need.  For simplicity, we just lump them all into
-// one struct, and use encoding/json to read it from a file.
-//
-// Note: NO DEFAULTS are provided.
-type Config struct {
-	ActivityMonitor struct {
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
-	// General
-	AMQP struct {
-		Server            string
-		Insecure          bool
-		RA                Queue
-		VA                Queue
-		SA                Queue
-		CA                Queue
-		OCSP              Queue
-		Publisher         Queue
-		TLS               *TLSConfig
-		ReconnectTimeouts struct {
-			Base ConfigDuration
-			Max  ConfigDuration
-		}
-	}
-
-	WFE struct {
-		BaseURL       string
-		ListenAddress string
-
-		AllowOrigins []string
-
-		CertCacheDuration           string
-		CertNoCacheExpirationWindow string
-		IndexCacheDuration          string
-		IssuerCacheDuration         string
-
-		ShutdownStopTimeout string
-		ShutdownKillTimeout string
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
-	CA CAConfig
-
-	Monolith struct {
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
-	RA struct {
-		RateLimitPoliciesFilename string
-
-		MaxConcurrentRPCServerRequests int64
-
-		MaxContactsPerRegistration int
-
-		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
-		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
-	SA struct {
-		DBConnect string
-
-		MaxConcurrentRPCServerRequests int64
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
-	VA struct {
-		UserAgent string
-
-		PortConfig va.PortConfig
-
-		MaxConcurrentRPCServerRequests int64
-
-		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
-	SQL struct {
-		SQLDebug bool
-	}
-
-	Statsd struct {
-		Server string
-		Prefix string
-	}
-
-	Syslog struct {
-		Network string
-		Server  string
-		Tag     string
-	}
-
-	Revoker struct {
-		DBConnect string
-	}
-
-	Mailer struct {
-		Server   string
-		Port     string
-		Username string
-		Password string
-
-		DBConnect string
-
-		CertLimit int
-		NagTimes  []string
-		// How much earlier (than configured nag intervals) to
-		// send reminders, to account for the expected delay
-		// before the next expiration-mailer invocation.
-		NagCheckInterval string
-		// Path to a text/template email template
-		EmailTemplate string
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
-	OCSPResponder struct {
-		// Source indicates the source of pre-signed OCSP responses to be used. It
-		// can be a DBConnect string or a file URL. The file URL style is used
-		// when responding from a static file for intermediates and roots.
-		Source string
-
-		Path          string
-		ListenAddress string
-		// MaxAge is the max-age to set in the Cache-Controler response
-		// header. It is a time.Duration formatted string.
-		MaxAge ConfigDuration
-
-		ShutdownStopTimeout string
-		ShutdownKillTimeout string
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
-	OCSPUpdater OCSPUpdaterConfig
-
-	Publisher struct {
-		MaxConcurrentRPCServerRequests int64
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
-	ExternalCertImporter struct {
-		CertsToImportCSVFilename   string
-		DomainsToImportCSVFilename string
-		CertsToRemoveCSVFilename   string
-		StatsdRate                 float32
-	}
-
-	PA PAConfig
-
-	Common struct {
-		BaseURL string
-		// Path to a PEM-encoded copy of the issuer certificate.
-		IssuerCert string
-
-		DNSResolver               string
-		DNSTimeout                string
-		DNSAllowLoopbackAddresses bool
-
-		CT publisher.CTConfig
-	}
-
-	CertChecker struct {
-		Workers             int
-		ReportDirectoryPath string
-		DBConnect           string
-	}
-
-	SubscriberAgreementURL string
-}
-
-// CAConfig structs have configuration information for the certificate
-// authority, including database parameters as well as controls for
-// issued certificates.
-type CAConfig struct {
-	Profile      string
-	TestMode     bool
-	DBConnect    string
-	SerialPrefix int
-	Key          KeyConfig
-	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
-	// than the minTimeToExpiry field for the OCSP Updater.
-	LifespanOCSP string
-	// How long issued certificates are valid for, should match expiry field
-	// in cfssl config.
-	Expiry string
-	// The maximum number of subjectAltNames in a single certificate
-	MaxNames int
-	CFSSL    cfsslConfig.Config
-
-	MaxConcurrentRPCServerRequests int64
-
-	HSMFaultTimeout ConfigDuration
-
-	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string
-}
-
-// PAConfig specifies how a policy authority should connect to its
-// database, and what policies it should enforce.
-type PAConfig struct {
-	DBConnect              string
-	EnforcePolicyWhitelist bool
-}
-
-// KeyConfig should contain either a File path to a PEM-format private key,
-// or a PKCS11Config defining how to load a module for an HSM.
-type KeyConfig struct {
-	File   string
-	PKCS11 PKCS11Config
-}
-
-// PKCS11Config defines how to load a module for an HSM.
-type PKCS11Config struct {
-	Module          string
-	TokenLabel      string
-	PIN             string
-	PrivateKeyLabel string
-}
-
-// TLSConfig reprents certificates and a key for authenticated TLS.
-type TLSConfig struct {
-	CertFile   *string
-	KeyFile    *string
-	CACertFile *string
-}
-
-// Queue describes a queue name
-type Queue struct {
-	Server string
-}
-
-// OCSPUpdaterConfig provides the various window tick times and batch sizes needed
-// for the OCSP (and SCT) updater
-type OCSPUpdaterConfig struct {
-	DBConnect string
-
-	NewCertificateWindow     ConfigDuration
-	OldOCSPWindow            ConfigDuration
-	MissingSCTWindow         ConfigDuration
-	RevokedCertificateWindow ConfigDuration
-
-	NewCertificateBatchSize     int
-	OldOCSPBatchSize            int
-	MissingSCTBatchSize         int
-	RevokedCertificateBatchSize int
-
-	OCSPMinTimeToExpiry ConfigDuration
-	OldestIssuedSCT     ConfigDuration
-
-	AkamaiBaseURL           string
-	AkamaiClientToken       string
-	AkamaiClientSecret      string
-	AkamaiAccessToken       string
-	AkamaiPurgeRetries      int
-	AkamaiPurgeRetryBackoff ConfigDuration
-
-	SignFailureBackoffFactor float64
-	SignFailureBackoffMax    ConfigDuration
-
-	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string
-}
 
 // AppShell contains CLI Metadata
 type AppShell struct {
-	Action func(Config)
+	Action func(Config, statsd.Statter, *blog.AuditLogger)
 	Config func(*cli.Context, Config) Config
 	App    *cli.App
 }
@@ -375,11 +94,42 @@ func (as *AppShell) Run() {
 			config = as.Config(c, config)
 		}
 
-		as.Action(config)
+		stats, auditlogger := StatsAndLogging(config.Statsd, config.Syslog)
+		auditlogger.Info(as.VersionString())
+
+		// If as.Action generates a panic, this will log it to syslog.
+		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+		defer auditlogger.AuditPanic()
+
+		as.Action(config, stats, auditlogger)
 	}
 
 	err := as.App.Run(os.Args)
 	FailOnError(err, "Failed to run application")
+}
+
+// StatsAndLogging constructs a Statter and and AuditLogger based on its config
+// parameters, and return them both. Crashes if any setup fails.
+// Also sets the constructed AuditLogger as the default logger.
+func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (statsd.Statter, *blog.AuditLogger) {
+	stats, err := statsd.NewClient(statConf.Server, statConf.Prefix)
+	FailOnError(err, "Couldn't connect to statsd")
+
+	tag := path.Base(os.Args[0])
+	syslogger, err := syslog.Dial(
+		logConf.Network,
+		logConf.Server,
+		syslog.LOG_INFO|syslog.LOG_LOCAL0, // default, overridden by log calls
+		tag)
+	FailOnError(err, "Could not connect to Syslog")
+	level := int(syslog.LOG_DEBUG)
+	if logConf.StdoutLevel != nil {
+		level = *logConf.StdoutLevel
+	}
+	auditlogger, err := blog.NewAuditLogger(syslogger, stats, level)
+	FailOnError(err, "Could not connect to Syslog")
+	blog.SetAuditLogger(auditlogger)
+	return stats, auditlogger
 }
 
 // VersionString produces a friendly Application version string
@@ -479,52 +229,4 @@ func DebugServer(addr string) {
 	}
 	log.Printf("booting debug server at %#v", addr)
 	log.Println(http.Serve(ln, nil))
-}
-
-// ConfigDuration is just an alias for time.Duration that allows
-// serialization to YAML as well as JSON.
-type ConfigDuration struct {
-	time.Duration
-}
-
-// ErrDurationMustBeString is returned when a non-string value is
-// presented to be deserialized as a ConfigDuration
-var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a ConfigDuration")
-
-// UnmarshalJSON parses a string into a ConfigDuration using
-// time.ParseDuration.  If the input does not unmarshal as a
-// string, then UnmarshalJSON returns ErrDurationMustBeString.
-func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
-	s := ""
-	err := json.Unmarshal(b, &s)
-	if err != nil {
-		if _, ok := err.(*json.UnmarshalTypeError); ok {
-			return ErrDurationMustBeString
-		}
-		return err
-	}
-	dd, err := time.ParseDuration(s)
-	d.Duration = dd
-	return err
-}
-
-// MarshalJSON returns the string form of the duration, as a byte array.
-func (d ConfigDuration) MarshalJSON() ([]byte, error) {
-	return []byte(d.Duration.String()), nil
-}
-
-// UnmarshalYAML uses the same frmat as JSON, but is called by the YAML
-// parser (vs. the JSON parser).
-func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-	dur, err := time.ParseDuration(s)
-	if err != nil {
-		return err
-	}
-
-	d.Duration = dur
-	return nil
 }

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -170,6 +171,8 @@ type AmqpRPCServer struct {
 	currentGoroutines              int64
 	maxConcurrentRPCServerRequests int64
 	tooManyRequestsResponse        []byte
+	stats                          statsd.Statter
+	clk                            clock.Clock
 }
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
@@ -186,12 +189,19 @@ func NewAmqpRPCServer(serverQueue string, maxConcurrentRPCServerRequests int64, 
 		reconnectMax = time.Minute
 	}
 
+	stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
+	if err != nil {
+		return nil, err
+	}
+
 	return &AmqpRPCServer{
 		serverQueue:                    serverQueue,
 		connection:                     newAMQPConnector(serverQueue, reconnectBase, reconnectMax),
 		log:                            log,
 		dispatchTable:                  make(map[string]func([]byte) ([]byte, error)),
 		maxConcurrentRPCServerRequests: maxConcurrentRPCServerRequests,
+		clk:   clock.Default(),
+		stats: stats,
 	}, nil
 }
 
@@ -426,14 +436,19 @@ func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
 		select {
 		case msg, ok := <-rpc.connection.messages():
 			if ok {
+				rpc.stats.TimingDuration(fmt.Sprintf("RPC.MessageLag.%s", rpc.serverQueue), rpc.clk.Now().Sub(msg.Timestamp), 1.0)
 				if rpc.maxConcurrentRPCServerRequests > 0 && atomic.LoadInt64(&rpc.currentGoroutines) >= rpc.maxConcurrentRPCServerRequests {
 					rpc.replyTooManyRequests(msg)
+					rpc.stats.Inc(fmt.Sprintf("RPC.CallsDropped.%s", rpc.serverQueue), 1, 1.0)
 					break // this breaks the select, not the for
 				}
+				rpc.stats.Inc(fmt.Sprintf("RPC.Traffic.Rx.%s", rpc.serverQueue), int64(len(msg.Body)), 1.0)
 				go func() {
 					atomic.AddInt64(&rpc.currentGoroutines, 1)
 					defer atomic.AddInt64(&rpc.currentGoroutines, -1)
+					startedProcessing := rpc.clk.Now()
 					rpc.processMessage(msg)
+					rpc.stats.TimingDuration(fmt.Sprintf("RPC.ServerProcessingLatency.%s", msg.Type), time.Since(startedProcessing), 1.0)
 				}()
 			} else {
 				rpc.mu.RLock()
@@ -623,10 +638,7 @@ func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) (string, chan []b
 
 // DispatchSync sends a body to the destination, and blocks waiting on a response.
 func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []byte, err error) {
-	rpc.stats.Inc(fmt.Sprintf("RPC.Rate.%s", method), 1, 1.0)
-	rpc.stats.Inc("RPC.Traffic", int64(len(body)), 1.0)
-	rpc.stats.GaugeDelta("RPC.CallsWaiting", 1, 1.0)
-	defer rpc.stats.GaugeDelta("RPC.CallsWaiting", -1, 1.0)
+	rpc.stats.Inc(fmt.Sprintf("RPC.Traffic.Tx.%s", rpc.serverQueue), int64(len(body)), 1.0)
 	callStarted := time.Now()
 	corrID, responseChan := rpc.dispatch(method, body)
 	select {
@@ -638,16 +650,14 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 		}
 		err = unwrapError(rpcResponse.Error)
 		if err != nil {
-			rpc.stats.Inc(fmt.Sprintf("RPC.Latency.%s.Error", method), 1, 1.0)
+			rpc.stats.Inc(fmt.Sprintf("RPC.ClientCallLatency.%s.Error", method), 1, 1.0)
 			return
 		}
-		rpc.stats.Inc("RPC.Rate.Success", 1, 1.0)
-		rpc.stats.TimingDuration(fmt.Sprintf("RPC.Latency.%s.Success", method), time.Since(callStarted), 1.0)
+		rpc.stats.TimingDuration(fmt.Sprintf("RPC.ClientCallLatency.%s.Success", method), time.Since(callStarted), 1.0)
 		response = rpcResponse.ReturnVal
 		return
 	case <-time.After(rpc.timeout):
-		rpc.stats.TimingDuration(fmt.Sprintf("RPC.Latency.%s.Timeout", method), time.Since(callStarted), 1.0)
-		rpc.stats.Inc("RPC.Rate.Timeouts", 1, 1.0)
+		rpc.stats.TimingDuration(fmt.Sprintf("RPC.ClientCallLatency.%s.Timeout", method), time.Since(callStarted), 1.0)
 		rpc.log.Warning(fmt.Sprintf(" [c!][%s] AMQP-RPC timeout [%s]", rpc.clientQueue, method))
 		rpc.mu.Lock()
 		delete(rpc.pending, corrID)

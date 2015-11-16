@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/cmd"
@@ -41,12 +40,7 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.
 	c, err := loadConfig(context)
 	cmd.FailOnError(err, "Failed to load Boulder configuration")
 
-	stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-	cmd.FailOnError(err, "Couldn't connect to statsd")
-
-	auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-	cmd.FailOnError(err, "Could not connect to Syslog")
-	blog.SetAuditLogger(auditlogger)
+	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 
 	raRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->RA", c.AMQP.RA.Server, c, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
