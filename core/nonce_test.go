@@ -6,6 +6,7 @@
 package core
 
 import (
+	"fmt"
 	"github.com/letsencrypt/boulder/test"
 	"testing"
 )
@@ -15,7 +16,7 @@ func TestValidNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Could not create nonce service")
 	n, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	test.Assert(t, ns.Valid(n), "Did not recognize fresh nonce")
+	test.Assert(t, ns.Valid(n), fmt.Sprintf("Did not recognize fresh nonce %s", n))
 }
 
 func TestAlreadyUsed(t *testing.T) {
@@ -33,6 +34,12 @@ func TestRejectMalformed(t *testing.T) {
 	n, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
 	test.Assert(t, !ns.Valid("asdf"+n), "Accepted an invalid nonce")
+}
+
+func TestRejectShort(t *testing.T) {
+	ns, err := NewNonceService()
+	test.AssertNotError(t, err, "Could not create nonce service")
+	test.Assert(t, !ns.Valid("aGkK"), "Accepted an invalid nonce")
 }
 
 func TestRejectUnknown(t *testing.T) {
