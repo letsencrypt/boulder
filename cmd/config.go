@@ -24,28 +24,15 @@ import (
 // Note: NO DEFAULTS are provided.
 type Config struct {
 	ActivityMonitor struct {
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
+		ServiceConfig
 	}
 
-	// General
-	AMQP struct {
-		Server            string
-		Insecure          bool
-		RA                Queue
-		VA                Queue
-		SA                Queue
-		CA                Queue
-		OCSP              Queue
-		Publisher         Queue
-		TLS               *TLSConfig
-		ReconnectTimeouts struct {
-			Base ConfigDuration
-			Max  ConfigDuration
-		}
-	}
+	// Default AMQPConfig for services that don't specify one.
+	// TODO(jsha): Delete this after a deploy.
+	AMQP *AMQPConfig
 
 	WFE struct {
+		ServiceConfig
 		BaseURL       string
 		ListenAddress string
 
@@ -58,19 +45,13 @@ type Config struct {
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	CA CAConfig
 
-	Monolith struct {
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
 	RA struct {
+		ServiceConfig
+
 		RateLimitPoliciesFilename string
 
 		MaxConcurrentRPCServerRequests int64
@@ -79,21 +60,19 @@ type Config struct {
 
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	SA struct {
+		ServiceConfig
+
 		DBConnect string
 
 		MaxConcurrentRPCServerRequests int64
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	VA struct {
+		ServiceConfig
+
 		UserAgent string
 
 		PortConfig va.PortConfig
@@ -101,9 +80,6 @@ type Config struct {
 		MaxConcurrentRPCServerRequests int64
 
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	SQL struct {
@@ -116,9 +92,14 @@ type Config struct {
 
 	Revoker struct {
 		DBConnect string
+		// The revoker isn't a long running service, so doesn't get a full
+		// ServiceConfig, just an AMQPConfig.
+		AMQP *AMQPConfig
 	}
 
 	Mailer struct {
+		ServiceConfig
+
 		Server   string
 		Port     string
 		Username string
@@ -134,12 +115,11 @@ type Config struct {
 		NagCheckInterval string
 		// Path to a text/template email template
 		EmailTemplate string
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	OCSPResponder struct {
+		ServiceConfig
+
 		// Source indicates the source of pre-signed OCSP responses to be used. It
 		// can be a DBConnect string or a file URL. The file URL style is used
 		// when responding from a static file for intermediates and roots.
@@ -153,18 +133,13 @@ type Config struct {
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	OCSPUpdater OCSPUpdaterConfig
 
 	Publisher struct {
+		ServiceConfig
 		MaxConcurrentRPCServerRequests int64
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	ExternalCertImporter struct {
@@ -197,10 +172,37 @@ type Config struct {
 	SubscriberAgreementURL string
 }
 
+// ServiceConfig contains config items that are common to all our services, to
+// be embedded in other config structs.
+type ServiceConfig struct {
+	// DebugAddr is the address to run the /debug handlers on.
+	DebugAddr string
+	AMQP      *AMQPConfig
+}
+
+// AMQPConfig describes how to connect to AMQP, and how to speak to each of the
+// RPC services we offer via AMQP.
+type AMQPConfig struct {
+	Server            string
+	Insecure          bool
+	RA                *RPCServerConfig
+	VA                *RPCServerConfig
+	SA                *RPCServerConfig
+	CA                *RPCServerConfig
+	Publisher         *RPCServerConfig
+	TLS               *TLSConfig
+	ReconnectTimeouts struct {
+		Base ConfigDuration
+		Max  ConfigDuration
+	}
+}
+
 // CAConfig structs have configuration information for the certificate
 // authority, including database parameters as well as controls for
 // issued certificates.
 type CAConfig struct {
+	ServiceConfig
+
 	Profile      string
 	TestMode     bool
 	DBConnect    string
@@ -219,9 +221,6 @@ type CAConfig struct {
 	MaxConcurrentRPCServerRequests int64
 
 	HSMFaultTimeout ConfigDuration
-
-	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string
 }
 
 // PAConfig specifies how a policy authority should connect to its
@@ -280,14 +279,17 @@ type TLSConfig struct {
 	CACertFile *string
 }
 
-// Queue describes a queue name
-type Queue struct {
-	Server string
+// RPCServerConfig contains configuration particular to a specific RPC server
+// type (e.g. RA, SA, etc)
+type RPCServerConfig struct {
+	Server     string // Queue name where the server receives requests
+	RPCTimeout ConfigDuration
 }
 
 // OCSPUpdaterConfig provides the various window tick times and batch sizes needed
 // for the OCSP (and SCT) updater
 type OCSPUpdaterConfig struct {
+	ServiceConfig
 	DBConnect string
 
 	NewCertificateWindow     ConfigDuration
@@ -312,9 +314,6 @@ type OCSPUpdaterConfig struct {
 
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    ConfigDuration
-
-	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the

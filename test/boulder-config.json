@@ -2,37 +2,7 @@
   "syslog": {
     "network": "",
     "server": "",
-    "stdoutlevel": -1
-  },
-
-  "amqp": {
-    "server": "amqp://guest:guest@localhost:5673",
-    "insecure": true,
-    "-uncomment_for_AMQPS-tls": {
-      "cacertfile": "/etc/boulder/rabbitmq-cacert.pem",
-      "certfile": "/etc/boulder/rabbitmq-cert.pem",
-      "keyfile": "/etc/boulder/rabbitmq-key.pem"
-    },
-    "RA": {
-      "client": "RA.client",
-      "server": "RA.server"
-    },
-    "VA": {
-      "client": "VA.client",
-      "server": "VA.server"
-    },
-    "SA": {
-      "client": "SA.client",
-      "server": "SA.server"
-    },
-    "CA": {
-      "client": "CA.client",
-      "server": "CA.server"
-    },
-    "Publisher": {
-      "client": "Publisher.client",
-      "server": "Publisher.server"
-    }
+    "stdoutlevel": 7
   },
 
   "statsd": {
@@ -49,7 +19,19 @@
     "issuerCacheDuration": "48h",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
-    "debugAddr": "localhost:8000"
+    "debugAddr": "localhost:8000",
+    "amqp": {
+      "server": "amqp://guest:guest@localhost:5673",
+      "insecure": true,
+      "RA": {
+        "server": "RA.server",
+        "rpcTimeout": "1s"
+      },
+      "SA": {
+        "server": "SA.server",
+        "rpcTimeout": "1s"
+      }
+    }
   },
 
   "ca": {
@@ -112,7 +94,20 @@
       }
     },
     "maxConcurrentRPCServerRequests": 16,
-    "hsmFaultTimeout": "300s"
+    "hsmFaultTimeout": "300s",
+    "amqp": {
+      "server": "amqp://guest:guest@localhost:5673",
+      "insecure": true,
+      "CA": { "server": "CA.server" },
+      "SA": {
+        "server": "SA.server",
+        "rpcTimeout": "1s"
+      },
+      "Publisher": {
+        "server": "Publisher.server",
+        "rpcTimeout": "1s"
+      }
+    }
   },
 
   "pa": {
@@ -130,13 +125,36 @@
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
-    "debugAddr": "localhost:8002"
+    "debugAddr": "localhost:8002",
+    "amqp": {
+      "server": "amqp://guest:guest@localhost:5673",
+      "insecure": true,
+      "RA": { "server": "RA.server" },
+      "VA": {
+        "server": "VA.server",
+        "rpcTimeout": "60s"
+      },
+      "SA": {
+        "server": "SA.server",
+        "rpcTimeout": "1s"
+      },
+      "CA": {
+        "server": "CA.server",
+        "rpcTimeout": "1s"
+
+      }
+    }
   },
 
   "sa": {
     "dbConnect": "mysql+tcp://sa@localhost:3306/boulder_sa_integration",
     "maxConcurrentRPCServerRequests": 16,
-    "debugAddr": "localhost:8003"
+    "debugAddr": "localhost:8003",
+    "amqp": {
+      "server": "amqp://guest:guest@localhost:5673",
+      "insecure": true,
+      "SA": { "server": "SA.server" }
+    }
   },
 
   "va": {
@@ -147,7 +165,16 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
-    "maxConcurrentRPCServerRequests": 16
+    "maxConcurrentRPCServerRequests": 16,
+    "amqp": {
+      "server": "amqp://guest:guest@localhost:5673",
+      "insecure": true,
+      "VA": { "server": "VA.server" },
+      "RA": {
+        "server": "RA.server",
+        "rpcTimeout": "1s"
+      }
+    }
   },
 
   "sql": {
@@ -155,7 +182,19 @@
   },
 
   "revoker": {
-    "dbConnect": "mysql+tcp://revoker@localhost:3306/boulder_sa_integration"
+    "dbConnect": "mysql+tcp://revoker@localhost:3306/boulder_sa_integration",
+    "amqp": {
+      "server": "amqp://guest:guest@localhost:5673",
+      "insecure": true,
+      "RA": {
+        "server": "RA.server",
+        "rpcTimeout": "1s"
+      },
+      "SA": {
+        "server": "SA.server",
+        "rpcTimeout": "1s"
+      }
+    }
   },
 
   "ocspResponder": {
@@ -182,11 +221,31 @@
     "oldestIssuedSCT": "72h",
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
-    "debugAddr": "localhost:8006"
+    "debugAddr": "localhost:8006",
+    "amqp": {
+      "server": "amqp://guest:guest@localhost:5673",
+      "insecure": true,
+      "SA": {
+        "server": "SA.server",
+        "rpcTimeout": "1s"
+      },
+      "CA": {
+        "server": "CA.server",
+        "rpcTimeout": "1s"
+      },
+      "Publisher": {
+        "server": "Publisher.server",
+        "rpcTimeout": "1s"
+      }
+    }
   },
 
   "activityMonitor": {
-    "debugAddr": "localhost:8007"
+    "debugAddr": "localhost:8007",
+    "amqp": {
+      "server": "amqp://guest:guest@localhost:5673",
+      "insecure": true
+    }
   },
 
   "mailer": {
@@ -204,7 +263,16 @@
 
   "publisher": {
     "maxConcurrentRPCServerRequests": 16,
-    "debugAddr": "localhost:8009"
+    "debugAddr": "localhost:8009",
+    "amqp": {
+      "server": "amqp://guest:guest@localhost:5673",
+      "insecure": true,
+      "Publisher": { "server": "Publisher.server" },
+      "SA": {
+        "server": "SA.server",
+        "rpcTimeout": "1s"
+      }
+    }
   },
 
   "common": {

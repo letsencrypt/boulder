@@ -22,17 +22,13 @@ import (
 	"github.com/letsencrypt/boulder/wfe"
 )
 
-func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient) {
-	raRPC, err := rpc.NewAmqpRPCClient("WFE->RA", c.AMQP.RA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	saRPC, err := rpc.NewAmqpRPCClient("WFE->SA", c.AMQP.SA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
+func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
+	amqpConf := c.WFE.AMQP
+	clientName := "WFE"
+	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create RA client")
 
-	sac, err := rpc.NewStorageAuthorityClient(saRPC)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	return rac, sac
@@ -59,8 +55,8 @@ func main() {
 		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default())
 		cmd.FailOnError(err, "Unable to create WFE")
 		rac, sac := setupWFE(c, auditlogger, stats)
-		wfe.RA = &rac
-		wfe.SA = &sac
+		wfe.RA = rac
+		wfe.SA = sac
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
 
 		wfe.AllowOrigins = c.WFE.AllowOrigins

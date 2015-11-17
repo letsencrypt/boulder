@@ -177,26 +177,21 @@ type AmqpRPCServer struct {
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
-func NewAmqpRPCServer(serverQueue string, maxConcurrentRPCServerRequests int64, c cmd.Config) (*AmqpRPCServer, error) {
+func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, rpcConf *cmd.RPCServerConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
 
-	reconnectBase := c.AMQP.ReconnectTimeouts.Base.Duration
+	reconnectBase := amqpConf.ReconnectTimeouts.Base.Duration
 	if reconnectBase == 0 {
 		reconnectBase = 20 * time.Millisecond
 	}
-	reconnectMax := c.AMQP.ReconnectTimeouts.Max.Duration
+	reconnectMax := amqpConf.ReconnectTimeouts.Max.Duration
 	if reconnectMax == 0 {
 		reconnectMax = time.Minute
 	}
 
-	stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-	if err != nil {
-		return nil, err
-	}
-
 	return &AmqpRPCServer{
-		serverQueue:                    serverQueue,
-		connection:                     newAMQPConnector(serverQueue, reconnectBase, reconnectMax),
+		serverQueue:                    rpcConf.Server,
+		connection:                     newAMQPConnector(rpcConf.Server, reconnectBase, reconnectMax),
 		log:                            log,
 		dispatchTable:                  make(map[string]func([]byte) ([]byte, error)),
 		maxConcurrentRPCServerRequests: maxConcurrentRPCServerRequests,
@@ -295,25 +290,25 @@ type rpcResponse struct {
 }
 
 // AmqpChannel sets a AMQP connection up using SSL if configuration is provided
-func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
+func AmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 	var err error
 
 	log := blog.GetAuditLogger()
 
-	if conf.AMQP.Insecure == true {
+	if conf.Insecure == true {
 		// If the Insecure flag is true, then just go ahead and connect
-		conn, err = amqp.Dial(conf.AMQP.Server)
+		conn, err = amqp.Dial(conf.Server)
 	} else {
 		// The insecure flag is false or not set, so we need to load up the options
 		log.Info("AMQPS: Loading TLS Options.")
 
-		if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
+		if strings.HasPrefix(conf.Server, "amqps") == false {
 			err = fmt.Errorf("AMQPS: Not using an AMQPS URL. To use AMQP instead of AMQPS, set insecure=true")
 			return nil, err
 		}
 
-		if conf.AMQP.TLS == nil {
+		if conf.TLS == nil {
 			err = fmt.Errorf("AMQPS: No TLS configuration provided. To use AMQP instead of AMQPS, set insecure=true")
 			return nil, err
 		}
@@ -321,14 +316,14 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 		cfg := new(tls.Config)
 
 		// If the configuration specified a certificate (or key), load them
-		if conf.AMQP.TLS.CertFile != nil || conf.AMQP.TLS.KeyFile != nil {
+		if conf.TLS.CertFile != nil || conf.TLS.KeyFile != nil {
 			// But they have to give both.
-			if conf.AMQP.TLS.CertFile == nil || conf.AMQP.TLS.KeyFile == nil {
+			if conf.TLS.CertFile == nil || conf.TLS.KeyFile == nil {
 				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile")
 				return nil, err
 			}
 
-			cert, err := tls.LoadX509KeyPair(*conf.AMQP.TLS.CertFile, *conf.AMQP.TLS.KeyFile)
+			cert, err := tls.LoadX509KeyPair(*conf.TLS.CertFile, *conf.TLS.KeyFile)
 			if err != nil {
 				err = fmt.Errorf("AMQPS: Could not load Client Certificate or Key: %s", err)
 				return nil, err
@@ -340,10 +335,10 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 
 		// If the configuration specified a CA certificate, make it the only
 		// available root.
-		if conf.AMQP.TLS.CACertFile != nil {
+		if conf.TLS.CACertFile != nil {
 			cfg.RootCAs = x509.NewCertPool()
 
-			ca, err := ioutil.ReadFile(*conf.AMQP.TLS.CACertFile)
+			ca, err := ioutil.ReadFile(*conf.TLS.CACertFile)
 			if err != nil {
 				err = fmt.Errorf("AMQPS: Could not load CA Certificate: %s", err)
 				return nil, err
@@ -352,7 +347,7 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 			log.Info("AMQPS: Configured CA certificate for AMQPS.")
 		}
 
-		conn, err = amqp.DialTLS(conf.AMQP.Server, cfg)
+		conn, err = amqp.DialTLS(conf.Server, cfg)
 	}
 
 	if err != nil {
@@ -412,7 +407,7 @@ func (rpc *AmqpRPCServer) replyTooManyRequests(msg amqp.Delivery) error {
 // Start starts the AMQP-RPC server and handles reconnections, this will block
 // until a fatal error is returned or AmqpRPCServer.Stop() is called and all
 // remaining messages are processed.
-func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
+func (rpc *AmqpRPCServer) Start(c *cmd.AMQPConfig) error {
 	tooManyGoroutines := rpcResponse{
 		Error: wrapError(core.TooManyRPCRequestsError("RPC server has spawned too many Goroutines")),
 	}
@@ -530,7 +525,12 @@ type AmqpRPCCLient struct {
 }
 
 // NewAmqpRPCClient constructs an RPC client using AMQP
-func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, c cmd.Config, stats statsd.Statter) (rpc *AmqpRPCCLient, err error) {
+func NewAmqpRPCClient(
+	clientQueuePrefix string,
+	amqpConf *cmd.AMQPConfig,
+	rpcConf *cmd.RPCServerConfig,
+	stats statsd.Statter,
+) (rpc *AmqpRPCCLient, err error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -543,26 +543,31 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, c cmd.Config, stats
 	}
 	clientQueue := fmt.Sprintf("%s.%s.%x", clientQueuePrefix, hostname, randID)
 
-	reconnectBase := c.AMQP.ReconnectTimeouts.Base.Duration
+	reconnectBase := amqpConf.ReconnectTimeouts.Base.Duration
 	if reconnectBase == 0 {
 		reconnectBase = 20 * time.Millisecond
 	}
-	reconnectMax := c.AMQP.ReconnectTimeouts.Max.Duration
+	reconnectMax := amqpConf.ReconnectTimeouts.Max.Duration
 	if reconnectMax == 0 {
 		reconnectMax = time.Minute
 	}
 
+	timeout := rpcConf.RPCTimeout.Duration
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+
 	rpc = &AmqpRPCCLient{
-		serverQueue: serverQueue,
+		serverQueue: rpcConf.Server,
 		clientQueue: clientQueue,
 		connection:  newAMQPConnector(clientQueue, reconnectBase, reconnectMax),
 		pending:     make(map[string]chan []byte),
-		timeout:     10 * time.Second,
+		timeout:     timeout,
 		log:         blog.GetAuditLogger(),
 		stats:       stats,
 	}
 
-	err = rpc.connection.connect(c)
+	err = rpc.connection.connect(amqpConf)
 	if err != nil {
 		return nil, err
 	}
@@ -596,18 +601,12 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, c cmd.Config, stats
 				}
 			case err = <-rpc.connection.closeChannel():
 				rpc.log.Info(fmt.Sprintf(" [!] Client reply channel closed : %s", rpc.clientQueue))
-				rpc.connection.reconnect(c, rpc.log)
+				rpc.connection.reconnect(amqpConf, rpc.log)
 			}
 		}
 	}()
 
 	return rpc, err
-}
-
-// SetTimeout configures the maximum time DispatchSync will wait for a response
-// before returning an error.
-func (rpc *AmqpRPCCLient) SetTimeout(ttl time.Duration) {
-	rpc.timeout = ttl
 }
 
 // dispatch sends a body to the destination, and returns the id for the request

@@ -17,9 +17,10 @@ import (
 func main() {
 	app := cmd.NewAppShell("boulder-sa", "Handles SQL operations")
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
-		go cmd.DebugServer(c.SA.DebugAddr)
+		saConf := c.SA
+		go cmd.DebugServer(saConf.DebugAddr)
 
-		dbMap, err := sa.NewDbMap(c.SA.DBConnect)
+		dbMap, err := sa.NewDbMap(saConf.DBConnect)
 		cmd.FailOnError(err, "Couldn't connect to SA database")
 
 		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default())
@@ -28,11 +29,12 @@ func main() {
 
 		go cmd.ProfileCmd("SA", stats)
 
-		sas, err := rpc.NewAmqpRPCServer(c.AMQP.SA.Server, c.SA.MaxConcurrentRPCServerRequests, c)
+		amqpConf := saConf.AMQP
+		sas, err := rpc.NewAmqpRPCServer(amqpConf, amqpConf.SA, c.SA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create SA RPC server")
 		rpc.NewStorageAuthorityServer(sas, sai)
 
-		err = sas.Start(c)
+		err = sas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run SA RPC server")
 	}
 

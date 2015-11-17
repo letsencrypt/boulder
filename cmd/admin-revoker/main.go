@@ -42,22 +42,18 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.
 
 	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 
-	raRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->RA", c.AMQP.RA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
+	amqpConf := c.Revoker.AMQP
+	clientName := "AdminRevoker"
+	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
 	dbMap, err := sa.NewDbMap(c.Revoker.DBConnect)
 	cmd.FailOnError(err, "Couldn't setup database connection")
 
-	saRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->SA", c.AMQP.SA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	sac, err := rpc.NewStorageAuthorityClient(saRPC)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Failed to create SA client")
 
-	return rac, auditlogger, dbMap, sac
+	return *rac, auditlogger, dbMap, *sac
 }
 
 func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {

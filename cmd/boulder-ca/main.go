@@ -41,26 +41,19 @@ func main() {
 
 		go cmd.ProfileCmd("CA", stats)
 
-		saRPC, err := rpc.NewAmqpRPCClient("CA->SA", c.AMQP.SA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		sac, err := rpc.NewStorageAuthorityClient(saRPC)
+		amqpConf := c.CA.AMQP
+		clientName := "CA"
+		cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create SA client")
 
-		pubRPC, err := rpc.NewAmqpRPCClient("CA->Publisher", c.AMQP.Publisher.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		pubc, err := rpc.NewPublisherClient(pubRPC)
+		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create Publisher client")
 
-		cai.Publisher = &pubc
-		cai.SA = &sac
-
-		cas, err := rpc.NewAmqpRPCServer(c.AMQP.CA.Server, c.CA.MaxConcurrentRPCServerRequests, c)
+		cas, err := rpc.NewAmqpRPCServer(amqpConf, amqpConf.CA, c.CA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
 		rpc.NewCertificateAuthorityServer(cas, cai)
 
-		err = cas.Start(c)
+		err = cas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run CA RPC server")
 	}
 

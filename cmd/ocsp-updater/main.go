@@ -531,28 +531,21 @@ func (l *looper) loop() error {
 	}
 }
 
-func setupClients(c cmd.Config, stats statsd.Statter) (
+func setupClients(c cmd.OCSPUpdaterConfig, stats statsd.Statter) (
 	core.CertificateAuthority,
 	core.Publisher,
 	core.StorageAuthority,
 ) {
-	caRPC, err := rpc.NewAmqpRPCClient("OCSP->CA", c.AMQP.CA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	cac, err := rpc.NewCertificateAuthorityClient(caRPC)
+	amqpConf := c.AMQP
+	clientName := "OCSP"
+	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	pubRPC, err := rpc.NewAmqpRPCClient("OCSP->Publisher", c.AMQP.Publisher.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	pubc, err := rpc.NewPublisherClient(pubRPC)
+	pubc, err := rpc.NewPublisherClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create Publisher client")
 
-	saRPC, err := rpc.NewAmqpRPCClient("OCSP->SA", c.AMQP.SA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	sac, err := rpc.NewStorageAuthorityClient(saRPC)
-	cmd.FailOnError(err, "Unable to create Publisher client")
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+	cmd.FailOnError(err, "Unable to create SA client")
 
 	return cac, pubc, sac
 }
@@ -561,14 +554,15 @@ func main() {
 	app := cmd.NewAppShell("ocsp-updater", "Generates and updates OCSP responses")
 
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
-		go cmd.DebugServer(c.OCSPUpdater.DebugAddr)
+		conf := c.OCSPUpdater
+		go cmd.DebugServer(conf.DebugAddr)
 		go cmd.ProfileCmd("OCSP-Updater", stats)
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.OCSPUpdater.DBConnect)
+		dbMap, err := sa.NewDbMap(conf.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		cac, pubc, sac := setupClients(c, stats)
+		cac, pubc, sac := setupClients(conf, stats)
 
 		updater, err := newUpdater(
 			stats,
@@ -578,7 +572,7 @@ func main() {
 			pubc,
 			sac,
 			// Necessary evil for now
-			c.OCSPUpdater,
+			conf,
 			len(c.Common.CT.Logs),
 			c.Common.IssuerCert,
 		)
