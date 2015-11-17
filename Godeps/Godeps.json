@@ -110,7 +110,7 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/go-jose",
-			"Rev": "77671e91fe89678878df4bde9e6b653a0d190dfb"
+			"Rev": "63931e513ab97b230f56ab0b49dc221399d44a23"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/go-safe-browsing-api",
