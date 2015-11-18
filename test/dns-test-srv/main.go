@@ -15,7 +15,6 @@ import (
 )
 
 func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
-	defer w.Close()
 	m := new(dns.Msg)
 	m.SetReply(r)
 	m.Compress = false
@@ -65,7 +64,7 @@ func serveTestResolver() {
 	dns.HandleFunc(".", dnsHandler)
 	server := &dns.Server{
 		Addr:         "127.0.0.1:8053",
-		Net:          "udp",
+		Net:          "tcp",
 		ReadTimeout:  time.Millisecond,
 		WriteTimeout: time.Millisecond,
 	}
