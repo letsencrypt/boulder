@@ -225,7 +225,7 @@ func wrapError(err error) *rpcError {
 		wrapped := &rpcError{
 			Value: err.Error(),
 		}
-		switch err.(type) {
+		switch terr := err.(type) {
 		case core.InternalServerError:
 			wrapped.Type = "InternalServerError"
 		case core.NotSupportedError:
@@ -250,6 +250,10 @@ func wrapError(err error) *rpcError {
 			wrapped.Type = "RateLimitedError"
 		case core.ServiceUnavailableError:
 			wrapped.Type = "ServiceUnavailableError"
+		case *core.ProblemDetails:
+			wrapped.Type = string(terr.Type)
+			wrapped.Value = terr.Detail
+
 		}
 		return wrapped
 	}
@@ -285,6 +289,12 @@ func unwrapError(rpcError *rpcError) error {
 		case "ServiceUnavailableError":
 			return core.ServiceUnavailableError(rpcError.Value)
 		default:
+			if strings.HasPrefix(rpcError.Type, "urn:") {
+				return &core.ProblemDetails{
+					Type:   core.ProblemType(rpcError.Type),
+					Detail: rpcError.Value,
+				}
+			}
 			return errors.New(rpcError.Value)
 		}
 	}
