@@ -137,7 +137,7 @@ func NewPublisherImpl(ctConfig CTConfig) (pub PublisherImpl, err error) {
 	return
 }
 
-func (pub *PublisherImpl) submitToCTLog(serial string, jsonSubmission []byte, log LogDescription) error {
+func (pub *PublisherImpl) submitToCTLog(der []byte, serial string, jsonSubmission []byte, log LogDescription) error {
 	done := false
 	var sct core.SignedCertificateTimestamp
 	backoff := pub.submissionBackoff
@@ -179,8 +179,8 @@ func (pub *PublisherImpl) submitToCTLog(serial string, jsonSubmission []byte, lo
 		return err
 	}
 
-	if err := sct.CheckSignature(); err != nil {
-		return err
+	if err := sct.VerifySignature(der, log.PublicKey); err != nil {
+		return fmt.Errorf("Unable to verify SCT signature: %s", err)
 	}
 
 	pub.log.Debug(fmt.Sprintf(
@@ -238,7 +238,7 @@ func (pub *PublisherImpl) SubmitToCT(der []byte) error {
 	}
 
 	for _, ctLog := range pub.ctLogs {
-		err = pub.submitToCTLog(core.SerialToString(cert.SerialNumber), jsonSubmission, ctLog)
+		err = pub.submitToCTLog(cert.Raw, core.SerialToString(cert.SerialNumber), jsonSubmission, ctLog)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.AuditErr(err)

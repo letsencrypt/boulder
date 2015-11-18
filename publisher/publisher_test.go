@@ -6,11 +6,17 @@
 package publisher
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -127,7 +133,7 @@ func getPort(hs *httptest.Server) (int, error) {
 	return int(port), nil
 }
 
-func logSrv() *httptest.Server {
+func logSrv(signedSCT string) *httptest.Server {
 	m := http.NewServeMux()
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		decoder := json.NewDecoder(r.Body)
@@ -138,7 +144,7 @@ func logSrv() *httptest.Server {
 		}
 		// Submissions should always contain at least one cert
 		if len(jsonReq.Chain) >= 1 {
-			fmt.Fprint(w, `{"signature":"BAMASDBGAiEAknaySJVdB3FqG9bUKHgyu7V9AdEabpTc71BELUp6/iECIQDObrkwlQq6Azfj5XOA5E12G/qy/WuRn97z7qMSXXc82Q=="}`)
+			fmt.Fprint(w, signedSCT)
 		}
 	})
 
@@ -147,12 +153,12 @@ func logSrv() *httptest.Server {
 	return server
 }
 
-func retryableLogSrv(retries int, after *int) *httptest.Server {
+func retryableLogSrv(retries int, after *int, signedSCT string) *httptest.Server {
 	hits := 0
 	m := http.NewServeMux()
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if hits >= retries {
-			fmt.Fprint(w, `{"signature":"BAMASDBGAiEAknaySJVdB3FqG9bUKHgyu7V9AdEabpTc71BELUp6/iECIQDObrkwlQq6Azfj5XOA5E12G/qy/WuRn97z7qMSXXc82Q=="}`)
+			fmt.Fprint(w, signedSCT)
 		} else {
 			hits++
 			if after != nil {
@@ -187,11 +193,50 @@ func emptyLogSrv() *httptest.Server {
 	return server
 }
 
-func setup(t *testing.T, port, retries int) (PublisherImpl, *x509.Certificate) {
+func setup(t *testing.T, retries int) (PublisherImpl, *x509.Certificate, string, *ecdsa.PublicKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Failed to generate ECDSA key")
+	rawKey, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	test.AssertNotError(t, err, "Failed to marshal public key")
+	pkHash := sha256.Sum256(rawKey)
+	sct := core.SignedCertificateTimestamp{
+		SCTVersion: sctVersion,
+		LogID:      base64.StdEncoding.EncodeToString(pkHash[:]),
+		Timestamp:  1337,
+	}
+	leafPEM, _ := pem.Decode([]byte(testLeaf))
+	serialized, err := sct.Serialize(leafPEM.Bytes)
+	test.AssertNotError(t, err, "Failed to serialize SCT")
+	hashed := sha256.Sum256(serialized)
+	r, s, err := ecdsa.Sign(rand.Reader, key, hashed[:])
+	test.AssertNotError(t, err, "Failed to sign SCT")
+
+	var ecdsaSig struct {
+		R, S *big.Int
+	}
+	ecdsaSig.R, ecdsaSig.S = r, s
+	sig, err := asn1.Marshal(ecdsaSig)
+
+	var rawSCT struct {
+		Version   uint8  `json:"sct_version"`
+		LogID     string `json:"id"`
+		Timestamp uint64 `json:"timestamp"`
+		Signature string `json:"signature"`
+	}
+	rawSCT.Version = sct.SCTVersion
+	rawSCT.LogID = sct.LogID
+	rawSCT.Timestamp = sct.Timestamp
+	rawSCT.Signature = base64.StdEncoding.EncodeToString(append([]byte{4, 3, 0, 0}, sig...))
+	sctJSON, err := json.Marshal(rawSCT)
+	test.AssertNotError(t, err, "Failed to marshal raw SCT")
+
 	pub, err := NewPublisherImpl(CTConfig{
-		Logs: []LogDescription{LogDescription{URI: fmt.Sprintf("http://localhost:%d", port)}},
+		Logs: []LogDescription{LogDescription{
+			URI:       "http://localhost",
+			PublicKey: &key.PublicKey,
+		}},
 		SubmissionBackoffString:    "0s",
 		IntermediateBundleFilename: issuerPath,
 		SubmissionRetries:          retries,
@@ -200,11 +245,10 @@ func setup(t *testing.T, port, retries int) (PublisherImpl, *x509.Certificate) {
 	pub.issuerBundle = append(pub.issuerBundle, base64.StdEncoding.EncodeToString(intermediatePEM.Bytes))
 	pub.SA = mocks.NewStorageAuthority(clock.NewFake())
 
-	leafPEM, _ := pem.Decode([]byte(testLeaf))
 	leaf, err := x509.ParseCertificate(leafPEM.Bytes)
 	test.AssertNotError(t, err, "Couldn't parse leafPEM.Bytes")
 
-	return pub, leaf
+	return pub, leaf, string(sctJSON), &key.PublicKey
 }
 
 func TestNewPublisherImpl(t *testing.T) {
@@ -218,35 +262,36 @@ func TestNewPublisherImpl(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create new Publisher")
 }
 
-func TestCheckSignature(t *testing.T) {
-	// Based on a submission to the aviator log
-	goodSigBytes, err := base64.StdEncoding.DecodeString("BAMASDBGAiEAknaySJVdB3FqG9bUKHgyu7V9AdEabpTc71BELUp6/iECIQDObrkwlQq6Azfj5XOA5E12G/qy/WuRn97z7qMSXXc82Q==")
-	test.AssertNotError(t, err, "Couldn't decode signature")
-
-	testReceipt := core.SignedCertificateTimestamp{
-		Signature: goodSigBytes,
+func TestVerifySignature(t *testing.T) {
+	// Based on an actual submission to the aviator log
+	sigBytes, err := base64.StdEncoding.DecodeString("BAMASDBGAiEAknaySJVdB3FqG9bUKHgyu7V9AdEabpTc71BELUp6/iECIQDObrkwlQq6Azfj5XOA5E12G/qy/WuRn97z7qMSXXc82Q==")
+	if err != nil {
+		return
+	}
+	testReciept := core.SignedCertificateTimestamp{
+		SCTVersion: sctVersion,
+		Timestamp:  1423696705756,
+		Signature:  sigBytes,
 	}
 
-	// Good signature
-	err = testReceipt.CheckSignature()
-	test.AssertNotError(t, err, "Valid signature check failed")
-
-	// Invalid signature (too short, trailing garbage)
-	testReceipt.Signature = goodSigBytes[1:]
-	err = testReceipt.CheckSignature()
-	test.AssertError(t, err, "Invalid signature check failed")
-	testReceipt.Signature = append(goodSigBytes, []byte{0, 0, 1}...)
-	err = testReceipt.CheckSignature()
-	test.AssertError(t, err, "Invalid signature check failed")
+	aviatorPkBytes, err := base64.StdEncoding.DecodeString("MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE1/TMabLkDpCjiupacAlP7xNi0I1JYP8bQFAHDG1xhtolSY1l4QgNRzRrvSe8liE+NPWHdjGxfx3JhTsN9x8/6Q==")
+	test.AssertNotError(t, err, "Couldn't parse aviator public key")
+	aviatorPk, err := x509.ParsePKIXPublicKey(aviatorPkBytes)
+	test.AssertNotError(t, err, "Couldn't parse aviator public key bytes")
+	leafPEM, _ := pem.Decode([]byte(testLeaf))
+	pk := aviatorPk.(*ecdsa.PublicKey)
+	err = testReciept.VerifySignature(leafPEM.Bytes, pk)
+	test.AssertNotError(t, err, "Signature validation failed")
 }
 
 func TestSubmitToCT(t *testing.T) {
-	server := logSrv()
+	pub, leaf, sct, _ := setup(t, 0)
+
+	server := logSrv(sct)
 	defer server.Close()
 	port, err := getPort(server)
 	test.AssertNotError(t, err, "Failed to get test server port")
-
-	pub, leaf := setup(t, port, 0)
+	pub.ctLogs[0].URI = fmt.Sprintf("http://localhost:%d", port)
 
 	log.Clear()
 	err = pub.SubmitToCT(leaf.Raw)
@@ -260,12 +305,13 @@ func TestSubmitToCT(t *testing.T) {
 }
 
 func TestGoodRetry(t *testing.T) {
-	server := retryableLogSrv(1, nil)
+	pub, leaf, sct, _ := setup(t, 1)
+
+	server := retryableLogSrv(1, nil, sct)
 	defer server.Close()
 	port, err := getPort(server)
 	test.AssertNotError(t, err, "Failed to get test server port")
-
-	pub, leaf := setup(t, port, 1)
+	pub.ctLogs[0].URI = fmt.Sprintf("http://localhost:%d", port)
 
 	log.Clear()
 	err = pub.SubmitToCT(leaf.Raw)
@@ -273,12 +319,13 @@ func TestGoodRetry(t *testing.T) {
 }
 
 func TestFatalRetry(t *testing.T) {
-	server := retryableLogSrv(1, nil)
+	pub, leaf, sct, _ := setup(t, 0)
+
+	server := retryableLogSrv(1, nil, sct)
 	defer server.Close()
 	port, err := getPort(server)
 	test.AssertNotError(t, err, "Failed to get test server port")
-
-	pub, leaf := setup(t, port, 0)
+	pub.ctLogs[0].URI = fmt.Sprintf("http://localhost:%d", port)
 
 	log.Clear()
 	err = pub.SubmitToCT(leaf.Raw)
@@ -286,7 +333,7 @@ func TestFatalRetry(t *testing.T) {
 }
 
 func TestUnexpectedError(t *testing.T) {
-	pub, leaf := setup(t, 0, 0)
+	pub, leaf, _, _ := setup(t, 0)
 
 	log.Clear()
 	_ = pub.SubmitToCT(leaf.Raw)
@@ -295,12 +342,13 @@ func TestUnexpectedError(t *testing.T) {
 
 func TestRetryAfter(t *testing.T) {
 	retryAfter := 2
-	server := retryableLogSrv(2, &retryAfter)
+	pub, leaf, sct, _ := setup(t, 2)
+
+	server := retryableLogSrv(2, &retryAfter, sct)
 	defer server.Close()
 	port, err := getPort(server)
 	test.AssertNotError(t, err, "Failed to get test server port")
-
-	pub, leaf := setup(t, port, 2)
+	pub.ctLogs[0].URI = fmt.Sprintf("http://localhost:%d", port)
 
 	log.Clear()
 	startedWaiting := time.Now()
@@ -310,17 +358,19 @@ func TestRetryAfter(t *testing.T) {
 }
 
 func TestMultiLog(t *testing.T) {
-	srvA := logSrv()
+	pub, leaf, sct, pk := setup(t, 1)
+
+	srvA := logSrv(sct)
 	defer srvA.Close()
-	srvB := logSrv()
+	srvB := logSrv(sct)
 	defer srvB.Close()
 	portA, err := getPort(srvA)
 	test.AssertNotError(t, err, "Failed to get test server port")
 	portB, err := getPort(srvB)
 	test.AssertNotError(t, err, "Failed to get test server port")
 
-	pub, leaf := setup(t, portA, 0)
-	pub.ctLogs = append(pub.ctLogs, LogDescription{URI: fmt.Sprintf("http://localhost:%d", portB)})
+	pub.ctLogs[0].URI = fmt.Sprintf("http://localhost:%d", portA)
+	pub.ctLogs = append(pub.ctLogs, LogDescription{URI: fmt.Sprintf("http://localhost:%d", portB), PublicKey: pk})
 
 	log.Clear()
 	err = pub.SubmitToCT(leaf.Raw)
@@ -328,12 +378,13 @@ func TestMultiLog(t *testing.T) {
 }
 
 func TestBadServer(t *testing.T) {
+	pub, leaf, _, _ := setup(t, 0)
+
 	srv := emptyLogSrv()
 	defer srv.Close()
 	port, err := getPort(srv)
 	test.AssertNotError(t, err, "Failed to get test server port")
-
-	pub, leaf := setup(t, port, 0)
+	pub.ctLogs[0].URI = fmt.Sprintf("http://localhost:%d", port)
 
 	log.Clear()
 	err = pub.SubmitToCT(leaf.Raw)

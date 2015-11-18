@@ -6,13 +6,18 @@
 package core
 
 import (
+	"bytes"
+	"crypto/ecdsa"
+	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"strings"
@@ -813,13 +818,70 @@ func (sct *SignedCertificateTimestamp) UnmarshalJSON(data []byte) error {
 }
 
 const (
-	sctHashSHA256 = 4
-	sctSigECDSA   = 3
+	sctVersionOne         = uint8(0)
+	sctCertificateSigType = uint8(0)
+
+	sctHashSHA256 = byte(4)
+	sctSigECDSA   = byte(3)
+
+	sctX509EntryType = uint16(0)
+
+	sctCertificateLength = 3
+	sctExtensionsLength  = 2
 )
 
-// CheckSignature validates that the returned SCT signature is a valid SHA256 +
-// ECDSA signature but does not verify that a specific public key signed it.
-func (sct *SignedCertificateTimestamp) CheckSignature() error {
+func writeUint(w io.Writer, value uint64, numBytes int) error {
+	buf := make([]uint8, numBytes)
+	for i := 0; i < numBytes; i++ {
+		buf[numBytes-i-1] = uint8(value & 0xff)
+		value >>= 8
+	}
+	if value != 0 {
+		return errors.New("numBytes was insufficiently large to represent value")
+	}
+	if _, err := w.Write(buf); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeVarBytes(w io.Writer, value []byte, numLenBytes int) error {
+	if err := writeUint(w, uint64(len(value)), numLenBytes); err != nil {
+		return err
+	}
+	if _, err := w.Write(value); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Serialize serializes the SCT for signature generation and verification
+func (sct *SignedCertificateTimestamp) Serialize(leafDER []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := binary.Write(&buf, binary.BigEndian, sctVersionOne); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(&buf, binary.BigEndian, sctCertificateSigType); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(&buf, binary.BigEndian, sct.Timestamp); err != nil {
+		return nil, err
+	}
+	if err := binary.Write(&buf, binary.BigEndian, sctX509EntryType); err != nil {
+		return nil, err
+	}
+	if err := writeVarBytes(&buf, leafDER, sctCertificateLength); err != nil {
+		return nil, err
+	}
+	if err := writeVarBytes(&buf, sct.Extensions, sctExtensionsLength); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// VerifySignature validates that the signature is a valid SHA256 + ECDSA signature
+// and that the correct public key signed it
+func (sct *SignedCertificateTimestamp) VerifySignature(der []byte, pk *ecdsa.PublicKey) error {
 	if len(sct.Signature) < 4 {
 		return errors.New("SCT signature is truncated")
 	}
@@ -843,6 +905,15 @@ func (sct *SignedCertificateTimestamp) CheckSignature() error {
 	}
 	if len(signatureBytes) > 0 {
 		return fmt.Errorf("Trailing garbage after signature")
+	}
+
+	serializedSCT, err := sct.Serialize(der)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(serializedSCT)
+	if !ecdsa.Verify(pk, digest[:], ecdsaSig.R, ecdsaSig.S) {
+		return fmt.Errorf("Failed to verify ECDSA signature")
 	}
 
 	return nil
