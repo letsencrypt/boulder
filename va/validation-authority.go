@@ -32,6 +32,7 @@ import (
 )
 
 const maxRedirect = 10
+const whitespaceCutset = "\n\t "
 
 var validationTimeout = time.Second * 5
 
@@ -411,7 +412,7 @@ func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdenti
 		return challenge, err
 	}
 
-	payload := strings.TrimRight(string(body), "\n\t ")
+	payload := strings.TrimRight(string(body), whitespaceCutset)
 
 	// Parse and verify JWS
 	parsedJws, err := jose.ParseSigned(payload)
@@ -513,7 +514,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 		return challenge, err
 	}
 
-	payload := strings.TrimRight(string(body), "\n\t ")
+	payload := strings.TrimRight(string(body), whitespaceCutset)
 
 	// Parse body as a key authorization object
 	serverKeyAuthorization, err := core.NewKeyAuthorizationFromString(payload)
