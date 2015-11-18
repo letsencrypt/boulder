@@ -28,6 +28,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -314,8 +315,8 @@ func TestValidateEmail(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"an email`", errUnparseableEmail.Error()},
-		{"a@always.invalid", "Server failure at resolver"},
+		{"an email`", unparseableEmailDetail},
+		{"a@always.invalid", emptyDNSResponseDetail},
 		{"a@always.timeout", "DNS query timed out"},
 		{"a@always.error", "DNS networking error"},
 	}
@@ -324,16 +325,20 @@ func TestValidateEmail(t *testing.T) {
 		"b@email.only",
 	}
 	for _, tc := range testFailures {
-		_, _, err := validateEmail(tc.input, &mocks.DNSResolver{})
-		if err.Error() != tc.expected {
+		_, _, problem := validateEmail(tc.input, &mocks.DNSResolver{})
+		if problem.Type != probs.InvalidEmailProblem {
+			t.Errorf("validateEmail(%q): got problem type %#v, expected %#v", tc.input, problem.Type, probs.InvalidEmailProblem)
+		}
+		if problem.Detail != tc.expected {
 			t.Errorf("validateEmail(%q): got %#v, expected %#v",
-				tc.input, err, tc.expected)
+				tc.input, problem.Detail, tc.expected)
 		}
 	}
+
 	for _, addr := range testSuccesses {
-		if _, _, err := validateEmail(addr, &mocks.DNSResolver{}); err != nil {
+		if _, _, prob := validateEmail(addr, &mocks.DNSResolver{}); prob != nil {
 			t.Errorf("validateEmail(%q): expected success, but it failed: %s",
-				addr, err)
+				addr, prob)
 		}
 	}
 }
