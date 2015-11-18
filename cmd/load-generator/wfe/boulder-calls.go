@@ -31,7 +31,7 @@ func (s *State) newRegistration(_ *registration) {
 	}
 
 	// create the registration object
-	regStr := []byte(`{"resource":"new-reg","contact":[]}`)
+	regStr := []byte(`{"resource":"new-reg","contact":["mailto:roland@bracewel.net"]}`)
 	// build the JWS object
 	requestPayload, err := s.signWithNonce("/acme/new-reg", true, regStr, signer)
 	if err != nil {
