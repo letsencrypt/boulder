@@ -21,7 +21,6 @@ import (
 const dnsLoopbackAddr = "127.0.0.1:4053"
 
 func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
-	defer w.Close()
 	m := new(dns.Msg)
 	m.SetReply(r)
 	m.Compress = false
@@ -114,7 +113,7 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 
 func serveLoopResolver(stopChan chan bool) chan bool {
 	dns.HandleFunc(".", mockDNSQuery)
-	server := &dns.Server{Addr: dnsLoopbackAddr, Net: "udp", ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}
+	server := &dns.Server{Addr: dnsLoopbackAddr, Net: "tcp", ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}
 	waitChan := make(chan bool, 1)
 	go func() {
 		waitChan <- true
