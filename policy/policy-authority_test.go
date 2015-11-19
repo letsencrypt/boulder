@@ -217,11 +217,18 @@ func TestChallengesFor(t *testing.T) {
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 	test.Assert(t, len(combinations) == len(enabledChallenges), "Wrong number of combinations returned")
-	for i, challenge := range challenges {
+
+	seenChalls := make(map[string]bool)
+	// Expected only if the pseudo-RNG is seeded with 99.
+	expectedCombos := [][]int{[]int{0}, []int{3}, []int{4}, []int{2}, []int{1}}
+	for _, challenge := range challenges {
+		test.Assert(t, !seenChalls[challenge.Type], "should not already have seen this type")
+		seenChalls[challenge.Type] = true
+
 		test.Assert(t, enabledChallenges[challenge.Type], "Unsupported challenge returned")
-		test.AssertEquals(t, len(combinations[i]), 1)
-		test.AssertEquals(t, combinations[i][0], i)
 	}
+	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
+	test.AssertDeepEquals(t, expectedCombos, combinations)
 }
 
 func TestWillingToIssueWithWhitelist(t *testing.T) {

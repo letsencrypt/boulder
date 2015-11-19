@@ -7,6 +7,7 @@ package policy
 
 import (
 	"errors"
+	"math/rand"
 	"net"
 	"regexp"
 	"strings"
@@ -25,6 +26,7 @@ type PolicyAuthorityImpl struct {
 
 	EnforceWhitelist  bool
 	enabledChallenges map[string]bool
+	pseudoRNG         *rand.Rand
 }
 
 // NewPolicyAuthorityImpl constructs a Policy Authority.
@@ -43,6 +45,8 @@ func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool, challengeT
 		DB:                padb,
 		EnforceWhitelist:  enforceWhitelist,
 		enabledChallenges: challengeTypes,
+		// We don't need real randomness for this.
+		pseudoRNG: rand.New(rand.NewSource(99)),
 	}
 
 	return &pa, nil
@@ -206,9 +210,8 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
-func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int, err error) {
-	challenges = []core.Challenge{}
-	combinations = [][]int{}
+func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int, error) {
+	challenges := []core.Challenge{}
 
 	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
 	if pa.enabledChallenges[core.ChallengeTypeSimpleHTTP] {
@@ -232,9 +235,20 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, acco
 		challenges = append(challenges, core.DNSChallenge01(accountKey))
 	}
 
-	combinations = make([][]int, len(challenges))
-	for i := range combinations {
+	// We shuffle the challenges and combinations to prevent ACME clients from
+	// relying on the specific order that boulder returns them in.
+	shuffled := make([]core.Challenge, len(challenges))
+	combinations := make([][]int, len(challenges))
+
+	for i, challIdx := range pa.pseudoRNG.Perm(len(challenges)) {
+		shuffled[i] = challenges[challIdx]
 		combinations[i] = []int{i}
 	}
-	return
+
+	shuffledCombos := make([][]int, len(combinations))
+	for i, comboIdx := range pa.pseudoRNG.Perm(len(combinations)) {
+		shuffledCombos[i] = combinations[comboIdx]
+	}
+
+	return shuffled, shuffledCombos, nil
 }

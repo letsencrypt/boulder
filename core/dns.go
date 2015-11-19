@@ -127,6 +127,7 @@ func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolve
 
 	// Set timeout for underlying net.Conn
 	dnsClient.DialTimeout = dialTimeout
+	dnsClient.Net = "tcp"
 
 	return &DNSResolverImpl{
 		DNSClient:                dnsClient,
