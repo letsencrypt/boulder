@@ -2,7 +2,7 @@
   "syslog": {
     "network": "",
     "server": "",
-    "stdoutlevel": -1
+    "stdoutlevel": 7
   },
 
   "amqp": {
