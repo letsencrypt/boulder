@@ -36,6 +36,8 @@ func loadConfig(c *cli.Context) (config cmd.Config, err error) {
 	return
 }
 
+const clientName = "AdminRevoker"
+
 func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.AuditLogger, *gorp.DbMap, rpc.StorageAuthorityClient) {
 	c, err := loadConfig(context)
 	cmd.FailOnError(err, "Failed to load Boulder configuration")
@@ -43,7 +45,6 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.
 	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 
 	amqpConf := c.Revoker.AMQP
-	clientName := "AdminRevoker"
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 

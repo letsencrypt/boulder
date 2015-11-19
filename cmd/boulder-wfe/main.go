@@ -22,9 +22,10 @@ import (
 	"github.com/letsencrypt/boulder/wfe"
 )
 
+const clientName = "WFE"
+
 func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
 	amqpConf := c.WFE.AMQP
-	clientName := "WFE"
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create RA client")
 

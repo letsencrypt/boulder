@@ -18,6 +18,8 @@ import (
 	"github.com/letsencrypt/boulder/va"
 )
 
+const clientName = "VA"
+
 func main() {
 	app := cmd.NewAppShell("boulder-va", "Handles challenge validation")
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
@@ -51,13 +53,12 @@ func main() {
 		vai.UserAgent = c.VA.UserAgent
 
 		amqpConf := c.VA.AMQP
-		clientName := "VA"
 		rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create RA client")
 
 		vai.RA = rac
 
-		vas, err := rpc.NewAmqpRPCServer(amqpConf, amqpConf.VA, c.VA.MaxConcurrentRPCServerRequests, stats)
+		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create VA RPC server")
 		rpc.NewValidationAuthorityServer(vas, vai)
 

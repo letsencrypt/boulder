@@ -531,13 +531,14 @@ func (l *looper) loop() error {
 	}
 }
 
+const clientName = "OCSP"
+
 func setupClients(c cmd.OCSPUpdaterConfig, stats statsd.Statter) (
 	core.CertificateAuthority,
 	core.Publisher,
 	core.StorageAuthority,
 ) {
 	amqpConf := c.AMQP
-	clientName := "OCSP"
 	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 

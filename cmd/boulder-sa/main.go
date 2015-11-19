@@ -30,7 +30,7 @@ func main() {
 		go cmd.ProfileCmd("SA", stats)
 
 		amqpConf := saConf.AMQP
-		sas, err := rpc.NewAmqpRPCServer(amqpConf, amqpConf.SA, c.SA.MaxConcurrentRPCServerRequests, stats)
+		sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create SA RPC server")
 		rpc.NewStorageAuthorityServer(sas, sai)
 

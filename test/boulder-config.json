@@ -98,7 +98,7 @@
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
       "insecure": true,
-      "CA": { "server": "CA.server" },
+      "serviceQueue": "CA.server",
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "1s"
@@ -129,7 +129,7 @@
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
       "insecure": true,
-      "RA": { "server": "RA.server" },
+      "serviceQueue": "RA.server",
       "VA": {
         "server": "VA.server",
         "rpcTimeout": "60s"
@@ -153,7 +153,7 @@
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
       "insecure": true,
-      "SA": { "server": "SA.server" }
+      "serviceQueue": "SA.server"
     }
   },
 
@@ -169,7 +169,7 @@
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
       "insecure": true,
-      "VA": { "server": "VA.server" },
+      "serviceQueue": "VA.server",
       "RA": {
         "server": "RA.server",
         "rpcTimeout": "1s"
@@ -267,7 +267,7 @@
     "amqp": {
       "server": "amqp://guest:guest@localhost:5673",
       "insecure": true,
-      "Publisher": { "server": "Publisher.server" },
+      "serviceQueue": "Publisher.server",
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "1s"

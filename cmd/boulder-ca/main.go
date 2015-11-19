@@ -16,6 +16,8 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+const clientName = "CA"
+
 func main() {
 	app := cmd.NewAppShell("boulder-ca", "Handles issuance operations")
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
@@ -42,14 +44,13 @@ func main() {
 		go cmd.ProfileCmd("CA", stats)
 
 		amqpConf := c.CA.AMQP
-		clientName := "CA"
 		cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create SA client")
 
 		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create Publisher client")
 
-		cas, err := rpc.NewAmqpRPCServer(amqpConf, amqpConf.CA, c.CA.MaxConcurrentRPCServerRequests, stats)
+		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
 		rpc.NewCertificateAuthorityServer(cas, cai)
 

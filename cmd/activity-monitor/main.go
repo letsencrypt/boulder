@@ -115,8 +115,7 @@ func main() {
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.ActivityMonitor.DebugAddr)
 
-		amqpConf := c.ActivityMonitor.AMQP
-		ch, err := rpc.AmqpChannel(amqpConf)
+		ch, err := rpc.AmqpChannel(c.ActivityMonitor.AMQP)
 
 		cmd.FailOnError(err, "Could not connect to AMQP")
 

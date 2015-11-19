@@ -177,7 +177,7 @@ type AmqpRPCServer struct {
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
-func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, rpcConf *cmd.RPCServerConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
+func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
 
 	reconnectBase := amqpConf.ReconnectTimeouts.Base.Duration
@@ -190,8 +190,8 @@ func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, rpcConf *cmd.RPCServerConfig, ma
 	}
 
 	return &AmqpRPCServer{
-		serverQueue:                    rpcConf.Server,
-		connection:                     newAMQPConnector(rpcConf.Server, reconnectBase, reconnectMax),
+		serverQueue:                    amqpConf.ServiceQueue,
+		connection:                     newAMQPConnector(amqpConf.ServiceQueue, reconnectBase, reconnectMax),
 		log:                            log,
 		dispatchTable:                  make(map[string]func([]byte) ([]byte, error)),
 		maxConcurrentRPCServerRequests: maxConcurrentRPCServerRequests,

@@ -208,6 +208,8 @@ func (ds durationSlice) Swap(a, b int) {
 	ds[a], ds[b] = ds[b], ds[a]
 }
 
+const clientName = "ExpirationMailer"
+
 func main() {
 	app := cmd.NewAppShell("expiration-mailer", "Sends certificate expiration emails")
 
@@ -233,7 +235,6 @@ func main() {
 		cmd.FailOnError(err, "Could not connect to database")
 
 		amqpConf := c.SA.AMQP
-		clientName := "ExpirationMailer"
 		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create SA client")
 

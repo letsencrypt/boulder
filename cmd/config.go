@@ -183,14 +183,17 @@ type ServiceConfig struct {
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
 // RPC services we offer via AMQP.
 type AMQPConfig struct {
-	Server            string
-	Insecure          bool
-	RA                *RPCServerConfig
-	VA                *RPCServerConfig
-	SA                *RPCServerConfig
-	CA                *RPCServerConfig
-	Publisher         *RPCServerConfig
-	TLS               *TLSConfig
+	Server    string
+	Insecure  bool
+	RA        *RPCServerConfig
+	VA        *RPCServerConfig
+	SA        *RPCServerConfig
+	CA        *RPCServerConfig
+	Publisher *RPCServerConfig
+	TLS       *TLSConfig
+	// Queue name on which to listen, if this is an RPC service (vs acting only as
+	// an RPC client).
+	ServiceQueue      string
 	ReconnectTimeouts struct {
 		Base ConfigDuration
 		Max  ConfigDuration
