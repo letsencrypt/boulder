@@ -306,6 +306,7 @@ func TestSimpleHttp(t *testing.T) {
 
 	va = NewValidationAuthorityImpl(&PortConfig{HTTPPort: goodPort}, nil, stats, clock.Default())
 	va.DNSResolver = &mocks.DNSResolver{}
+
 	log.Clear()
 	finChall, err := va.validateSimpleHTTP(ident, chall)
 	test.AssertEquals(t, finChall.Status, core.StatusValid)
@@ -588,9 +589,9 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 			t.Logf("HTTPSRV: Path = %s\n", r.URL.Path)
 
 			keyAuthz, _ := core.NewKeyAuthorization(currentToken, accountKey)
-			t.Logf("HTTPSRV: Key Authz = %s\n", keyAuthz.String())
+			t.Logf("HTTPSRV: Key Authz = '%s%s'\n", keyAuthz.String(), "\\n \\t")
 
-			fmt.Fprint(w, keyAuthz.String())
+			fmt.Fprint(w, keyAuthz.String(), "\n \t")
 			currentToken = defaultToken
 		}
 	})
@@ -680,6 +681,7 @@ func TestHttp(t *testing.T) {
 
 	va = NewValidationAuthorityImpl(&PortConfig{HTTPPort: goodPort}, nil, stats, clock.Default())
 	va.DNSResolver = &mocks.DNSResolver{}
+
 	log.Clear()
 	t.Logf("Trying to validate: %+v\n", chall)
 	finChall, err := va.validateHTTP01(ident, chall)
