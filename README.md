@@ -40,6 +40,10 @@ CentOS:
 
     sudo yum install libtool-ltdl-devel MariaDB-server MariaDB-client rabbitmq-server
 
+Arch Linux:
+
+    sudo pacman -S libtool mariadb rabbitmq --needed
+
 OS X:
 
     brew install libtool mariadb rabbitmq
@@ -49,25 +53,34 @@ or
     sudo port install libtool mariadb-server rabbitmq-server
 
 (On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
-   
+
+Resolve Go-dependencies:
+
     > go get bitbucket.org/liamstask/goose/cmd/goose
     > go get github.com/jsha/listenbuddy
     > go get github.com/letsencrypt/boulder/ # Ignore errors about no buildable files
+    > go get -u github.com/golang/lint/golint
+
+Set up a database:
+
     > cd $GOPATH/src/github.com/letsencrypt/boulder
     > ./test/create_db.sh
-    # This starts each Boulder component with test configs. Ctrl-C kills all.
-    > ./start.py
-    # Run tests
-    > go get -u github.com/golang/lint/golint
-    > ./test.sh
 
-Note: `create_db.sh` it uses the root MariaDB user with the default
+**Note**: `create_db.sh` uses the root MariaDB user with the default
 password, so if you have disabled that account or changed the password
 you may have to adjust the file or recreate the commands.
 
-You can also check out the official client from
-https://github.com/letsencrypt/letsencrypt/ and follow the setup
-instructions there.
+Start each boulder component with test configs (Ctrl-C kills all):
+    
+    > ./start.py
+    
+Run tests:
+
+    > ./test.sh
+
+Working with a client:
+
+Check out the official Let's Encrypt client from https://github.com/letsencrypt/letsencrypt/ and follow the setup instructions there.
 
 Component Model
 ---------------
