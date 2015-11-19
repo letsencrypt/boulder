@@ -87,7 +87,7 @@ func createValidation(token string, enableTLS bool) string {
 		"tls":   enableTLS,
 	})
 	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	obj, _ := signer.Sign(payload, "")
+	obj, _ := signer.Sign(payload)
 	return obj.FullSerialize()
 }
 
@@ -497,7 +497,7 @@ func TestDvsni(t *testing.T) {
 		"token": chall.Token,
 	})
 	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	chall.Validation, _ = signer.Sign(validationPayload, "")
+	chall.Validation, _ = signer.Sign(validationPayload)
 
 	log.Clear()
 	started := time.Now()
@@ -970,7 +970,7 @@ func createChallenge(challengeType string) core.Challenge {
 		"token": chall.Token,
 	})
 	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	chall.Validation, _ = signer.Sign(validationPayload, "")
+	chall.Validation, _ = signer.Sign(validationPayload)
 
 	return chall
 }

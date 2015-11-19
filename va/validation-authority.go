@@ -93,7 +93,7 @@ func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.Jso
 		return fmt.Errorf("Validation JWS not signed")
 	}
 
-	payload, _, err := validation.Verify(accountKey)
+	payload, err := validation.Verify(accountKey)
 	if err != nil {
 		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
 	}
