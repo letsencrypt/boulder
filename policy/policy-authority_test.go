@@ -100,18 +100,16 @@ func TestWillingToIssue(t *testing.T) {
 
 		// disallow capitalized letters for #927
 		{`CapitalizedLetters.com`, errInvalidDNSCharacter},
+
+		{`example.acting`, errNonPublic},
+		{`example.internal`, errNonPublic},
+		// All-numeric final label not okay.
+		{`www.zombo.163`, errNonPublic},
 	}
 
 	shouldBeTLDError := []string{
 		`co.uk`,
 		`foo.bn`,
-	}
-
-	shouldBeNonPublic := []string{
-		`example.acting`,
-		`example.internal`,
-		// All-numeric final label not okay.
-		`www.zombo.163`,
 	}
 
 	shouldBeBlacklisted := []string{
@@ -145,8 +143,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
 	err = pa.WillingToIssue(identifier, 100)
-	_, ok := err.(InvalidIdentifierError)
-	if !ok {
+	if err != errInvalidIdentifier {
 		t.Error("Identifier was not correctly forbidden: ", identifier)
 	}
 
@@ -164,16 +161,6 @@ func TestWillingToIssue(t *testing.T) {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
 		err := pa.WillingToIssue(identifier, 100)
 		if err != errICANNTLD {
-			t.Error("Identifier was not correctly forbidden: ", identifier, err)
-		}
-	}
-
-	// Test domains that don't end in public suffixes
-	for _, domain := range shouldBeNonPublic {
-		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier, 100)
-		_, ok := err.(NonPublicError)
-		if !ok {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
 	}

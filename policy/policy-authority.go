@@ -6,7 +6,6 @@
 package policy
 
 import (
-	"errors"
 	"math/rand"
 	"net"
 	"regexp"
@@ -91,29 +90,25 @@ func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) 
 // provided.
 type InvalidIdentifierError struct{}
 
-// SyntaxError indicates that the user input was not well formatted.
-type SyntaxError struct{}
-
 // NonPublicError indicates that one or more identifiers were not on the public
 // Internet.
 type NonPublicError struct{}
 
-func (e InvalidIdentifierError) Error() string { return "Invalid identifier type" }
-func (e SyntaxError) Error() string            { return "Syntax error" }
-func (e NonPublicError) Error() string         { return "Name does not end in a public suffix" }
+var errInvalidIdentifier = core.MalformedRequestError("Invalid identifier type")
+var errNonPublic = core.MalformedRequestError("Name does not end in a public suffix")
 
-var errICANNTLD = errors.New("Name is an ICANN TLD")
-var errBlacklisted = errors.New("Name is blacklisted")
-var errNotWhitelisted = errors.New("Name is not whitelisted")
-var errInvalidDNSCharacter = errors.New("Invalid character in DNS name")
-var errNameTooLong = errors.New("DNS name too long")
-var errIPAddress = errors.New("Issuance for IP addresses not supported")
-var errTooManyLabels = errors.New("DNS name has too many labels")
-var errEmptyName = errors.New("DNS name was empty")
-var errTooFewLabels = errors.New("DNS name does not have enough labels")
-var errLabelTooShort = errors.New("DNS label is too short")
-var errLabelTooLong = errors.New("DNS label is too long")
-var errIDNNotSupported = errors.New("Internationalized domain names (starting with xn--) not yet supported")
+var errICANNTLD = core.MalformedRequestError("Name is an ICANN TLD")
+var errBlacklisted = core.MalformedRequestError("Name is blacklisted")
+var errNotWhitelisted = core.MalformedRequestError("Name is not whitelisted")
+var errInvalidDNSCharacter = core.MalformedRequestError("Invalid character in DNS name")
+var errNameTooLong = core.MalformedRequestError("DNS name too long")
+var errIPAddress = core.MalformedRequestError("Issuance for IP addresses not supported")
+var errTooManyLabels = core.MalformedRequestError("DNS name has too many labels")
+var errEmptyName = core.MalformedRequestError("DNS name was empty")
+var errTooFewLabels = core.MalformedRequestError("DNS name does not have enough labels")
+var errLabelTooShort = core.MalformedRequestError("DNS label is too short")
+var errLabelTooLong = core.MalformedRequestError("DNS label is too long")
+var errIDNNotSupported = core.MalformedRequestError("Internationalized domain names (starting with xn--) not yet supported")
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier. It expects domains in id to be lowercase to prevent mismatched
@@ -134,12 +129,10 @@ var errIDNNotSupported = errors.New("Internationalized domain names (starting wi
 //  * MUST NOT be a label-wise suffix match for a name on the black list,
 //    where comparison is case-independent (normalized to lower case)
 //
-// XXX: Is there any need for this method to be constant-time?  We're
-//      going to refuse to issue anyway, but timing could leak whether
-//      names are on the blacklist.
+// If WillingToIssue returns an error, it will be of type MalformedRequestError.
 func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	if id.Type != core.IdentifierDNS {
-		return InvalidIdentifierError{}
+		return errInvalidIdentifier
 	}
 	domain := id.Value
 	if domain == "" {
@@ -181,7 +174,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
 	icannTLD, err := publicsuffix.ICANNTLD(domain)
 	if err != nil {
-		return NonPublicError{}
+		return errNonPublic
 	}
 	if icannTLD == domain {
 		return errICANNTLD
