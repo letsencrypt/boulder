@@ -73,13 +73,6 @@ const (
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
 
-func isDNSCharacter(ch byte) bool {
-	return ('a' <= ch && ch <= 'z') ||
-		('A' <= ch && ch <= 'Z') ||
-		('0' <= ch && ch <= '9') ||
-		ch == '.' || ch == '-'
-}
-
 // Test whether the domain name indicated by the label set is a label-wise
 // suffix match for the provided suffix set.  If the `properSuffix` flag is
 // set, then the name is required to not be in the suffix set (i.e., it must
@@ -105,20 +98,22 @@ type SyntaxError struct{}
 // Internet.
 type NonPublicError struct{}
 
-// ErrICANNTLD indicates that one or more identifiers was an ICANN-managed TLD
-var ErrICANNTLD = errors.New("Name is an ICANN TLD")
-
-// ErrBlacklisted indicates we have blacklisted one or more of these
-// identifiers.
-var ErrBlacklisted = errors.New("Name is blacklisted")
-
-// ErrNotWhitelisted indicates we have not whitelisted one or more of these
-// identifiers.
-var ErrNotWhitelisted = errors.New("Name is not whitelisted")
-
 func (e InvalidIdentifierError) Error() string { return "Invalid identifier type" }
 func (e SyntaxError) Error() string            { return "Syntax error" }
 func (e NonPublicError) Error() string         { return "Name does not end in a public suffix" }
+
+var errICANNTLD = errors.New("Name is an ICANN TLD")
+var errBlacklisted = errors.New("Name is blacklisted")
+var errNotWhitelisted = errors.New("Name is not whitelisted")
+var errInvalidDNSCharacter = errors.New("Invalid character in DNS name")
+var errNameTooLong = errors.New("DNS name too long")
+var errIPAddress = errors.New("Issuance for IP addresses not supported")
+var errTooManyLabels = errors.New("DNS name has too many labels")
+var errEmptyName = errors.New("DNS name was empty")
+var errTooFewLabels = errors.New("DNS name does not have enough labels")
+var errLabelTooShort = errors.New("DNS label is too short")
+var errLabelTooLong = errors.New("DNS label is too long")
+var errIDNNotSupported = errors.New("Internationalized domain names (starting with xn--) not yet supported")
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier. It expects domains in id to be lowercase to prevent mismatched
@@ -147,36 +142,39 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 		return InvalidIdentifierError{}
 	}
 	domain := id.Value
-
-	for _, ch := range []byte(domain) {
-		if !isDNSCharacter(ch) {
-			return SyntaxError{}
-		}
+	if domain == "" {
+		return errEmptyName
 	}
 
 	if len(domain) > 255 {
-		return SyntaxError{}
+		return errNameTooLong
 	}
 
 	if ip := net.ParseIP(domain); ip != nil {
-		return SyntaxError{}
+		return errIPAddress
 	}
 
 	labels := strings.Split(domain, ".")
-	if len(labels) > maxLabels || len(labels) < 2 {
-		return SyntaxError{}
+	if len(labels) > maxLabels {
+		return errTooManyLabels
+	}
+	if len(labels) < 2 {
+		return errTooFewLabels
 	}
 	for _, label := range labels {
-		if len(label) < 1 || len(label) > maxLabelLength {
-			return SyntaxError{}
+		if len(label) < 1 {
+			return errLabelTooShort
+		}
+		if len(label) > maxLabelLength {
+			return errLabelTooLong
 		}
 
 		if !dnsLabelRegexp.MatchString(label) {
-			return SyntaxError{}
+			return errInvalidDNSCharacter
 		}
 
 		if punycodeRegexp.MatchString(label) {
-			return SyntaxError{}
+			return errIDNNotSupported
 		}
 	}
 
@@ -186,7 +184,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 		return NonPublicError{}
 	}
 	if icannTLD == domain {
-		return ErrICANNTLD
+		return errICANNTLD
 	}
 
 	// Use the domain whitelist if the PA has been asked to. However, if the
