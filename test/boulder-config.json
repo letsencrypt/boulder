@@ -21,7 +21,7 @@
     "shutdownKillTimeout": "1m",
     "debugAddr": "localhost:8000",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "server": "secret:test/secrets/amqp",
       "insecure": true,
       "RA": {
         "server": "RA.server",
@@ -96,7 +96,7 @@
     "maxConcurrentRPCServerRequests": 16,
     "hsmFaultTimeout": "300s",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "server": "secret:test/secrets/amqp",
       "insecure": true,
       "serviceQueue": "CA.server",
       "SA": {
@@ -111,7 +111,7 @@
   },
 
   "pa": {
-    "dbConnect": "mysql+tcp://policy@localhost:3306/boulder_policy_integration",
+    "dbConnect": "secret:test/secrets/pa_dburl",
     "challenges": {
       "simpleHttp": true,
       "dvsni": true,
@@ -127,7 +127,7 @@
     "maxContactsPerRegistration": 100,
     "debugAddr": "localhost:8002",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "server": "secret:test/secrets/amqp",
       "insecure": true,
       "serviceQueue": "RA.server",
       "VA": {
@@ -147,11 +147,11 @@
   },
 
   "sa": {
-    "dbConnect": "mysql+tcp://sa@localhost:3306/boulder_sa_integration",
+    "dbConnect": "secret:test/secrets/sa_dburl",
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8003",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "server": "secret:test/secrets/amqp",
       "insecure": true,
       "serviceQueue": "SA.server"
     }
@@ -167,7 +167,7 @@
     },
     "maxConcurrentRPCServerRequests": 16,
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "server": "secret:test/secrets/amqp",
       "insecure": true,
       "serviceQueue": "VA.server",
       "RA": {
@@ -182,9 +182,9 @@
   },
 
   "revoker": {
-    "dbConnect": "mysql+tcp://revoker@localhost:3306/boulder_sa_integration",
+    "dbConnect": "secret:test/secrets/revoker_dburl",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "server": "secret:test/secrets/amqp",
       "insecure": true,
       "RA": {
         "server": "RA.server",
@@ -208,7 +208,7 @@
   },
 
   "ocspUpdater": {
-    "dbConnect": "mysql+tcp://ocsp_update@localhost:3306/boulder_sa_integration",
+    "dbConnect": "secret:test/secrets/ocsp_updater_dburl",
     "newCertificateWindow": "1s",
     "oldOCSPWindow": "2s",
     "missingSCTWindow": "1m",
@@ -223,7 +223,7 @@
     "signFailureBackoffMax": "30m",
     "debugAddr": "localhost:8006",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "server": "secret:test/secrets/amqp",
       "insecure": true,
       "SA": {
         "server": "SA.server",
@@ -243,7 +243,7 @@
   "activityMonitor": {
     "debugAddr": "localhost:8007",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "server": "secret:test/secrets/amqp",
       "insecure": true
     }
   },
@@ -253,7 +253,7 @@
     "port": "25",
     "username": "cert-master@example.com",
     "password": "password",
-    "dbConnect": "mysql+tcp://mailer@localhost:3306/boulder_sa_integration",
+    "dbConnect": "secret:test/secrets/mailer_dburl",
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "nagCheckInterval": "24h",
@@ -265,7 +265,7 @@
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8009",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "server": "secret:test/secrets/amqp",
       "insecure": true,
       "serviceQueue": "Publisher.server",
       "SA": {
@@ -295,7 +295,7 @@
   },
 
   "certChecker": {
-    "dbConnect": "mysql+tcp://cert_checker@localhost:3306/boulder_sa_integration"
+    "dbConnect": "secret:test/secrets/cert_checker_dburl"
   },
 
   "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1"

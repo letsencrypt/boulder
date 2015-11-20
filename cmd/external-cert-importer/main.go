@@ -150,7 +150,7 @@ func main() {
 
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.PA.DBConnect)
+		dbMap, err := sa.NewDbMap(string(c.PA.DBConnect))
 		cmd.FailOnError(err, "Could not connect to database")
 
 		dbMap.AddTableWithName(core.ExternalCert{}, "externalCerts").SetKeys(false, "SHA1")
