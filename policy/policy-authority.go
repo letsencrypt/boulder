@@ -86,29 +86,22 @@ func suffixMatch(labels []string, suffixSet map[string]bool, properSuffix bool) 
 	return false
 }
 
-// InvalidIdentifierError indicates that we didn't understand the IdentifierType
-// provided.
-type InvalidIdentifierError struct{}
-
-// NonPublicError indicates that one or more identifiers were not on the public
-// Internet.
-type NonPublicError struct{}
-
-var errInvalidIdentifier = core.MalformedRequestError("Invalid identifier type")
-var errNonPublic = core.MalformedRequestError("Name does not end in a public suffix")
-
-var errICANNTLD = core.MalformedRequestError("Name is an ICANN TLD")
-var errBlacklisted = core.MalformedRequestError("Name is blacklisted")
-var errNotWhitelisted = core.MalformedRequestError("Name is not whitelisted")
-var errInvalidDNSCharacter = core.MalformedRequestError("Invalid character in DNS name")
-var errNameTooLong = core.MalformedRequestError("DNS name too long")
-var errIPAddress = core.MalformedRequestError("Issuance for IP addresses not supported")
-var errTooManyLabels = core.MalformedRequestError("DNS name has too many labels")
-var errEmptyName = core.MalformedRequestError("DNS name was empty")
-var errTooFewLabels = core.MalformedRequestError("DNS name does not have enough labels")
-var errLabelTooShort = core.MalformedRequestError("DNS label is too short")
-var errLabelTooLong = core.MalformedRequestError("DNS label is too long")
-var errIDNNotSupported = core.MalformedRequestError("Internationalized domain names (starting with xn--) not yet supported")
+var (
+	errInvalidIdentifier   = core.MalformedRequestError("Invalid identifier type")
+	errNonPublic           = core.MalformedRequestError("Name does not end in a public suffix")
+	errICANNTLD            = core.MalformedRequestError("Name is an ICANN TLD")
+	errBlacklisted         = core.MalformedRequestError("Name is blacklisted")
+	errNotWhitelisted      = core.MalformedRequestError("Name is not whitelisted")
+	errInvalidDNSCharacter = core.MalformedRequestError("Invalid character in DNS name")
+	errNameTooLong         = core.MalformedRequestError("DNS name too long")
+	errIPAddress           = core.MalformedRequestError("Issuance for IP addresses not supported")
+	errTooManyLabels       = core.MalformedRequestError("DNS name has too many labels")
+	errEmptyName           = core.MalformedRequestError("DNS name was empty")
+	errTooFewLabels        = core.MalformedRequestError("DNS name does not have enough labels")
+	errLabelTooShort       = core.MalformedRequestError("DNS label is too short")
+	errLabelTooLong        = core.MalformedRequestError("DNS label is too long")
+	errIDNNotSupported     = core.MalformedRequestError("Internationalized domain names (starting with xn--) not yet supported")
+)
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // identifier. It expects domains in id to be lowercase to prevent mismatched

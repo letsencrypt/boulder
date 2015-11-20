@@ -438,6 +438,25 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 	assertAuthzEqual(t, authz, dbAuthz)
 }
 
+func TestNewAuthorizationInvalidName(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	authzReq := core.Authorization{
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: "127.0.0.1",
+		},
+	}
+	_, err := ra.NewAuthorization(authzReq, Registration.ID)
+	if err == nil {
+		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
+	}
+	if _, ok := err.(core.MalformedRequestError); !ok {
+		t.Errorf("Wrong type for NewAuthorization error: expected core.MalformedRequestError, got %T", err)
+	}
+}
+
 func TestUpdateAuthorization(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
