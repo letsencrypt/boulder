@@ -32,6 +32,7 @@ import (
 )
 
 const maxRedirect = 10
+const whitespaceCutset = "\n\t "
 
 var validationTimeout = time.Second * 5
 
@@ -92,7 +93,7 @@ func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.Jso
 		return fmt.Errorf("Validation JWS not signed")
 	}
 
-	payload, _, err := validation.Verify(accountKey)
+	payload, err := validation.Verify(accountKey)
 	if err != nil {
 		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
 	}
@@ -411,8 +412,10 @@ func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdenti
 		return challenge, err
 	}
 
+	payload := strings.TrimRight(string(body), whitespaceCutset)
+
 	// Parse and verify JWS
-	parsedJws, err := jose.ParseSigned(string(body))
+	parsedJws, err := jose.ParseSigned(payload)
 	if err != nil {
 		err = fmt.Errorf("Validation response failed to parse as JWS: %s", err.Error())
 		va.log.Debug(err.Error())
@@ -511,8 +514,10 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 		return challenge, err
 	}
 
+	payload := strings.TrimRight(string(body), whitespaceCutset)
+
 	// Parse body as a key authorization object
-	serverKeyAuthorization, err := core.NewKeyAuthorizationFromString(string(body))
+	serverKeyAuthorization, err := core.NewKeyAuthorizationFromString(payload)
 	if err != nil {
 		err = fmt.Errorf("Error parsing key authorization file: %s", err.Error())
 		va.log.Debug(err.Error())

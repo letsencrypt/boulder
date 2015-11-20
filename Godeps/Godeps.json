@@ -110,7 +110,7 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/go-jose",
-			"Rev": "77671e91fe89678878df4bde9e6b653a0d190dfb"
+			"Rev": "15b73d6f0363b256ddb080db1c64563064a4e773"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/go-safe-browsing-api",
@@ -123,7 +123,7 @@
 		},
 		{
 			"ImportPath": "github.com/miekg/dns",
-			"Rev": "7ff8d29c8b70b10f383a11f03b7bf5b7408bf41a"
+			"Rev": "d27455715200c7d3e321a1e5cadb27c9ee0b0f02"
 		},
 		{
 			"ImportPath": "github.com/miekg/pkcs11",
