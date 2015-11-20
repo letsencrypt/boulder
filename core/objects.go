@@ -86,6 +86,7 @@ const (
 	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
 	UnknownHostProblem    = ProblemType("urn:acme:error:unknownHost")
 	RateLimitedProblem    = ProblemType("urn:acme:error:rateLimited")
+	BadNonceProblem       = ProblemType("urn:acme:error:badNonce")
 )
 
 // These types are the available challenges

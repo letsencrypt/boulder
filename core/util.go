@@ -99,6 +99,9 @@ type TooManyRPCRequestsError string
 // satisfy a request
 type ServiceUnavailableError string
 
+// BadNonceError indicates an empty of invalid nonce was provided
+type BadNonceError string
+
 func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
 func (e MalformedRequestError) Error() string    { return string(e) }
@@ -112,6 +115,7 @@ func (e NoSuchRegistrationError) Error() string  { return string(e) }
 func (e RateLimitedError) Error() string         { return string(e) }
 func (e TooManyRPCRequestsError) Error() string  { return string(e) }
 func (e ServiceUnavailableError) Error() string  { return string(e) }
+func (e BadNonceError) Error() string            { return string(e) }
 
 // Base64 functions
 
