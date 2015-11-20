@@ -9,6 +9,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -46,6 +47,19 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.DSAWithSHA256:             true,
 	x509.ECDSAWithSHA1:             true,
 }
+
+// OID and fixed value for the "must staple" variant of the TLS Feature
+// extension:
+//
+//  Features ::= SEQUENCE OF INTEGER                  [RFC7633]
+//  enum { ... status_request(5) ...} ExtensionType;  [RFC6066]
+//
+// DER Encoding:
+//  30 03 - SEQUENCE (3 octets)
+//  |-- 02 01 - INTEGER (1 octet)
+//  |   |-- 05 - 5
+var oidTLSFeature = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
+var mustStapleFeatureValue = "0303020105"
 
 // Metrics for CA statistics
 const (
@@ -298,6 +312,26 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		}
 	}
 
+	// Process requested extensions.  For now, the only extension we support is
+	// TLS Feature [RFC7633], i.e., "Must Staple", and for that we ignore the
+	// value provided by the client and just overwrite it with the specific value
+	// that only requires stapling.
+	//
+	// Other requested extensions are silently ignored.
+	//
+	// XXX(rlb): It might be good to add a generic mechanism for extensions, but
+	// on the other hand, we probably *don't* want to copy arbitrary client-
+	// provided data into extensions.
+	extensions := core.ExtensionsFromCSR(&csr)
+	requestedExtensions := []signer.Extension{}
+	if _, present := extensions[oidTLSFeature.String()]; present {
+		requestedExtensions = append(requestedExtensions, signer.Extension{
+			ID:       cfsslConfig.OID(oidTLSFeature),
+			Critical: false,
+			Value:    mustStapleFeatureValue,
+		})
+	}
+
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)
 
 	if ca.notAfter.Before(notAfter) {
@@ -336,7 +370,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Subject: &signer.Subject{
 			CN: commonName,
 		},
-		Serial: serialBigInt,
+		Serial:     serialBigInt,
+		Extensions: requestedExtensions,
 	}
 
 	certPEM, err := ca.signer.Sign(req)
