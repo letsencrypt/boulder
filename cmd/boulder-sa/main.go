@@ -20,7 +20,7 @@ func main() {
 		saConf := c.SA
 		go cmd.DebugServer(saConf.DebugAddr)
 
-		dbMap, err := sa.NewDbMap(saConf.DBConnect)
+		dbMap, err := sa.NewDbMap(string(saConf.DBConnect))
 		cmd.FailOnError(err, "Couldn't connect to SA database")
 
 		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default())

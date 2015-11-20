@@ -48,7 +48,7 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	dbMap, err := sa.NewDbMap(c.Revoker.DBConnect)
+	dbMap, err := sa.NewDbMap(string(c.Revoker.DBConnect))
 	cmd.FailOnError(err, "Couldn't setup database connection")
 
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
