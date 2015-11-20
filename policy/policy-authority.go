@@ -72,6 +72,13 @@ const (
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
 
+func isDNSCharacter(ch byte) bool {
+	return ('a' <= ch && ch <= 'z') ||
+		('A' <= ch && ch <= 'Z') ||
+		('0' <= ch && ch <= '9') ||
+		ch == '.' || ch == '-'
+}
+
 // Test whether the domain name indicated by the label set is a label-wise
 // suffix match for the provided suffix set.  If the `properSuffix` flag is
 // set, then the name is required to not be in the suffix set (i.e., it must
@@ -128,8 +135,15 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 		return errInvalidIdentifier
 	}
 	domain := id.Value
+
 	if domain == "" {
 		return errEmptyName
+	}
+
+	for _, ch := range []byte(domain) {
+		if !isDNSCharacter(ch) {
+			return errInvalidDNSCharacter
+		}
 	}
 
 	if len(domain) > 255 {
