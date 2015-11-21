@@ -427,7 +427,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 		return nil, nil, reg, err
 	}
 
-	payload, header, err := parsedJws.Verify(key)
+	payload, err := parsedJws.Verify(key)
 	if err != nil {
 		puberr := core.SignatureValidationError("JWS verification error")
 		wfe.stats.Inc("WFE.Errors.JWSVerificationFailed", 1, 1.0)
@@ -440,13 +440,13 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 	}
 
 	// Check that the request has a known anti-replay nonce
-	// i.e., Nonce is in protected header and
-	if err != nil || len(header.Nonce) == 0 {
+	nonce := parsedJws.Signatures[0].Header.Nonce
+	if err != nil || len(nonce) == 0 {
 		wfe.stats.Inc("WFE.Errors.JWSMissingNonce", 1, 1.0)
 		logEvent.AddError("JWS is missing an anti-replay nonce")
 		err = core.SignatureValidationError("JWS has no anti-replay nonce")
 		return nil, nil, reg, err
-	} else if !wfe.nonceService.Valid(header.Nonce) {
+	} else if !wfe.nonceService.Valid(nonce) {
 		wfe.stats.Inc("WFE.Errors.JWSInvalidNonce", 1, 1.0)
 		logEvent.AddError("JWS has an invalid anti-replay nonce")
 		err = core.SignatureValidationError(fmt.Sprintf("JWS has invalid anti-replay nonce"))
