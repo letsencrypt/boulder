@@ -8,7 +8,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
@@ -71,13 +71,13 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 		&mockCA{},
 		&mockPub{sa},
 		sa,
-		cmd.OCSPUpdaterConfig{
+		config.OCSPUpdaterConfig{
 			NewCertificateBatchSize: 1,
 			OldOCSPBatchSize:        1,
 			MissingSCTBatchSize:     1,
-			NewCertificateWindow:    cmd.ConfigDuration{Duration: time.Second},
-			OldOCSPWindow:           cmd.ConfigDuration{Duration: time.Second},
-			MissingSCTWindow:        cmd.ConfigDuration{Duration: time.Second},
+			NewCertificateWindow:    config.ConfigDuration{Duration: time.Second},
+			OldOCSPWindow:           config.ConfigDuration{Duration: time.Second},
+			MissingSCTWindow:        config.ConfigDuration{Duration: time.Second},
 		},
 		0,
 		"",

@@ -12,13 +12,14 @@ import (
 
 	safebrowsing "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-safe-browsing-api"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/va"
 )
 
 // newGoogleSafeBrowsing returns nil if the GoogleSafeBrowsing struct given is
 // nil. If an empty Google API key or an unreadable data directory is in the
 // GoogleSafeBrowsing config struct, this function runs cmd.FailOnError.
-func newGoogleSafeBrowsing(gsb *cmd.GoogleSafeBrowsingConfig) va.SafeBrowsing {
+func newGoogleSafeBrowsing(gsb *config.GoogleSafeBrowsingConfig) va.SafeBrowsing {
 	if gsb == nil {
 		return nil
 	}

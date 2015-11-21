@@ -26,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	bdns "github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
@@ -51,16 +52,8 @@ type ValidationAuthorityImpl struct {
 	clk          clock.Clock
 }
 
-// PortConfig specifies what ports the VA should call to on the remote
-// host when performing its checks.
-type PortConfig struct {
-	HTTPPort  int
-	HTTPSPort int
-	TLSPort   int
-}
-
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *PortConfig, sbc SafeBrowsing, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *config.PortConfig, sbc SafeBrowsing, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
 	return &ValidationAuthorityImpl{

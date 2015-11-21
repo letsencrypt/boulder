@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/config"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
@@ -326,4 +327,33 @@ func TestWillingToIssueWithWhitelist(t *testing.T) {
 			t.Errorf("%#v, %d: want %#v, got %#v", tc.id.Value, tc.regID, tc.err, err)
 		}
 	}
+}
+
+var (
+	validPAConfig = []byte(`{
+  "dbConnect": "dummyDBConnect",
+  "enforcePolicyWhitelist": false,
+  "challenges": { "simpleHttp": true }
+}`)
+	invalidPAConfig = []byte(`{
+  "dbConnect": "dummyDBConnect",
+  "enforcePolicyWhitelist": false,
+  "challenges": { "nonsense": true }
+}`)
+	noChallengesPAConfig = []byte(`{
+  "dbConnect": "dummyDBConnect",
+  "enforcePolicyWhitelist": false
+}`)
+)
+
+func TestPAConfigUnmarshal(t *testing.T) {
+	var pc1 config.PAConfig
+	err := json.Unmarshal(validPAConfig, &pc1)
+	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
+	test.AssertNotError(t, checkChallenges(pc1.Challenges), "Flagged valid challenges as bad")
+
+	var pc2 config.PAConfig
+	err = json.Unmarshal(invalidPAConfig, &pc2)
+	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
+	test.AssertError(t, checkChallenges(pc2.Challenges), "Considered invalid challenges as good")
 }

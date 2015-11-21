@@ -18,6 +18,7 @@ import (
 
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 )
@@ -112,7 +113,7 @@ func startMonitor(rpcCh *amqp.Channel, logger *blog.AuditLogger, stats statsd.St
 func main() {
 	app := cmd.NewAppShell("activity-monitor", "RPC activity monitor")
 
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c config.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.ActivityMonitor.DebugAddr)
 
 		ch, err := rpc.AmqpChannel(c)

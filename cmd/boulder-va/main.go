@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
@@ -20,12 +21,12 @@ import (
 
 func main() {
 	app := cmd.NewAppShell("boulder-va", "Handles challenge validation")
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c config.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.VA.DebugAddr)
 
 		go cmd.ProfileCmd("VA", stats)
 
-		pc := &va.PortConfig{
+		pc := &config.PortConfig{
 			HTTPPort:  80,
 			HTTPSPort: 443,
 			TLSPort:   443,

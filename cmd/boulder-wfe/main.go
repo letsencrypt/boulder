@@ -16,13 +16,14 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/wfe"
 )
 
-func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient) {
+func setupWFE(c config.Config, logger *blog.AuditLogger, stats statsd.Statter) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient) {
 	raRPC, err := rpc.NewAmqpRPCClient("WFE->RA", c.AMQP.RA.Server, c, stats)
 	cmd.FailOnError(err, "Unable to create RPC client")
 
@@ -47,13 +48,13 @@ func main() {
 		EnvVar: "WFE_LISTEN_ADDR",
 	}
 	app.App.Flags = append(app.App.Flags, addrFlag)
-	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
+	app.Config = func(c *cli.Context, config config.Config) config.Config {
 		if c.GlobalString("addr") != "" {
 			config.WFE.ListenAddress = c.GlobalString("addr")
 		}
 		return config
 	}
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c config.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.WFE.DebugAddr)
 
 		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default())

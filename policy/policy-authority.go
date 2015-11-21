@@ -7,6 +7,7 @@ package policy
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"net"
 	"regexp"
@@ -29,10 +30,26 @@ type PolicyAuthorityImpl struct {
 	pseudoRNG         *rand.Rand
 }
 
+// checkChallenges checks whether the list of challenges in the PA config
+// actually contains valid challenge names
+func checkChallenges(challengeTypes map[string]bool) error {
+	for name := range challengeTypes {
+		if !core.ValidChallenge(name) {
+			return fmt.Errorf("Invalid challenge in PA config: %s", name)
+		}
+	}
+	return nil
+}
+
 // NewPolicyAuthorityImpl constructs a Policy Authority.
 func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool, challengeTypes map[string]bool) (*PolicyAuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
+
+	err := checkChallenges(challengeTypes)
+	if err != nil {
+		return nil, err
+	}
 
 	// Setup policy db
 	padb, err := NewPolicyAuthorityDatabaseImpl(dbMap)

@@ -21,7 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/publicsuffix"
 
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
@@ -55,7 +55,7 @@ type RegistrationAuthorityImpl struct {
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
-	rlPolicies                   cmd.RateLimitConfig
+	rlPolicies                   config.RateLimitConfig
 	tiMu                         *sync.RWMutex
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
@@ -63,7 +63,7 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies config.RateLimitConfig, maxContactsPerReg int) *RegistrationAuthorityImpl {
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
@@ -236,7 +236,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 	return
 }
 
-func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *cmd.RateLimitPolicy, regID int64) error {
+func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *config.RateLimitPolicy, regID int64) error {
 	if limit.Enabled() {
 		count, err := sa.CountPendingAuthorizations(regID)
 		if err != nil {
@@ -563,7 +563,7 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	return domains, nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []string, limit cmd.RateLimitPolicy, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []string, limit config.RateLimitPolicy, regID int64) error {
 	names, err := domainsForRateLimiting(names)
 	if err != nil {
 		return err

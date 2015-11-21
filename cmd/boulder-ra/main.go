@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/rpc"
@@ -22,11 +23,7 @@ import (
 
 func main() {
 	app := cmd.NewAppShell("boulder-ra", "Handles service orchestration")
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
-		// Validate PA config and set defaults if needed
-		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
-		c.PA.SetDefaultChallengesIfEmpty()
-
+	app.Action = func(c config.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.RA.DebugAddr)
 
 		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
@@ -34,7 +31,7 @@ func main() {
 		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
+		rateLimitPolicies, err := config.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
 		cmd.FailOnError(err, "Couldn't load rate limit policies file")
 
 		go cmd.ProfileCmd("RA", stats)

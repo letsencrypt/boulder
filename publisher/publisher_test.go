@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/config"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
@@ -190,8 +191,8 @@ func emptyLogSrv() *httptest.Server {
 func setup(t *testing.T, port, retries int) (PublisherImpl, *x509.Certificate) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
-	pub, err := NewPublisherImpl(CTConfig{
-		Logs: []LogDescription{LogDescription{URI: fmt.Sprintf("http://localhost:%d", port)}},
+	pub, err := NewPublisherImpl(config.CTConfig{
+		Logs: []config.LogDescription{config.LogDescription{URI: fmt.Sprintf("http://localhost:%d", port)}},
 		SubmissionBackoffString:    "0s",
 		IntermediateBundleFilename: issuerPath,
 		SubmissionRetries:          retries,
@@ -209,11 +210,11 @@ func setup(t *testing.T, port, retries int) (PublisherImpl, *x509.Certificate) {
 
 func TestNewPublisherImpl(t *testing.T) {
 	// Allowed
-	ctConf := CTConfig{SubmissionBackoffString: "0s", IntermediateBundleFilename: issuerPath}
+	ctConf := config.CTConfig{SubmissionBackoffString: "0s", IntermediateBundleFilename: issuerPath}
 	_, err := NewPublisherImpl(ctConf)
 	test.AssertNotError(t, err, "Couldn't create new Publisher")
 
-	ctConf = CTConfig{Logs: []LogDescription{LogDescription{URI: "http://localhost"}}, SubmissionBackoffString: "0s", IntermediateBundleFilename: issuerPath}
+	ctConf = config.CTConfig{Logs: []config.LogDescription{config.LogDescription{URI: "http://localhost"}}, SubmissionBackoffString: "0s", IntermediateBundleFilename: issuerPath}
 	_, err = NewPublisherImpl(ctConf)
 	test.AssertNotError(t, err, "Couldn't create new Publisher")
 }
@@ -320,7 +321,7 @@ func TestMultiLog(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get test server port")
 
 	pub, leaf := setup(t, portA, 0)
-	pub.ctLogs = append(pub.ctLogs, LogDescription{URI: fmt.Sprintf("http://localhost:%d", portB)})
+	pub.ctLogs = append(pub.ctLogs, config.LogDescription{URI: fmt.Sprintf("http://localhost:%d", portB)})
 
 	log.Clear()
 	err = pub.SubmitToCT(leaf.Raw)

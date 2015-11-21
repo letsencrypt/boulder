@@ -9,6 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/publisher"
 	"github.com/letsencrypt/boulder/rpc"
@@ -16,7 +17,7 @@ import (
 
 func main() {
 	app := cmd.NewAppShell("boulder-publisher", "Submits issued certificates to CT logs")
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c config.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		pubi, err := publisher.NewPublisherImpl(c.Common.CT)
 		cmd.FailOnError(err, "Could not setup Publisher")
 

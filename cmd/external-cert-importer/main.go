@@ -19,6 +19,7 @@ import (
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
@@ -139,7 +140,7 @@ func main() {
 		Usage: "A floating point number between 0 and 1 representing the rate at which the statsd client will send data.",
 	})
 
-	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
+	app.Config = func(c *cli.Context, config config.Config) config.Config {
 		fmt.Println(c.Args())
 		config.ExternalCertImporter.CertsToImportCSVFilename = c.GlobalString("a")
 		config.ExternalCertImporter.DomainsToImportCSVFilename = c.GlobalString("d")
@@ -148,7 +149,7 @@ func main() {
 		return config
 	}
 
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c config.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		// Configure DB
 		dbMap, err := sa.NewDbMap(c.PA.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")

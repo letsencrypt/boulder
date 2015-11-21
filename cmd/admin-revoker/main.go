@@ -19,13 +19,14 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 )
 
-func loadConfig(c *cli.Context) (config cmd.Config, err error) {
+func loadConfig(c *cli.Context) (config config.Config, err error) {
 	configFileName := c.GlobalString("config")
 	configJSON, err := ioutil.ReadFile(configFileName)
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/rpc"
@@ -18,11 +19,7 @@ import (
 
 func main() {
 	app := cmd.NewAppShell("boulder-ca", "Handles issuance operations")
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
-		// Validate PA config and set defaults if needed
-		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
-		c.PA.SetDefaultChallengesIfEmpty()
-
+	app.Action = func(c config.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
 
