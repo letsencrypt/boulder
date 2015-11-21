@@ -306,7 +306,6 @@ func (s *State) post(endpoint string, payload []byte) (*http.Response, error) {
 			s.addNonce(newNonce)
 		}
 	}
-	defer resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}

@@ -49,6 +49,7 @@ func (s *State) newRegistration(_ *registration) {
 		nState = "error"
 		return
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 201 {
 		body, err := ioutil.ReadAll(resp.Body)
 		nState = "error"
@@ -80,6 +81,7 @@ func (s *State) newRegistration(_ *registration) {
 		tState = "error"
 		return
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 202 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -136,6 +138,7 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 		cState = "error"
 		return err
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 202 {
 		cState = "error"
 		return fmt.Errorf("Unexpected error code")
@@ -221,6 +224,7 @@ func (s *State) newAuthorization(reg *registration) {
 		state = "error"
 		return
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 201 {
 		// something
 		body, err := ioutil.ReadAll(resp.Body)
@@ -301,6 +305,7 @@ func (s *State) newCertificate(reg *registration) {
 		state = "error"
 		return
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 201 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
@@ -363,6 +368,7 @@ func (s *State) revokeCertificate(reg *registration) {
 		state = "error"
 		return
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
