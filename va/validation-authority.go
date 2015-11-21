@@ -258,6 +258,10 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		// Set Accept header for mod_security (see the other place the header is
 		// set)
 		req.Header.Set("Accept", "*/*")
+		if va.UserAgent != "" {
+			req.Header["User-Agent"] = []string{va.UserAgent}
+		}
+
 		reqHost := req.URL.Host
 		var reqPort int
 		if h, p, err := net.SplitHostPort(reqHost); err == nil {
