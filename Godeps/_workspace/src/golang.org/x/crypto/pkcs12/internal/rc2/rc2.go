@@ -1,3 +1,7 @@
+// Copyright 2015 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 // Package rc2 implements the RC2 cipher
 /*
 https://www.ietf.org/rfc/rfc2268.txt
@@ -27,7 +31,7 @@ func New(key []byte, t1 int) (cipher.Block, error) {
 	}, nil
 }
 
-func (_ *rc2Cipher) BlockSize() int { return BlockSize }
+func (*rc2Cipher) BlockSize() int { return BlockSize }
 
 var piTable = [256]byte{
 	0xd9, 0x78, 0xf9, 0xc4, 0x19, 0xdd, 0xb5, 0xed, 0x28, 0xe9, 0xfd, 0x79, 0x4a, 0xa0, 0xd8, 0x9d,

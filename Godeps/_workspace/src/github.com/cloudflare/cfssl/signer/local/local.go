@@ -26,8 +26,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 
-	"github.com/google/certificate-transparency/go"
-	"github.com/google/certificate-transparency/go/client"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go/client"
 )
 
 // Signer contains a signer that uses the standard library to

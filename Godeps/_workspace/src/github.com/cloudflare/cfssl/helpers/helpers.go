@@ -21,7 +21,7 @@ import (
 	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers/derhelpers"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
-	"golang.org/x/crypto/pkcs12"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/pkcs12"
 )
 
 // OneYear is a time.Duration representing a year's worth of seconds.
