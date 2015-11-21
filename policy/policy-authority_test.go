@@ -55,12 +55,12 @@ func TestWillingToIssue(t *testing.T) {
 		{`zomb!.com`, errInvalidDNSCharacter}, // ASCII character out of range
 		{`emailaddress@myseriously.present.com`, errInvalidDNSCharacter},
 		{`user:pass@myseriously.present.com`, errInvalidDNSCharacter},
-		{`zömbo.com`, errInvalidDNSCharacter},                       // non-ASCII character
-		{`127.0.0.1`, errIPAddress},                                 // IPv4 address
-		{`fe80::1:1`, errIPAddress},                                 // IPv6 addresses
-		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`, errTooFewLabels}, // unexpected IPv6 variants
-		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`, errTooFewLabels},
-		{`2001:db8::/32`, errTooFewLabels},
+		{`zömbo.com`, errInvalidDNSCharacter},                              // non-ASCII character
+		{`127.0.0.1`, errIPAddress},                                        // IPv4 address
+		{`fe80::1:1`, errInvalidDNSCharacter},                              // IPv6 addresses
+		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`, errInvalidDNSCharacter}, // unexpected IPv6 variants
+		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`, errInvalidDNSCharacter},
+		{`2001:db8::/32`, errInvalidDNSCharacter},
 		{`a.b.c.d.e.f.g.h.i.j.k`, errTooManyLabels}, // Too many labels (>10)
 
 		{`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.com`, errNameTooLong}, // Too long (>255 characters)
@@ -72,10 +72,10 @@ func TestWillingToIssue(t *testing.T) {
 		{`xn--.net`, errIDNNotSupported},          // No punycode for now.
 		{`0`, errTooFewLabels},
 		{`1`, errTooFewLabels},
-		{`*`, errTooFewLabels},
-		{`**`, errTooFewLabels},
+		{`*`, errInvalidDNSCharacter},
+		{`**`, errInvalidDNSCharacter},
 		{`*.*`, errInvalidDNSCharacter},
-		{`zombo*com`, errTooFewLabels},
+		{`zombo*com`, errInvalidDNSCharacter},
 		{`*.com`, errInvalidDNSCharacter},
 		{`*.zombo.com`, errInvalidDNSCharacter},
 		{`.`, errLabelTooShort},
@@ -85,7 +85,7 @@ func TestWillingToIssue(t *testing.T) {
 		{`.a.`, errLabelTooShort},
 		{`.....`, errLabelTooShort},
 		{`www.zombo_com.com`, errInvalidDNSCharacter},
-		{`\uFEFF`, errTooFewLabels}, // Byte order mark
+		{`\uFEFF`, errInvalidDNSCharacter}, // Byte order mark
 		{`\uFEFFwww.zombo.com`, errInvalidDNSCharacter},
 		{`www.zom\u202Ebo.com`, errInvalidDNSCharacter}, // Right-to-Left Override
 		{`\u202Ewww.zombo.com`, errInvalidDNSCharacter},
