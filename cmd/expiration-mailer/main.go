@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mail"
@@ -218,14 +219,14 @@ func main() {
 		Usage:  "Count of certificates to process per expiration period",
 	})
 
-	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
+	app.Config = func(c *cli.Context, config config.Config) config.Config {
 		if c.GlobalInt("cert_limit") > 0 {
 			config.Mailer.CertLimit = c.GlobalInt("cert_limit")
 		}
 		return config
 	}
 
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c config.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.Mailer.DebugAddr)
 
 		// Configure DB

@@ -27,8 +27,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/config"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
@@ -545,7 +545,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
-	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0)
+	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, config.RateLimitConfig{}, 0)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}

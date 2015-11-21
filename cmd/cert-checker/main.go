@@ -24,6 +24,7 @@ import (
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
@@ -220,7 +221,7 @@ func main() {
 		Usage: "SQL URI if not provided in the configuration file",
 	})
 
-	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
+	app.Config = func(c *cli.Context, config config.Config) config.Config {
 		config.CertChecker.ReportDirectoryPath = c.GlobalString("report-dir-path")
 
 		if connect := c.GlobalString("db-connect"); connect != "" {
@@ -234,10 +235,7 @@ func main() {
 		return config
 	}
 
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
-		// Validate PA config and set defaults if needed
-		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
-		c.PA.SetDefaultChallengesIfEmpty()
+	app.Action = func(c config.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 
 		saDbMap, err := sa.NewDbMap(c.CertChecker.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")

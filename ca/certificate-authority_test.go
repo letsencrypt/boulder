@@ -18,7 +18,7 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -108,7 +108,7 @@ func mustRead(path string) []byte {
 
 type testCtx struct {
 	sa       core.StorageAuthority
-	caConfig cmd.CAConfig
+	caConfig config.CAConfig
 	reg      core.Registration
 	pa       core.PolicyAuthority
 	fc       clock.FakeClock
@@ -145,16 +145,16 @@ func setup(t *testing.T) *testCtx {
 	reg := satest.CreateWorkingRegistration(t, ssa)
 
 	// Create a CA
-	caConfig := cmd.CAConfig{
+	caConfig := config.CAConfig{
 		Profile:      profileName,
 		SerialPrefix: 17,
-		Key: cmd.KeyConfig{
+		Key: config.KeyConfig{
 			File: caKeyFile,
 		},
 		Expiry:          "8760h",
 		LifespanOCSP:    "45m",
 		MaxNames:        2,
-		HSMFaultTimeout: cmd.ConfigDuration{Duration: 60 * time.Second},
+		HSMFaultTimeout: config.ConfigDuration{Duration: 60 * time.Second},
 		CFSSL: cfsslConfig.Config{
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{

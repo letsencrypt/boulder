@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/policy"
 )
 
@@ -106,7 +107,7 @@ func setupFromContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl
 	configFileName := context.GlobalString("config")
 	configJSON, err := ioutil.ReadFile(configFileName)
 	cmd.FailOnError(err, "Couldn't read configuration file")
-	var c cmd.Config
+	var c config.Config
 	err = json.Unmarshal(configJSON, &c)
 	cmd.FailOnError(err, "Couldn't unmarshal configuration object")
 

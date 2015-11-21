@@ -10,6 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/akamai"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 )
 
 func main() {
@@ -48,7 +49,7 @@ func main() {
 			return
 		}
 
-		var config cmd.Config
+		var config config.Config
 		err = json.Unmarshal(configJSON, &config)
 
 		// Set up logging

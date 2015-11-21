@@ -3,18 +3,22 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package cmd
+package config
 
 import (
+	"crypto/ecdsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/publisher"
-	"github.com/letsencrypt/boulder/va"
+
+	// NOTE: This package should not depend on any other Boulder packages, in
+	// order to avoid circular dependencies.
 )
 
 // Config stores configuration parameters that applications
@@ -96,7 +100,7 @@ type Config struct {
 	VA struct {
 		UserAgent string
 
-		PortConfig va.PortConfig
+		PortConfig PortConfig
 
 		MaxConcurrentRPCServerRequests int64
 
@@ -185,7 +189,7 @@ type Config struct {
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 
-		CT publisher.CTConfig
+		CT CTConfig
 	}
 
 	CertChecker struct {
@@ -231,31 +235,6 @@ type PAConfig struct {
 	DBConnect              string
 	EnforcePolicyWhitelist bool
 	Challenges             map[string]bool
-}
-
-// CheckChallenges checks whether the list of challenges in the PA config
-// actually contains valid challenge names
-func (pc PAConfig) CheckChallenges() error {
-	for name := range pc.Challenges {
-		if !core.ValidChallenge(name) {
-			return fmt.Errorf("Invalid challenge in PA config: %s", name)
-		}
-	}
-	return nil
-}
-
-// SetDefaultChallengesIfEmpty sets a default list of challenges if no
-// challenges are enabled in the PA config.  The set of challenges specified
-// corresponds to the set that was hard-coded before these configuration
-// options were added.
-func (pc *PAConfig) SetDefaultChallengesIfEmpty() {
-	if len(pc.Challenges) == 0 {
-		pc.Challenges = map[string]bool{}
-		pc.Challenges[core.ChallengeTypeSimpleHTTP] = true
-		pc.Challenges[core.ChallengeTypeDVSNI] = true
-		pc.Challenges[core.ChallengeTypeHTTP01] = true
-		pc.Challenges[core.ChallengeTypeTLSSNI01] = true
-	}
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,
@@ -382,5 +361,67 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	}
 
 	d.Duration = dur
+	return nil
+}
+
+// PortConfig specifies what ports the VA should call to on the remote
+// host when performing its checks.
+type PortConfig struct {
+	HTTPPort  int
+	HTTPSPort int
+	TLSPort   int
+}
+
+// CTConfig defines where the publisher publishes logs to.
+type CTConfig struct {
+	Logs                       []LogDescription `json:"logs"`
+	SubmissionRetries          int              `json:"submissionRetries"`
+	SubmissionBackoffString    string           `json:"submissionBackoff"`
+	IntermediateBundleFilename string           `json:"intermediateBundleFilename"`
+}
+
+// LogDescription tells you how to connect to a CT log and verify its statements.
+type LogDescription struct {
+	ID        string
+	URI       string
+	PublicKey *ecdsa.PublicKey
+}
+
+type rawLogDescription struct {
+	URI       string `json:"uri"`
+	PublicKey string `json:"key"`
+}
+
+// UnmarshalJSON parses a simple JSON format for log descriptions.  Both the
+// URI and the public key are expected to be strings.  The public key is a
+// base64-encoded PKIX public key structure.
+func (logDesc *LogDescription) UnmarshalJSON(data []byte) error {
+	var rawLogDesc rawLogDescription
+	if err := json.Unmarshal(data, &rawLogDesc); err != nil {
+		return fmt.Errorf("Failed to unmarshal log description, %s", err)
+	}
+	logDesc.URI = rawLogDesc.URI
+	// Load Key
+	pkBytes, err := base64.StdEncoding.DecodeString(rawLogDesc.PublicKey)
+	if err != nil {
+		return fmt.Errorf("Failed to decode base64 log public key")
+	}
+	pk, err := x509.ParsePKIXPublicKey(pkBytes)
+	if err != nil {
+		return fmt.Errorf("Failed to parse log public key")
+	}
+	ecdsaKey, ok := pk.(*ecdsa.PublicKey)
+	if !ok {
+		return fmt.Errorf("Failed to unmarshal log description for %s, unsupported public key type", logDesc.URI)
+	}
+	logDesc.PublicKey = ecdsaKey
+
+	// Generate key hash for log ID
+	pkHash := sha256.Sum256(pkBytes)
+	logDesc.ID = base64.StdEncoding.EncodeToString(pkHash[:])
+	if len(logDesc.ID) != 44 {
+		return fmt.Errorf("Invalid log ID length [%d]", len(logDesc.ID))
+	}
+
 	return nil
 }

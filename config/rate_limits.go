@@ -1,9 +1,10 @@
-package cmd
+package config
 
 import (
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
 	"io/ioutil"
 	"time"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
 )
 
 // RateLimitConfig contains all application layer rate limiting policies

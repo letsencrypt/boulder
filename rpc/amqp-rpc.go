@@ -26,7 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -178,7 +178,7 @@ type AmqpRPCServer struct {
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
-func NewAmqpRPCServer(serverQueue string, maxConcurrentRPCServerRequests int64, c cmd.Config) (*AmqpRPCServer, error) {
+func NewAmqpRPCServer(serverQueue string, maxConcurrentRPCServerRequests int64, c config.Config) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
 
 	reconnectBase := c.AMQP.ReconnectTimeouts.Base.Duration
@@ -318,7 +318,7 @@ func (r rpcResponse) debugString() string {
 }
 
 // AmqpChannel sets a AMQP connection up using SSL if configuration is provided
-func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
+func AmqpChannel(conf config.Config) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 	var err error
 
@@ -432,7 +432,7 @@ func (rpc *AmqpRPCServer) replyTooManyRequests(msg amqp.Delivery) error {
 // Start starts the AMQP-RPC server and handles reconnections, this will block
 // until a fatal error is returned or AmqpRPCServer.Stop() is called and all
 // remaining messages are processed.
-func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
+func (rpc *AmqpRPCServer) Start(c config.Config) error {
 	tooManyGoroutines := rpcResponse{
 		Error: wrapError(core.TooManyRPCRequestsError("RPC server has spawned too many Goroutines")),
 	}
@@ -550,7 +550,7 @@ type AmqpRPCCLient struct {
 }
 
 // NewAmqpRPCClient constructs an RPC client using AMQP
-func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, c cmd.Config, stats statsd.Statter) (rpc *AmqpRPCCLient, err error) {
+func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, c config.Config, stats statsd.Statter) (rpc *AmqpRPCCLient, err error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err

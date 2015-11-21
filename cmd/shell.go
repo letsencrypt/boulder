@@ -8,7 +8,7 @@
 //
 //    func main() {
 //      app := cmd.NewAppShell("command-name")
-//      app.Action = func(c cmd.Config) {
+//      app.Action = func(c config.Config) {
 //        // command logic
 //      }
 //      app.Run()
@@ -41,14 +41,15 @@ import (
 	cfsslLog "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
 // AppShell contains CLI Metadata
 type AppShell struct {
-	Action func(Config, statsd.Statter, *blog.AuditLogger)
-	Config func(*cli.Context, Config) Config
+	Action func(config.Config, statsd.Statter, *blog.AuditLogger)
+	Config func(*cli.Context, config.Config) config.Config
 	App    *cli.App
 }
 
@@ -87,22 +88,22 @@ func (as *AppShell) Run() {
 		configJSON, err := ioutil.ReadFile(configFileName)
 		FailOnError(err, "Unable to read config file")
 
-		var config Config
-		err = json.Unmarshal(configJSON, &config)
+		var conf config.Config
+		err = json.Unmarshal(configJSON, &conf)
 		FailOnError(err, "Failed to read configuration")
 
 		if as.Config != nil {
-			config = as.Config(c, config)
+			conf = as.Config(c, conf)
 		}
 
-		stats, auditlogger := StatsAndLogging(config.Statsd, config.Syslog)
+		stats, auditlogger := StatsAndLogging(conf.Statsd, conf.Syslog)
 		auditlogger.Info(as.VersionString())
 
 		// If as.Action generates a panic, this will log it to syslog.
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
 
-		as.Action(config, stats, auditlogger)
+		as.Action(conf, stats, auditlogger)
 	}
 
 	err := as.App.Run(os.Args)
@@ -112,7 +113,7 @@ func (as *AppShell) Run() {
 // StatsAndLogging constructs a Statter and and AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
 // Also sets the constructed AuditLogger as the default logger.
-func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (statsd.Statter, *blog.AuditLogger) {
+func StatsAndLogging(statConf config.StatsdConfig, logConf config.SyslogConfig) (statsd.Statter, *blog.AuditLogger) {
 	stats, err := statsd.NewClient(statConf.Server, statConf.Prefix)
 	FailOnError(err, "Couldn't connect to statsd")
 

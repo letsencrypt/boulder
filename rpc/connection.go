@@ -8,7 +8,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -29,12 +29,12 @@ func newAMQPConnector(
 
 // channelMaker encapsulates how to create an AMQP channel.
 type channelMaker interface {
-	makeChannel(conf cmd.Config) (amqpChannel, error)
+	makeChannel(conf config.Config) (amqpChannel, error)
 }
 
 type defaultChannelMaker struct{}
 
-func (d defaultChannelMaker) makeChannel(conf cmd.Config) (amqpChannel, error) {
+func (d defaultChannelMaker) makeChannel(conf config.Config) (amqpChannel, error) {
 	return AmqpChannel(conf)
 }
 
@@ -68,7 +68,7 @@ func (ac *amqpConnector) closeChannel() chan *amqp.Error {
 // connect attempts to connect to a channel and subscribe to the named queue,
 // returning error if it fails. This is used at first startup, where we want to
 // fail fast if we can't connect.
-func (ac *amqpConnector) connect(config cmd.Config) error {
+func (ac *amqpConnector) connect(config config.Config) error {
 	channel, err := ac.chMaker.makeChannel(config)
 	if err != nil {
 		return fmt.Errorf("channel connect failed for %s: %s", ac.queueName, err)
@@ -89,7 +89,7 @@ func (ac *amqpConnector) connect(config cmd.Config) error {
 // reconnect attempts repeatedly to connect and subscribe to the named queue. It
 // will loop forever until it succeeds. This is used for a running server, where
 // we don't want to shut down because we lost our AMQP connection.
-func (ac *amqpConnector) reconnect(config cmd.Config, log blog.SyslogWriter) {
+func (ac *amqpConnector) reconnect(config config.Config, log blog.SyslogWriter) {
 	for i := 0; ; i++ {
 		ac.clk.Sleep(core.RetryBackoff(i, ac.retryTimeoutBase, ac.retryTimeoutMax, 2))
 		log.Info(fmt.Sprintf(" [!] attempting reconnect for %s", ac.queueName))

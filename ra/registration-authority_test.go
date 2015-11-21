@@ -25,7 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/ca"
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
@@ -229,10 +229,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		blog.GetAuditLogger(),
 		stats,
 		&DomainCheck{va},
-		cmd.RateLimitConfig{
-			TotalCertificates: cmd.RateLimitPolicy{
+		config.RateLimitConfig{
+			TotalCertificates: config.RateLimitPolicy{
 				Threshold: 100,
-				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+				Window:    config.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
 		}, 1)
 	ra.SA = ssa
@@ -650,10 +650,10 @@ func TestTotalCertRateLimit(t *testing.T) {
 	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies = cmd.RateLimitConfig{
-		TotalCertificates: cmd.RateLimitPolicy{
+	ra.rlPolicies = config.RateLimitConfig{
+		TotalCertificates: config.RateLimitPolicy{
 			Threshold: 1,
-			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+			Window:    config.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
 	}
 	fc.Add(24 * 90 * time.Hour)
@@ -728,9 +728,9 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	rlp := cmd.RateLimitPolicy{
+	rlp := config.RateLimitPolicy{
 		Threshold: 3,
-		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+		Window:    config.ConfigDuration{Duration: 23 * time.Hour},
 		Overrides: map[string]int{
 			"bigissuer.com":     100,
 			"smallissuer.co.uk": 1,

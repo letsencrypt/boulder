@@ -22,7 +22,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 
@@ -87,7 +87,7 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats statsd.Statter, issuerCert string) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(config config.CAConfig, clk clock.Clock, stats statsd.Statter, issuerCert string) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -165,7 +165,7 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats sta
 	return ca, nil
 }
 
-func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
+func loadKey(keyConfig config.KeyConfig) (priv crypto.Signer, err error) {
 	if keyConfig.File != "" {
 		var keyBytes []byte
 		keyBytes, err = ioutil.ReadFile(keyConfig.File)

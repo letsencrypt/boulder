@@ -7,8 +7,6 @@ package publisher
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -19,64 +17,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 )
-
-// LogDescription tells you how to connect to a log and verify its statements.
-type LogDescription struct {
-	ID        string
-	URI       string
-	PublicKey *ecdsa.PublicKey
-}
-
-type rawLogDescription struct {
-	URI       string `json:"uri"`
-	PublicKey string `json:"key"`
-}
-
-// UnmarshalJSON parses a simple JSON format for log descriptions.  Both the
-// URI and the public key are expected to be strings.  The public key is a
-// base64-encoded PKIX public key structure.
-func (logDesc *LogDescription) UnmarshalJSON(data []byte) error {
-	var rawLogDesc rawLogDescription
-	if err := json.Unmarshal(data, &rawLogDesc); err != nil {
-		return fmt.Errorf("Failed to unmarshal log description, %s", err)
-	}
-	logDesc.URI = rawLogDesc.URI
-	// Load Key
-	pkBytes, err := base64.StdEncoding.DecodeString(rawLogDesc.PublicKey)
-	if err != nil {
-		return fmt.Errorf("Failed to decode base64 log public key")
-	}
-	pk, err := x509.ParsePKIXPublicKey(pkBytes)
-	if err != nil {
-		return fmt.Errorf("Failed to parse log public key")
-	}
-	ecdsaKey, ok := pk.(*ecdsa.PublicKey)
-	if !ok {
-		return fmt.Errorf("Failed to unmarshal log description for %s, unsupported public key type", logDesc.URI)
-	}
-	logDesc.PublicKey = ecdsaKey
-
-	// Generate key hash for log ID
-	pkHash := sha256.Sum256(pkBytes)
-	logDesc.ID = base64.StdEncoding.EncodeToString(pkHash[:])
-	if len(logDesc.ID) != 44 {
-		return fmt.Errorf("Invalid log ID length [%d]", len(logDesc.ID))
-	}
-
-	return nil
-}
-
-// CTConfig defines the JSON configuration file schema
-type CTConfig struct {
-	Logs                       []LogDescription `json:"logs"`
-	SubmissionRetries          int              `json:"submissionRetries"`
-	SubmissionBackoffString    string           `json:"submissionBackoff"`
-	IntermediateBundleFilename string           `json:"intermediateBundleFilename"`
-}
 
 type ctSubmissionRequest struct {
 	Chain []string `json:"chain"`
@@ -95,14 +40,14 @@ type PublisherImpl struct {
 	submissionBackoff time.Duration
 	submissionRetries int
 	issuerBundle      []string
-	ctLogs            []LogDescription
+	ctLogs            []config.LogDescription
 
 	SA core.StorageAuthority
 }
 
 // NewPublisherImpl creates a Publisher that will submit certificates
 // to any CT logs configured in CTConfig
-func NewPublisherImpl(ctConfig CTConfig) (pub PublisherImpl, err error) {
+func NewPublisherImpl(ctConfig config.CTConfig) (pub PublisherImpl, err error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Publisher Authority Starting")
 
@@ -137,7 +82,7 @@ func NewPublisherImpl(ctConfig CTConfig) (pub PublisherImpl, err error) {
 	return
 }
 
-func (pub *PublisherImpl) submitToCTLog(serial string, jsonSubmission []byte, log LogDescription) error {
+func (pub *PublisherImpl) submitToCTLog(serial string, jsonSubmission []byte, log config.LogDescription) error {
 	done := false
 	var sct core.SignedCertificateTimestamp
 	backoff := pub.submissionBackoff
