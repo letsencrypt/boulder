@@ -21,7 +21,7 @@
     "shutdownKillTimeout": "1m",
     "debugAddr": "localhost:8000",
     "amqp": {
-      "server": "secret:test/secrets/amqp",
+      "serverURLFile": "test/secrets/amqp",
       "insecure": true,
       "RA": {
         "server": "RA.server",
@@ -111,7 +111,7 @@
   },
 
   "pa": {
-    "dbConnect": "secret:test/secrets/pa_dburl",
+    "dbConnectFile": "test/secrets/pa_dburl",
     "challenges": {
       "simpleHttp": true,
       "dvsni": true,
@@ -147,7 +147,7 @@
   },
 
   "sa": {
-    "dbConnect": "secret:test/secrets/sa_dburl",
+    "dbConnectFile": "test/secrets/sa_dburl",
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8003",
     "amqp": {
@@ -182,7 +182,7 @@
   },
 
   "revoker": {
-    "dbConnect": "secret:test/secrets/revoker_dburl",
+    "dbConnectFile": "test/secrets/revoker_dburl",
     "amqp": {
       "server": "secret:test/secrets/amqp",
       "insecure": true,
@@ -208,7 +208,7 @@
   },
 
   "ocspUpdater": {
-    "dbConnect": "secret:test/secrets/ocsp_updater_dburl",
+    "dbConnectFile": "test/secrets/ocsp_updater_dburl",
     "newCertificateWindow": "1s",
     "oldOCSPWindow": "2s",
     "missingSCTWindow": "1m",
@@ -253,7 +253,7 @@
     "port": "25",
     "username": "cert-master@example.com",
     "password": "password",
-    "dbConnect": "secret:test/secrets/mailer_dburl",
+    "dbConnectFile": "test/secrets/mailer_dburl",
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "nagCheckInterval": "24h",
@@ -295,7 +295,7 @@
   },
 
   "certChecker": {
-    "dbConnect": "secret:test/secrets/cert_checker_dburl"
+    "dbConnectFile": "test/secrets/cert_checker_dburl"
   },
 
   "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1"

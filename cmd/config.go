@@ -66,8 +66,7 @@ type Config struct {
 
 	SA struct {
 		ServiceConfig
-
-		DBConnect ConfigSecret
+		DBConfig
 
 		MaxConcurrentRPCServerRequests int64
 	}
@@ -93,7 +92,7 @@ type Config struct {
 	Syslog SyslogConfig
 
 	Revoker struct {
-		DBConnect string
+		DBConfig
 		// The revoker isn't a long running service, so doesn't get a full
 		// ServiceConfig, just an AMQPConfig.
 		AMQP *AMQPConfig
@@ -101,13 +100,12 @@ type Config struct {
 
 	Mailer struct {
 		ServiceConfig
+		DBConfig
 
 		Server   string
 		Port     string
 		Username string
 		Password string
-
-		DBConnect string
 
 		CertLimit int
 		NagTimes  []string
@@ -121,10 +119,12 @@ type Config struct {
 
 	OCSPResponder struct {
 		ServiceConfig
+		DBConfig
 
 		// Source indicates the source of pre-signed OCSP responses to be used. It
 		// can be a DBConnect string or a file URL. The file URL style is used
 		// when responding from a static file for intermediates and roots.
+		// If DBConfig has non-empty fields, it takes precedence over this.
 		Source string
 
 		Path          string
@@ -166,9 +166,10 @@ type Config struct {
 	}
 
 	CertChecker struct {
+		DBConfig
+
 		Workers             int
 		ReportDirectoryPath string
-		DBConnect           string
 	}
 
 	SubscriberAgreementURL string
@@ -182,10 +183,19 @@ type ServiceConfig struct {
 	AMQP      *AMQPConfig
 }
 
+type DBConfig struct {
+	DBConnect string
+	// A file containing a connect URL for the DB.
+	DBConnectFile string
+}
+
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
 // RPC services we offer via AMQP.
 type AMQPConfig struct {
-	Server    ConfigSecret
+	// A file containing a connect URL for the server.
+	ServerURLFile string
+
+	Server    string
 	Insecure  bool
 	RA        *RPCServerConfig
 	VA        *RPCServerConfig
@@ -207,10 +217,10 @@ type AMQPConfig struct {
 // issued certificates.
 type CAConfig struct {
 	ServiceConfig
+	DBConfig
 
 	Profile      string
 	TestMode     bool
-	DBConnect    string
 	SerialPrefix int
 	Key          KeyConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
@@ -232,7 +242,7 @@ type CAConfig struct {
 // database, what policies it should enforce, and what challenges
 // it should offer.
 type PAConfig struct {
-	DBConnect              string
+	DBConfig
 	EnforcePolicyWhitelist bool
 	Challenges             map[string]bool
 }
@@ -295,7 +305,7 @@ type RPCServerConfig struct {
 // for the OCSP (and SCT) updater
 type OCSPUpdaterConfig struct {
 	ServiceConfig
-	DBConnect string
+	DBConfig
 
 	NewCertificateWindow     ConfigDuration
 	OldOCSPWindow            ConfigDuration
