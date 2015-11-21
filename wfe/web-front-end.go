@@ -91,7 +91,7 @@ type WebFrontEndImpl struct {
 	ShutdownKillTimeout time.Duration
 }
 
-func statusCodeFromError(err interface{}) int {
+func statusCodeFromError(err error) int {
 	// Populate these as needed.  We probably should trim the error list in util.go
 	switch err.(type) {
 	case core.MalformedRequestError:
@@ -197,7 +197,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 			if !methodsMap[request.Method] {
 				msg := "Method not allowed"
 				response.Header().Set("Allow", methodsStr)
-				wfe.sendError(response, logEvent, msg, request.Method, http.StatusMethodNotAllowed)
+				wfe.sendError(response, logEvent, msg, nil, http.StatusMethodNotAllowed)
 				return
 			}
 
@@ -480,7 +480,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 }
 
 // Notify the client of an error condition and log it for audit purposes.
-func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *requestEvent, msg string, detail interface{}, code int) {
+func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *requestEvent, msg string, detail error, code int) {
 	problem := core.ProblemDetails{Detail: msg}
 	switch code {
 	case http.StatusPreconditionFailed:
@@ -726,7 +726,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response h
 
 	if certStatus.Status == core.OCSPStatusRevoked {
 		logEvent.AddError("Certificate already revoked: %#v", serial)
-		wfe.sendError(response, logEvent, "Certificate already revoked", "", http.StatusConflict)
+		wfe.sendError(response, logEvent, "Certificate already revoked", nil, http.StatusConflict)
 		return
 	}
 
@@ -735,7 +735,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response h
 		registration.ID == cert.RegistrationID) {
 		wfe.sendError(response, logEvent,
 			"Revocation request must be signed by private key of cert to be revoked, or by the account key of the account that issued it.",
-			requestKey,
+			nil,
 			http.StatusForbidden)
 		return
 	}
@@ -854,7 +854,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	request *http.Request) {
 
 	notFound := func() {
-		wfe.sendError(response, logEvent, "No such registration", request.URL.Path, http.StatusNotFound)
+		wfe.sendError(response, logEvent, "No such challenge", nil, http.StatusNotFound)
 	}
 
 	// Challenge URIs are of the form /acme/challenge/<auth id>/<challenge id>.
@@ -882,8 +882,8 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	// After expiring, challenges are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
-		msg := fmt.Sprintf("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
-		wfe.sendError(response, logEvent, "Expired authorization", msg, http.StatusNotFound)
+		logEvent.AddError("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
+		wfe.sendError(response, logEvent, "Expired authorization", nil, http.StatusNotFound)
 		return
 	}
 
@@ -994,7 +994,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	if currReg.ID != authz.RegistrationID {
 		logEvent.AddError("User registration id: %d != Authorization registration id: %v", currReg.ID, authz.RegistrationID)
 		wfe.sendError(response, logEvent, "User registration ID doesn't match registration ID in authorization",
-			"",
+			nil,
 			http.StatusForbidden)
 		return
 	}
@@ -1062,12 +1062,13 @@ func (wfe *WebFrontEndImpl) Registration(logEvent *requestEvent, response http.R
 		wfe.sendError(response, logEvent, "Registration ID must be an integer", err, http.StatusBadRequest)
 		return
 	} else if id <= 0 {
-		logEvent.AddError("Registration ID must be a positive non-zero integer, was %d", id)
-		wfe.sendError(response, logEvent, "Registration ID must be a positive non-zero integer", id, http.StatusBadRequest)
+		msg := fmt.Sprintf("Registration ID must be a positive non-zero integer, was %d", id)
+		logEvent.AddError(msg)
+		wfe.sendError(response, logEvent, msg, nil, http.StatusBadRequest)
 		return
 	} else if id != currReg.ID {
 		logEvent.AddError("Request signing key did not match registration key: %d != %d", id, currReg.ID)
-		wfe.sendError(response, logEvent, "Request signing key did not match registration key", "", http.StatusForbidden)
+		wfe.sendError(response, logEvent, "Request signing key did not match registration key", nil, http.StatusForbidden)
 		return
 	}
 
@@ -1136,7 +1137,8 @@ func (wfe *WebFrontEndImpl) Authorization(logEvent *requestEvent, response http.
 	// After expiring, authorizations are inaccessible
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
 		msg := fmt.Sprintf("Authorization %v expired in the past (%v)", authz.ID, *authz.Expires)
-		wfe.sendError(response, logEvent, "Expired authorization", msg, http.StatusNotFound)
+		logEvent.AddError(msg)
+		wfe.sendError(response, logEvent, "Expired authorization", nil, http.StatusNotFound)
 		return
 	}
 
@@ -1169,14 +1171,14 @@ func (wfe *WebFrontEndImpl) Certificate(logEvent *requestEvent, response http.Re
 	// digits.
 	if !strings.HasPrefix(path, CertPath) {
 		logEvent.AddError("this request path should not have gotten to Certificate: %#v is not a prefix of %#v", path, CertPath)
-		wfe.sendError(response, logEvent, "Certificate not found", path, http.StatusNotFound)
+		wfe.sendError(response, logEvent, "Certificate not found", nil, http.StatusNotFound)
 		addNoCacheHeader(response)
 		return
 	}
 	serial := path[len(CertPath):]
 	if !core.ValidSerial(serial) {
 		logEvent.AddError("certificate serial provided was not valid: %s", serial)
-		wfe.sendError(response, logEvent, "Certificate not found", serial, http.StatusNotFound)
+		wfe.sendError(response, logEvent, "Certificate not found", nil, http.StatusNotFound)
 		addNoCacheHeader(response)
 		return
 	}
