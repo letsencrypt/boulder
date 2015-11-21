@@ -100,6 +100,7 @@ func (s *State) sendHTTPOneChallenge(token, content string) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("Invalid response code for http-0 RPC call: %d", resp.StatusCode)
 	}
@@ -152,6 +153,7 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 			aState = "error"
 			return err
 		}
+		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			// just fail
@@ -337,6 +339,7 @@ func (s *State) revokeCertificate(reg *registration) {
 		fmt.Printf("[FAILED] cert: %s\n", err)
 		return
 	}
+	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("WELP, bad body: %s\n", err)

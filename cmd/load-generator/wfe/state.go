@@ -306,6 +306,7 @@ func (s *State) post(endpoint string, payload []byte) (*http.Response, error) {
 			s.addNonce(newNonce)
 		}
 	}
+	defer resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -340,6 +341,7 @@ func (s *State) getNonce(from string, alwaysNew bool) (string, error) {
 			state = "error"
 			return "", err
 		}
+		defer resp.Body.Close()
 		if nonce := resp.Header.Get("Replay-Nonce"); nonce != "" {
 			return nonce, nil
 		}
