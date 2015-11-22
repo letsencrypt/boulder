@@ -208,6 +208,8 @@ func (ds durationSlice) Swap(a, b int) {
 	ds[a], ds[b] = ds[b], ds[a]
 }
 
+const clientName = "ExpirationMailer"
+
 func main() {
 	app := cmd.NewAppShell("expiration-mailer", "Sends certificate expiration emails")
 
@@ -232,10 +234,8 @@ func main() {
 		dbMap, err := sa.NewDbMap(c.Mailer.DBConnect)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		saRPC, err := rpc.NewAmqpRPCClient("ExpirationMailer->SA", c.AMQP.SA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		sac, err := rpc.NewStorageAuthorityClient(saRPC)
+		amqpConf := c.SA.AMQP
+		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create SA client")
 
 		// Load email template
