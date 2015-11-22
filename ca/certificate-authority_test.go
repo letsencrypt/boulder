@@ -428,7 +428,9 @@ func TestWrongSignature(t *testing.T) {
 	csr, _ := x509.ParseCertificateRequest(WrongSignatureCSR)
 
 	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertError(t, err, "Issued a certificate based on a CSR with an invalid signature.")
+	if err == nil {
+		t.Fatalf("Issued a certificate based on a CSR with an invalid signature.")
+	}
 }
 
 func TestHSMFaultTimeout(t *testing.T) {
