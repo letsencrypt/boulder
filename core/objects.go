@@ -6,6 +6,7 @@
 package core
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 )
 
@@ -745,6 +747,63 @@ type OCSPSigningRequest struct {
 	Status    string
 	Reason    RevocationCode
 	RevokedAt time.Time
+}
+
+// SignedCertificateTimestamp is the internal representation of ct.SignedCertificateTimestamp
+// that is used to maintain backwards compatibility with our old CT implementation.
+type SignedCertificateTimestamp struct {
+	ID int `db:"id"`
+	// The version of the protocol to which the SCT conforms
+	SCTVersion uint8 `db:"sctVersion"`
+	// the SHA-256 hash of the log's public key, calculated over
+	// the DER encoding of the key represented as SubjectPublicKeyInfo.
+	LogID string `db:"logID"`
+	// Timestamp (in ms since unix epoc) at which the SCT was issued
+	Timestamp uint64 `db:"timestamp"`
+	// For future extensions to the protocol
+	Extensions []byte `db:"extensions"`
+	// The Log's signature for this SCT
+	Signature []byte `db:"signature"`
+
+	// The serial of the certificate this SCT is for
+	CertificateSerial string `db:"certificateSerial"`
+
+	LockCol int64
+}
+
+// InternalToSCT converts a internal SCT object to a google SCT object
+func InternalToSCT(iSCT SignedCertificateTimestamp) (*ct.SignedCertificateTimestamp, error) {
+	sig, err := ct.UnmarshalDigitallySigned(bytes.NewReader(iSCT.Signature))
+	if err != nil {
+		return nil, err
+	}
+	sct := &ct.SignedCertificateTimestamp{
+		SCTVersion: ct.Version(iSCT.SCTVersion),
+		Timestamp:  iSCT.Timestamp,
+		Extensions: ct.CTExtensions(iSCT.Extensions),
+		Signature:  *sig,
+	}
+	err = sct.LogID.FromBase64String(iSCT.LogID)
+	if err != nil {
+		return nil, err
+	}
+	return sct, nil
+}
+
+// SCTToInternal converts a google SCT object to a internal SCT object
+func SCTToInternal(sct *ct.SignedCertificateTimestamp, serial string) (SignedCertificateTimestamp, error) {
+	sig, err := ct.MarshalDigitallySigned(sct.Signature)
+	if err != nil {
+		return SignedCertificateTimestamp{}, err
+	}
+	return SignedCertificateTimestamp{
+		CertificateSerial: serial,
+		SCTVersion:        uint8(sct.SCTVersion),
+		LogID:             sct.LogID.Base64String(),
+		Timestamp:         sct.Timestamp,
+		Extensions:        sct.Extensions,
+		Signature:         sig,
+	}, nil
 }
 
 // RevocationCode is used to specify a certificate revocation reason

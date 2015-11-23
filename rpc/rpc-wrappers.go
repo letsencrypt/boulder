@@ -13,10 +13,8 @@ import (
 	"net"
 	"time"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1149,18 +1147,15 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	})
 
 	rpc.Handle(MethodAddSCTReceipt, func(req []byte) (response []byte, err error) {
-		var asrReq struct {
-			SCT    *ct.SignedCertificateTimestamp
-			Serial string
-		}
-		err = json.Unmarshal(req, asrReq)
+		var sct core.SignedCertificateTimestamp
+		err = json.Unmarshal(req, &sct)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodAddSCTReceipt, err, req)
 			return
 		}
 
-		err = impl.AddSCTReceipt(asrReq.SCT, asrReq.Serial)
+		err = impl.AddSCTReceipt(core.SignedCertificateTimestamp(sct))
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodAddSCTReceipt, err, req)
@@ -1490,7 +1485,7 @@ func (cac StorageAuthorityClient) CountPendingAuthorizations(regID int64) (count
 
 // GetSCTReceipt retrieves an SCT according to the serial number of a certificate
 // and the logID of the log to which it was submitted.
-func (cac StorageAuthorityClient) GetSCTReceipt(serial string, logID string) (receipt *ct.SignedCertificateTimestamp, err error) {
+func (cac StorageAuthorityClient) GetSCTReceipt(serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
 	var gsctReq struct {
 		Serial string
 		LogID  string
@@ -1513,14 +1508,8 @@ func (cac StorageAuthorityClient) GetSCTReceipt(serial string, logID string) (re
 }
 
 // AddSCTReceipt adds a new SCT to the database.
-func (cac StorageAuthorityClient) AddSCTReceipt(sct *ct.SignedCertificateTimestamp, serial string) (err error) {
-	var asrReq struct {
-		SCT    *ct.SignedCertificateTimestamp
-		Serial string
-	}
-	asrReq.SCT = sct
-	asrReq.Serial = serial
-	data, err := json.Marshal(asrReq)
+func (cac StorageAuthorityClient) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error) {
+	data, err := json.Marshal(sct)
 	if err != nil {
 		return
 	}

@@ -146,7 +146,14 @@ func (pub *PublisherImpl) SubmitToCT(der []byte) error {
 			continue
 		}
 
-		err = pub.SA.AddSCTReceipt(sct, core.SerialToString(cert.SerialNumber))
+		internalSCT, err := core.SCTToInternal(sct, core.SerialToString(cert.SerialNumber))
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			pub.log.Audit(fmt.Sprintf("Failed to convert SCT receipt: %s", err))
+			continue
+		}
+
+		err = pub.SA.AddSCTReceipt(internalSCT)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.Audit(fmt.Sprintf("Failed to store SCT receipt in database: %s", err))

@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"time"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
@@ -108,7 +107,7 @@ type StorageGetter interface {
 	CountCertificatesByNames([]string, time.Time, time.Time) (map[string]int, error)
 	CountRegistrationsByIP(net.IP, time.Time, time.Time) (int, error)
 	CountPendingAuthorizations(regID int64) (int, error)
-	GetSCTReceipt(string, string) (*ct.SignedCertificateTimestamp, error)
+	GetSCTReceipt(string, string) (SignedCertificateTimestamp, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods
@@ -124,7 +123,7 @@ type StorageAdder interface {
 
 	AddCertificate([]byte, int64) (string, error)
 
-	AddSCTReceipt(*ct.SignedCertificateTimestamp, string) error
+	AddSCTReceipt(SignedCertificateTimestamp) error
 }
 
 // StorageAuthority interface represents a simple key/value

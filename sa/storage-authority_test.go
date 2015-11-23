@@ -11,6 +11,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -20,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 
@@ -445,40 +445,56 @@ func TestDeniedCSR(t *testing.T) {
 	test.Assert(t, !exists, "Found non-existent CSR")
 }
 
-var testSCT = ct.SignedCertificateTimestamp{
-	SCTVersion: ct.V1,
-	Timestamp:  1435787268907,
-	LogID:      ct.SHA256Hash{},
-	Signature: ct.DigitallySigned{
-		HashAlgorithm:      ct.SHA256,
-		SignatureAlgorithm: ct.ECDSA,
-		Signature:          []byte{0, 0, 01},
-	},
-}
+const (
+	sctVersion    = 0
+	sctTimestamp  = 1435787268907
+	sctLogID      = "aPaY+B9kgr46jO65KB1M/HFRXWeT1ETRCmesu09P+8Q="
+	sctSignature  = "BAMASDBGAiEA/4kz9wQq3NhvZ6VlOmjq2Z9MVHGrUjF8uxUG9n1uRc4CIQD2FYnnszKXrR9AP5kBWmTgh3fXy+VlHK8HZXfbzdFf7g=="
+	sctCertSerial = "ff000000000000012607e11a78ac01f9"
+)
 
 func TestAddSCTReceipt(t *testing.T) {
+	sigBytes, err := base64.StdEncoding.DecodeString(sctSignature)
+	test.AssertNotError(t, err, "Failed to decode SCT signature")
+	sct := core.SignedCertificateTimestamp{
+		SCTVersion:        sctVersion,
+		LogID:             sctLogID,
+		Timestamp:         sctTimestamp,
+		Signature:         sigBytes,
+		CertificateSerial: sctCertSerial,
+	}
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
-	err := sa.AddSCTReceipt(&testSCT, "007")
+	err = sa.AddSCTReceipt(sct)
 	test.AssertNotError(t, err, "Failed to add SCT receipt")
 	// Append only and unique on signature and across LogID and CertificateSerial
-	err = sa.AddSCTReceipt(&testSCT, "007")
+	err = sa.AddSCTReceipt(sct)
 	test.AssertError(t, err, "Incorrectly added duplicate SCT receipt")
 	fmt.Println(err)
 }
 
 func TestGetSCTReceipt(t *testing.T) {
+	sigBytes, err := base64.StdEncoding.DecodeString(sctSignature)
+	test.AssertNotError(t, err, "Failed to decode SCT signature")
+	sct := core.SignedCertificateTimestamp{
+		SCTVersion:        sctVersion,
+		LogID:             sctLogID,
+		Timestamp:         sctTimestamp,
+		Signature:         sigBytes,
+		CertificateSerial: sctCertSerial,
+	}
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
-	err := sa.AddSCTReceipt(&testSCT, "007")
+	err = sa.AddSCTReceipt(sct)
 	test.AssertNotError(t, err, "Failed to add SCT receipt")
 
-	sqlSCT, err := sa.GetSCTReceipt("007", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	sqlSCT, err := sa.GetSCTReceipt(sctCertSerial, sctLogID)
 	test.AssertNotError(t, err, "Failed to get existing SCT receipt")
-	test.Assert(t, sqlSCT.SCTVersion == testSCT.SCTVersion, "Invalid SCT version")
-	test.Assert(t, sqlSCT.LogID == testSCT.LogID, "Invalid log ID")
-	test.Assert(t, sqlSCT.Timestamp == testSCT.Timestamp, "Invalid timestamp")
-	test.Assert(t, bytes.Compare(sqlSCT.Signature.Signature, testSCT.Signature.Signature) == 0, "Invalid signature")
+	test.Assert(t, sqlSCT.SCTVersion == sct.SCTVersion, "Invalid SCT version")
+	test.Assert(t, sqlSCT.LogID == sct.LogID, "Invalid log ID")
+	test.Assert(t, sqlSCT.Timestamp == sct.Timestamp, "Invalid timestamp")
+	test.Assert(t, bytes.Compare(sqlSCT.Signature, sct.Signature) == 0, "Invalid signature")
+	test.Assert(t, sqlSCT.CertificateSerial == sct.CertificateSerial, "Invalid certificate serial")
 }
 
 func TestUpdateOCSP(t *testing.T) {
