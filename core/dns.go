@@ -122,11 +122,11 @@ type DNSResolverImpl struct {
 
 // NewDNSResolverImpl constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution.
-func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolverImpl {
+func NewDNSResolverImpl(readTimeout time.Duration, servers []string) *DNSResolverImpl {
 	dnsClient := new(dns.Client)
 
 	// Set timeout for underlying net.Conn
-	dnsClient.DialTimeout = dialTimeout
+	dnsClient.ReadTimeout = readTimeout
 	dnsClient.Net = "tcp"
 
 	return &DNSResolverImpl{
@@ -139,8 +139,8 @@ func NewDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolve
 // NewTestDNSResolverImpl constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution and will allow loopback addresses.
 // This constructor should *only* be called from tests (unit or integration).
-func NewTestDNSResolverImpl(dialTimeout time.Duration, servers []string) *DNSResolverImpl {
-	resolver := NewDNSResolverImpl(dialTimeout, servers)
+func NewTestDNSResolverImpl(readTimeout time.Duration, servers []string) *DNSResolverImpl {
+	resolver := NewDNSResolverImpl(readTimeout, servers)
 	resolver.allowRestrictedAddresses = true
 	return resolver
 }
