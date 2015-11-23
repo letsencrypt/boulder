@@ -42,8 +42,9 @@ const (
 
 	// StatusRateLimited is not in net/http
 	StatusRateLimited = 429
-	// statusBadNonce is used to force sendError to send the proper error type
-	statusBadNonce = 0400
+	// statusBadNonce is used as a sentinel value to force sendError to send
+	// the proper error type
+	statusBadNonce = 1400
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
