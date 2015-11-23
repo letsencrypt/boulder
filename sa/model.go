@@ -6,13 +6,16 @@
 package sa
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
 	"net"
 	"time"
 
+	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -57,6 +60,55 @@ type challModel struct {
 	AccountKey       []byte          `db:"accountKey"`
 
 	LockCol int64
+}
+
+type sctModel struct {
+	ID int64 `db:"id"`
+
+	Version    uint8  `db:"sctVersion"`
+	LogID      string `db:"logID"`
+	Timestamp  uint64 `db:"timestamp"`
+	Extensions []byte `db:"extensions"`
+	Signature  []byte `db:"signature"`
+
+	CertificateSerial string `db:"certificateSerial"`
+
+	LockCol int64
+}
+
+func sctToModel(sct *ct.SignedCertificateTimestamp, serial string) (*sctModel, error) {
+	sig, err := ct.MarshalDigitallySigned(sct.Signature)
+	if err != nil {
+		return nil, err
+	}
+	sm := &sctModel{
+		CertificateSerial: serial,
+		Version:           uint8(sct.SCTVersion),
+		LogID:             sct.LogID.Base64String(),
+		Timestamp:         sct.Timestamp,
+		Extensions:        sct.Extensions,
+		Signature:         sig,
+	}
+	fmt.Println("DOOPDOOP", sm.LogID)
+	return sm, nil
+}
+
+func modelToSCT(sm *sctModel) (*ct.SignedCertificateTimestamp, error) {
+	sig, err := ct.UnmarshalDigitallySigned(bytes.NewReader(sm.Signature))
+	if err != nil {
+		return nil, err
+	}
+	sct := &ct.SignedCertificateTimestamp{
+		SCTVersion: ct.Version(sm.Version),
+		Timestamp:  sm.Timestamp,
+		Extensions: sm.Extensions,
+		Signature:  *sig,
+	}
+	err = sct.LogID.FromBase64String(sm.LogID)
+	if err != nil {
+		return nil, err
+	}
+	return sct, nil
 }
 
 // newReg creates a reg model object from a core.Registration

@@ -8,12 +8,9 @@ package core
 import (
 	"crypto/subtle"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"math/big"
 	"net"
 	"strings"
 	"time"
@@ -748,105 +745,6 @@ type OCSPSigningRequest struct {
 	Status    string
 	Reason    RevocationCode
 	RevokedAt time.Time
-}
-
-// SignedCertificateTimestamp represents objects used by Certificate Transparency
-// to demonstrate that a certificate was submitted to a CT log. See RFC 6962.
-type SignedCertificateTimestamp struct {
-	ID int `db:"id"`
-	// The version of the protocol to which the SCT conforms
-	SCTVersion uint8 `db:"sctVersion"`
-	// the SHA-256 hash of the log's public key, calculated over
-	// the DER encoding of the key represented as SubjectPublicKeyInfo.
-	LogID string `db:"logID"`
-	// Timestamp (in ms since unix epoc) at which the SCT was issued
-	Timestamp uint64 `db:"timestamp"`
-	// For future extensions to the protocol
-	Extensions []byte `db:"extensions"`
-	// The Log's signature for this SCT
-	Signature []byte `db:"signature"`
-
-	// The serial of the certificate this SCT is for
-	CertificateSerial string `db:"certificateSerial"`
-
-	LockCol int64
-}
-
-// RPCSignedCertificateTimestamp is a wrapper around SignedCertificateTimestamp
-// so that it can be passed through the RPC layer properly. Without this wrapper
-// the UnmarshalJSON method below will be used when marshaling/unmarshaling the
-// object, which is not what we want as it is not symmetrical (as it is intended
-// to unmarshal a rawSignedCertificateTimestamp into a SignedCertificateTimestamp)
-type RPCSignedCertificateTimestamp SignedCertificateTimestamp
-
-type rawSignedCertificateTimestamp struct {
-	Version    uint8  `json:"sct_version"`
-	LogID      string `json:"id"`
-	Timestamp  uint64 `json:"timestamp"`
-	Signature  string `json:"signature"`
-	Extensions string `json:"extensions"`
-}
-
-// UnmarshalJSON parses the add-chain response from a CT log. It fills all of
-// the fields in the SignedCertificateTimestamp struct except for ID and
-// CertificateSerial, which are used for local recordkeeping in the Boulder DB.
-func (sct *SignedCertificateTimestamp) UnmarshalJSON(data []byte) error {
-	var err error
-	var rawSCT rawSignedCertificateTimestamp
-	if err = json.Unmarshal(data, &rawSCT); err != nil {
-		return fmt.Errorf("Failed to unmarshal SCT receipt, %s", err)
-	}
-	sct.LogID = rawSCT.LogID
-	if err != nil {
-		return fmt.Errorf("Failed to decode log ID, %s", err)
-	}
-	sct.Signature, err = base64.StdEncoding.DecodeString(rawSCT.Signature)
-	if err != nil {
-		return fmt.Errorf("Failed to decode SCT signature, %s", err)
-	}
-	sct.Extensions, err = base64.StdEncoding.DecodeString(rawSCT.Extensions)
-	if err != nil {
-		return fmt.Errorf("Failed to decode SCT extensions, %s", err)
-	}
-	sct.SCTVersion = rawSCT.Version
-	sct.Timestamp = rawSCT.Timestamp
-	return nil
-}
-
-const (
-	sctHashSHA256 = 4
-	sctSigECDSA   = 3
-)
-
-// CheckSignature validates that the returned SCT signature is a valid SHA256 +
-// ECDSA signature but does not verify that a specific public key signed it.
-func (sct *SignedCertificateTimestamp) CheckSignature() error {
-	if len(sct.Signature) < 4 {
-		return errors.New("SCT signature is truncated")
-	}
-	// Since all of the known logs currently only use SHA256 hashes and ECDSA
-	// keys, only allow those
-	if sct.Signature[0] != sctHashSHA256 {
-		return fmt.Errorf("Unsupported SCT hash function [%d]", sct.Signature[0])
-	}
-	if sct.Signature[1] != sctSigECDSA {
-		return fmt.Errorf("Unsupported SCT signature algorithm [%d]", sct.Signature[1])
-	}
-
-	var ecdsaSig struct {
-		R, S *big.Int
-	}
-	// Ignore the two length bytes and attempt to unmarshal the signature directly
-	signatureBytes := sct.Signature[4:]
-	signatureBytes, err := asn1.Unmarshal(signatureBytes, &ecdsaSig)
-	if err != nil {
-		return fmt.Errorf("Failed to parse SCT signature, %s", err)
-	}
-	if len(signatureBytes) > 0 {
-		return fmt.Errorf("Trailing garbage after signature")
-	}
-
-	return nil
 }
 
 // RevocationCode is used to specify a certificate revocation reason

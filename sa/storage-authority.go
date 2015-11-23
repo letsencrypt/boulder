@@ -18,9 +18,11 @@ import (
 	"strings"
 	"time"
 
+	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -799,20 +801,21 @@ func (e ErrNoReceipt) Error() string {
 
 // GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
 // CT log ID
-func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
+func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (receipt *ct.SignedCertificateTimestamp, err error) {
+	var sm sctModel
 	err = ssa.dbMap.SelectOne(
-		&receipt,
+		&sm,
 		"SELECT * FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID",
 		map[string]interface{}{
 			"serial": serial,
 			"logID":  logID,
 		},
 	)
-
 	if err == sql.ErrNoRows {
 		err = ErrNoReceipt(err.Error())
 		return
 	}
+	receipt, err = modelToSCT(&sm)
 
 	return
 }
@@ -825,8 +828,12 @@ func (e ErrDuplicateReceipt) Error() string {
 }
 
 // AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table
-func (ssa *SQLStorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) error {
-	err := ssa.dbMap.Insert(&sct)
+func (ssa *SQLStorageAuthority) AddSCTReceipt(sct *ct.SignedCertificateTimestamp, serial string) error {
+	sm, err := sctToModel(sct, serial)
+	if err != nil {
+		return err
+	}
+	err = ssa.dbMap.Insert(sm)
 	if err != nil && strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
 		err = ErrDuplicateReceipt(err.Error())
 	}

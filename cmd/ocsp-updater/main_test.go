@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/cmd"
@@ -38,14 +39,17 @@ type mockPub struct {
 }
 
 func (p *mockPub) SubmitToCT(_ []byte) error {
-	return p.sa.AddSCTReceipt(core.SignedCertificateTimestamp{
-		SCTVersion:        0,
-		LogID:             "id",
-		Timestamp:         0,
-		Extensions:        []byte{},
-		Signature:         []byte{0},
-		CertificateSerial: "00",
-	})
+	return p.sa.AddSCTReceipt(&ct.SignedCertificateTimestamp{
+		SCTVersion: 0,
+		LogID:      ct.SHA256Hash{},
+		Timestamp:  0,
+		Extensions: []byte{},
+		Signature: ct.DigitallySigned{
+			HashAlgorithm:      ct.SHA256,
+			SignatureAlgorithm: ct.ECDSA,
+			Signature:          []byte{0, 0, 01},
+		},
+	}, "007")
 }
 
 var log = mocks.UseMockLog()
@@ -255,7 +259,7 @@ func TestMissingReceiptsTick(t *testing.T) {
 	updater.oldestIssuedSCT = 1 * time.Hour
 	updater.missingReceiptsTick(10)
 
-	count, err := updater.getNumberOfReceipts("00")
+	count, err := updater.getNumberOfReceipts("007")
 	test.AssertNotError(t, err, "Couldn't get number of receipts")
 	test.AssertEquals(t, count, 1)
 }

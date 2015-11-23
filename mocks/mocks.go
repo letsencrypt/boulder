@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
+	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
@@ -304,13 +305,13 @@ func (sa *StorageAuthority) UpdateRegistration(reg core.Registration) (err error
 }
 
 // GetSCTReceipt  is a mock
-func (sa *StorageAuthority) GetSCTReceipt(serial string, logID string) (sct core.SignedCertificateTimestamp, err error) {
+func (sa *StorageAuthority) GetSCTReceipt(serial string, logID string) (sct *ct.SignedCertificateTimestamp, err error) {
 	return
 }
 
 // AddSCTReceipt is a mock
-func (sa *StorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error) {
-	if sct.Signature == nil {
+func (sa *StorageAuthority) AddSCTReceipt(sct *ct.SignedCertificateTimestamp, _ string) (err error) {
+	if sct.Signature.Signature == nil {
 		err = fmt.Errorf("Bad times")
 	}
 	return
