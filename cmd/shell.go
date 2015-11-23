@@ -104,24 +104,42 @@ func (as *AppShell) Run() {
 		}
 		if config.CA.AMQP == nil {
 			config.CA.AMQP = config.AMQP
+			if config.CA.AMQP != nil && config.AMQP.CA != nil {
+				config.CA.AMQP.ServiceQueue = config.AMQP.CA.Server
+			}
 		}
 		if config.RA.AMQP == nil {
 			config.RA.AMQP = config.AMQP
+			if config.RA.AMQP != nil && config.AMQP.RA != nil {
+				config.RA.AMQP.ServiceQueue = config.AMQP.RA.Server
+			}
 		}
 		if config.SA.AMQP == nil {
 			config.SA.AMQP = config.AMQP
+			if config.SA.AMQP != nil && config.AMQP.SA != nil {
+				config.SA.AMQP.ServiceQueue = config.AMQP.SA.Server
+			}
 		}
 		if config.VA.AMQP == nil {
 			config.VA.AMQP = config.AMQP
+			if config.VA.AMQP != nil && config.AMQP.VA != nil {
+				config.VA.AMQP.ServiceQueue = config.AMQP.VA.Server
+			}
 		}
 		if config.Mailer.AMQP == nil {
 			config.Mailer.AMQP = config.AMQP
+		}
+		if config.OCSPUpdater.AMQP == nil {
+			config.OCSPUpdater.AMQP = config.AMQP
 		}
 		if config.OCSPResponder.AMQP == nil {
 			config.OCSPResponder.AMQP = config.AMQP
 		}
 		if config.Publisher.AMQP == nil {
 			config.Publisher.AMQP = config.AMQP
+			if config.Publisher.AMQP != nil && config.AMQP.Publisher != nil {
+				config.Publisher.AMQP.ServiceQueue = config.AMQP.Publisher.Server
+			}
 		}
 
 		stats, auditlogger := StatsAndLogging(config.Statsd, config.Syslog)
