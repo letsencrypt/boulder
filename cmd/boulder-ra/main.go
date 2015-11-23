@@ -20,6 +20,8 @@ import (
 	"github.com/letsencrypt/boulder/rpc"
 )
 
+const clientName = "RA"
+
 func main() {
 	app := cmd.NewAppShell("boulder-ra", "Handles service orchestration")
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
@@ -39,27 +41,19 @@ func main() {
 
 		go cmd.ProfileCmd("RA", stats)
 
-		vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		vac, err := rpc.NewValidationAuthorityClient(vaRPC)
+		amqpConf := c.RA.AMQP
+		vac, err := rpc.NewValidationAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create VA client")
 
-		cac, err := rpc.NewCertificateAuthorityClient(caRPC)
+		cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create CA client")
 
-		sac, err := rpc.NewStorageAuthorityClient(saRPC)
+		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create SA client")
 
 		var dc *ra.DomainCheck
 		if c.RA.UseIsSafeDomain {
-			dc = &ra.DomainCheck{VA: &vac}
+			dc = &ra.DomainCheck{VA: vac}
 		}
 
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats,
@@ -73,15 +67,15 @@ func main() {
 			rai.DNSResolver = core.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
 		}
 
-		rai.VA = &vac
-		rai.CA = &cac
-		rai.SA = &sac
+		rai.VA = vac
+		rai.CA = cac
+		rai.SA = sac
 
-		ras, err := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, c.RA.MaxConcurrentRPCServerRequests, c)
+		ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create RA RPC server")
 		rpc.NewRegistrationAuthorityServer(ras, rai)
 
-		err = ras.Start(c)
+		err = ras.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run RA RPC server")
 	}
 
