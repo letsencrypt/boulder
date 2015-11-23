@@ -76,6 +76,7 @@ type SigningProfile struct {
 	NotAfter            time.Time  `json:"not_after"`
 	NameWhitelistString string     `json:"name_whitelist"`
 	AuthRemote          AuthRemote `json:"auth_remote"`
+	CTLogServers        []string   `json:"ct_log_servers"`
 
 	Policies                    []CertificatePolicy
 	Expiry                      time.Duration
@@ -99,7 +100,6 @@ func (oid *OID) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 	*oid = OID(parsedOid)
-	log.Debugf("Parsed OID %v", *oid)
 	return
 }
 
@@ -525,6 +525,10 @@ func LoadConfig(config []byte) (*Config, error) {
 	if err != nil {
 		return nil, cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy,
 			errors.New("failed to unmarshal configuration: "+err.Error()))
+	}
+
+	if cfg.Signing == nil {
+		return nil, errors.New("No \"signing\" field present")
 	}
 
 	if cfg.Signing.Default == nil {
