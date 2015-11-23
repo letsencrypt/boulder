@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -177,26 +178,21 @@ type AmqpRPCServer struct {
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
-func NewAmqpRPCServer(serverQueue string, maxConcurrentRPCServerRequests int64, c cmd.Config) (*AmqpRPCServer, error) {
+func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
 	log := blog.GetAuditLogger()
 
-	reconnectBase := c.AMQP.ReconnectTimeouts.Base.Duration
+	reconnectBase := amqpConf.ReconnectTimeouts.Base.Duration
 	if reconnectBase == 0 {
 		reconnectBase = 20 * time.Millisecond
 	}
-	reconnectMax := c.AMQP.ReconnectTimeouts.Max.Duration
+	reconnectMax := amqpConf.ReconnectTimeouts.Max.Duration
 	if reconnectMax == 0 {
 		reconnectMax = time.Minute
 	}
 
-	stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-	if err != nil {
-		return nil, err
-	}
-
 	return &AmqpRPCServer{
-		serverQueue:                    serverQueue,
-		connection:                     newAMQPConnector(serverQueue, reconnectBase, reconnectMax),
+		serverQueue:                    amqpConf.ServiceQueue,
+		connection:                     newAMQPConnector(amqpConf.ServiceQueue, reconnectBase, reconnectMax),
 		log:                            log,
 		dispatchTable:                  make(map[string]func([]byte) ([]byte, error)),
 		maxConcurrentRPCServerRequests: maxConcurrentRPCServerRequests,
@@ -219,101 +215,123 @@ type rpcError struct {
 
 // Wraps a error in a rpcError so it can be marshalled to
 // JSON.
-func wrapError(err error) (rpcError rpcError) {
+func wrapError(err error) *rpcError {
 	if err != nil {
-		rpcError.Value = err.Error()
+		wrapped := &rpcError{
+			Value: err.Error(),
+		}
 		switch err.(type) {
 		case core.InternalServerError:
-			rpcError.Type = "InternalServerError"
+			wrapped.Type = "InternalServerError"
 		case core.NotSupportedError:
-			rpcError.Type = "NotSupportedError"
+			wrapped.Type = "NotSupportedError"
 		case core.MalformedRequestError:
-			rpcError.Type = "MalformedRequestError"
+			wrapped.Type = "MalformedRequestError"
 		case core.UnauthorizedError:
-			rpcError.Type = "UnauthorizedError"
+			wrapped.Type = "UnauthorizedError"
 		case core.NotFoundError:
-			rpcError.Type = "NotFoundError"
+			wrapped.Type = "NotFoundError"
 		case core.SyntaxError:
-			rpcError.Type = "SyntaxError"
+			wrapped.Type = "SyntaxError"
 		case core.SignatureValidationError:
-			rpcError.Type = "SignatureValidationError"
+			wrapped.Type = "SignatureValidationError"
 		case core.CertificateIssuanceError:
-			rpcError.Type = "CertificateIssuanceError"
+			wrapped.Type = "CertificateIssuanceError"
 		case core.NoSuchRegistrationError:
-			rpcError.Type = "NoSuchRegistrationError"
+			wrapped.Type = "NoSuchRegistrationError"
 		case core.TooManyRPCRequestsError:
-			rpcError.Type = "TooManyRPCRequestsError"
+			wrapped.Type = "TooManyRPCRequestsError"
 		case core.RateLimitedError:
-			rpcError.Type = "RateLimitedError"
+			wrapped.Type = "RateLimitedError"
 		case core.ServiceUnavailableError:
-			rpcError.Type = "ServiceUnavailableError"
+			wrapped.Type = "ServiceUnavailableError"
 		}
+		return wrapped
 	}
-	return
+	return nil
 }
 
 // Unwraps a rpcError and returns the correct error type.
-func unwrapError(rpcError rpcError) (err error) {
-	if rpcError.Value != "" {
+func unwrapError(rpcError *rpcError) error {
+	if rpcError != nil {
 		switch rpcError.Type {
 		case "InternalServerError":
-			err = core.InternalServerError(rpcError.Value)
+			return core.InternalServerError(rpcError.Value)
 		case "NotSupportedError":
-			err = core.NotSupportedError(rpcError.Value)
+			return core.NotSupportedError(rpcError.Value)
 		case "MalformedRequestError":
-			err = core.MalformedRequestError(rpcError.Value)
+			return core.MalformedRequestError(rpcError.Value)
 		case "UnauthorizedError":
-			err = core.UnauthorizedError(rpcError.Value)
+			return core.UnauthorizedError(rpcError.Value)
 		case "NotFoundError":
-			err = core.NotFoundError(rpcError.Value)
+			return core.NotFoundError(rpcError.Value)
 		case "SyntaxError":
-			err = core.SyntaxError(rpcError.Value)
+			return core.SyntaxError(rpcError.Value)
 		case "SignatureValidationError":
-			err = core.SignatureValidationError(rpcError.Value)
+			return core.SignatureValidationError(rpcError.Value)
 		case "CertificateIssuanceError":
-			err = core.CertificateIssuanceError(rpcError.Value)
+			return core.CertificateIssuanceError(rpcError.Value)
 		case "NoSuchRegistrationError":
-			err = core.NoSuchRegistrationError(rpcError.Value)
+			return core.NoSuchRegistrationError(rpcError.Value)
 		case "TooManyRPCRequestsError":
-			err = core.TooManyRPCRequestsError(rpcError.Value)
+			return core.TooManyRPCRequestsError(rpcError.Value)
 		case "RateLimitedError":
-			err = core.RateLimitedError(rpcError.Value)
+			return core.RateLimitedError(rpcError.Value)
 		case "ServiceUnavailableError":
-			err = core.ServiceUnavailableError(rpcError.Value)
+			return core.ServiceUnavailableError(rpcError.Value)
 		default:
-			err = errors.New(rpcError.Value)
+			return errors.New(rpcError.Value)
 		}
 	}
-	return
+	return nil
 }
 
 // rpcResponse is a stuct for wire-representation of response messages
 // used by DispatchSync
 type rpcResponse struct {
-	ReturnVal []byte   `json:"returnVal,omitempty"`
-	Error     rpcError `json:"error,omitempty"`
+	ReturnVal []byte    `json:"returnVal"`
+	Error     *rpcError `json:"error,omitempty"`
+}
+
+// Hack: Some of our RPCs return DER directly. If we log it naively it will
+// just be a bunch of numbers. It's easy to detect DER, so we use this function
+// before logging to base64-encode anything that looks like DER.
+func safeDER(input []byte) string {
+	if len(input) > 0 && input[0] == 0x30 {
+		return string(base64.RawStdEncoding.EncodeToString(input))
+	}
+	return string(input)
+}
+
+// Used for debug logging
+func (r rpcResponse) debugString() string {
+	ret := safeDER(r.ReturnVal)
+	if r.Error == nil {
+		return ret
+	}
+	return fmt.Sprintf("%s, RPCERR: %s", ret, r.Error)
 }
 
 // AmqpChannel sets a AMQP connection up using SSL if configuration is provided
-func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
+func AmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 	var err error
 
 	log := blog.GetAuditLogger()
 
-	if conf.AMQP.Insecure == true {
+	if conf.Insecure == true {
 		// If the Insecure flag is true, then just go ahead and connect
-		conn, err = amqp.Dial(conf.AMQP.Server)
+		conn, err = amqp.Dial(conf.Server)
 	} else {
 		// The insecure flag is false or not set, so we need to load up the options
 		log.Info("AMQPS: Loading TLS Options.")
 
-		if strings.HasPrefix(conf.AMQP.Server, "amqps") == false {
+		if strings.HasPrefix(conf.Server, "amqps") == false {
 			err = fmt.Errorf("AMQPS: Not using an AMQPS URL. To use AMQP instead of AMQPS, set insecure=true")
 			return nil, err
 		}
 
-		if conf.AMQP.TLS == nil {
+		if conf.TLS == nil {
 			err = fmt.Errorf("AMQPS: No TLS configuration provided. To use AMQP instead of AMQPS, set insecure=true")
 			return nil, err
 		}
@@ -321,14 +339,14 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 		cfg := new(tls.Config)
 
 		// If the configuration specified a certificate (or key), load them
-		if conf.AMQP.TLS.CertFile != nil || conf.AMQP.TLS.KeyFile != nil {
+		if conf.TLS.CertFile != nil || conf.TLS.KeyFile != nil {
 			// But they have to give both.
-			if conf.AMQP.TLS.CertFile == nil || conf.AMQP.TLS.KeyFile == nil {
+			if conf.TLS.CertFile == nil || conf.TLS.KeyFile == nil {
 				err = fmt.Errorf("AMQPS: You must set both of the configuration values AMQP.TLS.KeyFile and AMQP.TLS.CertFile")
 				return nil, err
 			}
 
-			cert, err := tls.LoadX509KeyPair(*conf.AMQP.TLS.CertFile, *conf.AMQP.TLS.KeyFile)
+			cert, err := tls.LoadX509KeyPair(*conf.TLS.CertFile, *conf.TLS.KeyFile)
 			if err != nil {
 				err = fmt.Errorf("AMQPS: Could not load Client Certificate or Key: %s", err)
 				return nil, err
@@ -340,10 +358,10 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 
 		// If the configuration specified a CA certificate, make it the only
 		// available root.
-		if conf.AMQP.TLS.CACertFile != nil {
+		if conf.TLS.CACertFile != nil {
 			cfg.RootCAs = x509.NewCertPool()
 
-			ca, err := ioutil.ReadFile(*conf.AMQP.TLS.CACertFile)
+			ca, err := ioutil.ReadFile(*conf.TLS.CACertFile)
 			if err != nil {
 				err = fmt.Errorf("AMQPS: Could not load CA Certificate: %s", err)
 				return nil, err
@@ -352,7 +370,7 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 			log.Info("AMQPS: Configured CA certificate for AMQPS.")
 		}
 
-		conn, err = amqp.DialTLS(conf.AMQP.Server, cfg)
+		conn, err = amqp.DialTLS(conf.Server, cfg)
 	}
 
 	if err != nil {
@@ -370,10 +388,10 @@ func AmqpChannel(conf cmd.Config) (*amqp.Channel, error) {
 func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	// XXX-JWS: jws.Verify(body)
 	cb, present := rpc.dispatchTable[msg.Type]
-	rpc.log.Info(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
+	rpc.log.Info(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
 	if !present {
 		// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
-		rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(msg.Body), msg.CorrelationId))
+		rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
 		return
 	}
 	var response rpcResponse
@@ -386,10 +404,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 		rpc.log.Audit(fmt.Sprintf(" [s>][%s][%s] Error condition marshalling RPC response %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
 		return
 	}
-	if response.Error.Value != "" {
-		rpc.log.Info(fmt.Sprintf(" [s>][%s][%s] %s failed, replying: %s (%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, response.Error.Value, response.Error.Type, msg.CorrelationId))
-	}
-	rpc.log.Debug(fmt.Sprintf(" [s>][%s][%s] replying %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, core.B64enc(jsonResponse), msg.CorrelationId))
+	rpc.log.Debug(fmt.Sprintf(" [s>][%s][%s] replying %s: %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, response.debugString(), msg.CorrelationId))
 	rpc.connection.publish(
 		msg.ReplyTo,
 		msg.CorrelationId,
@@ -412,7 +427,7 @@ func (rpc *AmqpRPCServer) replyTooManyRequests(msg amqp.Delivery) error {
 // Start starts the AMQP-RPC server and handles reconnections, this will block
 // until a fatal error is returned or AmqpRPCServer.Stop() is called and all
 // remaining messages are processed.
-func (rpc *AmqpRPCServer) Start(c cmd.Config) error {
+func (rpc *AmqpRPCServer) Start(c *cmd.AMQPConfig) error {
 	tooManyGoroutines := rpcResponse{
 		Error: wrapError(core.TooManyRPCRequestsError("RPC server has spawned too many Goroutines")),
 	}
@@ -530,7 +545,12 @@ type AmqpRPCCLient struct {
 }
 
 // NewAmqpRPCClient constructs an RPC client using AMQP
-func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, c cmd.Config, stats statsd.Statter) (rpc *AmqpRPCCLient, err error) {
+func NewAmqpRPCClient(
+	clientQueuePrefix string,
+	amqpConf *cmd.AMQPConfig,
+	rpcConf *cmd.RPCServerConfig,
+	stats statsd.Statter,
+) (rpc *AmqpRPCCLient, err error) {
 	hostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
@@ -543,26 +563,31 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, c cmd.Config, stats
 	}
 	clientQueue := fmt.Sprintf("%s.%s.%x", clientQueuePrefix, hostname, randID)
 
-	reconnectBase := c.AMQP.ReconnectTimeouts.Base.Duration
+	reconnectBase := amqpConf.ReconnectTimeouts.Base.Duration
 	if reconnectBase == 0 {
 		reconnectBase = 20 * time.Millisecond
 	}
-	reconnectMax := c.AMQP.ReconnectTimeouts.Max.Duration
+	reconnectMax := amqpConf.ReconnectTimeouts.Max.Duration
 	if reconnectMax == 0 {
 		reconnectMax = time.Minute
 	}
 
+	timeout := rpcConf.RPCTimeout.Duration
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+
 	rpc = &AmqpRPCCLient{
-		serverQueue: serverQueue,
+		serverQueue: rpcConf.Server,
 		clientQueue: clientQueue,
 		connection:  newAMQPConnector(clientQueue, reconnectBase, reconnectMax),
 		pending:     make(map[string]chan []byte),
-		timeout:     10 * time.Second,
+		timeout:     timeout,
 		log:         blog.GetAuditLogger(),
 		stats:       stats,
 	}
 
-	err = rpc.connection.connect(c)
+	err = rpc.connection.connect(amqpConf)
 	if err != nil {
 		return nil, err
 	}
@@ -584,7 +609,6 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, c cmd.Config, stats
 						continue
 					}
 
-					rpc.log.Debug(fmt.Sprintf(" [c<][%s] response %s(%s) [%s]", clientQueue, msg.Type, core.B64enc(msg.Body), corrID))
 					responseChan <- msg.Body
 					rpc.mu.Lock()
 					delete(rpc.pending, corrID)
@@ -596,18 +620,12 @@ func NewAmqpRPCClient(clientQueuePrefix, serverQueue string, c cmd.Config, stats
 				}
 			case err = <-rpc.connection.closeChannel():
 				rpc.log.Info(fmt.Sprintf(" [!] Client reply channel closed : %s", rpc.clientQueue))
-				rpc.connection.reconnect(c, rpc.log)
+				rpc.connection.reconnect(amqpConf, rpc.log)
 			}
 		}
 	}()
 
 	return rpc, err
-}
-
-// SetTimeout configures the maximum time DispatchSync will wait for a response
-// before returning an error.
-func (rpc *AmqpRPCCLient) SetTimeout(ttl time.Duration) {
-	rpc.timeout = ttl
 }
 
 // dispatch sends a body to the destination, and returns the id for the request
@@ -618,13 +636,18 @@ func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) (string, chan []b
 	// At least in some cases, it's important that this channel
 	// be buffered to avoid deadlock
 	responseChan := make(chan []byte, 1)
-	corrID := core.NewToken()
+	corrIDBytes := make([]byte, 8)
+	_, err := rand.Read(corrIDBytes)
+	if err != nil {
+		panic("randomness failed")
+	}
+	corrID := base64.RawURLEncoding.EncodeToString(corrIDBytes)
 	rpc.mu.Lock()
 	rpc.pending[corrID] = responseChan
 	rpc.mu.Unlock()
 
 	// Send the request
-	rpc.log.Debug(fmt.Sprintf(" [c>][%s] requesting %s(%s) [%s]", rpc.clientQueue, method, core.B64enc(body), corrID))
+	rpc.log.Debug(fmt.Sprintf(" [c>][%s] requesting %s(%s) [%s]", rpc.clientQueue, method, safeDER(body), corrID))
 	rpc.connection.publish(
 		rpc.serverQueue,
 		corrID,
@@ -645,6 +668,7 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 	case jsonResponse := <-responseChan:
 		var rpcResponse rpcResponse
 		err = json.Unmarshal(jsonResponse, &rpcResponse)
+		rpc.log.Debug(fmt.Sprintf(" [c<][%s] response %s: %s [%s]", rpc.clientQueue, method, rpcResponse.debugString(), corrID))
 		if err != nil {
 			return
 		}

@@ -14,6 +14,8 @@ import (
 	"github.com/letsencrypt/boulder/rpc"
 )
 
+const clientName = "Publisher"
+
 func main() {
 	app := cmd.NewAppShell("boulder-publisher", "Submits issued certificates to CT logs")
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
@@ -23,19 +25,15 @@ func main() {
 		go cmd.DebugServer(c.Publisher.DebugAddr)
 		go cmd.ProfileCmd("Publisher", stats)
 
-		saRPC, err := rpc.NewAmqpRPCClient("Publisher->SA", c.AMQP.SA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create SA RPC client")
-
-		sac, err := rpc.NewStorageAuthorityClient(saRPC)
+		amqpConf := c.Publisher.AMQP
+		pubi.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create SA client")
 
-		pubi.SA = &sac
-
-		pubs, err := rpc.NewAmqpRPCServer(c.AMQP.Publisher.Server, c.Publisher.MaxConcurrentRPCServerRequests, c)
+		pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create Publisher RPC server")
 		rpc.NewPublisherServer(pubs, &pubi)
 
-		err = pubs.Start(c)
+		err = pubs.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run Publisher RPC server")
 	}
 

@@ -8,7 +8,6 @@ package rpc
 import (
 	"encoding/json"
 	"testing"
-	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
@@ -29,9 +28,6 @@ type MockRPCClient struct {
 	LastBody   []byte
 	NextResp   []byte
 	NextErr    error
-}
-
-func (rpc *MockRPCClient) SetTimeout(ttl time.Duration) {
 }
 
 func (rpc *MockRPCClient) Dispatch(method string, body []byte) chan []byte {
@@ -63,9 +59,7 @@ func (rpc *MockRPCClient) DispatchSync(method string, body []byte) (response []b
 
 func TestRANewRegistration(t *testing.T) {
 	mock := &MockRPCClient{}
-	client, err := NewRegistrationAuthorityClient(mock)
-	test.AssertNotError(t, err, "Client construction")
-	test.AssertNotNil(t, client, "Client construction")
+	client := RegistrationAuthorityClient{mock}
 
 	var jwk jose.JsonWebKey
 	json.Unmarshal([]byte(JWK1JSON), &jwk)
@@ -75,7 +69,7 @@ func TestRANewRegistration(t *testing.T) {
 		Key: jwk,
 	}
 
-	_, err = client.NewRegistration(reg)
+	_, err := client.NewRegistration(reg)
 	test.AssertNotError(t, err, "Updated Registration")
 	test.Assert(t, len(mock.LastBody) > 0, "Didn't send Registration")
 	test.AssertEquals(t, "NewRegistration", mock.LastMethod)
@@ -87,15 +81,13 @@ func TestRANewRegistration(t *testing.T) {
 func TestGenerateOCSP(t *testing.T) {
 	mock := &MockRPCClient{}
 
-	client, err := NewCertificateAuthorityClient(mock)
-	test.AssertNotError(t, err, "Client construction")
-	test.AssertNotNil(t, client, "Client construction")
+	client := CertificateAuthorityClient{mock}
 
 	req := core.OCSPSigningRequest{
 	// nope
 	}
 
 	mock.NextResp = []byte{}
-	_, err = client.GenerateOCSP(req)
+	_, err := client.GenerateOCSP(req)
 	test.AssertError(t, err, "Should have failed at signer")
 }

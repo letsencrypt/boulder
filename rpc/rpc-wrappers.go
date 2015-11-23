@@ -13,7 +13,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -362,9 +364,9 @@ type RegistrationAuthorityClient struct {
 }
 
 // NewRegistrationAuthorityClient constructs an RPC client
-func NewRegistrationAuthorityClient(client Client) (rac RegistrationAuthorityClient, err error) {
-	rac = RegistrationAuthorityClient{rpc: client}
-	return
+func NewRegistrationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*RegistrationAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->RA", amqpConf, amqpConf.RA, stats)
+	return &RegistrationAuthorityClient{rpc: client}, err
 }
 
 // NewRegistration sends a New Registration request
@@ -575,9 +577,9 @@ type ValidationAuthorityClient struct {
 }
 
 // NewValidationAuthorityClient constructs an RPC client
-func NewValidationAuthorityClient(client Client) (vac ValidationAuthorityClient, err error) {
-	vac = ValidationAuthorityClient{rpc: client}
-	return
+func NewValidationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*ValidationAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->VA", amqpConf, amqpConf.VA, stats)
+	return &ValidationAuthorityClient{rpc: client}, err
 }
 
 // UpdateValidations sends an Update Validations request
@@ -655,9 +657,9 @@ type PublisherClient struct {
 }
 
 // NewPublisherClient constructs an RPC client
-func NewPublisherClient(client Client) (pub PublisherClient, err error) {
-	pub = PublisherClient{rpc: client}
-	return
+func NewPublisherClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*PublisherClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->Publisher", amqpConf, amqpConf.Publisher, stats)
+	return &PublisherClient{rpc: client}, err
 }
 
 // SubmitToCT sends a request to submit a certifcate to CT logs
@@ -741,9 +743,9 @@ type CertificateAuthorityClient struct {
 }
 
 // NewCertificateAuthorityClient constructs an RPC client
-func NewCertificateAuthorityClient(client Client) (cac CertificateAuthorityClient, err error) {
-	cac = CertificateAuthorityClient{rpc: client}
-	return
+func NewCertificateAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*CertificateAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->CA", amqpConf, amqpConf.CA, stats)
+	return &CertificateAuthorityClient{rpc: client}, err
 }
 
 // IssueCertificate sends a request to issue a certificate
@@ -1172,9 +1174,9 @@ type StorageAuthorityClient struct {
 }
 
 // NewStorageAuthorityClient constructs an RPC client
-func NewStorageAuthorityClient(client Client) (sac StorageAuthorityClient, err error) {
-	sac = StorageAuthorityClient{rpc: client}
-	return
+func NewStorageAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*StorageAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->SA", amqpConf, amqpConf.SA, stats)
+	return &StorageAuthorityClient{rpc: client}, err
 }
 
 // GetRegistration sends a request to get a registration by ID
