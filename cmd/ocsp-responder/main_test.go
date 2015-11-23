@@ -21,22 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-func TestCacheControl(t *testing.T) {
-	src := make(cfocsp.InMemorySource)
-	h := handler(src, 10*time.Second)
-	w := httptest.NewRecorder()
-	r, err := http.NewRequest("GET", "/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	h.ServeHTTP(w, r)
-	expected := "max-age=10"
-	actual := w.Header().Get("Cache-Control")
-	if actual != expected {
-		t.Errorf("Cache-Control value: want %#v, got %#v", expected, actual)
-	}
-}
-
 var (
 	req  = mustRead("./testdata/ocsp.req")
 	resp = mustRead("./testdata/ocsp.resp")
@@ -50,7 +34,7 @@ func TestHandler(t *testing.T) {
 	src := make(cfocsp.InMemorySource)
 	src[ocspReq.SerialNumber.String()] = resp
 
-	h := handler(src, 10*time.Second)
+	h := cfocsp.NewResponder(src)
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest("POST", "/", bytes.NewReader(req))
 	if err != nil {
@@ -93,7 +77,7 @@ func TestDBHandler(t *testing.T) {
 		t.Fatalf("unable to insert response: %s", err)
 	}
 
-	h := handler(src, 10*time.Second)
+	h := cfocsp.NewResponder(src)
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest("POST", "/", bytes.NewReader(req))
 	if err != nil {

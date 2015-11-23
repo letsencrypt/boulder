@@ -95,6 +95,35 @@ func (as *AppShell) Run() {
 			config = as.Config(c, config)
 		}
 
+		// Provide default values for each service's AMQP config section.
+		if config.ActivityMonitor.AMQP == nil {
+			config.ActivityMonitor.AMQP = config.AMQP
+		}
+		if config.WFE.AMQP == nil {
+			config.WFE.AMQP = config.AMQP
+		}
+		if config.CA.AMQP == nil {
+			config.CA.AMQP = config.AMQP
+		}
+		if config.RA.AMQP == nil {
+			config.RA.AMQP = config.AMQP
+		}
+		if config.SA.AMQP == nil {
+			config.SA.AMQP = config.AMQP
+		}
+		if config.VA.AMQP == nil {
+			config.VA.AMQP = config.AMQP
+		}
+		if config.Mailer.AMQP == nil {
+			config.Mailer.AMQP = config.AMQP
+		}
+		if config.OCSPResponder.AMQP == nil {
+			config.OCSPResponder.AMQP = config.AMQP
+		}
+		if config.Publisher.AMQP == nil {
+			config.Publisher.AMQP = config.AMQP
+		}
+
 		stats, auditlogger := StatsAndLogging(config.Statsd, config.Syslog)
 		auditlogger.Info(as.VersionString())
 
