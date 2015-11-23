@@ -119,6 +119,7 @@ func (s *State) Restore(filename string) error {
 		if err != nil {
 			continue
 		}
+		key.Precompute()
 		signer, err := jose.NewSigner(jose.RS256, key)
 		if err != nil {
 			continue

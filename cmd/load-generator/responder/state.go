@@ -158,6 +158,7 @@ func (s *State) sendGET() {
 		state = "error"
 		return
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		fmt.Printf("[FAILED] GET: incorrect status code %d\n", resp.StatusCode)
 		state = "unexpected status"
@@ -184,6 +185,7 @@ func (s *State) sendPOST() {
 		state = "error"
 		return
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		fmt.Printf("[FAILED] POST: incorrect status code %d\n", resp.StatusCode)
 		state = "unexpected status"
