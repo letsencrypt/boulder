@@ -6,6 +6,7 @@
 package rpc
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -26,6 +27,7 @@ func TestWrapError(t *testing.T) {
 		core.NoSuchRegistrationError("foo"),
 		core.RateLimitedError("foo"),
 		core.TooManyRPCRequestsError("foo"),
+		errors.New("foo"),
 	}
 	for _, c := range testCases {
 		wrapped := wrapError(c)
@@ -34,5 +36,36 @@ func TestWrapError(t *testing.T) {
 		unwrapped := unwrapError(wrapped)
 		test.AssertEquals(t, wrapped.Type, reflect.TypeOf(unwrapped).Name())
 		test.AssertEquals(t, unwrapped.Error(), "foo")
+	}
+
+	complicated := []struct {
+		given    error
+		expected error
+	}{
+		{
+			&core.ProblemDetails{
+				Type:   core.ConnectionProblem,
+				Detail: "whoops",
+			},
+			&core.ProblemDetails{
+				Type:   core.ConnectionProblem,
+				Detail: "whoops",
+			},
+		},
+		{
+			&core.ProblemDetails{Type: "invalid", Detail: "hm"},
+			errors.New("hm"),
+		},
+		{
+			errors.New(""),
+			errors.New(""),
+		},
+	}
+	for i, tc := range complicated {
+		actual := unwrapError(wrapError(tc.given))
+		if !reflect.DeepEqual(tc.expected, actual) {
+			t.Errorf("rpc error wrapping case %d: want %#v, got %#v", i, tc.expected, actual)
+		}
+
 	}
 }
