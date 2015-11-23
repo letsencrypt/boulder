@@ -42,6 +42,9 @@ const (
 
 	// StatusRateLimited is not in net/http
 	StatusRateLimited = 429
+	// statusBadNonce is used as a sentinel value to force sendError to send
+	// the proper error type
+	statusBadNonce = 1400
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -112,6 +115,8 @@ func statusCodeFromError(err interface{}) int {
 		return http.StatusInternalServerError
 	case core.RateLimitedError:
 		return StatusRateLimited
+	case core.BadNonceError:
+		return statusBadNonce
 	default:
 		return http.StatusInternalServerError
 	}
@@ -444,12 +449,12 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 	if err != nil || len(nonce) == 0 {
 		wfe.stats.Inc("WFE.Errors.JWSMissingNonce", 1, 1.0)
 		logEvent.AddError("JWS is missing an anti-replay nonce")
-		err = core.SignatureValidationError("JWS has no anti-replay nonce")
+		err = core.BadNonceError("JWS has no anti-replay nonce")
 		return nil, nil, reg, err
 	} else if !wfe.nonceService.Valid(nonce) {
 		wfe.stats.Inc("WFE.Errors.JWSInvalidNonce", 1, 1.0)
 		logEvent.AddError("JWS has an invalid anti-replay nonce")
-		err = core.SignatureValidationError(fmt.Sprintf("JWS has invalid anti-replay nonce"))
+		err = core.BadNonceError(fmt.Sprintf("JWS has invalid anti-replay nonce"))
 		return nil, nil, reg, err
 	}
 
@@ -499,6 +504,9 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 		problem.Type = core.MalformedProblem
 	case StatusRateLimited:
 		problem.Type = core.RateLimitedProblem
+	case statusBadNonce:
+		problem.Type = core.BadNonceProblem
+		code = http.StatusBadRequest
 	default: // Either http.StatusInternalServerError or an unexpected code
 		problem.Type = core.ServerInternalProblem
 	}
