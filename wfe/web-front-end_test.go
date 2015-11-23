@@ -740,6 +740,24 @@ func TestChallenge(t *testing.T) {
 		`{"type":"urn:acme:error:malformed","detail":"Expired authorization"}`)
 }
 
+func TestBadNonce(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+
+	responseWriter := httptest.NewRecorder()
+	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Failed to sign body")
+	wfe.NewRegistration(newRequestEvent(), responseWriter,
+		makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:badNonce","detail":"Unable to read/verify body :: JWS has no anti-replay nonce"}`)
+}
+
 func TestNewRegistration(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	mux, err := wfe.Handler()
@@ -1396,6 +1414,7 @@ func TestStatusCodeFromError(t *testing.T) {
 		{core.SignatureValidationError("foo"), 400},
 		{core.RateLimitedError("foo"), 429},
 		{core.LengthRequiredError("foo"), 411},
+		{core.BadNonceError("foo"), statusBadNonce},
 	}
 	for _, c := range testCases {
 		got := statusCodeFromError(c.err)
