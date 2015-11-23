@@ -1,6 +1,9 @@
 package probs
 
-import "fmt"
+import (
+	"fmt"
+	"net/http"
+)
 
 // Error types that can be used in ACME payloads
 const (
@@ -20,11 +23,121 @@ type ProblemType string
 // ProblemDetails objects represent problem documents
 // https://tools.ietf.org/html/draft-ietf-appsawg-http-problem-00
 type ProblemDetails struct {
-	Type       ProblemType `json:"type,omitempty"`
-	Detail     string      `json:"detail,omitempty"`
-	HTTPStatus int         `json:"status,omitempty"`
+	Type   ProblemType `json:"type,omitempty"`
+	Detail string      `json:"detail,omitempty"`
+	// HTTPStatus is the HTTP status code the ProblemDetails should probably be sent
+	// as.
+	HTTPStatus int `json:"status,omitempty"`
 }
 
 func (pd *ProblemDetails) Error() string {
 	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
+}
+
+// statusTooManyRequests is the HTTP status code meant for rate limiting
+// errors. It's not currently in the net/http library so we add it here.
+const statusTooManyRequests = 429
+
+// ProblemDetailsToStatusCode inspects the given ProblemDetails to figure out
+// what HTTP status code it should represent. It should only be used by the WFE
+// but is included in this package because of its reliance on ProblemTypes.
+func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
+	if prob.HTTPStatus != 0 {
+		return prob.HTTPStatus
+	}
+	switch prob.Type {
+	case ConnectionProblem, MalformedProblem, TLSProblem, UnknownHostProblem, BadNonceProblem:
+		return http.StatusBadRequest
+	case ServerInternalProblem:
+		return http.StatusInternalServerError
+	case UnauthorizedProblem:
+		return http.StatusForbidden
+	case RateLimitedProblem:
+		return statusTooManyRequests
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// BadNonce returns a ProblemDetails with a BadNonceProblem and a 400 Bad
+// Request status code.
+func BadNonce(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       BadNonceProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// Conflict returns a ProblemDetails with a MalformedProblem and a 409 Conflict
+// status code.
+func Conflict(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       MalformedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusConflict,
+	}
+}
+
+// Malformed returns a ProblemDetails with a MalformedProblem and a 400 Bad
+// Request status code.
+func Malformed(detail string, args ...interface{}) *ProblemDetails {
+	if len(args) > 0 {
+		detail = fmt.Sprintf(detail, args...)
+	}
+	return &ProblemDetails{
+		Type:       MalformedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// NotFound returns a ProblemDetails with a MalformedProblem and a 404 Not Found
+// status code.
+func NotFound(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       MalformedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusNotFound,
+	}
+}
+
+// ServerInternal returns a ProblemDetails with a ServerInternalProblem and a
+// 500 Internal Server Failure status code.
+func ServerInternal(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       ServerInternalProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusInternalServerError,
+	}
+}
+
+// Unauthorized returns a ProblemDetails with an UnauthorizedProblem and a 403
+// Forbidden status code.
+func Unauthorized(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       UnauthorizedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
+	}
+}
+
+// MethodNotAllowed returns a ProblemDetails representing a disallowed HTTP
+// method error.
+func MethodNotAllowed() *ProblemDetails {
+	return &ProblemDetails{
+		Type:       MalformedProblem,
+		Detail:     "Method not allowed",
+		HTTPStatus: http.StatusMethodNotAllowed,
+	}
+}
+
+// ContentLengthRequired returns a ProblemDetails representing a missing
+// Content-Length header error
+func ContentLengthRequired() *ProblemDetails {
+	return &ProblemDetails{
+		Type:       MalformedProblem,
+		Detail:     "missing Content-Length header",
+		HTTPStatus: http.StatusLengthRequired,
+	}
 }
