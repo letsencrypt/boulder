@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"expvar"
 	"fmt"
 	"hash"
 	"io"
@@ -47,6 +48,11 @@ var BuildHost string
 
 // BuildTime is set by the compiler and is used by GetBuildTime
 var BuildTime string
+
+func init() {
+	expvar.NewString("BuildID").Set(BuildID)
+	expvar.NewString("BuildTime").Set(BuildTime)
+}
 
 // Errors
 
