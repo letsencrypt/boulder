@@ -183,6 +183,9 @@ type ServiceConfig struct {
 	AMQP      *AMQPConfig
 }
 
+// DBConfig defines how to connect to a database. The connect string may be
+// stored in a file separate from the config, because it can contain a password,
+// which we want to keep out of configs.
 type DBConfig struct {
 	DBConnect string
 	// A file containing a connect URL for the DB.

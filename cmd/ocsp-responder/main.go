@@ -151,8 +151,14 @@ func main() {
 
 		config := c.OCSPResponder
 		var source cfocsp.Source
-		url, err := url.Parse(config.Source)
-		cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
+
+		// DBConfig takes precedence over Source, if present.
+		url, err := config.DBConfig.URL()
+		cmd.FailOnError(err, "Reading DB config")
+		if url == "" {
+			url, err = url.Parse(config.Source)
+			cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
+		}
 
 		if url.Scheme == "mysql+tcp" {
 			auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
