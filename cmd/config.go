@@ -199,9 +199,6 @@ func (d *DBConfig) URL() (string, error) {
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
 // RPC services we offer via AMQP.
 type AMQPConfig struct {
-	// A file containing a connect URL for the server.
-	ServerURLFile string
-
 	Server    string
 	Insecure  bool
 	RA        *RPCServerConfig
@@ -403,37 +400,5 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	}
 
 	d.Duration = dur
-	return nil
-}
-
-// A ConfigSecret represents a string-valued config field. It may be specified
-// directly in the config or, if it starts with the string "secret:", its
-// contents are read from the filename that comes after "secret:", with
-// trailing newlines removed.
-type ConfigSecret string
-
-var errSecretMustBeString = errors.New("cannot JSON unmarshal something other than a string into a ConfigSecret")
-
-const secretPrefix = "secret:"
-
-// UnmarshalJSON unmarshals a ConfigSecret
-func (d *ConfigSecret) UnmarshalJSON(b []byte) error {
-	s := ""
-	err := json.Unmarshal(b, &s)
-	if err != nil {
-		if _, ok := err.(*json.UnmarshalTypeError); ok {
-			return errSecretMustBeString
-		}
-		return err
-	}
-	if !strings.HasPrefix(s, secretPrefix) {
-		*d = ConfigSecret(s)
-		return nil
-	}
-	contents, err := ioutil.ReadFile(s[len(secretPrefix):])
-	if err != nil {
-		return err
-	}
-	*d = ConfigSecret(strings.TrimRight(string(contents), "\n"))
 	return nil
 }
