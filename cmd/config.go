@@ -192,6 +192,8 @@ type DBConfig struct {
 	DBConnectFile string
 }
 
+// URL returns the DBConnect URL represented by this DBConfig object, either
+// loading it from disk or returning a default value.
 func (d *DBConfig) URL() (string, error) {
 	if c.DBConnectFile != "" {
 		return ioutil.ReadFile(c.DBConnectFile)
