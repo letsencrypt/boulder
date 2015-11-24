@@ -14,21 +14,9 @@ import (
 	// Provide access to the MySQL driver
 	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
-
-func NewDbMapFromConfig(c cmd.DBConfig) (*gorp.DbMap, error) {
-	if c.DBConnectFile != "" {
-		url, err := ioutil.ReadFile(c.DBConnectFile)
-		if err != nil {
-			return nil, err
-		}
-		return NewDbMap(url)
-	}
-	return NewDbMap(c.DBConnect)
-}
 
 // NewDbMap creates the root gorp mapping object. Create one of these for each
 // database schema you wish to map. Each DbMap contains a list of mapped tables.

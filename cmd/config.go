@@ -189,6 +189,13 @@ type DBConfig struct {
 	DBConnectFile string
 }
 
+func (d *DBConfig) URL() (string, error) {
+	if c.DBConnectFile != "" {
+		return ioutil.ReadFile(c.DBConnectFile)
+	}
+	return c.DBConnect, nil
+}
+
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
 // RPC services we offer via AMQP.
 type AMQPConfig struct {
