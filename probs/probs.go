@@ -20,8 +20,9 @@ type ProblemType string
 // ProblemDetails objects represent problem documents
 // https://tools.ietf.org/html/draft-ietf-appsawg-http-problem-00
 type ProblemDetails struct {
-	Type   ProblemType `json:"type,omitempty"`
-	Detail string      `json:"detail,omitempty"`
+	Type       ProblemType `json:"type,omitempty"`
+	Detail     string      `json:"detail,omitempty"`
+	HTTPStatus int         `json:"status,omitempty"`
 }
 
 func (pd *ProblemDetails) Error() string {

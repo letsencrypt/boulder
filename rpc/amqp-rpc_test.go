@@ -45,12 +45,14 @@ func TestWrapError(t *testing.T) {
 	}{
 		{
 			&probs.ProblemDetails{
-				Type:   probs.ConnectionProblem,
-				Detail: "whoops",
+				Type:       probs.ConnectionProblem,
+				Detail:     "whoops",
+				HTTPStatus: 417,
 			},
 			&probs.ProblemDetails{
-				Type:   probs.ConnectionProblem,
-				Detail: "whoops",
+				Type:       probs.ConnectionProblem,
+				Detail:     "whoops",
+				HTTPStatus: 417,
 			},
 		},
 		{
