@@ -560,7 +560,7 @@ func main() {
 		go cmd.ProfileCmd("OCSP-Updater", stats)
 
 		// Configure DB
-		dbURL, err := c.OCSPUpdater.DBConfig.URL()
+		dbURL, err := conf.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Could not connect to database")
