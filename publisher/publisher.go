@@ -31,11 +31,11 @@ type LogDescription struct {
 	PublicKey string `json:"key"`
 }
 
-// NewLog returns a initinalized Log struct
+// NewLog returns a initialized Log struct
 func NewLog(uri, b64PK string) (*Log, error) {
 	var l Log
 	var err error
-	if strings.HasPrefix(uri, "/") {
+	if strings.HasSuffix(uri, "/") {
 		uri = uri[0 : len(uri)-2]
 	}
 	l.Client = ctClient.New(uri)
