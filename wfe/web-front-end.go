@@ -23,6 +23,7 @@ import (
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods
@@ -486,12 +487,12 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 
 // Notify the client of an error condition and log it for audit purposes.
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *requestEvent, msg string, detail error, code int) {
-	problem := core.ProblemDetails{Detail: msg}
+	problem := probs.ProblemDetails{Detail: msg}
 	switch code {
 	case http.StatusPreconditionFailed:
 		fallthrough
 	case http.StatusForbidden:
-		problem.Type = core.UnauthorizedProblem
+		problem.Type = probs.UnauthorizedProblem
 	case http.StatusConflict:
 		fallthrough
 	case http.StatusMethodNotAllowed:
@@ -501,14 +502,14 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 	case http.StatusBadRequest:
 		fallthrough
 	case http.StatusLengthRequired:
-		problem.Type = core.MalformedProblem
+		problem.Type = probs.MalformedProblem
 	case StatusRateLimited:
-		problem.Type = core.RateLimitedProblem
+		problem.Type = probs.RateLimitedProblem
 	case statusBadNonce:
-		problem.Type = core.BadNonceProblem
+		problem.Type = probs.BadNonceProblem
 		code = http.StatusBadRequest
 	default: // Either http.StatusInternalServerError or an unexpected code
-		problem.Type = core.ServerInternalProblem
+		problem.Type = probs.ServerInternalProblem
 	}
 
 	// Record details to the log event
@@ -516,7 +517,7 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 
 	// Only audit log internal errors so users cannot purposefully cause
 	// auditable events.
-	if problem.Type == core.ServerInternalProblem {
+	if problem.Type == probs.ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		wfe.log.Audit(fmt.Sprintf("Internal error - %s - %s", msg, detail))
 	} else if statusCodeFromError(detail) != http.StatusInternalServerError {
