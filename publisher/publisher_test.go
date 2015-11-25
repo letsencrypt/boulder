@@ -256,8 +256,7 @@ func badLogSrv() *httptest.Server {
 func setup(t *testing.T) (*PublisherImpl, *x509.Certificate, *ecdsa.PrivateKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
-	pub, err := NewPublisherImpl(CTConfig{IntermediateBundleFilename: issuerPath})
-	test.AssertNotError(t, err, "Couldn't create new Publisher")
+	pub := NewPublisherImpl(nil, nil)
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert(intermediatePEM.Bytes))
 	pub.SA = mocks.NewStorageAuthority(clock.NewFake())
 
@@ -275,7 +274,7 @@ func addLog(t *testing.T, pub *PublisherImpl, port int, pubKey *ecdsa.PublicKey)
 	verifier, err := ct.NewSignatureVerifier(pubKey)
 	test.AssertNotError(t, err, "Couldn't create signature verifier")
 
-	pub.ctLogs = append(pub.ctLogs, LogDescription{
+	pub.ctLogs = append(pub.ctLogs, &Log{
 		Client:   ctClient.New(fmt.Sprintf("http://localhost:%d", port)),
 		Verifier: verifier,
 	})

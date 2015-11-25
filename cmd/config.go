@@ -13,7 +13,6 @@ import (
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/publisher"
 	"github.com/letsencrypt/boulder/va"
 )
 
@@ -160,7 +159,10 @@ type Config struct {
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 
-		CT publisher.CTConfig
+		CT struct {
+			Logs                       []LogDescription
+			IntermediateBundleFilename string
+		}
 	}
 
 	CertChecker struct {
@@ -385,4 +387,10 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 
 	d.Duration = dur
 	return nil
+}
+
+// LogDescription something something
+type LogDescription struct {
+	URI       string `json:"uri"`
+	PublicKey string `json:"key"`
 }

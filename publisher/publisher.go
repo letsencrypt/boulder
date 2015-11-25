@@ -6,14 +6,11 @@
 package publisher
 
 import (
-	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	ctClient "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go/client"
@@ -22,55 +19,38 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// LogDescription tells you how to connect to a log and verify its statements.
-type LogDescription struct {
+// Log contains the CT client and signature verifier for a particular CT log
+type Log struct {
 	Client   *ctClient.LogClient
 	Verifier *ct.SignatureVerifier
 }
 
-type rawLogDescription struct {
+// LogDescription something something
+type LogDescription struct {
 	URI       string `json:"uri"`
 	PublicKey string `json:"key"`
 }
 
-// UnmarshalJSON parses a simple JSON format for log descriptions.  Both the
-// URI and the public key are expected to be strings.  The public key is a
-// base64-encoded PKIX public key structure.
-func (logDesc *LogDescription) UnmarshalJSON(data []byte) error {
-	var rawLogDesc rawLogDescription
-	err := json.Unmarshal(data, &rawLogDesc)
-	if err != nil {
-		return fmt.Errorf("Failed to unmarshal log description, %s", err)
+// NewLog returns a initinalized Log struct
+func NewLog(uri, b64PK string) (*Log, error) {
+	var l Log
+	var err error
+	if strings.HasPrefix(uri, "/") {
+		uri = uri[0 : len(uri)-2]
 	}
-	if strings.HasPrefix(rawLogDesc.URI, "/") {
-		rawLogDesc.URI = rawLogDesc.URI[0 : len(rawLogDesc.URI)-2]
-	}
-	logDesc.Client = ctClient.New(rawLogDesc.URI)
+	l.Client = ctClient.New(uri)
 
-	// Load Key
-	pkBytes, err := base64.StdEncoding.DecodeString(rawLogDesc.PublicKey)
+	pkBytes, err := base64.StdEncoding.DecodeString(b64PK)
 	if err != nil {
-		return fmt.Errorf("Failed to decode base64 log public key")
+		return nil, fmt.Errorf("Failed to decode base64 log public key")
 	}
 	pk, err := x509.ParsePKIXPublicKey(pkBytes)
 	if err != nil {
-		return fmt.Errorf("Failed to parse log public key")
-	}
-	ecdsaKey, ok := pk.(*ecdsa.PublicKey)
-	if !ok {
-		return fmt.Errorf("Failed to unmarshal log description for %s, unsupported public key type", rawLogDesc.URI)
+		return nil, fmt.Errorf("Failed to parse log public key")
 	}
 
-	logDesc.Verifier, err = ct.NewSignatureVerifier(ecdsaKey)
-	return err
-}
-
-// CTConfig defines the JSON configuration file schema
-type CTConfig struct {
-	Logs                       []LogDescription `json:"logs"`
-	SubmissionRetries          int              `json:"submissionRetries"`
-	SubmissionBackoffString    string           `json:"submissionBackoff"`
-	IntermediateBundleFilename string           `json:"intermediateBundleFilename"`
+	l.Verifier, err = ct.NewSignatureVerifier(pk)
+	return &l, err
 }
 
 type ctSubmissionRequest struct {
@@ -79,36 +59,23 @@ type ctSubmissionRequest struct {
 
 // PublisherImpl defines a Publisher
 type PublisherImpl struct {
-	log               *blog.AuditLogger
-	client            *http.Client
-	submissionBackoff time.Duration
-	submissionRetries int
-	issuerBundle      []ct.ASN1Cert
-	ctLogs            []LogDescription
+	log          *blog.AuditLogger
+	client       *http.Client
+	issuerBundle []ct.ASN1Cert
+	ctLogs       []*Log
 
 	SA core.StorageAuthority
 }
 
 // NewPublisherImpl creates a Publisher that will submit certificates
 // to any CT logs configured in CTConfig
-func NewPublisherImpl(ctConfig CTConfig) (pub PublisherImpl, err error) {
+func NewPublisherImpl(bundle []ct.ASN1Cert, logs []*Log) (pub PublisherImpl) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Publisher Authority Starting")
 
-	if ctConfig.IntermediateBundleFilename == "" {
-		err = fmt.Errorf("No CT submission bundle provided")
-		return
-	}
-	bundle, err := core.LoadCertBundle(ctConfig.IntermediateBundleFilename)
-	if err != nil {
-		return
-	}
-	for _, cert := range bundle {
-		pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert(cert.Raw))
-	}
-
+	pub.issuerBundle = bundle
 	pub.log = logger
-	pub.ctLogs = ctConfig.Logs
+	pub.ctLogs = logs
 
 	return
 }
