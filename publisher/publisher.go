@@ -25,12 +25,6 @@ type Log struct {
 	Verifier *ct.SignatureVerifier
 }
 
-// LogDescription something something
-type LogDescription struct {
-	URI       string `json:"uri"`
-	PublicKey string `json:"key"`
-}
-
 // NewLog returns a initialized Log struct
 func NewLog(uri, b64PK string) (*Log, error) {
 	var l Log
@@ -113,7 +107,7 @@ func (pub *PublisherImpl) SubmitToCT(der []byte) error {
 			continue
 		}
 
-		internalSCT, err := core.SCTToInternal(sct, core.SerialToString(cert.SerialNumber))
+		internalSCT, err := sctToInternal(sct, core.SerialToString(cert.SerialNumber))
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.Audit(fmt.Sprintf("Failed to convert SCT receipt: %s", err))
@@ -129,4 +123,19 @@ func (pub *PublisherImpl) SubmitToCT(der []byte) error {
 	}
 
 	return nil
+}
+
+func sctToInternal(sct *ct.SignedCertificateTimestamp, serial string) (core.SignedCertificateTimestamp, error) {
+	sig, err := ct.MarshalDigitallySigned(sct.Signature)
+	if err != nil {
+		return core.SignedCertificateTimestamp{}, err
+	}
+	return core.SignedCertificateTimestamp{
+		CertificateSerial: serial,
+		SCTVersion:        uint8(sct.SCTVersion),
+		LogID:             sct.LogID.Base64String(),
+		Timestamp:         sct.Timestamp,
+		Extensions:        sct.Extensions,
+		Signature:         sig,
+	}, nil
 }

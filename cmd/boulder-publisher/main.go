@@ -6,7 +6,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -27,8 +26,7 @@ func main() {
 		logs := make([]*publisher.Log, len(c.Common.CT.Logs))
 		var err error
 		for i, ld := range c.Common.CT.Logs {
-			fmt.Println(ld)
-			logs[i], err = publisher.NewLog(ld.URI, ld.PublicKey)
+			logs[i], err = publisher.NewLog(ld.URI, ld.Key)
 			cmd.FailOnError(err, "Unable to parse CT log description")
 		}
 

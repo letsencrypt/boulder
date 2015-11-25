@@ -389,8 +389,9 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return nil
 }
 
-// LogDescription something something
+// LogDescription contains the information needed to submit certificates
+// to a CT log and verify returned receipts
 type LogDescription struct {
-	URI       string `json:"uri"`
-	PublicKey string `json:"key"`
+	URI string
+	Key string
 }
