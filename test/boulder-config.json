@@ -25,11 +25,11 @@
       "insecure": true,
       "RA": {
         "server": "RA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -101,11 +101,11 @@
       "serviceQueue": "CA.server",
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "Publisher": {
         "server": "Publisher.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -136,11 +136,11 @@
       },
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "CA": {
         "server": "CA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
 
       }
     }
@@ -172,7 +172,7 @@
       "serviceQueue": "VA.server",
       "RA": {
         "server": "RA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -188,11 +188,11 @@
       "insecure": true,
       "RA": {
         "server": "RA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -227,15 +227,15 @@
       "insecure": true,
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "CA": {
         "server": "CA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "Publisher": {
         "server": "Publisher.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -270,7 +270,7 @@
       "serviceQueue": "Publisher.server",
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },

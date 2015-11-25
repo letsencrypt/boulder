@@ -78,6 +78,7 @@ const pathReLookup = "7e-P57coLM7D3woNTp_xbJrtlkDYy6PWf3mSSbLwCr4"
 const pathReLookupInvalid = "re-lookup-invalid"
 const pathLooper = "looper"
 const pathValid = "valid"
+const rejectUserAgent = "rejectMe"
 
 // TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
 func createValidation(token string, enableTLS bool) string {
@@ -584,6 +585,9 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 		} else if strings.HasSuffix(r.URL.Path, pathRedirectPort) {
 			t.Logf("HTTPSRV: Got a port redirect req\n")
 			http.Redirect(w, r, "http://other.valid:8080/path", 302)
+		} else if r.Header.Get("User-Agent") == rejectUserAgent {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("found trap User-Agent"))
 		} else {
 			t.Logf("HTTPSRV: Got a valid req\n")
 			t.Logf("HTTPSRV: Path = %s\n", r.URL.Path)
@@ -821,6 +825,29 @@ func TestHTTPRedirectLoop(t *testing.T) {
 	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
 	test.AssertError(t, err, chall.Token)
 	fmt.Println(finChall)
+}
+
+func TestHTTPRedirectUserAgent(t *testing.T) {
+	chall := core.HTTPChallenge01(accountKey)
+	err := setChallengeToken(&chall, expectedToken)
+	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+
+	hs := httpSrv(t, expectedToken)
+	defer hs.Close()
+	port, err := getPort(hs)
+	test.AssertNotError(t, err, "failed to get test server port")
+	stats, _ := statsd.NewNoopClient()
+	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
+	va.DNSResolver = &mocks.DNSResolver{}
+	va.UserAgent = rejectUserAgent
+
+	setChallengeToken(&chall, pathMoved)
+	finChall, _ := va.validateHTTP01(ident, chall)
+	test.AssertNotEquals(t, finChall.Status, core.StatusValid)
+
+	setChallengeToken(&chall, pathFound)
+	finChall, _ = va.validateHTTP01(ident, chall)
+	test.AssertNotEquals(t, finChall.Status, core.StatusValid)
 }
 
 func getPort(hs *httptest.Server) (int, error) {
