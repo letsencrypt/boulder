@@ -231,7 +231,7 @@ func main() {
 		go cmd.DebugServer(c.Mailer.DebugAddr)
 
 		// Configure DB
-		dbURL, err := c.Mailer.DBConnect.URL()
+		dbURL, err := c.Mailer.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Could not connect to database")

@@ -48,7 +48,7 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	dbURL, err := c.Revoker.DBConnect.URL()
+	dbURL, err := c.Revoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL)
 	cmd.FailOnError(err, "Couldn't setup database connection")

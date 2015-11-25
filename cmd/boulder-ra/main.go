@@ -31,7 +31,7 @@ func main() {
 
 		go cmd.DebugServer(c.RA.DebugAddr)
 
-		dbURL, err := c.Revoker.DBConnect.URL()
+		dbURL, err := c.PA.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		paDbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Couldn't connect to policy database")

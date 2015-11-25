@@ -20,7 +20,7 @@ func main() {
 		saConf := c.SA
 		go cmd.DebugServer(saConf.DebugAddr)
 
-		dbURL, err := c.Revoker.DBConnect.URL()
+		dbURL, err := c.SA.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Couldn't connect to SA database")

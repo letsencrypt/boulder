@@ -110,7 +110,7 @@ func setupFromContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl
 	err = json.Unmarshal(configJSON, &c)
 	cmd.FailOnError(err, "Couldn't unmarshal configuration object")
 
-	dbURL, err := c.PA.DBConnect.URL()
+	dbURL, err := c.PA.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL)
 	cmd.FailOnError(err, "Failed to create DB map")

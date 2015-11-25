@@ -150,7 +150,7 @@ func main() {
 
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		// Configure DB
-		dbURL, err := c.PA.DBConnect.URL()
+		dbURL, err := c.PA.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Could not connect to database")

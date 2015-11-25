@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"strings"
 	"time"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
@@ -195,10 +194,11 @@ type DBConfig struct {
 // URL returns the DBConnect URL represented by this DBConfig object, either
 // loading it from disk or returning a default value.
 func (d *DBConfig) URL() (string, error) {
-	if c.DBConnectFile != "" {
-		return ioutil.ReadFile(c.DBConnectFile)
+	if d.DBConnectFile != "" {
+		url, err := ioutil.ReadFile(d.DBConnectFile)
+		return string(url), err
 	}
-	return c.DBConnect, nil
+	return d.DBConnect, nil
 }
 
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the

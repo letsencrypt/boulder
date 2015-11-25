@@ -153,12 +153,13 @@ func main() {
 		var source cfocsp.Source
 
 		// DBConfig takes precedence over Source, if present.
-		url, err := config.DBConfig.URL()
+		dbConnect, err := config.DBConfig.URL()
 		cmd.FailOnError(err, "Reading DB config")
-		if url == "" {
-			url, err = url.Parse(config.Source)
+		if dbConnect == "" {
+			dbConnect = config.Source
 			cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
 		}
+		url, err := url.Parse(dbConnect)
 
 		if url.Scheme == "mysql+tcp" {
 			auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
