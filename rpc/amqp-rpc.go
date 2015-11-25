@@ -25,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -245,7 +246,7 @@ func wrapError(err error) *rpcError {
 			wrapped.Type = "RateLimitedError"
 		case core.ServiceUnavailableError:
 			wrapped.Type = "ServiceUnavailableError"
-		case *core.ProblemDetails:
+		case *probs.ProblemDetails:
 			wrapped.Type = string(terr.Type)
 			wrapped.Value = terr.Detail
 
@@ -285,8 +286,8 @@ func unwrapError(rpcError *rpcError) error {
 			return core.ServiceUnavailableError(rpcError.Value)
 		default:
 			if strings.HasPrefix(rpcError.Type, "urn:") {
-				return &core.ProblemDetails{
-					Type:   core.ProblemType(rpcError.Type),
+				return &probs.ProblemDetails{
+					Type:   probs.ProblemType(rpcError.Type),
 					Detail: rpcError.Value,
 				}
 			}
