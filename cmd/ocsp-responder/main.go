@@ -157,9 +157,9 @@ func main() {
 		cmd.FailOnError(err, "Reading DB config")
 		if dbConnect == "" {
 			dbConnect = config.Source
-			cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
 		}
 		url, err := url.Parse(dbConnect)
+		cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
 
 		if url.Scheme == "mysql+tcp" {
 			auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
