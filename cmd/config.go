@@ -12,6 +12,7 @@ import (
 	"time"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/publisher"
 	"github.com/letsencrypt/boulder/va"
@@ -263,16 +264,10 @@ func (pc *PAConfig) SetDefaultChallengesIfEmpty() {
 // KeyConfig should contain either a File path to a PEM-format private key,
 // or a PKCS11Config defining how to load a module for an HSM.
 type KeyConfig struct {
-	File   string
-	PKCS11 PKCS11Config
-}
-
-// PKCS11Config defines how to load a module for an HSM.
-type PKCS11Config struct {
-	Module          string
-	TokenLabel      string
-	PIN             string
-	PrivateKeyLabel string
+	// A file from which a pkcs11key.Config will be read and parsed, if present
+	ConfigFile string
+	File       string
+	PKCS11     *pkcs11key.Config
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.
