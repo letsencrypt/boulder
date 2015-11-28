@@ -96,7 +96,7 @@
     "maxConcurrentRPCServerRequests": 16,
     "hsmFaultTimeout": "300s",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "CA.server",
       "SA": {
@@ -127,7 +127,7 @@
     "maxContactsPerRegistration": 100,
     "debugAddr": "localhost:8002",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "RA.server",
       "VA": {
@@ -151,7 +151,7 @@
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8003",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "SA.server"
     }
@@ -167,7 +167,7 @@
     },
     "maxConcurrentRPCServerRequests": 16,
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "VA.server",
       "RA": {
@@ -184,7 +184,7 @@
   "revoker": {
     "dbConnect": "mysql+tcp://revoker@localhost:3306/boulder_sa_integration",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "RA": {
         "server": "RA.server",
@@ -223,7 +223,7 @@
     "signFailureBackoffMax": "30m",
     "debugAddr": "localhost:8006",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "SA": {
         "server": "SA.server",
@@ -244,7 +244,7 @@
     "debugAddr": "localhost:8007",
     "amqp": {
       "serviceQueue": "Monitor",
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true
     }
   },
@@ -266,7 +266,7 @@
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8009",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "Publisher.server",
       "SA": {
