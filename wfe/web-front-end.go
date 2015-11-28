@@ -487,7 +487,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 
 // Notify the client of an error condition and log it for audit purposes.
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *requestEvent, msg string, detail error, code int) {
-	problem := probs.ProblemDetails{Detail: msg}
+	problem := probs.ProblemDetails{Detail: msg, HTTPStatus: code}
 	switch code {
 	case http.StatusPreconditionFailed:
 		fallthrough
@@ -507,6 +507,7 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 		problem.Type = probs.RateLimitedProblem
 	case statusBadNonce:
 		problem.Type = probs.BadNonceProblem
+		problem.HTTPStatus = http.StatusBadRequest
 		code = http.StatusBadRequest
 	default: // Either http.StatusInternalServerError or an unexpected code
 		problem.Type = probs.ServerInternalProblem
