@@ -5,8 +5,8 @@ import (
 	"net"
 	"testing"
 
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 func TestProblemDetailsFromDNSError(t *testing.T) {
@@ -27,8 +27,8 @@ func TestProblemDetailsFromDNSError(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		err := ProblemDetailsFromDNSError(tc.err)
-		if err.Type != core.ConnectionProblem {
-			t.Errorf("ProblemDetailsFromDNSError(%q).Type = %q, expected %q", tc.err, err.Type, core.ConnectionProblem)
+		if err.Type != probs.ConnectionProblem {
+			t.Errorf("ProblemDetailsFromDNSError(%q).Type = %q, expected %q", tc.err, err.Type, probs.ConnectionProblem)
 		}
 		if err.Detail != tc.expected {
 			t.Errorf("ProblemDetailsFromDNSError(%q).Detail = %q, expected %q", tc.err, err.Detail, tc.expected)
