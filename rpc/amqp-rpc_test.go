@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -43,17 +44,19 @@ func TestWrapError(t *testing.T) {
 		expected error
 	}{
 		{
-			&core.ProblemDetails{
-				Type:   core.ConnectionProblem,
-				Detail: "whoops",
+			&probs.ProblemDetails{
+				Type:       probs.ConnectionProblem,
+				Detail:     "whoops",
+				HTTPStatus: 417,
 			},
-			&core.ProblemDetails{
-				Type:   core.ConnectionProblem,
-				Detail: "whoops",
+			&probs.ProblemDetails{
+				Type:       probs.ConnectionProblem,
+				Detail:     "whoops",
+				HTTPStatus: 417,
 			},
 		},
 		{
-			&core.ProblemDetails{Type: "invalid", Detail: "hm"},
+			&probs.ProblemDetails{Type: "invalid", Detail: "hm"},
 			errors.New("hm"),
 		},
 		{

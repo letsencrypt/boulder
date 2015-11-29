@@ -14,6 +14,7 @@ import (
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 var mediumBlobSize = int(math.Pow(2, 24))
@@ -170,7 +171,7 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		c.KeyAuthorization = &ka
 	}
 	if len(cm.Error) > 0 {
-		var problem core.ProblemDetails
+		var problem probs.ProblemDetails
 		err := json.Unmarshal(cm.Error, &problem)
 		if err != nil {
 			return core.Challenge{}, err

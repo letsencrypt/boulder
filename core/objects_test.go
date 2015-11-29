@@ -17,13 +17,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestProblemDetails(t *testing.T) {
-	pd := &ProblemDetails{
-		Type:   MalformedProblem,
-		Detail: "Wat? o.O"}
-	test.AssertEquals(t, pd.Error(), "urn:acme:error:malformed :: Wat? o.O")
-}
-
 func TestRegistrationUpdate(t *testing.T) {
 	oldURL, _ := ParseAcmeURL("http://old.invalid")
 	newURL, _ := ParseAcmeURL("http://new.invalid")
