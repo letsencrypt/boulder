@@ -210,8 +210,9 @@ func (rpc *AmqpRPCServer) Handle(method string, handler func([]byte) ([]byte, er
 // rpcError is a JSON wrapper for error as it cannot be un/marshalled
 // due to type interface{}.
 type rpcError struct {
-	Value string `json:"value"`
-	Type  string `json:"type,omitempty"`
+	Value      string `json:"value"`
+	Type       string `json:"type,omitempty"`
+	HTTPStatus int    `json:"status,omitempty"`
 }
 
 // Wraps a error in a rpcError so it can be marshalled to
@@ -249,7 +250,7 @@ func wrapError(err error) *rpcError {
 		case *probs.ProblemDetails:
 			wrapped.Type = string(terr.Type)
 			wrapped.Value = terr.Detail
-
+			wrapped.HTTPStatus = terr.HTTPStatus
 		}
 		return wrapped
 	}
@@ -287,8 +288,9 @@ func unwrapError(rpcError *rpcError) error {
 		default:
 			if strings.HasPrefix(rpcError.Type, "urn:") {
 				return &probs.ProblemDetails{
-					Type:   probs.ProblemType(rpcError.Type),
-					Detail: rpcError.Value,
+					Type:       probs.ProblemType(rpcError.Type),
+					Detail:     rpcError.Value,
+					HTTPStatus: rpcError.HTTPStatus,
 				}
 			}
 			return errors.New(rpcError.Value)
@@ -320,7 +322,7 @@ func (r rpcResponse) debugString() string {
 	if r.Error == nil {
 		return ret
 	}
-	return fmt.Sprintf("%s, RPCERR: %s", ret, r.Error)
+	return fmt.Sprintf("%s, RPCERR: %v", ret, r.Error)
 }
 
 // AmqpChannel sets a AMQP connection up using SSL if configuration is provided
