@@ -25,11 +25,11 @@
       "insecure": true,
       "RA": {
         "server": "RA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -59,7 +59,7 @@
             "issuer_urls": [
               "http://127.0.0.1:4000/acme/issuer-cert"
             ],
-            "ocsp_url": "http://127.0.0.1:4002/ocsp",
+            "ocsp_url": "http://127.0.0.1:4002/",
             "crl_url": "http://example.com/crl",
             "policies": [
               {
@@ -96,16 +96,16 @@
     "maxConcurrentRPCServerRequests": 16,
     "hsmFaultTimeout": "300s",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "CA.server",
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "Publisher": {
         "server": "Publisher.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -127,7 +127,7 @@
     "maxContactsPerRegistration": 100,
     "debugAddr": "localhost:8002",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "RA.server",
       "VA": {
@@ -136,11 +136,11 @@
       },
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "CA": {
         "server": "CA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
 
       }
     }
@@ -151,7 +151,7 @@
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8003",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "SA.server"
     }
@@ -167,12 +167,12 @@
     },
     "maxConcurrentRPCServerRequests": 16,
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "VA.server",
       "RA": {
         "server": "RA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -184,15 +184,15 @@
   "revoker": {
     "dbConnectFile": "test/secrets/revoker_dburl",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "RA": {
         "server": "RA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -223,19 +223,19 @@
     "signFailureBackoffMax": "30m",
     "debugAddr": "localhost:8006",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "CA": {
         "server": "CA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "Publisher": {
         "server": "Publisher.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -243,7 +243,8 @@
   "activityMonitor": {
     "debugAddr": "localhost:8007",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serviceQueue": "Monitor",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true
     }
   },
@@ -265,12 +266,12 @@
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8009",
     "amqp": {
-      "server": "amqp://guest:guest@localhost:5673",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "Publisher.server",
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },

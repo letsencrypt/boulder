@@ -46,8 +46,12 @@ type JsonWebSignature struct {
 
 // Signature represents a single signature over the JWS payload and protected header.
 type Signature struct {
-	Header    JoseHeader
+	// Header fields, such as the signature algorithm
+	Header JoseHeader
+
+	// The actual signature value
 	Signature []byte
+
 	protected *rawHeader
 	header    *rawHeader
 	original  *rawSignatureInfo
@@ -102,7 +106,7 @@ func parseSignedFull(input string) (*JsonWebSignature, error) {
 // sanitized produces a cleaned-up JWS object from the raw JSON.
 func (parsed *rawJsonWebSignature) sanitized() (*JsonWebSignature, error) {
 	if parsed.Payload == nil {
-		return nil, fmt.Errorf("square/go-jose: missing payload in JWS message")
+		return nil, ErrUnprotectedNonce
 	}
 
 	obj := &JsonWebSignature{
@@ -119,6 +123,10 @@ func (parsed *rawJsonWebSignature) sanitized() (*JsonWebSignature, error) {
 			if err != nil {
 				return nil, err
 			}
+		}
+
+		if parsed.Header != nil && parsed.Header.Nonce != "" {
+			return nil, ErrUnprotectedNonce
 		}
 
 		signature.header = parsed.Header
@@ -149,6 +157,11 @@ func (parsed *rawJsonWebSignature) sanitized() (*JsonWebSignature, error) {
 			if err != nil {
 				return nil, err
 			}
+		}
+
+		// Check that there is not a nonce in the unprotected header
+		if sig.Header != nil && sig.Header.Nonce != "" {
+			return nil, ErrUnprotectedNonce
 		}
 
 		obj.Signatures[i].Signature = sig.Signature.bytes()
@@ -237,21 +250,4 @@ func (obj JsonWebSignature) FullSerialize() string {
 	}
 
 	return string(mustSerializeJSON(raw))
-}
-
-// MarshalJSON serializes the JWS to JSON.
-func (obj JsonWebSignature) MarshalJSON() (result []byte, err error) {
-	return []byte(obj.FullSerialize()), nil
-}
-
-// UnmarshalJSON parses a JWS from JSON data.  (This may also accept a compact
-// JWS in a string.)
-func (obj *JsonWebSignature) UnmarshalJSON(data []byte) (err error) {
-	parsedJWS, err := ParseSigned(string(data))
-	if err != nil {
-		return err
-	}
-
-	*obj = *parsedJWS
-	return nil
 }
