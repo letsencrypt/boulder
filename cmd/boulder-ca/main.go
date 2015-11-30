@@ -6,10 +6,18 @@
 package main
 
 import (
+	"crypto"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/rpc"
@@ -17,6 +25,40 @@ import (
 )
 
 const clientName = "CA"
+
+func loadPrivateKey(keyConfig cmd.KeyConfig) (crypto.Signer, error) {
+	if keyConfig.File != "" {
+		keyBytes, err := ioutil.ReadFile(keyConfig.File)
+		if err != nil {
+			return nil, fmt.Errorf("Could not read key file %s", keyConfig.File)
+		}
+
+		return helpers.ParsePrivateKeyPEM(keyBytes)
+	}
+
+	var pkcs11Config *pkcs11key.Config
+	if keyConfig.ConfigFile != "" {
+		contents, err := ioutil.ReadFile(keyConfig.ConfigFile)
+		if err != nil {
+			return nil, err
+		}
+		pkcs11Config = new(pkcs11key.Config)
+		err = json.Unmarshal(contents, pkcs11Config)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		pkcs11Config = keyConfig.PKCS11
+	}
+	if pkcs11Config.Module == "" ||
+		pkcs11Config.TokenLabel == "" ||
+		pkcs11Config.PIN == "" ||
+		pkcs11Config.PrivateKeyLabel == "" {
+		return nil, fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
+	}
+	return pkcs11key.New(pkcs11Config.Module,
+		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel)
+}
 
 func main() {
 	app := cmd.NewAppShell("boulder-ca", "Handles issuance operations")
@@ -37,7 +79,18 @@ func main() {
 		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		cai, err := ca.NewCertificateAuthorityImpl(c.CA, clock.Default(), stats, c.Common.IssuerCert)
+		priv, err := loadPrivateKey(c.CA.Key)
+		cmd.FailOnError(err, "Couldn't load private key")
+
+		issuer, err := core.LoadCert(c.Common.IssuerCert)
+		cmd.FailOnError(err, "Couldn't load issuer cert")
+
+		cai, err := ca.NewCertificateAuthorityImpl(
+			c.CA,
+			clock.Default(),
+			stats,
+			issuer,
+			priv)
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.PA = pa
 
