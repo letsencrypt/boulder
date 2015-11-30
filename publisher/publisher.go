@@ -27,12 +27,10 @@ type Log struct {
 
 // NewLog returns a initialized Log struct
 func NewLog(uri, b64PK string) (*Log, error) {
-	var l Log
-	var err error
 	if strings.HasSuffix(uri, "/") {
 		uri = uri[0 : len(uri)-2]
 	}
-	l.Client = ctClient.New(uri)
+	client := ctClient.New(uri)
 
 	pkBytes, err := base64.StdEncoding.DecodeString(b64PK)
 	if err != nil {
@@ -43,8 +41,12 @@ func NewLog(uri, b64PK string) (*Log, error) {
 		return nil, fmt.Errorf("Failed to parse log public key")
 	}
 
-	l.Verifier, err = ct.NewSignatureVerifier(pk)
-	return &l, err
+	verifier, err := ct.NewSignatureVerifier(pk)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Log{client, verifier}, nil
 }
 
 type ctSubmissionRequest struct {
