@@ -243,6 +243,7 @@
   "activityMonitor": {
     "debugAddr": "localhost:8007",
     "amqp": {
+      "serviceQueue": "Monitor",
       "server": "amqp://guest:guest@localhost:5673",
       "insecure": true
     }

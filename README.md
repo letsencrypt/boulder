@@ -66,6 +66,9 @@ Set up a database:
     > cd $GOPATH/src/github.com/letsencrypt/boulder
     > ./test/create_db.sh
 
+Set up RabbitMQ:
+    > go run cmd/rabbitmq-setup/main.go -server amqp://localhost
+
 **Note**: `create_db.sh` uses the root MariaDB user with the default
 password, so if you have disabled that account or changed the password
 you may have to adjust the file or recreate the commands.
