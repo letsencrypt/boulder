@@ -141,7 +141,14 @@ func main() {
 
 		config := c.OCSPResponder
 		var source cfocsp.Source
-		url, err := url.Parse(config.Source)
+
+		// DBConfig takes precedence over Source, if present.
+		dbConnect, err := config.DBConfig.URL()
+		cmd.FailOnError(err, "Reading DB config")
+		if dbConnect == "" {
+			dbConnect = config.Source
+		}
+		url, err := url.Parse(dbConnect)
 		cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
 
 		if url.Scheme == "mysql+tcp" {
