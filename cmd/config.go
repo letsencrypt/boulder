@@ -67,8 +67,7 @@ type Config struct {
 
 	SA struct {
 		ServiceConfig
-
-		DBConnect string
+		DBConfig
 
 		MaxConcurrentRPCServerRequests int64
 	}
@@ -94,7 +93,7 @@ type Config struct {
 	Syslog SyslogConfig
 
 	Revoker struct {
-		DBConnect string
+		DBConfig
 		// The revoker isn't a long running service, so doesn't get a full
 		// ServiceConfig, just an AMQPConfig.
 		AMQP *AMQPConfig
@@ -102,13 +101,12 @@ type Config struct {
 
 	Mailer struct {
 		ServiceConfig
+		DBConfig
 
 		Server   string
 		Port     string
 		Username string
 		Password string
-
-		DBConnect string
 
 		CertLimit int
 		NagTimes  []string
@@ -122,10 +120,12 @@ type Config struct {
 
 	OCSPResponder struct {
 		ServiceConfig
+		DBConfig
 
 		// Source indicates the source of pre-signed OCSP responses to be used. It
 		// can be a DBConnect string or a file URL. The file URL style is used
 		// when responding from a static file for intermediates and roots.
+		// If DBConfig has non-empty fields, it takes precedence over this.
 		Source string
 
 		Path          string
@@ -167,9 +167,10 @@ type Config struct {
 	}
 
 	CertChecker struct {
+		DBConfig
+
 		Workers             int
 		ReportDirectoryPath string
-		DBConnect           string
 	}
 
 	SubscriberAgreementURL string
@@ -181,6 +182,25 @@ type ServiceConfig struct {
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
 	AMQP      *AMQPConfig
+}
+
+// DBConfig defines how to connect to a database. The connect string may be
+// stored in a file separate from the config, because it can contain a password,
+// which we want to keep out of configs.
+type DBConfig struct {
+	DBConnect string
+	// A file containing a connect URL for the DB.
+	DBConnectFile string
+}
+
+// URL returns the DBConnect URL represented by this DBConfig object, either
+// loading it from disk or returning a default value.
+func (d *DBConfig) URL() (string, error) {
+	if d.DBConnectFile != "" {
+		url, err := ioutil.ReadFile(d.DBConnectFile)
+		return string(url), err
+	}
+	return d.DBConnect, nil
 }
 
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
@@ -225,10 +245,10 @@ func (a *AMQPConfig) ServerURL() (string, error) {
 // issued certificates.
 type CAConfig struct {
 	ServiceConfig
+	DBConfig
 
 	Profile      string
 	TestMode     bool
-	DBConnect    string
 	SerialPrefix int
 	Key          KeyConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
@@ -250,7 +270,7 @@ type CAConfig struct {
 // database, what policies it should enforce, and what challenges
 // it should offer.
 type PAConfig struct {
-	DBConnect              string
+	DBConfig
 	EnforcePolicyWhitelist bool
 	Challenges             map[string]bool
 }
@@ -307,7 +327,7 @@ type RPCServerConfig struct {
 // for the OCSP (and SCT) updater
 type OCSPUpdaterConfig struct {
 	ServiceConfig
-	DBConnect string
+	DBConfig
 
 	NewCertificateWindow     ConfigDuration
 	OldOCSPWindow            ConfigDuration

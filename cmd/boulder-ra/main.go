@@ -31,7 +31,9 @@ func main() {
 
 		go cmd.DebugServer(c.RA.DebugAddr)
 
-		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
+		dbURL, err := c.PA.DBConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+		paDbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Couldn't connect to policy database")
 		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
 		cmd.FailOnError(err, "Couldn't create PA")
