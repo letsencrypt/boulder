@@ -12,5 +12,5 @@ type Client interface {
 
 // Server describes the functions an RPC Server performs
 type Server interface {
-	Handle(string, func([]byte) ([]byte, error))
+	Handle(string, messageHandler)
 }

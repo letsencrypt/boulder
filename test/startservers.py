@@ -63,6 +63,7 @@ def start(race_detection):
     t.daemon = True
     t.start()
     progs = [
+        'activity-monitor',
         'boulder-wfe',
         'boulder-ra',
         'boulder-sa',
