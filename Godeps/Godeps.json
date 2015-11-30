@@ -12,72 +12,63 @@
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/config",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs11key",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
-		},
-		{
-			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs12",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs7",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/csr",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/errors",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/info",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/log",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
-			"Comment": "1.1.0-89-g103c141",
-			"Rev": "103c14183e6f67b830de86654aff928ad629410f"
+			"Comment": "1.1.0-237-g4f2d8d1",
+			"Rev": "4f2d8d1740dca01033b1568c17324e146a004e40"
 		},
 		{
 			"ImportPath": "github.com/codegangsta/cli",
 			"Comment": "1.2.0-64-ge1712f3",
 			"Rev": "e1712f381785e32046927f64a7c86fe569203196"
-		},
-		{
-			"ImportPath": "github.com/dgryski/go-rc2",
-			"Rev": "fd90a5fcd260ebe709a689d0bdca2043afffabfa"
 		},
 		{
 			"ImportPath": "github.com/facebookgo/clock",
@@ -105,6 +96,10 @@
 			"Rev": "a1dfa5ef89a13a0aa4be5a6f81179db10bfeea36"
 		},
 		{
+			"ImportPath": "github.com/google/certificate-transparency/go",
+			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
+		},
+		{
 			"ImportPath": "github.com/jmhodges/clock",
 			"Rev": "3c4ebd218625c9364c33db6d39c276d80c3090c6"
 		},
@@ -130,12 +125,20 @@
 			"Rev": "88c9f842544e629ec046105d7fb50d5daafae737"
 		},
 		{
+			"ImportPath": "github.com/mreiferson/go-httpclient",
+			"Rev": "63fe23f7434723dc904c901043af07931f293c47"
+		},
+		{
 			"ImportPath": "github.com/streadway/amqp",
 			"Rev": "150b7f24d6ad507e6026c13d85ce1f1391ac7400"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
-			"Rev": "287a1d87db5d649b01d6193bd9d07e909f08094c"
+			"Rev": "beef0f4390813b96e8e68fd78570396d0f4751fc"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/pkcs12",
+			"Rev": "beef0f4390813b96e8e68fd78570396d0f4751fc"
 		},
 		{
 			"ImportPath": "golang.org/x/net/publicsuffix",

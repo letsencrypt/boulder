@@ -47,68 +47,69 @@ func paDBMap(t *testing.T) (*gorp.DbMap, func()) {
 }
 
 func TestWillingToIssue(t *testing.T) {
-	shouldBeSyntaxError := []string{
-		``,          // Empty name
-		`zomb!.com`, // ASCII character out of range
-		`emailaddress@myseriously.present.com`,
-		`user:pass@myseriously.present.com`,
-		`zömbo.com`,                              // non-ASCII character
-		`127.0.0.1`,                              // IPv4 address
-		`fe80::1:1`,                              // IPv6 addresses
-		`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`, // unexpected IPv6 variants
-		`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`,
-		`2001:db8::/32`,
-		`a.b.c.d.e.f.g.h.i.j.k`, // Too many labels (>10)
+	testCases := []struct {
+		domain string
+		err    error
+	}{
+		{``, errEmptyName},                    // Empty name
+		{`zomb!.com`, errInvalidDNSCharacter}, // ASCII character out of range
+		{`emailaddress@myseriously.present.com`, errInvalidDNSCharacter},
+		{`user:pass@myseriously.present.com`, errInvalidDNSCharacter},
+		{`zömbo.com`, errInvalidDNSCharacter},                              // non-ASCII character
+		{`127.0.0.1`, errIPAddress},                                        // IPv4 address
+		{`fe80::1:1`, errInvalidDNSCharacter},                              // IPv6 addresses
+		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`, errInvalidDNSCharacter}, // unexpected IPv6 variants
+		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`, errInvalidDNSCharacter},
+		{`2001:db8::/32`, errInvalidDNSCharacter},
+		{`a.b.c.d.e.f.g.h.i.j.k`, errTooManyLabels}, // Too many labels (>10)
 
-		`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.com`, // Too long (>255 characters)
+		{`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.com`, errNameTooLong}, // Too long (>255 characters)
 
-		`www.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.com`, // Label too long (>63 characters)
+		{`www.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.com`, errLabelTooLong}, // Label too long (>63 characters)
 
-		`www.-ombo.com`,   // Label starts with '-'
-		`www.xn--hmr.net`, // Punycode (disallowed for now)
-		`xn--.net`,        // No punycode for now.
-		`0`,
-		`1`,
-		`*`,
-		`**`,
-		`*.*`,
-		`zombo*com`,
-		`*.com`,
-		`*.zombo.com`,
-		`.`,
-		`..`,
-		`a..`,
-		`..a`,
-		`.a.`,
-		`.....`,
-		`www.zombo_com.com`,
-		`\uFEFF`, // Byte order mark
-		`\uFEFFwww.zombo.com`,
-		`www.zom\u202Ebo.com`, // Right-to-Left Override
-		`\u202Ewww.zombo.com`,
-		`www.zom\u200Fbo.com`, // Right-to-Left Mark
-		`\u200Fwww.zombo.com`,
+		{`www.-ombo.com`, errInvalidDNSCharacter}, // Label starts with '-'
+		{`www.xn--hmr.net`, errIDNNotSupported},   // Punycode (disallowed for now)
+		{`xn--.net`, errIDNNotSupported},          // No punycode for now.
+		{`0`, errTooFewLabels},
+		{`1`, errTooFewLabels},
+		{`*`, errInvalidDNSCharacter},
+		{`**`, errInvalidDNSCharacter},
+		{`*.*`, errInvalidDNSCharacter},
+		{`zombo*com`, errInvalidDNSCharacter},
+		{`*.com`, errInvalidDNSCharacter},
+		{`*.zombo.com`, errInvalidDNSCharacter},
+		{`.`, errLabelTooShort},
+		{`..`, errLabelTooShort},
+		{`a..`, errLabelTooShort},
+		{`..a`, errLabelTooShort},
+		{`.a.`, errLabelTooShort},
+		{`.....`, errLabelTooShort},
+		{`www.zombo_com.com`, errInvalidDNSCharacter},
+		{`\uFEFF`, errInvalidDNSCharacter}, // Byte order mark
+		{`\uFEFFwww.zombo.com`, errInvalidDNSCharacter},
+		{`www.zom\u202Ebo.com`, errInvalidDNSCharacter}, // Right-to-Left Override
+		{`\u202Ewww.zombo.com`, errInvalidDNSCharacter},
+		{`www.zom\u200Fbo.com`, errInvalidDNSCharacter}, // Right-to-Left Mark
+		{`\u200Fwww.zombo.com`, errInvalidDNSCharacter},
 		// Underscores are technically disallowed in DNS. Some DNS
 		// implementations accept them but we will be conservative.
-		`www.zom_bo.com`,
-		`zombocom`,
-		`localhost`,
-		`mail`,
+		{`www.zom_bo.com`, errInvalidDNSCharacter},
+		{`zombocom`, errTooFewLabels},
+		{`localhost`, errTooFewLabels},
+		{`mail`, errTooFewLabels},
 
 		// disallow capitalized letters for #927
-		`CapitalizedLetters.com`,
+		{`CapitalizedLetters.com`, errInvalidDNSCharacter},
+
+		{`example.acting`, errNonPublic},
+		{`example.internal`, errNonPublic},
+		// All-numeric final label not okay.
+		{`www.zombo.163`, errNonPublic},
 	}
 
 	shouldBeTLDError := []string{
 		`co.uk`,
 		`foo.bn`,
-	}
-
-	shouldBeNonPublic := []string{
-		`example.acting`,
-		`example.internal`,
-		// All-numeric final label not okay.
-		`www.zombo.163`,
 	}
 
 	shouldBeBlacklisted := []string{
@@ -142,18 +143,16 @@ func TestWillingToIssue(t *testing.T) {
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
 	err = pa.WillingToIssue(identifier, 100)
-	_, ok := err.(InvalidIdentifierError)
-	if !ok {
+	if err != errInvalidIdentifier {
 		t.Error("Identifier was not correctly forbidden: ", identifier)
 	}
 
 	// Test syntax errors
-	for _, domain := range shouldBeSyntaxError {
-		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
+	for _, tc := range testCases {
+		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.domain}
 		err := pa.WillingToIssue(identifier, 100)
-		_, ok := err.(SyntaxError)
-		if !ok {
-			t.Error("Identifier was not correctly forbidden: ", identifier, err)
+		if err != tc.err {
+			t.Errorf("WillingToIssue(%q) = %q, expected %q", tc.domain, err, tc.err)
 		}
 	}
 
@@ -161,17 +160,7 @@ func TestWillingToIssue(t *testing.T) {
 	for _, domain := range shouldBeTLDError {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
 		err := pa.WillingToIssue(identifier, 100)
-		if err != ErrICANNTLD {
-			t.Error("Identifier was not correctly forbidden: ", identifier, err)
-		}
-	}
-
-	// Test domains that don't end in public suffixes
-	for _, domain := range shouldBeNonPublic {
-		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(identifier, 100)
-		_, ok := err.(NonPublicError)
-		if !ok {
+		if err != errICANNTLD {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
 	}
@@ -180,7 +169,7 @@ func TestWillingToIssue(t *testing.T) {
 	for _, domain := range shouldBeBlacklisted {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
 		err := pa.WillingToIssue(identifier, 100)
-		if err != ErrBlacklisted {
+		if err != errBlacklisted {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
 	}
@@ -259,7 +248,7 @@ func TestWillingToIssueWithWhitelist(t *testing.T) {
 	// Note that www.google.com is not in the blacklist for this test. We no
 	// longer have a hardcoded blacklist.
 	testCases := []listTestCase{
-		{100, googID, ErrNotWhitelisted},
+		{100, googID, errNotWhitelisted},
 		{whitelistedPartnerRegID, googID, nil},
 		{100, zomboID, nil},
 		{whitelistedPartnerRegID, zomboID, nil},
@@ -286,14 +275,14 @@ func TestWillingToIssueWithWhitelist(t *testing.T) {
 	}
 
 	testCases = []listTestCase{
-		// This ErrNotWhitelisted is surprising and accidental from the ordering
+		// This errNotWhitelisted is surprising and accidental from the ordering
 		// of the whitelist and blacklist check. The whitelist will be gone soon
 		// enough.
-		{100, googID, ErrNotWhitelisted},
-		{whitelistedPartnerRegID, googID, ErrBlacklisted},
+		{100, googID, errNotWhitelisted},
+		{whitelistedPartnerRegID, googID, errBlacklisted},
 		{100, zomboID, nil},
 		{whitelistedPartnerRegID, zomboID, nil},
-		{100, exampleID, ErrNotWhitelisted},
+		{100, exampleID, errNotWhitelisted},
 		{whitelistedPartnerRegID, exampleID, nil},
 	}
 	for _, tc := range testCases {
@@ -313,11 +302,11 @@ func TestWillingToIssueWithWhitelist(t *testing.T) {
 		},
 	})
 	testCases = []listTestCase{
-		{100, googID, ErrBlacklisted},
-		{whitelistedPartnerRegID, googID, ErrBlacklisted},
+		{100, googID, errBlacklisted},
+		{whitelistedPartnerRegID, googID, errBlacklisted},
 		{100, zomboID, nil},
 		{whitelistedPartnerRegID, zomboID, nil},
-		{100, exampleID, ErrNotWhitelisted},
+		{100, exampleID, errNotWhitelisted},
 		{whitelistedPartnerRegID, exampleID, nil},
 	}
 	for _, tc := range testCases {

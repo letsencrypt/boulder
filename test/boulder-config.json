@@ -25,11 +25,11 @@
       "insecure": true,
       "RA": {
         "server": "RA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -59,7 +59,7 @@
             "issuer_urls": [
               "http://127.0.0.1:4000/acme/issuer-cert"
             ],
-            "ocsp_url": "http://127.0.0.1:4002/ocsp",
+            "ocsp_url": "http://127.0.0.1:4002/",
             "crl_url": "http://example.com/crl",
             "policies": [
               {
@@ -101,11 +101,11 @@
       "serviceQueue": "CA.server",
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "Publisher": {
         "server": "Publisher.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -136,11 +136,11 @@
       },
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "CA": {
         "server": "CA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
 
       }
     }
@@ -172,7 +172,7 @@
       "serviceQueue": "VA.server",
       "RA": {
         "server": "RA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -188,11 +188,11 @@
       "insecure": true,
       "RA": {
         "server": "RA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -227,15 +227,15 @@
       "insecure": true,
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "CA": {
         "server": "CA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       },
       "Publisher": {
         "server": "Publisher.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -243,6 +243,7 @@
   "activityMonitor": {
     "debugAddr": "localhost:8007",
     "amqp": {
+      "serviceQueue": "Monitor",
       "server": "amqp://guest:guest@localhost:5673",
       "insecure": true
     }
@@ -270,7 +271,7 @@
       "serviceQueue": "Publisher.server",
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "1s"
+        "rpcTimeout": "15s"
       }
     }
   },

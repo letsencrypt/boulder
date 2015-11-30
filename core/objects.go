@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 // AcmeStatus defines the state of a given authorization
@@ -35,16 +36,6 @@ type IdentifierType string
 
 // OCSPStatus defines the state of OCSP for a domain
 type OCSPStatus string
-
-// ProblemType defines the error types in the ACME protocol
-type ProblemType string
-
-// ProblemDetails objects represent problem documents
-// https://tools.ietf.org/html/draft-ietf-appsawg-http-problem-00
-type ProblemDetails struct {
-	Type   ProblemType `json:"type,omitempty"`
-	Detail string      `json:"detail,omitempty"`
-}
 
 // These statuses are the states of authorizations
 const (
@@ -75,17 +66,6 @@ const (
 const (
 	OCSPStatusGood    = OCSPStatus("good")
 	OCSPStatusRevoked = OCSPStatus("revoked")
-)
-
-// Error types that can be used in ACME payloads
-const (
-	ConnectionProblem     = ProblemType("urn:acme:error:connection")
-	MalformedProblem      = ProblemType("urn:acme:error:malformed")
-	ServerInternalProblem = ProblemType("urn:acme:error:serverInternal")
-	TLSProblem            = ProblemType("urn:acme:error:tls")
-	UnauthorizedProblem   = ProblemType("urn:acme:error:unauthorized")
-	UnknownHostProblem    = ProblemType("urn:acme:error:unknownHost")
-	RateLimitedProblem    = ProblemType("urn:acme:error:rateLimited")
 )
 
 // These types are the available challenges
@@ -123,10 +103,6 @@ const TLSSNISuffix = "acme.invalid"
 
 // DNSPrefix is attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
-
-func (pd *ProblemDetails) Error() string {
-	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
-}
 
 // An AcmeIdentifier encodes an identifier that can
 // be validated by ACME.  The protocol allows for different
@@ -328,7 +304,7 @@ type Challenge struct {
 	Status AcmeStatus `json:"status,omitempty"`
 
 	// Contains the error that occured during challenge validation, if any
-	Error *ProblemDetails `json:"error,omitempty"`
+	Error *probs.ProblemDetails `json:"error,omitempty"`
 
 	// If successful, the time at which this challenge
 	// was completed by the server.
