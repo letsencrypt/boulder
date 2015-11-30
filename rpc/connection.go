@@ -35,7 +35,7 @@ type channelMaker interface {
 type defaultChannelMaker struct{}
 
 func (d defaultChannelMaker) makeChannel(conf *cmd.AMQPConfig) (amqpChannel, error) {
-	return AmqpChannel(conf)
+	return makeAmqpChannel(conf)
 }
 
 // amqpConnector encapsulates an AMQP channel and a subscription to a specific
