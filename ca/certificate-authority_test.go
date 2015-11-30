@@ -7,6 +7,7 @@ package ca
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/x509"
 	"encoding/asn1"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
@@ -116,6 +118,21 @@ type testCtx struct {
 	cleanUp  func()
 }
 
+var caKey crypto.Signer
+var caCert *x509.Certificate
+
+func init() {
+	var err error
+	caKey, err = helpers.ParsePrivateKeyPEM(mustRead(caKeyFile))
+	if err != nil {
+		panic(fmt.Sprintf("Unable to parse %s: %s", caKeyFile, err))
+	}
+	caCert, err = core.LoadCert(caCertFile)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to parse %s: %s", caCertFile, err))
+	}
+}
+
 func setup(t *testing.T) *testCtx {
 	// Create an SA
 	dbMap, err := sa.NewDbMap(vars.DBConnSA)
@@ -146,11 +163,8 @@ func setup(t *testing.T) *testCtx {
 
 	// Create a CA
 	caConfig := cmd.CAConfig{
-		Profile:      profileName,
-		SerialPrefix: 17,
-		Key: cmd.KeyConfig{
-			File: caKeyFile,
-		},
+		Profile:         profileName,
+		SerialPrefix:    17,
 		Expiry:          "8760h",
 		LifespanOCSP:    "45m",
 		MaxNames:        2,
@@ -193,7 +207,15 @@ func setup(t *testing.T) *testCtx {
 
 	stats := mocks.NewStatter()
 
-	return &testCtx{ssa, caConfig, reg, pa, fc, &stats, cleanUp}
+	return &testCtx{
+		ssa,
+		caConfig,
+		reg,
+		pa,
+		fc,
+		&stats,
+		cleanUp,
+	}
 }
 
 func TestFailNoSerial(t *testing.T) {
@@ -201,14 +223,14 @@ func TestFailNoSerial(t *testing.T) {
 	defer ctx.cleanUp()
 
 	ctx.caConfig.SerialPrefix = 0
-	_, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	_, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 }
 
 func TestIssueCertificate(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -285,7 +307,7 @@ func TestIssueCertificate(t *testing.T) {
 func TestRejectNoName(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -302,7 +324,7 @@ func TestRejectNoName(t *testing.T) {
 func TestRejectTooManyNames(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -319,7 +341,7 @@ func TestRejectTooManyNames(t *testing.T) {
 func TestDeduplication(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -343,7 +365,7 @@ func TestDeduplication(t *testing.T) {
 func TestRejectValidityTooLong(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
@@ -351,7 +373,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csr, _ := x509.ParseCertificateRequest(NoCNCSR)
-	ca.NotAfter = ctx.fc.Now()
+	ca.notAfter = ctx.fc.Now()
 	_, err = ca.IssueCertificate(*csr, 1)
 	test.AssertEquals(t, err.Error(), "Cannot issue a certificate that expires after the intermediate certificate.")
 	_, ok := err.(core.InternalServerError)
@@ -361,7 +383,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 func TestShortKey(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -377,7 +399,7 @@ func TestShortKey(t *testing.T) {
 func TestRejectBadAlgorithm(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -394,7 +416,7 @@ func TestCapitalizedLetters(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ctx.caConfig.MaxNames = 3
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -415,7 +437,7 @@ func TestHSMFaultTimeout(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
@@ -429,13 +451,13 @@ func TestHSMFaultTimeout(t *testing.T) {
 	}
 
 	// Swap in a bad signer
-	goodSigner := ca.Signer
+	goodSigner := ca.signer
 	badHSMErrorMessage := "This is really serious.  You should wait"
 	badSigner := mocks.BadHSMSigner(badHSMErrorMessage)
 	badOCSPSigner := mocks.BadHSMOCSPSigner(badHSMErrorMessage)
 
 	// Cause the CA to enter the HSM fault condition
-	ca.Signer = badSigner
+	ca.signer = badSigner
 	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertError(t, err, "CA failed to return HSM error")
 	test.AssertEquals(t, err.Error(), badHSMErrorMessage)
@@ -450,7 +472,7 @@ func TestHSMFaultTimeout(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "HSM is unavailable")
 
 	// Swap in a good signer and move the clock forward to clear the fault
-	ca.Signer = goodSigner
+	ca.signer = goodSigner
 	ctx.fc.Add(ca.hsmFaultTimeout)
 	ctx.fc.Add(10 * time.Second)
 
@@ -460,7 +482,7 @@ func TestHSMFaultTimeout(t *testing.T) {
 	_, err = ca.GenerateOCSP(ocspRequest)
 
 	// Check that GenerateOCSP can also trigger an HSM failure, in the same way
-	ca.OCSPSigner = badOCSPSigner
+	ca.ocspSigner = badOCSPSigner
 	_, err = ca.GenerateOCSP(ocspRequest)
 	test.AssertError(t, err, "CA failed to return HSM error")
 	test.AssertEquals(t, err.Error(), badHSMErrorMessage)
