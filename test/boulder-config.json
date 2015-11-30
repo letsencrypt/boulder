@@ -59,7 +59,7 @@
             "issuer_urls": [
               "http://127.0.0.1:4000/acme/issuer-cert"
             ],
-            "ocsp_url": "http://127.0.0.1:4002/ocsp",
+            "ocsp_url": "http://127.0.0.1:4002/",
             "crl_url": "http://example.com/crl",
             "policies": [
               {
@@ -243,6 +243,7 @@
   "activityMonitor": {
     "debugAddr": "localhost:8007",
     "amqp": {
+      "serviceQueue": "Monitor",
       "server": "amqp://guest:guest@localhost:5673",
       "insecure": true
     }
