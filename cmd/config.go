@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"strings"
 	"time"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
@@ -184,6 +186,10 @@ type ServiceConfig struct {
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
 // RPC services we offer via AMQP.
 type AMQPConfig struct {
+	// A file from which the AMQP Server URL will be read. This allows secret
+	// values (like the password) to be stored separately from the main config.
+	ServerURLFile string
+	// AMQP server URL, including username and password.
 	Server    string
 	Insecure  bool
 	RA        *RPCServerConfig
@@ -199,6 +205,19 @@ type AMQPConfig struct {
 		Base ConfigDuration
 		Max  ConfigDuration
 	}
+}
+
+// ServerURL returns the appropriate server URL for this object, which may
+// involve reading from a file.
+func (a *AMQPConfig) ServerURL() (string, error) {
+	if a.ServerURLFile != "" {
+		url, err := ioutil.ReadFile(a.ServerURLFile)
+		return strings.TrimRight(string(url), "\n"), err
+	}
+	if a.Server == "" {
+		return "", fmt.Errorf("Missing AMQP server URL")
+	}
+	return a.Server, nil
 }
 
 // CAConfig structs have configuration information for the certificate
