@@ -39,7 +39,7 @@ branches:
     - /^test-.*$/
 
 before_install:
-  - source test/travis-before-install.sh
+  - travis_retry test/travis-before-install.sh
 
 # Override default Travis install command to prevent it from adding
 # Godeps/_workspace to GOPATH. When that happens, it hides failures that should
