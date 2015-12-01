@@ -239,10 +239,14 @@ func main() {
 		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 		c.PA.SetDefaultChallengesIfEmpty()
 
-		saDbMap, err := sa.NewDbMap(c.CertChecker.DBConnect)
+		saDbURL, err := c.CertChecker.DBConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+		saDbMap, err := sa.NewDbMap(saDbURL)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
+		paDbURL, err := c.PA.DBConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+		paDbMap, err := sa.NewDbMap(paDbURL)
 		cmd.FailOnError(err, "Could not connect to policy database")
 
 		checker := newChecker(saDbMap, paDbMap, clock.Default(), c.PA.EnforcePolicyWhitelist, c.PA.Challenges)

@@ -231,10 +231,12 @@ func main() {
 		go cmd.DebugServer(c.Mailer.DebugAddr)
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.Mailer.DBConnect)
+		dbURL, err := c.Mailer.DBConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		amqpConf := c.SA.AMQP
+		amqpConf := c.Mailer.AMQP
 		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create SA client")
 

@@ -36,7 +36,8 @@ func main() {
 
 		go cmd.ProfileCmd("AM", stats)
 
-		server.Start(amqpConf)
+		err = server.Start(amqpConf)
+		cmd.FailOnError(err, "Unable to run Activity Monitor")
 	}
 
 	app.Run()
