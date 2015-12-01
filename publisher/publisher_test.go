@@ -275,8 +275,8 @@ func addLog(t *testing.T, pub *PublisherImpl, port int, pubKey *ecdsa.PublicKey)
 	test.AssertNotError(t, err, "Couldn't create signature verifier")
 
 	pub.ctLogs = append(pub.ctLogs, &Log{
-		Client:   ctClient.New(fmt.Sprintf("http://localhost:%d", port)),
-		Verifier: verifier,
+		client:   ctClient.New(fmt.Sprintf("http://localhost:%d", port)),
+		verifier: verifier,
 	})
 }
 

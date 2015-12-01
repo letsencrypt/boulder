@@ -21,8 +21,8 @@ import (
 
 // Log contains the CT client and signature verifier for a particular CT log
 type Log struct {
-	Client   *ctClient.LogClient
-	Verifier *ct.SignatureVerifier
+	client   *ctClient.LogClient
+	verifier *ct.SignatureVerifier
 }
 
 // NewLog returns a initialized Log struct
@@ -87,14 +87,14 @@ func (pub *PublisherImpl) SubmitToCT(der []byte) error {
 
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 	for _, ctLog := range pub.ctLogs {
-		sct, err := ctLog.Client.AddChain(chain)
+		sct, err := ctLog.client.AddChain(chain)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.Audit(fmt.Sprintf("Failed to submit certificate to CT log: %s", err))
 			continue
 		}
 
-		err = ctLog.Verifier.VerifySCTSignature(*sct, ct.LogEntry{
+		err = ctLog.verifier.VerifySCTSignature(*sct, ct.LogEntry{
 			Leaf: ct.MerkleTreeLeaf{
 				LeafType: ct.TimestampedEntryLeafType,
 				TimestampedEntry: ct.TimestampedEntry{
