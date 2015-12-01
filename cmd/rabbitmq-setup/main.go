@@ -25,14 +25,15 @@ func init() {
 
 // Constants for AMQP
 const (
-	monitorQueueName = "Monitor"
-	amqpExchange     = "boulder"
-	amqpExchangeType = "topic"
-	amqpInternal     = false
-	amqpDurable      = false
-	amqpDeleteUnused = false
-	amqpExclusive    = false
-	amqpNoWait       = false
+	monitorQueueName    = "Monitor"
+	amqpExchange        = "boulder"
+	amqpExchangeType    = "topic"
+	amqpInternal        = false
+	amqpExchangeDurable = true
+	amqpQueueDurable    = false
+	amqpDeleteUnused    = false
+	amqpExclusive       = false
+	amqpNoWait          = false
 )
 
 func main() {
@@ -45,7 +46,7 @@ func main() {
 	err = ch.ExchangeDeclare(
 		amqpExchange,
 		amqpExchangeType,
-		amqpDurable,
+		amqpExchangeDurable,
 		amqpDeleteUnused,
 		amqpInternal,
 		amqpNoWait,
@@ -54,7 +55,7 @@ func main() {
 
 	_, err = ch.QueueDeclare(
 		monitorQueueName,
-		amqpDurable,
+		amqpQueueDurable,
 		amqpDeleteUnused,
 		amqpExclusive,
 		amqpNoWait,
