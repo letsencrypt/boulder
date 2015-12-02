@@ -14,7 +14,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"strings"
 	"sync"
@@ -27,8 +26,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
@@ -63,18 +60,18 @@ const (
 // OCSP responses.
 type CertificateAuthorityImpl struct {
 	profile        string
-	Signer         signer.Signer
-	OCSPSigner     ocsp.Signer
+	signer         signer.Signer
+	ocspSigner     ocsp.Signer
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
 	Publisher      core.Publisher
-	Clk            clock.Clock // TODO(jmhodges): should be private, like log
+	clk            clock.Clock // TODO(jmhodges): should be private, like log
 	log            *blog.AuditLogger
 	stats          statsd.Statter
-	Prefix         int // Prepended to the serial number
-	ValidityPeriod time.Duration
-	NotAfter       time.Time
-	MaxNames       int
+	prefix         int // Prepended to the serial number
+	validityPeriod time.Duration
+	notAfter       time.Time
+	maxNames       int
 
 	hsmFaultLock         sync.Mutex
 	hsmFaultLastObserved time.Time
@@ -87,7 +84,13 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats statsd.Statter, issuerCert string) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(
+	config cmd.CAConfig,
+	clk clock.Clock,
+	stats statsd.Statter,
+	issuer *x509.Certificate,
+	privateKey crypto.Signer,
+) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -109,18 +112,7 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats sta
 		return nil, err
 	}
 
-	// Load the private key, which can be a file or a PKCS#11 key.
-	priv, err := loadKey(config.Key)
-	if err != nil {
-		return nil, err
-	}
-
-	issuer, err := core.LoadCert(issuerCert)
-	if err != nil {
-		return nil, err
-	}
-
-	signer, err := local.NewSigner(priv, issuer, x509.SHA256WithRSA, cfsslConfigObj.Signing)
+	signer, err := local.NewSigner(privateKey, issuer, x509.SHA256WithRSA, cfsslConfigObj.Signing)
 	if err != nil {
 		return nil, err
 	}
@@ -135,59 +127,34 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats sta
 
 	// Set up our OCSP signer. Note this calls for both the issuer cert and the
 	// OCSP signing cert, which are the same in our case.
-	ocspSigner, err := ocsp.NewSigner(issuer, issuer, priv, lifespanOCSP)
+	ocspSigner, err := ocsp.NewSigner(issuer, issuer, privateKey, lifespanOCSP)
 	if err != nil {
 		return nil, err
 	}
 
 	ca = &CertificateAuthorityImpl{
-		Signer:          signer,
-		OCSPSigner:      ocspSigner,
+		signer:          signer,
+		ocspSigner:      ocspSigner,
 		profile:         config.Profile,
-		Prefix:          config.SerialPrefix,
-		Clk:             clk,
+		prefix:          config.SerialPrefix,
+		clk:             clk,
 		log:             logger,
 		stats:           stats,
-		NotAfter:        issuer.NotAfter,
+		notAfter:        issuer.NotAfter,
 		hsmFaultTimeout: config.HSMFaultTimeout.Duration,
 	}
 
 	if config.Expiry == "" {
 		return nil, errors.New("Config must specify an expiry period.")
 	}
-	ca.ValidityPeriod, err = time.ParseDuration(config.Expiry)
+	ca.validityPeriod, err = time.ParseDuration(config.Expiry)
 	if err != nil {
 		return nil, err
 	}
 
-	ca.MaxNames = config.MaxNames
+	ca.maxNames = config.MaxNames
 
 	return ca, nil
-}
-
-func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
-	if keyConfig.File != "" {
-		var keyBytes []byte
-		keyBytes, err = ioutil.ReadFile(keyConfig.File)
-		if err != nil {
-			return nil, fmt.Errorf("Could not read key file %s", keyConfig.File)
-		}
-
-		priv, err = helpers.ParsePrivateKeyPEM(keyBytes)
-		return
-	}
-
-	pkcs11Config := keyConfig.PKCS11
-	if pkcs11Config.Module == "" ||
-		pkcs11Config.TokenLabel == "" ||
-		pkcs11Config.PIN == "" ||
-		pkcs11Config.PrivateKeyLabel == "" {
-		err = fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
-		return
-	}
-	priv, err = pkcs11key.New(pkcs11Config.Module,
-		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel)
-	return
 }
 
 // checkHSMFault checks whether there has been an HSM fault observed within the
@@ -202,7 +169,7 @@ func (ca *CertificateAuthorityImpl) checkHSMFault() error {
 		return nil
 	}
 
-	now := ca.Clk.Now()
+	now := ca.clk.Now()
 	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
 	if now.Before(timeout) {
 		err := core.ServiceUnavailableError("HSM is unavailable")
@@ -221,7 +188,7 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 
 	if err != nil {
 		ca.stats.Inc(metricHSMFaultObserved, 1, 1.0)
-		ca.hsmFaultLastObserved = ca.Clk.Now()
+		ca.hsmFaultLastObserved = ca.clk.Now()
 	}
 	return
 }
@@ -246,7 +213,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 		RevokedAt:   xferObj.RevokedAt,
 	}
 
-	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
+	ocspResponse, err := ca.ocspSigner.Sign(signRequest)
 	ca.noteHSMFault(err)
 	return ocspResponse, err
 }
@@ -307,8 +274,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	// Collapse any duplicate names.  Note that this operation may re-order the names
 	hostNames = core.UniqueLowerNames(hostNames)
-	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
-		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
+	if ca.maxNames > 0 && len(hostNames) > ca.maxNames {
+		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames))
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
@@ -331,9 +298,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		}
 	}
 
-	notAfter := ca.Clk.Now().Add(ca.ValidityPeriod)
+	notAfter := ca.clk.Now().Add(ca.validityPeriod)
 
-	if ca.NotAfter.Before(notAfter) {
+	if ca.notAfter.Before(notAfter) {
 		err = core.InternalServerError("Cannot issue a certificate that expires after the intermediate certificate.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
@@ -349,7 +316,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
-	serialBytes[0] = byte(ca.Prefix)
+	serialBytes[0] = byte(ca.prefix)
 	_, err = rand.Read(serialBytes[1:])
 	if err != nil {
 		err = core.InternalServerError(err.Error())
@@ -372,7 +339,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Serial: serialBigInt,
 	}
 
-	certPEM, err := ca.Signer.Sign(req)
+	certPEM, err := ca.signer.Sign(req)
 	ca.noteHSMFault(err)
 	if err != nil {
 		err = core.InternalServerError(err.Error())

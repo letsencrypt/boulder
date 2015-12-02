@@ -9,9 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"strings"
 	"time"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/publisher"
 	"github.com/letsencrypt/boulder/va"
@@ -64,8 +67,7 @@ type Config struct {
 
 	SA struct {
 		ServiceConfig
-
-		DBConnect string
+		DBConfig
 
 		MaxConcurrentRPCServerRequests int64
 	}
@@ -91,7 +93,7 @@ type Config struct {
 	Syslog SyslogConfig
 
 	Revoker struct {
-		DBConnect string
+		DBConfig
 		// The revoker isn't a long running service, so doesn't get a full
 		// ServiceConfig, just an AMQPConfig.
 		AMQP *AMQPConfig
@@ -99,13 +101,12 @@ type Config struct {
 
 	Mailer struct {
 		ServiceConfig
+		DBConfig
 
 		Server   string
 		Port     string
 		Username string
 		Password string
-
-		DBConnect string
 
 		CertLimit int
 		NagTimes  []string
@@ -119,10 +120,12 @@ type Config struct {
 
 	OCSPResponder struct {
 		ServiceConfig
+		DBConfig
 
 		// Source indicates the source of pre-signed OCSP responses to be used. It
 		// can be a DBConnect string or a file URL. The file URL style is used
 		// when responding from a static file for intermediates and roots.
+		// If DBConfig has non-empty fields, it takes precedence over this.
 		Source string
 
 		Path          string
@@ -164,9 +167,10 @@ type Config struct {
 	}
 
 	CertChecker struct {
+		DBConfig
+
 		Workers             int
 		ReportDirectoryPath string
-		DBConnect           string
 	}
 
 	SubscriberAgreementURL string
@@ -180,9 +184,32 @@ type ServiceConfig struct {
 	AMQP      *AMQPConfig
 }
 
+// DBConfig defines how to connect to a database. The connect string may be
+// stored in a file separate from the config, because it can contain a password,
+// which we want to keep out of configs.
+type DBConfig struct {
+	DBConnect string
+	// A file containing a connect URL for the DB.
+	DBConnectFile string
+}
+
+// URL returns the DBConnect URL represented by this DBConfig object, either
+// loading it from disk or returning a default value.
+func (d *DBConfig) URL() (string, error) {
+	if d.DBConnectFile != "" {
+		url, err := ioutil.ReadFile(d.DBConnectFile)
+		return string(url), err
+	}
+	return d.DBConnect, nil
+}
+
 // AMQPConfig describes how to connect to AMQP, and how to speak to each of the
 // RPC services we offer via AMQP.
 type AMQPConfig struct {
+	// A file from which the AMQP Server URL will be read. This allows secret
+	// values (like the password) to be stored separately from the main config.
+	ServerURLFile string
+	// AMQP server URL, including username and password.
 	Server    string
 	Insecure  bool
 	RA        *RPCServerConfig
@@ -200,15 +227,28 @@ type AMQPConfig struct {
 	}
 }
 
+// ServerURL returns the appropriate server URL for this object, which may
+// involve reading from a file.
+func (a *AMQPConfig) ServerURL() (string, error) {
+	if a.ServerURLFile != "" {
+		url, err := ioutil.ReadFile(a.ServerURLFile)
+		return strings.TrimRight(string(url), "\n"), err
+	}
+	if a.Server == "" {
+		return "", fmt.Errorf("Missing AMQP server URL")
+	}
+	return a.Server, nil
+}
+
 // CAConfig structs have configuration information for the certificate
 // authority, including database parameters as well as controls for
 // issued certificates.
 type CAConfig struct {
 	ServiceConfig
+	DBConfig
 
 	Profile      string
 	TestMode     bool
-	DBConnect    string
 	SerialPrefix int
 	Key          KeyConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
@@ -230,7 +270,7 @@ type CAConfig struct {
 // database, what policies it should enforce, and what challenges
 // it should offer.
 type PAConfig struct {
-	DBConnect              string
+	DBConfig
 	EnforcePolicyWhitelist bool
 	Challenges             map[string]bool
 }
@@ -263,16 +303,10 @@ func (pc *PAConfig) SetDefaultChallengesIfEmpty() {
 // KeyConfig should contain either a File path to a PEM-format private key,
 // or a PKCS11Config defining how to load a module for an HSM.
 type KeyConfig struct {
-	File   string
-	PKCS11 PKCS11Config
-}
-
-// PKCS11Config defines how to load a module for an HSM.
-type PKCS11Config struct {
-	Module          string
-	TokenLabel      string
-	PIN             string
-	PrivateKeyLabel string
+	// A file from which a pkcs11key.Config will be read and parsed, if present
+	ConfigFile string
+	File       string
+	PKCS11     *pkcs11key.Config
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.
@@ -293,7 +327,7 @@ type RPCServerConfig struct {
 // for the OCSP (and SCT) updater
 type OCSPUpdaterConfig struct {
 	ServiceConfig
-	DBConnect string
+	DBConfig
 
 	NewCertificateWindow     ConfigDuration
 	OldOCSPWindow            ConfigDuration

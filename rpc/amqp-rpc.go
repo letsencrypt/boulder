@@ -297,14 +297,19 @@ func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 
 	log := blog.GetAuditLogger()
 
+	serverURL, err := conf.ServerURL()
+	if err != nil {
+		return nil, err
+	}
+
 	if conf.Insecure == true {
 		// If the Insecure flag is true, then just go ahead and connect
-		conn, err = amqp.Dial(conf.Server)
+		conn, err = amqp.Dial(serverURL)
 	} else {
 		// The insecure flag is false or not set, so we need to load up the options
 		log.Info("AMQPS: Loading TLS Options.")
 
-		if strings.HasPrefix(conf.Server, "amqps") == false {
+		if strings.HasPrefix(serverURL, "amqps") == false {
 			err = fmt.Errorf("AMQPS: Not using an AMQPS URL. To use AMQP instead of AMQPS, set insecure=true")
 			return nil, err
 		}
@@ -348,7 +353,7 @@ func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 			log.Info("AMQPS: Configured CA certificate for AMQPS.")
 		}
 
-		conn, err = amqp.DialTLS(conf.Server, cfg)
+		conn, err = amqp.DialTLS(serverURL, cfg)
 	}
 
 	if err != nil {

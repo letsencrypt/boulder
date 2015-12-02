@@ -20,8 +20,6 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/ca"
@@ -180,20 +178,26 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
 	caCertPEM, _ := pem.Decode([]byte(CAcertPEM))
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
-	basicPolicy := &cfsslConfig.Signing{
-		Default: &cfsslConfig.SigningProfile{
-			Usage:  []string{"server auth", "client auth"},
-			Expiry: 1 * time.Hour,
-			CSRWhitelist: &cfsslConfig.CSRWhitelist{
-				PublicKey:          true,
-				PublicKeyAlgorithm: true,
-				SignatureAlgorithm: true,
-				DNSNames:           true,
+	cfsslC := cfsslConfig.Config{
+		Signing: &cfsslConfig.Signing{
+			Default: &cfsslConfig.SigningProfile{
+				Usage:        []string{"server auth", "client auth"},
+				ExpiryString: "1h",
+				CSRWhitelist: &cfsslConfig.CSRWhitelist{
+					PublicKey:          true,
+					PublicKeyAlgorithm: true,
+					SignatureAlgorithm: true,
+					DNSNames:           true,
+				},
 			},
 		},
 	}
-	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
-	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
+	caConf := cmd.CAConfig{
+		SerialPrefix: 10,
+		LifespanOCSP: "1h",
+		Expiry:       "1h",
+		CFSSL:        cfsslC,
+	}
 	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
@@ -201,16 +205,19 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
 	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false, SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
-	ca := ca.CertificateAuthorityImpl{
-		Signer:         signer,
-		OCSPSigner:     ocspSigner,
-		SA:             ssa,
-		PA:             pa,
-		ValidityPeriod: time.Hour * 2190,
-		NotAfter:       time.Now().Add(time.Hour * 8761),
-		Clk:            fc,
-		Publisher:      &mocks.Publisher{},
-	}
+
+	stats, _ := statsd.NewNoopClient()
+
+	ca, err := ca.NewCertificateAuthorityImpl(
+		caConf,
+		fc,
+		stats,
+		caCert,
+		caKey)
+	test.AssertNotError(t, err, "Couldn't create CA")
+	ca.SA = ssa
+	ca.PA = pa
+	ca.Publisher = &mocks.Publisher{}
 	cleanUp := func() {
 		saDBCleanUp()
 		policyDBCleanUp()
@@ -224,7 +231,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		InitialIP: net.ParseIP("3.2.3.3"),
 	})
 
-	stats, _ := statsd.NewNoopClient()
 	ra := NewRegistrationAuthorityImpl(fc,
 		blog.GetAuditLogger(),
 		stats,
@@ -237,7 +243,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		}, 1)
 	ra.SA = ssa
 	ra.VA = va
-	ra.CA = &ca
+	ra.CA = ca
 	ra.PA = pa
 	ra.DNSResolver = &mocks.DNSResolver{}
 
