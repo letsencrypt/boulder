@@ -354,8 +354,11 @@ func (u *AcmeURL) UnmarshalJSON(data []byte) error {
 	}
 
 	uu, err := url.Parse(str)
+	if err != nil {
+		return err
+	}
 	*u = AcmeURL(*uu)
-	return err
+	return nil
 }
 
 // VerifyCSR verifies that a Certificate Signature Request is well-formed.

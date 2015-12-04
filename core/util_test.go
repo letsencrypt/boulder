@@ -120,3 +120,11 @@ func TestUniqueLowerNames(t *testing.T) {
 	sort.Strings(u)
 	test.AssertDeepEquals(t, []string{"bar.com", "baz.com", "foobar.com"}, u)
 }
+
+func TestUnmarshalAcmeURL(t *testing.T) {
+	var u AcmeURL
+	err := u.UnmarshalJSON([]byte(`":"`))
+	if err == nil {
+		t.Errorf("Expected error parsing ':', but got nil err.")
+	}
+}
