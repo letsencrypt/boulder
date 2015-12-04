@@ -304,6 +304,9 @@ func TestValidateContacts(t *testing.T) {
 
 	err = ra.validateContacts([]*core.AcmeURL{ansible})
 	test.AssertError(t, err, "Unknown scheme")
+
+	err = ra.validateContacts([]*core.AcmeURL{nil})
+	test.AssertError(t, err, "Nil AcmeURL")
 }
 
 func TestValidateEmail(t *testing.T) {
