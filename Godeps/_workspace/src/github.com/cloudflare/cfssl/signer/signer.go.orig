@@ -15,11 +15,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/csr"
-	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
+	"github.com/cloudflare/cfssl/config"
+	"github.com/cloudflare/cfssl/csr"
+	cferr "github.com/cloudflare/cfssl/errors"
+	"github.com/cloudflare/cfssl/helpers"
+	"github.com/cloudflare/cfssl/info"
 )
 
 // MaxPathLen is the default path length for a new CA certificate.
@@ -33,7 +33,8 @@ type Subject struct {
 }
 
 // Extension represents a raw extension to be included in the certificate.  The
-// "value" field must be hex encoded.
+// "value" field must be Base64 encoded, using the URLEncoding variant (i.e.,
+// the URL-safe alphabet)
 type Extension struct {
 	ID       config.OID `json:"id"`
 	Critical bool       `json:"critical"`
@@ -42,12 +43,8 @@ type Extension struct {
 
 // SignRequest stores a signature request, which contains the hostname,
 // the CSR, optional subject information, and the signature profile.
-//
-// Extensions provided in the signRequest are copied into the certificate, as
-// long as they are in the ExtensionWhitelist for the signer's policy.
-// Extensions requested in the CSR are ignored, except for those processed by
-// ParseCertificateRequest (mainly subjectAltName).
 type SignRequest struct {
+<<<<<<< HEAD
 	Hosts      []string    `json:"hosts"`
 	Request    string      `json:"certificate_request"`
 	Subject    *Subject    `json:"subject,omitempty"`
@@ -55,6 +52,14 @@ type SignRequest struct {
 	Label      string      `json:"label"`
 	Serial     *big.Int    `json:"serial,omitempty"`
 	Extensions []Extension `json:"extensions,omitempty"`
+=======
+	Hosts   []string `json:"hosts"`
+	Request string   `json:"certificate_request"`
+	Subject *Subject `json:"subject,omitempty"`
+	Profile string   `json:"profile"`
+	Label   string   `json:"label"`
+	Serial  *big.Int `json:"serial,omitempty"`
+>>>>>>> master
 }
 
 // appendIf appends to a if s is not an empty string.
