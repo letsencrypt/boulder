@@ -3,7 +3,6 @@ Boulder - An ACME CA
 
 This is an initial implementation of an ACME-based CA. The [ACME protocol](https://github.com/letsencrypt/acme-spec/) allows the CA to automatically verify that an applicant for a certificate actually controls an identifier, and allows domain holders to issue and revoke certificates for their domains.
 
-
 [![Build Status](https://travis-ci.org/letsencrypt/boulder.svg)](https://travis-ci.org/letsencrypt/boulder)
 [![Coverage Status](https://coveralls.io/repos/letsencrypt/boulder/badge.svg)](https://coveralls.io/r/letsencrypt/boulder)
 
@@ -54,29 +53,18 @@ or
 
 (On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
 
-Resolve Go-dependencies:
+Resolve Go-dependencies, set up a database and RabbitMQ:
 
-    > go get bitbucket.org/liamstask/goose/cmd/goose
-    > go get github.com/jsha/listenbuddy
-    > go get github.com/letsencrypt/boulder/ # Ignore errors about no buildable files
-    > go get -u github.com/golang/lint/golint
+  > ./test/setup.sh
 
-Set up a database:
-
-    > cd $GOPATH/src/github.com/letsencrypt/boulder
-    > ./test/create_db.sh
-
-Set up RabbitMQ:
-    > go run cmd/rabbitmq-setup/main.go -server amqp://localhost
-
-**Note**: `create_db.sh` uses the root MariaDB user with the default
-password, so if you have disabled that account or changed the password
-you may have to adjust the file or recreate the commands.
+**Note**: `setup.sh` calls `create_db.sh`, which uses the root MariaDB
+user with the default password, so if you have disabled that account
+or changed the password you may have to adjust the file or recreate the commands.
 
 Start each boulder component with test configs (Ctrl-C kills all):
-    
+
     > ./start.py
-    
+
 Run tests:
 
     > ./test.sh
@@ -108,27 +96,21 @@ client <-checks->  VA ---+
 
 ```
 
-In Boulder, these components are represented by Go interfaces.  This allows us to have two operational modes: Consolidated and distributed.  In consolidated mode, the objects representing the different components interact directly, through function calls.  In distributed mode, each component runs in a separate process (possibly on a separate machine), and sees the other components' methods by way of a messaging layer.
-
-Internally, the logic of the system is based around two types of objects, authorizations and certificates, mapping directly to the resources of the same name in ACME.
+Internally, the logic of the system is based around four types of objects: registrations, authorizations, challenges, and certificates, mapping directly to the resources of the same name in ACME.
 
 Requests from ACME clients result in new objects and changes to objects.  The Storage Authority maintains persistent copies of the current set of objects.
 
-Objects are also passed from one component to another on change events.  For example, when a client provides a successful response to a validation challenge, it results in a change to the corresponding validation object.  The Validation Authority forward the new validation object to the Storage Authority for storage, and to the Registration Authority for any updates to a related Authorization object.
+Objects are also passed from one component to another on change events.  For example, when a client provides a successful response to a validation challenge, it results in a change to the corresponding validation object.  The Validation Authority forwards the new validation object to the Storage Authority for storage, and to the Registration Authority for any updates to a related Authorization object.
 
-Boulder supports distributed operation using AMQP as a message bus (e.g., via RabbitMQ).  For components that you want to be remote, it is necessary to instantiate a "client" and "server" for that component.  The client implements the component's Go interface, while the server has the actual logic for the component.  More details in `amqp-rpc.go`.
+Boulder uses AMQP as a message bus.  For components that you want to be remote, it is necessary to instantiate a "client" and "server" for that component.  The client implements the component's Go interface, while the server has the actual logic for the component.  More details in `amqp-rpc.go`.
 
 The full details of how the various ACME operations happen in Boulder are laid out in [DESIGN.md](https://github.com/letsencrypt/boulder/blob/master/DESIGN.md)
-
 
 Dependencies
 ------------
 
 All Go dependencies are vendorized under the Godeps directory,
-both to [make dependency management
-easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8)
-and to [avoid insecure fallback in go
-get](https://github.com/golang/go/issues/9637).
+to [make dependency management easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8).
 
 Local development also requires a RabbitMQ installation and MariaDB
 10 installation (see above). MariaDB should be run on port 3306 for the
@@ -137,10 +119,10 @@ default integration tests.
 To update the Go dependencies:
 
 ```
-# Disable insecure fallback by blocking port 80.
-sudo /sbin/iptables -A OUTPUT -p tcp --dport 80 -j DROP
 # Fetch godep
 go get -u https://github.com/tools/godep
+# Check out the currently vendorized version of each dependency.
+godep restore
 # Update to the latest version of a dependency. Alternately you can cd to the
 # directory under GOPATH and check out a specific revision. Here's an example
 # using cfssl:
@@ -152,10 +134,7 @@ godep update github.com/cloudflare/cfssl/...
 godep save -r ./...
 git add Godeps
 git commit
-# Assuming you had no other iptables rules, re-enable port 80.
-sudo iptables -D OUTPUT 1
 ```
-
 
 TODO
 ----

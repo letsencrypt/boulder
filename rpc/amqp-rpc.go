@@ -366,7 +366,7 @@ func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	// XXX-JWS: jws.Verify(body)
 	cb, present := rpc.dispatchTable[msg.Type]
-	rpc.log.Info(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
+	rpc.log.Debug(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
 	if !present {
 		// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
 		rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))

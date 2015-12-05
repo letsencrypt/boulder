@@ -218,13 +218,6 @@ if [[ "$RUN" =~ "migrations" ]] ; then
 fi
 
 #
-# Prepare the database for unittests and integration tests
-#
-if [[ "${TRAVIS}" == "true" ]] ; then
-  ./test/create_db.sh || die "unable to create the boulder database with test/create_db.sh"
-fi
-
-#
 # Unit Tests.
 #
 if [[ "$RUN" =~ "unit" ]] ; then
