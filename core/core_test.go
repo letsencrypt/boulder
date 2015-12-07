@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/test"
@@ -33,16 +32,6 @@ func TestChallenges(t *testing.T) {
 		t.Errorf("Error unmarshaling JWK: %v", err)
 	}
 
-	simpleHTTP := SimpleHTTPChallenge(accountKey)
-	if !simpleHTTP.IsSane(false) {
-		t.Errorf("New HTTP challenge is not sane: %v", simpleHTTP)
-	}
-
-	dvsni := DvsniChallenge(accountKey)
-	if !dvsni.IsSane(false) {
-		t.Errorf("New DVSNI challenge is not sane: %v", dvsni)
-	}
-
 	http01 := HTTPChallenge01(accountKey)
 	if !http01.IsSane(false) {
 		t.Errorf("New http-01 challenge is not sane: %v", http01)
@@ -57,10 +46,6 @@ func TestChallenges(t *testing.T) {
 	if !dns01.IsSane(false) {
 		t.Errorf("New dns-01 challenge is not sane: %v", dns01)
 	}
-
-	// TODO(#894): Remove these lines
-	test.Assert(t, ValidChallenge(ChallengeTypeSimpleHTTP), "Refused valid challenge")
-	test.Assert(t, ValidChallenge(ChallengeTypeDVSNI), "Refused valid challenge")
 
 	test.Assert(t, ValidChallenge(ChallengeTypeHTTP01), "Refused valid challenge")
 	test.Assert(t, ValidChallenge(ChallengeTypeTLSSNI01), "Refused valid challenge")
@@ -102,46 +87,6 @@ func TestCertificateRequest(t *testing.T) {
 	err = json.Unmarshal(jsonCR, &goodCR)
 	if err != nil {
 		t.Errorf("Marshalled certificate request failed to unmarshal: %v", err)
-	}
-}
-
-func TestMergeChallenge(t *testing.T) {
-	tls := true
-	t1 := time.Now()
-	t2 := time.Now().Add(-5 * time.Hour)
-	challenge := Challenge{
-		Type:      ChallengeTypeSimpleHTTP,
-		Status:    StatusPending,
-		Validated: &t1,
-		Token:     "asdf",
-	}
-	response := Challenge{
-		Type:      ChallengeTypeSimpleHTTP,
-		Status:    StatusValid,
-		Validated: &t2,
-		Token:     "qwer",
-		TLS:       &tls,
-	}
-	merged := Challenge{
-		Type:      ChallengeTypeSimpleHTTP,
-		Status:    StatusPending,
-		Validated: &t1,
-		Token:     "asdf",
-		TLS:       &tls,
-	}
-
-	probe := challenge.MergeResponse(response)
-	if probe.Status != merged.Status {
-		t.Errorf("MergeChallenge allowed response to overwrite status")
-	}
-	if probe.Validated != merged.Validated {
-		t.Errorf("MergeChallenge allowed response to overwrite completed time")
-	}
-	if probe.KeyAuthorization != merged.KeyAuthorization {
-		t.Errorf("MergeChallenge allowed response to overwrite authorized key")
-	}
-	if probe.TLS != merged.TLS {
-		t.Errorf("MergeChallenge failed to overwrite TLS")
 	}
 }
 

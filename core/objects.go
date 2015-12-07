@@ -70,22 +70,14 @@ const (
 
 // These types are the available challenges
 const (
-	ChallengeTypeSimpleHTTP = "simpleHttp"
-	ChallengeTypeDVSNI      = "dvsni"
-	ChallengeTypeHTTP01     = "http-01"
-	ChallengeTypeTLSSNI01   = "tls-sni-01"
-	ChallengeTypeDNS01      = "dns-01"
+	ChallengeTypeHTTP01   = "http-01"
+	ChallengeTypeTLSSNI01 = "tls-sni-01"
+	ChallengeTypeDNS01    = "dns-01"
 )
 
 // ValidChallenge tests whether the provided string names a known challenge
 func ValidChallenge(name string) bool {
 	switch name {
-	// TODO(#894): Delete these lines
-	case ChallengeTypeSimpleHTTP:
-		fallthrough
-	case ChallengeTypeDVSNI:
-		fallthrough
-
 	case ChallengeTypeHTTP01:
 		fallthrough
 	case ChallengeTypeTLSSNI01:
@@ -313,16 +305,10 @@ type Challenge struct {
 	// A URI to which a response can be POSTed
 	URI string `json:"uri"`
 
-	// Used by simpleHttp, http-00, tls-sni-00, and dns-00 challenges
-	Token string `json:"token,omitempty"`
+	// Used by http-01, tls-sni-01, and dns-01 challenges
+	Token string `json:"token,omitempty"` // Used by http-00, tls-sni-00, and dns-00 challenges
 
-	// Used by simpleHttp challenges
-	TLS *bool `json:"tls,omitempty"`
-
-	// Used by dvsni challenges
-	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
-
-	// Used by http-00, tls-sni-00, and dns-00 challenges
+	// Used by http-01, tls-sni-01, and dns-01 challenges
 	KeyAuthorization *KeyAuthorization `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
@@ -348,9 +334,6 @@ func (ch Challenge) RecordsSane() bool {
 	}
 
 	switch ch.Type {
-	case ChallengeTypeSimpleHTTP:
-		// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this case
-		fallthrough
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
@@ -358,9 +341,6 @@ func (ch Challenge) RecordsSane() bool {
 				return false
 			}
 		}
-	case ChallengeTypeDVSNI:
-		// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this case
-		fallthrough
 	case ChallengeTypeTLSSNI01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
@@ -381,102 +361,9 @@ func (ch Challenge) RecordsSane() bool {
 	return true
 }
 
-// isLegacy returns true if the challenge is of a legacy type (i.e., one defined
-// before draft-ietf-acme-acme-00)
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (ch Challenge) isLegacy() bool {
-	return (ch.Type == ChallengeTypeSimpleHTTP) ||
-		(ch.Type == ChallengeTypeDVSNI)
-}
-
-// legacyIsSane performs sanity checks for legacy challenge types, which have
-// a different structure / logic than current challenges.
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (ch Challenge) legacyIsSane(completed bool) bool {
-	if ch.Status != StatusPending {
-		return false
-	}
-
-	if ch.AccountKey == nil {
-		return false
-	}
-
-	switch ch.Type {
-	case ChallengeTypeSimpleHTTP:
-		// check extra fields aren't used
-		if ch.Validation != nil {
-			return false
-		}
-
-		if completed && ch.TLS == nil {
-			return false
-		}
-
-		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
-			return false
-		}
-		if _, err := B64dec(ch.Token); err != nil {
-			return false
-		}
-	case ChallengeTypeDVSNI:
-		// check extra fields aren't used
-		if ch.TLS != nil {
-			return false
-		}
-
-		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
-			return false
-		}
-		if _, err := B64dec(ch.Token); err != nil {
-			return false
-		}
-
-		// If completed, check that there's a validation object
-		if completed && ch.Validation == nil {
-			return false
-		}
-	default:
-		return false
-	}
-
-	return true
-}
-
-// legacyMergeResponse copies a subset of client-provided data to the current Challenge.
-// Note: This method does not update the challenge on the left side of the '.'
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (ch Challenge) legacyMergeResponse(resp Challenge) Challenge {
-	switch ch.Type {
-	case ChallengeTypeSimpleHTTP:
-		// For simpleHttp, only "tls" is client-provided
-		// If "tls" is not provided, default to "true"
-		if resp.TLS != nil {
-			ch.TLS = resp.TLS
-		} else {
-			ch.TLS = new(bool)
-			*ch.TLS = true
-		}
-
-	case ChallengeTypeDVSNI:
-		// For dvsni and dns, only "validation" is client-provided
-		if resp.Validation != nil {
-			ch.Validation = resp.Validation
-		}
-	}
-
-	return ch
-}
-
 // IsSane checks the sanity of a challenge object before issued to the client
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
-	if ch.isLegacy() {
-		return ch.legacyIsSane(completed)
-	}
-
 	if ch.Status != StatusPending {
 		return false
 	}
@@ -504,28 +391,6 @@ func (ch Challenge) IsSane(completed bool) bool {
 	}
 
 	return true
-}
-
-// MergeResponse copies a subset of client-provided data to the current Challenge.
-// Note: This method does not update the challenge on the left side of the '.'
-func (ch Challenge) MergeResponse(resp Challenge) Challenge {
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
-	if ch.isLegacy() {
-		return ch.legacyMergeResponse(resp)
-	}
-
-	// The only client-provided field is the key authorization, and all current
-	// challenge types use it.
-	switch ch.Type {
-	case ChallengeTypeHTTP01:
-		fallthrough
-	case ChallengeTypeTLSSNI01:
-		fallthrough
-	case ChallengeTypeDNS01:
-		ch.KeyAuthorization = resp.KeyAuthorization
-	}
-
-	return ch
 }
 
 // Authorization represents the authorization of an account key holder

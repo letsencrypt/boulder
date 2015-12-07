@@ -211,16 +211,6 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int, error) {
 	challenges := []core.Challenge{}
 
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
-	if pa.enabledChallenges[core.ChallengeTypeSimpleHTTP] {
-		challenges = append(challenges, core.SimpleHTTPChallenge(accountKey))
-	}
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
-	if pa.enabledChallenges[core.ChallengeTypeDVSNI] {
-		challenges = append(challenges, core.DvsniChallenge(accountKey))
-	}
-
 	if pa.enabledChallenges[core.ChallengeTypeHTTP01] {
 		challenges = append(challenges, core.HTTPChallenge01(accountKey))
 	}
