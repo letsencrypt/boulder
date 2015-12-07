@@ -62,8 +62,13 @@ func (t timeoutError) Timeout() bool {
 }
 
 // LookupHost is a mock
+//
+// Note: see comments on LookupMX regarding email.only
+//
 func (mock *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
-	if hostname == "always.invalid" || hostname == "invalid.invalid" {
+	if hostname == "always.invalid" ||
+		hostname == "invalid.invalid" ||
+		hostname == "email.only" {
 		return []net.IP{}, 0, nil
 	}
 	if hostname == "always.timeout" {
@@ -109,9 +114,17 @@ func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, er
 }
 
 // LookupMX is a mock
+//
+// Note: the email.only domain must have an MX but no A or AAAA
+// records. The mock LookupHost returns an address of 127.0.0.1 for
+// all domains except for special cases, so MX-only domains must be
+// handled in both LookupHost and LookupMX.
+//
 func (mock *DNSResolver) LookupMX(domain string) ([]string, time.Duration, error) {
 	switch strings.TrimRight(domain, ".") {
 	case "letsencrypt.org":
+		fallthrough
+	case "email.only":
 		fallthrough
 	case "email.com":
 		return []string{"mail.email.com"}, 0, nil
