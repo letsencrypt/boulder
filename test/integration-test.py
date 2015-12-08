@@ -159,8 +159,6 @@ def run_node_test():
         print("Cannot connect to WFE")
         die(ExitStatus.Error)
 
-    os.chdir('test/js')
-
     if subprocess.Popen('npm install', shell=True).wait() != 0:
         print("\n Installing NPM modules failed")
         die(ExitStatus.Error)
@@ -224,7 +222,7 @@ def run_caa_node_test():
         ''' % (domain, key_file, cert_file),
         shell=True).wait()
 
-    if runNode("bad-caa-resvered.com") == 0:
+    if runNode("bad-caa-reserved.com") == 0:
         print("\nIssused certificate for domain with bad CAA records")
         die(ExitStatus.NodeFailure)
 
@@ -273,6 +271,9 @@ if not (args.run_all or args.run_letsencrypt or args.run_node or args.run_node_c
 
 if not startservers.start(race_detection=True):
     die(ExitStatus.Error)
+
+if args.run_all or args.run_node or args.run_node_caa:
+    os.chdir('test/js')
 
 if args.run_all or args.run_node:
     run_node_test()
