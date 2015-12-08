@@ -159,6 +159,7 @@
 
   "va": {
     "userAgent": "boulder",
+    "issuerDomain": "happy-hacker-ca.invalid",
     "debugAddr": "localhost:8004",
     "portConfig": {
       "httpPort": 5002,

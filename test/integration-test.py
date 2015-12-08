@@ -202,6 +202,36 @@ def run_node_test():
     wait_for_ocsp_revoked(cert_file_pem, "../test-ca.pem", ee_ocsp_url)
     return 0
 
+def run_caa_node_test():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.connect(('localhost', 4000))
+    except socket.error, e:
+        print("Cannot connect to WFE")
+        die(ExitStatus.Error)
+
+    if subprocess.Popen('npm install', shell=True).wait() != 0:
+        print("\n Installing NPM modules failed")
+        die(ExitStatus.Error)
+    cert_file = os.path.join(tempdir, "cert.der")
+    key_file = os.path.join(tempdir, "key.pem")
+
+    def runNode(domain):
+        return subprocess.Popen('''
+        node test.js --email foo@letsencrypt.org --agree true \
+          --domains %s --new-reg http://localhost:4000/acme/new-reg \
+          --certKey %s --cert %s
+        ''' % (domain, key_file, cert_file),
+        shell=True).wait()
+
+    if runNode("bad-caa-resvered.com") == 0:
+        print("\nIssused certificate for domain with bad CAA records")
+        die(ExitStatus.NodeFailure)
+
+    if runNode("good-caa-reserved.com") != 0:
+        print("\nDidn't issue certificate for domain with good CAA records")
+        die(ExitStatus.NodeFailure)
+
 
 def run_client_tests():
     root = os.environ.get("LETSENCRYPT_PATH")
@@ -232,10 +262,12 @@ parser.add_argument('--letsencrypt', dest='run_letsencrypt', action='store_true'
                     help="run the letsencrypt's (the python client's) integration tests")
 parser.add_argument('--node', dest="run_node", action="store_true",
                     help="run the node client's integration tests")
+parser.add_argument('--nodeCAA', dest="run_node_caa", action="store_true",
+                    help="run the node client's CAA specific integration tests")
 parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
 args = parser.parse_args()
 
-if not (args.run_all or args.run_letsencrypt or args.run_node):
+if not (args.run_all or args.run_letsencrypt or args.run_node or args.run_node_caa):
     print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, or --node"
     die(ExitStatus.IncorrectCommandLineArgs)
 
@@ -244,6 +276,9 @@ if not startservers.start(race_detection=True):
 
 if args.run_all or args.run_node:
     run_node_test()
+
+if args.run_all or args.run_node_caa:
+    run_caa_node_test()
 
 # Simulate a disconnection from RabbitMQ to make sure reconnects work.
 startservers.bounce_forward()
