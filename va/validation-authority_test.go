@@ -1336,7 +1336,32 @@ func TestDNSValidationLive(t *testing.T) {
 	if authzBad.Challenges[0].Status != core.StatusInvalid {
 		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
 	}
+}
 
+func TestCAAFailure(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := tlssniSrv(t, chall)
+	defer hs.Close()
+
+	port, err := getPort(hs)
+	test.AssertNotError(t, err, "failed to get test server port")
+
+	stats, _ := statsd.NewNoopClient()
+	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
+	va.DNSResolver = &mocks.DNSResolver{}
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	ident.Value = "reserved.com"
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     ident,
+		Challenges:     []core.Challenge{chall},
+	}
+	va.validate(authz, 0)
+
+	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
 type MockRegistrationAuthority struct {
