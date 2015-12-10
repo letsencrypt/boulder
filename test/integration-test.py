@@ -152,16 +152,6 @@ def verify_ct_submission(expectedSubmissions, url):
         die(ExitStatus.CTFailure)
 
 def run_node_test():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.connect(('localhost', 4000))
-    except socket.error, e:
-        print("Cannot connect to WFE")
-        die(ExitStatus.Error)
-
-    if subprocess.Popen('npm install', shell=True).wait() != 0:
-        print("\n Installing NPM modules failed")
-        die(ExitStatus.Error)
     cert_file = os.path.join(tempdir, "cert.der")
     cert_file_pem = os.path.join(tempdir, "cert.pem")
     key_file = os.path.join(tempdir, "key.pem")
@@ -201,16 +191,6 @@ def run_node_test():
     return 0
 
 def run_caa_node_test():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.connect(('localhost', 4000))
-    except socket.error, e:
-        print("Cannot connect to WFE")
-        die(ExitStatus.Error)
-
-    if subprocess.Popen('npm install', shell=True).wait() != 0:
-        print("\n Installing NPM modules failed")
-        die(ExitStatus.Error)
     cert_file = os.path.join(tempdir, "cert.der")
     key_file = os.path.join(tempdir, "key.pem")
 
@@ -266,7 +246,7 @@ parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
 args = parser.parse_args()
 
 if not (args.run_all or args.run_letsencrypt or args.run_node or args.run_node_caa):
-    print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, or --node"
+    print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, --node, or --nodeCAA"
     die(ExitStatus.IncorrectCommandLineArgs)
 
 if not startservers.start(race_detection=True):
@@ -274,6 +254,10 @@ if not startservers.start(race_detection=True):
 
 if args.run_all or args.run_node or args.run_node_caa:
     os.chdir('test/js')
+
+    if subprocess.Popen('npm install', shell=True).wait() != 0:
+        print("\n Installing NPM modules failed")
+        die(ExitStatus.Error)
 
 if args.run_all or args.run_node:
     run_node_test()
