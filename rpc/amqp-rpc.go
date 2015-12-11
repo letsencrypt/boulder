@@ -59,7 +59,7 @@ const (
 )
 
 // A simplified way to declare and subscribe to an AMQP queue
-func amqpSubscribe(ch amqpChannel, name string) (<-chan amqp.Delivery, error) {
+func amqpSubscribe(ch amqpChannel, name, routingKey string) (<-chan amqp.Delivery, error) {
 	var err error
 
 	_, err = ch.QueueDeclare(
@@ -72,8 +72,6 @@ func amqpSubscribe(ch amqpChannel, name string) (<-chan amqp.Delivery, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not declare queue: %s", err)
 	}
-
-	routingKey := name
 
 	err = ch.QueueBind(
 		name,
@@ -129,6 +127,20 @@ type AmqpRPCServer struct {
 	tooManyRequestsResponse        []byte
 	stats                          statsd.Statter
 	clk                            clock.Clock
+}
+
+const wildcardRoutingKey = "#"
+
+// NewMonitorServer creates an AmqpRPCServer that binds its queue to the
+// wildcard routing key instead of the default of binding to the queue name.
+// This allows Activity Monitor to observe all messages sent to the exchange.
+func NewMonitorServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
+	server, err := NewAmqpRPCServer(amqpConf, maxConcurrentRPCServerRequests, stats)
+	if err != nil {
+		return nil, err
+	}
+	server.connection.routingKey = wildcardRoutingKey
+	return server, nil
 }
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin

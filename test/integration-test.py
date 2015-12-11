@@ -2,6 +2,7 @@
 import argparse
 import atexit
 import base64
+import json
 import os
 import re
 import shutil
@@ -9,8 +10,8 @@ import socket
 import subprocess
 import sys
 import tempfile
-import urllib
 import time
+import urllib
 import urllib2
 
 import startservers
@@ -212,6 +213,11 @@ def run_client_tests():
     if subprocess.Popen(cmd, shell=True, cwd=root, executable='/bin/bash').wait() != 0:
         die(ExitStatus.PythonFailure)
 
+def check_activity_monitor():
+    """Ensure that the activity monitor is running and received some messages."""
+    resp = urllib2.urlopen("http://localhost:8007/debug/vars")
+    debug_vars = json.loads(resp.read())
+    assert debug_vars['messages'] > 0, "Activity Monitor received zero messages."
 
 @atexit.register
 def cleanup():
@@ -220,36 +226,48 @@ def cleanup():
     if exit_status == ExitStatus.OK:
         print("\n\nSUCCESS")
     else:
-        print("\n\nFAILURE %d" % exit_status)
+        if exit_status:
+            print("\n\nFAILURE %d" % exit_status)
 
-exit_status = ExitStatus.OK
+exit_status = None
 tempdir = tempfile.mkdtemp()
 
-parser = argparse.ArgumentParser(description='Run integration tests')
-parser.add_argument('--all', dest="run_all", action="store_true",
-                    help="run all of the clients' integration tests")
-parser.add_argument('--letsencrypt', dest='run_letsencrypt', action='store_true',
-                    help="run the letsencrypt's (the python client's) integration tests")
-parser.add_argument('--node', dest="run_node", action="store_true",
-                    help="run the node client's integration tests")
-parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
-args = parser.parse_args()
+def main():
+    parser = argparse.ArgumentParser(description='Run integration tests')
+    parser.add_argument('--all', dest="run_all", action="store_true",
+                        help="run all of the clients' integration tests")
+    parser.add_argument('--letsencrypt', dest='run_letsencrypt', action='store_true',
+                        help="run the letsencrypt's (the python client's) integration tests")
+    parser.add_argument('--node', dest="run_node", action="store_true",
+                        help="run the node client's integration tests")
+    parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
+    args = parser.parse_args()
 
-if not (args.run_all or args.run_letsencrypt or args.run_node):
-    print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, or --node"
-    die(ExitStatus.IncorrectCommandLineArgs)
+    if not (args.run_all or args.run_letsencrypt or args.run_node):
+        print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, or --node"
+        die(ExitStatus.IncorrectCommandLineArgs)
 
-if not startservers.start(race_detection=True):
-    die(ExitStatus.Error)
+    if not startservers.start(race_detection=True):
+        die(ExitStatus.Error)
 
-if args.run_all or args.run_node:
-    run_node_test()
+    if args.run_all or args.run_node:
+        run_node_test()
 
-# Simulate a disconnection from RabbitMQ to make sure reconnects work.
-startservers.bounce_forward()
+    # Simulate a disconnection from RabbitMQ to make sure reconnects work.
+    startservers.bounce_forward()
 
-if args.run_all or args.run_letsencrypt:
-    run_client_tests()
+    if args.run_all or args.run_letsencrypt:
+        run_client_tests()
 
-if not startservers.check():
-    die(ExitStatus.Error)
+    check_activity_monitor()
+
+    if not startservers.check():
+        die(ExitStatus.Error)
+    exit_status = ExitStatus.OK
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        exit_status = ExitStatus.Error
+        raise
