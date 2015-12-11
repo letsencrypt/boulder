@@ -1136,7 +1136,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		}
 
 		sct, err := impl.GetSCTReceipt(gsctReq.Serial, gsctReq.LogID)
-		jsonResponse, err := json.Marshal(core.RPCSignedCertificateTimestamp(sct))
+		jsonResponse, err := json.Marshal(sct)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetSCTReceipt, err, req)
@@ -1147,7 +1147,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	})
 
 	rpc.Handle(MethodAddSCTReceipt, func(req []byte) (response []byte, err error) {
-		var sct core.RPCSignedCertificateTimestamp
+		var sct core.SignedCertificateTimestamp
 		err = json.Unmarshal(req, &sct)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
