@@ -10,7 +10,6 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -22,7 +21,6 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/probs"
@@ -83,42 +81,6 @@ type verificationRequestEvent struct {
 	RequestTime  time.Time      `json:",omitempty"`
 	ResponseTime time.Time      `json:",omitempty"`
 	Error        string         `json:",omitempty"`
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
-	if len(validation.Signatures) > 1 {
-		return fmt.Errorf("Too many signatures on validation JWS")
-	}
-	if len(validation.Signatures) == 0 {
-		return fmt.Errorf("Validation JWS not signed")
-	}
-
-	payload, err := validation.Verify(accountKey)
-	if err != nil {
-		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
-	}
-
-	var parsedResponse map[string]interface{}
-	err = json.Unmarshal(payload, &parsedResponse)
-	if err != nil {
-		return fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
-	}
-
-	if len(parsedResponse) != len(target) {
-		return fmt.Errorf("Validation payload had an improper number of fields")
-	}
-
-	for key, targetValue := range target {
-		parsedValue, ok := parsedResponse[key]
-		if !ok {
-			return fmt.Errorf("Validation payload missing a field %s", key)
-		} else if parsedValue != targetValue {
-			return fmt.Errorf("Validation payload has improper value for field %s", key)
-		}
-	}
-
-	return nil
 }
 
 // getAddr will query for all A records associated with hostname and return the
@@ -395,110 +357,6 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(identifier core.AcmeIden
 	return challenge, challenge.Error
 }
 
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
-	challenge := input
-
-	if identifier.Type != core.IdentifierDNS {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &probs.ProblemDetails{
-			Type:   probs.MalformedProblem,
-			Detail: "Identifier type for SimpleHTTP was not DNS",
-		}
-
-		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] Identifier failure", identifier))
-		return challenge, challenge.Error
-	}
-
-	// Perform the fetch
-	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	useTLS := (challenge.TLS == nil) || *challenge.TLS
-	body, challenge, err := va.fetchHTTP(identifier, path, useTLS, challenge)
-	if err != nil {
-		return challenge, err
-	}
-
-	payload := strings.TrimRight(string(body), whitespaceCutset)
-
-	// Parse and verify JWS
-	parsedJws, err := jose.ParseSigned(payload)
-	if err != nil {
-		err = fmt.Errorf("Validation response failed to parse as JWS: %s", err.Error())
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &probs.ProblemDetails{
-			Type:   probs.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	// Check that JWS body is as expected
-	// * "type" == "simpleHttp"
-	// * "token" == challenge.token
-	// * "tls" == challenge.tls || true
-	target := map[string]interface{}{
-		"type":  core.ChallengeTypeSimpleHTTP,
-		"token": challenge.Token,
-		"tls":   (challenge.TLS == nil) || *challenge.TLS,
-	}
-	err = verifyValidationJWS(parsedJws, challenge.AccountKey, target)
-	if err != nil {
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &probs.ProblemDetails{
-			Type:   probs.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	challenge.Status = core.StatusValid
-	return challenge, nil
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
-	challenge := input
-
-	if identifier.Type != "dns" {
-		challenge.Error = &probs.ProblemDetails{
-			Type:   probs.MalformedProblem,
-			Detail: "Identifier type for DVSNI was not DNS",
-		}
-		challenge.Status = core.StatusInvalid
-		va.log.Debug(fmt.Sprintf("DVSNI [%s] Identifier failure", identifier))
-		return challenge, challenge.Error
-	}
-
-	// Check that JWS body is as expected
-	// * "type" == "dvsni"
-	// * "token" == challenge.token
-	target := map[string]interface{}{
-		"type":  core.ChallengeTypeDVSNI,
-		"token": challenge.Token,
-	}
-	err := verifyValidationJWS(challenge.Validation, challenge.AccountKey, target)
-	if err != nil {
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &probs.ProblemDetails{
-			Type:   probs.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	// Compute the digest that will appear in the certificate
-	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
-	h := sha256.New()
-	h.Write([]byte(encodedSignature))
-	Z := hex.EncodeToString(h.Sum(nil))
-	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
-
-	return va.validateTLSWithZName(identifier, challenge, ZName)
-}
-
 func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
@@ -722,12 +580,6 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(identifier core.AcmeI
 
 func (va *ValidationAuthorityImpl) validateChallenge(identifier core.AcmeIdentifier, challenge core.Challenge) (core.Challenge, error) {
 	switch challenge.Type {
-	case core.ChallengeTypeSimpleHTTP:
-		// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
-		return va.validateSimpleHTTP(identifier, challenge)
-	case core.ChallengeTypeDVSNI:
-		// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
-		return va.validateDvsni(identifier, challenge)
 	case core.ChallengeTypeHTTP01:
 		return va.validateHTTP01(identifier, challenge)
 	case core.ChallengeTypeTLSSNI01:
