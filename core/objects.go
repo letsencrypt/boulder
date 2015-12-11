@@ -374,6 +374,8 @@ func (ch Challenge) RecordsSane() bool {
 		}
 	case ChallengeTypeDNS01:
 		// Nothing for now
+	default: // Unsupported challenge type
+		return false
 	}
 
 	return true
