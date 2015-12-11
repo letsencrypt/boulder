@@ -20,6 +20,7 @@ func newAMQPConnector(
 ) *amqpConnector {
 	return &amqpConnector{
 		queueName:        queueName,
+		routingKey:       queueName,
 		chMaker:          defaultChannelMaker{},
 		clk:              clock.Default(),
 		retryTimeoutBase: retryTimeoutBase,
@@ -42,10 +43,13 @@ func (d defaultChannelMaker) makeChannel(conf *cmd.AMQPConfig) (amqpChannel, err
 // queue, plus appropriate locking for its members. It provides reconnect logic,
 // and allows publishing via the channel onto an arbitrary queue.
 type amqpConnector struct {
-	mu               sync.RWMutex
-	chMaker          channelMaker
-	channel          amqpChannel
-	queueName        string
+	mu        sync.RWMutex
+	chMaker   channelMaker
+	channel   amqpChannel
+	queueName string
+	// Usually this is the same as queueName, except for Activity Monitor, which
+	// sets it to "#".
+	routingKey       string
 	closeChan        chan *amqp.Error
 	msgs             <-chan amqp.Delivery
 	retryTimeoutBase time.Duration
@@ -73,7 +77,7 @@ func (ac *amqpConnector) connect(config *cmd.AMQPConfig) error {
 	if err != nil {
 		return fmt.Errorf("channel connect failed for %s: %s", ac.queueName, err)
 	}
-	msgs, err := amqpSubscribe(channel, ac.queueName)
+	msgs, err := amqpSubscribe(channel, ac.queueName, ac.routingKey)
 	if err != nil {
 		return fmt.Errorf("queue subscribe failed for %s: %s", ac.queueName, err)
 	}
