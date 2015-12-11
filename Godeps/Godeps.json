@@ -109,8 +109,8 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/go-safe-browsing-api",
-			"Comment": "2.0.0-2-g814cea4",
-			"Rev": "814cea4d6d3063540dc15c3d93754eff4eaa756b"
+			"Comment": "2.0.0-9-gf1b4fa4",
+			"Rev": "f1b4fa409d9efcee2ceee9047549413861603033"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/net/publicsuffix",

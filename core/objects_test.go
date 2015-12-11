@@ -79,6 +79,21 @@ func TestRecordSanityCheck(t *testing.T) {
 	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
 }
 
+func TestRecordSanityCheckOnUnsupportChallengeType(t *testing.T) {
+	rec := []ValidationRecord{
+		ValidationRecord{
+			URL:               "http://localhost/test",
+			Hostname:          "localhost",
+			Port:              "80",
+			AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
+			AddressUsed:       net.IP{127, 0, 0, 1},
+		},
+	}
+
+	chall := Challenge{Type: "obsoletedChallenge", ValidationRecord: rec}
+	test.Assert(t, !chall.RecordsSane(), "Record with unsupported challenge type should not be sane")
+}
+
 // TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this test
 func TestChallengeSanityCheck_Legacy(t *testing.T) {
 	// Make a temporary account key
