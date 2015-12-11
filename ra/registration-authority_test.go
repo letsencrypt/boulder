@@ -310,7 +310,7 @@ func TestValidateContacts(t *testing.T) {
 }
 
 func TestValidateEmail(t *testing.T) {
-	testCases := []struct {
+	testFailures := []struct {
 		input    string
 		expected string
 	}{
@@ -319,15 +319,22 @@ func TestValidateEmail(t *testing.T) {
 		{"a@always.timeout", "DNS query timed out"},
 		{"a@always.error", "DNS networking error"},
 	}
-	for _, tc := range testCases {
-		_, err := validateEmail(tc.input, &mocks.DNSResolver{})
+	testSuccesses := []string{
+		"a@email.com",
+		"b@email.only",
+	}
+	for _, tc := range testFailures {
+		_, _, err := validateEmail(tc.input, &mocks.DNSResolver{})
 		if err.Error() != tc.expected {
 			t.Errorf("validateEmail(%q): got %#v, expected %#v",
 				tc.input, err, tc.expected)
 		}
 	}
-	if _, err := validateEmail("a@email.com", &mocks.DNSResolver{}); err != nil {
-		t.Errorf("Expected a@email.com to validate, but it failed: %s", err)
+	for _, addr := range testSuccesses {
+		if _, _, err := validateEmail(addr, &mocks.DNSResolver{}); err != nil {
+			t.Errorf("validateEmail(%q): expected success, but it failed: %s",
+				addr, err)
+		}
 	}
 }
 
