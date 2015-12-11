@@ -713,8 +713,8 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(identifier core.AcmeI
 	// error on CAA.
 	problemDetails := va.checkCAA(identifier, regID)
 	if problemDetails != nil {
-		challenge.Error = problemDetails
-		challenge.Status = core.StatusInvalid
+		result.Error = problemDetails
+		result.Status = core.StatusInvalid
 		return result, problemDetails
 	}
 	return result, nil
