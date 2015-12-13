@@ -10,7 +10,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 
@@ -63,9 +63,9 @@ func main() {
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
 		if !c.Common.DNSAllowLoopbackAddresses {
-			rai.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
+			rai.DNSResolver = bdns.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
 		} else {
-			rai.DNSResolver = core.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
+			rai.DNSResolver = bdns.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
 		}
 
 		rai.VA = vac
