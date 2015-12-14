@@ -267,6 +267,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
 		return emptyBody, challenge, err
 	}
+	defer httpResponse.Body.Close()
 
 	if httpResponse.StatusCode != 200 {
 		challenge.Status = core.StatusInvalid
@@ -288,7 +289,6 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		}
 		return emptyBody, challenge, err
 	}
-	httpResponse.Body.Close()
 	return body, challenge, nil
 }
 
