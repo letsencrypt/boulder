@@ -81,21 +81,30 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 var errUnparseableEmail = errors.New("not a valid e-mail address")
 var errEmptyDNSResponse = errors.New("empty DNS response")
 
-func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, err error) {
+func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, count int64, err error) {
 	_, err = mail.ParseAddress(address)
 	if err != nil {
-		return time.Duration(0), errUnparseableEmail
+		return time.Duration(0), 0, errUnparseableEmail
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	result, rtt, err := resolver.LookupHost(domain)
-	if err == nil && len(result) == 0 {
-		err = errEmptyDNSResponse
+	var rtt1, rtt2 time.Duration
+	var resultMX []string
+	var resultA []net.IP
+	resultMX, rtt1, err = resolver.LookupMX(domain)
+	count++
+	if err == nil && len(resultMX) == 0 {
+		resultA, rtt2, err = resolver.LookupHost(domain)
+		count++
+		if err == nil && len(resultA) == 0 {
+			err = errEmptyDNSResponse
+		}
 	}
 	if err != nil {
 		problem := dns.ProblemDetailsFromDNSError(err)
 		err = core.MalformedRequestError(problem.Detail)
 	}
+	rtt = rtt1 + rtt2
 
 	return
 }
@@ -223,9 +232,14 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 		case "tel":
 			continue
 		case "mailto":
-			rtt, err := validateEmail(contact.Opaque, ra.DNSResolver)
-			ra.stats.TimingDuration("RA.DNS.RTT.A", rtt, 1.0)
-			ra.stats.Inc("RA.DNS.Rate", 1, 1.0)
+			// Note: the stats handling here is a bit of a lie,
+			// since validateEmail() mainly does MX lookups and
+			// only does A lookups when the MX is missing.
+			rtt, count, err := validateEmail(contact.Opaque, ra.DNSResolver)
+			if count > 0 {
+				ra.stats.TimingDuration("RA.DNS.RTT.A", time.Duration(int64(rtt)/count), 1.0)
+				ra.stats.Inc("RA.DNS.Rate", count, 1.0)
+			}
 			if err != nil {
 				return core.MalformedRequestError(fmt.Sprintf(
 					"Validation of contact %s failed: %s", contact, err))
@@ -650,7 +664,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid challenge index: %d", challengeIndex))
 		return
 	}
-	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
+
+	authz.Challenges[challengeIndex].KeyAuthorization = response.KeyAuthorization
 
 	// At this point, the challenge should be sane as a complete challenge
 	if !authz.Challenges[challengeIndex].IsSane(true) {
