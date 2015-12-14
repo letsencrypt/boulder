@@ -279,7 +279,6 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		return emptyBody, challenge, err
 	}
 
-	// Read body & test
 	body, err := ioutil.ReadAll(httpResponse.Body)
 	if err != nil {
 		challenge.Status = core.StatusInvalid
@@ -289,7 +288,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		}
 		return emptyBody, challenge, err
 	}
-
+	httpResponse.Body.Close()
 	return body, challenge, nil
 }
 
