@@ -22,11 +22,9 @@ import (
 var log = mocks.UseMockLog()
 
 var enabledChallenges = map[string]bool{
-	core.ChallengeTypeSimpleHTTP: true,
-	core.ChallengeTypeDVSNI:      true,
-	core.ChallengeTypeHTTP01:     true,
-	core.ChallengeTypeTLSSNI01:   true,
-	core.ChallengeTypeDNS01:      true,
+	core.ChallengeTypeHTTP01:   true,
+	core.ChallengeTypeTLSSNI01: true,
+	core.ChallengeTypeDNS01:    true,
 }
 
 func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
@@ -209,7 +207,7 @@ func TestChallengesFor(t *testing.T) {
 
 	seenChalls := make(map[string]bool)
 	// Expected only if the pseudo-RNG is seeded with 99.
-	expectedCombos := [][]int{[]int{0}, []int{3}, []int{4}, []int{2}, []int{1}}
+	expectedCombos := [][]int{[]int{1}, []int{2}, []int{0}}
 	for _, challenge := range challenges {
 		test.Assert(t, !seenChalls[challenge.Type], "should not already have seen this type")
 		seenChalls[challenge.Type] = true

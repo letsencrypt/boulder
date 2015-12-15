@@ -14,9 +14,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"log/syslog"
 	"math/big"
 	"net"
 	"net/http"
@@ -30,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/core"
@@ -80,462 +79,6 @@ const pathReLookupInvalid = "re-lookup-invalid"
 const pathLooper = "looper"
 const pathValid = "valid"
 const rejectUserAgent = "rejectMe"
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
-func createValidation(token string, enableTLS bool) string {
-	payload, _ := json.Marshal(map[string]interface{}{
-		"type":  "simpleHttp",
-		"token": token,
-		"tls":   enableTLS,
-	})
-	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	obj, _ := signer.Sign(payload)
-	return obj.FullSerialize()
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
-func simpleSrv(t *testing.T, token string, enableTLS bool) *httptest.Server {
-	m := http.NewServeMux()
-	server := httptest.NewUnstartedServer(m)
-
-	defaultToken := token
-	currentToken := defaultToken
-
-	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.Host, "localhost:") && !strings.HasPrefix(r.Host, "other.valid:") {
-			t.Errorf("Bad Host header: " + r.Host)
-		}
-
-		if r.Header.Get("Accept") != "*/*" {
-			t.Logf("SIMPLESRV: Missing Accept header, was %#v", r.Header.Get("Accept"))
-			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte("request forgot the Accept header"))
-			return
-		}
-
-		if strings.HasSuffix(r.URL.Path, path404) {
-			t.Logf("SIMPLESRV: Got a 404 req\n")
-			http.NotFound(w, r)
-		} else if strings.HasSuffix(r.URL.Path, pathMoved) {
-			t.Logf("SIMPLESRV: Got a 301 redirect req\n")
-			if currentToken == defaultToken {
-				currentToken = pathMoved
-			}
-			http.Redirect(w, r, "valid", 301)
-		} else if strings.HasSuffix(r.URL.Path, pathFound) {
-			t.Logf("SIMPLESRV: Got a 302 redirect req\n")
-			if currentToken == defaultToken {
-				currentToken = pathFound
-			}
-			http.Redirect(w, r, pathMoved, 302)
-		} else if strings.HasSuffix(r.URL.Path, pathWait) {
-			t.Logf("SIMPLESRV: Got a wait req\n")
-			time.Sleep(time.Second * 3)
-		} else if strings.HasSuffix(r.URL.Path, pathWaitLong) {
-			t.Logf("SIMPLESRV: Got a wait-long req\n")
-			time.Sleep(time.Second * 10)
-		} else if strings.HasSuffix(r.URL.Path, pathReLookup) {
-			t.Logf("SIMPLESRV: Got a redirect req to a valid hostname\n")
-			if currentToken == defaultToken {
-				currentToken = pathReLookup
-			}
-			port, err := getPort(server)
-			test.AssertNotError(t, err, "failed to get server test port")
-			http.Redirect(w, r, fmt.Sprintf("http://other.valid:%d/path", port), 302)
-		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
-			t.Logf("SIMPLESRV: Got a redirect req to a invalid hostname\n")
-			http.Redirect(w, r, "http://invalid.invalid/path", 302)
-		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
-			t.Logf("SIMPLESRV: Got a loop req\n")
-			http.Redirect(w, r, r.URL.String(), 301)
-		} else if strings.HasSuffix(r.URL.Path, pathRedirectPort) {
-			t.Logf("SIMPLESRV: Got a port redirect req\n")
-			http.Redirect(w, r, "http://other.valid:8080/path", 302)
-		} else {
-			t.Logf("SIMPLESRV: Got a valid req\n")
-			fmt.Fprint(w, createValidation(currentToken, enableTLS))
-			currentToken = defaultToken
-		}
-	})
-
-	if !enableTLS {
-		server.Start()
-	} else {
-		template := &x509.Certificate{
-			SerialNumber: big.NewInt(1337),
-			Subject: pkix.Name{
-				Organization: []string{"tests"},
-			},
-			NotBefore: time.Now(),
-			NotAfter:  time.Now().AddDate(0, 0, 1),
-
-			KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-			BasicConstraintsValid: true,
-
-			DNSNames: []string{"example.com"},
-		}
-
-		certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
-		cert := &tls.Certificate{
-			Certificate: [][]byte{certBytes},
-			PrivateKey:  &TheKey,
-		}
-
-		server.TLS = &tls.Config{
-			Certificates: []tls.Certificate{*cert},
-		}
-
-		server.StartTLS()
-	}
-
-	return server
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
-func dvsniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
-	encodedSig := core.B64enc(chall.Validation.Signatures[0].Signature)
-	h := sha256.New()
-	h.Write([]byte(encodedSig))
-	Z := hex.EncodeToString(h.Sum(nil))
-	ZName := fmt.Sprintf("%s.%s.acme.invalid", Z[:32], Z[32:])
-
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1337),
-		Subject: pkix.Name{
-			Organization: []string{"tests"},
-		},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().AddDate(0, 0, 1),
-
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-
-		DNSNames: []string{ZName},
-	}
-
-	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
-	cert := &tls.Certificate{
-		Certificate: [][]byte{certBytes},
-		PrivateKey:  &TheKey,
-	}
-
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{*cert},
-		ClientAuth:   tls.NoClientCert,
-		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			if clientHello.ServerName != ZName {
-				time.Sleep(time.Second * 10)
-				return nil, nil
-			}
-			return cert, nil
-		},
-		NextProtos: []string{"http/1.1"},
-	}
-
-	hs := httptest.NewUnstartedServer(http.DefaultServeMux)
-	hs.TLS = tlsConfig
-	hs.StartTLS()
-	return hs
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
-func TestSimpleHttpTLS(t *testing.T) {
-	chall := core.Challenge{
-		Type:             core.ChallengeTypeSimpleHTTP,
-		Token:            expectedToken,
-		ValidationRecord: []core.ValidationRecord{},
-		AccountKey:       accountKey,
-	}
-
-	hs := simpleSrv(t, expectedToken, true)
-	defer hs.Close()
-
-	port, err := getPort(hs)
-	test.AssertNotError(t, err, "failed to get test server port")
-	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{HTTPSPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
-
-	log.Clear()
-	finChall, err := va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, "Error validating simpleHttp")
-	logs := log.GetAllMatching(`^\[AUDIT\] Attempting to validate simpleHttp for `)
-	test.AssertEquals(t, len(logs), 1)
-	test.AssertEquals(t, logs[0].Priority, syslog.LOG_NOTICE)
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
-func TestSimpleHttp(t *testing.T) {
-	tls := false
-	chall := core.Challenge{
-		Type:             core.ChallengeTypeSimpleHTTP,
-		Token:            expectedToken,
-		TLS:              &tls,
-		ValidationRecord: []core.ValidationRecord{},
-		AccountKey:       accountKey,
-	}
-
-	// NOTE: We do not attempt to shut down the server. The problem is that the
-	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
-	// than that. So if we try to call hs.Close() at the end of the test, we'll be
-	// closing the test server while a request is still pending. Unfortunately,
-	// there appears to be an issue in httptest that trips Go's race detector when
-	// that happens, failing the test. So instead, we live with leaving the server
-	// around till the process exits.
-	// TODO(#661): add hs.Close back, see ticket for blocker
-	hs := simpleSrv(t, expectedToken, tls)
-
-	goodPort, err := getPort(hs)
-	test.AssertNotError(t, err, "failed to get test server port")
-
-	// Attempt to fail a challenge by telling the VA to connect to a port we are
-	// not listening on.
-	badPort := goodPort + 1
-	if badPort == 65536 {
-		badPort = goodPort - 1
-	}
-	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: badPort}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
-
-	invalidChall, err := va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Server's down; expected refusal. Where did we connect?")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.ConnectionProblem)
-
-	va = NewValidationAuthorityImpl(&PortConfig{HTTPPort: goodPort}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
-
-	log.Clear()
-	finChall, err := va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, "Error validating simpleHttp")
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
-
-	log.Clear()
-	chall.Token = path404
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Should have found a 404 for the challenge.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
-
-	log.Clear()
-	chall.Token = pathWrongToken
-	// The "wrong token" will actually be the expectedToken.  It's wrong
-	// because it doesn't match pathWrongToken.
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Should have found the wrong token value.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
-
-	log.Clear()
-	chall.Token = pathMoved
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, "Failed to follow 301 redirect")
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
-
-	log.Clear()
-	chall.Token = pathFound
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, "Failed to follow 302 redirect")
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
-
-	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
-	invalidChall, err = va.validateSimpleHTTP(ipIdentifier, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.MalformedProblem)
-
-	invalidChall, err = va.validateSimpleHTTP(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Domain name is invalid.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.UnknownHostProblem)
-
-	chall.Token = "wait-long"
-	started := time.Now()
-	invalidChall, err = va.validateSimpleHTTP(ident, chall)
-	took := time.Since(started)
-	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
-	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
-	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Connection should've timed out")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.ConnectionProblem)
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
-func TestSimpleHttpRedirectLookup(t *testing.T) {
-	tls := false
-	chall := core.Challenge{
-		Token:            expectedToken,
-		TLS:              &tls,
-		ValidationRecord: []core.ValidationRecord{},
-		AccountKey:       accountKey,
-	}
-
-	hs := simpleSrv(t, expectedToken, tls)
-	defer hs.Close()
-	port, err := getPort(hs)
-	test.AssertNotError(t, err, "failed to get test server port")
-	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
-
-	log.Clear()
-	chall.Token = pathMoved
-	finChall, err := va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 2)
-
-	log.Clear()
-	chall.Token = pathFound
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 3)
-
-	log.Clear()
-	chall.Token = pathReLookupInvalid
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`No IPv4 addresses found for invalid.invalid`)), 1)
-
-	log.Clear()
-	chall.Token = pathReLookup
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid:\d+/path"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-
-	log.Clear()
-	chall.Token = pathRedirectPort
-	finChall, err = va.validateSimpleHTTP(ident, chall)
-	fmt.Println(finChall.ValidationRecord)
-	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, chall.Token)
-	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/port-redirect" to ".*other.valid:8080/path"`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
-func TestSimpleHttpRedirectLoop(t *testing.T) {
-	tls := false
-	chall := core.Challenge{
-		Token:            "looper",
-		TLS:              &tls,
-		ValidationRecord: []core.ValidationRecord{},
-	}
-
-	hs := simpleSrv(t, expectedToken, tls)
-	defer hs.Close()
-	port, err := getPort(hs)
-	test.AssertNotError(t, err, "failed to get test server port")
-	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
-
-	log.Clear()
-	finChall, err := va.validateSimpleHTTP(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, chall.Token)
-	fmt.Println(finChall)
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this method
-func TestDvsni(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeDVSNI)
-
-	hs := dvsniSrv(t, chall)
-	port, err := getPort(hs)
-	test.AssertNotError(t, err, "failed to get test server port")
-
-	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
-
-	va.DNSResolver = &mocks.DNSResolver{}
-
-	log.Clear()
-	finChall, err := va.validateDvsni(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-
-	log.Clear()
-	invalidChall, err := va.validateDvsni(core.AcmeIdentifier{
-		Type:  core.IdentifierType("ip"),
-		Value: net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", port)),
-	}, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.MalformedProblem)
-
-	log.Clear()
-	invalidChall, err = va.validateDvsni(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Domain name was supposed to be invalid.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.UnknownHostProblem)
-
-	// Need to re-sign to get an unknown SNI (from the signature value)
-	chall.Token = core.NewToken()
-	validationPayload, _ := json.Marshal(map[string]interface{}{
-		"type":  chall.Type,
-		"token": chall.Token,
-	})
-	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	chall.Validation, _ = signer.Sign(validationPayload)
-
-	log.Clear()
-	started := time.Now()
-	invalidChall, err = va.validateDvsni(ident, chall)
-	took := time.Since(started)
-	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
-	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
-	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Connection should've timed out")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.ConnectionProblem)
-	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
-
-	// Take down DVSNI validation server and check that validation fails.
-	hs.Close()
-	invalidChall, err = va.validateDvsni(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Server's down; expected refusal. Where did we connect?")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.ConnectionProblem)
-}
-
-func TestDVSNIWithTLSError(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeDVSNI)
-	hs := brokenTLSSrv()
-
-	port, err := getPort(hs)
-	test.AssertNotError(t, err, "failed to get test server port")
-	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
-
-	invalidChall, err := va.validateDvsni(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "What cert was used?")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.TLSProblem)
-}
 
 func httpSrv(t *testing.T, token string) *httptest.Server {
 	m := http.NewServeMux()
@@ -992,14 +535,6 @@ func createChallenge(challengeType string) core.Challenge {
 	keyAuthorization, _ := core.NewKeyAuthorization(chall.Token, accountKey)
 	chall.KeyAuthorization = &keyAuthorization
 
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this block
-	validationPayload, _ := json.Marshal(map[string]interface{}{
-		"type":  chall.Type,
-		"token": chall.Token,
-	})
-	signer, _ := jose.NewSigner(jose.RS256, &TheKey)
-	chall.Validation, _ = signer.Sign(validationPayload)
-
 	return chall
 }
 
@@ -1218,15 +753,11 @@ func TestDNSValidationNotSane(t *testing.T) {
 	chal1 := core.DNSChallenge01(accountKey)
 	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
 
-	chal2 := core.DNSChallenge01(accountKey)
-	chal2.TLS = new(bool)
-	*chal2.TLS = true
-
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{chal0, chal1, chal2},
+		Challenges:     []core.Challenge{chal0, chal1},
 	}
 
 	for i := 0; i < len(authz.Challenges); i++ {
@@ -1265,7 +796,7 @@ func TestDNSValidationServFail(t *testing.T) {
 func TestDNSValidationNoServer(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = core.NewTestDNSResolverImpl(time.Second*5, []string{})
+	va.DNSResolver = bdns.NewTestDNSResolverImpl(time.Second*5, []string{})
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -1336,7 +867,32 @@ func TestDNSValidationLive(t *testing.T) {
 	if authzBad.Challenges[0].Status != core.StatusInvalid {
 		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
 	}
+}
 
+func TestCAAFailure(t *testing.T) {
+	chall := createChallenge(core.ChallengeTypeTLSSNI01)
+	hs := tlssniSrv(t, chall)
+	defer hs.Close()
+
+	port, err := getPort(hs)
+	test.AssertNotError(t, err, "failed to get test server port")
+
+	stats, _ := statsd.NewNoopClient()
+	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
+	va.DNSResolver = &mocks.DNSResolver{}
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	ident.Value = "reserved.com"
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     ident,
+		Challenges:     []core.Challenge{chall},
+	}
+	va.validate(authz, 0)
+
+	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
 type MockRegistrationAuthority struct {
