@@ -560,15 +560,17 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 }
 
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(identifier core.AcmeIdentifier, challenge core.Challenge, regID int64) (core.Challenge, error) {
+	ch := make(chan *probs.ProblemDetails, 1)
+	go func() {
+		ch <- va.checkCAA(identifier, regID)
+	}()
+
 	result, err := va.validateChallenge(identifier, challenge)
 	if err != nil {
 		return result, err
 	}
 
-	// Checking CAA happens after challenge validation because DNS errors affect
-	// both, and giving a DNS error on validation makes more sense than a DNS
-	// error on CAA.
-	problemDetails := va.checkCAA(identifier, regID)
+	problemDetails := <-ch
 	if problemDetails != nil {
 		result.Error = problemDetails
 		result.Status = core.StatusInvalid

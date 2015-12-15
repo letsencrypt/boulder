@@ -53,6 +53,23 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 			record.Preference = 10
 
 			m.Answer = append(m.Answer, record)
+		case dns.TypeCAA:
+			if q.Name == "bad-caa-reserved.com." || q.Name == "good-caa-reserved.com." {
+				record := new(dns.CAA)
+				record.Hdr = dns.RR_Header{
+					Name:   q.Name,
+					Rrtype: dns.TypeCAA,
+					Class:  dns.ClassINET,
+					Ttl:    0,
+				}
+				record.Tag = "issue"
+				if q.Name == "bad-caa-reserved.com." {
+					record.Value = "sad-hacker-ca.invalid"
+				} else if q.Name == "good-caa-reserved.com." {
+					record.Value = "happy-hacker-ca.invalid"
+				}
+				m.Answer = append(m.Answer, record)
+			}
 		}
 	}
 

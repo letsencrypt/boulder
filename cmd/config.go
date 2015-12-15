@@ -76,6 +76,8 @@ type Config struct {
 
 		UserAgent string
 
+		IssuerDomain string
+
 		PortConfig va.PortConfig
 
 		MaxConcurrentRPCServerRequests int64

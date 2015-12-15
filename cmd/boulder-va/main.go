@@ -51,6 +51,7 @@ func main() {
 			vai.DNSResolver = bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
 		}
 		vai.UserAgent = c.VA.UserAgent
+		vai.IssuerDomain = c.VA.IssuerDomain
 
 		amqpConf := c.VA.AMQP
 		rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
