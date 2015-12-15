@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -27,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -571,14 +571,14 @@ func TestIssueCertificate(t *testing.T) {
 	})
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
 	wfe.NewCertificate(newRequestEvent(), responseWriter, makePostRequest("hi"))
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -586,7 +586,7 @@ func TestIssueCertificate(t *testing.T) {
 		makePostRequest(signRequest(t, "foo", wfe.nonceService)))
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`)
 
 	// Valid, signed JWS body, payload is '{}'
 	responseWriter.Body.Reset()
@@ -595,7 +595,7 @@ func TestIssueCertificate(t *testing.T) {
 			signRequest(t, "{}", wfe.nonceService)))
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload does not specify a resource","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Request payload does not specify a resource","status":400}`)
 
 	// Valid, signed JWS body, payload is '{"resource":"new-cert"}'
 	responseWriter.Body.Reset()
@@ -755,7 +755,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewRegistration(newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:badNonce","detail":"Unable to read/verify body :: JWS has no anti-replay nonce","status":400}`)
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
 }
 
 func TestNewRegistration(t *testing.T) {
@@ -799,19 +799,19 @@ func TestNewRegistration(t *testing.T) {
 					"Content-Length": []string{"0"},
 				},
 			},
-			`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST","status":400}`,
+			`{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`,
 		},
 
 		// POST, but body that isn't valid JWS
 		{
 			makePostRequestWithPath(NewRegPath, "hi"),
-			`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS","status":400}`,
+			`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`,
 		},
 
 		// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 		{
 			makePostRequestWithPath(NewRegPath, fooBody.FullSerialize()),
-			`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON","status":400}`,
+			`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 
 		// Same signed body, but payload modified by one byte, breaking signature.
@@ -831,7 +831,7 @@ func TestNewRegistration(t *testing.T) {
 				"signature": "RjUQ679fxJgeAJlxqgvDP_sfGZnJ-1RgWF2qmcbnBWljs6h1qp63pLnJOl13u81bP_bCSjaWkelGG8Ymx_X-aQ"
 			}
 		`),
-			`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: JWS verification error","status":400}`,
+			`{"type":"urn:acme:error:malformed","detail":"JWS verification error","status":400}`,
 		},
 		{
 			makePostRequestWithPath(NewRegPath, wrongAgreementBody.FullSerialize()),
@@ -1062,12 +1062,12 @@ func TestAuthorization(t *testing.T) {
 			"Content-Length": []string{"0"},
 		},
 	})
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: No body on POST","status":400}`)
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`)
 
 	// POST, but body that isn't valid JWS
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(newRequestEvent(), responseWriter, makePostRequest("hi"))
-	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS","status":400}`)
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 
 	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 	responseWriter.Body.Reset()
@@ -1075,7 +1075,7 @@ func TestAuthorization(t *testing.T) {
 		makePostRequest(signRequest(t, "foo", wfe.nonceService)))
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Request payload did not parse as JSON","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`)
 
 	// Same signed body, but payload modified by one byte, breaking signature.
 	// should fail JWS verification.
@@ -1096,7 +1096,7 @@ func TestAuthorization(t *testing.T) {
 		`))
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: JWS verification error","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"JWS verification error","status":400}`)
 
 	responseWriter.Body.Reset()
 	wfe.NewAuthorization(newRequestEvent(), responseWriter,
@@ -1167,7 +1167,7 @@ func TestRegistration(t *testing.T) {
 	wfe.Registration(newRequestEvent(), responseWriter, makePostRequestWithPath("/2", "invalid"))
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:malformed","detail":"Unable to read/verify body :: Parse error reading JWS","status":400}`)
+		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
 	responseWriter.Body.Reset()
 
 	key, err := jose.LoadPrivateKey([]byte(test2KeyPrivatePEM))
@@ -1350,13 +1350,13 @@ func TestLogCsrPem(t *testing.T) {
 
 func TestLengthRequired(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	_, _, _, err := wfe.verifyPOST(newRequestEvent(), &http.Request{
+	_, _, _, prob := wfe.verifyPOST(newRequestEvent(), &http.Request{
 		Method: "POST",
 		URL:    mustParseURL("/"),
 	}, false, "resource")
-	test.Assert(t, err != nil, "No error returned for request body missing Content-Length.")
-	_, ok := err.(core.LengthRequiredError)
-	test.Assert(t, ok, "Error code for missing content-length wasn't 411.")
+	test.Assert(t, prob != nil, "No error returned for request body missing Content-Length.")
+	test.AssertEquals(t, probs.MalformedProblem, prob.Type)
+	test.AssertEquals(t, http.StatusLengthRequired, prob.HTTPStatus)
 }
 
 type mockSADifferentStoredKey struct {
@@ -1398,30 +1398,6 @@ func TestBadKeyCSR(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: Key too small: 512","status":400}`)
-}
-
-func TestStatusCodeFromError(t *testing.T) {
-	testCases := []struct {
-		err        error
-		statusCode int
-	}{
-		{core.InternalServerError("foo"), 500},
-		{core.NotSupportedError("foo"), 501},
-		{core.MalformedRequestError("foo"), 400},
-		{core.UnauthorizedError("foo"), 403},
-		{core.NotFoundError("foo"), 404},
-		{core.SyntaxError("foo"), 400},
-		{core.SignatureValidationError("foo"), 400},
-		{core.RateLimitedError("foo"), 429},
-		{core.LengthRequiredError("foo"), 411},
-		{core.BadNonceError("foo"), statusBadNonce},
-	}
-	for _, c := range testCases {
-		got := statusCodeFromError(c.err)
-		if got != c.statusCode {
-			t.Errorf("Incorrect status code for %s. Expected %d, got %d", reflect.TypeOf(c.err).Name(), c.statusCode, got)
-		}
-	}
 }
 
 func newRequestEvent() *requestEvent {
