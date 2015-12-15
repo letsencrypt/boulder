@@ -16,6 +16,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -142,13 +143,19 @@ func main() {
 
 	keyBytes, err := ioutil.ReadFile(*signingKey)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to read signing key file\n")
+		fmt.Fprintf(os.Stderr, "failed to read signing key file: %s\n", err)
 		return
 	}
 
-	key, err := x509.ParseECPrivateKey(keyBytes)
+	keyBlock, _ := pem.Decode(keyBytes)
+	if keyBlock == nil {
+		fmt.Fprintf(os.Stderr, "failed to parse signing key PEM\n")
+		return
+	}
+
+	key, err := x509.ParseECPrivateKey(keyBlock.Bytes)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse signing key file\n")
+		fmt.Fprintf(os.Stderr, "failed to parse signing key file: %s\n", err)
 		return
 	}
 
