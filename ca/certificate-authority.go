@@ -59,7 +59,7 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 //  |-- 02 01 - INTEGER (1 octet)
 //  |   |-- 05 - 5
 var oidTLSFeature = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
-var mustStapleFeatureValue = "0303020105"
+var mustStapleFeatureValue = "3003020105"
 
 // Metrics for CA statistics
 const (
