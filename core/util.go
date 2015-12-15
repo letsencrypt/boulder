@@ -28,6 +28,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	mrand "math/rand"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -35,6 +36,7 @@ import (
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 // Package Variables Variables
@@ -122,6 +124,51 @@ func (e RateLimitedError) Error() string         { return string(e) }
 func (e TooManyRPCRequestsError) Error() string  { return string(e) }
 func (e ServiceUnavailableError) Error() string  { return string(e) }
 func (e BadNonceError) Error() string            { return string(e) }
+
+// statusTooManyRequests is the HTTP status code meant for rate limiting
+// errors. It's not currently in the net/http library so we add it here.
+const statusTooManyRequests = 429
+
+// ProblemDetailsForError turns an error into a ProblemDetails with the special
+// case of returning the same error back if its already a ProblemDetails. If the
+// error is of an type unknown to ProblemDetailsForError, it will return a
+// ServerInternal ProblemDetails.
+func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
+	switch e := err.(type) {
+	case *probs.ProblemDetails:
+		return e
+	case MalformedRequestError, SyntaxError:
+		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
+	case NotSupportedError:
+		return &probs.ProblemDetails{
+			Type:       probs.ServerInternalProblem,
+			Detail:     fmt.Sprintf("%s :: %s", msg, err),
+			HTTPStatus: http.StatusNotImplemented,
+		}
+	case UnauthorizedError:
+		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
+	case NotFoundError:
+		return probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
+	case LengthRequiredError:
+		prob := probs.Malformed("missing Content-Length header")
+		prob.HTTPStatus = http.StatusLengthRequired
+		return prob
+	case SignatureValidationError:
+		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
+	case RateLimitedError:
+		return &probs.ProblemDetails{
+			Type:       probs.RateLimitedProblem,
+			Detail:     fmt.Sprintf("%s :: %s", msg, err),
+			HTTPStatus: statusTooManyRequests,
+		}
+	case BadNonceError:
+		return probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
+	default:
+		// Internal server error messages may include sensitive data, so we do
+		// not include it.
+		return probs.ServerInternal(msg)
+	}
+}
 
 // Base64 functions
 
