@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package core
+package bdns
 
 import (
 	"fmt"
@@ -112,6 +112,15 @@ var (
 		},
 	}
 )
+
+// DNSResolver defines methods used for DNS resolution
+type DNSResolver interface {
+	ExchangeOne(string, uint16) (*dns.Msg, time.Duration, error)
+	LookupTXT(string) ([]string, time.Duration, error)
+	LookupHost(string) ([]net.IP, time.Duration, error)
+	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
+	LookupMX(string) ([]string, time.Duration, error)
+}
 
 // DNSResolverImpl represents a client that talks to an external resolver
 type DNSResolverImpl struct {

@@ -25,8 +25,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/probs"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
-	bdns "github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -39,7 +39,7 @@ var validationTimeout = time.Second * 5
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
-	DNSResolver  core.DNSResolver
+	DNSResolver  bdns.DNSResolver
 	IssuerDomain string
 	SafeBrowsing SafeBrowsing
 	httpPort     int
@@ -560,15 +560,17 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 }
 
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(identifier core.AcmeIdentifier, challenge core.Challenge, regID int64) (core.Challenge, error) {
+	ch := make(chan *probs.ProblemDetails, 1)
+	go func() {
+		ch <- va.checkCAA(identifier, regID)
+	}()
+
 	result, err := va.validateChallenge(identifier, challenge)
 	if err != nil {
 		return result, err
 	}
 
-	// Checking CAA happens after challenge validation because DNS errors affect
-	// both, and giving a DNS error on validation makes more sense than a DNS
-	// error on CAA.
-	problemDetails := va.checkCAA(identifier, regID)
+	problemDetails := <-ch
 	if problemDetails != nil {
 		result.Error = problemDetails
 		result.Status = core.StatusInvalid

@@ -153,18 +153,6 @@ def verify_ct_submission(expectedSubmissions, url):
         die(ExitStatus.CTFailure)
 
 def run_node_test():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.connect(('localhost', 4000))
-    except socket.error, e:
-        print("Cannot connect to WFE")
-        die(ExitStatus.Error)
-
-    os.chdir('test/js')
-
-    if subprocess.Popen('npm install', shell=True).wait() != 0:
-        print("\n Installing NPM modules failed")
-        die(ExitStatus.Error)
     cert_file = os.path.join(tempdir, "cert.der")
     cert_file_pem = os.path.join(tempdir, "cert.pem")
     key_file = os.path.join(tempdir, "key.pem")
@@ -202,6 +190,26 @@ def run_node_test():
 
     wait_for_ocsp_revoked(cert_file_pem, "../test-ca.pem", ee_ocsp_url)
     return 0
+
+def run_caa_node_test():
+    cert_file = os.path.join(tempdir, "cert.der")
+    key_file = os.path.join(tempdir, "key.pem")
+
+    def runNode(domain):
+        return subprocess.Popen('''
+        node test.js --email foo@letsencrypt.org --agree true \
+          --domains %s --new-reg http://localhost:4000/acme/new-reg \
+          --certKey %s --cert %s
+        ''' % (domain, key_file, cert_file),
+        shell=True).wait()
+
+    if runNode("bad-caa-reserved.com") == 0:
+        print("\nIssused certificate for domain with bad CAA records")
+        die(ExitStatus.NodeFailure)
+
+    if runNode("good-caa-reserved.com") != 0:
+        print("\nDidn't issue certificate for domain with good CAA records")
+        die(ExitStatus.NodeFailure)
 
 
 def run_client_tests():
@@ -251,7 +259,12 @@ def main():
         die(ExitStatus.Error)
 
     if args.run_all or args.run_node:
+        os.chdir('test/js')
+        if subprocess.Popen('npm install', shell=True).wait() != 0:
+            print("\n Installing NPM modules failed")
+            die(ExitStatus.Error)
         run_node_test()
+        run_caa_node_test()
 
     # Simulate a disconnection from RabbitMQ to make sure reconnects work.
     startservers.bounce_forward()
