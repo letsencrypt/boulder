@@ -21,9 +21,9 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/publicsuffix"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -48,7 +48,7 @@ type RegistrationAuthorityImpl struct {
 	SA          core.StorageAuthority
 	PA          core.PolicyAuthority
 	stats       statsd.Statter
-	DNSResolver core.DNSResolver
+	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
 	log         *blog.AuditLogger
 	dc          *DomainCheck
@@ -81,7 +81,7 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 var errUnparseableEmail = errors.New("not a valid e-mail address")
 var errEmptyDNSResponse = errors.New("empty DNS response")
 
-func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, count int64, err error) {
+func validateEmail(address string, resolver bdns.DNSResolver) (rtt time.Duration, count int64, err error) {
 	_, err = mail.ParseAddress(address)
 	if err != nil {
 		return time.Duration(0), 0, errUnparseableEmail
@@ -101,7 +101,7 @@ func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration
 		}
 	}
 	if err != nil {
-		problem := dns.ProblemDetailsFromDNSError(err)
+		problem := bdns.ProblemDetailsFromDNSError(err)
 		err = core.MalformedRequestError(problem.Detail)
 	}
 	rtt = rtt1 + rtt2

@@ -25,8 +25,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/probs"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
-	bdns "github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -39,7 +39,7 @@ var validationTimeout = time.Second * 5
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
-	DNSResolver  core.DNSResolver
+	DNSResolver  bdns.DNSResolver
 	IssuerDomain string
 	SafeBrowsing SafeBrowsing
 	httpPort     int
