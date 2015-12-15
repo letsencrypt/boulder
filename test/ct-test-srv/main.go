@@ -16,8 +16,6 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -133,29 +131,12 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	signingKey := flag.String("signingKey", "test/ct-key.pem", "Key to use for signing SCT receipts")
-	flag.Parse()
+	signingKey := "MHcCAQEEIOCtGlGt/WT7471dOHdfBg43uJWJoZDkZAQjWfTitcVNoAoGCCqGSM49AwEHoUQDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
+	decodedKey, _ := base64.StdEncoding.DecodeString(signingKey)
 
-	if *signingKey == "" {
-		fmt.Fprintf(os.Stderr, "--signingKey is required\n")
-		os.Exit(1)
-	}
-
-	keyBytes, err := ioutil.ReadFile(*signingKey)
+	key, err := x509.ParseECPrivateKey(decodedKey)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to read signing key file: %s\n", err)
-		return
-	}
-
-	keyBlock, _ := pem.Decode(keyBytes)
-	if keyBlock == nil {
-		fmt.Fprintf(os.Stderr, "failed to parse signing key PEM\n")
-		return
-	}
-
-	key, err := x509.ParseECPrivateKey(keyBlock.Bytes)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse signing key file: %s\n", err)
+		fmt.Fprintf(os.Stderr, "failed to parse signing key: %s\n", err)
 		return
 	}
 
