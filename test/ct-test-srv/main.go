@@ -82,7 +82,7 @@ type integrationSrv struct {
 	key         *ecdsa.PrivateKey
 }
 
-func (is integrationSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/ct/v1/add-chain":
 		if r.Method != "POST" {
@@ -143,7 +143,7 @@ func main() {
 	is := integrationSrv{key: key}
 	s := &http.Server{
 		Addr:    "localhost:4500",
-		Handler: is,
+		Handler: http.HandlerFunc(is.handler),
 	}
 	log.Fatal(s.ListenAndServe())
 }
