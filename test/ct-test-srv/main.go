@@ -9,13 +9,70 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/asn1"
+	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/big"
 	"net/http"
+	"os"
 	"sync/atomic"
+
+	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 )
+
+func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {
+	rawKey, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	pkHash := sha256.Sum256(rawKey)
+	sct := ct.SignedCertificateTimestamp{
+		SCTVersion: ct.V1,
+		LogID:      pkHash,
+		Timestamp:  1337,
+	}
+	serialized, _ := ct.SerializeSCTSignatureInput(sct, ct.LogEntry{
+		Leaf: ct.MerkleTreeLeaf{
+			LeafType: ct.TimestampedEntryLeafType,
+			TimestampedEntry: ct.TimestampedEntry{
+				X509Entry: ct.ASN1Cert(leaf),
+				EntryType: ct.X509LogEntryType,
+			},
+		},
+	})
+	hashed := sha256.Sum256(serialized)
+	var ecdsaSig struct {
+		R, S *big.Int
+	}
+	ecdsaSig.R, ecdsaSig.S, _ = ecdsa.Sign(rand.Reader, k, hashed[:])
+	sig, _ := asn1.Marshal(ecdsaSig)
+
+	ds := ct.DigitallySigned{
+		HashAlgorithm:      ct.SHA256,
+		SignatureAlgorithm: ct.ECDSA,
+		Signature:          sig,
+	}
+
+	var jsonSCTObj struct {
+		SCTVersion ct.Version `json:"sct_version"`
+		ID         string     `json:"id"`
+		Timestamp  uint64     `json:"timestamp"`
+		Extensions string     `json:"extensions"`
+		Signature  string     `json:"signature"`
+	}
+	jsonSCTObj.SCTVersion = ct.V1
+	jsonSCTObj.ID = base64.StdEncoding.EncodeToString(pkHash[:])
+	jsonSCTObj.Timestamp = 1337
+	jsonSCTObj.Signature, _ = ds.Base64String()
+
+	jsonSCT, _ := json.Marshal(jsonSCTObj)
+	return jsonSCT
+}
 
 type ctSubmissionRequest struct {
 	Chain []string `json:"chain"`
@@ -23,6 +80,7 @@ type ctSubmissionRequest struct {
 
 type integrationSrv struct {
 	submissions int64
+	key         *ecdsa.PrivateKey
 }
 
 func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
@@ -42,17 +100,21 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
+		if len(addChainReq.Chain) == 0 {
+			w.WriteHeader(400)
+			return
+		}
+
+		leaf, err := base64.StdEncoding.DecodeString(addChainReq.Chain[0])
+		if err != nil {
+			w.WriteHeader(400)
+			return
+		}
 
 		w.WriteHeader(http.StatusOK)
 		// id is a sha256 of a random EC key. Generate your own with:
 		// openssl ecparam -name prime256v1 -genkey -outform der | openssl sha256 -binary | base64
-		w.Write([]byte(`{
-			"sct_version": 0,
-			"id": "8fjM8cvLPOhzCFwI62IYJhjkOcvWFLx1dMJbs0uhxJU=",
-			"timestamp": 1442400000,
-			"extensions": "",
-			"signature": "BAMARzBFAiBB5wKED8KqKhADT37n0y28fZIPiGbCfZRVKq0wNo0hrwIhAOIa2tPBF/rB1y30Y/ROh4LBmJ0mItAbTWy8XZKh7Wcp"
-		}`))
+		w.Write(createSignedSCT(leaf, is.key))
 		atomic.AddInt64(&is.submissions, 1)
 	case "/submissions":
 		if r.Method != "GET" {
@@ -70,7 +132,27 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	is := integrationSrv{}
+	signingKey := flag.String("signingKey", "test/ct-key.pem", "Key to use for signing SCT receipts")
+	flag.Parse()
+
+	if *signingKey == "" {
+		fmt.Fprintf(os.Stderr, "--signingKey is required\n")
+		os.Exit(1)
+	}
+
+	keyBytes, err := ioutil.ReadFile(*signingKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to read signing key file\n")
+		return
+	}
+
+	key, err := x509.ParseECPrivateKey(keyBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse signing key file\n")
+		return
+	}
+
+	is := integrationSrv{key: key}
 	s := &http.Server{
 		Addr:    "localhost:4500",
 		Handler: http.HandlerFunc(is.handler),

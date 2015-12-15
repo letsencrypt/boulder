@@ -293,7 +293,7 @@
       "logs": [
         {
           "uri": "http://127.0.0.1:4500",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfahLEimAoz2t01p3uMziiLOl/fHTDM0YDOhBRuiBARsV4UvxG2LdNgoIGLrtCzWE0J5APC2em4JlvR8EEEFMoA=="
+          "key": "MHQCAQEEIGKI6QpOXNTBGdVaZ0938b0DEelF50qUDiWXvuB5oezjoAcGBSuBBAAKoUQDQgAEG7RPTHSjHhVDpR6XSishp/soJqHJHDvGpyc6TGJdHx+aD0wpi9knCJFpaxPTNDg0wWc3PtzLmlhlzeXu4lhDpQ=="
         }
       ],
       "intermediateBundleFilename": "test/test-ca.pem"
