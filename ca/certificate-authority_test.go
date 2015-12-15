@@ -526,7 +526,7 @@ func TestExtensions(t *testing.T) {
 	ctx := setup(t)
 	defer ctx.cleanUp()
 	ctx.caConfig.MaxNames = 3
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCertFile)
+	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
