@@ -25,7 +25,7 @@ import (
 	"crypto/sha512"
 	"crypto/subtle"
 	"errors"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose/cipher"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose/cipher"
 	"hash"
 	"io"
 )

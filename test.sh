@@ -125,7 +125,7 @@ function build_letsencrypt() {
   run virtualenv --no-site-packages -p $PY ./venv
   run ./venv/bin/pip install -U setuptools
   run ./venv/bin/pip install -U pip
-  run ./venv/bin/pip install -r requirements.txt -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
+  run ./venv/bin/pip install -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
 
   cd -
 }
@@ -218,13 +218,6 @@ if [[ "$RUN" =~ "migrations" ]] ; then
 fi
 
 #
-# Prepare the database for unittests and integration tests
-#
-if [[ "${TRAVIS}" == "true" ]] ; then
-  ./test/create_db.sh || die "unable to create the boulder database with test/create_db.sh"
-fi
-
-#
 # Unit Tests.
 #
 if [[ "$RUN" =~ "unit" ]] ; then
@@ -259,7 +252,9 @@ if [[ "$RUN" =~ "integration" ]] ; then
     build_letsencrypt
   fi
 
-  python test/amqp-integration-test.py
+  source ${LETSENCRYPT_PATH}/venv/bin/activate
+
+  python test/integration-test.py --all
   case $? in
     0) # Success
       update_status --state success

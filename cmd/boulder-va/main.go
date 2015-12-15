@@ -10,30 +10,19 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/bdns"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/va"
 )
 
+const clientName = "VA"
+
 func main() {
 	app := cmd.NewAppShell("boulder-va", "Handles challenge validation")
-	app.Action = func(c cmd.Config) {
-		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-
-		// Set up logging
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-		cmd.FailOnError(err, "Could not connect to Syslog")
-		auditlogger.Info(app.VersionString())
-
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
-
-		blog.SetAuditLogger(auditlogger)
-
+	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.VA.DebugAddr)
 
 		go cmd.ProfileCmd("VA", stats)
@@ -52,29 +41,29 @@ func main() {
 		if c.VA.PortConfig.TLSPort != 0 {
 			pc.TLSPort = c.VA.PortConfig.TLSPort
 		}
-		vai := va.NewValidationAuthorityImpl(pc, stats, clock.Default())
+		sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
+		vai := va.NewValidationAuthorityImpl(pc, sbc, stats, clock.Default())
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		if !c.Common.DNSAllowLoopbackAddresses {
-			vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+			vai.DNSResolver = bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
 		} else {
-			vai.DNSResolver = core.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+			vai.DNSResolver = bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
 		}
 		vai.UserAgent = c.VA.UserAgent
+		vai.IssuerDomain = c.VA.IssuerDomain
 
-		raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
+		amqpConf := c.VA.AMQP
+		rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create RA client")
 
-		vai.RA = &rac
+		vai.RA = rac
 
-		vas, err := rpc.NewAmqpRPCServer(c.AMQP.VA.Server, c.VA.MaxConcurrentRPCServerRequests, c)
+		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create VA RPC server")
 		rpc.NewValidationAuthorityServer(vas, vai)
 
-		err = vas.Start(c)
+		err = vas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run VA RPC server")
 	}
 

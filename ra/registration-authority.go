@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/publicsuffix"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -47,9 +48,10 @@ type RegistrationAuthorityImpl struct {
 	SA          core.StorageAuthority
 	PA          core.PolicyAuthority
 	stats       statsd.Statter
-	DNSResolver core.DNSResolver
+	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
 	log         *blog.AuditLogger
+	dc          *DomainCheck
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
@@ -61,11 +63,12 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, policies cmd.RateLimitConfig, maxContactsPerReg int) RegistrationAuthorityImpl {
-	ra := RegistrationAuthorityImpl{
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int) *RegistrationAuthorityImpl {
+	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
+		dc:    dc,
 		authorizationLifetime:        DefaultAuthorizationLifetime,
 		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
 		rlPolicies:                   policies,
@@ -75,20 +78,33 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 	return ra
 }
 
-func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, err error) {
+var errUnparseableEmail = errors.New("not a valid e-mail address")
+var errEmptyDNSResponse = errors.New("empty DNS response")
+
+func validateEmail(address string, resolver bdns.DNSResolver) (rtt time.Duration, count int64, err error) {
 	_, err = mail.ParseAddress(address)
 	if err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("%s is not a valid e-mail address", address))
-		return
+		return time.Duration(0), 0, errUnparseableEmail
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	var mx []string
-	mx, rtt, err = resolver.LookupMX(domain)
-	if err != nil || len(mx) == 0 {
-		err = core.MalformedRequestError(fmt.Sprintf("No MX record for domain %s", domain))
-		return
+	var rtt1, rtt2 time.Duration
+	var resultMX []string
+	var resultA []net.IP
+	resultMX, rtt1, err = resolver.LookupMX(domain)
+	count++
+	if err == nil && len(resultMX) == 0 {
+		resultA, rtt2, err = resolver.LookupHost(domain)
+		count++
+		if err == nil && len(resultA) == 0 {
+			err = errEmptyDNSResponse
+		}
 	}
+	if err != nil {
+		problem := bdns.ProblemDetailsFromDNSError(err)
+		err = core.MalformedRequestError(problem.Detail)
+	}
+	rtt = rtt1 + rtt2
 
 	return
 }
@@ -209,15 +225,24 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 	}
 
 	for _, contact := range contacts {
+		if contact == nil {
+			return core.MalformedRequestError("Invalid contact")
+		}
 		switch contact.Scheme {
 		case "tel":
 			continue
 		case "mailto":
-			rtt, err := validateEmail(contact.Opaque, ra.DNSResolver)
-			ra.stats.TimingDuration("RA.DNS.RTT.MX", rtt, 1.0)
-			ra.stats.Inc("RA.DNS.Rate", 1, 1.0)
+			// Note: the stats handling here is a bit of a lie,
+			// since validateEmail() mainly does MX lookups and
+			// only does A lookups when the MX is missing.
+			rtt, count, err := validateEmail(contact.Opaque, ra.DNSResolver)
+			if count > 0 {
+				ra.stats.TimingDuration("RA.DNS.RTT.A", time.Duration(int64(rtt)/count), 1.0)
+				ra.stats.Inc("RA.DNS.Rate", count, 1.0)
+			}
 			if err != nil {
-				return err
+				return core.MalformedRequestError(fmt.Sprintf(
+					"Validation of contact %s failed: %s", contact, err))
 			}
 		default:
 			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
@@ -258,7 +283,6 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Check that the identifier is present and appropriate
 	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
-		err = core.UnauthorizedError(err.Error())
 		return authz, err
 	}
 
@@ -267,16 +291,16 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		return authz, err
 	}
 
-	// Check CAA records for the requested identifier
-	present, valid, err := ra.VA.CheckCAARecords(identifier)
-	if err != nil {
-		return authz, err
-	}
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	ra.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", identifier.Value, regID, present, valid))
-	if !valid {
-		err = errors.New("CAA check for identifier failed")
-		return authz, err
+	if identifier.Type == core.IdentifierDNS {
+		isSafe, err := ra.dc.IsSafe(identifier.Value)
+		if err != nil {
+			outErr := core.InternalServerError("unable to determine if domain was safe")
+			ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), err))
+			return authz, outErr
+		}
+		if !isSafe {
+			return authz, core.UnauthorizedError(fmt.Sprintf("%#v was considered an unsafe domain by a third-party API", identifier.Value))
+		}
 	}
 
 	// Create validations. The WFE will  update them with URIs before sending them out.
@@ -640,7 +664,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid challenge index: %d", challengeIndex))
 		return
 	}
-	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
+
+	authz.Challenges[challengeIndex].KeyAuthorization = response.KeyAuthorization
 
 	// At this point, the challenge should be sane as a complete challenge
 	if !authz.Challenges[challengeIndex].IsSane(true) {

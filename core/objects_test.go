@@ -17,13 +17,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestProblemDetails(t *testing.T) {
-	pd := &ProblemDetails{
-		Type:   MalformedProblem,
-		Detail: "Wat? o.O"}
-	test.AssertEquals(t, pd.Error(), "urn:acme:error:malformed :: Wat? o.O")
-}
-
 func TestRegistrationUpdate(t *testing.T) {
 	oldURL, _ := ParseAcmeURL("http://old.invalid")
 	newURL, _ := ParseAcmeURL("http://new.invalid")
@@ -60,7 +53,7 @@ func TestKeyAuthorization(t *testing.T) {
 	test.Assert(t, !ka1.Match(ka2.Token, jwk2), "Authorized key should not match a completely different key")
 }
 
-func TestRecordSanityCheck(t *testing.T) {
+func TestRecordSanityCheckOnUnsupportChallengeType(t *testing.T) {
 	rec := []ValidationRecord{
 		ValidationRecord{
 			URL:               "http://localhost/test",
@@ -71,82 +64,8 @@ func TestRecordSanityCheck(t *testing.T) {
 		},
 	}
 
-	chall := Challenge{Type: ChallengeTypeSimpleHTTP, ValidationRecord: rec}
-	test.Assert(t, chall.RecordsSane(), "Record should be sane")
-	chall.ValidationRecord[0].URL = ""
-	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
-
-	chall = Challenge{Type: ChallengeTypeDVSNI, ValidationRecord: rec}
-	chall.ValidationRecord[0].URL = ""
-	test.Assert(t, chall.RecordsSane(), "Record should be sane")
-	chall.ValidationRecord[0].Hostname = ""
-	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
-
-	chall.ValidationRecord = append(chall.ValidationRecord, rec...)
-	test.Assert(t, !chall.RecordsSane(), "Record should not be sane")
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this test
-func TestChallengeSanityCheck_Legacy(t *testing.T) {
-	// Make a temporary account key
-	var accountKey *jose.JsonWebKey
-	err := json.Unmarshal([]byte(`{
-    "kty":"RSA",
-    "n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ",
-    "e":"AQAB"
-  }`), &accountKey)
-	test.AssertNotError(t, err, "Error unmarshaling JWK")
-
-	types := []string{ChallengeTypeSimpleHTTP, ChallengeTypeDVSNI}
-	for _, challengeType := range types {
-		chall := Challenge{
-			Type:       challengeType,
-			Status:     StatusInvalid,
-			AccountKey: accountKey,
-		}
-		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-		chall.Status = StatusPending
-		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-		chall.Token = ""
-		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-		chall.Token = "notlongenough"
-		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-		chall.Token = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ+PCt92wr+o!"
-		test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-		chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
-		test.Assert(t, chall.IsSane(false), "IsSane should be true")
-
-		// Post-completion tests differ by type
-		if challengeType == ChallengeTypeSimpleHTTP {
-			tls := true
-			chall.TLS = &tls
-			chall.ValidationRecord = []ValidationRecord{ValidationRecord{
-				URL:               "",
-				Hostname:          "localhost",
-				Port:              "80",
-				AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
-				AddressUsed:       net.IP{127, 0, 0, 1},
-			}}
-			test.Assert(t, chall.IsSane(true), "IsSane should be true")
-		} else if challengeType == ChallengeTypeDVSNI {
-			chall.Validation = new(jose.JsonWebSignature)
-			if challengeType == ChallengeTypeDVSNI {
-				chall.ValidationRecord = []ValidationRecord{ValidationRecord{
-					Hostname:          "localhost",
-					Port:              "80",
-					AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
-					AddressUsed:       net.IP{127, 0, 0, 1},
-				}}
-			} else {
-				chall.ValidationRecord = []ValidationRecord{}
-			}
-			test.Assert(t, chall.IsSane(true), "IsSane should be true")
-		}
-	}
-
-	chall := Challenge{Type: "bogus", Status: StatusPending}
-	test.Assert(t, !chall.IsSane(false), "IsSane should be false")
-	test.Assert(t, !chall.IsSane(true), "IsSane should be false")
+	chall := Challenge{Type: "obsoletedChallenge", ValidationRecord: rec}
+	test.Assert(t, !chall.RecordsSane(), "Record with unsupported challenge type should not be sane")
 }
 
 func TestChallengeSanityCheck(t *testing.T) {

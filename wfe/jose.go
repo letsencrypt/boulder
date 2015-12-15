@@ -1,0 +1,48 @@
+package wfe
+
+import (
+	"crypto/rsa"
+	"fmt"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/core"
+)
+
+func algorithmForKey(key *jose.JsonWebKey) (string, error) {
+	// TODO(https://github.com/letsencrypt/boulder/issues/792): Support EC.
+	switch key.Key.(type) {
+	case *rsa.PublicKey:
+		return string(jose.RS256), nil
+	}
+	return "", core.SignatureValidationError("no signature algorithms suitable for given key type")
+}
+
+const (
+	noAlgorithmForKey     = "WFE.Errors.NoAlgorithmForKey"
+	invalidJWSAlgorithm   = "WFE.Errors.InvalidJWSAlgorithm"
+	invalidAlgorithmOnKey = "WFE.Errors.InvalidAlgorithmOnKey"
+)
+
+// Check that (1) there is a suitable algorithm for the provided key based on its
+// Golang type, (2) the Algorithm field on the JWK is either absent, or matches
+// that algorithm, and (3) the Algorithm field on the JWK is present and matches
+// that algorithm. Precondition: parsedJws must have exactly one signature on
+// it. Returns stat name to increment if err is non-nil.
+func checkAlgorithm(key *jose.JsonWebKey, parsedJws *jose.JsonWebSignature) (string, error) {
+	algorithm, err := algorithmForKey(key)
+	if err != nil {
+		return noAlgorithmForKey, err
+	}
+	jwsAlgorithm := parsedJws.Signatures[0].Header.Algorithm
+	if jwsAlgorithm != algorithm {
+		return invalidJWSAlgorithm,
+			core.SignatureValidationError(fmt.Sprintf(
+				"algorithm '%s' in JWS header not acceptable", jwsAlgorithm))
+	}
+	if key.Algorithm != "" && key.Algorithm != algorithm {
+		return invalidAlgorithmOnKey,
+			core.SignatureValidationError(fmt.Sprintf(
+				"algorithm '%s' on JWK is unacceptable", key.Algorithm))
+	}
+	return "", nil
+}

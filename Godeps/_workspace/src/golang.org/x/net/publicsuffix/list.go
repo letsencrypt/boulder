@@ -43,38 +43,11 @@ func (list) String() string {
 // domains like foo.appspot.com can be found at
 // https://wiki.mozilla.org/Public_Suffix_List/Use_Cases
 func PublicSuffix(domain string) (publicSuffix string, icann bool) {
-	publicSuffix, icann = getSuffix(domain, false)
-	if publicSuffix == "" {
-		// If no rules match, the prevailing rule is "*", so return the rightmost
-		// label in the domain.
-		publicSuffix = domain[1+strings.LastIndex(domain, "."):]
-	}
-	return
-}
-
-// ICANNTLD returns the public suffix of the domain using only the ICANN
-// section of the library's compiled-in database.
-// If the domain does not end in an ICANN-managed domain, ICANNTLD returns an
-// error.
-func ICANNTLD(domain string) (string, error) {
-	tld, _ := getSuffix(domain, true)
-	if tld == "" {
-		return "", fmt.Errorf("publicsuffix: %s has no ICANN TLD.", domain)
-	}
-	return tld, nil
-}
-
-// getSuffix is a helper function underlying both PublicSuffix and ICANNTLD. It
-// applies the public suffix algorithm to domain. If icannOnly is true, it
-// considers only the ICANN section of the public suffix list.
-// If no rules match, getSuffix returns the empty string.
-func getSuffix(domain string, icannOnly bool) (publicSuffix string, icann bool) {
 	lo, hi := uint32(0), uint32(numTLD)
 	s, suffix, wildcard := domain, len(domain), false
-	var dot int
 loop:
-	for ;; s = s[:dot] {
-		dot = strings.LastIndex(s, ".")
+	for {
+		dot := strings.LastIndex(s, ".")
 		if wildcard {
 			suffix = 1 + dot
 		}
@@ -88,11 +61,6 @@ loop:
 
 		u := nodes[f] >> (nodesBitsTextOffset + nodesBitsTextLength)
 		icann = u&(1<<nodesBitsICANN-1) != 0
-		// If we're only interested in ICANN suffixes, ignore any matches that are
-		// not ICANN.
-		if icannOnly && !icann {
-			continue
-		}
 		u >>= nodesBitsICANN
 		u = children[u&(1<<nodesBitsChildren-1)]
 		lo = u & (1<<childrenBitsLo - 1)
@@ -109,12 +77,14 @@ loop:
 		u >>= childrenBitsNodeType
 		wildcard = u&(1<<childrenBitsWildcard-1) != 0
 
- 		if dot == -1 {
+		if dot == -1 {
 			break
 		}
+		s = s[:dot]
 	}
-	if icannOnly && suffix < len(domain) {
-		icann = true
+	if suffix == len(domain) {
+		// If no rules match, the prevailing rule is "*".
+		return domain[1+strings.LastIndex(domain, "."):], icann
 	}
 	return domain[suffix:], icann
 }

@@ -18,6 +18,7 @@ package jose
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -117,4 +118,56 @@ func TestByteBufferTrim(t *testing.T) {
 	if !bytes.Equal(buf.data, []byte{1, 0, 1}) {
 		t.Error("Byte buffer for integer '65537' should contain [0x01, 0x00, 0x01]")
 	}
+}
+
+func TestFixedSizeBuffer(t *testing.T) {
+	data0 := []byte{}
+	data1 := []byte{1}
+	data2 := []byte{1, 2}
+	data3 := []byte{1, 2, 3}
+	data4 := []byte{1, 2, 3, 4}
+
+	buf0 := newFixedSizeBuffer(data0, 4)
+	buf1 := newFixedSizeBuffer(data1, 4)
+	buf2 := newFixedSizeBuffer(data2, 4)
+	buf3 := newFixedSizeBuffer(data3, 4)
+	buf4 := newFixedSizeBuffer(data4, 4)
+
+	if !bytes.Equal(buf0.data, []byte{0, 0, 0, 0}) {
+		t.Error("Invalid padded buffer for buf0")
+	}
+	if !bytes.Equal(buf1.data, []byte{0, 0, 0, 1}) {
+		t.Error("Invalid padded buffer for buf1")
+	}
+	if !bytes.Equal(buf2.data, []byte{0, 0, 1, 2}) {
+		t.Error("Invalid padded buffer for buf2")
+	}
+	if !bytes.Equal(buf3.data, []byte{0, 1, 2, 3}) {
+		t.Error("Invalid padded buffer for buf3")
+	}
+	if !bytes.Equal(buf4.data, []byte{1, 2, 3, 4}) {
+		t.Error("Invalid padded buffer for buf4")
+	}
+}
+
+func TestSerializeJSONRejectsNil(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil || !strings.Contains(r.(string), "nil pointer") {
+			t.Error("serialize function should not accept nil pointer")
+		}
+	}()
+
+	mustSerializeJSON(nil)
+}
+
+func TestFixedSizeBufferTooLarge(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Error("should not be able to create fixed size buffer with oversized data")
+		}
+	}()
+
+	newFixedSizeBuffer(make([]byte, 2), 1)
 }

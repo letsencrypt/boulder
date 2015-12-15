@@ -30,10 +30,6 @@ type OPT struct {
 	Option []EDNS0 `dns:"opt"`
 }
 
-func (rr *OPT) Header() *RR_Header {
-	return &rr.Hdr
-}
-
 func (rr *OPT) String() string {
 	s := "\n;; OPT PSEUDOSECTION:\n; EDNS: version " + strconv.Itoa(int(rr.Version())) + "; "
 	if rr.Do() {
@@ -85,10 +81,6 @@ func (rr *OPT) len() int {
 		l += len(lo)
 	}
 	return l
-}
-
-func (rr *OPT) copy() RR {
-	return &OPT{*rr.Hdr.copyHeader(), rr.Option}
 }
 
 // return the old value -> delete SetVersion?
@@ -176,7 +168,7 @@ func (e *EDNS0_NSID) Option() uint16        { return EDNS0NSID }
 func (e *EDNS0_NSID) unpack(b []byte) error { e.Nsid = hex.EncodeToString(b); return nil }
 func (e *EDNS0_NSID) String() string        { return string(e.Nsid) }
 
-// The subnet EDNS0 option is used to give the remote nameserver
+// EDNS0_SUBNET is the subnet option that is used to give the remote nameserver
 // an idea of where the client lives. It can then give back a different
 // answer depending on the location or network topology.
 // Basic use pattern for creating an subnet option:
@@ -291,7 +283,7 @@ func (e *EDNS0_SUBNET) String() (s string) {
 	return
 }
 
-// The UL (Update Lease) EDNS0 (draft RFC) option is used to tell the server to set
+// The EDNS0_UL (Update Lease) (draft RFC) option is used to tell the server to set
 // an expiration on an update RR. This is helpful for clients that cannot clean
 // up after themselves. This is a draft RFC and more information can be found at
 // http://files.dns-sd.org/draft-sekar-dns-ul.txt
@@ -329,7 +321,7 @@ func (e *EDNS0_UL) unpack(b []byte) error {
 	return nil
 }
 
-// Long Lived Queries: http://tools.ietf.org/html/draft-sekar-dns-llq-01
+// EDNS0_LLQ stands for Long Lived Queries: http://tools.ietf.org/html/draft-sekar-dns-llq-01
 // Implemented for completeness, as the EDNS0 type code is assigned.
 type EDNS0_LLQ struct {
 	Code      uint16 // Always EDNS0LLQ
@@ -471,7 +463,7 @@ func (e *EDNS0_EXPIRE) unpack(b []byte) error {
 	return nil
 }
 
-// The local EDNS0 option is used for local/experimental purposes.  The option
+// The EDNS0_LOCAL option is used for local/experimental purposes. The option
 // code is recommended to be within the range [EDNS0LOCALSTART, EDNS0LOCALEND]
 // (RFC6891), although any unassigned code can actually be used.  The content of
 // the option is made available in Data, unaltered.

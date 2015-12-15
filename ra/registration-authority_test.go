@@ -20,8 +20,6 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/ca"
@@ -36,8 +34,10 @@ import (
 )
 
 type DummyValidationAuthority struct {
-	Called   bool
-	Argument core.Authorization
+	Called          bool
+	Argument        core.Authorization
+	IsNotSafe       bool
+	IsSafeDomainErr error
 }
 
 func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
@@ -50,7 +50,19 @@ func (dva *DummyValidationAuthority) CheckCAARecords(identifier core.AcmeIdentif
 	return false, true, nil
 }
 
+func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+	if dva.IsSafeDomainErr != nil {
+		return nil, dva.IsSafeDomainErr
+	}
+	return &core.IsSafeDomainResponse{IsSafe: !dva.IsNotSafe}, nil
+}
+
 var (
+	SupportedChallenges = map[string]bool{
+		core.ChallengeTypeHTTP01:   true,
+		core.ChallengeTypeTLSSNI01: true,
+	}
+
 	// These values we simulate from the client
 	AccountKeyJSONA = []byte(`{
 		"kty":"RSA",
@@ -146,10 +158,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	err = json.Unmarshal(ShortKeyJSON, &ShortKey)
 	test.AssertNotError(t, err, "Failed to unmarshal JWK")
 
-	simpleHTTP := core.SimpleHTTPChallenge(&AccountKeyA)
-	dvsni := core.DvsniChallenge(&AccountKeyA)
-	AuthzInitial.Challenges = []core.Challenge{simpleHTTP, dvsni}
-
 	fc := clock.NewFake()
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA)
@@ -170,37 +178,46 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
 	caCertPEM, _ := pem.Decode([]byte(CAcertPEM))
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
-	basicPolicy := &cfsslConfig.Signing{
-		Default: &cfsslConfig.SigningProfile{
-			Usage:  []string{"server auth", "client auth"},
-			Expiry: 1 * time.Hour,
-			CSRWhitelist: &cfsslConfig.CSRWhitelist{
-				PublicKey:          true,
-				PublicKeyAlgorithm: true,
-				SignatureAlgorithm: true,
-				DNSNames:           true,
+	cfsslC := cfsslConfig.Config{
+		Signing: &cfsslConfig.Signing{
+			Default: &cfsslConfig.SigningProfile{
+				Usage:        []string{"server auth", "client auth"},
+				ExpiryString: "1h",
+				CSRWhitelist: &cfsslConfig.CSRWhitelist{
+					PublicKey:          true,
+					PublicKeyAlgorithm: true,
+					SignatureAlgorithm: true,
+					DNSNames:           true,
+				},
 			},
 		},
 	}
-	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
-	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
+	caConf := cmd.CAConfig{
+		SerialPrefix: 10,
+		LifespanOCSP: "1h",
+		Expiry:       "1h",
+		CFSSL:        cfsslC,
+	}
 	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
-	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false)
+	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false, SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
-	ca := ca.CertificateAuthorityImpl{
-		Signer:         signer,
-		OCSPSigner:     ocspSigner,
-		SA:             ssa,
-		PA:             pa,
-		ValidityPeriod: time.Hour * 2190,
-		NotAfter:       time.Now().Add(time.Hour * 8761),
-		Clk:            fc,
-		Publisher:      &mocks.Publisher{},
-	}
+
+	stats, _ := statsd.NewNoopClient()
+
+	ca, err := ca.NewCertificateAuthorityImpl(
+		caConf,
+		fc,
+		stats,
+		caCert,
+		caKey)
+	test.AssertNotError(t, err, "Couldn't create CA")
+	ca.SA = ssa
+	ca.PA = pa
+	ca.Publisher = &mocks.Publisher{}
 	cleanUp := func() {
 		saDBCleanUp()
 		policyDBCleanUp()
@@ -214,20 +231,27 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		InitialIP: net.ParseIP("3.2.3.3"),
 	})
 
-	stats, _ := statsd.NewNoopClient()
-	ra := NewRegistrationAuthorityImpl(fc, blog.GetAuditLogger(), stats, cmd.RateLimitConfig{
-		TotalCertificates: cmd.RateLimitPolicy{
-			Threshold: 100,
-			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		},
-	}, 1)
+	ra := NewRegistrationAuthorityImpl(fc,
+		blog.GetAuditLogger(),
+		stats,
+		&DomainCheck{va},
+		cmd.RateLimitConfig{
+			TotalCertificates: cmd.RateLimitPolicy{
+				Threshold: 100,
+				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+			},
+		}, 1)
 	ra.SA = ssa
 	ra.VA = va
-	ra.CA = &ca
+	ra.CA = ca
 	ra.PA = pa
 	ra.DNSResolver = &mocks.DNSResolver{}
 
 	AuthzInitial.RegistrationID = Registration.ID
+
+	challenges, combinations, err := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
+	AuthzInitial.Challenges = challenges
+	AuthzInitial.Combinations = combinations
 
 	AuthzFinal = AuthzInitial
 	AuthzFinal.Status = "valid"
@@ -235,7 +259,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	AuthzFinal.Expires = &exp
 	AuthzFinal.Challenges[0].Status = "valid"
 
-	return va, ssa, &ra, fc, cleanUp
+	return va, ssa, ra, fc, cleanUp
 }
 
 func assertAuthzEqual(t *testing.T, a1, a2 core.Authorization) {
@@ -261,7 +285,6 @@ func TestValidateContacts(t *testing.T) {
 	tel, _ := core.ParseAcmeURL("tel:")
 	ansible, _ := core.ParseAcmeURL("ansible:earth.sol.milkyway.laniakea/letsencrypt")
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
-	invalidEmail, _ := core.ParseAcmeURL("mailto:admin@example.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
 	err := ra.validateContacts([]*core.AcmeURL{})
@@ -276,30 +299,43 @@ func TestValidateContacts(t *testing.T) {
 	err = ra.validateContacts([]*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts([]*core.AcmeURL{invalidEmail})
-	test.AssertError(t, err, "Invalid Email")
-
 	err = ra.validateContacts([]*core.AcmeURL{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
 	err = ra.validateContacts([]*core.AcmeURL{ansible})
-	test.AssertError(t, err, "Unknown scehme")
+	test.AssertError(t, err, "Unknown scheme")
+
+	err = ra.validateContacts([]*core.AcmeURL{nil})
+	test.AssertError(t, err, "Nil AcmeURL")
 }
 
 func TestValidateEmail(t *testing.T) {
-	_, err := validateEmail("an email`", &mocks.DNSResolver{})
-	test.AssertError(t, err, "Malformed")
-
-	_, err = validateEmail("a@not.a.domain", &mocks.DNSResolver{})
-	test.AssertError(t, err, "Cannot resolve")
-	t.Logf("No Resolve: %s", err)
-
-	_, err = validateEmail("a@example.com", &mocks.DNSResolver{})
-	test.AssertError(t, err, "No MX Record")
-	t.Logf("No MX: %s", err)
-
-	_, err = validateEmail("a@email.com", &mocks.DNSResolver{})
-	test.AssertNotError(t, err, "Valid")
+	testFailures := []struct {
+		input    string
+		expected string
+	}{
+		{"an email`", errUnparseableEmail.Error()},
+		{"a@always.invalid", "Server failure at resolver"},
+		{"a@always.timeout", "DNS query timed out"},
+		{"a@always.error", "DNS networking error"},
+	}
+	testSuccesses := []string{
+		"a@email.com",
+		"b@email.only",
+	}
+	for _, tc := range testFailures {
+		_, _, err := validateEmail(tc.input, &mocks.DNSResolver{})
+		if err.Error() != tc.expected {
+			t.Errorf("validateEmail(%q): got %#v, expected %#v",
+				tc.input, err, tc.expected)
+		}
+	}
+	for _, addr := range testSuccesses {
+		if _, _, err := validateEmail(addr, &mocks.DNSResolver{}); err != nil {
+			t.Errorf("validateEmail(%q): expected success, but it failed: %s",
+				addr, err)
+		}
+	}
 }
 
 func TestNewRegistration(t *testing.T) {
@@ -390,21 +426,11 @@ func TestNewAuthorization(t *testing.T) {
 	test.Assert(t, authz.Status == core.StatusPending, "Initial authz not pending")
 
 	// TODO Verify that challenges are correct
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Update these lines
-	test.Assert(t, len(authz.Challenges) == 4, "Incorrect number of challenges returned")
-	test.Assert(t, authz.Challenges[0].Type == core.ChallengeTypeSimpleHTTP, "Challenge 0 not SimpleHTTP")
-	test.Assert(t, authz.Challenges[1].Type == core.ChallengeTypeDVSNI, "Challenge 1 not DVSNI")
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
-	test.Assert(t, authz.Challenges[2].Type == core.ChallengeTypeHTTP01, "Challenge 2 not http-00")
-	test.Assert(t, authz.Challenges[3].Type == core.ChallengeTypeTLSSNI01, "Challenge 3 not tlssni-00")
-
+	test.Assert(t, len(authz.Challenges) == len(SupportedChallenges), "Incorrect number of challenges returned")
+	test.Assert(t, SupportedChallenges[authz.Challenges[0].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[0].Type))
+	test.Assert(t, SupportedChallenges[authz.Challenges[1].Type], fmt.Sprintf("Unsupported challenge: %s", authz.Challenges[1].Type))
 	test.Assert(t, authz.Challenges[0].IsSane(false), "Challenge 0 is not sane")
 	test.Assert(t, authz.Challenges[1].IsSane(false), "Challenge 1 is not sane")
-
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete these lines
-	test.Assert(t, authz.Challenges[2].IsSane(false), "Challenge 2 is not sane")
-	test.Assert(t, authz.Challenges[3].IsSane(false), "Challenge 3 is not sane")
 
 	t.Log("DONE TestNewAuthorization")
 }
@@ -426,6 +452,25 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 	dbAuthz, err := sa.GetAuthorization(authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
+}
+
+func TestNewAuthorizationInvalidName(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	authzReq := core.Authorization{
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: "127.0.0.1",
+		},
+	}
+	_, err := ra.NewAuthorization(authzReq, Registration.ID)
+	if err == nil {
+		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
+	}
+	if _, ok := err.(core.MalformedRequestError); !ok {
+		t.Errorf("Wrong type for NewAuthorization error: expected core.MalformedRequestError, got %T", err)
+	}
 }
 
 func TestUpdateAuthorization(t *testing.T) {

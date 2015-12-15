@@ -18,15 +18,32 @@ package jose
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"reflect"
 	"testing"
 )
+
+func TestCurveSize(t *testing.T) {
+	size256 := curveSize(elliptic.P256())
+	size384 := curveSize(elliptic.P384())
+	size521 := curveSize(elliptic.P521())
+	if size256 != 32 {
+		t.Error("P-256 have 32 bytes")
+	}
+	if size384 != 48 {
+		t.Error("P-384 have 48 bytes")
+	}
+	if size521 != 66 {
+		t.Error("P-521 have 66 bytes")
+	}
+}
 
 func TestRoundtripRsaPrivate(t *testing.T) {
 	jwk, err := fromRsaPrivateKey(rsaTestKey)
@@ -95,6 +112,27 @@ func TestRsaPrivateExcessPrimes(t *testing.T) {
 	}
 }
 
+func TestRoundtripEcPublic(t *testing.T) {
+	for i, ecTestKey := range []*ecdsa.PrivateKey{ecTestKey256, ecTestKey384, ecTestKey521} {
+		jwk, err := fromEcPublicKey(&ecTestKey.PublicKey)
+
+		ec2, err := jwk.ecPublicKey()
+		if err != nil {
+			t.Error("problem converting ECDSA private -> JWK", i, err)
+		}
+
+		if !reflect.DeepEqual(ec2.Curve, ecTestKey.Curve) {
+			t.Error("ECDSA private curve mismatch", i)
+		}
+		if ec2.X.Cmp(ecTestKey.X) != 0 {
+			t.Error("ECDSA X mismatch", i)
+		}
+		if ec2.Y.Cmp(ecTestKey.Y) != 0 {
+			t.Error("ECDSA Y mismatch", i)
+		}
+	}
+}
+
 func TestRoundtripEcPrivate(t *testing.T) {
 	for i, ecTestKey := range []*ecdsa.PrivateKey{ecTestKey256, ecTestKey384, ecTestKey521} {
 		jwk, err := fromEcPrivateKey(ecTestKey)
@@ -123,33 +161,42 @@ func TestMarshalUnmarshalJWK(t *testing.T) {
 	kid := "DEADBEEF"
 
 	for i, key := range []interface{}{ecTestKey256, ecTestKey384, ecTestKey521, rsaTestKey} {
-		jwk := JsonWebKey{Key: key, KeyID: kid, Algorithm: "foo"}
-		jsonbar, err := jwk.MarshalJSON()
-		if err != nil {
-			t.Error("problem marshaling", i, err)
-		}
+		for _, use := range []string{"", "sig", "enc"} {
+			jwk := JsonWebKey{Key: key, KeyID: kid, Algorithm: "foo"}
+			if use != "" {
+				jwk.Use = use
+			}
 
-		var jwk2 JsonWebKey
-		err = jwk2.UnmarshalJSON(jsonbar)
-		if err != nil {
-			t.Error("problem unmarshalling", i, err)
-		}
+			jsonbar, err := jwk.MarshalJSON()
+			if err != nil {
+				t.Error("problem marshaling", i, err)
+			}
 
-		jsonbar2, err := jwk2.MarshalJSON()
-		if err != nil {
-			t.Error("problem marshaling", i, err)
-		}
+			var jwk2 JsonWebKey
+			err = jwk2.UnmarshalJSON(jsonbar)
+			if err != nil {
+				t.Error("problem unmarshalling", i, err)
+			}
 
-		if !bytes.Equal(jsonbar, jsonbar2) {
-			t.Error("roundtrip should not lose information", i)
-		}
+			jsonbar2, err := jwk2.MarshalJSON()
+			if err != nil {
+				t.Error("problem marshaling", i, err)
+			}
 
-		if jwk2.KeyID != kid {
-			t.Error("kid did not roundtrip JSON marshalling", i)
-		}
+			if !bytes.Equal(jsonbar, jsonbar2) {
+				t.Error("roundtrip should not lose information", i)
+			}
+			if jwk2.KeyID != kid {
+				t.Error("kid did not roundtrip JSON marshalling", i)
+			}
 
-		if jwk2.Algorithm != "foo" {
-			t.Error("alg did not roundtrip JSON marshalling", i)
+			if jwk2.Algorithm != "foo" {
+				t.Error("alg did not roundtrip JSON marshalling", i)
+			}
+
+			if jwk2.Use != use {
+				t.Error("use did not roundtrip JSON marshalling", i)
+			}
 		}
 	}
 }
@@ -185,6 +232,11 @@ func TestMarshalNonPointer(t *testing.T) {
 }
 
 func TestMarshalUnmarshalInvalid(t *testing.T) {
+	// Make an invalid curve coordinate by creating a byte array that is one
+	// byte too large, and setting the first byte to 1 (otherwise it's just zero).
+	invalidCoord := make([]byte, curveSize(ecTestKey256.Curve)+1)
+	invalidCoord[0] = 1
+
 	keys := []interface{}{
 		// Empty keys
 		&rsa.PrivateKey{},
@@ -207,6 +259,15 @@ func TestMarshalUnmarshalInvalid(t *testing.T) {
 		&ecdsa.PrivateKey{
 			// Valid pub key, but missing priv key values
 			PublicKey: ecTestKey256.PublicKey,
+		},
+		&ecdsa.PrivateKey{
+			// Invalid pub key, values too large
+			PublicKey: ecdsa.PublicKey{
+				Curve: ecTestKey256.Curve,
+				X:     big.NewInt(0).SetBytes(invalidCoord),
+				Y:     big.NewInt(0).SetBytes(invalidCoord),
+			},
+			D: ecTestKey256.D,
 		},
 		nil,
 	}
@@ -248,9 +309,51 @@ func TestWebKeyVectorsInvalid(t *testing.T) {
 	}
 }
 
-func TestWebKeyVectorsValid(t *testing.T) {
-	keys := []string{
-		stripWhitespace(`{"kty":"RSA",
+// Test vectors from RFC 7520
+var cookbookJWKs = []string{
+	// EC Public
+	stripWhitespace(`{
+     "kty": "EC",
+     "kid": "bilbo.baggins@hobbiton.example",
+     "use": "sig",
+     "crv": "P-521",
+     "x": "AHKZLLOsCOzz5cY97ewNUajB957y-C-U88c3v13nmGZx6sYl_oJXu9
+         A5RkTKqjqvjyekWF-7ytDyRXYgCF5cj0Kt",
+     "y": "AdymlHvOiLxXkEhayXQnNCvDX4h9htZaCJN34kfmC6pV5OhQHiraVy
+         SsUdaQkAgDPrwQrJmbnX9cwlGfP-HqHZR1"
+   }`),
+
+	// EC Private
+	stripWhitespace(`{
+     "kty": "EC",
+     "kid": "bilbo.baggins@hobbiton.example",
+     "use": "sig",
+     "crv": "P-521",
+     "x": "AHKZLLOsCOzz5cY97ewNUajB957y-C-U88c3v13nmGZx6sYl_oJXu9
+           A5RkTKqjqvjyekWF-7ytDyRXYgCF5cj0Kt",
+     "y": "AdymlHvOiLxXkEhayXQnNCvDX4h9htZaCJN34kfmC6pV5OhQHiraVy
+           SsUdaQkAgDPrwQrJmbnX9cwlGfP-HqHZR1",
+     "d": "AAhRON2r9cqXX1hg-RoI6R1tX5p2rUAYdmpHZoC1XNM56KtscrX6zb
+           KipQrCW9CGZH3T4ubpnoTKLDYJ_fF3_rJt"
+   }`),
+
+	// RSA Public
+	stripWhitespace(`{
+     "kty": "RSA",
+     "kid": "bilbo.baggins@hobbiton.example",
+     "use": "sig",
+     "n": "n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT
+         -O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqV
+         wGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-
+         oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde
+         3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuC
+         LqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5g
+         HdrNP5zw",
+     "e": "AQAB"
+   }`),
+
+	// RSA Private
+	stripWhitespace(`{"kty":"RSA",
       "kid":"juliet@capulet.lit",
       "use":"enc",
       "n":"t6Q8PWSi1dkJj9hTP8hNYFlvadM7DflW9mWepOJhJ66w7nyoK1gPNqFMSQRy
@@ -281,13 +384,132 @@ func TestWebKeyVectorsValid(t *testing.T) {
       "qi":"lSQi-w9CpyUReMErP1RsBLk7wNtOvs5EQpPqmuMvqW57NBUczScEoPwmUqq
            abu9V0-Py4dQ57_bapoKRu1R90bvuFnU63SHWEFglZQvJDMeAvmj4sm-Fp0o
            Yu_neotgQ0hzbI5gry7ajdYy9-2lNx_76aBZoOUu9HCJ-UsfSOI8"}`),
-	}
+}
 
-	for _, key := range keys {
+// SHA-256 thumbprints of the above keys, hex-encoded
+var cookbookJWKThumbprints = []string{
+	"747ae2dd2003664aeeb21e4753fe7402846170a16bc8df8f23a8cf06d3cbe793",
+	"747ae2dd2003664aeeb21e4753fe7402846170a16bc8df8f23a8cf06d3cbe793",
+	"f63838e96077ad1fc01c3f8405774dedc0641f558ebb4b40dccf5f9b6d66a932",
+	"0fc478f8579325fcee0d4cbc6d9d1ce21730a6e97e435d6008fb379b0ebe47d4",
+}
+
+func TestWebKeyVectorsValid(t *testing.T) {
+	for _, key := range cookbookJWKs {
 		var jwk2 JsonWebKey
 		err := jwk2.UnmarshalJSON([]byte(key))
 		if err != nil {
 			t.Error("unable to parse valid key:", key, err)
 		}
+	}
+}
+
+func TestThumbprint(t *testing.T) {
+	for i, key := range cookbookJWKs {
+		var jwk2 JsonWebKey
+		err := jwk2.UnmarshalJSON([]byte(key))
+		if err != nil {
+			t.Error("unable to parse valid key:", key, err)
+		}
+
+		tp, err := jwk2.Thumbprint(crypto.SHA256)
+		if err != nil {
+			t.Error("unable to compute thumbprint:", key, err)
+		}
+
+		tpHex := hex.EncodeToString(tp)
+		if cookbookJWKThumbprints[i] != tpHex {
+			t.Error("incorrect thumbprint:", i, cookbookJWKThumbprints[i], tpHex)
+		}
+	}
+}
+
+func TestMarshalUnmarshalJWKSet(t *testing.T) {
+	jwk1 := JsonWebKey{Key: rsaTestKey, KeyID: "ABCDEFG", Algorithm: "foo"}
+	jwk2 := JsonWebKey{Key: rsaTestKey, KeyID: "GFEDCBA", Algorithm: "foo"}
+	var set JsonWebKeySet
+	set.Keys = append(set.Keys, jwk1)
+	set.Keys = append(set.Keys, jwk2)
+
+	jsonbar, err := json.Marshal(&set)
+	if err != nil {
+		t.Error("problem marshalling set", err)
+	}
+	var set2 JsonWebKeySet
+	err = json.Unmarshal(jsonbar, &set2)
+	if err != nil {
+		t.Error("problem unmarshalling set", err)
+	}
+	jsonbar2, err := json.Marshal(&set2)
+	if err != nil {
+		t.Error("problem marshalling set", err)
+	}
+	if !bytes.Equal(jsonbar, jsonbar2) {
+		t.Error("roundtrip should not lose information")
+	}
+}
+
+var JWKSetDuplicates = stripWhitespace(`{
+     "keys": [{
+         "kty": "RSA",
+         "kid": "exclude-me",
+         "use": "sig",
+         "n": "n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT
+             -O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqV
+             wGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-
+             oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde
+             3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuC
+             LqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5g
+             HdrNP5zw",
+         "e": "AQAB"
+     }],
+     "keys": [{
+         "kty": "RSA",
+         "kid": "include-me",
+         "use": "sig",
+         "n": "n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT
+             -O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqV
+             wGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-
+             oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde
+             3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuC
+             LqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5g
+             HdrNP5zw",
+         "e": "AQAB"
+     }],
+     "custom": "exclude-me",
+     "custom": "include-me"
+   }`)
+
+func TestDuplicateJWKSetMembersIgnored(t *testing.T) {
+	type CustomSet struct {
+		JsonWebKeySet
+		CustomMember string `json:"custom"`
+	}
+	data := []byte(JWKSetDuplicates)
+	var set CustomSet
+	json.Unmarshal(data, &set)
+	if len(set.Keys) != 1 {
+		t.Error("expected only one key in set")
+	}
+	if set.Keys[0].KeyID != "include-me" {
+		t.Errorf("expected key with kid: \"include-me\", got: %s", set.Keys[0].KeyID)
+	}
+	if set.CustomMember != "include-me" {
+		t.Errorf("expected custom member value: \"include-me\", got: %s", set.CustomMember)
+	}
+}
+
+func TestJWKSetKey(t *testing.T) {
+	jwk1 := JsonWebKey{Key: rsaTestKey, KeyID: "ABCDEFG", Algorithm: "foo"}
+	jwk2 := JsonWebKey{Key: rsaTestKey, KeyID: "GFEDCBA", Algorithm: "foo"}
+	var set JsonWebKeySet
+	set.Keys = append(set.Keys, jwk1)
+	set.Keys = append(set.Keys, jwk2)
+	k := set.Key("ABCDEFG")
+	if len(k) != 1 {
+		t.Errorf("method should return slice with one key not %d", len(k))
+	}
+	if k[0].KeyID != "ABCDEFG" {
+		t.Error("method should return key with ID ABCDEFG")
 	}
 }

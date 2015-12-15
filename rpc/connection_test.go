@@ -17,7 +17,7 @@ type mockChannelMaker struct {
 	channel amqpChannel
 }
 
-func (m mockChannelMaker) makeChannel(conf cmd.Config) (amqpChannel, error) {
+func (m mockChannelMaker) makeChannel(conf *cmd.AMQPConfig) (amqpChannel, error) {
 	return m.channel, nil
 }
 
@@ -30,7 +30,9 @@ func setup(t *testing.T) (*amqpConnector, *MockamqpChannel, func()) {
 			channel: mockChannel,
 		},
 		queueName:        "fooqueue",
+		routingKey:       "fooqueue",
 		retryTimeoutBase: time.Second,
+		clk:              clock.NewFake(),
 	}
 	return &ac, mockChannel, func() { mockCtrl.Finish() }
 }
@@ -43,7 +45,7 @@ func TestConnect(t *testing.T) {
 	mockChannel.EXPECT().QueueBind("fooqueue", "fooqueue", AmqpExchange, false, nil)
 	mockChannel.EXPECT().Consume("fooqueue", consumerName, AmqpAutoAck, AmqpExclusive, AmqpNoLocal, AmqpNoWait, nil).Return(make(<-chan amqp.Delivery), nil)
 	mockChannel.EXPECT().NotifyClose(gomock.Any()).Return(make(chan *amqp.Error))
-	err := ac.connect(cmd.Config{})
+	err := ac.connect(&cmd.AMQPConfig{})
 	if err != nil {
 		t.Fatalf("failed to connect: %s", err)
 	}
@@ -63,7 +65,7 @@ func TestConnectFail(t *testing.T) {
 	defer finish()
 	mockChannel.EXPECT().QueueDeclare(
 		"fooqueue", AmqpDurable, AmqpDeleteUnused, AmqpExclusive, AmqpNoWait, nil).Return(amqp.Queue{}, errors.New("fail"))
-	err := ac.connect(cmd.Config{})
+	err := ac.connect(&cmd.AMQPConfig{})
 	if err == nil {
 		t.Fatalf("connect should have errored but did not")
 	}
@@ -88,7 +90,7 @@ func TestReconnect(t *testing.T) {
 
 	log = mocks.UseMockLog()
 
-	ac.reconnect(cmd.Config{}, log)
+	ac.reconnect(&cmd.AMQPConfig{}, log)
 	if ac.channel != mockChannel {
 		t.Errorf("ac.channel was not equal to mockChannel")
 	}
@@ -125,6 +127,7 @@ func TestPublish(t *testing.T) {
 			Expiration:    "3000",
 			ReplyTo:       "replyTo",
 			Type:          "testMsg",
+			Timestamp:     ac.clk.Now(),
 		})
 	ac.publish("fooqueue", "03c52e", "3000", "replyTo", "testMsg", []byte("body"))
 }

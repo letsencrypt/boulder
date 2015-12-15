@@ -10,8 +10,6 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -23,29 +21,27 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/probs"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-const maxCNAME = 16 // Prevents infinite loops. Same limit as BIND.
 const maxRedirect = 10
+const whitespaceCutset = "\n\t "
 
 var validationTimeout = time.Second * 5
-
-// ErrTooManyCNAME is returned by CheckCAARecords if it has to follow too many
-// consecutive CNAME lookups.
-var ErrTooManyCNAME = errors.New("too many CNAME/DNAME lookups")
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
 	log          *blog.AuditLogger
-	DNSResolver  core.DNSResolver
+	DNSResolver  bdns.DNSResolver
 	IssuerDomain string
+	SafeBrowsing SafeBrowsing
 	httpPort     int
 	httpsPort    int
 	tlsPort      int
@@ -63,16 +59,17 @@ type PortConfig struct {
 }
 
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *PortConfig, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *PortConfig, sbc SafeBrowsing, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Validation Authority Starting")
 	return &ValidationAuthorityImpl{
-		log:       logger,
-		httpPort:  pc.HTTPPort,
-		httpsPort: pc.HTTPSPort,
-		tlsPort:   pc.TLSPort,
-		stats:     stats,
-		clk:       clk,
+		SafeBrowsing: sbc,
+		log:          logger,
+		httpPort:     pc.HTTPPort,
+		httpsPort:    pc.HTTPSPort,
+		tlsPort:      pc.TLSPort,
+		stats:        stats,
+		clk:          clk,
 	}
 }
 
@@ -86,69 +83,15 @@ type verificationRequestEvent struct {
 	Error        string         `json:",omitempty"`
 }
 
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func verifyValidationJWS(validation *jose.JsonWebSignature, accountKey *jose.JsonWebKey, target map[string]interface{}) error {
-	if len(validation.Signatures) > 1 {
-		return fmt.Errorf("Too many signatures on validation JWS")
-	}
-	if len(validation.Signatures) == 0 {
-		return fmt.Errorf("Validation JWS not signed")
-	}
-
-	payload, _, err := validation.Verify(accountKey)
-	if err != nil {
-		return fmt.Errorf("Validation JWS failed to verify: %s", err.Error())
-	}
-
-	var parsedResponse map[string]interface{}
-	err = json.Unmarshal(payload, &parsedResponse)
-	if err != nil {
-		return fmt.Errorf("Validation payload failed to parse as JSON: %s", err.Error())
-	}
-
-	if len(parsedResponse) != len(target) {
-		return fmt.Errorf("Validation payload had an improper number of fields")
-	}
-
-	for key, targetValue := range target {
-		parsedValue, ok := parsedResponse[key]
-		if !ok {
-			return fmt.Errorf("Validation payload missing a field %s", key)
-		} else if parsedValue != targetValue {
-			return fmt.Errorf("Validation payload has improper value for field %s", key)
-		}
-	}
-
-	return nil
-}
-
-// problemDetailsFromDNSError checks the error returned from Lookup...
-// methods and tests if the error was an underlying net.OpError or an error
-// caused by resolver returning SERVFAIL or other invalid Rcodes and returns
-// the relevant core.ProblemDetails.
-func problemDetailsFromDNSError(err error) *core.ProblemDetails {
-	problem := &core.ProblemDetails{Type: core.ConnectionProblem}
-	if netErr, ok := err.(*net.OpError); ok {
-		if netErr.Timeout() {
-			problem.Detail = "DNS query timed out"
-		} else if netErr.Temporary() {
-			problem.Detail = "Temporary network connectivity error"
-		}
-	} else {
-		problem.Detail = "Server failure at resolver"
-	}
-	return problem
-}
-
 // getAddr will query for all A records associated with hostname and return the
 // prefered address, the first net.IP in the addrs slice, and all addresses resolved.
 // This is the same choice made by the Go internal resolution library used by
 // net/http, except we only send A queries and accept IPv4 addresses.
 // TODO(#593): Add IPv6 support
-func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *core.ProblemDetails) {
+func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *probs.ProblemDetails) {
 	addrs, rtt, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
-		problem = problemDetailsFromDNSError(err)
+		problem = bdns.ProblemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
 		return
 	}
@@ -156,8 +99,8 @@ func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs [
 	va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 
 	if len(addrs) == 0 {
-		problem = &core.ProblemDetails{
-			Type:   core.UnknownHostProblem,
+		problem = &probs.ProblemDetails{
+			Type:   probs.UnknownHostProblem,
 			Detail: fmt.Sprintf("No IPv4 addresses found for %s", hostname),
 		}
 		return
@@ -178,7 +121,7 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 
 // resolveAndConstructDialer gets the prefered address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
-func (va *ValidationAuthorityImpl) resolveAndConstructDialer(name string, port int) (dialer, *core.ProblemDetails) {
+func (va *ValidationAuthorityImpl) resolveAndConstructDialer(name string, port int) (dialer, *probs.ProblemDetails) {
 	d := dialer{
 		record: core.ValidationRecord{
 			Hostname: name,
@@ -225,8 +168,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 	va.log.Audit(fmt.Sprintf("Attempting to validate %s for %s", challenge.Type, url))
 	httpRequest, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
+		challenge.Error = &probs.ProblemDetails{
+			Type:   probs.MalformedProblem,
 			Detail: "URL provided for HTTP was invalid",
 		}
 		va.log.Debug(fmt.Sprintf("%s [%s] HTTP failure: %s", challenge.Type, identifier, err))
@@ -259,9 +202,27 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		Dial: dialer.Dial,
 	}
 
+	// Some of our users use mod_security. Mod_security sees a lack of Accept
+	// headers as bot behavior and rejects requests. While this is a bug in
+	// mod_security's rules (given that the HTTP specs disagree with that
+	// requirement), we add the Accept header now in order to fix our
+	// mod_security users' mysterious breakages. See
+	// <https://github.com/SpiderLabs/owasp-modsecurity-crs/issues/265> and
+	// <https://github.com/letsencrypt/boulder/issues/1019>. This was done
+	// because it's a one-line fix with no downside. We're not likely to want to
+	// do many more things to satisfy misunderstandings around HTTP.
+	httpRequest.Header.Set("Accept", "*/*")
+
 	logRedirect := func(req *http.Request, via []*http.Request) error {
 		if len(challenge.ValidationRecord) >= maxRedirect {
 			return fmt.Errorf("Too many redirects")
+		}
+
+		// Set Accept header for mod_security (see the other place the header is
+		// set)
+		req.Header.Set("Accept", "*/*")
+		if va.UserAgent != "" {
+			req.Header["User-Agent"] = []string{va.UserAgent}
 		}
 
 		reqHost := req.URL.Host
@@ -299,18 +260,19 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 	httpResponse, err := client.Do(httpRequest)
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
+		challenge.Error = &probs.ProblemDetails{
 			Type:   parseHTTPConnError(err),
 			Detail: fmt.Sprintf("Could not connect to %s", url),
 		}
 		va.log.Debug(strings.Join([]string{challenge.Error.Error(), err.Error()}, ": "))
 		return emptyBody, challenge, err
 	}
+	defer httpResponse.Body.Close()
 
 	if httpResponse.StatusCode != 200 {
 		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type: core.UnauthorizedProblem,
+		challenge.Error = &probs.ProblemDetails{
+			Type: probs.UnauthorizedProblem,
 			Detail: fmt.Sprintf("Invalid response from %s [%s]: %d",
 				url.String(), dialer.record.AddressUsed, httpResponse.StatusCode),
 		}
@@ -318,17 +280,15 @@ func (va *ValidationAuthorityImpl) fetchHTTP(identifier core.AcmeIdentifier, pat
 		return emptyBody, challenge, err
 	}
 
-	// Read body & test
 	body, err := ioutil.ReadAll(httpResponse.Body)
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
+		challenge.Error = &probs.ProblemDetails{
+			Type:   probs.UnauthorizedProblem,
 			Detail: fmt.Sprintf("Error reading HTTP response body: %v", err),
 		}
 		return emptyBody, challenge, err
 	}
-
 	return body, challenge, nil
 }
 
@@ -361,7 +321,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(identifier core.AcmeIden
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
+		challenge.Error = &probs.ProblemDetails{
 			Type:   parseHTTPConnError(err),
 			Detail: "Failed to connect to host for DVSNI challenge",
 		}
@@ -373,8 +333,8 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(identifier core.AcmeIden
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
+		challenge.Error = &probs.ProblemDetails{
+			Type:   probs.UnauthorizedProblem,
 			Detail: "No certs presented for TLS SNI challenge",
 		}
 		challenge.Status = core.StatusInvalid
@@ -387,114 +347,13 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(identifier core.AcmeIden
 		}
 	}
 
-	challenge.Error = &core.ProblemDetails{
-		Type:   core.UnauthorizedProblem,
-		Detail: "Correct zName not found for TLS SNI challenge",
+	challenge.Error = &probs.ProblemDetails{
+		Type: probs.UnauthorizedProblem,
+		Detail: fmt.Sprintf("Correct zName not found for TLS SNI challenge. Found %s",
+			strings.Join(certs[0].DNSNames, ", ")),
 	}
 	challenge.Status = core.StatusInvalid
 	return challenge, challenge.Error
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (va *ValidationAuthorityImpl) validateSimpleHTTP(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
-	challenge := input
-
-	if identifier.Type != core.IdentifierDNS {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "Identifier type for SimpleHTTP was not DNS",
-		}
-
-		va.log.Debug(fmt.Sprintf("SimpleHTTP [%s] Identifier failure", identifier))
-		return challenge, challenge.Error
-	}
-
-	// Perform the fetch
-	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	useTLS := (challenge.TLS == nil) || *challenge.TLS
-	body, challenge, err := va.fetchHTTP(identifier, path, useTLS, challenge)
-	if err != nil {
-		return challenge, err
-	}
-
-	// Parse and verify JWS
-	parsedJws, err := jose.ParseSigned(string(body))
-	if err != nil {
-		err = fmt.Errorf("Validation response failed to parse as JWS: %s", err.Error())
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	// Check that JWS body is as expected
-	// * "type" == "simpleHttp"
-	// * "token" == challenge.token
-	// * "tls" == challenge.tls || true
-	target := map[string]interface{}{
-		"type":  core.ChallengeTypeSimpleHTTP,
-		"token": challenge.Token,
-		"tls":   (challenge.TLS == nil) || *challenge.TLS,
-	}
-	err = verifyValidationJWS(parsedJws, challenge.AccountKey, target)
-	if err != nil {
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	challenge.Status = core.StatusValid
-	return challenge, nil
-}
-
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (va *ValidationAuthorityImpl) validateDvsni(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
-	challenge := input
-
-	if identifier.Type != "dns" {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
-			Detail: "Identifier type for DVSNI was not DNS",
-		}
-		challenge.Status = core.StatusInvalid
-		va.log.Debug(fmt.Sprintf("DVSNI [%s] Identifier failure", identifier))
-		return challenge, challenge.Error
-	}
-
-	// Check that JWS body is as expected
-	// * "type" == "dvsni"
-	// * "token" == challenge.token
-	target := map[string]interface{}{
-		"type":  core.ChallengeTypeDVSNI,
-		"token": challenge.Token,
-	}
-	err := verifyValidationJWS(challenge.Validation, challenge.AccountKey, target)
-	if err != nil {
-		va.log.Debug(err.Error())
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
-			Detail: err.Error(),
-		}
-		return challenge, err
-	}
-
-	// Compute the digest that will appear in the certificate
-	encodedSignature := core.B64enc(challenge.Validation.Signatures[0].Signature)
-	h := sha256.New()
-	h.Write([]byte(encodedSignature))
-	Z := hex.EncodeToString(h.Sum(nil))
-	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
-
-	return va.validateTLSWithZName(identifier, challenge, ZName)
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
@@ -502,8 +361,8 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 
 	if identifier.Type != core.IdentifierDNS {
 		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
+		challenge.Error = &probs.ProblemDetails{
+			Type:   probs.MalformedProblem,
 			Detail: "Identifier type for HTTP validation was not DNS",
 		}
 
@@ -518,14 +377,16 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 		return challenge, err
 	}
 
+	payload := strings.TrimRight(string(body), whitespaceCutset)
+
 	// Parse body as a key authorization object
-	serverKeyAuthorization, err := core.NewKeyAuthorizationFromString(string(body))
+	serverKeyAuthorization, err := core.NewKeyAuthorizationFromString(payload)
 	if err != nil {
 		err = fmt.Errorf("Error parsing key authorization file: %s", err.Error())
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
+		challenge.Error = &probs.ProblemDetails{
+			Type:   probs.UnauthorizedProblem,
 			Detail: err.Error(),
 		}
 		return challenge, err
@@ -537,8 +398,8 @@ func (va *ValidationAuthorityImpl) validateHTTP01(identifier core.AcmeIdentifier
 			challenge.KeyAuthorization.String(), string(body))
 		va.log.Debug(err.Error())
 		challenge.Status = core.StatusInvalid
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.UnauthorizedProblem,
+		challenge.Error = &probs.ProblemDetails{
+			Type:   probs.UnauthorizedProblem,
 			Detail: err.Error(),
 		}
 		return challenge, err
@@ -552,8 +413,8 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(identifier core.AcmeIdentifi
 	challenge := input
 
 	if identifier.Type != "dns" {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
+		challenge.Error = &probs.ProblemDetails{
+			Type:   probs.MalformedProblem,
 			Detail: "Identifier type for TLS-SNI was not DNS",
 		}
 		challenge.Status = core.StatusInvalid
@@ -572,7 +433,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(identifier core.AcmeIdentifi
 
 // parseHTTPConnError returns the ACME ProblemType corresponding to an error
 // that occurred during domain validation.
-func parseHTTPConnError(err error) core.ProblemType {
+func parseHTTPConnError(err error) probs.ProblemType {
 	if urlErr, ok := err.(*url.Error); ok {
 		err = urlErr.Err
 	}
@@ -583,21 +444,21 @@ func parseHTTPConnError(err error) core.ProblemType {
 	if netErr, ok := err.(*net.OpError); ok {
 		dnsErr, ok := netErr.Err.(*net.DNSError)
 		if ok && !dnsErr.Timeout() && !dnsErr.Temporary() {
-			return core.UnknownHostProblem
+			return probs.UnknownHostProblem
 		} else if fmt.Sprintf("%T", netErr.Err) == "tls.alert" {
-			return core.TLSProblem
+			return probs.TLSProblem
 		}
 	}
 
-	return core.ConnectionProblem
+	return probs.ConnectionProblem
 }
 
 func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier, input core.Challenge) (core.Challenge, error) {
 	challenge := input
 
 	if identifier.Type != core.IdentifierDNS {
-		challenge.Error = &core.ProblemDetails{
-			Type:   core.MalformedProblem,
+		challenge.Error = &probs.ProblemDetails{
+			Type:   probs.MalformedProblem,
 			Detail: "Identifier type for DNS was not itself DNS",
 		}
 		va.log.Debug(fmt.Sprintf("DNS [%s] Identifier failure", identifier))
@@ -618,7 +479,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 
 	if err != nil {
 		challenge.Status = core.StatusInvalid
-		challenge.Error = problemDetailsFromDNSError(err)
+		challenge.Error = bdns.ProblemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
 		return challenge, challenge.Error
 	}
@@ -630,12 +491,30 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 		}
 	}
 
-	challenge.Error = &core.ProblemDetails{
-		Type:   core.UnauthorizedProblem,
+	challenge.Error = &probs.ProblemDetails{
+		Type:   probs.UnauthorizedProblem,
 		Detail: "Correct value not found for DNS challenge",
 	}
 	challenge.Status = core.StatusInvalid
 	return challenge, challenge.Error
+}
+
+func (va *ValidationAuthorityImpl) checkCAA(identifier core.AcmeIdentifier, regID int64) *probs.ProblemDetails {
+	// Check CAA records for the requested identifier
+	present, valid, err := va.CheckCAARecords(identifier)
+	if err != nil {
+		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
+		return bdns.ProblemDetailsFromDNSError(err)
+	}
+	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+	va.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", identifier.Value, regID, present, valid))
+	if !valid {
+		return &probs.ProblemDetails{
+			Type:   probs.ConnectionProblem,
+			Detail: "CAA check for identifier failed",
+		}
+	}
+	return nil
 }
 
 // Overall validation process
@@ -649,7 +528,7 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 	if !authz.Challenges[challengeIndex].IsSane(true) {
 		chall := &authz.Challenges[challengeIndex]
 		chall.Status = core.StatusInvalid
-		chall.Error = &core.ProblemDetails{Type: core.MalformedProblem,
+		chall.Error = &probs.ProblemDetails{Type: probs.MalformedProblem,
 			Detail: fmt.Sprintf("Challenge failed sanity check.")}
 		logEvent.Challenge = *chall
 		logEvent.Error = chall.Error.Detail
@@ -657,20 +536,7 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 		var err error
 
 		vStart := va.clk.Now()
-		switch authz.Challenges[challengeIndex].Type {
-		case core.ChallengeTypeSimpleHTTP:
-			// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
-			authz.Challenges[challengeIndex], err = va.validateSimpleHTTP(authz.Identifier, authz.Challenges[challengeIndex])
-		case core.ChallengeTypeDVSNI:
-			// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this case
-			authz.Challenges[challengeIndex], err = va.validateDvsni(authz.Identifier, authz.Challenges[challengeIndex])
-		case core.ChallengeTypeHTTP01:
-			authz.Challenges[challengeIndex], err = va.validateHTTP01(authz.Identifier, authz.Challenges[challengeIndex])
-		case core.ChallengeTypeTLSSNI01:
-			authz.Challenges[challengeIndex], err = va.validateTLSSNI01(authz.Identifier, authz.Challenges[challengeIndex])
-		case core.ChallengeTypeDNS01:
-			authz.Challenges[challengeIndex], err = va.validateDNS01(authz.Identifier, authz.Challenges[challengeIndex])
-		}
+		authz.Challenges[challengeIndex], err = va.validateChallengeAndCAA(authz.Identifier, authz.Challenges[challengeIndex], authz.RegistrationID)
 		va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", authz.Challenges[challengeIndex].Type, authz.Challenges[challengeIndex].Status), time.Since(vStart), 1.0)
 
 		if err != nil {
@@ -678,7 +544,7 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 		} else if !authz.Challenges[challengeIndex].RecordsSane() {
 			chall := &authz.Challenges[challengeIndex]
 			chall.Status = core.StatusInvalid
-			chall.Error = &core.ProblemDetails{Type: core.ServerInternalProblem,
+			chall.Error = &probs.ProblemDetails{Type: probs.ServerInternalProblem,
 				Detail: "Records for validation failed sanity check"}
 			logEvent.Error = chall.Error.Detail
 		}
@@ -691,6 +557,38 @@ func (va *ValidationAuthorityImpl) validate(authz core.Authorization, challengeI
 	va.log.Notice(fmt.Sprintf("Validations: %+v", authz))
 
 	va.RA.OnValidationUpdate(authz)
+}
+
+func (va *ValidationAuthorityImpl) validateChallengeAndCAA(identifier core.AcmeIdentifier, challenge core.Challenge, regID int64) (core.Challenge, error) {
+	ch := make(chan *probs.ProblemDetails, 1)
+	go func() {
+		ch <- va.checkCAA(identifier, regID)
+	}()
+
+	result, err := va.validateChallenge(identifier, challenge)
+	if err != nil {
+		return result, err
+	}
+
+	problemDetails := <-ch
+	if problemDetails != nil {
+		result.Error = problemDetails
+		result.Status = core.StatusInvalid
+		return result, problemDetails
+	}
+	return result, nil
+}
+
+func (va *ValidationAuthorityImpl) validateChallenge(identifier core.AcmeIdentifier, challenge core.Challenge) (core.Challenge, error) {
+	switch challenge.Type {
+	case core.ChallengeTypeHTTP01:
+		return va.validateHTTP01(identifier, challenge)
+	case core.ChallengeTypeTLSSNI01:
+		return va.validateTLSSNI01(identifier, challenge)
+	case core.ChallengeTypeDNS01:
+		return va.validateDNS01(identifier, challenge)
+	}
+	return core.Challenge{}, fmt.Errorf("invalid challenge type %s", challenge.Type)
 }
 
 // UpdateValidations runs the validate() method asynchronously using goroutines.
@@ -743,19 +641,19 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 }
 
 func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
-	label := strings.TrimRight(hostname, ".")
-	cnames := 0
+	hostname = strings.TrimRight(hostname, ".")
+	labels := strings.Split(hostname, ".")
 	// See RFC 6844 "Certification Authority Processing" for pseudocode.
-	for {
-		if strings.IndexRune(label, '.') == -1 {
-			// Reached TLD
-			break
-		}
+	// Essentially: check CAA records for the FDQN to be issued, and all parent
+	// domains.
+	// We depend on our resolver to snap CNAME and DNAME records.
+	for i := 0; i < len(labels); i++ {
+		name := strings.Join(labels[i:len(labels)], ".")
 		// Break if we've reached an ICANN TLD.
-		if tld, err := publicsuffix.ICANNTLD(label); err != nil || tld == label {
+		if tld, err := publicsuffix.ICANNTLD(name); err != nil || tld == name {
 			break
 		}
-		CAAs, caaRtt, err := va.DNSResolver.LookupCAA(label)
+		CAAs, caaRtt, err := va.DNSResolver.LookupCAA(name)
 		if err != nil {
 			return nil, err
 		}
@@ -763,35 +661,6 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 		if len(CAAs) > 0 {
 			return newCAASet(CAAs), nil
-		}
-		cname, cnameRtt, err := va.DNSResolver.LookupCNAME(label)
-		if err != nil {
-			return nil, err
-		}
-		va.stats.TimingDuration("VA.DNS.RTT.CNAME", cnameRtt, 1.0)
-		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
-		dname, dnameRtt, err := va.DNSResolver.LookupDNAME(label)
-		if err != nil {
-			return nil, err
-		}
-		va.stats.TimingDuration("VA.DNS.RTT.DNAME", dnameRtt, 1.0)
-		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
-		if cname == "" && dname == "" {
-			// Try parent domain (note we confirmed
-			// earlier that label contains '.')
-			label = label[strings.IndexRune(label, '.')+1:]
-			continue
-		}
-		if cname != "" && dname != "" && cname != dname {
-			return nil, errors.New("both CNAME and DNAME exist for " + label)
-		}
-		if cname != "" {
-			label = strings.TrimRight(cname, ".")
-		} else {
-			label = strings.TrimRight(dname, ".")
-		}
-		if cnames++; cnames > maxCNAME {
-			return nil, ErrTooManyCNAME
 		}
 	}
 	// no CAA records found

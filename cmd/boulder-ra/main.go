@@ -10,7 +10,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 
@@ -20,72 +20,63 @@ import (
 	"github.com/letsencrypt/boulder/rpc"
 )
 
+const clientName = "RA"
+
 func main() {
 	app := cmd.NewAppShell("boulder-ra", "Handles service orchestration")
-	app.Action = func(c cmd.Config) {
-		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-
-		// Set up logging
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-		cmd.FailOnError(err, "Could not connect to Syslog")
-		auditlogger.Info(app.VersionString())
-
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
-
-		blog.SetAuditLogger(auditlogger)
+	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+		// Validate PA config and set defaults if needed
+		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
 		go cmd.DebugServer(c.RA.DebugAddr)
 
-		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
+		dbURL, err := c.PA.DBConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+		paDbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Couldn't connect to policy database")
-		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist)
+		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
 		cmd.FailOnError(err, "Couldn't create PA")
 
 		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
 		cmd.FailOnError(err, "Couldn't load rate limit policies file")
 
+		go cmd.ProfileCmd("RA", stats)
+
+		amqpConf := c.RA.AMQP
+		vac, err := rpc.NewValidationAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create VA client")
+
+		cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create CA client")
+
+		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create SA client")
+
+		var dc *ra.DomainCheck
+		if c.RA.UseIsSafeDomain {
+			dc = &ra.DomainCheck{VA: vac}
+		}
+
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats,
-			rateLimitPolicies, c.RA.MaxContactsPerRegistration)
+			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration)
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
 		if !c.Common.DNSAllowLoopbackAddresses {
-			rai.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
+			rai.DNSResolver = bdns.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
 		} else {
-			rai.DNSResolver = core.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
+			rai.DNSResolver = bdns.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
 		}
 
-		go cmd.ProfileCmd("RA", stats)
+		rai.VA = vac
+		rai.CA = cac
+		rai.SA = sac
 
-		vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		vac, err := rpc.NewValidationAuthorityClient(vaRPC)
-		cmd.FailOnError(err, "Unable to create VA client")
-
-		cac, err := rpc.NewCertificateAuthorityClient(caRPC)
-		cmd.FailOnError(err, "Unable to create CA client")
-
-		sac, err := rpc.NewStorageAuthorityClient(saRPC)
-		cmd.FailOnError(err, "Unable to create SA client")
-
-		rai.VA = &vac
-		rai.CA = &cac
-		rai.SA = &sac
-
-		ras, err := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, c.RA.MaxConcurrentRPCServerRequests, c)
+		ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create RA RPC server")
-		rpc.NewRegistrationAuthorityServer(ras, &rai)
+		rpc.NewRegistrationAuthorityServer(ras, rai)
 
-		err = ras.Start(c)
+		err = ras.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run RA RPC server")
 	}
 

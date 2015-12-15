@@ -29,16 +29,6 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-type cacheCtrlHandler struct {
-	http.Handler
-	MaxAge time.Duration
-}
-
-func (c *cacheCtrlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", c.MaxAge/time.Second))
-	c.Handler.ServeHTTP(w, r)
-}
-
 /*
 DBSource maps a given Database schema to a CA Key Hash, so we can pick
 from among them when presented with OCSP requests for different certs.
@@ -144,27 +134,21 @@ func makeDBSource(dbMap dbSelector, issuerCert string, log *blog.AuditLogger) (*
 
 func main() {
 	app := cmd.NewAppShell("boulder-ocsp-responder", "Handles OCSP requests")
-	app.Action = func(c cmd.Config) {
-		// Set up logging
-		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-		cmd.FailOnError(err, "Could not connect to Syslog")
-		auditlogger.Info(app.VersionString())
-
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
-
-		blog.SetAuditLogger(auditlogger)
-
+	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.OCSPResponder.DebugAddr)
 
 		go cmd.ProfileCmd("OCSP", stats)
 
 		config := c.OCSPResponder
 		var source cfocsp.Source
-		url, err := url.Parse(config.Source)
+
+		// DBConfig takes precedence over Source, if present.
+		dbConnect, err := config.DBConfig.URL()
+		cmd.FailOnError(err, "Reading DB config")
+		if dbConnect == "" {
+			dbConnect = config.Source
+		}
+		url, err := url.Parse(dbConnect)
 		cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
 
 		if url.Scheme == "mysql+tcp" {
@@ -194,8 +178,7 @@ func main() {
 		killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
 		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
 
-		m := http.StripPrefix(c.OCSPResponder.Path,
-			handler(source, c.OCSPResponder.MaxAge.Duration))
+		m := http.StripPrefix(c.OCSPResponder.Path, cfocsp.NewResponder(source))
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
 		srv := &http.Server{
@@ -213,11 +196,4 @@ func main() {
 	}
 
 	app.Run()
-}
-
-func handler(src cfocsp.Source, maxAge time.Duration) http.Handler {
-	return &cacheCtrlHandler{
-		Handler: cfocsp.Responder{Source: src},
-		MaxAge:  maxAge,
-	}
 }

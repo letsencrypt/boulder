@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/cmd"
@@ -37,33 +36,27 @@ func loadConfig(c *cli.Context) (config cmd.Config, err error) {
 	return
 }
 
+const clientName = "AdminRevoker"
+
 func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.AuditLogger, *gorp.DbMap, rpc.StorageAuthorityClient) {
 	c, err := loadConfig(context)
 	cmd.FailOnError(err, "Failed to load Boulder configuration")
 
-	stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-	cmd.FailOnError(err, "Couldn't connect to statsd")
+	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 
-	auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-	cmd.FailOnError(err, "Could not connect to Syslog")
-	blog.SetAuditLogger(auditlogger)
-
-	raRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->RA", c.AMQP.RA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
+	amqpConf := c.Revoker.AMQP
+	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	dbMap, err := sa.NewDbMap(c.Revoker.DBConnect)
+	dbURL, err := c.Revoker.DBConfig.URL()
+	cmd.FailOnError(err, "Couldn't load DB URL")
+	dbMap, err := sa.NewDbMap(dbURL)
 	cmd.FailOnError(err, "Couldn't setup database connection")
 
-	saRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->SA", c.AMQP.SA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	sac, err := rpc.NewStorageAuthorityClient(saRPC)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Failed to create SA client")
 
-	return rac, auditlogger, dbMap, sac
+	return *rac, auditlogger, dbMap, *sac
 }
 
 func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {

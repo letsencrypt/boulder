@@ -148,18 +148,11 @@ func main() {
 		return config
 	}
 
-	app.Action = func(c cmd.Config) {
-		// Set up logging
-		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-		cmd.FailOnError(err, "Could not connect to Syslog")
-
-		blog.SetAuditLogger(auditlogger)
-
+	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.PA.DBConnect)
+		dbURL, err := c.PA.DBConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		dbMap.AddTableWithName(core.ExternalCert{}, "externalCerts").SetKeys(false, "SHA1")

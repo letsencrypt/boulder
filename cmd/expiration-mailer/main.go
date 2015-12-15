@@ -208,6 +208,8 @@ func (ds durationSlice) Swap(a, b int) {
 	ds[a], ds[b] = ds[b], ds[a]
 }
 
+const clientName = "ExpirationMailer"
+
 func main() {
 	app := cmd.NewAppShell("expiration-mailer", "Sends certificate expiration emails")
 
@@ -225,30 +227,17 @@ func main() {
 		return config
 	}
 
-	app.Action = func(c cmd.Config) {
-		// Set up logging
-		stats, err := statsd.NewClient(c.Statsd.Server, c.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-
-		auditlogger, err := blog.Dial(c.Syslog.Network, c.Syslog.Server, c.Syslog.Tag, stats)
-		cmd.FailOnError(err, "Could not connect to Syslog")
-		auditlogger.Info(app.VersionString())
-
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
-
-		blog.SetAuditLogger(auditlogger)
-
+	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.Mailer.DebugAddr)
 
 		// Configure DB
-		dbMap, err := sa.NewDbMap(c.Mailer.DBConnect)
+		dbURL, err := c.Mailer.DBConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		saRPC, err := rpc.NewAmqpRPCClient("ExpirationMailer->SA", c.AMQP.SA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		sac, err := rpc.NewStorageAuthorityClient(saRPC)
+		amqpConf := c.Mailer.AMQP
+		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create SA client")
 
 		// Load email template

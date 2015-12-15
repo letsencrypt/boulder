@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -44,60 +45,42 @@ func (mock *DNSResolver) LookupTXT(hostname string) ([]string, time.Duration, er
 	return []string{"hostname"}, 0, nil
 }
 
+// TimeoutError returns a a net.OpError for which Timeout() returns true.
+func TimeoutError() *net.OpError {
+	return &net.OpError{
+		Err: os.NewSyscallError("ugh timeout", timeoutError{}),
+	}
+}
+
+type timeoutError struct{}
+
+func (t timeoutError) Error() string {
+	return "so sloooow"
+}
+func (t timeoutError) Timeout() bool {
+	return true
+}
+
 // LookupHost is a mock
+//
+// Note: see comments on LookupMX regarding email.only
+//
 func (mock *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
-	if hostname == "always.invalid" || hostname == "invalid.invalid" {
+	if hostname == "always.invalid" ||
+		hostname == "invalid.invalid" ||
+		hostname == "email.only" {
 		return []net.IP{}, 0, nil
+	}
+	if hostname == "always.timeout" {
+		return []net.IP{}, 0, TimeoutError()
+	}
+	if hostname == "always.error" {
+		return []net.IP{}, 0, &net.OpError{
+			Err: errors.New("some net error"),
+		}
 	}
 	ip := net.ParseIP("127.0.0.1")
 	return []net.IP{ip}, 0, nil
-}
-
-// LookupCNAME is a mock
-func (mock *DNSResolver) LookupCNAME(domain string) (string, time.Duration, error) {
-	switch strings.TrimRight(domain, ".") {
-	case "cname-absent.com":
-		return "absent.com.", 30, nil
-	case "cname-critical.com":
-		return "critical.com.", 30, nil
-	case "cname-present.com", "cname-and-dname.com":
-		return "cname-target.present.com.", 30, nil
-	case "cname2-present.com":
-		return "cname-present.com.", 30, nil
-	case "a.cname-loop.com":
-		return "b.cname-loop.com.", 30, nil
-	case "b.cname-loop.com":
-		return "a.cname-loop.com.", 30, nil
-	case "www.caa-loop.com":
-		// nothing wrong with CNAME, but prevents CAA algorithm from terminating
-		return "oops.www.caa-loop.com.", 30, nil
-	case "cname2servfail.com":
-		return "servfail.com.", 30, nil
-	case "cname-servfail.com":
-		return "", 0, fmt.Errorf("SERVFAIL")
-	case "cname2dname.com":
-		return "dname2cname.com.", 30, nil
-	default:
-		return "", 0, nil
-	}
-}
-
-// LookupDNAME is a mock
-func (mock *DNSResolver) LookupDNAME(domain string) (string, time.Duration, error) {
-	switch strings.TrimRight(domain, ".") {
-	case "cname-and-dname.com", "dname-present.com":
-		return "dname-target.present.com.", time.Minute, nil
-	case "a.dname-loop.com":
-		return "b.dname-loop.com.", time.Minute, nil
-	case "b.dname-loop.com":
-		return "a.dname-loop.com.", time.Minute, nil
-	case "dname2cname.com":
-		return "cname2-present.com.", time.Minute, nil
-	case "dname-servfail.com":
-		return "", time.Minute, fmt.Errorf("SERVFAIL")
-	default:
-		return "", 0, nil
-	}
 }
 
 // LookupCAA is a mock
@@ -105,6 +88,8 @@ func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, er
 	var results []*dns.CAA
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
+	case "caa-timeout.com":
+		return nil, 0, TimeoutError()
 	case "reserved.com":
 		record.Tag = "issue"
 		record.Value = "symantec.com"
@@ -129,9 +114,17 @@ func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, er
 }
 
 // LookupMX is a mock
+//
+// Note: the email.only domain must have an MX but no A or AAAA
+// records. The mock LookupHost returns an address of 127.0.0.1 for
+// all domains except for special cases, so MX-only domains must be
+// handled in both LookupHost and LookupMX.
+//
 func (mock *DNSResolver) LookupMX(domain string) ([]string, time.Duration, error) {
 	switch strings.TrimRight(domain, ".") {
 	case "letsencrypt.org":
+		fallthrough
+	case "email.only":
 		fallthrough
 	case "email.com":
 		return []string{"mail.email.com"}, 0, nil

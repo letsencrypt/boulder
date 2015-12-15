@@ -13,7 +13,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -46,6 +48,7 @@ const (
 	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
 	MethodUpdateValidations                 = "UpdateValidations"                 // VA
 	MethodCheckCAARecords                   = "CheckCAARecords"                   // VA
+	MethodIsSafeDomain                      = "IsSafeDomain"                      // VA
 	MethodIssueCertificate                  = "IssueCertificate"                  // CA
 	MethodGenerateOCSP                      = "GenerateOCSP"                      // CA
 	MethodGetRegistration                   = "GetRegistration"                   // SA
@@ -361,9 +364,9 @@ type RegistrationAuthorityClient struct {
 }
 
 // NewRegistrationAuthorityClient constructs an RPC client
-func NewRegistrationAuthorityClient(client Client) (rac RegistrationAuthorityClient, err error) {
-	rac = RegistrationAuthorityClient{rpc: client}
-	return
+func NewRegistrationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*RegistrationAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->RA", amqpConf, amqpConf.RA, stats)
+	return &RegistrationAuthorityClient{rpc: client}, err
 }
 
 // NewRegistration sends a New Registration request
@@ -547,6 +550,24 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 		return
 	})
 
+	rpc.Handle(MethodIsSafeDomain, func(req []byte) ([]byte, error) {
+		r := &core.IsSafeDomainRequest{}
+		if err := json.Unmarshal(req, r); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodIsSafeDomain, err, req)
+			return nil, err
+		}
+		resp, err := impl.IsSafeDomain(r)
+		if err != nil {
+			return nil, err
+		}
+		jsonResp, err := json.Marshal(resp)
+		if err != nil {
+			return nil, err
+		}
+		return jsonResp, nil
+	})
+
 	return nil
 }
 
@@ -556,9 +577,9 @@ type ValidationAuthorityClient struct {
 }
 
 // NewValidationAuthorityClient constructs an RPC client
-func NewValidationAuthorityClient(client Client) (vac ValidationAuthorityClient, err error) {
-	vac = ValidationAuthorityClient{rpc: client}
-	return
+func NewValidationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*ValidationAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->VA", amqpConf, amqpConf.VA, stats)
+	return &ValidationAuthorityClient{rpc: client}, err
 }
 
 // UpdateValidations sends an Update Validations request
@@ -601,6 +622,25 @@ func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) 
 	return
 }
 
+// IsSafeDomain returns true if the domain given is determined to be safe by an
+// third-party safe browsing API.
+func (vac ValidationAuthorityClient) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	jsonResp, err := vac.rpc.DispatchSync(MethodIsSafeDomain, data)
+	if err != nil {
+		return nil, err
+	}
+	resp := &core.IsSafeDomainResponse{}
+	err = json.Unmarshal(jsonResp, resp)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // NewPublisherServer creates a new server that wraps a CT publisher
 func NewPublisherServer(rpc Server, impl core.Publisher) (err error) {
 	rpc.Handle(MethodSubmitToCT, func(req []byte) (response []byte, err error) {
@@ -617,9 +657,9 @@ type PublisherClient struct {
 }
 
 // NewPublisherClient constructs an RPC client
-func NewPublisherClient(client Client) (pub PublisherClient, err error) {
-	pub = PublisherClient{rpc: client}
-	return
+func NewPublisherClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*PublisherClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->Publisher", amqpConf, amqpConf.Publisher, stats)
+	return &PublisherClient{rpc: client}, err
 }
 
 // SubmitToCT sends a request to submit a certifcate to CT logs
@@ -703,9 +743,9 @@ type CertificateAuthorityClient struct {
 }
 
 // NewCertificateAuthorityClient constructs an RPC client
-func NewCertificateAuthorityClient(client Client) (cac CertificateAuthorityClient, err error) {
-	cac = CertificateAuthorityClient{rpc: client}
-	return
+func NewCertificateAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*CertificateAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->CA", amqpConf, amqpConf.CA, stats)
+	return &CertificateAuthorityClient{rpc: client}, err
 }
 
 // IssueCertificate sends a request to issue a certificate
@@ -1096,7 +1136,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		}
 
 		sct, err := impl.GetSCTReceipt(gsctReq.Serial, gsctReq.LogID)
-		jsonResponse, err := json.Marshal(core.RPCSignedCertificateTimestamp(sct))
+		jsonResponse, err := json.Marshal(sct)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetSCTReceipt, err, req)
@@ -1107,7 +1147,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	})
 
 	rpc.Handle(MethodAddSCTReceipt, func(req []byte) (response []byte, err error) {
-		var sct core.RPCSignedCertificateTimestamp
+		var sct core.SignedCertificateTimestamp
 		err = json.Unmarshal(req, &sct)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
@@ -1134,9 +1174,9 @@ type StorageAuthorityClient struct {
 }
 
 // NewStorageAuthorityClient constructs an RPC client
-func NewStorageAuthorityClient(client Client) (sac StorageAuthorityClient, err error) {
-	sac = StorageAuthorityClient{rpc: client}
-	return
+func NewStorageAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*StorageAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->SA", amqpConf, amqpConf.SA, stats)
+	return &StorageAuthorityClient{rpc: client}, err
 }
 
 // GetRegistration sends a request to get a registration by ID

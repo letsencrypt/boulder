@@ -12,7 +12,6 @@ import (
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
@@ -80,13 +79,6 @@ type RegistrationAuthority interface {
 	OnValidationUpdate(Authorization) error
 }
 
-// ValidationAuthority defines the public interface for the Boulder VA
-type ValidationAuthority interface {
-	// [RegistrationAuthority]
-	UpdateValidations(Authorization, int) error
-	CheckCAARecords(AcmeIdentifier) (bool, bool, error)
-}
-
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
@@ -145,17 +137,6 @@ type StorageAuthority interface {
 type CertificateAuthorityDatabase interface {
 	IncrementAndGetSerial(*gorp.Transaction) (int64, error)
 	Begin() (*gorp.Transaction, error)
-}
-
-// DNSResolver defines methods used for DNS resolution
-type DNSResolver interface {
-	ExchangeOne(string, uint16) (*dns.Msg, time.Duration, error)
-	LookupTXT(string) ([]string, time.Duration, error)
-	LookupHost(string) ([]net.IP, time.Duration, error)
-	LookupCNAME(string) (string, time.Duration, error)
-	LookupDNAME(string) (string, time.Duration, error)
-	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
-	LookupMX(string) ([]string, time.Duration, error)
 }
 
 // Publisher defines the public interface for the Boulder Publisher

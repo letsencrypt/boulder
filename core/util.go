@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"expvar"
 	"fmt"
 	"hash"
 	"io"
@@ -47,6 +48,11 @@ var BuildHost string
 
 // BuildTime is set by the compiler and is used by GetBuildTime
 var BuildTime string
+
+func init() {
+	expvar.NewString("BuildID").Set(BuildID)
+	expvar.NewString("BuildTime").Set(BuildTime)
+}
 
 // Errors
 
@@ -99,6 +105,9 @@ type TooManyRPCRequestsError string
 // satisfy a request
 type ServiceUnavailableError string
 
+// BadNonceError indicates an empty of invalid nonce was provided
+type BadNonceError string
+
 func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
 func (e MalformedRequestError) Error() string    { return string(e) }
@@ -112,6 +121,7 @@ func (e NoSuchRegistrationError) Error() string  { return string(e) }
 func (e RateLimitedError) Error() string         { return string(e) }
 func (e TooManyRPCRequestsError) Error() string  { return string(e) }
 func (e ServiceUnavailableError) Error() string  { return string(e) }
+func (e BadNonceError) Error() string            { return string(e) }
 
 // Base64 functions
 
@@ -344,8 +354,11 @@ func (u *AcmeURL) UnmarshalJSON(data []byte) error {
 	}
 
 	uu, err := url.Parse(str)
+	if err != nil {
+		return err
+	}
 	*u = AcmeURL(*uu)
-	return err
+	return nil
 }
 
 // VerifyCSR verifies that a Certificate Signature Request is well-formed.

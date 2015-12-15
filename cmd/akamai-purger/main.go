@@ -6,12 +6,10 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/akamai"
 
 	"github.com/letsencrypt/boulder/cmd"
-	blog "github.com/letsencrypt/boulder/log"
 )
 
 func main() {
@@ -53,18 +51,12 @@ func main() {
 		var config cmd.Config
 		err = json.Unmarshal(configJSON, &config)
 
-		stats, err := statsd.NewClient(config.Statsd.Server, config.Statsd.Prefix)
-		cmd.FailOnError(err, "Couldn't connect to statsd")
-
 		// Set up logging
-		auditlogger, err := blog.Dial(config.Syslog.Network, config.Syslog.Server, config.Syslog.Tag, stats)
-		cmd.FailOnError(err, "Could not connect to Syslog")
+		stats, auditlogger := cmd.StatsAndLogging(config.Statsd, config.Syslog)
 		auditlogger.Info(app.Version)
 
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		defer auditlogger.AuditPanic()
-
-		blog.SetAuditLogger(auditlogger)
 
 		akamaiClient, err := akamai.NewCachePurgeClient(
 			config.OCSPUpdater.AkamaiBaseURL,
