@@ -84,27 +84,24 @@ const (
 	emptyDNSResponseDetail = "empty DNS response"
 )
 
-func validateEmail(address string, resolver bdns.DNSResolver) (rtt time.Duration, count int64, prob *probs.ProblemDetails) {
+func validateEmail(address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
 	_, err := mail.ParseAddress(address)
 	if err != nil {
-		return 0, 0, &probs.ProblemDetails{
+		return &probs.ProblemDetails{
 			Type:   probs.InvalidEmailProblem,
 			Detail: unparseableEmailDetail,
 		}
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	var rtt1, rtt2 time.Duration
 	var resultMX []string
 	var resultA []net.IP
-	resultMX, rtt1, err = resolver.LookupMX(domain)
-	count++
+	resultMX, err = resolver.LookupMX(domain)
 
 	if err == nil && len(resultMX) == 0 {
-		resultA, rtt2, err = resolver.LookupHost(domain)
-		count++
+		resultA, err = resolver.LookupHost(domain)
 		if err == nil && len(resultA) == 0 {
-			return rtt1 + rtt2, count, &probs.ProblemDetails{
+			return &probs.ProblemDetails{
 				Type:   probs.InvalidEmailProblem,
 				Detail: emptyDNSResponseDetail,
 			}
@@ -112,14 +109,13 @@ func validateEmail(address string, resolver bdns.DNSResolver) (rtt time.Duration
 	}
 	if err != nil {
 		dnsProblem := bdns.ProblemDetailsFromDNSError(err)
-		return rtt, count, &probs.ProblemDetails{
+		return &probs.ProblemDetails{
 			Type:   probs.InvalidEmailProblem,
 			Detail: dnsProblem.Detail,
 		}
 	}
-	rtt = rtt1 + rtt2
 
-	return rtt, count, nil
+	return nil
 }
 
 type certificateRequestEvent struct {
@@ -245,17 +241,15 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 		case "tel":
 			continue
 		case "mailto":
-			// Note: the stats handling here is a bit of a lie,
-			// since validateEmail() mainly does MX lookups and
-			// only does A lookups when the MX is missing.
-			rtt, count, problem := validateEmail(contact.Opaque, ra.DNSResolver)
-			if count > 0 {
-				ra.stats.TimingDuration("RA.DNS.RTT.A", time.Duration(int64(rtt)/count), 1.0)
-				ra.stats.Inc("RA.DNS.Rate", count, 1.0)
-			}
+			start := ra.clk.Now()
+			ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
+			problem := validateEmail(contact.Opaque, ra.DNSResolver)
+			ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
 			if problem != nil {
+				ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
 				return problem
 			}
+			ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
 		default:
 			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
 			return

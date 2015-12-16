@@ -11,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/metrics"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -45,10 +46,11 @@ func main() {
 		vai := va.NewValidationAuthorityImpl(pc, sbc, stats, clock.Default())
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
+		scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
 		if !c.Common.DNSAllowLoopbackAddresses {
-			vai.DNSResolver = bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+			vai.DNSResolver = bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped)
 		} else {
-			vai.DNSResolver = bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+			vai.DNSResolver = bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped)
 		}
 		vai.UserAgent = c.VA.UserAgent
 		vai.IssuerDomain = c.VA.IssuerDomain

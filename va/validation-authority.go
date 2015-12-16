@@ -89,14 +89,12 @@ type verificationRequestEvent struct {
 // net/http, except we only send A queries and accept IPv4 addresses.
 // TODO(#593): Add IPv6 support
 func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *probs.ProblemDetails) {
-	addrs, rtt, err := va.DNSResolver.LookupHost(hostname)
+	addrs, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
 		problem = bdns.ProblemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
 		return
 	}
-	va.stats.TimingDuration("VA.DNS.RTT.A", rtt, 1.0)
-	va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 
 	if len(addrs) == 0 {
 		problem = &probs.ProblemDetails{
@@ -431,9 +429,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
-	txts, rtt, err := va.DNSResolver.LookupTXT(challengeSubdomain)
-	va.stats.TimingDuration("VA.DNS.RTT.TXT", rtt, 1.0)
-	va.stats.Inc("VA.DNS.Rate", 1, 1.0)
+	txts, err := va.DNSResolver.LookupTXT(challengeSubdomain)
 
 	if err != nil {
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
@@ -608,12 +604,10 @@ func (va *ValidationAuthorityImpl) getCAASet(hostname string) (*CAASet, error) {
 		if tld, err := publicsuffix.ICANNTLD(name); err != nil || tld == name {
 			break
 		}
-		CAAs, caaRtt, err := va.DNSResolver.LookupCAA(name)
+		CAAs, err := va.DNSResolver.LookupCAA(name)
 		if err != nil {
 			return nil, err
 		}
-		va.stats.TimingDuration("VA.DNS.RTT.CAA", caaRtt, 1.0)
-		va.stats.Inc("VA.DNS.Rate", 1, 1.0)
 		if len(CAAs) > 0 {
 			return newCAASet(CAAs), nil
 		}
