@@ -478,11 +478,6 @@ func VerifyCSR(csr *x509.CertificateRequest) error {
 	return errors.New("Unsupported CSR signing algorithm")
 }
 
-var (
-	oidExtensionRequest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 14}
-	oidSubjectAltName   = asn1.ObjectIdentifier{2, 5, 29, 17}
-)
-
 // SerialToString converts a certificate serial number (big.Int) to a String
 // consistently.
 func SerialToString(serial *big.Int) string {
