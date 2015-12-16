@@ -11,10 +11,12 @@ import (
 	"math"
 	"math/big"
 	"net/url"
+	"reflect"
 	"sort"
 	"testing"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -127,4 +129,40 @@ func TestUnmarshalAcmeURL(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected error parsing ':', but got nil err.")
 	}
+}
+
+func TestProblemDetailsFromError(t *testing.T) {
+	testCases := []struct {
+		err        error
+		statusCode int
+		problem    probs.ProblemType
+	}{
+		{InternalServerError("foo"), 500, probs.ServerInternalProblem},
+		{NotSupportedError("foo"), 501, probs.ServerInternalProblem},
+		{MalformedRequestError("foo"), 400, probs.MalformedProblem},
+		{UnauthorizedError("foo"), 403, probs.UnauthorizedProblem},
+		{NotFoundError("foo"), 404, probs.MalformedProblem},
+		{SyntaxError("foo"), 400, probs.MalformedProblem},
+		{SignatureValidationError("foo"), 400, probs.MalformedProblem},
+		{RateLimitedError("foo"), 429, probs.RateLimitedProblem},
+		{LengthRequiredError("foo"), 411, probs.MalformedProblem},
+		{BadNonceError("foo"), 400, probs.BadNonceProblem},
+	}
+	for _, c := range testCases {
+		p := ProblemDetailsForError(c.err, "k")
+		if p.HTTPStatus != c.statusCode {
+			t.Errorf("Incorrect status code for %s. Expected %d, got %d", reflect.TypeOf(c.err).Name(), c.statusCode, p.HTTPStatus)
+		}
+		if probs.ProblemType(p.Type) != c.problem {
+			t.Errorf("Expected problem urn %#v, got %#v", c.problem, p.Type)
+		}
+	}
+
+	expected := &probs.ProblemDetails{
+		Type:       probs.MalformedProblem,
+		HTTPStatus: 200,
+		Detail:     "gotcha",
+	}
+	p := ProblemDetailsForError(expected, "k")
+	test.AssertDeepEquals(t, expected, p)
 }

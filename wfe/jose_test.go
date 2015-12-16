@@ -10,7 +10,7 @@ import (
 
 func TestRejectsNone(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	_, _, _, err := wfe.verifyPOST(newRequestEvent(), makePostRequest(`
+	_, _, _, prob := wfe.verifyPOST(newRequestEvent(), makePostRequest(`
 		{
 			"header": {
 				"alg": "none",
@@ -24,17 +24,17 @@ func TestRejectsNone(t *testing.T) {
 			"signature": ""
 		}
 	`), true, "foo")
-	if err == nil {
+	if prob == nil {
 		t.Fatalf("verifyPOST did not reject JWS with alg: 'none'")
 	}
-	if err.Error() != "algorithm 'none' in JWS header not acceptable" {
-		t.Fatalf("verifyPOST rejected JWS with alg: 'none', but for wrong reason: %s", err)
+	if prob.Detail != "algorithm 'none' in JWS header not acceptable" {
+		t.Fatalf("verifyPOST rejected JWS with alg: 'none', but for wrong reason: %#v", prob)
 	}
 }
 
 func TestRejectsHS256(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	_, _, _, err := wfe.verifyPOST(newRequestEvent(), makePostRequest(`
+	_, _, _, prob := wfe.verifyPOST(newRequestEvent(), makePostRequest(`
 		{
 			"header": {
 				"alg": "HS256",
@@ -48,12 +48,12 @@ func TestRejectsHS256(t *testing.T) {
 			"signature": ""
 		}
 	`), true, "foo")
-	if err == nil {
+	if prob == nil {
 		t.Fatalf("verifyPOST did not reject JWS with alg: 'HS256'")
 	}
 	expected := "algorithm 'HS256' in JWS header not acceptable"
-	if err.Error() != expected {
-		t.Fatalf("verifyPOST rejected JWS with alg: 'none', but for wrong reason: got '%s', wanted %s", err, expected)
+	if prob.Detail != expected {
+		t.Fatalf("verifyPOST rejected JWS with alg: 'none', but for wrong reason: got '%s', wanted %s", prob, expected)
 	}
 }
 
