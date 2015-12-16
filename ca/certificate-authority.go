@@ -48,6 +48,9 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA1:             true,
 }
 
+// PKCS#9 attribute for requesting certificate extensions
+var oidExtensionRequest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 14}
+
 // OID and fixed value for the "must staple" variant of the TLS Feature
 // extension:
 //
@@ -318,18 +321,23 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// that only requires stapling.
 	//
 	// Other requested extensions are silently ignored.
-	//
-	// XXX(rlb): It might be good to add a generic mechanism for extensions, but
-	// on the other hand, we probably *don't* want to copy arbitrary client-
-	// provided data into extensions.
-	extensions := core.ExtensionsFromCSR(&csr)
 	requestedExtensions := []signer.Extension{}
-	if _, present := extensions[oidTLSFeature.String()]; present {
-		requestedExtensions = append(requestedExtensions, signer.Extension{
-			ID:       cfsslConfig.OID(oidTLSFeature),
-			Critical: false,
-			Value:    mustStapleFeatureValue,
-		})
+	for _, attr := range csr.Attributes {
+		if !attr.Type.Equal(oidExtensionRequest) {
+			continue
+		}
+
+		for _, extList := range attr.Value {
+			for _, ext := range extList {
+				if ext.Type.Equal(oidTLSFeature) {
+					requestedExtensions = append(requestedExtensions, signer.Extension{
+						ID:       cfsslConfig.OID(oidTLSFeature),
+						Critical: false,
+						Value:    mustStapleFeatureValue,
+					})
+				}
+			}
+		}
 	}
 
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)

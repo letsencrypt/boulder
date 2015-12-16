@@ -483,31 +483,6 @@ var (
 	oidSubjectAltName   = asn1.ObjectIdentifier{2, 5, 29, 17}
 )
 
-// ExtensionsFromCSR extracts the set of requested extensions from a CSR
-func ExtensionsFromCSR(csr *x509.CertificateRequest) map[string][]byte {
-	extensionMap := map[string][]byte{}
-	for _, attr := range csr.Attributes {
-		if !attr.Type.Equal(oidExtensionRequest) || len(attr.Value) != 1 {
-			continue
-		}
-
-		for _, ext := range attr.Value[0] {
-			// SubjectAltName is already handled by ParseCertificateRequest
-			if ext.Type.Equal(oidSubjectAltName) {
-				continue
-			}
-
-			extValue, ok := ext.Value.([]byte)
-			if !ok {
-				continue
-			}
-
-			extensionMap[ext.Type.String()] = extValue
-		}
-	}
-	return extensionMap
-}
-
 // SerialToString converts a certificate serial number (big.Int) to a String
 // consistently.
 func SerialToString(serial *big.Int) string {
