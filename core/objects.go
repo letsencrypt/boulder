@@ -326,7 +326,7 @@ type Challenge struct {
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
 // back to the RA to be stored.
 func (ch Challenge) RecordsSane() bool {
-	if ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0 {
+	if ch.Type != ChallengeTypeDNS01 && (ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0) {
 		return false
 	}
 
@@ -350,7 +350,7 @@ func (ch Challenge) RecordsSane() bool {
 			return false
 		}
 	case ChallengeTypeDNS01:
-		// Nothing for now
+		return true
 	default: // Unsupported challenge type
 		return false
 	}
