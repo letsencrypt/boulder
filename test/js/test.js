@@ -98,6 +98,7 @@ var cliOptions = cli.parse({
   email:  ["email", "Email address", "string", null],
   agreeTerms:  ["agree", "Agree to terms of service", "boolean", null],
   domains:  ["domains", "Domain name(s) for which to request a certificate (comma-separated)", "string", null],
+  challType: ["challType", "Name of challenge type to use for validations", "string", "http-01"],
 });
 
 var state = {
@@ -347,19 +348,57 @@ function getReadyToValidate(err, resp, body) {
 
   var authz = JSON.parse(body);
 
-  var httpChallenges = authz.challenges.filter(function(x) { return x.type == "http-01"; });
-  if (httpChallenges.length == 0) {
+  var challenges = authz.challenges.filter(function(x) { return x.type == cliOptions.challType; });
+  if (challenges.length == 0) {
     console.log("The server didn't offer any challenges we can handle.");
     process.exit(1);
   }
-  var challenge = httpChallenges[0];
+  state.responseURL = challenges[0]["uri"];
 
+  var validator;
+  if (cliOptions.challType == "http-01") {
+    validator = validateHttp01;
+  } else if (cliOptions.challType == "dns-01") {
+    validator = validateDns01;
+  }
+  validator(challenges[0]);
+}
+
+function validateDns01(challenge) {
+  // Construct a key authorization for this token and key, and the
+  // correct record name to store it
+  var thumbprint = cryptoUtil.thumbprint(state.accountKeyPair.publicKey);
+  var keyAuthorization = challenge.token + "." + thumbprint;
+  var recordName = "_acme-challenge." + state.domain + ".";
+
+  function txtCallback(err, resp, body) {
+    if (Math.floor(resp.statusCode / 100) != 2) {
+      // Non-2XX response
+      console.log("Updating dns-test-srv failed with code " + resp.statusCode);
+      process.exit(1);
+    }
+    post(state.responseURL, {
+      resource: "challenge",
+      keyAuthorization: keyAuthorization,
+    }, ensureValidation);
+  }
+
+  request.post({
+    uri: "http://localhost:8055/set-txt",
+    method: "POST",
+    json: {
+      "host": recordName,
+      "value": cryptoUtil.sha256(new Buffer(keyAuthorization))
+    }
+  }, txtCallback);
+}
+
+function validateHttp01(challenge) {
   // Construct a key authorization for this token and key
   var thumbprint = cryptoUtil.thumbprint(state.accountKeyPair.publicKey);
   var keyAuthorization = challenge.token + "." + thumbprint;
 
   var challengePath = ".well-known/acme-challenge/" + challenge.token;
-  state.responseURL = challenge["uri"];
   state.path = challengePath;
 
   // For local, test-mode validation
@@ -401,7 +440,7 @@ function ensureValidation(err, resp, body) {
 
   var authz = JSON.parse(body);
 
-  if (authz.status != "pending") {
+  if (authz.status != "pending" && state.httpServer != null) {
     state.httpServer.close();
   }
 

@@ -16,6 +16,8 @@ import urllib2
 
 import startservers
 
+ISSUANCE_FAILED = 1
+REVOCATION_FAILED = 2
 
 class ExitStatus:
     OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs = range(7)
@@ -151,23 +153,22 @@ def verify_ct_submission(expectedSubmissions, url):
     if int(submissionStr) != expectedSubmissions:
         print "Expected %d submissions, found %d" % (expectedSubmissions, int(submissionStr))
         die(ExitStatus.CTFailure)
+    return 0
 
-def run_node_test():
+def run_node_test(domain, chall_type, expected_ct_submissions):
     cert_file = os.path.join(tempdir, "cert.der")
     cert_file_pem = os.path.join(tempdir, "cert.pem")
     key_file = os.path.join(tempdir, "key.pem")
-    # Pick a random hostname so we don't run into certificate rate limiting.
-    domain = subprocess.check_output("openssl rand -hex 6", shell=True).strip()
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
     if subprocess.Popen('''
         node test.js --email foo@letsencrypt.org --agree true \
-          --domains www.%s-TEST.com --new-reg http://localhost:4000/acme/new-reg \
-          --certKey %s --cert %s && \
+          --domains %s --new-reg http://localhost:4000/acme/new-reg \
+          --certKey %s --cert %s --challType %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
-        ''' % (domain, key_file, cert_file, cert_file, cert_file_pem),
+        ''' % (domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
         shell=True).wait() != 0:
         print("\nIssuing failed")
-        die(ExitStatus.NodeFailure)
+        return ISSUANCE_FAILED
 
     ee_ocsp_url = "http://localhost:4002"
     issuer_ocsp_url = "http://localhost:4003"
@@ -180,37 +181,16 @@ def run_node_test():
     # pre-signed, long-lived response for the CA cert, works.
     wait_for_ocsp_good("../test-ca.pem", "../test-root.pem", issuer_ocsp_url)
 
-    verify_ct_submission(1, "http://localhost:4500/submissions")
+    verify_ct_submission(expected_ct_submissions, "http://localhost:4500/submissions")
 
     if subprocess.Popen('''
         node revoke.js %s %s http://localhost:4000/acme/revoke-cert
         ''' % (cert_file, key_file), shell=True).wait() != 0:
         print("\nRevoking failed")
-        die(ExitStatus.NodeFailure)
+        return REVOCATION_FAILED
 
     wait_for_ocsp_revoked(cert_file_pem, "../test-ca.pem", ee_ocsp_url)
     return 0
-
-def run_caa_node_test():
-    cert_file = os.path.join(tempdir, "cert.der")
-    key_file = os.path.join(tempdir, "key.pem")
-
-    def runNode(domain):
-        return subprocess.Popen('''
-        node test.js --email foo@letsencrypt.org --agree true \
-          --domains %s --new-reg http://localhost:4000/acme/new-reg \
-          --certKey %s --cert %s
-        ''' % (domain, key_file, cert_file),
-        shell=True).wait()
-
-    if runNode("bad-caa-reserved.com") == 0:
-        print("\nIssused certificate for domain with bad CAA records")
-        die(ExitStatus.NodeFailure)
-
-    if runNode("good-caa-reserved.com") != 0:
-        print("\nDidn't issue certificate for domain with good CAA records")
-        die(ExitStatus.NodeFailure)
-
 
 def run_client_tests():
     root = os.environ.get("LETSENCRYPT_PATH")
@@ -263,8 +243,27 @@ def main():
         if subprocess.Popen('npm install', shell=True).wait() != 0:
             print("\n Installing NPM modules failed")
             die(ExitStatus.Error)
-        run_node_test()
-        run_caa_node_test()
+        # Pick a random hostname so we don't run into certificate rate limiting.
+        domain = "www." + subprocess.check_output("openssl rand -hex 6", shell=True).strip() + "-TEST.com"
+        challenge_types = ["http-01", "dns-01"]
+
+        expected_ct_submissions = 1
+        resp = urllib2.urlopen("http://localhost:4500/submissions")
+        submissionStr = resp.read()
+        if int(submissionStr) > 0:
+            expected_ct_submissions = int(submissionStr)+1
+        for chall_type in challenge_types:
+            if run_node_test(domain, chall_type, expected_ct_submissions) != 0:
+                die(ExitStatus.NodeFailure)
+            expected_ct_submissions += 1
+
+        if run_node_test("good-caa-reserved.com", challenge_types[0], expected_ct_submissions) != 0:
+            print("\nDidn't issue certificate for domain with good CAA records")
+            die(ExitStatus.NodeFailure)
+
+        if run_node_test("bad-caa-reserved.com", challenge_types[0], expected_ct_submissions) != ISSUANCE_FAILED:
+            print("\nIssused certificate for domain with bad CAA records")
+            die(ExitStatus.NodeFailure)
 
     # Simulate a disconnection from RabbitMQ to make sure reconnects work.
     startservers.bounce_forward()

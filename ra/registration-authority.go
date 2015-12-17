@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/publicsuffix"
+	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
@@ -78,35 +79,43 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 	return ra
 }
 
-var errUnparseableEmail = errors.New("not a valid e-mail address")
-var errEmptyDNSResponse = errors.New("empty DNS response")
+const (
+	unparseableEmailDetail = "not a valid e-mail address"
+	emptyDNSResponseDetail = "empty DNS response"
+)
 
-func validateEmail(address string, resolver bdns.DNSResolver) (rtt time.Duration, count int64, err error) {
-	_, err = mail.ParseAddress(address)
+func validateEmail(address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
+	_, err := mail.ParseAddress(address)
 	if err != nil {
-		return time.Duration(0), 0, errUnparseableEmail
+		return &probs.ProblemDetails{
+			Type:   probs.InvalidEmailProblem,
+			Detail: unparseableEmailDetail,
+		}
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	var rtt1, rtt2 time.Duration
 	var resultMX []string
 	var resultA []net.IP
-	resultMX, rtt1, err = resolver.LookupMX(domain)
-	count++
+	resultMX, err = resolver.LookupMX(domain)
+
 	if err == nil && len(resultMX) == 0 {
-		resultA, rtt2, err = resolver.LookupHost(domain)
-		count++
+		resultA, err = resolver.LookupHost(domain)
 		if err == nil && len(resultA) == 0 {
-			err = errEmptyDNSResponse
+			return &probs.ProblemDetails{
+				Type:   probs.InvalidEmailProblem,
+				Detail: emptyDNSResponseDetail,
+			}
 		}
 	}
 	if err != nil {
-		problem := bdns.ProblemDetailsFromDNSError(err)
-		err = core.MalformedRequestError(problem.Detail)
+		dnsProblem := bdns.ProblemDetailsFromDNSError(err)
+		return &probs.ProblemDetails{
+			Type:   probs.InvalidEmailProblem,
+			Detail: dnsProblem.Detail,
+		}
 	}
-	rtt = rtt1 + rtt2
 
-	return
+	return nil
 }
 
 type certificateRequestEvent struct {
@@ -232,18 +241,15 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 		case "tel":
 			continue
 		case "mailto":
-			// Note: the stats handling here is a bit of a lie,
-			// since validateEmail() mainly does MX lookups and
-			// only does A lookups when the MX is missing.
-			rtt, count, err := validateEmail(contact.Opaque, ra.DNSResolver)
-			if count > 0 {
-				ra.stats.TimingDuration("RA.DNS.RTT.A", time.Duration(int64(rtt)/count), 1.0)
-				ra.stats.Inc("RA.DNS.Rate", count, 1.0)
+			start := ra.clk.Now()
+			ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
+			problem := validateEmail(contact.Opaque, ra.DNSResolver)
+			ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
+			if problem != nil {
+				ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
+				return problem
 			}
-			if err != nil {
-				return core.MalformedRequestError(fmt.Sprintf(
-					"Validation of contact %s failed: %s", contact, err))
-			}
+			ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
 		default:
 			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
 			return
