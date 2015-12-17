@@ -6,6 +6,7 @@
 package core
 
 import (
+	"crypto"
 	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
@@ -200,14 +201,14 @@ func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, 
 		return KeyAuthorization{}, fmt.Errorf("Cannot authorize a nil key")
 	}
 
-	thumbprint, err := Thumbprint(key)
+	thumbprint, err := key.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return KeyAuthorization{}, err
 	}
 
 	return KeyAuthorization{
 		Token:      token,
-		Thumbprint: thumbprint,
+		Thumbprint: base64.RawURLEncoding.EncodeToString(thumbprint),
 	}, nil
 }
 
@@ -245,10 +246,11 @@ func (ka KeyAuthorization) Match(token string, key *jose.JsonWebKey) bool {
 		return false
 	}
 
-	thumbprint, err := Thumbprint(key)
+	thumbprintBytes, err := key.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return false
 	}
+	thumbprint := base64.RawURLEncoding.EncodeToString(thumbprintBytes)
 
 	tokensEqual := subtle.ConstantTimeCompare([]byte(token), []byte(ka.Token))
 	thumbprintsEqual := subtle.ConstantTimeCompare([]byte(thumbprint), []byte(ka.Thumbprint))

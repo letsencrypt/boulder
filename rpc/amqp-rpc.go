@@ -210,8 +210,6 @@ func wrapError(err error) *rpcError {
 			wrapped.Type = "UnauthorizedError"
 		case core.NotFoundError:
 			wrapped.Type = "NotFoundError"
-		case core.SyntaxError:
-			wrapped.Type = "SyntaxError"
 		case core.SignatureValidationError:
 			wrapped.Type = "SignatureValidationError"
 		case core.CertificateIssuanceError:
@@ -248,8 +246,6 @@ func unwrapError(rpcError *rpcError) error {
 			return core.UnauthorizedError(rpcError.Value)
 		case "NotFoundError":
 			return core.NotFoundError(rpcError.Value)
-		case "SyntaxError":
-			return core.SyntaxError(rpcError.Value)
 		case "SignatureValidationError":
 			return core.SignatureValidationError(rpcError.Value)
 		case "CertificateIssuanceError":
