@@ -22,7 +22,6 @@ func TestWrapError(t *testing.T) {
 		core.MalformedRequestError("foo"),
 		core.UnauthorizedError("foo"),
 		core.NotFoundError("foo"),
-		core.SyntaxError("foo"),
 		core.SignatureValidationError("foo"),
 		core.CertificateIssuanceError("foo"),
 		core.NoSuchRegistrationError("foo"),
