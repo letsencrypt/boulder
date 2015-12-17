@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/core"
@@ -813,9 +814,10 @@ func TestDNSValidationServFail(t *testing.T) {
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
-	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = bdns.NewTestDNSResolverImpl(time.Second*5, []string{})
+	c, _ := statsd.NewNoopClient()
+	stats := metrics.NewNoopScope()
+	va := NewValidationAuthorityImpl(&PortConfig{}, nil, c, clock.Default())
+	va.DNSResolver = bdns.NewTestDNSResolverImpl(time.Second*5, []string{}, stats)
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 

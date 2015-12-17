@@ -32,17 +32,12 @@ import (
 type DNSResolver struct {
 }
 
-// ExchangeOne is a mock
-func (mock *DNSResolver) ExchangeOne(hostname string, qt uint16) (rsp *dns.Msg, rtt time.Duration, err error) {
-	return nil, 0, nil
-}
-
 // LookupTXT is a mock
-func (mock *DNSResolver) LookupTXT(hostname string) ([]string, time.Duration, error) {
+func (mock *DNSResolver) LookupTXT(hostname string) ([]string, error) {
 	if hostname == "_acme-challenge.servfail.com" {
-		return nil, 0, fmt.Errorf("SERVFAIL")
+		return nil, fmt.Errorf("SERVFAIL")
 	}
-	return []string{"hostname"}, 0, nil
+	return []string{"hostname"}, nil
 }
 
 // TimeoutError returns a a net.OpError for which Timeout() returns true.
@@ -65,31 +60,31 @@ func (t timeoutError) Timeout() bool {
 //
 // Note: see comments on LookupMX regarding email.only
 //
-func (mock *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
+func (mock *DNSResolver) LookupHost(hostname string) ([]net.IP, error) {
 	if hostname == "always.invalid" ||
 		hostname == "invalid.invalid" ||
 		hostname == "email.only" {
-		return []net.IP{}, 0, nil
+		return []net.IP{}, nil
 	}
 	if hostname == "always.timeout" {
-		return []net.IP{}, 0, TimeoutError()
+		return []net.IP{}, TimeoutError()
 	}
 	if hostname == "always.error" {
-		return []net.IP{}, 0, &net.OpError{
+		return []net.IP{}, &net.OpError{
 			Err: errors.New("some net error"),
 		}
 	}
 	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, 0, nil
+	return []net.IP{ip}, nil
 }
 
 // LookupCAA is a mock
-func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error) {
+func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, error) {
 	var results []*dns.CAA
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
 	case "caa-timeout.com":
-		return nil, 0, TimeoutError()
+		return nil, TimeoutError()
 	case "reserved.com":
 		record.Tag = "issue"
 		record.Value = "symantec.com"
@@ -108,9 +103,9 @@ func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, er
 		// reaches a public suffix.
 		fallthrough
 	case "servfail.com":
-		return results, 0, fmt.Errorf("SERVFAIL")
+		return results, fmt.Errorf("SERVFAIL")
 	}
-	return results, 0, nil
+	return results, nil
 }
 
 // LookupMX is a mock
@@ -120,16 +115,16 @@ func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, er
 // all domains except for special cases, so MX-only domains must be
 // handled in both LookupHost and LookupMX.
 //
-func (mock *DNSResolver) LookupMX(domain string) ([]string, time.Duration, error) {
+func (mock *DNSResolver) LookupMX(domain string) ([]string, error) {
 	switch strings.TrimRight(domain, ".") {
 	case "letsencrypt.org":
 		fallthrough
 	case "email.only":
 		fallthrough
 	case "email.com":
-		return []string{"mail.email.com"}, 0, nil
+		return []string{"mail.email.com"}, nil
 	}
-	return nil, 0, nil
+	return nil, nil
 }
 
 // StorageAuthority is a mock
