@@ -55,6 +55,7 @@ type RegistrationAuthorityImpl struct {
 	clk         clock.Clock
 	log         *blog.AuditLogger
 	dc          *DomainCheck
+	keyPolicy   core.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
@@ -71,7 +72,7 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy) *RegistrationAuthorityImpl {
 	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
@@ -84,6 +85,7 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 		rlPolicies:                   policies,
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
+		keyPolicy:                    keyPolicy,
 
 		regByIPStats:         scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
 		pendAuthByRegIDStats: scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
@@ -210,7 +212,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
 
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
-	if err = core.GoodKey(init.Key.Key); err != nil {
+	if err = ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	if err = ra.checkRegistrationLimit(init.InitialIP); err != nil {

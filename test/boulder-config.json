@@ -306,5 +306,12 @@
     "dbConnectFile": "test/secrets/cert_checker_dburl"
   },
 
-  "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1"
+  "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1",
+
+  "allowedSigningAlgos": {
+    "rsa": true,
+    "ecdsanistp256": true,
+    "ecdsanistp384": true,
+    "ecdsanistp521": false
+  }
 }
