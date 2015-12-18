@@ -74,15 +74,6 @@ const JWK2JSON = `{
   "e":"AQAB"
 }`
 
-func TestKeyThumbprint(t *testing.T) {
-	var jwk jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk)
-	thumbprint, err := Thumbprint(&jwk)
-
-	test.AssertNotError(t, err, "Failed to compute JWK digest")
-	test.AssertEquals(t, thumbprint, JWK1Thumbprint)
-}
-
 func TestKeyDigest(t *testing.T) {
 	// Test with JWK (value, reference, and direct)
 	var jwk jose.JsonWebKey
@@ -142,7 +133,6 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{MalformedRequestError("foo"), 400, probs.MalformedProblem},
 		{UnauthorizedError("foo"), 403, probs.UnauthorizedProblem},
 		{NotFoundError("foo"), 404, probs.MalformedProblem},
-		{SyntaxError("foo"), 400, probs.MalformedProblem},
 		{SignatureValidationError("foo"), 400, probs.MalformedProblem},
 		{RateLimitedError("foo"), 429, probs.RateLimitedProblem},
 		{LengthRequiredError("foo"), 411, probs.MalformedProblem},
