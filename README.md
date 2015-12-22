@@ -120,7 +120,7 @@ To update the Go dependencies:
 
 ```
 # Fetch godep
-go get -u https://github.com/tools/godep
+go get -u github.com/tools/godep
 # Check out the currently vendorized version of each dependency.
 godep restore
 # Update to the latest version of a dependency. Alternately you can cd to the
