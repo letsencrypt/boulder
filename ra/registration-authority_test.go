@@ -22,6 +22,7 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -246,7 +247,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
-	ra.DNSResolver = &mocks.DNSResolver{}
+	ra.DNSResolver = &bdns.MockDNSResolver{}
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -317,15 +318,15 @@ func TestValidateEmail(t *testing.T) {
 	}{
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
-		{"a@always.timeout", "DNS query timed out during A-record lookup of always.timeout"},
-		{"a@always.error", "DNS networking error during A-record lookup of always.error"},
+		{"a@always.timeout", "DNS problem: query timed out looking up A for always.timeout"},
+		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
 		"a@email.com",
 		"b@email.only",
 	}
 	for _, tc := range testFailures {
-		problem := validateEmail(tc.input, &mocks.DNSResolver{})
+		problem := validateEmail(tc.input, &bdns.MockDNSResolver{})
 		if problem.Type != probs.InvalidEmailProblem {
 			t.Errorf("validateEmail(%q): got problem type %#v, expected %#v", tc.input, problem.Type, probs.InvalidEmailProblem)
 		}
@@ -336,7 +337,7 @@ func TestValidateEmail(t *testing.T) {
 	}
 
 	for _, addr := range testSuccesses {
-		if prob := validateEmail(addr, &mocks.DNSResolver{}); prob != nil {
+		if prob := validateEmail(addr, &bdns.MockDNSResolver{}); prob != nil {
 			t.Errorf("validateEmail(%q): expected success, but it failed: %s",
 				addr, prob)
 		}

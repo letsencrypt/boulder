@@ -61,6 +61,9 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.A = net.ParseIP("127.0.0.1")
 				appendAnswer(record)
 			}
+			if q.Name == "nxdomain.letsencrypt.org." {
+				m.SetRcode(r, dns.RcodeNameError)
+			}
 		case dns.TypeCNAME:
 			if q.Name == "cname.letsencrypt.org." {
 				record := new(dns.CNAME)
@@ -104,6 +107,9 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.Hdr = dns.RR_Header{Name: "split-txt.letsencrypt.org.", Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 0}
 				record.Txt = []string{"a", "b", "c"}
 				appendAnswer(record)
+			}
+			if q.Name == "nxdomain.letsencrypt.org." {
+				m.SetRcode(r, dns.RcodeNameError)
 			}
 		}
 	}
@@ -246,6 +252,23 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("v6.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
+}
+
+func TestDNSNXDOMAIN(t *testing.T) {
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats)
+
+	hostname := "nxdomain.letsencrypt.org"
+	_, err := obj.LookupHost(hostname)
+	expected := dnsError{dns.TypeA, hostname, nil, dns.RcodeNameError}
+	if err, ok := err.(*dnsError); !ok || *err != expected {
+		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expected)
+	}
+
+	_, err = obj.LookupTXT(hostname)
+	expected.recordType = dns.TypeTXT
+	if err, ok := err.(*dnsError); !ok || *err != expected {
+		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expected)
+	}
 }
 
 func TestDNSLookupCAA(t *testing.T) {
