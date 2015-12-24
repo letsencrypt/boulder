@@ -1,7 +1,7 @@
 boulder:
     build: .
     dockerfile: Dockerfile
-    net: "host"
+    net: host
     ports:
         - "4000:4000"
     environment:
@@ -15,5 +15,6 @@ mysql:
         MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
 rabbitmq:
     image: rabbitmq:3
+    net: host
     ports:
         - "5672:5672"
