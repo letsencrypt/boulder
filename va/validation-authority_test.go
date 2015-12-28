@@ -836,6 +836,37 @@ func TestDNSValidationNoServer(t *testing.T) {
 	test.AssertEquals(t, authz.Challenges[0].Error.Type, probs.ConnectionProblem)
 }
 
+func TestDNSValidationOK(t *testing.T) {
+	stats, _ := statsd.NewNoopClient()
+	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va.DNSResolver = &mocks.DNSResolver{}
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	// create a challenge with well known token
+	chalDNS := core.DNSChallenge01(accountKey)
+	chalDNS.Token = expectedToken
+
+	keyAuthorization, _ := core.NewKeyAuthorization(chalDNS.Token, accountKey)
+	chalDNS.KeyAuthorization = &keyAuthorization
+
+	goodIdent := core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "good-dns01.com",
+	}
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     goodIdent,
+		Challenges:     []core.Challenge{chalDNS},
+	}
+	va.validate(authz, 0)
+
+	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
+	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
+}
+
 // TestDNSValidationLive is an integration test, depending on
 // the existance of some Internet resources. Because of that,
 // it asserts nothing; it is intended for coverage.
@@ -847,8 +878,9 @@ func TestDNSValidationLive(t *testing.T) {
 	va.RA = mockRA
 
 	goodChalDNS := core.DNSChallenge01(accountKey)
-	// This token is set at _acme-challenge.good.bin.coffee
-	goodChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
+	// The matching value LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo
+	// is set at _acme-challenge.good.bin.coffee
+	goodChalDNS.Token = expectedToken
 
 	var goodIdent = core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
@@ -874,7 +906,7 @@ func TestDNSValidationLive(t *testing.T) {
 	}
 
 	badChalDNS := core.DNSChallenge01(accountKey)
-	// This token is NOT set at _acme-challenge.bad.bin.coffee
+	// The matching value is NOT set at _acme-challenge.bad.bin.coffee
 	badChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
 
 	var authzBad = core.Authorization{
