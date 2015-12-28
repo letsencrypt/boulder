@@ -5,7 +5,7 @@ source test/db-common.sh
 
 # set db connection for if running in a seperate container or not
 dbconn="-u root"
-if [[ ! -z "MYSQL_CONTAINER" ]]; then
+if [[ ! -z "$MYSQL_CONTAINER" ]]; then
 	dbconn="-u root -h 127.0.0.1 --port 3306"
 fi
 
