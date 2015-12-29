@@ -11,7 +11,8 @@ import (
 	"net"
 	"net/smtp"
 	"strings"
-	"time"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 )
 
 // Mailer provides the interface for a mailer
@@ -25,6 +26,7 @@ type MailerImpl struct {
 	Port   string
 	Auth   smtp.Auth
 	From   string
+	clk    clock.Clock
 }
 
 // New constructs a Mailer to represent an account on a particular mail
@@ -36,11 +38,13 @@ func New(server, port, username, password string) MailerImpl {
 		Port:   port,
 		Auth:   auth,
 		From:   username,
+		clk:    clock.Default(),
 	}
 }
 
 func (m *MailerImpl) generateMessage(to []string, subject, body string) []byte {
-	now := time.Now().UTC()
+	now := m.clk.Now().UTC()
+	rand.Seed(int64(now.Nanosecond()))
 	headers := []string{
 		fmt.Sprintf("To: %s", strings.Join(to, ", ")),
 		fmt.Sprintf("From: %s", m.From),
