@@ -50,7 +50,7 @@ func (m *mockMail) Clear() {
 	m.Messages = []string{}
 }
 
-func (m *mockMail) SendMail(to []string, msg string) (err error) {
+func (m *mockMail) SendMail(to []string, subject, msg string) (err error) {
 	for range to {
 		m.Messages = append(m.Messages, msg)
 	}
