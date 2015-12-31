@@ -6,8 +6,9 @@
 package mail
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"net"
 	"net/smtp"
 	"strings"
@@ -42,27 +43,36 @@ func New(server, port, username, password string) MailerImpl {
 	}
 }
 
-func (m *MailerImpl) generateMessage(to []string, subject, body string) []byte {
+var maxBigInt = big.NewInt(1000000000) // idk
+
+func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte, error) {
+	mid, err := rand.Int(rand.Reader, maxBigInt)
+	if err != nil {
+		return nil, err
+	}
 	now := m.clk.Now().UTC()
-	rand.Seed(int64(now.Nanosecond()))
 	headers := []string{
 		fmt.Sprintf("To: %s", strings.Join(to, ", ")),
 		fmt.Sprintf("From: %s", m.From),
 		fmt.Sprintf("Subject: %s", subject),
 		fmt.Sprintf("Date: %s", now.Format("Mon Jan 2 2006 15:04:05 -0700")),
-		fmt.Sprintf("Message-Id: <%s.%d.%s>", now.Format("20060102T150405"), rand.Int63(), m.From),
+		fmt.Sprintf("Message-Id: <%s.%s.%s>", now.Format("20060102T150405"), mid.String(), m.From),
 	}
-	return []byte(fmt.Sprintf("%s\r\n\r\n%s\r\n", strings.Join(headers, "\r\n"), body))
+	return []byte(fmt.Sprintf("%s\r\n\r\n%s\r\n", strings.Join(headers, "\r\n"), body)), nil
 }
 
 // SendMail sends an email to the provided list of recipients. The email body
 // is simple text.
 func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
+	body, err := m.generateMessage(to, subject, msg)
+	if err != nil {
+		return err
+	}
 	return smtp.SendMail(
 		net.JoinHostPort(m.Server, m.Port),
 		m.Auth,
 		m.From,
 		to,
-		m.generateMessage(to, subject, msg),
+		body,
 	)
 }

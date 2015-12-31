@@ -17,7 +17,9 @@ import (
 func TestGenerateMessage(t *testing.T) {
 	fc := clock.NewFake()
 	m := MailerImpl{From: "send@email.com", clk: fc}
-	message := string(m.generateMessage([]string{"recv@email.com"}, "test subject", "this is the body"))
+	messageBytes, err := m.generateMessage([]string{"recv@email.com"}, "test subject", "this is the body")
+	test.AssertNotError(t, err, "Failed to generate email body")
+	message := string(messageBytes)
 	fields := strings.Split(message, "\r\n")
 	test.AssertEquals(t, len(fields), 8)
 	test.AssertEquals(t, fields[0], "To: recv@email.com")
