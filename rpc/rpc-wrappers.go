@@ -71,6 +71,7 @@ const (
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
+	MethodRevokeAuthorization               = "RevokeAuthorization"               // SA
 )
 
 // Request structs
@@ -986,6 +987,17 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
+	rpc.Handle(MethodRevokeAuthorization, func(req []byte) (response []byte, err error) {
+		var authz core.Authorization
+		if err = json.Unmarshal(req, &authz); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodFinalizeAuthorization, err, req)
+			return
+		}
+		err = impl.RevokeAuthorization(authz)
+		return
+	})
+
 	rpc.Handle(MethodGetCertificate, func(req []byte) (response []byte, err error) {
 		cert, err := impl.GetCertificate(string(req))
 		if err != nil {
@@ -1370,6 +1382,16 @@ func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization
 	}
 
 	_, err = cac.rpc.DispatchSync(MethodFinalizeAuthorization, jsonAuthz)
+	return
+}
+
+// RevokeAuthorization sends a request to revoke a pending or finalized authorization
+func (cac StorageAuthorityClient) RevokeAuthorization(authz core.Authorization) (err error) {
+	jsonAuthz, err := json.Marshal(authz)
+	if err != nil {
+		return
+	}
+	_, err = cac.rpc.DispatchSync(MethodRevokeAuthorization, jsonAuthz)
 	return
 }
 

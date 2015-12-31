@@ -673,6 +673,45 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
+// RevokeAuthorization invalidates a pending or finalized authorization
+func (ssa *SQLStorageAuthority) RevokeAuthorization(authz core.Authorization) (err error) {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return err
+	}
+	if statusIsPending(authz.Status) {
+		authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		auth := authObj.(*pendingauthzModel)
+		auth.Status = core.StatusRevoked
+		_, err = tx.Update(auth)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+	} else {
+		authz.Status = core.StatusRevoked
+		auth := &authzModel{authz}
+		_, err = tx.Update(auth)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	for i := range authz.Challenges {
+		authz.Challenges[i].Status = core.StatusRevoked
+	}
+	err = updateChallenges(authz.ID, authz.Challenges, tx)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
 // AddCertificate stores an issued certificate.
 func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
 	var parsedCertificate *x509.Certificate
