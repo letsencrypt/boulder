@@ -122,7 +122,7 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 			test.AssertNotError(t, err, "failed to get server test port")
 			http.Redirect(w, r, fmt.Sprintf("http://other.valid:%d/path", port), 302)
 		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
-			t.Logf("HTTPSRV: Got a redirect req to a invalid hostname\n")
+			t.Logf("HTTPSRV: Got a redirect req to an invalid hostname\n")
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
 		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
 			t.Logf("HTTPSRV: Got a loop req\n")
@@ -868,7 +868,7 @@ func TestDNSValidationOK(t *testing.T) {
 }
 
 // TestDNSValidationLive is an integration test, depending on
-// the existance of some Internet resources. Because of that,
+// the existence of some Internet resources. Because of that,
 // it asserts nothing; it is intended for coverage.
 func TestDNSValidationLive(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()

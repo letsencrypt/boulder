@@ -131,7 +131,7 @@ type Config struct {
 
 		Path          string
 		ListenAddress string
-		// MaxAge is the max-age to set in the Cache-Controler response
+		// MaxAge is the max-age to set in the Cache-Control response
 		// header. It is a time.Duration formatted string.
 		MaxAge ConfigDuration
 

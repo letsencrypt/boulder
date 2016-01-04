@@ -294,7 +294,7 @@ type Challenge struct {
 	// The status of this challenge
 	Status AcmeStatus `json:"status,omitempty"`
 
-	// Contains the error that occured during challenge validation, if any
+	// Contains the error that occurred during challenge validation, if any
 	Error *probs.ProblemDetails `json:"error,omitempty"`
 
 	// If successful, the time at which this challenge
@@ -487,7 +487,7 @@ type Certificate struct {
 }
 
 // IdentifierData holds information about what certificates are known for a
-// given identifier. This is used to present Proof of Posession challenges in
+// given identifier. This is used to present Proof of Possession challenges in
 // the case where a certificate already exists. The DB table holding
 // IdentifierData rows contains information about certs issued by Boulder and
 // also information about certs observed from third parties.
