@@ -116,7 +116,7 @@ var (
 
 // DNSResolver defines methods used for DNS resolution
 type DNSResolver interface {
-	LookupTXT(string) ([]string, []string, error)
+	LookupTXT(string) (txts []string, authorities []string, err error)
 	LookupHost(string) ([]net.IP, error)
 	LookupCAA(string) ([]*dns.CAA, error)
 	LookupMX(string) ([]string, error)
