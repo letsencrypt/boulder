@@ -267,7 +267,7 @@ func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *cmd.RateLimitP
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if count > limit.GetThreshold(noKey, regID) {
+		if count >= limit.GetThreshold(noKey, regID) {
 			return core.RateLimitedError("Too many currently pending authorizations.")
 		}
 	}
