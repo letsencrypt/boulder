@@ -198,7 +198,8 @@ func (dnsResolver *DNSResolverImpl) exchangeOne(hostname string, qtype uint16, m
 }
 
 // LookupTXT sends a DNS query to find all TXT records associated with
-// the provided hostname.
+// the provided hostname which it returns along with the returned
+// DNS authority section.
 func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, []string, error) {
 	var txt []string
 	r, err := dnsResolver.exchangeOne(hostname, dns.TypeTXT, dnsResolver.txtStats)
