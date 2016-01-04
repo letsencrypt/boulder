@@ -97,9 +97,10 @@ func validateEmail(address string, resolver bdns.DNSResolver) (prob *probs.Probl
 	var resultMX []string
 	var resultA []net.IP
 	resultMX, err = resolver.LookupMX(domain)
-
+	recQ := "MX"
 	if err == nil && len(resultMX) == 0 {
 		resultA, err = resolver.LookupHost(domain)
+		recQ = "A"
 		if err == nil && len(resultA) == 0 {
 			return &probs.ProblemDetails{
 				Type:   probs.InvalidEmailProblem,
@@ -108,11 +109,9 @@ func validateEmail(address string, resolver bdns.DNSResolver) (prob *probs.Probl
 		}
 	}
 	if err != nil {
-		dnsProblem := bdns.ProblemDetailsFromDNSError(err)
-		return &probs.ProblemDetails{
-			Type:   probs.InvalidEmailProblem,
-			Detail: dnsProblem.Detail,
-		}
+		prob := bdns.ProblemDetailsFromDNSError(recQ, domain, err)
+		prob.Type = probs.InvalidEmailProblem
+		return prob
 	}
 
 	return nil
@@ -268,7 +267,7 @@ func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *cmd.RateLimitP
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if count > limit.GetThreshold(noKey, regID) {
+		if count >= limit.GetThreshold(noKey, regID) {
 			return core.RateLimitedError("Too many currently pending authorizations.")
 		}
 	}

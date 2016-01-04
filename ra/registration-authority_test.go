@@ -317,8 +317,8 @@ func TestValidateEmail(t *testing.T) {
 	}{
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
-		{"a@always.timeout", "DNS query timed out"},
-		{"a@always.error", "DNS networking error"},
+		{"a@always.timeout", "DNS query timed out during A-record lookup of always.timeout"},
+		{"a@always.error", "DNS networking error during A-record lookup of always.error"},
 	}
 	testSuccesses := []string{
 		"a@email.com",
@@ -720,6 +720,36 @@ func TestTotalCertRateLimit(t *testing.T) {
 
 	_, err = ra.NewCertificate(certRequest, Registration.ID)
 	test.AssertError(t, err, "Total certificate rate limit failed")
+}
+
+func TestAuthzRateLimiting(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.rlPolicies = cmd.RateLimitConfig{
+		PendingAuthorizationsPerAccount: cmd.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+		},
+	}
+	fc.Add(24 * 90 * time.Hour)
+
+	// Should be able to create an authzRequest
+	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	fc.Add(time.Hour)
+
+	// Second one should trigger rate limit
+	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertError(t, err, "Pending Authorization rate limit failed.")
+
+	// Finalize pending authz
+	ra.OnValidationUpdate(authz)
+
+	// Try to create a new authzRequest, should be fine now.
+	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {
