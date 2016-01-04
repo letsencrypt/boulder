@@ -317,8 +317,8 @@ func TestValidateEmail(t *testing.T) {
 	}{
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
-		{"a@always.timeout", "DNS query timed out"},
-		{"a@always.error", "DNS networking error"},
+		{"a@always.timeout", "DNS query timed out during A-record lookup of always.timeout"},
+		{"a@always.error", "DNS networking error during A-record lookup of always.error"},
 	}
 	testSuccesses := []string{
 		"a@email.com",

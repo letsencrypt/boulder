@@ -97,9 +97,10 @@ func validateEmail(address string, resolver bdns.DNSResolver) (prob *probs.Probl
 	var resultMX []string
 	var resultA []net.IP
 	resultMX, err = resolver.LookupMX(domain)
-
+	recQ := "MX"
 	if err == nil && len(resultMX) == 0 {
 		resultA, err = resolver.LookupHost(domain)
+		recQ = "A"
 		if err == nil && len(resultA) == 0 {
 			return &probs.ProblemDetails{
 				Type:   probs.InvalidEmailProblem,
@@ -108,11 +109,9 @@ func validateEmail(address string, resolver bdns.DNSResolver) (prob *probs.Probl
 		}
 	}
 	if err != nil {
-		dnsProblem := bdns.ProblemDetailsFromDNSError(err)
-		return &probs.ProblemDetails{
-			Type:   probs.InvalidEmailProblem,
-			Detail: dnsProblem.Detail,
-		}
+		prob := bdns.ProblemDetailsFromDNSError(recQ, domain, err)
+		prob.Type = probs.InvalidEmailProblem
+		return prob
 	}
 
 	return nil
