@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -425,7 +426,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 	// Compute the digest of the key authorization file
 	h := sha256.New()
 	h.Write([]byte(challenge.KeyAuthorization.String()))
-	authorizedKeysDigest := hex.EncodeToString(h.Sum(nil))
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
