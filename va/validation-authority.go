@@ -89,24 +89,24 @@ type verificationRequestEvent struct {
 // This is the same choice made by the Go internal resolution library used by
 // net/http, except we only send A queries and accept IPv4 addresses.
 // TODO(#593): Add IPv6 support
-func (va ValidationAuthorityImpl) getAddr(hostname string) (addr net.IP, addrs []net.IP, problem *probs.ProblemDetails) {
+func (va ValidationAuthorityImpl) getAddr(hostname string) (net.IP, []net.IP, *probs.ProblemDetails) {
 	addrs, err := va.DNSResolver.LookupHost(hostname)
 	if err != nil {
-		problem = bdns.ProblemDetailsFromDNSError(err)
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
-		return
+		problem := bdns.ProblemDetailsFromDNSError("A", hostname, err)
+		return net.IP{}, nil, problem
 	}
 
 	if len(addrs) == 0 {
-		problem = &probs.ProblemDetails{
+		problem := &probs.ProblemDetails{
 			Type:   probs.UnknownHostProblem,
 			Detail: fmt.Sprintf("No IPv4 addresses found for %s", hostname),
 		}
-		return
+		return net.IP{}, nil, problem
 	}
-	addr = addrs[0]
+	addr := addrs[0]
 	va.log.Info(fmt.Sprintf("Resolved addresses for %s [using %s]: %s", hostname, addr, addrs))
-	return
+	return addr, addrs, nil
 }
 
 type dialer struct {
@@ -434,7 +434,8 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 
 	if err != nil {
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
-		return nil, bdns.ProblemDetailsFromDNSError(err)
+
+		return nil, bdns.ProblemDetailsFromDNSError("TXT", challengeSubdomain, err)
 	}
 
 	for _, element := range txts {
@@ -455,14 +456,14 @@ func (va *ValidationAuthorityImpl) checkCAA(identifier core.AcmeIdentifier, regI
 	present, valid, err := va.CheckCAARecords(identifier)
 	if err != nil {
 		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
-		return bdns.ProblemDetailsFromDNSError(err)
+		return bdns.ProblemDetailsFromDNSError("CAA", identifier.Value, err)
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", identifier.Value, regID, present, valid))
 	if !valid {
 		return &probs.ProblemDetails{
 			Type:   probs.ConnectionProblem,
-			Detail: "CAA check for identifier failed",
+			Detail: fmt.Sprintf("CAA check for %s failed", identifier.Value),
 		}
 	}
 	return nil
