@@ -655,9 +655,9 @@ func TestCAATimeout(t *testing.T) {
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
 	}
-	expected := "DNS query timed out"
+	expected := "DNS query timed out during CAA-record lookup of caa-timeout.com"
 	if err.Detail != expected {
-		t.Errorf("checkCAA: got %s, expected %s", err.Detail, expected)
+		t.Errorf("checkCAA: got %#v, expected %#v", err.Detail, expected)
 	}
 }
 
