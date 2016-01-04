@@ -116,7 +116,7 @@ var (
 
 // DNSResolver defines methods used for DNS resolution
 type DNSResolver interface {
-	LookupTXT(string) ([]string, error)
+	LookupTXT(string) ([]string, []string, error)
 	LookupHost(string) ([]net.IP, error)
 	LookupCAA(string) ([]*dns.CAA, error)
 	LookupMX(string) ([]string, error)
@@ -199,15 +199,15 @@ func (dnsResolver *DNSResolverImpl) exchangeOne(hostname string, qtype uint16, m
 
 // LookupTXT sends a DNS query to find all TXT records associated with
 // the provided hostname.
-func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, error) {
+func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, []string, error) {
 	var txt []string
 	r, err := dnsResolver.exchangeOne(hostname, dns.TypeTXT, dnsResolver.txtStats)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if r.Rcode != dns.RcodeSuccess {
 		err = fmt.Errorf("DNS failure: %d-%s for TXT query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, answer := range r.Answer {
@@ -218,7 +218,12 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(hostname string) ([]string, error)
 		}
 	}
 
-	return txt, err
+	authorities := []string{}
+	for _, a := range r.Ns {
+		authorities = append(authorities, a.String())
+	}
+
+	return txt, authorities, err
 }
 
 func isPrivateV4(ip net.IP) bool {

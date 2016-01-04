@@ -33,11 +33,11 @@ type DNSResolver struct {
 }
 
 // LookupTXT is a mock
-func (mock *DNSResolver) LookupTXT(hostname string) ([]string, error) {
+func (mock *DNSResolver) LookupTXT(hostname string) ([]string, []string, error) {
 	if hostname == "_acme-challenge.servfail.com" {
-		return nil, fmt.Errorf("SERVFAIL")
+		return nil, nil, fmt.Errorf("SERVFAIL")
 	}
-	return []string{"hostname"}, nil
+	return []string{"hostname"}, []string{"respect my authority!"}, nil
 }
 
 // TimeoutError returns a a net.OpError for which Timeout() returns true.

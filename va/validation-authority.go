@@ -429,8 +429,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
-	txts, err := va.DNSResolver.LookupTXT(challengeSubdomain)
-
+	txts, authorities, err := va.DNSResolver.LookupTXT(challengeSubdomain)
 	if err != nil {
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
 		return nil, bdns.ProblemDetailsFromDNSError(err)
@@ -439,7 +438,10 @@ func (va *ValidationAuthorityImpl) validateDNS01(identifier core.AcmeIdentifier,
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			// Successful challenge validation
-			return nil, nil
+			return []core.ValidationRecord{{
+				Authorities: authorities,
+				Hostname:    identifier.Value,
+			}}, nil
 		}
 	}
 

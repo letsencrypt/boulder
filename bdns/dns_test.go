@@ -105,6 +105,17 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.Txt = []string{"a", "b", "c"}
 				appendAnswer(record)
 			}
+
+			auth := new(dns.SOA)
+			auth.Hdr = dns.RR_Header{Name: "letsencrypt.org.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 0}
+			auth.Ns = "ns.letsencrypt.org."
+			auth.Mbox = "master.letsencrypt.org."
+			auth.Serial = 1
+			auth.Refresh = 1
+			auth.Retry = 1
+			auth.Expire = 1
+			auth.Minttl = 1
+			m.Ns = append(m.Ns, auth)
 		}
 	}
 
@@ -177,7 +188,7 @@ func TestDNSDuplicateServers(t *testing.T) {
 func TestDNSLookupsNoServer(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{}, testStats)
 
-	_, err := obj.LookupTXT("letsencrypt.org")
+	_, _, err := obj.LookupTXT("letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
 	_, err = obj.LookupHost("letsencrypt.org")
@@ -191,7 +202,7 @@ func TestDNSServFail(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats)
 	bad := "servfail.com"
 
-	_, err := obj.LookupTXT(bad)
+	_, _, err := obj.LookupTXT(bad)
 	test.AssertError(t, err, "LookupTXT didn't return an error")
 
 	_, err = obj.LookupHost(bad)
@@ -207,11 +218,11 @@ func TestDNSServFail(t *testing.T) {
 func TestDNSLookupTXT(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats)
 
-	a, err := obj.LookupTXT("letsencrypt.org")
+	a, _, err := obj.LookupTXT("letsencrypt.org")
 	t.Logf("A: %v", a)
 	test.AssertNotError(t, err, "No message")
 
-	a, err = obj.LookupTXT("split-txt.letsencrypt.org")
+	a, _, err = obj.LookupTXT("split-txt.letsencrypt.org")
 	t.Logf("A: %v ", a)
 	test.AssertNotError(t, err, "No message")
 	test.AssertEquals(t, len(a), 1)
@@ -262,4 +273,13 @@ func TestDNSLookupCAA(t *testing.T) {
 	caas, err = obj.LookupCAA("cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
+}
+
+func TestDNSTXTAuthorities(t *testing.T) {
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats)
+
+	_, auths, err := obj.LookupTXT("letsencrypt.org")
+	test.AssertNotError(t, err, "TXT lookup failed")
+	test.AssertEquals(t, len(auths), 1)
+	test.AssertEquals(t, auths[0], "letsencrypt.org.	0	IN	SOA	ns.letsencrypt.org. master.letsencrypt.org. 1 1 1 1 1")
 }
