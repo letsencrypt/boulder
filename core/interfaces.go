@@ -98,6 +98,7 @@ type StorageGetter interface {
 	GetRegistration(int64) (Registration, error)
 	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
+	GetAuthorizationsByDomain(AcmeIdentifier) ([]Authorization, error)
 	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
 	GetCertificate(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)

@@ -213,6 +213,28 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	return
 }
 
+// GetAuthorizationsByDomain obtains all authorizations for a domain name
+func (ssa *SQLStorageAuthority) GetAuthorizationsByDomain(domain core.AcmeIdentifier) ([]core.Authorization, error) {
+	tx, err := ssa.dbMap.Begin()
+	if err != nil {
+		return nil, err
+	}
+	auths := []core.Authorization{}
+	_, err = tx.Select(&auths, "SELECT * FROM authorizations WHERE identifier = :identifier", map[string]interface{}{"indentifier": domain})
+	if err != nil {
+		return nil, err
+	}
+	pendingAuths := []pendingauthzModel{}
+	_, err = tx.Select(&pendingAuths, "SELECT * FROM pending_authz WHERE identifier = :identifier", map[string]interface{}{"indentifier": domain})
+	if err != nil {
+		return nil, err
+	}
+	for _, pa := range pendingAuths {
+		auths = append(auths, pa.Authorization)
+	}
+	return auths, nil
+}
+
 // GetLatestValidAuthorization gets the valid authorization with biggest expire date for a given domain and registrationId
 func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	ident, err := json.Marshal(identifier)

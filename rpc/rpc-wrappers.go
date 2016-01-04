@@ -55,6 +55,7 @@ const (
 	MethodGetRegistrationByKey              = "GetRegistrationByKey"              // RA, SA
 	MethodGetAuthorization                  = "GetAuthorization"                  // SA
 	MethodGetLatestValidAuthorization       = "GetLatestValidAuthorization"       // SA
+	MethodGetAuthorizationsByDomain         = "GetAuthorizationsByDomain"         // SA
 	MethodGetCertificate                    = "GetCertificate"                    // SA
 	MethodGetCertificateStatus              = "GetCertificateStatus"              // SA
 	MethodMarkCertificateRevoked            = "MarkCertificateRevoked"            // SA
@@ -879,6 +880,26 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
+	rpc.Handle(MethodGetAuthorizationsByDomain, func(req []byte) (response []byte, err error) {
+		ident := core.AcmeIdentifier{}
+		err = json.Unmarshal(req, &ident)
+		if err != nil {
+			return nil, err
+		}
+		authz, err := impl.GetAuthorizationsByDomain(ident)
+		if err != nil {
+			return
+		}
+
+		response, err = json.Marshal(authz)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetAuthorizationsByDomain, err, req)
+			return
+		}
+		return
+	})
+
 	rpc.Handle(MethodGetLatestValidAuthorization, func(req []byte) (response []byte, err error) {
 		var lvar latestValidAuthorizationRequest
 		if err = json.Unmarshal(req, &lvar); err != nil {
@@ -1229,6 +1250,21 @@ func (cac StorageAuthorityClient) GetRegistrationByKey(key jose.JsonWebKey) (reg
 // GetAuthorization sends a request to get an Authorization by ID
 func (cac StorageAuthorityClient) GetAuthorization(id string) (authz core.Authorization, err error) {
 	jsonAuthz, err := cac.rpc.DispatchSync(MethodGetAuthorization, []byte(id))
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonAuthz, &authz)
+	return
+}
+
+// GetAuthorizationsByDomain sends a request to get all Authorizations for a domain
+func (cac StorageAuthorityClient) GetAuthorizationsByDomain(ident core.AcmeIdentifier) (authz []core.Authorization, err error) {
+	jsonData, err := json.Marshal(ident)
+	if err != nil {
+		return
+	}
+	jsonAuthz, err := cac.rpc.DispatchSync(MethodGetAuthorizationsByDomain, jsonData)
 	if err != nil {
 		return
 	}

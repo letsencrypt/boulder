@@ -59,6 +59,22 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.
 	return *rac, auditlogger, dbMap, *sac
 }
 
+func revokeDomainAuthorizations(domain string, sac rpc.StorageAuthorityClient) error {
+	auths, err := sac.GetAuthorizationsByDomain(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain})
+	if err != nil {
+		return err
+	}
+	for _, a := range auths {
+		if a.Status != core.StatusInvalid && a.Status != core.StatusRevoked && a.Status != core.StatusExpired {
+			err = sac.RevokeAuthorization(a)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
 	sort.Strings(names)
 	deniedCSR := &core.DeniedCSR{Names: strings.ToLower(strings.Join(names, ","))}
