@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -327,7 +328,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
 	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
-	test.AssertEquals(t, rw.Body.String(), "")
+	test.AssertEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 
 	wfe.AllowOrigins = []string{"*"}
 	testOrigin := "https://example.com"
@@ -1398,6 +1399,34 @@ func TestBadKeyCSR(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: Key too small: 512","status":400}`)
+}
+
+// This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
+// body from being sent like the net/http Server's actually do.
+func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+	certBlock, _ := pem.Decode(certPemBytes)
+
+	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog.Clear()
+
+	mux, _ := wfe.Handler()
+	s := httptest.NewServer(mux)
+	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		test.AssertNotError(t, err, "do error")
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		test.AssertNotEquals(t, err, "readall error")
+	}
+	defer resp.Body.Close()
+	test.AssertEquals(t, resp.StatusCode, 200)
+	test.AssertEquals(t, strconv.Itoa(len(certBlock.Bytes)), resp.Header.Get("Content-Length"))
+	test.AssertEquals(t, 0, len(body))
 }
 
 func newRequestEvent() *requestEvent {
