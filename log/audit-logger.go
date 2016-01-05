@@ -119,7 +119,7 @@ func SetAuditLogger(logger *AuditLogger) (err error) {
 
 // GetAuditLogger obtains the singleton audit logger. If SetAuditLogger
 // has not been called first, this method initializes with basic defaults.
-// The basic defaults cannot error, and subequent access to an already-set
+// The basic defaults cannot error, and subsequent access to an already-set
 // AuditLogger also cannot error, so this method is error-safe.
 func GetAuditLogger() *AuditLogger {
 	_Singleton.once.Do(func() {
@@ -271,7 +271,7 @@ func (log *AuditLogger) AuditObject(msg string, obj interface{}) (err error) {
 	return log.auditAtLevel(syslog.LOG_NOTICE, formattedEvent)
 }
 
-// InfoObject sends a INFO-severity JSON-serialized object message.
+// InfoObject sends an INFO-severity JSON-serialized object message.
 func (log *AuditLogger) InfoObject(msg string, obj interface{}) (err error) {
 	formattedEvent, logErr := log.formatObjectMessage(msg, obj)
 	if logErr != nil {

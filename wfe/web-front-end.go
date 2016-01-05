@@ -285,7 +285,7 @@ const (
 // the key in the JWS headers, and return the key plus a dummy registration if
 // successful. If a caller passes regCheck = false, it should plan on validating
 // the key itself.  verifyPOST also appends its errors to requestEvent.Errors so
-// code calling it does not need to if they imediately return a response to the
+// code calling it does not need to if they immediately return a response to the
 // user.
 func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, *probs.ProblemDetails) {
 	// TODO: We should return a pointer to a registration, which can be nil,
@@ -597,7 +597,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(logEvent *requestEvent, response ht
 // RevokeCertificate is used by clients to request the revocation of a cert.
 func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 
-	// We don't ask verifyPOST to verify there is a correponding registration,
+	// We don't ask verifyPOST to verify there is a corresponding registration,
 	// because anyone with the right private key can revoke a certificate.
 	body, requestKey, registration, prob := wfe.verifyPOST(logEvent, request, false, core.ResourceRevokeCert)
 	if prob != nil {
