@@ -11,7 +11,7 @@ var (
 	validPAConfig = []byte(`{
   "dbConnect": "dummyDBConnect",
   "enforcePolicyWhitelist": false,
-  "challenges": { "simpleHttp": true }
+  "challenges": { "http-01": true }
 }`)
 	invalidPAConfig = []byte(`{
   "dbConnect": "dummyDBConnect",
@@ -21,6 +21,12 @@ var (
 	noChallengesPAConfig = []byte(`{
   "dbConnect": "dummyDBConnect",
   "enforcePolicyWhitelist": false
+}`)
+
+	emptyChallengesPAConfig = []byte(`{
+  "dbConnect": "dummyDBConnect",
+  "enforcePolicyWhitelist": false,
+  "challenges": {}
 }`)
 )
 
@@ -38,7 +44,10 @@ func TestPAConfigUnmarshal(t *testing.T) {
 	var pc3 PAConfig
 	err = json.Unmarshal(noChallengesPAConfig, &pc3)
 	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
-	test.AssertNotError(t, pc3.CheckChallenges(), "Somehow found a bad challenge among none")
-	pc3.SetDefaultChallengesIfEmpty()
-	test.Assert(t, len(pc3.Challenges) == 4, "Incorrect number of challenges in default set")
+	test.AssertError(t, pc3.CheckChallenges(), "Disallow empty challenges map")
+
+	var pc4 PAConfig
+	err = json.Unmarshal(emptyChallengesPAConfig, &pc4)
+	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
+	test.AssertError(t, pc4.CheckChallenges(), "Disallow empty challenges map")
 }

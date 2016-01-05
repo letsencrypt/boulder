@@ -6,14 +6,12 @@
 package core
 
 import (
+	"crypto"
 	"crypto/subtle"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"math/big"
 	"net"
 	"strings"
 	"time"
@@ -70,22 +68,14 @@ const (
 
 // These types are the available challenges
 const (
-	ChallengeTypeSimpleHTTP = "simpleHttp"
-	ChallengeTypeDVSNI      = "dvsni"
-	ChallengeTypeHTTP01     = "http-01"
-	ChallengeTypeTLSSNI01   = "tls-sni-01"
-	ChallengeTypeDNS01      = "dns-01"
+	ChallengeTypeHTTP01   = "http-01"
+	ChallengeTypeTLSSNI01 = "tls-sni-01"
+	ChallengeTypeDNS01    = "dns-01"
 )
 
 // ValidChallenge tests whether the provided string names a known challenge
 func ValidChallenge(name string) bool {
 	switch name {
-	// TODO(#894): Delete these lines
-	case ChallengeTypeSimpleHTTP:
-		fallthrough
-	case ChallengeTypeDVSNI:
-		fallthrough
-
 	case ChallengeTypeHTTP01:
 		fallthrough
 	case ChallengeTypeTLSSNI01:
@@ -211,14 +201,14 @@ func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, 
 		return KeyAuthorization{}, fmt.Errorf("Cannot authorize a nil key")
 	}
 
-	thumbprint, err := Thumbprint(key)
+	thumbprint, err := key.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return KeyAuthorization{}, err
 	}
 
 	return KeyAuthorization{
 		Token:      token,
-		Thumbprint: thumbprint,
+		Thumbprint: base64.RawURLEncoding.EncodeToString(thumbprint),
 	}, nil
 }
 
@@ -256,10 +246,11 @@ func (ka KeyAuthorization) Match(token string, key *jose.JsonWebKey) bool {
 		return false
 	}
 
-	thumbprint, err := Thumbprint(key)
+	thumbprintBytes, err := key.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return false
 	}
+	thumbprint := base64.RawURLEncoding.EncodeToString(thumbprintBytes)
 
 	tokensEqual := subtle.ConstantTimeCompare([]byte(token), []byte(ka.Token))
 	thumbprintsEqual := subtle.ConstantTimeCompare([]byte(thumbprint), []byte(ka.Thumbprint))
@@ -303,7 +294,7 @@ type Challenge struct {
 	// The status of this challenge
 	Status AcmeStatus `json:"status,omitempty"`
 
-	// Contains the error that occured during challenge validation, if any
+	// Contains the error that occurred during challenge validation, if any
 	Error *probs.ProblemDetails `json:"error,omitempty"`
 
 	// If successful, the time at which this challenge
@@ -313,16 +304,10 @@ type Challenge struct {
 	// A URI to which a response can be POSTed
 	URI string `json:"uri"`
 
-	// Used by simpleHttp, http-00, tls-sni-00, and dns-00 challenges
-	Token string `json:"token,omitempty"`
+	// Used by http-01, tls-sni-01, and dns-01 challenges
+	Token string `json:"token,omitempty"` // Used by http-00, tls-sni-00, and dns-00 challenges
 
-	// Used by simpleHttp challenges
-	TLS *bool `json:"tls,omitempty"`
-
-	// Used by dvsni challenges
-	Validation *jose.JsonWebSignature `json:"validation,omitempty"`
-
-	// Used by http-00, tls-sni-00, and dns-00 challenges
+	// Used by http-01, tls-sni-01, and dns-01 challenges
 	KeyAuthorization *KeyAuthorization `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
@@ -343,14 +328,11 @@ type Challenge struct {
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
 // back to the RA to be stored.
 func (ch Challenge) RecordsSane() bool {
-	if ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0 {
+	if ch.Type != ChallengeTypeDNS01 && (ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0) {
 		return false
 	}
 
 	switch ch.Type {
-	case ChallengeTypeSimpleHTTP:
-		// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this case
-		fallthrough
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
@@ -358,9 +340,6 @@ func (ch Challenge) RecordsSane() bool {
 				return false
 			}
 		}
-	case ChallengeTypeDVSNI:
-		// TODO(https://github.com/letsencrypt/boulder/issues/894): Remove this case
-		fallthrough
 	case ChallengeTypeTLSSNI01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
@@ -373,108 +352,17 @@ func (ch Challenge) RecordsSane() bool {
 			return false
 		}
 	case ChallengeTypeDNS01:
-		// Nothing for now
-	}
-
-	return true
-}
-
-// isLegacy returns true if the challenge is of a legacy type (i.e., one defined
-// before draft-ietf-acme-acme-00)
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (ch Challenge) isLegacy() bool {
-	return (ch.Type == ChallengeTypeSimpleHTTP) ||
-		(ch.Type == ChallengeTypeDVSNI)
-}
-
-// legacyIsSane performs sanity checks for legacy challenge types, which have
-// a different structure / logic than current challenges.
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (ch Challenge) legacyIsSane(completed bool) bool {
-	if ch.Status != StatusPending {
-		return false
-	}
-
-	if ch.AccountKey == nil {
-		return false
-	}
-
-	switch ch.Type {
-	case ChallengeTypeSimpleHTTP:
-		// check extra fields aren't used
-		if ch.Validation != nil {
-			return false
-		}
-
-		if completed && ch.TLS == nil {
-			return false
-		}
-
-		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
-			return false
-		}
-		if _, err := B64dec(ch.Token); err != nil {
-			return false
-		}
-	case ChallengeTypeDVSNI:
-		// check extra fields aren't used
-		if ch.TLS != nil {
-			return false
-		}
-
-		// check token is present, corrent length, and contains b64 encoded string
-		if ch.Token == "" || len(ch.Token) != 43 {
-			return false
-		}
-		if _, err := B64dec(ch.Token); err != nil {
-			return false
-		}
-
-		// If completed, check that there's a validation object
-		if completed && ch.Validation == nil {
-			return false
-		}
-	default:
+		return true
+	default: // Unsupported challenge type
 		return false
 	}
 
 	return true
-}
-
-// legacyMergeResponse copies a subset of client-provided data to the current Challenge.
-// Note: This method does not update the challenge on the left side of the '.'
-// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this method
-func (ch Challenge) legacyMergeResponse(resp Challenge) Challenge {
-	switch ch.Type {
-	case ChallengeTypeSimpleHTTP:
-		// For simpleHttp, only "tls" is client-provided
-		// If "tls" is not provided, default to "true"
-		if resp.TLS != nil {
-			ch.TLS = resp.TLS
-		} else {
-			ch.TLS = new(bool)
-			*ch.TLS = true
-		}
-
-	case ChallengeTypeDVSNI:
-		// For dvsni and dns, only "validation" is client-provided
-		if resp.Validation != nil {
-			ch.Validation = resp.Validation
-		}
-	}
-
-	return ch
 }
 
 // IsSane checks the sanity of a challenge object before issued to the client
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
-	if ch.isLegacy() {
-		return ch.legacyIsSane(completed)
-	}
-
 	if ch.Status != StatusPending {
 		return false
 	}
@@ -502,28 +390,6 @@ func (ch Challenge) IsSane(completed bool) bool {
 	}
 
 	return true
-}
-
-// MergeResponse copies a subset of client-provided data to the current Challenge.
-// Note: This method does not update the challenge on the left side of the '.'
-func (ch Challenge) MergeResponse(resp Challenge) Challenge {
-	// TODO(https://github.com/letsencrypt/boulder/issues/894): Delete this branch
-	if ch.isLegacy() {
-		return ch.legacyMergeResponse(resp)
-	}
-
-	// The only client-provided field is the key authorization, and all current
-	// challenge types use it.
-	switch ch.Type {
-	case ChallengeTypeHTTP01:
-		fallthrough
-	case ChallengeTypeTLSSNI01:
-		fallthrough
-	case ChallengeTypeDNS01:
-		ch.KeyAuthorization = resp.KeyAuthorization
-	}
-
-	return ch
 }
 
 // Authorization represents the authorization of an account key holder
@@ -621,7 +487,7 @@ type Certificate struct {
 }
 
 // IdentifierData holds information about what certificates are known for a
-// given identifier. This is used to present Proof of Posession challenges in
+// given identifier. This is used to present Proof of Possession challenges in
 // the case where a certificate already exists. The DB table holding
 // IdentifierData rows contains information about certs issued by Boulder and
 // also information about certs observed from third parties.
@@ -725,8 +591,8 @@ type OCSPSigningRequest struct {
 	RevokedAt time.Time
 }
 
-// SignedCertificateTimestamp represents objects used by Certificate Transparency
-// to demonstrate that a certificate was submitted to a CT log. See RFC 6962.
+// SignedCertificateTimestamp is the internal representation of ct.SignedCertificateTimestamp
+// that is used to maintain backwards compatibility with our old CT implementation.
 type SignedCertificateTimestamp struct {
 	ID int `db:"id"`
 	// The version of the protocol to which the SCT conforms
@@ -745,83 +611,6 @@ type SignedCertificateTimestamp struct {
 	CertificateSerial string `db:"certificateSerial"`
 
 	LockCol int64
-}
-
-// RPCSignedCertificateTimestamp is a wrapper around SignedCertificateTimestamp
-// so that it can be passed through the RPC layer properly. Without this wrapper
-// the UnmarshalJSON method below will be used when marshaling/unmarshaling the
-// object, which is not what we want as it is not symmetrical (as it is intended
-// to unmarshal a rawSignedCertificateTimestamp into a SignedCertificateTimestamp)
-type RPCSignedCertificateTimestamp SignedCertificateTimestamp
-
-type rawSignedCertificateTimestamp struct {
-	Version    uint8  `json:"sct_version"`
-	LogID      string `json:"id"`
-	Timestamp  uint64 `json:"timestamp"`
-	Signature  string `json:"signature"`
-	Extensions string `json:"extensions"`
-}
-
-// UnmarshalJSON parses the add-chain response from a CT log. It fills all of
-// the fields in the SignedCertificateTimestamp struct except for ID and
-// CertificateSerial, which are used for local recordkeeping in the Boulder DB.
-func (sct *SignedCertificateTimestamp) UnmarshalJSON(data []byte) error {
-	var err error
-	var rawSCT rawSignedCertificateTimestamp
-	if err = json.Unmarshal(data, &rawSCT); err != nil {
-		return fmt.Errorf("Failed to unmarshal SCT receipt, %s", err)
-	}
-	sct.LogID = rawSCT.LogID
-	if err != nil {
-		return fmt.Errorf("Failed to decode log ID, %s", err)
-	}
-	sct.Signature, err = base64.StdEncoding.DecodeString(rawSCT.Signature)
-	if err != nil {
-		return fmt.Errorf("Failed to decode SCT signature, %s", err)
-	}
-	sct.Extensions, err = base64.StdEncoding.DecodeString(rawSCT.Extensions)
-	if err != nil {
-		return fmt.Errorf("Failed to decode SCT extensions, %s", err)
-	}
-	sct.SCTVersion = rawSCT.Version
-	sct.Timestamp = rawSCT.Timestamp
-	return nil
-}
-
-const (
-	sctHashSHA256 = 4
-	sctSigECDSA   = 3
-)
-
-// CheckSignature validates that the returned SCT signature is a valid SHA256 +
-// ECDSA signature but does not verify that a specific public key signed it.
-func (sct *SignedCertificateTimestamp) CheckSignature() error {
-	if len(sct.Signature) < 4 {
-		return errors.New("SCT signature is truncated")
-	}
-	// Since all of the known logs currently only use SHA256 hashes and ECDSA
-	// keys, only allow those
-	if sct.Signature[0] != sctHashSHA256 {
-		return fmt.Errorf("Unsupported SCT hash function [%d]", sct.Signature[0])
-	}
-	if sct.Signature[1] != sctSigECDSA {
-		return fmt.Errorf("Unsupported SCT signature algorithm [%d]", sct.Signature[1])
-	}
-
-	var ecdsaSig struct {
-		R, S *big.Int
-	}
-	// Ignore the two length bytes and attempt to unmarshal the signature directly
-	signatureBytes := sct.Signature[4:]
-	signatureBytes, err := asn1.Unmarshal(signatureBytes, &ecdsaSig)
-	if err != nil {
-		return fmt.Errorf("Failed to parse SCT signature, %s", err)
-	}
-	if len(signatureBytes) > 0 {
-		return fmt.Errorf("Trailing garbage after signature")
-	}
-
-	return nil
 }
 
 // RevocationCode is used to specify a certificate revocation reason

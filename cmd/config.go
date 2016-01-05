@@ -16,7 +16,6 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/publisher"
 	"github.com/letsencrypt/boulder/va"
 )
 
@@ -63,6 +62,11 @@ type Config struct {
 
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
+
+		// The number of times to try a DNS query (that has a temporary error)
+		// before giving up. May be short-circuited by deadlines. A zero value
+		// will be turned into 1.
+		DNSTries int
 	}
 
 	SA struct {
@@ -77,11 +81,18 @@ type Config struct {
 
 		UserAgent string
 
+		IssuerDomain string
+
 		PortConfig va.PortConfig
 
 		MaxConcurrentRPCServerRequests int64
 
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
+
+		// The number of times to try a DNS query (that has a temporary error)
+		// before giving up. May be short-circuited by deadlines. A zero value
+		// will be turned into 1.
+		DNSTries int
 	}
 
 	SQL struct {
@@ -130,7 +141,7 @@ type Config struct {
 
 		Path          string
 		ListenAddress string
-		// MaxAge is the max-age to set in the Cache-Controler response
+		// MaxAge is the max-age to set in the Cache-Control response
 		// header. It is a time.Duration formatted string.
 		MaxAge ConfigDuration
 
@@ -163,7 +174,10 @@ type Config struct {
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 
-		CT publisher.CTConfig
+		CT struct {
+			Logs                       []LogDescription
+			IntermediateBundleFilename string
+		}
 	}
 
 	CertChecker struct {
@@ -278,26 +292,15 @@ type PAConfig struct {
 // CheckChallenges checks whether the list of challenges in the PA config
 // actually contains valid challenge names
 func (pc PAConfig) CheckChallenges() error {
+	if len(pc.Challenges) == 0 {
+		return errors.New("empty challenges map in the Policy Authority config is not allowed")
+	}
 	for name := range pc.Challenges {
 		if !core.ValidChallenge(name) {
 			return fmt.Errorf("Invalid challenge in PA config: %s", name)
 		}
 	}
 	return nil
-}
-
-// SetDefaultChallengesIfEmpty sets a default list of challenges if no
-// challenges are enabled in the PA config.  The set of challenges specified
-// corresponds to the set that was hard-coded before these configuration
-// options were added.
-func (pc *PAConfig) SetDefaultChallengesIfEmpty() {
-	if len(pc.Challenges) == 0 {
-		pc.Challenges = map[string]bool{}
-		pc.Challenges[core.ChallengeTypeSimpleHTTP] = true
-		pc.Challenges[core.ChallengeTypeDVSNI] = true
-		pc.Challenges[core.ChallengeTypeHTTP01] = true
-		pc.Challenges[core.ChallengeTypeTLSSNI01] = true
-	}
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,
@@ -419,4 +422,11 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 
 	d.Duration = dur
 	return nil
+}
+
+// LogDescription contains the information needed to submit certificates
+// to a CT log and verify returned receipts
+type LogDescription struct {
+	URI string
+	Key string
 }

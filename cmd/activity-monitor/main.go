@@ -10,6 +10,8 @@ package main
 // broker to look for anomalies.
 
 import (
+	"expvar"
+
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
@@ -26,11 +28,14 @@ func main() {
 		go cmd.DebugServer(c.ActivityMonitor.DebugAddr)
 
 		amqpConf := c.ActivityMonitor.AMQP
-		server, err := rpc.NewAmqpRPCServer(amqpConf, 0, stats)
+		server, err := rpc.NewMonitorServer(amqpConf, 0, stats)
 		cmd.FailOnError(err, "Could not connect to AMQP")
 
 		ae := analysisengine.NewLoggingAnalysisEngine()
+
+		messages := expvar.NewInt("messages")
 		server.HandleDeliveries(rpc.DeliveryHandler(func(d amqp.Delivery) {
+			messages.Add(1)
 			ae.ProcessMessage(d)
 		}))
 

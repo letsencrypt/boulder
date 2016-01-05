@@ -19,11 +19,13 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/publicsuffix"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/letsencrypt/boulder/probs"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -48,7 +50,7 @@ type RegistrationAuthorityImpl struct {
 	SA          core.StorageAuthority
 	PA          core.PolicyAuthority
 	stats       statsd.Statter
-	DNSResolver core.DNSResolver
+	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
 	log         *blog.AuditLogger
 	dc          *DomainCheck
@@ -78,26 +80,42 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 	return ra
 }
 
-var errUnparseableEmail = errors.New("not a valid e-mail address")
-var errEmptyDNSResponse = errors.New("empty DNS response")
+const (
+	unparseableEmailDetail = "not a valid e-mail address"
+	emptyDNSResponseDetail = "empty DNS response"
+)
 
-func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, err error) {
-	_, err = mail.ParseAddress(address)
+func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
+	_, err := mail.ParseAddress(address)
 	if err != nil {
-		return time.Duration(0), errUnparseableEmail
+		return &probs.ProblemDetails{
+			Type:   probs.InvalidEmailProblem,
+			Detail: unparseableEmailDetail,
+		}
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	result, rtt, err := resolver.LookupHost(domain)
-	if err == nil && len(result) == 0 {
-		err = errEmptyDNSResponse
+	var resultMX []string
+	var resultA []net.IP
+	resultMX, err = resolver.LookupMX(ctx, domain)
+	recQ := "MX"
+	if err == nil && len(resultMX) == 0 {
+		resultA, err = resolver.LookupHost(ctx, domain)
+		recQ = "A"
+		if err == nil && len(resultA) == 0 {
+			return &probs.ProblemDetails{
+				Type:   probs.InvalidEmailProblem,
+				Detail: emptyDNSResponseDetail,
+			}
+		}
 	}
 	if err != nil {
-		problem := dns.ProblemDetailsFromDNSError(err)
-		err = core.MalformedRequestError(problem.Detail)
+		prob := bdns.ProblemDetailsFromDNSError(recQ, domain, err)
+		prob.Type = probs.InvalidEmailProblem
+		return prob
 	}
 
-	return
+	return nil
 }
 
 type certificateRequestEvent struct {
@@ -192,7 +210,8 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	// MergeUpdate. But we need to fill it in for new registrations.
 	reg.InitialIP = init.InitialIP
 
-	err = ra.validateContacts(reg.Contact)
+	// TODO(#1292): add a proper deadline here
+	err = ra.validateContacts(context.TODO(), reg.Contact)
 	if err != nil {
 		return
 	}
@@ -209,24 +228,29 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) (err error) {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []*core.AcmeURL) (err error) {
 	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
 		return core.MalformedRequestError(fmt.Sprintf("Too many contacts provided: %d > %d",
 			len(contacts), ra.maxContactsPerReg))
 	}
 
 	for _, contact := range contacts {
+		if contact == nil {
+			return core.MalformedRequestError("Invalid contact")
+		}
 		switch contact.Scheme {
 		case "tel":
 			continue
 		case "mailto":
-			rtt, err := validateEmail(contact.Opaque, ra.DNSResolver)
-			ra.stats.TimingDuration("RA.DNS.RTT.A", rtt, 1.0)
-			ra.stats.Inc("RA.DNS.Rate", 1, 1.0)
-			if err != nil {
-				return core.MalformedRequestError(fmt.Sprintf(
-					"Validation of contact %s failed: %s", contact, err))
+			start := ra.clk.Now()
+			ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
+			problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
+			ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
+			if problem != nil {
+				ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
+				return problem
 			}
+			ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
 		default:
 			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
 			return
@@ -245,14 +269,14 @@ func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *cmd.RateLimitP
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if count > limit.GetThreshold(noKey, regID) {
+		if count >= limit.GetThreshold(noKey, regID) {
 			return core.RateLimitedError("Too many currently pending authorizations.")
 		}
 	}
 	return nil
 }
 
-// NewAuthorization constuct a new Authz from a request. Values (domains) in
+// NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
 	reg, err := ra.SA.GetRegistration(regID)
@@ -616,7 +640,8 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) er
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	err = ra.validateContacts(base.Contact)
+	// TODO(#1292): add a proper deadline here
+	err = ra.validateContacts(context.TODO(), base.Contact)
 	if err != nil {
 		return
 	}
@@ -647,7 +672,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid challenge index: %d", challengeIndex))
 		return
 	}
-	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
+
+	authz.Challenges[challengeIndex].KeyAuthorization = response.KeyAuthorization
 
 	// At this point, the challenge should be sane as a complete challenge
 	if !authz.Challenges[challengeIndex].IsSane(true) {

@@ -113,8 +113,6 @@
   "pa": {
     "dbConnect": "mysql+tcp://policy@localhost:3306/boulder_policy_integration",
     "challenges": {
-      "simpleHttp": true,
-      "dvsni": true,
       "http-01": true,
       "tls-sni-01": true,
       "dns-01": true
@@ -125,6 +123,7 @@
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
+    "dnsTries": 3,
     "debugAddr": "localhost:8002",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
@@ -159,6 +158,7 @@
 
   "va": {
     "userAgent": "boulder",
+    "issuerDomain": "happy-hacker-ca.invalid",
     "debugAddr": "localhost:8004",
     "portConfig": {
       "httpPort": 5002,
@@ -166,6 +166,7 @@
       "tlsPort": 5001
     },
     "maxConcurrentRPCServerRequests": 16,
+    "dnsTries": 3,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -294,11 +295,9 @@
       "logs": [
         {
           "uri": "http://127.0.0.1:4500",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfahLEimAoz2t01p3uMziiLOl/fHTDM0YDOhBRuiBARsV4UvxG2LdNgoIGLrtCzWE0J5APC2em4JlvR8EEEFMoA=="
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ],
-      "submissionRetries": 1,
-      "submissionBackoff": "1s",
       "intermediateBundleFilename": "test/test-ca.pem"
     }
   },

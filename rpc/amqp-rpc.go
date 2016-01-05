@@ -59,7 +59,7 @@ const (
 )
 
 // A simplified way to declare and subscribe to an AMQP queue
-func amqpSubscribe(ch amqpChannel, name string) (<-chan amqp.Delivery, error) {
+func amqpSubscribe(ch amqpChannel, name, routingKey string) (<-chan amqp.Delivery, error) {
 	var err error
 
 	_, err = ch.QueueDeclare(
@@ -72,8 +72,6 @@ func amqpSubscribe(ch amqpChannel, name string) (<-chan amqp.Delivery, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not declare queue: %s", err)
 	}
-
-	routingKey := name
 
 	err = ch.QueueBind(
 		name,
@@ -131,6 +129,20 @@ type AmqpRPCServer struct {
 	clk                            clock.Clock
 }
 
+const wildcardRoutingKey = "#"
+
+// NewMonitorServer creates an AmqpRPCServer that binds its queue to the
+// wildcard routing key instead of the default of binding to the queue name.
+// This allows Activity Monitor to observe all messages sent to the exchange.
+func NewMonitorServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
+	server, err := NewAmqpRPCServer(amqpConf, maxConcurrentRPCServerRequests, stats)
+	if err != nil {
+		return nil, err
+	}
+	server.connection.routingKey = wildcardRoutingKey
+	return server, nil
+}
+
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
 func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
@@ -180,7 +192,7 @@ type rpcError struct {
 	HTTPStatus int    `json:"status,omitempty"`
 }
 
-// Wraps a error in a rpcError so it can be marshalled to
+// Wraps an error in a rpcError so it can be marshalled to
 // JSON.
 func wrapError(err error) *rpcError {
 	if err != nil {
@@ -198,8 +210,6 @@ func wrapError(err error) *rpcError {
 			wrapped.Type = "UnauthorizedError"
 		case core.NotFoundError:
 			wrapped.Type = "NotFoundError"
-		case core.SyntaxError:
-			wrapped.Type = "SyntaxError"
 		case core.SignatureValidationError:
 			wrapped.Type = "SignatureValidationError"
 		case core.CertificateIssuanceError:
@@ -236,8 +246,6 @@ func unwrapError(rpcError *rpcError) error {
 			return core.UnauthorizedError(rpcError.Value)
 		case "NotFoundError":
 			return core.NotFoundError(rpcError.Value)
-		case "SyntaxError":
-			return core.SyntaxError(rpcError.Value)
 		case "SignatureValidationError":
 			return core.SignatureValidationError(rpcError.Value)
 		case "CertificateIssuanceError":
@@ -290,7 +298,7 @@ func (r rpcResponse) debugString() string {
 	return fmt.Sprintf("%s, RPCERR: %v", ret, r.Error)
 }
 
-// makeAmqpChannel sets a AMQP connection up using SSL if configuration is provided
+// makeAmqpChannel sets an AMQP connection up using SSL if configuration is provided
 func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 	var err error
@@ -366,7 +374,7 @@ func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	// XXX-JWS: jws.Verify(body)
 	cb, present := rpc.dispatchTable[msg.Type]
-	rpc.log.Info(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
+	rpc.log.Debug(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
 	if !present {
 		// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
 		rpc.log.Audit(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))

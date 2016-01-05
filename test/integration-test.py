@@ -2,6 +2,7 @@
 import argparse
 import atexit
 import base64
+import json
 import os
 import re
 import shutil
@@ -9,12 +10,14 @@ import socket
 import subprocess
 import sys
 import tempfile
-import urllib
 import time
+import urllib
 import urllib2
 
 import startservers
 
+ISSUANCE_FAILED = 1
+REVOCATION_FAILED = 2
 
 class ExitStatus:
     OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs = range(7)
@@ -150,35 +153,22 @@ def verify_ct_submission(expectedSubmissions, url):
     if int(submissionStr) != expectedSubmissions:
         print "Expected %d submissions, found %d" % (expectedSubmissions, int(submissionStr))
         die(ExitStatus.CTFailure)
+    return 0
 
-def run_node_test():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        s.connect(('localhost', 4000))
-    except socket.error, e:
-        print("Cannot connect to WFE")
-        die(ExitStatus.Error)
-
-    os.chdir('test/js')
-
-    if subprocess.Popen('npm install', shell=True).wait() != 0:
-        print("\n Installing NPM modules failed")
-        die(ExitStatus.Error)
+def run_node_test(domain, chall_type, expected_ct_submissions):
     cert_file = os.path.join(tempdir, "cert.der")
     cert_file_pem = os.path.join(tempdir, "cert.pem")
     key_file = os.path.join(tempdir, "key.pem")
-    # Pick a random hostname so we don't run into certificate rate limiting.
-    domain = subprocess.check_output("openssl rand -hex 6", shell=True).strip()
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
     if subprocess.Popen('''
         node test.js --email foo@letsencrypt.org --agree true \
-          --domains www.%s-TEST.com --new-reg http://localhost:4000/acme/new-reg \
-          --certKey %s --cert %s && \
+          --domains %s --new-reg http://localhost:4000/acme/new-reg \
+          --certKey %s --cert %s --challType %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
-        ''' % (domain, key_file, cert_file, cert_file, cert_file_pem),
+        ''' % (domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
         shell=True).wait() != 0:
         print("\nIssuing failed")
-        die(ExitStatus.NodeFailure)
+        return ISSUANCE_FAILED
 
     ee_ocsp_url = "http://localhost:4002"
     issuer_ocsp_url = "http://localhost:4003"
@@ -191,17 +181,16 @@ def run_node_test():
     # pre-signed, long-lived response for the CA cert, works.
     wait_for_ocsp_good("../test-ca.pem", "../test-root.pem", issuer_ocsp_url)
 
-    verify_ct_submission(1, "http://localhost:4500/submissions")
+    verify_ct_submission(expected_ct_submissions, "http://localhost:4500/submissions")
 
     if subprocess.Popen('''
         node revoke.js %s %s http://localhost:4000/acme/revoke-cert
         ''' % (cert_file, key_file), shell=True).wait() != 0:
         print("\nRevoking failed")
-        die(ExitStatus.NodeFailure)
+        return REVOCATION_FAILED
 
     wait_for_ocsp_revoked(cert_file_pem, "../test-ca.pem", ee_ocsp_url)
     return 0
-
 
 def run_client_tests():
     root = os.environ.get("LETSENCRYPT_PATH")
@@ -212,6 +201,11 @@ def run_client_tests():
     if subprocess.Popen(cmd, shell=True, cwd=root, executable='/bin/bash').wait() != 0:
         die(ExitStatus.PythonFailure)
 
+def check_activity_monitor():
+    """Ensure that the activity monitor is running and received some messages."""
+    resp = urllib2.urlopen("http://localhost:8007/debug/vars")
+    debug_vars = json.loads(resp.read())
+    assert debug_vars['messages'] > 0, "Activity Monitor received zero messages."
 
 @atexit.register
 def cleanup():
@@ -220,36 +214,72 @@ def cleanup():
     if exit_status == ExitStatus.OK:
         print("\n\nSUCCESS")
     else:
-        print("\n\nFAILURE %d" % exit_status)
+        if exit_status:
+            print("\n\nFAILURE %d" % exit_status)
 
-exit_status = ExitStatus.OK
+exit_status = None
 tempdir = tempfile.mkdtemp()
 
-parser = argparse.ArgumentParser(description='Run integration tests')
-parser.add_argument('--all', dest="run_all", action="store_true",
-                    help="run all of the clients' integration tests")
-parser.add_argument('--letsencrypt', dest='run_letsencrypt', action='store_true',
-                    help="run the letsencrypt's (the python client's) integration tests")
-parser.add_argument('--node', dest="run_node", action="store_true",
-                    help="run the node client's integration tests")
-parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
-args = parser.parse_args()
+def main():
+    parser = argparse.ArgumentParser(description='Run integration tests')
+    parser.add_argument('--all', dest="run_all", action="store_true",
+                        help="run all of the clients' integration tests")
+    parser.add_argument('--letsencrypt', dest='run_letsencrypt', action='store_true',
+                        help="run the letsencrypt's (the python client's) integration tests")
+    parser.add_argument('--node', dest="run_node", action="store_true",
+                        help="run the node client's integration tests")
+    parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
+    args = parser.parse_args()
 
-if not (args.run_all or args.run_letsencrypt or args.run_node):
-    print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, or --node"
-    die(ExitStatus.IncorrectCommandLineArgs)
+    if not (args.run_all or args.run_letsencrypt or args.run_node):
+        print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, or --node"
+        die(ExitStatus.IncorrectCommandLineArgs)
 
-if not startservers.start(race_detection=True):
-    die(ExitStatus.Error)
+    if not startservers.start(race_detection=True):
+        die(ExitStatus.Error)
 
-if args.run_all or args.run_node:
-    run_node_test()
+    if args.run_all or args.run_node:
+        os.chdir('test/js')
+        if subprocess.Popen('npm install', shell=True).wait() != 0:
+            print("\n Installing NPM modules failed")
+            die(ExitStatus.Error)
+        # Pick a random hostname so we don't run into certificate rate limiting.
+        domain = "www." + subprocess.check_output("openssl rand -hex 6", shell=True).strip() + "-TEST.com"
+        challenge_types = ["http-01", "dns-01"]
 
-# Simulate a disconnection from RabbitMQ to make sure reconnects work.
-startservers.bounce_forward()
+        expected_ct_submissions = 1
+        resp = urllib2.urlopen("http://localhost:4500/submissions")
+        submissionStr = resp.read()
+        if int(submissionStr) > 0:
+            expected_ct_submissions = int(submissionStr)+1
+        for chall_type in challenge_types:
+            if run_node_test(domain, chall_type, expected_ct_submissions) != 0:
+                die(ExitStatus.NodeFailure)
+            expected_ct_submissions += 1
 
-if args.run_all or args.run_letsencrypt:
-    run_client_tests()
+        if run_node_test("good-caa-reserved.com", challenge_types[0], expected_ct_submissions) != 0:
+            print("\nDidn't issue certificate for domain with good CAA records")
+            die(ExitStatus.NodeFailure)
 
-if not startservers.check():
-    die(ExitStatus.Error)
+        if run_node_test("bad-caa-reserved.com", challenge_types[0], expected_ct_submissions) != ISSUANCE_FAILED:
+            print("\nIssused certificate for domain with bad CAA records")
+            die(ExitStatus.NodeFailure)
+
+    # Simulate a disconnection from RabbitMQ to make sure reconnects work.
+    startservers.bounce_forward()
+
+    if args.run_all or args.run_letsencrypt:
+        run_client_tests()
+
+    check_activity_monitor()
+
+    if not startservers.check():
+        die(ExitStatus.Error)
+    exit_status = ExitStatus.OK
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        exit_status = ExitStatus.Error
+        raise
