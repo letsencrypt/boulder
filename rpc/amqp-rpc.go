@@ -192,7 +192,7 @@ type rpcError struct {
 	HTTPStatus int    `json:"status,omitempty"`
 }
 
-// Wraps a error in a rpcError so it can be marshalled to
+// Wraps an error in a rpcError so it can be marshalled to
 // JSON.
 func wrapError(err error) *rpcError {
 	if err != nil {
@@ -298,7 +298,7 @@ func (r rpcResponse) debugString() string {
 	return fmt.Sprintf("%s, RPCERR: %v", ret, r.Error)
 }
 
-// makeAmqpChannel sets a AMQP connection up using SSL if configuration is provided
+// makeAmqpChannel sets an AMQP connection up using SSL if configuration is provided
 func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 	var err error

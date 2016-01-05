@@ -460,7 +460,7 @@ func LoadCertBundle(filename string) ([]*x509.Certificate, error) {
 	return bundle, nil
 }
 
-// LoadCert loads a PEM certificate specified by filename or returns a error
+// LoadCert loads a PEM certificate specified by filename or returns an error
 func LoadCert(filename string) (cert *x509.Certificate, err error) {
 	certPEM, err := ioutil.ReadFile(filename)
 	if err != nil {
