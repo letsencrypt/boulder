@@ -200,6 +200,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
 		}
 		if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
 			ra.regByIPStats.Inc("Exceeded", 1)
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
 			return core.RateLimitedError("Too many registrations from this IP")
 		}
 		ra.regByIPStats.Inc("Pass", 1)
