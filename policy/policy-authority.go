@@ -70,7 +70,6 @@ const (
 )
 
 var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
-var punycodeRegexp = regexp.MustCompile("^xn--")
 
 func isDNSCharacter(ch byte) bool {
 	return ('a' <= ch && ch <= 'z') ||
@@ -107,7 +106,6 @@ var (
 	errTooFewLabels        = core.MalformedRequestError("DNS name does not have enough labels")
 	errLabelTooShort       = core.MalformedRequestError("DNS label is too short")
 	errLabelTooLong        = core.MalformedRequestError("DNS label is too long")
-	errIDNNotSupported     = core.MalformedRequestError("Internationalized domain names (starting with xn--) not yet supported")
 )
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
@@ -173,9 +171,6 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 			return errInvalidDNSCharacter
 		}
 
-		if punycodeRegexp.MatchString(label) {
-			return errIDNNotSupported
-		}
 	}
 
 	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.

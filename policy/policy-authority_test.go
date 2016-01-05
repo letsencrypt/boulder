@@ -66,8 +66,6 @@ func TestWillingToIssue(t *testing.T) {
 		{`www.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.com`, errLabelTooLong}, // Label too long (>63 characters)
 
 		{`www.-ombo.com`, errInvalidDNSCharacter}, // Label starts with '-'
-		{`www.xn--hmr.net`, errIDNNotSupported},   // Punycode (disallowed for now)
-		{`xn--.net`, errIDNNotSupported},          // No punycode for now.
 		{`0`, errTooFewLabels},
 		{`1`, errTooFewLabels},
 		{`*`, errInvalidDNSCharacter},
