@@ -123,6 +123,7 @@
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
+    "dnsTries": 3,
     "debugAddr": "localhost:8002",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
@@ -165,6 +166,7 @@
       "tlsPort": 5001
     },
     "maxConcurrentRPCServerRequests": 16,
+    "dnsTries": 3,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
