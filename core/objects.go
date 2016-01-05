@@ -6,6 +6,7 @@
 package core
 
 import (
+	"crypto"
 	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
@@ -200,14 +201,14 @@ func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, 
 		return KeyAuthorization{}, fmt.Errorf("Cannot authorize a nil key")
 	}
 
-	thumbprint, err := Thumbprint(key)
+	thumbprint, err := key.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return KeyAuthorization{}, err
 	}
 
 	return KeyAuthorization{
 		Token:      token,
-		Thumbprint: thumbprint,
+		Thumbprint: base64.RawURLEncoding.EncodeToString(thumbprint),
 	}, nil
 }
 
@@ -245,10 +246,11 @@ func (ka KeyAuthorization) Match(token string, key *jose.JsonWebKey) bool {
 		return false
 	}
 
-	thumbprint, err := Thumbprint(key)
+	thumbprintBytes, err := key.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return false
 	}
+	thumbprint := base64.RawURLEncoding.EncodeToString(thumbprintBytes)
 
 	tokensEqual := subtle.ConstantTimeCompare([]byte(token), []byte(ka.Token))
 	thumbprintsEqual := subtle.ConstantTimeCompare([]byte(thumbprint), []byte(ka.Thumbprint))
@@ -292,7 +294,7 @@ type Challenge struct {
 	// The status of this challenge
 	Status AcmeStatus `json:"status,omitempty"`
 
-	// Contains the error that occured during challenge validation, if any
+	// Contains the error that occurred during challenge validation, if any
 	Error *probs.ProblemDetails `json:"error,omitempty"`
 
 	// If successful, the time at which this challenge
@@ -326,7 +328,7 @@ type Challenge struct {
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
 // back to the RA to be stored.
 func (ch Challenge) RecordsSane() bool {
-	if ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0 {
+	if ch.Type != ChallengeTypeDNS01 && (ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0) {
 		return false
 	}
 
@@ -350,7 +352,7 @@ func (ch Challenge) RecordsSane() bool {
 			return false
 		}
 	case ChallengeTypeDNS01:
-		// Nothing for now
+		return true
 	default: // Unsupported challenge type
 		return false
 	}
@@ -485,7 +487,7 @@ type Certificate struct {
 }
 
 // IdentifierData holds information about what certificates are known for a
-// given identifier. This is used to present Proof of Posession challenges in
+// given identifier. This is used to present Proof of Possession challenges in
 // the case where a certificate already exists. The DB table holding
 // IdentifierData rows contains information about certs issued by Boulder and
 // also information about certs observed from third parties.

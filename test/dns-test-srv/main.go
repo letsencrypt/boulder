@@ -6,15 +6,60 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
+	"net/http"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 )
 
-func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
+type testSrv struct {
+	mu         *sync.RWMutex
+	txtRecords map[string]string
+}
+
+type setRequest struct {
+	Host  string `json:"host"`
+	Value string `json:"value"`
+}
+
+func (ts *testSrv) setTXT(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/set-txt" {
+		http.NotFound(w, r)
+		return
+	} else if r.Method != "POST" {
+		w.WriteHeader(405)
+		return
+	}
+	msg, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var sr setRequest
+	err = json.Unmarshal(msg, &sr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if sr.Host == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.txtRecords[strings.ToLower(sr.Host)] = sr.Value
+	fmt.Printf("dns-srv: added TXT record for %s containing \"%s\"\n", sr.Host, sr.Value)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
 	m.Compress = false
@@ -53,6 +98,22 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 			record.Preference = 10
 
 			m.Answer = append(m.Answer, record)
+		case dns.TypeTXT:
+			ts.mu.RLock()
+			value, present := ts.txtRecords[q.Name]
+			ts.mu.RUnlock()
+			if !present {
+				continue
+			}
+			record := new(dns.TXT)
+			record.Hdr = dns.RR_Header{
+				Name:   q.Name,
+				Rrtype: dns.TypeTXT,
+				Class:  dns.ClassINET,
+				Ttl:    0,
+			}
+			record.Txt = []string{value}
+			m.Answer = append(m.Answer, record)
 		case dns.TypeCAA:
 			if q.Name == "bad-caa-reserved.com." || q.Name == "good-caa-reserved.com." {
 				record := new(dns.CAA)
@@ -77,16 +138,27 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 	return
 }
 
-func serveTestResolver() {
-	dns.HandleFunc(".", dnsHandler)
-	server := &dns.Server{
+func (ts *testSrv) serveTestResolver() {
+	dns.HandleFunc(".", ts.dnsHandler)
+	dnsServer := &dns.Server{
 		Addr:         "127.0.0.1:8053",
 		Net:          "tcp",
 		ReadTimeout:  time.Millisecond,
 		WriteTimeout: time.Millisecond,
 	}
 	go func() {
-		err := server.ListenAndServe()
+		err := dnsServer.ListenAndServe()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	}()
+	webServer := &http.Server{
+		Addr:    "localhost:8055",
+		Handler: http.HandlerFunc(ts.setTXT),
+	}
+	go func() {
+		err := webServer.ListenAndServe()
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -96,7 +168,8 @@ func serveTestResolver() {
 
 func main() {
 	fmt.Println("dns-srv: Starting test DNS server")
-	serveTestResolver()
+	ts := testSrv{mu: new(sync.RWMutex), txtRecords: make(map[string]string)}
+	ts.serveTestResolver()
 	forever := make(chan bool, 1)
 	<-forever
 }

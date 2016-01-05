@@ -42,17 +42,19 @@ func (is *integrationSrv) handler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
+		if len(addChainReq.Chain) == 0 {
+			w.WriteHeader(400)
+			return
+		}
 
 		w.WriteHeader(http.StatusOK)
-		// id is a sha256 of a random EC key. Generate your own with:
-		// openssl ecparam -name prime256v1 -genkey -outform der | openssl sha256 -binary | base64
 		w.Write([]byte(`{
-			"sct_version": 0,
-			"id": "8fjM8cvLPOhzCFwI62IYJhjkOcvWFLx1dMJbs0uhxJU=",
-			"timestamp": 1442400000,
-			"extensions": "",
-			"signature": "BAMARzBFAiBB5wKED8KqKhADT37n0y28fZIPiGbCfZRVKq0wNo0hrwIhAOIa2tPBF/rB1y30Y/ROh4LBmJ0mItAbTWy8XZKh7Wcp"
-		}`))
+      "sct_version":0,
+      "id":"KHYaGJAn++880NYaAY12sFBXKcenQRvMvfYE9F1CYVM=",
+      "timestamp":1337,
+      "extensions":"",
+      "signature":"BAMARjBEAiAka/W0eYq23Iaih2wB2CGrAqlo92KyQuuY6WWumi1eNwIgBirYV/wsJvmZfGP5NrNYoWGIx1VV6NaNBIaSXh9hiYA="
+    }`))
 		atomic.AddInt64(&is.submissions, 1)
 	case "/submissions":
 		if r.Method != "GET" {

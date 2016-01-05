@@ -31,11 +31,12 @@ func TestProblemDetailsFromDNSError(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		err := ProblemDetailsFromDNSError(tc.err)
+		err := ProblemDetailsFromDNSError("TXT", "example.com", tc.err)
 		if err.Type != probs.ConnectionProblem {
 			t.Errorf("ProblemDetailsFromDNSError(%q).Type = %q, expected %q", tc.err, err.Type, probs.ConnectionProblem)
 		}
-		if err.Detail != tc.expected {
+		exp := tc.expected + " during TXT-record lookup of example.com"
+		if err.Detail != exp {
 			t.Errorf("ProblemDetailsFromDNSError(%q).Detail = %q, expected %q", tc.err, err.Detail, tc.expected)
 		}
 	}
