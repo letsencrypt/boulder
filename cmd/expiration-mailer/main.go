@@ -110,7 +110,7 @@ func (m *mailer) updateCertStatus(serial string) error {
 
 	err = tx.Commit()
 	if err != nil {
-		m.log.Err(fmt.Sprintf("Error commiting transaction for certificate %s: %s", serial, err))
+		m.log.Err(fmt.Sprintf("Error committing transaction for certificate %s: %s", serial, err))
 		tx.Rollback()
 		return err
 	}

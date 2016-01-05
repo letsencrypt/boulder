@@ -46,7 +46,7 @@ func (mock *DNSResolver) LookupTXT(hostname string) ([]string, error) {
 	return []string{"hostname"}, nil
 }
 
-// TimeoutError returns a a net.OpError for which Timeout() returns true.
+// TimeoutError returns a net.OpError for which Timeout() returns true.
 func TimeoutError() *net.OpError {
 	return &net.OpError{
 		Err: os.NewSyscallError("ugh timeout", timeoutError{}),
