@@ -39,7 +39,7 @@ func (mock *DNSResolver) LookupTXT(ctx context.Context, hostname string) ([]stri
 		return nil, fmt.Errorf("SERVFAIL")
 	}
 	if hostname == "_acme-challenge.good-dns01.com" {
-		// base64(sha254("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, nil
@@ -47,7 +47,7 @@ func (mock *DNSResolver) LookupTXT(ctx context.Context, hostname string) ([]stri
 	return []string{"hostname"}, nil
 }
 
-// TimeoutError returns a a net.OpError for which Timeout() returns true.
+// TimeoutError returns a net.OpError for which Timeout() returns true.
 func TimeoutError() *net.OpError {
 	return &net.OpError{
 		Err: os.NewSyscallError("ugh timeout", timeoutError{}),

@@ -86,7 +86,7 @@ type verificationRequestEvent struct {
 }
 
 // getAddr will query for all A records associated with hostname and return the
-// prefered address, the first net.IP in the addrs slice, and all addresses resolved.
+// preferred address, the first net.IP in the addrs slice, and all addresses resolved.
 // This is the same choice made by the Go internal resolution library used by
 // net/http, except we only send A queries and accept IPv4 addresses.
 // TODO(#593): Add IPv6 support
@@ -119,7 +119,7 @@ func (d *dialer) Dial(_, _ string) (net.Conn, error) {
 	return realDialer.Dial("tcp", net.JoinHostPort(d.record.AddressUsed.String(), d.record.Port))
 }
 
-// resolveAndConstructDialer gets the prefered address using va.getAddr and returns
+// resolveAndConstructDialer gets the preferred address using va.getAddr and returns
 // the chosen address and dialer for that address and correct port.
 func (va *ValidationAuthorityImpl) resolveAndConstructDialer(ctx context.Context, name string, port int) (dialer, *probs.ProblemDetails) {
 	d := dialer{

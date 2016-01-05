@@ -276,7 +276,7 @@ func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *cmd.RateLimitP
 	return nil
 }
 
-// NewAuthorization constuct a new Authz from a request. Values (domains) in
+// NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
 	reg, err := ra.SA.GetRegistration(regID)
