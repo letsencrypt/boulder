@@ -52,5 +52,6 @@ DELIMITER ;
 CALL dropusers();
 
 -- MariaDB seems to have the NO_AUTO_CREATE_USER flag set. Later in the create_db.sh, removing this flag will get users created.
+-- This flag became default in 10.1.7 of MariaDB.  This will also turn off the NO_ENGINE_SUBSTITUTION flag.
 
 SET GLOBAL sql_mode = '';
