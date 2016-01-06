@@ -201,12 +201,6 @@ def run_client_tests():
     if subprocess.Popen(cmd, shell=True, cwd=root, executable='/bin/bash').wait() != 0:
         die(ExitStatus.PythonFailure)
 
-def check_activity_monitor():
-    """Ensure that the activity monitor is running and received some messages."""
-    resp = urllib2.urlopen("http://localhost:8007/debug/vars")
-    debug_vars = json.loads(resp.read())
-    assert debug_vars['messages'] > 0, "Activity Monitor received zero messages."
-
 @atexit.register
 def cleanup():
     import shutil
@@ -270,8 +264,6 @@ def main():
 
     if args.run_all or args.run_letsencrypt:
         run_client_tests()
-
-    check_activity_monitor()
 
     if not startservers.check():
         die(ExitStatus.Error)
