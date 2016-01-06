@@ -6,6 +6,7 @@
 package mail
 
 import (
+	"fmt"
 	"io"
 	"math/big"
 	"strings"
@@ -29,13 +30,16 @@ func TestGenerateMessage(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to generate email body")
 	message := string(messageBytes)
 	fields := strings.Split(message, "\r\n")
-	test.AssertEquals(t, len(fields), 8)
+	test.AssertEquals(t, len(fields), 12)
+	fmt.Println(message)
 	test.AssertEquals(t, fields[0], "To: \"recv@email.com\"")
 	test.AssertEquals(t, fields[1], "From: send@email.com")
 	test.AssertEquals(t, fields[2], "Subject: test subject")
 	test.AssertEquals(t, fields[3], "Date: Thu Jan 1 1970 00:00:00 +0000")
 	test.AssertEquals(t, fields[4], "Message-Id: <19700101T000000.1991.send@email.com>")
-	test.AssertEquals(t, fields[5], "")
-	test.AssertEquals(t, fields[6], "this is the body\\n")
-	test.AssertEquals(t, fields[7], "")
+	test.AssertEquals(t, fields[5], "MIME-Version: 1.0")
+	test.AssertEquals(t, fields[6], "Content-Type: text/plain")
+	test.AssertEquals(t, fields[7], "Content-Transfer-Encoding: quoted-printable")
+	test.AssertEquals(t, fields[8], "")
+	test.AssertEquals(t, fields[9], "this is the body")
 }

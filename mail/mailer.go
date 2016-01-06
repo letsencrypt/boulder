@@ -6,11 +6,13 @@
 package mail
 
 import (
+	"bytes"
 	"crypto/rand"
 	"fmt"
 	"io"
 	"math"
 	"math/big"
+	"mime/quotedprintable"
 	"net"
 	"net/smtp"
 	"strconv"
@@ -76,16 +78,28 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 		fmt.Sprintf("Subject: %s", subject),
 		fmt.Sprintf("Date: %s", now.Format("Mon Jan 2 2006 15:04:05 -0700")),
 		fmt.Sprintf("Message-Id: <%s.%s.%s>", now.Format("20060102T150405"), mid.String(), m.From),
+		"MIME-Version: 1.0",
+		"Content-Type: text/plain",
+		"Content-Transfer-Encoding: quoted-printable",
 	}
-	for _, h := range headers[1:] {
-		quoted := strconv.QuoteToASCII(h)
-		h = quoted[1 : len(quoted)-1] // remove forced "" quotes
+	for i := range headers[1:] {
+		// strip LFs
+		headers[i] = strings.Replace(headers[i], "\n", "", -1)
 	}
-	quotedBody := strconv.QuoteToASCII(body)
+	bodyBuf := new(bytes.Buffer)
+	mimeWriter := quotedprintable.NewWriter(bodyBuf)
+	_, err = mimeWriter.Write([]byte(body))
+	if err != nil {
+		return nil, err
+	}
+	err = mimeWriter.Close()
+	if err != nil {
+		return nil, err
+	}
 	return []byte(fmt.Sprintf(
 		"%s\r\n\r\n%s\r\n",
 		strings.Join(headers, "\r\n"),
-		quotedBody[1:len(quotedBody)-1],
+		bodyBuf.String(),
 	)), nil
 }
 
