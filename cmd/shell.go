@@ -157,7 +157,7 @@ func (as *AppShell) Run() {
 	FailOnError(err, "Failed to run application")
 }
 
-// StatsAndLogging constructs a Statter and and AuditLogger based on its config
+// StatsAndLogging constructs a Statter and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
 // Also sets the constructed AuditLogger as the default logger.
 func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (statsd.Statter, *blog.AuditLogger) {

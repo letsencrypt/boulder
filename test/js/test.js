@@ -17,6 +17,7 @@
 var colors = require("colors");
 var cli = require("cli");
 var cryptoUtil = require("./crypto-util");
+var crypto = require("crypto");
 var child_process = require('child_process');
 var fs = require('fs');
 var http = require('http');
@@ -388,7 +389,7 @@ function validateDns01(challenge) {
     method: "POST",
     json: {
       "host": recordName,
-      "value": cryptoUtil.sha256(new Buffer(keyAuthorization))
+      "value": util.b64enc(crypto.createHash('sha256').update(keyAuthorization).digest())
     }
   }, txtCallback);
 }
