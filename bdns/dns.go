@@ -118,7 +118,7 @@ var (
 
 // DNSResolver queries for DNS records
 type DNSResolver interface {
-	LookupTXT(context.Context, string) (txts []string, authorities []string, error)
+	LookupTXT(context.Context, string) (txts []string, authorities []string, err error)
 	LookupHost(context.Context, string) ([]net.IP, error)
 	LookupCAA(context.Context, string) ([]*dns.CAA, error)
 	LookupMX(context.Context, string) ([]string, error)

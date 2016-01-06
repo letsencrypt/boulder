@@ -281,9 +281,9 @@ func TestDNSLookupCAA(t *testing.T) {
 }
 
 func TestDNSTXTAuthorities(t *testing.T) {
-	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats)
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
-	_, auths, err := obj.LookupTXT("letsencrypt.org")
+	_, auths, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	test.AssertNotError(t, err, "TXT lookup failed")
 	test.AssertEquals(t, len(auths), 1)
 	test.AssertEquals(t, auths[0], "letsencrypt.org.	0	IN	SOA	ns.letsencrypt.org. master.letsencrypt.org. 1 1 1 1 1")
@@ -418,7 +418,7 @@ func TestRetry(t *testing.T) {
 		dr := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
 
 		dr.DNSClient = tc.te
-		_, err := dr.LookupTXT(context.Background(), "example.com")
+		_, _, err := dr.LookupTXT(context.Background(), "example.com")
 		if err == errTooManyRequests {
 			t.Errorf("#%d, sent more requests than the test case handles", i)
 		}
@@ -435,14 +435,14 @@ func TestRetry(t *testing.T) {
 	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := dr.LookupTXT(ctx, "example.com")
+	_, _, err := dr.LookupTXT(ctx, "example.com")
 	if err != context.Canceled {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
 	}
 
 	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, _ = context.WithTimeout(context.Background(), -10*time.Hour)
-	_, err = dr.LookupTXT(ctx, "example.com")
+	_, _, err = dr.LookupTXT(ctx, "example.com")
 	if err != context.DeadlineExceeded {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
@@ -450,7 +450,7 @@ func TestRetry(t *testing.T) {
 	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, deadlineCancel := context.WithTimeout(context.Background(), -10*time.Hour)
 	deadlineCancel()
-	_, err = dr.LookupTXT(ctx, "example.com")
+	_, _, err = dr.LookupTXT(ctx, "example.com")
 	if err != context.DeadlineExceeded {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
