@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -72,7 +73,7 @@ func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []*core.AcmeURL
 			return err
 		}
 		startSending := m.clk.Now()
-		err = m.mailer.SendMail(emails, msgBuf.String())
+		err = m.mailer.SendMail(emails, "Certificate expiration notice", msgBuf.String())
 		if err != nil {
 			m.stats.Inc("Mailer.Expiration.Errors.SendingNag.SendFailure", 1, 1.0)
 			return err
@@ -110,7 +111,7 @@ func (m *mailer) updateCertStatus(serial string) error {
 
 	err = tx.Commit()
 	if err != nil {
-		m.log.Err(fmt.Sprintf("Error commiting transaction for certificate %s: %s", serial, err))
+		m.log.Err(fmt.Sprintf("Error committing transaction for certificate %s: %s", serial, err))
 		tx.Rollback()
 		return err
 	}

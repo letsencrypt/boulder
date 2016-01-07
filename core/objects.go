@@ -178,6 +178,9 @@ func (r *Registration) MergeUpdate(input Registration) {
 // ValidationRecord represents a validation attempt against a specific URL/hostname
 // and the IP addresses that were resolved and used
 type ValidationRecord struct {
+	// DNS only
+	Authorities []string
+
 	// SimpleHTTP only
 	URL string `json:"url,omitempty"`
 
@@ -294,7 +297,7 @@ type Challenge struct {
 	// The status of this challenge
 	Status AcmeStatus `json:"status,omitempty"`
 
-	// Contains the error that occured during challenge validation, if any
+	// Contains the error that occurred during challenge validation, if any
 	Error *probs.ProblemDetails `json:"error,omitempty"`
 
 	// If successful, the time at which this challenge
@@ -328,7 +331,7 @@ type Challenge struct {
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
 // back to the RA to be stored.
 func (ch Challenge) RecordsSane() bool {
-	if ch.Type != ChallengeTypeDNS01 && (ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0) {
+	if ch.ValidationRecord == nil || len(ch.ValidationRecord) == 0 {
 		return false
 	}
 
@@ -352,6 +355,12 @@ func (ch Challenge) RecordsSane() bool {
 			return false
 		}
 	case ChallengeTypeDNS01:
+		if len(ch.ValidationRecord) > 1 {
+			return false
+		}
+		if len(ch.ValidationRecord[0].Authorities) == 0 || ch.ValidationRecord[0].Hostname == "" {
+			return false
+		}
 		return true
 	default: // Unsupported challenge type
 		return false
@@ -487,7 +496,7 @@ type Certificate struct {
 }
 
 // IdentifierData holds information about what certificates are known for a
-// given identifier. This is used to present Proof of Posession challenges in
+// given identifier. This is used to present Proof of Possession challenges in
 // the case where a certificate already exists. The DB table holding
 // IdentifierData rows contains information about certs issued by Boulder and
 // also information about certs observed from third parties.
