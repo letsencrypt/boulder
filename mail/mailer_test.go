@@ -42,3 +42,10 @@ func TestGenerateMessage(t *testing.T) {
 	test.AssertEquals(t, fields[8], "")
 	test.AssertEquals(t, fields[9], "this is the body")
 }
+
+func TestFailNonASCIIAddress(t *testing.T) {
+	fc := clock.NewFake()
+	m := MailerImpl{From: "send@email.com", clk: fc, csprgSource: fakeSource{}}
+	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
+	test.AssertError(t, err, "Allowed a non-ASCII to address incorrectly")
+}
