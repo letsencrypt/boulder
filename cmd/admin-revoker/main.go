@@ -16,8 +16,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -38,7 +40,7 @@ func loadConfig(c *cli.Context) (config cmd.Config, err error) {
 
 const clientName = "AdminRevoker"
 
-func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.AuditLogger, *gorp.DbMap, rpc.StorageAuthorityClient) {
+func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.AuditLogger, *gorp.DbMap, rpc.StorageAuthorityClient, statsd.Statter) {
 	c, err := loadConfig(context)
 	cmd.FailOnError(err, "Failed to load Boulder configuration")
 
@@ -56,7 +58,7 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Failed to create SA client")
 
-	return *rac, auditlogger, dbMap, *sac
+	return *rac, auditlogger, dbMap, *sac, stats
 }
 
 func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
@@ -158,7 +160,7 @@ func main() {
 				cmd.FailOnError(err, "Reason code argument must be a integer")
 				deny := c.GlobalBool("deny")
 
-				cac, auditlogger, dbMap, _ := setupContext(c)
+				cac, auditlogger, dbMap, _, _ := setupContext(c)
 
 				tx, err := dbMap.Begin()
 				if err != nil {
@@ -187,7 +189,7 @@ func main() {
 				cmd.FailOnError(err, "Reason code argument must be a integer")
 				deny := c.GlobalBool("deny")
 
-				cac, auditlogger, dbMap, sac := setupContext(c)
+				cac, auditlogger, dbMap, sac, _ := setupContext(c)
 				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 				defer auditlogger.AuditPanic()
 
@@ -232,17 +234,19 @@ func main() {
 			Usage: "Revoke all pending/valid authorizations for a domain",
 			Action: func(c *cli.Context) {
 				domain := c.Args().First()
-				_, _, _, sac := setupContext(c)
+				_, _, _, sac, stats := setupContext(c)
 				auths, err := sac.GetAuthorizationsByDomain(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain})
 				if err != nil {
-					cmd.FailOnError(err, "Failed to retrieve authoriations")
+					cmd.FailOnError(err, "Failed to retrieve authorizations")
 				}
 				for _, a := range auths {
 					if a.Status != core.StatusInvalid && a.Status != core.StatusRevoked {
 						err = sac.RevokeAuthorization(a)
 						if err != nil {
-							cmd.FailOnError(err, "Failed to revoke authorization")
+							stats.Inc("admin-revoker.auths.reovcation-failure", 1, 1.0)
+							cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorization [%s] for domain %s", a.ID, a.Identifier.Value))
 						}
+						stats.Inc("admin-revoker.auths.reovcation-success", 1, 1.0)
 					}
 				}
 			},
