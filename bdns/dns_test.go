@@ -110,6 +110,17 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.Txt = []string{"a", "b", "c"}
 				appendAnswer(record)
 			}
+
+			auth := new(dns.SOA)
+			auth.Hdr = dns.RR_Header{Name: "letsencrypt.org.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 0}
+			auth.Ns = "ns.letsencrypt.org."
+			auth.Mbox = "master.letsencrypt.org."
+			auth.Serial = 1
+			auth.Refresh = 1
+			auth.Retry = 1
+			auth.Expire = 1
+			auth.Minttl = 1
+			m.Ns = append(m.Ns, auth)
 		}
 	}
 
@@ -182,7 +193,7 @@ func TestDNSDuplicateServers(t *testing.T) {
 func TestDNSLookupsNoServer(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{}, testStats, clock.NewFake(), 1)
 
-	_, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
+	_, _, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
 	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
@@ -196,7 +207,7 @@ func TestDNSServFail(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 	bad := "servfail.com"
 
-	_, err := obj.LookupTXT(context.Background(), bad)
+	_, _, err := obj.LookupTXT(context.Background(), bad)
 	test.AssertError(t, err, "LookupTXT didn't return an error")
 
 	_, err = obj.LookupHost(context.Background(), bad)
@@ -212,11 +223,11 @@ func TestDNSServFail(t *testing.T) {
 func TestDNSLookupTXT(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
-	a, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
+	a, _, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	t.Logf("A: %v", a)
 	test.AssertNotError(t, err, "No message")
 
-	a, err = obj.LookupTXT(context.Background(), "split-txt.letsencrypt.org")
+	a, _, err = obj.LookupTXT(context.Background(), "split-txt.letsencrypt.org")
 	t.Logf("A: %v ", a)
 	test.AssertNotError(t, err, "No message")
 	test.AssertEquals(t, len(a), 1)
@@ -267,6 +278,15 @@ func TestDNSLookupCAA(t *testing.T) {
 	caas, err = obj.LookupCAA(context.Background(), "cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
+}
+
+func TestDNSTXTAuthorities(t *testing.T) {
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+
+	_, auths, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
+	test.AssertNotError(t, err, "TXT lookup failed")
+	test.AssertEquals(t, len(auths), 1)
+	test.AssertEquals(t, auths[0], "letsencrypt.org.	0	IN	SOA	ns.letsencrypt.org. master.letsencrypt.org. 1 1 1 1 1")
 }
 
 type testExchanger struct {
@@ -398,7 +418,7 @@ func TestRetry(t *testing.T) {
 		dr := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
 
 		dr.DNSClient = tc.te
-		_, err := dr.LookupTXT(context.Background(), "example.com")
+		_, _, err := dr.LookupTXT(context.Background(), "example.com")
 		if err == errTooManyRequests {
 			t.Errorf("#%d, sent more requests than the test case handles", i)
 		}
@@ -415,14 +435,14 @@ func TestRetry(t *testing.T) {
 	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := dr.LookupTXT(ctx, "example.com")
+	_, _, err := dr.LookupTXT(ctx, "example.com")
 	if err != context.Canceled {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
 	}
 
 	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, _ = context.WithTimeout(context.Background(), -10*time.Hour)
-	_, err = dr.LookupTXT(ctx, "example.com")
+	_, _, err = dr.LookupTXT(ctx, "example.com")
 	if err != context.DeadlineExceeded {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
@@ -430,7 +450,7 @@ func TestRetry(t *testing.T) {
 	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, deadlineCancel := context.WithTimeout(context.Background(), -10*time.Hour)
 	deadlineCancel()
-	_, err = dr.LookupTXT(ctx, "example.com")
+	_, _, err = dr.LookupTXT(ctx, "example.com")
 	if err != context.DeadlineExceeded {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}

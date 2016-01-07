@@ -13,6 +13,8 @@ certificatesPerName:
     le2.wtf: 10000
     le3.wtf: 10000
     nginx.wtf: 10000
+    good-caa-reserved.com: 10000
+    bad-caa-reserved.com: 10000
   registrationOverrides:
     101: 1000
 registrationsPerIP:
