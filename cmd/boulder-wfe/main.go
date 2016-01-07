@@ -53,7 +53,7 @@ func main() {
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.WFE.DebugAddr)
 
-		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default())
+		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), c.KeyPolicy())
 		cmd.FailOnError(err, "Unable to create WFE")
 		rac, sac := setupWFE(c, auditlogger, stats)
 		wfe.RA = rac
@@ -78,6 +78,8 @@ func main() {
 
 		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
+
+		auditlogger.Info(fmt.Sprintf("WFE using key policy: %#v", c.KeyPolicy()))
 
 		go cmd.ProfileCmd("WFE", stats)
 

@@ -187,7 +187,24 @@ type Config struct {
 		ReportDirectoryPath string
 	}
 
+	AllowedSigningAlgos struct {
+		RSA           bool
+		ECDSANISTP256 bool
+		ECDSANISTP384 bool
+		ECDSANISTP521 bool
+	}
+
 	SubscriberAgreementURL string
+}
+
+// KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
+func (config *Config) KeyPolicy() core.KeyPolicy {
+	return core.KeyPolicy{
+		AllowRSA:           config.AllowedSigningAlgos.RSA,
+		AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
+		AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
+		AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
+	}
 }
 
 // ServiceConfig contains config items that are common to all our services, to

@@ -65,6 +65,7 @@ type CertificateAuthorityImpl struct {
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
 	Publisher      core.Publisher
+	keyPolicy      core.KeyPolicy
 	clk            clock.Clock // TODO(jmhodges): should be private, like log
 	log            *blog.AuditLogger
 	stats          statsd.Statter
@@ -90,6 +91,7 @@ func NewCertificateAuthorityImpl(
 	stats statsd.Statter,
 	issuer *x509.Certificate,
 	privateKey crypto.Signer,
+	keyPolicy core.KeyPolicy,
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
@@ -142,6 +144,7 @@ func NewCertificateAuthorityImpl(
 		stats:           stats,
 		notAfter:        issuer.NotAfter,
 		hsmFaultTimeout: config.HSMFaultTimeout.Duration,
+		keyPolicy:       keyPolicy,
 	}
 
 	if config.Expiry == "" {
@@ -236,7 +239,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
-	if err = core.GoodKey(key); err != nil {
+	if err = ca.keyPolicy.GoodKey(key); err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid public key in CSR: %s", err.Error()))
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
