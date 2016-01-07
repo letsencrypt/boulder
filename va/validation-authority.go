@@ -431,7 +431,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
-	txts, err := va.DNSResolver.LookupTXT(ctx, challengeSubdomain)
+	txts, authorities, err := va.DNSResolver.LookupTXT(ctx, challengeSubdomain)
 
 	if err != nil {
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
@@ -442,7 +442,10 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			// Successful challenge validation
-			return nil, nil
+			return []core.ValidationRecord{{
+				Authorities: authorities,
+				Hostname:    identifier.Value,
+			}}, nil
 		}
 	}
 

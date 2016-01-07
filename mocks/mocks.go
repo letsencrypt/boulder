@@ -34,17 +34,17 @@ type DNSResolver struct {
 }
 
 // LookupTXT is a mock
-func (mock *DNSResolver) LookupTXT(ctx context.Context, hostname string) ([]string, error) {
+func (mock *DNSResolver) LookupTXT(ctx context.Context, hostname string) ([]string, []string, error) {
 	if hostname == "_acme-challenge.servfail.com" {
-		return nil, fmt.Errorf("SERVFAIL")
+		return nil, nil, fmt.Errorf("SERVFAIL")
 	}
 	if hostname == "_acme-challenge.good-dns01.com" {
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, nil
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, []string{"respect my authority!"}, nil
 	}
-	return []string{"hostname"}, nil
+	return []string{"hostname"}, []string{"respect my authority!"}, nil
 }
 
 // TimeoutError returns a net.OpError for which Timeout() returns true.
