@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -84,7 +85,7 @@ const (
 	emptyDNSResponseDetail = "empty DNS response"
 )
 
-func validateEmail(address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
+func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
 	_, err := mail.ParseAddress(address)
 	if err != nil {
 		return &probs.ProblemDetails{
@@ -96,10 +97,11 @@ func validateEmail(address string, resolver bdns.DNSResolver) (prob *probs.Probl
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	var resultMX []string
 	var resultA []net.IP
-	resultMX, err = resolver.LookupMX(domain)
-
+	resultMX, err = resolver.LookupMX(ctx, domain)
+	recQ := "MX"
 	if err == nil && len(resultMX) == 0 {
-		resultA, err = resolver.LookupHost(domain)
+		resultA, err = resolver.LookupHost(ctx, domain)
+		recQ = "A"
 		if err == nil && len(resultA) == 0 {
 			return &probs.ProblemDetails{
 				Type:   probs.InvalidEmailProblem,
@@ -108,11 +110,9 @@ func validateEmail(address string, resolver bdns.DNSResolver) (prob *probs.Probl
 		}
 	}
 	if err != nil {
-		dnsProblem := bdns.ProblemDetailsFromDNSError(err)
-		return &probs.ProblemDetails{
-			Type:   probs.InvalidEmailProblem,
-			Detail: dnsProblem.Detail,
-		}
+		prob := bdns.ProblemDetailsFromDNSError(recQ, domain, err)
+		prob.Type = probs.InvalidEmailProblem
+		return prob
 	}
 
 	return nil
@@ -210,7 +210,8 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	// MergeUpdate. But we need to fill it in for new registrations.
 	reg.InitialIP = init.InitialIP
 
-	err = ra.validateContacts(reg.Contact)
+	// TODO(#1292): add a proper deadline here
+	err = ra.validateContacts(context.TODO(), reg.Contact)
 	if err != nil {
 		return
 	}
@@ -227,7 +228,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) (err error) {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []*core.AcmeURL) (err error) {
 	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
 		return core.MalformedRequestError(fmt.Sprintf("Too many contacts provided: %d > %d",
 			len(contacts), ra.maxContactsPerReg))
@@ -243,7 +244,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 		case "mailto":
 			start := ra.clk.Now()
 			ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
-			problem := validateEmail(contact.Opaque, ra.DNSResolver)
+			problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
 			ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
 			if problem != nil {
 				ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
@@ -268,14 +269,14 @@ func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *cmd.RateLimitP
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if count > limit.GetThreshold(noKey, regID) {
+		if count >= limit.GetThreshold(noKey, regID) {
 			return core.RateLimitedError("Too many currently pending authorizations.")
 		}
 	}
 	return nil
 }
 
-// NewAuthorization constuct a new Authz from a request. Values (domains) in
+// NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
 	reg, err := ra.SA.GetRegistration(regID)
@@ -639,7 +640,8 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) er
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	err = ra.validateContacts(base.Contact)
+	// TODO(#1292): add a proper deadline here
+	err = ra.validateContacts(context.TODO(), base.Contact)
 	if err != nil {
 		return
 	}

@@ -157,7 +157,7 @@ func main() {
 				// 1: serial,  2: reasonCode (3: deny flag)
 				serial := c.Args().First()
 				reasonCode, err := strconv.Atoi(c.Args().Get(1))
-				cmd.FailOnError(err, "Reason code argument must be a integer")
+				cmd.FailOnError(err, "Reason code argument must be an integer")
 				deny := c.GlobalBool("deny")
 
 				cac, auditlogger, dbMap, _, _ := setupContext(c)
@@ -184,9 +184,9 @@ func main() {
 			Action: func(c *cli.Context) {
 				// 1: registration ID,  2: reasonCode (3: deny flag)
 				regID, err := strconv.ParseInt(c.Args().First(), 10, 64)
-				cmd.FailOnError(err, "Registration ID argument must be a integer")
+				cmd.FailOnError(err, "Registration ID argument must be an integer")
 				reasonCode, err := strconv.Atoi(c.Args().Get(1))
-				cmd.FailOnError(err, "Reason code argument must be a integer")
+				cmd.FailOnError(err, "Reason code argument must be an integer")
 				deny := c.GlobalBool("deny")
 
 				cac, auditlogger, dbMap, sac, _ := setupContext(c)

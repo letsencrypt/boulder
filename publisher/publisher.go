@@ -25,7 +25,7 @@ type Log struct {
 	verifier *ct.SignatureVerifier
 }
 
-// NewLog returns a initialized Log struct
+// NewLog returns an initialized Log struct
 func NewLog(uri, b64PK string) (*Log, error) {
 	if strings.HasSuffix(uri, "/") {
 		uri = uri[0 : len(uri)-2]
