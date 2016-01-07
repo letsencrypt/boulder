@@ -24,7 +24,9 @@ func (f fakeSource) generate() *big.Int {
 
 func TestGenerateMessage(t *testing.T) {
 	fc := clock.NewFake()
-	m := MailerImpl{From: "send@email.com", clk: fc, csprgSource: fakeSource{}}
+	m := New("", "", "", "", "send@email.com")
+	m.clk = fc
+	m.csprgSource = fakeSource{}
 	messageBytes, err := m.generateMessage([]string{"recv@email.com"}, "test subject", "this is the body\n")
 	test.AssertNotError(t, err, "Failed to generate email body")
 	message := string(messageBytes)
@@ -44,8 +46,7 @@ func TestGenerateMessage(t *testing.T) {
 }
 
 func TestFailNonASCIIAddress(t *testing.T) {
-	fc := clock.NewFake()
-	m := MailerImpl{From: "send@email.com", clk: fc, csprgSource: fakeSource{}}
+	m := New("", "", "", "", "send@email.com")
 	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
 	test.AssertError(t, err, "Allowed a non-ASCII to address incorrectly")
 }

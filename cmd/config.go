@@ -118,6 +118,7 @@ type Config struct {
 		Port     string
 		Username string
 		Password string
+		From     string
 
 		CertLimit int
 		NagTimes  []string
