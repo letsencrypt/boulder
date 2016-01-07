@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
-	"io"
 	"math"
 	"math/big"
 	"mime/quotedprintable"
@@ -17,18 +16,25 @@ import (
 	"net/smtp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 )
 
-type csprg interface {
-	Int(io.Reader, *big.Int) (*big.Int, error)
+type idGenerator interface {
+	generate() *big.Int
 }
+
+var maxBigInt = big.NewInt(math.MaxInt64)
 
 type realSource struct{}
 
-func (s realSource) Int(reader io.Reader, max *big.Int) (*big.Int, error) {
-	return rand.Int(reader, max)
+func (s realSource) generate() *big.Int {
+	randInt, err := rand.Int(rand.Reader, maxBigInt)
+	if err != nil {
+		panic(err)
+	}
+	return randInt
 }
 
 // Mailer provides the interface for a mailer
@@ -43,7 +49,7 @@ type MailerImpl struct {
 	Auth        smtp.Auth
 	From        string
 	clk         clock.Clock
-	csprgSource csprg
+	csprgSource idGenerator
 }
 
 // New constructs a Mailer to represent an account on a particular mail
@@ -60,26 +66,21 @@ func New(server, port, username, password string) MailerImpl {
 	}
 }
 
-var maxBigInt = big.NewInt(math.MaxInt64) // ???
-
 func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte, error) {
-	mid, err := m.csprgSource.Int(rand.Reader, maxBigInt)
-	if err != nil {
-		return nil, err
-	}
+	mid := m.csprgSource.generate()
 	now := m.clk.Now().UTC()
 	addrs := []string{}
 	for _, a := range to {
-		addrs = append(addrs, strconv.QuoteToASCII(a))
+		addrs = append(addrs, strconv.Quote(a))
 	}
 	headers := []string{
 		fmt.Sprintf("To: %s", strings.Join(addrs, ", ")),
 		fmt.Sprintf("From: %s", m.From),
 		fmt.Sprintf("Subject: %s", subject),
-		fmt.Sprintf("Date: %s", now.Format("Mon Jan 2 2006 15:04:05 -0700")),
+		fmt.Sprintf("Date: %s", now.Format(time.RFC822)),
 		fmt.Sprintf("Message-Id: <%s.%s.%s>", now.Format("20060102T150405"), mid.String(), m.From),
 		"MIME-Version: 1.0",
-		"Content-Type: text/plain",
+		"Content-Type: text/plain; charset=UTF-8",
 		"Content-Transfer-Encoding: quoted-printable",
 	}
 	for i := range headers[1:] {
@@ -88,7 +89,7 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 	}
 	bodyBuf := new(bytes.Buffer)
 	mimeWriter := quotedprintable.NewWriter(bodyBuf)
-	_, err = mimeWriter.Write([]byte(body))
+	_, err := mimeWriter.Write([]byte(body))
 	if err != nil {
 		return nil, err
 	}

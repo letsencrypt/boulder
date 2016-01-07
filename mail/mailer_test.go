@@ -7,7 +7,6 @@ package mail
 
 import (
 	"fmt"
-	"io"
 	"math/big"
 	"strings"
 	"testing"
@@ -19,8 +18,8 @@ import (
 
 type fakeSource struct{}
 
-func (f fakeSource) Int(reader io.Reader, max *big.Int) (*big.Int, error) {
-	return big.NewInt(1991), nil
+func (f fakeSource) generate() *big.Int {
+	return big.NewInt(1991)
 }
 
 func TestGenerateMessage(t *testing.T) {
@@ -35,10 +34,10 @@ func TestGenerateMessage(t *testing.T) {
 	test.AssertEquals(t, fields[0], "To: \"recv@email.com\"")
 	test.AssertEquals(t, fields[1], "From: send@email.com")
 	test.AssertEquals(t, fields[2], "Subject: test subject")
-	test.AssertEquals(t, fields[3], "Date: Thu Jan 1 1970 00:00:00 +0000")
+	test.AssertEquals(t, fields[3], "Date: 01 Jan 70 00:00 UTC")
 	test.AssertEquals(t, fields[4], "Message-Id: <19700101T000000.1991.send@email.com>")
 	test.AssertEquals(t, fields[5], "MIME-Version: 1.0")
-	test.AssertEquals(t, fields[6], "Content-Type: text/plain")
+	test.AssertEquals(t, fields[6], "Content-Type: text/plain; charset=UTF-8")
 	test.AssertEquals(t, fields[7], "Content-Transfer-Encoding: quoted-printable")
 	test.AssertEquals(t, fields[8], "")
 	test.AssertEquals(t, fields[9], "this is the body")
