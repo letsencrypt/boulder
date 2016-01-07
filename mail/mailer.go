@@ -64,13 +64,13 @@ func isASCII(str string) bool {
 
 // New constructs a Mailer to represent an account on a particular mail
 // transfer agent.
-func New(server, port, username, password string) MailerImpl {
+func New(server, port, username, password, from string) MailerImpl {
 	auth := smtp.PlainAuth("", username, password, server)
 	return MailerImpl{
 		Server:      server,
 		Port:        port,
 		Auth:        auth,
-		From:        username,
+		From:        from,
 		clk:         clock.Default(),
 		csprgSource: realSource{},
 	}

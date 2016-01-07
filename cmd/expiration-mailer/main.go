@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
+	netmail "net/mail"
 	"sort"
 	"strings"
 	"text/template"
@@ -247,7 +248,10 @@ func main() {
 		tmpl, err := template.New("expiry-email").Parse(string(emailTmpl))
 		cmd.FailOnError(err, "Could not parse email template")
 
-		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, c.Mailer.Password)
+		_, err = netmail.ParseAddress(c.Mailer.From)
+		cmd.FailOnError(err, fmt.Sprintf("Could not parse from address: %s", c.Mailer.From))
+
+		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, c.Mailer.Password, c.Mailer.From)
 
 		nagCheckInterval := defaultNagCheckInterval
 		if s := c.Mailer.NagCheckInterval; s != "" {
