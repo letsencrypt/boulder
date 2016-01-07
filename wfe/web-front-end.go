@@ -147,7 +147,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 
 			switch request.Method {
 			case "HEAD":
-				// Go's net/http (and httptest) servers will strip our the body
+				// Go's net/http (and httptest) servers will strip out the body
 				// of responses for us. This keeps the Content-Length for HEAD
 				// requests as the same as GET requests per the spec.
 			case "OPTIONS":
