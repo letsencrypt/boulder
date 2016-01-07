@@ -29,10 +29,6 @@ func (ca *mockCA) GenerateOCSP(xferObj core.OCSPSigningRequest) (ocsp []byte, er
 	return
 }
 
-func (ca *mockCA) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
-	return
-}
-
 type mockPub struct {
 	sa core.StorageAuthority
 }
