@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
@@ -40,21 +41,6 @@ func bigIntFromB64(b64 string) *big.Int {
 
 func intFromB64(b64 string) int {
 	return int(bigIntFromB64(b64).Int64())
-}
-
-type mockMail struct {
-	Messages []string
-}
-
-func (m *mockMail) Clear() {
-	m.Messages = []string{}
-}
-
-func (m *mockMail) SendMail(to []string, msg string) (err error) {
-	for range to {
-		m.Messages = append(m.Messages, msg)
-	}
-	return
 }
 
 type fakeRegStore struct {
@@ -104,7 +90,7 @@ var (
 
 func TestSendNags(t *testing.T) {
 	stats, _ := statsd.NewNoopClient(nil)
-	mc := mockMail{}
+	mc := mocks.Mailer{}
 	rs := newFakeRegStore()
 	fc := newFakeClock(t)
 
@@ -461,7 +447,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 type testCtx struct {
 	dbMap   *gorp.DbMap
 	ssa     core.StorageAdder
-	mc      *mockMail
+	mc      *mocks.Mailer
 	fc      clock.FakeClock
 	m       *mailer
 	cleanUp func()
@@ -482,7 +468,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	cleanUp := test.ResetSATestDatabase(t)
 
 	stats, _ := statsd.NewNoopClient(nil)
-	mc := &mockMail{}
+	mc := &mocks.Mailer{}
 
 	offsetNags := make([]time.Duration, len(nagTimes))
 	for i, t := range nagTimes {

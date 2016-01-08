@@ -75,6 +75,9 @@ type WebFrontEndImpl struct {
 	// Register of anti-replay nonces
 	nonceService *core.NonceService
 
+	// Key policy.
+	keyPolicy core.KeyPolicy
+
 	// Cache settings
 	CertCacheDuration           time.Duration
 	CertNoCacheExpirationWindow time.Duration
@@ -90,7 +93,7 @@ type WebFrontEndImpl struct {
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
-func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock) (WebFrontEndImpl, error) {
+func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock, keyPolicy core.KeyPolicy) (WebFrontEndImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 
@@ -104,6 +107,7 @@ func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock) (WebFrontEndImpl,
 		clk:          clk,
 		nonceService: nonceService,
 		stats:        stats,
+		keyPolicy:    keyPolicy,
 	}, nil
 }
 
@@ -147,7 +151,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 
 			switch request.Method {
 			case "HEAD":
-				// Go's net/http (and httptest) servers will strip our the body
+				// Go's net/http (and httptest) servers will strip out the body
 				// of responses for us. This keeps the Content-Length for HEAD
 				// requests as the same as GET requests per the spec.
 			case "OPTIONS":
@@ -355,7 +359,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 		// When looking up keys from the registrations DB, we can be confident they
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
-		if err = core.GoodKey(submittedKey.Key); err != nil {
+		if err = wfe.keyPolicy.GoodKey(submittedKey.Key); err != nil {
 			wfe.stats.Inc("WFE.Errors.JWKRejectedByGoodKey", 1, 1.0)
 			logEvent.AddError("JWK in request was rejected by GoodKey: %s", err)
 			return nil, nil, reg, probs.Malformed(err.Error())
@@ -719,7 +723,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(logEvent *requestEvent, response http
 	// bytes on the wire, and (b) the CA logs all rejections as audit events, but
 	// a bad key from the client is just a malformed request and doesn't need to
 	// be audited.
-	if err := core.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
+	if err := wfe.keyPolicy.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
 		logEvent.AddError("CSR public key failed GoodKey: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid key in certificate request :: %s", err), err)
 		return

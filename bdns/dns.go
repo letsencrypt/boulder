@@ -118,7 +118,7 @@ var (
 
 // DNSResolver queries for DNS records
 type DNSResolver interface {
-	LookupTXT(context.Context, string) ([]string, error)
+	LookupTXT(context.Context, string) (txts []string, authorities []string, err error)
 	LookupHost(context.Context, string) ([]net.IP, error)
 	LookupCAA(context.Context, string) ([]*dns.CAA, error)
 	LookupMX(context.Context, string) ([]string, error)
@@ -242,19 +242,18 @@ type dnsResp struct {
 	err error
 }
 
-// LookupTXT sends a DNS query to find all TXT records associated with the
-// provided hostname. It will retry requests in the case of temporary network
-// errors. It can return net package, context.Canceled, and
-// context.DeadlineExceeded errors.
-func (dnsResolver *DNSResolverImpl) LookupTXT(ctx context.Context, hostname string) ([]string, error) {
+// LookupTXT sends a DNS query to find all TXT records associated with
+// the provided hostname which it returns along with the returned
+// DNS authority section.
+func (dnsResolver *DNSResolverImpl) LookupTXT(ctx context.Context, hostname string) ([]string, []string, error) {
 	var txt []string
 	r, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeTXT, dnsResolver.txtStats)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if r.Rcode != dns.RcodeSuccess {
 		err = fmt.Errorf("DNS failure: %d-%s for TXT query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, answer := range r.Answer {
@@ -265,7 +264,12 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(ctx context.Context, hostname stri
 		}
 	}
 
-	return txt, err
+	authorities := []string{}
+	for _, a := range r.Ns {
+		authorities = append(authorities, a.String())
+	}
+
+	return txt, authorities, err
 }
 
 func isPrivateV4(ip net.IP) bool {

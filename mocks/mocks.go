@@ -34,17 +34,17 @@ type DNSResolver struct {
 }
 
 // LookupTXT is a mock
-func (mock *DNSResolver) LookupTXT(ctx context.Context, hostname string) ([]string, error) {
+func (mock *DNSResolver) LookupTXT(ctx context.Context, hostname string) ([]string, []string, error) {
 	if hostname == "_acme-challenge.servfail.com" {
-		return nil, fmt.Errorf("SERVFAIL")
+		return nil, nil, fmt.Errorf("SERVFAIL")
 	}
 	if hostname == "_acme-challenge.good-dns01.com" {
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, nil
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, []string{"respect my authority!"}, nil
 	}
-	return []string{"hostname"}, nil
+	return []string{"hostname"}, []string{"respect my authority!"}, nil
 }
 
 // TimeoutError returns a net.OpError for which Timeout() returns true.
@@ -428,4 +428,22 @@ func (s *Statter) Inc(metric string, value int64, rate float32) error {
 // NewStatter returns an empty statter with all counters zero
 func NewStatter() Statter {
 	return Statter{statsd.NoopClient{}, map[string]int64{}}
+}
+
+// Mailer is a mock
+type Mailer struct {
+	Messages []string
+}
+
+// Clear removes any previously recorded messages
+func (m *Mailer) Clear() {
+	m.Messages = []string{}
+}
+
+// SendMail is a mock
+func (m *Mailer) SendMail(to []string, subject, msg string) (err error) {
+	for range to {
+		m.Messages = append(m.Messages, msg)
+	}
+	return
 }

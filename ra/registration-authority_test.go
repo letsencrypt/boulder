@@ -146,6 +146,12 @@ func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
 	return
 }
 
+var testKeyPolicy = core.KeyPolicy{
+	AllowRSA:           true,
+	AllowECDSANISTP256: true,
+	AllowECDSANISTP384: true,
+}
+
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
@@ -215,7 +221,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		fc,
 		stats,
 		caCert,
-		caKey)
+		caKey,
+		testKeyPolicy)
 	test.AssertNotError(t, err, "Couldn't create CA")
 	ca.SA = ssa
 	ca.PA = pa
@@ -242,7 +249,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 				Threshold: 100,
 				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
-		}, 1)
+		}, 1, testKeyPolicy)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
