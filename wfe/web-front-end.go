@@ -75,6 +75,9 @@ type WebFrontEndImpl struct {
 	// Register of anti-replay nonces
 	nonceService *core.NonceService
 
+	// Key policy.
+	keyPolicy core.KeyPolicy
+
 	// Cache settings
 	CertCacheDuration           time.Duration
 	CertNoCacheExpirationWindow time.Duration
@@ -90,7 +93,7 @@ type WebFrontEndImpl struct {
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
-func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock) (WebFrontEndImpl, error) {
+func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock, keyPolicy core.KeyPolicy) (WebFrontEndImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Web Front End Starting")
 
@@ -104,17 +107,8 @@ func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock) (WebFrontEndImpl,
 		clk:          clk,
 		nonceService: nonceService,
 		stats:        stats,
+		keyPolicy:    keyPolicy,
 	}, nil
-}
-
-// BodylessResponseWriter wraps http.ResponseWriter, discarding
-// anything written to the body.
-type BodylessResponseWriter struct {
-	http.ResponseWriter
-}
-
-func (mrw BodylessResponseWriter) Write(buf []byte) (int, error) {
-	return len(buf), nil
 }
 
 // HandleFunc registers a handler at the given path. It's
@@ -157,10 +151,9 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 
 			switch request.Method {
 			case "HEAD":
-				// Whether or not we're sending a 405 error,
-				// we should comply with HTTP spec by not
-				// sending a body.
-				response = BodylessResponseWriter{response}
+				// Go's net/http (and httptest) servers will strip out the body
+				// of responses for us. This keeps the Content-Length for HEAD
+				// requests as the same as GET requests per the spec.
 			case "OPTIONS":
 				wfe.Options(response, request, methodsStr, methodsMap)
 				return
@@ -296,7 +289,7 @@ const (
 // the key in the JWS headers, and return the key plus a dummy registration if
 // successful. If a caller passes regCheck = false, it should plan on validating
 // the key itself.  verifyPOST also appends its errors to requestEvent.Errors so
-// code calling it does not need to if they imediately return a response to the
+// code calling it does not need to if they immediately return a response to the
 // user.
 func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, *probs.ProblemDetails) {
 	// TODO: We should return a pointer to a registration, which can be nil,
@@ -366,7 +359,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 		// When looking up keys from the registrations DB, we can be confident they
 		// are "good". But when we are verifying against any submitted key, we want
 		// to check its quality before doing the verify.
-		if err = core.GoodKey(submittedKey.Key); err != nil {
+		if err = wfe.keyPolicy.GoodKey(submittedKey.Key); err != nil {
 			wfe.stats.Inc("WFE.Errors.JWKRejectedByGoodKey", 1, 1.0)
 			logEvent.AddError("JWK in request was rejected by GoodKey: %s", err)
 			return nil, nil, reg, probs.Malformed(err.Error())
@@ -608,7 +601,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(logEvent *requestEvent, response ht
 // RevokeCertificate is used by clients to request the revocation of a cert.
 func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 
-	// We don't ask verifyPOST to verify there is a correponding registration,
+	// We don't ask verifyPOST to verify there is a corresponding registration,
 	// because anyone with the right private key can revoke a certificate.
 	body, requestKey, registration, prob := wfe.verifyPOST(logEvent, request, false, core.ResourceRevokeCert)
 	if prob != nil {
@@ -730,7 +723,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(logEvent *requestEvent, response http
 	// bytes on the wire, and (b) the CA logs all rejections as audit events, but
 	// a bad key from the client is just a malformed request and doesn't need to
 	// be audited.
-	if err := core.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
+	if err := wfe.keyPolicy.GoodKey(certificateRequest.CSR.PublicKey); err != nil {
 		logEvent.AddError("CSR public key failed GoodKey: %s", err)
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid key in certificate request :: %s", err), err)
 		return

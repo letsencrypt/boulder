@@ -33,6 +33,8 @@ func (d dnsError) Error() string {
 			}
 		} else if d.underlying == context.Canceled || d.underlying == context.DeadlineExceeded {
 			detail = detailDNSTimeout
+		} else {
+			detail = detailServerFailure
 		}
 	} else if d.rCode != dns.RcodeSuccess {
 		detail = dns.RcodeToString[d.rCode]

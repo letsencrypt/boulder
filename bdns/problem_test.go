@@ -34,10 +34,10 @@ func TestProblemDetailsFromDNSError(t *testing.T) {
 			&dnsError{dns.TypeTXT, "hostname", nil, dns.RcodeNameError},
 			"DNS problem: NXDOMAIN looking up TXT for hostname",
 		}, {
-			&dnsError{dns.TypeTXT, "hostname", nil, context.DeadlineExceeded},
+			&dnsError{dns.TypeTXT, "hostname", context.DeadlineExceeded, -1},
 			"DNS problem: query timed out looking up TXT for hostname",
 		}, {
-			&dnsError{dns.TypeTXT, "hostname", nil, context.Cancelled},
+			&dnsError{dns.TypeTXT, "hostname", context.Canceled, -1},
 			"DNS problem: query timed out looking up TXT for hostname",
 		},
 	}

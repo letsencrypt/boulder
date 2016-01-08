@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 )
 
 // MockDNSResolver is a mock
@@ -15,17 +16,17 @@ type MockDNSResolver struct {
 }
 
 // LookupTXT is a mock
-func (mock *MockDNSResolver) LookupTXT(hostname string) ([]string, error) {
+func (mock *MockDNSResolver) LookupTXT(_ context.Context, hostname string) ([]string, []string, error) {
 	if hostname == "_acme-challenge.servfail.com" {
-		return nil, fmt.Errorf("SERVFAIL")
+		return nil, nil, fmt.Errorf("SERVFAIL")
 	}
 	if hostname == "_acme-challenge.good-dns01.com" {
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, nil
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, []string{"respect my authority!"}, nil
 	}
-	return []string{"hostname"}, nil
+	return []string{"hostname"}, []string{"respect my authority!"}, nil
 }
 
 // MockTimeoutError returns a a net.OpError for which Timeout() returns true.
@@ -48,7 +49,7 @@ func (t timeoutError) Timeout() bool {
 //
 // Note: see comments on LookupMX regarding email.only
 //
-func (mock *MockDNSResolver) LookupHost(hostname string) ([]net.IP, error) {
+func (mock *MockDNSResolver) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
 	if hostname == "always.invalid" ||
 		hostname == "invalid.invalid" ||
 		hostname == "email.only" {
@@ -67,7 +68,7 @@ func (mock *MockDNSResolver) LookupHost(hostname string) ([]net.IP, error) {
 }
 
 // LookupCAA is a mock
-func (mock *MockDNSResolver) LookupCAA(domain string) ([]*dns.CAA, error) {
+func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, error) {
 	var results []*dns.CAA
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
@@ -103,7 +104,7 @@ func (mock *MockDNSResolver) LookupCAA(domain string) ([]*dns.CAA, error) {
 // all domains except for special cases, so MX-only domains must be
 // handled in both LookupHost and LookupMX.
 //
-func (mock *MockDNSResolver) LookupMX(domain string) ([]string, error) {
+func (mock *MockDNSResolver) LookupMX(_ context.Context, domain string) ([]string, error) {
 	switch strings.TrimRight(domain, ".") {
 	case "letsencrypt.org":
 		fallthrough

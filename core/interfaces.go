@@ -12,7 +12,6 @@ import (
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -83,7 +82,6 @@ type RegistrationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
-	RevokeCertificate(string, RevocationCode) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
 
@@ -131,12 +129,6 @@ type StorageAdder interface {
 type StorageAuthority interface {
 	StorageGetter
 	StorageAdder
-}
-
-// CertificateAuthorityDatabase represents an atomic sequence source
-type CertificateAuthorityDatabase interface {
-	IncrementAndGetSerial(*gorp.Transaction) (int64, error)
-	Begin() (*gorp.Transaction, error)
 }
 
 // Publisher defines the public interface for the Boulder Publisher

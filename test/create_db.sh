@@ -3,7 +3,7 @@ set -o errexit
 cd $(dirname $0)/..
 source test/db-common.sh
 
-# set db connection for if running in a seperate container or not
+# set db connection for if running in a separate container or not
 dbconn="-u root"
 if [[ ! -z "$MYSQL_CONTAINER" ]]; then
 	dbconn="-u root -h 127.0.0.1 --port 3306"

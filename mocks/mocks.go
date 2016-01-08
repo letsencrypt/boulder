@@ -21,7 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -319,4 +318,22 @@ func (s *Statter) Inc(metric string, value int64, rate float32) error {
 // NewStatter returns an empty statter with all counters zero
 func NewStatter() Statter {
 	return Statter{statsd.NoopClient{}, map[string]int64{}}
+}
+
+// Mailer is a mock
+type Mailer struct {
+	Messages []string
+}
+
+// Clear removes any previously recorded messages
+func (m *Mailer) Clear() {
+	m.Messages = []string{}
+}
+
+// SendMail is a mock
+func (m *Mailer) SendMail(to []string, subject, msg string) (err error) {
+	for range to {
+		m.Messages = append(m.Messages, msg)
+	}
+	return
 }
