@@ -10,6 +10,7 @@ import (
 	"net"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/probs"
 )
 
@@ -30,6 +31,8 @@ func (d dnsError) Error() string {
 			} else {
 				detail = detailDNSNetFailure
 			}
+		} else if d.underlying == context.Canceled || d.underlying == context.DeadlineExceeded {
+			detail = detailDNSTimeout
 		}
 	} else if d.rCode != dns.RcodeSuccess {
 		detail = dns.RcodeToString[d.rCode]

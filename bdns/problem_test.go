@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/probs"
 )
@@ -32,6 +33,12 @@ func TestProblemDetailsFromDNSError(t *testing.T) {
 		}, {
 			&dnsError{dns.TypeTXT, "hostname", nil, dns.RcodeNameError},
 			"DNS problem: NXDOMAIN looking up TXT for hostname",
+		}, {
+			&dnsError{dns.TypeTXT, "hostname", nil, context.DeadlineExceeded},
+			"DNS problem: query timed out looking up TXT for hostname",
+		}, {
+			&dnsError{dns.TypeTXT, "hostname", nil, context.Cancelled},
+			"DNS problem: query timed out looking up TXT for hostname",
 		},
 	}
 	for _, tc := range testCases {
