@@ -247,17 +247,17 @@ type dnsResp struct {
 // DNS authority section.
 func (dnsResolver *DNSResolverImpl) LookupTXT(ctx context.Context, hostname string) ([]string, []string, error) {
 	var txt []string
-	r, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeTXT, dnsResolver.txtStats)
+	dnsType := dns.TypeTXT
+	r, err := dnsResolver.exchangeOne(ctx, hostname, dnsType, dnsResolver.txtStats)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, &dnsError{dnsType, hostname, err, -1}
 	}
 	if r.Rcode != dns.RcodeSuccess {
-		err = fmt.Errorf("DNS failure: %d-%s for TXT query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, nil, err
+		return nil, nil, &dnsError{dnsType, hostname, nil, r.Rcode}
 	}
 
 	for _, answer := range r.Answer {
-		if answer.Header().Rrtype == dns.TypeTXT {
+		if answer.Header().Rrtype == dnsType {
 			if txtRec, ok := answer.(*dns.TXT); ok {
 				txt = append(txt, strings.Join(txtRec.Txt, ""))
 			}
@@ -288,18 +288,17 @@ func isPrivateV4(ip net.IP) bool {
 // context.Canceled, and context.DeadlineExceeded errors.
 func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
 	var addrs []net.IP
-
-	r, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeA, dnsResolver.aStats)
+	dnsType := dns.TypeA
+	r, err := dnsResolver.exchangeOne(ctx, hostname, dnsType, dnsResolver.aStats)
 	if err != nil {
-		return addrs, err
+		return addrs, &dnsError{dnsType, hostname, err, -1}
 	}
 	if r.Rcode != dns.RcodeSuccess {
-		err = fmt.Errorf("DNS failure: %d-%s for A query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, err
+		return nil, &dnsError{dnsType, hostname, nil, r.Rcode}
 	}
 
 	for _, answer := range r.Answer {
-		if answer.Header().Rrtype == dns.TypeA {
+		if answer.Header().Rrtype == dnsType {
 			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && (!isPrivateV4(a.A) || dnsResolver.allowRestrictedAddresses) {
 				addrs = append(addrs, a.A)
 			}
@@ -309,15 +308,14 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 	return addrs, nil
 }
 
-// LookupCAA sends a DNS query to find all CAA records associated with the
-// provided hostname. If the response code from the resolver is SERVFAIL an
-// empty slice of CAA records is returned.  It will retry requests in the case
-// of temporary network errors. It can return net package, context.Canceled, and
-// context.DeadlineExceeded errors.
+// LookupCAA sends a DNS query to find all CAA records associated with
+// the provided hostname. If the response code from the resolver is
+// SERVFAIL an empty slice of CAA records is returned.
 func (dnsResolver *DNSResolverImpl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, error) {
-	r, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeCAA, dnsResolver.caaStats)
+	dnsType := dns.TypeCAA
+	r, err := dnsResolver.exchangeOne(ctx, hostname, dnsType, dnsResolver.caaStats)
 	if err != nil {
-		return nil, err
+		return nil, &dnsError{dnsType, hostname, err, -1}
 	}
 
 	// On resolver validation failure, or other server failures, return empty an
@@ -328,7 +326,7 @@ func (dnsResolver *DNSResolverImpl) LookupCAA(ctx context.Context, hostname stri
 	}
 
 	for _, answer := range r.Answer {
-		if answer.Header().Rrtype == dns.TypeCAA {
+		if answer.Header().Rrtype == dnsType {
 			if caaR, ok := answer.(*dns.CAA); ok {
 				CAAs = append(CAAs, caaR)
 			}
@@ -337,18 +335,16 @@ func (dnsResolver *DNSResolverImpl) LookupCAA(ctx context.Context, hostname stri
 	return CAAs, nil
 }
 
-// LookupMX sends a DNS query to find a MX record associated hostname and
-// returns the record target.  It will retry requests in the case of temporary
-// network errors. It can return net package, context.Canceled, and
-// context.DeadlineExceeded errors.
+// LookupMX sends a DNS query to find a MX record associated hostname and returns the
+// record target.
 func (dnsResolver *DNSResolverImpl) LookupMX(ctx context.Context, hostname string) ([]string, error) {
-	r, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeMX, dnsResolver.mxStats)
+	dnsType := dns.TypeMX
+	r, err := dnsResolver.exchangeOne(ctx, hostname, dnsType, dnsResolver.mxStats)
 	if err != nil {
-		return nil, err
+		return nil, &dnsError{dnsType, hostname, err, -1}
 	}
 	if r.Rcode != dns.RcodeSuccess {
-		err = fmt.Errorf("DNS failure: %d-%s for MX query", r.Rcode, dns.RcodeToString[r.Rcode])
-		return nil, err
+		return nil, &dnsError{dnsType, hostname, nil, r.Rcode}
 	}
 
 	var results []string

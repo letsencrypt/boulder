@@ -113,10 +113,8 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 	var resultMX []string
 	var resultA []net.IP
 	resultMX, err = resolver.LookupMX(ctx, domain)
-	recQ := "MX"
 	if err == nil && len(resultMX) == 0 {
 		resultA, err = resolver.LookupHost(ctx, domain)
-		recQ = "A"
 		if err == nil && len(resultA) == 0 {
 			return &probs.ProblemDetails{
 				Type:   probs.InvalidEmailProblem,
@@ -125,7 +123,7 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 		}
 	}
 	if err != nil {
-		prob := bdns.ProblemDetailsFromDNSError(recQ, domain, err)
+		prob := bdns.ProblemDetailsFromDNSError(err)
 		prob.Type = probs.InvalidEmailProblem
 		return prob
 	}

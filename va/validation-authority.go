@@ -94,7 +94,7 @@ func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) 
 	addrs, err := va.DNSResolver.LookupHost(ctx, hostname)
 	if err != nil {
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
-		problem := bdns.ProblemDetailsFromDNSError("A", hostname, err)
+		problem := bdns.ProblemDetailsFromDNSError(err)
 		return net.IP{}, nil, problem
 	}
 
@@ -436,7 +436,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	if err != nil {
 		va.log.Debug(fmt.Sprintf("%s [%s] DNS failure: %s", challenge.Type, identifier, err))
 
-		return nil, bdns.ProblemDetailsFromDNSError("TXT", challengeSubdomain, err)
+		return nil, bdns.ProblemDetailsFromDNSError(err)
 	}
 
 	for _, element := range txts {
@@ -460,7 +460,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 	present, valid, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {
 		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
-		return bdns.ProblemDetailsFromDNSError("CAA", identifier.Value, err)
+		return bdns.ProblemDetailsFromDNSError(err)
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", identifier.Value, regID, present, valid))
