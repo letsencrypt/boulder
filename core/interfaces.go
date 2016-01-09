@@ -121,7 +121,7 @@ type StorageAdder interface {
 	UpdateOCSP(serial string, ocspResponse []byte) error
 	AddCertificate([]byte, int64) (string, error)
 	AddSCTReceipt(SignedCertificateTimestamp) error
-	RevokeAuthorization(Authorization) error
+	RevokeAuthorization(string) error
 }
 
 // StorageAuthority interface represents a simple key/value

@@ -239,16 +239,20 @@ func main() {
 				if err != nil {
 					cmd.FailOnError(err, "Failed to retrieve authorizations")
 				}
+				fmt.Printf("Found %d authorizations\n", len(auths))
+				revoked := 0
 				for _, a := range auths {
 					if a.Status != core.StatusInvalid && a.Status != core.StatusRevoked {
-						err = sac.RevokeAuthorization(a)
+						err = sac.RevokeAuthorization(a.ID)
 						if err != nil {
-							stats.Inc("admin-revoker.auths.reovcation-failure", 1, 1.0)
+							stats.Inc("admin-revoker.auths.revocation-failure", 1, 1.0)
 							cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorization [%s] for domain %s", a.ID, a.Identifier.Value))
 						}
-						stats.Inc("admin-revoker.auths.reovcation-success", 1, 1.0)
+						stats.Inc("admin-revoker.auths.revocation-success", 1, 1.0)
+						revoked++
 					}
 				}
+				fmt.Printf("Revoked %d pending or valid authorizations\n", revoked)
 			},
 		},
 	}

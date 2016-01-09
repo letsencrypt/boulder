@@ -215,17 +215,25 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 
 // GetAuthorizationsByDomain obtains all authorizations for a domain name
 func (ssa *SQLStorageAuthority) GetAuthorizationsByDomain(domain core.AcmeIdentifier) ([]core.Authorization, error) {
+	ident, err := json.Marshal(domain)
+	if err != nil {
+		return nil, err
+	}
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return nil, err
 	}
 	auths := []core.Authorization{}
-	_, err = tx.Select(&auths, "SELECT * FROM authorizations WHERE identifier = :identifier", map[string]interface{}{"indentifier": domain})
+	authObjs := []authzModel{}
+	_, err = tx.Select(&authObjs, "SELECT * FROM authz WHERE identifier = :identifier", map[string]interface{}{"identifier": string(ident)})
 	if err != nil {
 		return nil, err
 	}
+	for _, a := range authObjs {
+		auths = append(auths, a.Authorization)
+	}
 	pendingAuths := []pendingauthzModel{}
-	_, err = tx.Select(&pendingAuths, "SELECT * FROM pending_authz WHERE identifier = :identifier", map[string]interface{}{"indentifier": domain})
+	_, err = tx.Select(&pendingAuths, "SELECT * FROM pendingAuthorizations WHERE identifier = :identifier", map[string]interface{}{"identifier": string(ident)})
 	if err != nil {
 		return nil, err
 	}
@@ -696,37 +704,42 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 }
 
 // RevokeAuthorization invalidates a pending or finalized authorization
-func (ssa *SQLStorageAuthority) RevokeAuthorization(authz core.Authorization) (err error) {
+func (ssa *SQLStorageAuthority) RevokeAuthorization(id string) (err error) {
+	auth, err := ssa.GetAuthorization(id)
+	if err != nil {
+		return
+	}
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return err
+		return
 	}
-	if statusIsPending(authz.Status) {
-		authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
+
+	if statusIsPending(auth.Status) {
+		pendingObj, err := tx.Get(&pendingauthzModel{}, auth.ID)
 		if err != nil {
 			tx.Rollback()
 			return err
 		}
-		auth := authObj.(*pendingauthzModel)
-		auth.Status = core.StatusRevoked
-		_, err = tx.Update(auth)
+		pending := pendingObj.(*pendingauthzModel)
+		pending.Authorization.Status = core.StatusRevoked
+		_, err = tx.Update(pending)
 		if err != nil {
 			tx.Rollback()
 			return err
 		}
 	} else {
-		authz.Status = core.StatusRevoked
-		auth := &authzModel{authz}
-		_, err = tx.Update(auth)
+		auth.Status = core.StatusRevoked
+		_, err = tx.Update(&authzModel{auth})
 		if err != nil {
 			tx.Rollback()
-			return err
+			return
 		}
 	}
-	for i := range authz.Challenges {
-		authz.Challenges[i].Status = core.StatusRevoked
+
+	for i := range auth.Challenges {
+		auth.Challenges[i].Status = core.StatusRevoked
 	}
-	err = updateChallenges(authz.ID, authz.Challenges, tx)
+	err = updateChallenges(auth.ID, auth.Challenges, tx)
 	if err != nil {
 		tx.Rollback()
 		return err

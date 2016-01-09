@@ -241,7 +241,7 @@ func (sa *StorageAuthority) GetAuthorizationsByDomain(ident core.AcmeIdentifier)
 }
 
 // RevokeAuthorization is a mock
-func (sa *StorageAuthority) RevokeAuthorization(auth core.Authorization) error {
+func (sa *StorageAuthority) RevokeAuthorization(id string) error {
 	return nil
 }
 
