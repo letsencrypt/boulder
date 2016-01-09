@@ -341,9 +341,10 @@ func TestRetry(t *testing.T) {
 	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
 	netError := errors.New("DNS problem: networking error looking up TXT for example.com")
 	type testCase struct {
-		maxTries int
-		te       *testExchanger
-		expected error
+		maxTries      int
+		te            *testExchanger
+		expected      error
+		expectedCount int
 	}
 	tests := []*testCase{
 		// The success on first try case
@@ -352,7 +353,8 @@ func TestRetry(t *testing.T) {
 			te: &testExchanger{
 				errs: []error{nil},
 			},
-			expected: nil,
+			expected:      nil,
+			expectedCount: 1,
 		},
 		// Immediate non-OpError, error returns immediately
 		{
@@ -360,7 +362,8 @@ func TestRetry(t *testing.T) {
 			te: &testExchanger{
 				errs: []error{errors.New("nope")},
 			},
-			expected: servFailError,
+			expected:      servFailError,
+			expectedCount: 1,
 		},
 		// Temporary err, then non-OpError stops at two tries
 		{
@@ -368,7 +371,8 @@ func TestRetry(t *testing.T) {
 			te: &testExchanger{
 				errs: []error{isTempErr, errors.New("nope")},
 			},
-			expected: servFailError,
+			expected:      servFailError,
+			expectedCount: 2,
 		},
 		// Temporary error given always
 		{
@@ -380,7 +384,8 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
-			expected: netError,
+			expected:      netError,
+			expectedCount: 3,
 		},
 		// Even with maxTries at 0, we should still let a single request go
 		// through
@@ -389,7 +394,8 @@ func TestRetry(t *testing.T) {
 			te: &testExchanger{
 				errs: []error{nil},
 			},
-			expected: nil,
+			expected:      nil,
+			expectedCount: 1,
 		},
 		// Temporary error given just once causes two tries
 		{
@@ -400,7 +406,8 @@ func TestRetry(t *testing.T) {
 					nil,
 				},
 			},
-			expected: nil,
+			expected:      nil,
+			expectedCount: 2,
 		},
 		// Temporary error given twice causes three tries
 		{
@@ -412,7 +419,8 @@ func TestRetry(t *testing.T) {
 					nil,
 				},
 			},
-			expected: nil,
+			expected:      nil,
+			expectedCount: 3,
 		},
 		// Temporary error given thrice causes three tries and fails
 		{
@@ -424,7 +432,8 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
-			expected: netError,
+			expected:      netError,
+			expectedCount: 3,
 		},
 		// temporary then non-Temporary error causes two retries
 		{
@@ -435,7 +444,8 @@ func TestRetry(t *testing.T) {
 					nonTempErr,
 				},
 			},
-			expected: netError,
+			expected:      netError,
+			expectedCount: 2,
 		},
 	}
 
@@ -452,6 +462,9 @@ func TestRetry(t *testing.T) {
 			(expectedErr != nil && err == nil) ||
 			(expectedErr != nil && expectedErr.Error() != err.Error()) {
 			t.Errorf("#%d, error, expected %v, got %v", i, expectedErr, err)
+		}
+		if tc.expectedCount != tc.te.count {
+			t.Errorf("#%d, error, expectedCount %v, got %v", i, tc.expectedCount, tc.te.count)
 		}
 	}
 
