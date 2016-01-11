@@ -6,8 +6,11 @@
 package mail
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"strings"
 	"testing"
 
@@ -49,4 +52,56 @@ func TestFailNonASCIIAddress(t *testing.T) {
 	m := New("", "", "", "", "send@email.com")
 	_, err := m.generateMessage([]string{"遗憾@email.com"}, "test subject", "this is the body\n")
 	test.AssertError(t, err, "Allowed a non-ASCII to address incorrectly")
+}
+
+func expect(t *testing.T, buf *bufio.Reader, expected string) error {
+	line, _, err := buf.ReadLine()
+	if err != nil {
+		t.Errorf("readline: %s\n", err)
+		return err
+	}
+	if string(line) != expected {
+		t.Errorf("Expected %s, got %s", expected, line)
+		return errors.New("")
+	}
+	return nil
+}
+
+func TestConnect(t *testing.T) {
+	port := "16632"
+	l, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		t.Errorf("listen: %s", err)
+	}
+	go func() {
+		defer l.Close()
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				buf := bufio.NewReader(conn)
+				conn.Write([]byte("220 smtp.example.com ESMTP\n"))
+				if err := expect(t, buf, "EHLO localhost"); err != nil {
+					return
+				}
+
+				conn.Write([]byte("250-PIPELINING\n"))
+				conn.Write([]byte("250-AUTH PLAIN LOGIN\n"))
+				conn.Write([]byte("250 8BITMIME\n"))
+				// Base64 encoding of "user@example.com\0paswd"
+				if err := expect(t, buf, "AUTH PLAIN AHVzZXJAZXhhbXBsZS5jb20AcGFzd2Q="); err != nil {
+					return
+				}
+				conn.Write([]byte("235 2.7.0 Authentication successful\n"))
+			}()
+		}
+	}()
+	m := New("localhost", port, "user@example.com", "paswd", "send@email.com")
+	err = m.Connect()
+	if err != nil {
+		t.Errorf("Failed to connect: %s", err)
+	}
 }

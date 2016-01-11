@@ -119,6 +119,7 @@ type Config struct {
 		Username string
 		Password string
 		From     string
+		Subject  string
 
 		CertLimit int
 		NagTimes  []string
