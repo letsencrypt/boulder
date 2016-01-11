@@ -197,10 +197,17 @@ func signRequest(t *testing.T, req string, nonceService *core.NonceService) stri
 	return ret
 }
 
+var testKeyPolicy = core.KeyPolicy{
+	AllowRSA:           true,
+	AllowECDSANISTP256: true,
+	AllowECDSANISTP384: true,
+}
+
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
 	stats, _ := statsd.NewNoopClient()
-	wfe, err := NewWebFrontEndImpl(stats, fc)
+
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.NewReg = wfe.BaseURL + NewRegPath
@@ -546,7 +553,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
-	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0)
+	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0, testKeyPolicy)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}

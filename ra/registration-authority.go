@@ -55,6 +55,7 @@ type RegistrationAuthorityImpl struct {
 	clk         clock.Clock
 	log         *blog.AuditLogger
 	dc          *DomainCheck
+	keyPolicy   core.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
@@ -71,7 +72,7 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy) *RegistrationAuthorityImpl {
 	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
@@ -84,6 +85,7 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 		rlPolicies:                   policies,
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
+		keyPolicy:                    keyPolicy,
 
 		regByIPStats:         scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
 		pendAuthByRegIDStats: scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
@@ -111,10 +113,8 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 	var resultMX []string
 	var resultA []net.IP
 	resultMX, err = resolver.LookupMX(ctx, domain)
-	recQ := "MX"
 	if err == nil && len(resultMX) == 0 {
 		resultA, err = resolver.LookupHost(ctx, domain)
-		recQ = "A"
 		if err == nil && len(resultA) == 0 {
 			return &probs.ProblemDetails{
 				Type:   probs.InvalidEmailProblem,
@@ -123,7 +123,7 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 		}
 	}
 	if err != nil {
-		prob := bdns.ProblemDetailsFromDNSError(recQ, domain, err)
+		prob := bdns.ProblemDetailsFromDNSError(err)
 		prob.Type = probs.InvalidEmailProblem
 		return prob
 	}
@@ -200,6 +200,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
 		}
 		if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
 			ra.regByIPStats.Inc("Exceeded", 1)
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
 			return core.RateLimitedError("Too many registrations from this IP")
 		}
 		ra.regByIPStats.Inc("Pass", 1)
@@ -209,7 +210,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
 
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
-	if err = core.GoodKey(init.Key.Key); err != nil {
+	if err = ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	if err = ra.checkRegistrationLimit(init.InitialIP); err != nil {
