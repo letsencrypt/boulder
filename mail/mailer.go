@@ -8,6 +8,8 @@ package mail
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -45,10 +47,11 @@ type Mailer interface {
 
 // MailerImpl defines a mail transfer agent to use for sending mail
 type MailerImpl struct {
-	Server      string
-	Port        string
-	Auth        smtp.Auth
-	From        string
+	server      string
+	port        string
+	auth        smtp.Auth
+	from        string
+	client      *smtp.Client
 	clk         clock.Clock
 	csprgSource idGenerator
 }
@@ -67,10 +70,10 @@ func isASCII(str string) bool {
 func New(server, port, username, password, from string) MailerImpl {
 	auth := smtp.PlainAuth("", username, password, server)
 	return MailerImpl{
-		Server:      server,
-		Port:        port,
-		Auth:        auth,
-		From:        from,
+		server:      server,
+		port:        port,
+		auth:        auth,
+		from:        from,
 		clk:         clock.Default(),
 		csprgSource: realSource{},
 	}
@@ -88,10 +91,10 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 	}
 	headers := []string{
 		fmt.Sprintf("To: %s", strings.Join(addrs, ", ")),
-		fmt.Sprintf("From: %s", m.From),
+		fmt.Sprintf("From: %s", m.from),
 		fmt.Sprintf("Subject: %s", subject),
 		fmt.Sprintf("Date: %s", now.Format(time.RFC822)),
-		fmt.Sprintf("Message-Id: <%s.%s.%s>", now.Format("20060102T150405"), mid.String(), m.From),
+		fmt.Sprintf("Message-Id: <%s.%s.%s>", now.Format("20060102T150405"), mid.String(), m.from),
 		"MIME-Version: 1.0",
 		"Content-Type: text/plain; charset=UTF-8",
 		"Content-Transfer-Encoding: quoted-printable",
@@ -117,18 +120,64 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 	)), nil
 }
 
+// Connect opens a connection to the specified mail server. It must be called
+// before SendMail.
+func (m *MailerImpl) Connect() error {
+	hostport := net.JoinHostPort(m.server, m.port)
+	var conn net.Conn
+	var err error
+	// By convention, port 465 is TLS-wrapped SMTP, while 587 is plaintext SMTP
+	// (with STARTTLS as best-effort).
+	if m.port == "465" {
+		conn, err = tls.Dial("tcp", hostport, nil)
+	} else {
+		conn, err = net.Dial("tcp", hostport)
+	}
+	if err != nil {
+		return err
+	}
+	client, err := smtp.NewClient(conn, m.server)
+	if err != nil {
+		return err
+	}
+	if err = client.Auth(m.auth); err != nil {
+		return err
+	}
+	m.client = client
+	return nil
+}
+
 // SendMail sends an email to the provided list of recipients. The email body
 // is simple text.
 func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
+	if m.client == nil {
+		return errors.New("call Connect before SendMail")
+	}
 	body, err := m.generateMessage(to, subject, msg)
 	if err != nil {
 		return err
 	}
-	return smtp.SendMail(
-		net.JoinHostPort(m.Server, m.Port),
-		m.Auth,
-		m.From,
-		to,
-		body,
-	)
+	if m.client.Mail(m.from); err != nil {
+		return err
+	}
+	for _, t := range to {
+		if m.client.Rcpt(t); err != nil {
+			return err
+		}
+	}
+	w, err := m.client.Data()
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(body)
+	if err != nil {
+		return err
+	}
+
+	err = w.Close()
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -48,6 +48,7 @@ type mailer struct {
 	rs            regStore
 	mailer        mail.Mailer
 	emailTemplate *template.Template
+	subject       string
 	nagTimes      []time.Duration
 	limit         int
 	clk           clock.Clock
@@ -74,7 +75,7 @@ func (m *mailer) sendNags(parsedCert *x509.Certificate, contacts []*core.AcmeURL
 			return err
 		}
 		startSending := m.clk.Now()
-		err = m.mailer.SendMail(emails, "Certificate expiration notice", msgBuf.String())
+		err = m.mailer.SendMail(emails, m.subject, msgBuf.String())
 		if err != nil {
 			m.stats.Inc("Mailer.Expiration.Errors.SendingNag.SendFailure", 1, 1.0)
 			return err
@@ -252,6 +253,8 @@ func main() {
 		cmd.FailOnError(err, fmt.Sprintf("Could not parse from address: %s", c.Mailer.From))
 
 		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, c.Mailer.Password, c.Mailer.From)
+		err = mailClient.Connect()
+		cmd.FailOnError(err, "Couldn't connect to mail server.")
 
 		nagCheckInterval := defaultNagCheckInterval
 		if s := c.Mailer.NagCheckInterval; s != "" {
@@ -274,8 +277,13 @@ func main() {
 		// Make sure durations are sorted in increasing order
 		sort.Sort(nags)
 
+		subject := "Certificate expiration notice"
+		if c.Mailer.Subject != "" {
+			subject = c.Mailer.Subject
+		}
 		m := mailer{
 			stats:         stats,
+			subject:       subject,
 			log:           auditlogger,
 			dbMap:         dbMap,
 			rs:            sac,
