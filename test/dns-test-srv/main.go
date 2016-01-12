@@ -134,6 +134,17 @@ func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
+	auth := new(dns.SOA)
+	auth.Hdr = dns.RR_Header{Name: "boulder.invalid.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 0}
+	auth.Ns = "ns.boulder.invalid."
+	auth.Mbox = "master.boulder.invalid."
+	auth.Serial = 1
+	auth.Refresh = 1
+	auth.Retry = 1
+	auth.Expire = 1
+	auth.Minttl = 1
+	m.Ns = append(m.Ns, auth)
+
 	w.WriteMsg(m)
 	return
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -146,6 +147,12 @@ func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
 	return
 }
 
+var testKeyPolicy = core.KeyPolicy{
+	AllowRSA:           true,
+	AllowECDSANISTP256: true,
+	AllowECDSANISTP384: true,
+}
+
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
@@ -215,7 +222,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		fc,
 		stats,
 		caCert,
-		caKey)
+		caKey,
+		testKeyPolicy)
 	test.AssertNotError(t, err, "Couldn't create CA")
 	ca.SA = ssa
 	ca.PA = pa
@@ -242,12 +250,12 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 				Threshold: 100,
 				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
-		}, 1)
+		}, 1, testKeyPolicy)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
-	ra.DNSResolver = &mocks.DNSResolver{}
+	ra.DNSResolver = &bdns.MockDNSResolver{}
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -318,8 +326,8 @@ func TestValidateEmail(t *testing.T) {
 	}{
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
-		{"a@always.timeout", "DNS query timed out during A-record lookup of always.timeout"},
-		{"a@always.error", "DNS networking error during A-record lookup of always.error"},
+		{"a@always.timeout", "DNS problem: query timed out looking up A for always.timeout"},
+		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
 		"a@email.com",
@@ -327,7 +335,7 @@ func TestValidateEmail(t *testing.T) {
 	}
 
 	for _, tc := range testFailures {
-		problem := validateEmail(context.Background(), tc.input, &mocks.DNSResolver{})
+		problem := validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
 		if problem.Type != probs.InvalidEmailProblem {
 			t.Errorf("validateEmail(%q): got problem type %#v, expected %#v", tc.input, problem.Type, probs.InvalidEmailProblem)
 		}
@@ -338,7 +346,7 @@ func TestValidateEmail(t *testing.T) {
 	}
 
 	for _, addr := range testSuccesses {
-		if prob := validateEmail(context.Background(), addr, &mocks.DNSResolver{}); prob != nil {
+		if prob := validateEmail(context.Background(), addr, &bdns.MockDNSResolver{}); prob != nil {
 			t.Errorf("validateEmail(%q): expected success, but it failed: %s",
 				addr, prob)
 		}

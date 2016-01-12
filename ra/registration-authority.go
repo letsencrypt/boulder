@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -54,6 +55,7 @@ type RegistrationAuthorityImpl struct {
 	clk         clock.Clock
 	log         *blog.AuditLogger
 	dc          *DomainCheck
+	keyPolicy   core.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
@@ -62,10 +64,17 @@ type RegistrationAuthorityImpl struct {
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
+
+	regByIPStats         metrics.Scope
+	pendAuthByRegIDStats metrics.Scope
+	certsForDomainStats  metrics.Scope
+	totalCertsStats      metrics.Scope
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy) *RegistrationAuthorityImpl {
+	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
+	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
@@ -76,6 +85,12 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 		rlPolicies:                   policies,
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
+		keyPolicy:                    keyPolicy,
+
+		regByIPStats:         scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
+		pendAuthByRegIDStats: scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
+		certsForDomainStats:  scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
+		totalCertsStats:      scope.NewScope("RA", "RateLimit", "TotalCertificates"),
 	}
 	return ra
 }
@@ -98,10 +113,8 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 	var resultMX []string
 	var resultA []net.IP
 	resultMX, err = resolver.LookupMX(ctx, domain)
-	recQ := "MX"
 	if err == nil && len(resultMX) == 0 {
 		resultA, err = resolver.LookupHost(ctx, domain)
-		recQ = "A"
 		if err == nil && len(resultA) == 0 {
 			return &probs.ProblemDetails{
 				Type:   probs.InvalidEmailProblem,
@@ -110,7 +123,7 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 		}
 	}
 	if err != nil {
-		prob := bdns.ProblemDetailsFromDNSError(recQ, domain, err)
+		prob := bdns.ProblemDetailsFromDNSError(err)
 		prob.Type = probs.InvalidEmailProblem
 		return prob
 	}
@@ -186,15 +199,18 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
 			return err
 		}
 		if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
+			ra.regByIPStats.Inc("Exceeded", 1)
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
 			return core.RateLimitedError("Too many registrations from this IP")
 		}
+		ra.regByIPStats.Inc("Pass", 1)
 	}
 	return nil
 }
 
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
-	if err = core.GoodKey(init.Key.Key); err != nil {
+	if err = ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	if err = ra.checkRegistrationLimit(init.InitialIP); err != nil {
@@ -260,9 +276,10 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	return
 }
 
-func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *cmd.RateLimitPolicy, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(regID int64) error {
+	limit := ra.rlPolicies.PendingAuthorizationsPerAccount
 	if limit.Enabled() {
-		count, err := sa.CountPendingAuthorizations(regID)
+		count, err := ra.SA.CountPendingAuthorizations(regID)
 		if err != nil {
 			return err
 		}
@@ -270,8 +287,11 @@ func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *cmd.RateLimitP
 		// here.
 		noKey := ""
 		if count >= limit.GetThreshold(noKey, regID) {
+			ra.pendAuthByRegIDStats.Inc("Exceeded", 1)
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID))
 			return core.RateLimitedError("Too many currently pending authorizations.")
 		}
+		ra.pendAuthByRegIDStats.Inc("Pass", 1)
 	}
 	return nil
 }
@@ -293,8 +313,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 		return authz, err
 	}
 
-	limit := &ra.rlPolicies.PendingAuthorizationsPerAccount
-	if err = checkPendingAuthorizationLimit(ra.SA, limit, regID); err != nil {
+	if err = ra.checkPendingAuthorizationLimit(regID); err != nil {
 		return authz, err
 	}
 
@@ -609,10 +628,15 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 		}
 	}
 	if len(badNames) > 0 {
+		domains := strings.Join(badNames, ", ")
+		ra.certsForDomainStats.Inc("Exceeded", 1)
+		ra.log.Info(fmt.Sprintf("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, domains))
 		return core.RateLimitedError(fmt.Sprintf(
-			"Too many certificates already issued for: %s",
-			strings.Join(badNames, ", ")))
+			"Too many certificates already issued for: %s", domains))
+
 	}
+	ra.certsForDomainStats.Inc("Pass", 1)
+
 	return nil
 }
 
@@ -624,8 +648,12 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) er
 			return err
 		}
 		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
+			domains := strings.Join(names, ",")
+			ra.totalCertsStats.Inc("Exceeded", 1)
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, regID: %d, domains: %s, totalIssued: %d", regID, domains, totalIssued))
 			return core.RateLimitedError("Certificate issuance limit reached")
 		}
+		ra.totalCertsStats.Inc("Pass", 1)
 	}
 	if limits.CertificatesPerName.Enabled() {
 		err := ra.checkCertificatesPerNameLimit(names, limits.CertificatesPerName, regID)

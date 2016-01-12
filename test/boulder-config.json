@@ -254,6 +254,7 @@
     "server": "mail.example.com",
     "port": "25",
     "username": "cert-master@example.com",
+    "from": "Expiry bot <test@example.com>",
     "password": "password",
     "dbConnectFile": "test/secrets/mailer_dburl",
     "messageLimit": 0,
@@ -306,5 +307,12 @@
     "dbConnectFile": "test/secrets/cert_checker_dburl"
   },
 
-  "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1"
+  "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1",
+
+  "allowedSigningAlgos": {
+    "rsa": true,
+    "ecdsanistp256": true,
+    "ecdsanistp384": true,
+    "ecdsanistp521": false
+  }
 }
