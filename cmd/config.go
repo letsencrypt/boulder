@@ -188,24 +188,32 @@ type Config struct {
 		Workers             int
 		ReportDirectoryPath string
 	}
-
-	AllowedSigningAlgos struct {
-		RSA           bool
-		ECDSANISTP256 bool
-		ECDSANISTP384 bool
-		ECDSANISTP521 bool
-	}
+	AllowedSigningAlgos *AllowedSigningAlgos
 
 	SubscriberAgreementURL string
 }
 
+// AllowedSigningAlgos defines which algorithms be used for keys that we will
+// sign.
+type AllowedSigningAlgos struct {
+	RSA           bool
+	ECDSANISTP256 bool
+	ECDSANISTP384 bool
+	ECDSANISTP521 bool
+}
+
 // KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
 func (config *Config) KeyPolicy() core.KeyPolicy {
+	if config.AllowedSigningAlgos != nil {
+		return core.KeyPolicy{
+			AllowRSA:           config.AllowedSigningAlgos.RSA,
+			AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
+			AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
+			AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
+		}
+	}
 	return core.KeyPolicy{
-		AllowRSA:           config.AllowedSigningAlgos.RSA,
-		AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
-		AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
-		AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
+		AllowRSA: true,
 	}
 }
 
