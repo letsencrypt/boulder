@@ -254,6 +254,7 @@
     "server": "mail.example.com",
     "port": "25",
     "username": "cert-master@example.com",
+    "from": "Expiry bot <test@example.com>",
     "password": "password",
     "dbConnectFile": "test/secrets/mailer_dburl",
     "messageLimit": 0,
