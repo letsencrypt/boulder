@@ -55,7 +55,6 @@ const (
 	MethodGetRegistrationByKey              = "GetRegistrationByKey"              // RA, SA
 	MethodGetAuthorization                  = "GetAuthorization"                  // SA
 	MethodGetLatestValidAuthorization       = "GetLatestValidAuthorization"       // SA
-	MethodGetAuthorizationsByDomain         = "GetAuthorizationsByDomain"         // SA
 	MethodGetCertificate                    = "GetCertificate"                    // SA
 	MethodGetCertificateStatus              = "GetCertificateStatus"              // SA
 	MethodMarkCertificateRevoked            = "MarkCertificateRevoked"            // SA
@@ -72,7 +71,7 @@ const (
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
-	MethodRevokeAuthorization               = "RevokeAuthorization"               // SA
+	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
 )
 
 // Request structs
@@ -880,26 +879,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
-	rpc.Handle(MethodGetAuthorizationsByDomain, func(req []byte) (response []byte, err error) {
-		ident := core.AcmeIdentifier{}
-		err = json.Unmarshal(req, &ident)
-		if err != nil {
-			return
-		}
-		authz, err := impl.GetAuthorizationsByDomain(ident)
-		if err != nil {
-			return
-		}
-
-		response, err = json.Marshal(authz)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetAuthorizationsByDomain, err, req)
-			return
-		}
-		return
-	})
-
 	rpc.Handle(MethodGetLatestValidAuthorization, func(req []byte) (response []byte, err error) {
 		var lvar latestValidAuthorizationRequest
 		if err = json.Unmarshal(req, &lvar); err != nil {
@@ -1008,8 +987,23 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
-	rpc.Handle(MethodRevokeAuthorization, func(req []byte) (response []byte, err error) {
-		err = impl.RevokeAuthorization(string(req))
+	rpc.Handle(MethodRevokeAuthorizationsByDomain, func(req []byte) (response []byte, err error) {
+		var ident core.AcmeIdentifier
+		err = json.Unmarshal(req, &ident)
+		if err != nil {
+			return
+		}
+		aRevoked, paRevoked, err := impl.RevokeAuthorizationsByDomain(ident)
+		if err != nil {
+			return
+		}
+		var raResp struct {
+			authsRevoked        int64
+			pendingAuthsRevoked int64
+		}
+		raResp.authsRevoked = aRevoked
+		raResp.pendingAuthsRevoked = paRevoked
+		response, err = json.Marshal(raResp)
 		return
 	})
 
@@ -1252,21 +1246,6 @@ func (cac StorageAuthorityClient) GetAuthorization(id string) (authz core.Author
 	return
 }
 
-// GetAuthorizationsByDomain sends a request to get all Authorizations for a domain
-func (cac StorageAuthorityClient) GetAuthorizationsByDomain(ident core.AcmeIdentifier) (authz []core.Authorization, err error) {
-	jsonData, err := json.Marshal(ident)
-	if err != nil {
-		return
-	}
-	jsonAuthz, err := cac.rpc.DispatchSync(MethodGetAuthorizationsByDomain, jsonData)
-	if err != nil {
-		return
-	}
-
-	err = json.Unmarshal(jsonAuthz, &authz)
-	return
-}
-
 // GetLatestValidAuthorization sends a request to get an Authorization by RegID, Identifier
 func (cac StorageAuthorityClient) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 
@@ -1415,9 +1394,27 @@ func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization
 	return
 }
 
-// RevokeAuthorization sends a request to revoke a pending or finalized authorization
-func (cac StorageAuthorityClient) RevokeAuthorization(id string) (err error) {
-	_, err = cac.rpc.DispatchSync(MethodRevokeAuthorization, []byte(id))
+// RevokeAuthorizationsByDomain sends a request to revoke all pending or finalized authorizations
+// for a single domain
+func (cac StorageAuthorityClient) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (aRevoked int64, paRevoked int64, err error) {
+	data, err := json.Marshal(ident)
+	if err != nil {
+		return
+	}
+	resp, err := cac.rpc.DispatchSync(MethodRevokeAuthorizationsByDomain, data)
+	if err != nil {
+		return
+	}
+	var raResp struct {
+		authsRevoked        int64
+		pendingAuthsRevoked int64
+	}
+	err = json.Unmarshal(resp, &raResp)
+	if err != nil {
+		return
+	}
+	aRevoked = raResp.authsRevoked
+	paRevoked = raResp.pendingAuthsRevoked
 	return
 }
 

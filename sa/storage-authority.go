@@ -213,36 +213,6 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	return
 }
 
-// GetAuthorizationsByDomain obtains all authorizations for a domain name
-func (ssa *SQLStorageAuthority) GetAuthorizationsByDomain(domain core.AcmeIdentifier) ([]core.Authorization, error) {
-	ident, err := json.Marshal(domain)
-	if err != nil {
-		return nil, err
-	}
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return nil, err
-	}
-	auths := []core.Authorization{}
-	authObjs := []authzModel{}
-	_, err = tx.Select(&authObjs, "SELECT * FROM authz WHERE identifier = :identifier", map[string]interface{}{"identifier": string(ident)})
-	if err != nil {
-		return nil, err
-	}
-	for _, a := range authObjs {
-		auths = append(auths, a.Authorization)
-	}
-	pendingAuths := []pendingauthzModel{}
-	_, err = tx.Select(&pendingAuths, "SELECT * FROM pendingAuthorizations WHERE identifier = :identifier", map[string]interface{}{"identifier": string(ident)})
-	if err != nil {
-		return nil, err
-	}
-	for _, pa := range pendingAuths {
-		auths = append(auths, pa.Authorization)
-	}
-	return auths, nil
-}
-
 // GetLatestValidAuthorization gets the valid authorization with biggest expire date for a given domain and registrationId
 func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	ident, err := json.Marshal(identifier)
@@ -703,48 +673,115 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
-// RevokeAuthorization invalidates a pending or finalized authorization
-func (ssa *SQLStorageAuthority) RevokeAuthorization(id string) (err error) {
-	auth, err := ssa.GetAuthorization(id)
+// RevokeAuthorizationsByDomain invalidates all pending or finalized authorization
+// and any associated challenges for a single domain
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
+	invalidStatus, revokedStatus := string(core.StatusInvalid), string(core.StatusRevoked)
+	identifier, err := json.Marshal(ident)
 	if err != nil {
-		return
+		return 0, 0, err
 	}
+
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
-		return
+		return 0, 0, err
 	}
 
-	if statusIsPending(auth.Status) {
-		pendingObj, err := tx.Get(&pendingauthzModel{}, auth.ID)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
-		pending := pendingObj.(*pendingauthzModel)
-		pending.Authorization.Status = core.StatusRevoked
-		_, err = tx.Update(pending)
-		if err != nil {
-			tx.Rollback()
-			return err
-		}
-	} else {
-		auth.Status = core.StatusRevoked
-		_, err = tx.Update(&authzModel{auth})
-		if err != nil {
-			tx.Rollback()
-			return
-		}
-	}
-
-	for i := range auth.Challenges {
-		auth.Challenges[i].Status = core.StatusRevoked
-	}
-	err = updateChallenges(auth.ID, auth.Challenges, tx)
+	// collect authorization IDs before beginning revocations
+	now := ssa.clk.Now()
+	var allIDs []string
+	_, err = tx.Select(
+		&allIDs,
+		`SELECT id FROM authz
+    WHERE identifier = :ident AND
+    status != :invalid AND
+    status != :revoked AND
+    expires > :now`,
+		map[string]interface{}{"ident": identifier, "invalid": invalidStatus, "revoked": revokedStatus, "now": now},
+	)
 	if err != nil {
 		tx.Rollback()
-		return err
+		return 0, 0, err
 	}
-	return tx.Commit()
+	_, err = tx.Select(
+		&allIDs,
+		`SELECT id FROM pendingAuthorizations
+    WHERE identifier = :ident AND
+    status != :invalid AND
+    status != :revoked AND
+    expires > :now`,
+		map[string]interface{}{"ident": identifier, "invalid": invalidStatus, "revoked": revokedStatus, "now": now},
+	)
+	if err != nil {
+		tx.Rollback()
+		return 0, 0, err
+	}
+
+	// revoke any final authorizations
+	authRes, err := tx.Exec(
+		`UPDATE authz
+    SET status = ?
+    WHERE identifier = ? AND
+    status != ? AND
+    status != ? AND
+    expires > ?`,
+		string(core.StatusRevoked),
+		identifier,
+		invalidStatus,
+		revokedStatus,
+		now,
+	)
+	if err != nil {
+		tx.Rollback()
+		return 0, 0, err
+	}
+
+	// revoke any pending authorizations
+	pendingAuthRes, err := tx.Exec(
+		`UPDATE pendingAuthorizations
+    SET status = ?
+    WHERE identifier = ? AND
+    status != "invalid" AND
+    status != "revoked" AND
+    expires > ?`,
+		string(core.StatusRevoked),
+		identifier,
+		now,
+	)
+	if err != nil {
+		tx.Rollback()
+		return 0, 0, err
+	}
+
+	// revoke any challenges associated with the domain
+	for _, authID := range allIDs {
+		_, err = tx.Exec(
+			`UPDATE challenges
+       SET status = ?
+       WHERE authorizationID = ? AND
+       status != "invalid"`,
+			string(core.StatusRevoked),
+			authID,
+		)
+		if err != nil {
+			tx.Rollback()
+			return 0, 0, err
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return 0, 0, err
+	}
+	authsRevoked, err := authRes.RowsAffected()
+	if err != nil {
+		return 0, 0, err
+	}
+	pendingAuthsRevoked, err := pendingAuthRes.RowsAffected()
+	if err != nil {
+		return 0, 0, err
+	}
+	return authsRevoked, pendingAuthsRevoked, nil
 }
 
 // AddCertificate stores an issued certificate.

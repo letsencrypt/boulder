@@ -235,24 +235,16 @@ func main() {
 			Action: func(c *cli.Context) {
 				domain := c.Args().First()
 				_, _, _, sac, stats := setupContext(c)
-				auths, err := sac.GetAuthorizationsByDomain(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain})
-				if err != nil {
-					cmd.FailOnError(err, "Failed to retrieve authorizations")
-				}
-				fmt.Printf("Found %d authorizations\n", len(auths))
-				revoked := 0
-				for _, a := range auths {
-					if a.Status != core.StatusInvalid && a.Status != core.StatusRevoked {
-						err = sac.RevokeAuthorization(a.ID)
-						if err != nil {
-							stats.Inc("admin-revoker.auths.revocation-failure", 1, 1.0)
-							cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorization [%s] for domain %s", a.ID, a.Identifier.Value))
-						}
-						stats.Inc("admin-revoker.auths.revocation-success", 1, 1.0)
-						revoked++
-					}
-				}
-				fmt.Printf("Revoked %d pending or valid authorizations\n", revoked)
+				ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
+				authsRevoked, pendingAuthsRevoked, err := sac.RevokeAuthorizationsByDomain(ident)
+				cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorizations for %s", ident.Value))
+				fmt.Printf(
+					"Revoked %d pending authorizations and %d final authorizations\n",
+					authsRevoked,
+					pendingAuthsRevoked,
+				)
+				stats.Inc("admin-revoker.revokedAuthorizations", authsRevoked, 1.0)
+				stats.Inc("admin-revoker.revokedPendingAuthorizations", pendingAuthsRevoked, 1.0)
 			},
 		},
 	}

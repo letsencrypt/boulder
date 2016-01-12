@@ -641,22 +641,23 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	test.AssertEquals(t, count, 2)
 }
 
-func TestRevokeAuthorization(t *testing.T) {
+func TestRevokeAuthorizationsByDomain(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	PA1 := CreateDomainAuthWithRegID(t, "a.com", sa, reg.ID)
-	PA2 := CreateDomainAuthWithRegID(t, "b.com", sa, reg.ID)
+	PA2 := CreateDomainAuthWithRegID(t, "a.com", sa, reg.ID)
 
 	PA2.Status = core.StatusValid
 	err := sa.FinalizeAuthorization(PA2)
 	test.AssertNotError(t, err, "Failed to finalize authorization")
 
-	err = sa.RevokeAuthorization(PA1.ID)
+	ident := core.AcmeIdentifier{Value: "a.com", Type: core.IdentifierDNS}
+	ar, par, err := sa.RevokeAuthorizationsByDomain(ident)
 	test.AssertNotError(t, err, "Failed to revoke pending authorization")
-	err = sa.RevokeAuthorization(PA2.ID)
-	test.AssertNotError(t, err, "Failed to revoke finalized authorization")
+	test.AssertEquals(t, ar, int64(1))
+	test.AssertEquals(t, par, int64(1))
 
 	PA, err := sa.GetAuthorization(PA1.ID)
 	test.AssertNotError(t, err, "Failed to retrieve pending authorization")
@@ -672,20 +673,4 @@ func TestRevokeAuthorization(t *testing.T) {
 	for _, c := range FA.Challenges {
 		test.AssertEquals(t, c.Status, core.StatusRevoked)
 	}
-}
-
-func TestGetAuthorizationsByDomain(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	PA3 := CreateDomainAuthWithRegID(t, "b.com", sa, reg.ID)
-	_ = CreateDomainAuthWithRegID(t, "b.com", sa, reg.ID)
-	PA3.Status = core.StatusValid
-	err := sa.FinalizeAuthorization(PA3)
-	test.AssertNotError(t, err, "Failed to finalize authorization")
-
-	auths, err := sa.GetAuthorizationsByDomain(core.AcmeIdentifier{Value: "b.com", Type: core.IdentifierDNS})
-	test.AssertNotError(t, err, "Failed to get authorizations for b.com")
-	test.AssertEquals(t, len(auths), 2)
 }
