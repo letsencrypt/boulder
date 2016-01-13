@@ -62,6 +62,11 @@ type Config struct {
 
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
+
+		// The number of times to try a DNS query (that has a temporary error)
+		// before giving up. May be short-circuited by deadlines. A zero value
+		// will be turned into 1.
+		DNSTries int
 	}
 
 	SA struct {
@@ -83,6 +88,11 @@ type Config struct {
 		MaxConcurrentRPCServerRequests int64
 
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
+
+		// The number of times to try a DNS query (that has a temporary error)
+		// before giving up. May be short-circuited by deadlines. A zero value
+		// will be turned into 1.
+		DNSTries int
 	}
 
 	SQL struct {
@@ -108,6 +118,8 @@ type Config struct {
 		Port     string
 		Username string
 		Password string
+		From     string
+		Subject  string
 
 		CertLimit int
 		NagTimes  []string
@@ -131,7 +143,7 @@ type Config struct {
 
 		Path          string
 		ListenAddress string
-		// MaxAge is the max-age to set in the Cache-Controler response
+		// MaxAge is the max-age to set in the Cache-Control response
 		// header. It is a time.Duration formatted string.
 		MaxAge ConfigDuration
 
@@ -176,8 +188,33 @@ type Config struct {
 		Workers             int
 		ReportDirectoryPath string
 	}
+	AllowedSigningAlgos *AllowedSigningAlgos
 
 	SubscriberAgreementURL string
+}
+
+// AllowedSigningAlgos defines which algorithms be used for keys that we will
+// sign.
+type AllowedSigningAlgos struct {
+	RSA           bool
+	ECDSANISTP256 bool
+	ECDSANISTP384 bool
+	ECDSANISTP521 bool
+}
+
+// KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
+func (config *Config) KeyPolicy() core.KeyPolicy {
+	if config.AllowedSigningAlgos != nil {
+		return core.KeyPolicy{
+			AllowRSA:           config.AllowedSigningAlgos.RSA,
+			AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
+			AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
+			AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
+		}
+	}
+	return core.KeyPolicy{
+		AllowRSA: true,
+	}
 }
 
 // ServiceConfig contains config items that are common to all our services, to

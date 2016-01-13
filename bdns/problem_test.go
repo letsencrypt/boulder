@@ -10,7 +10,9 @@ import (
 	"net"
 	"testing"
 
-	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/probs"
 )
 
@@ -20,14 +22,23 @@ func TestProblemDetailsFromDNSError(t *testing.T) {
 		expected string
 	}{
 		{
-			mocks.TimeoutError(),
-			detailDNSTimeout,
+			&dnsError{dns.TypeA, "hostname", MockTimeoutError(), -1},
+			"DNS problem: query timed out looking up A for hostname",
 		}, {
 			errors.New("other failure"),
 			detailServerFailure,
 		}, {
-			&net.OpError{Err: errors.New("some net error")},
-			detailDNSNetFailure,
+			&dnsError{dns.TypeMX, "hostname", &net.OpError{Err: errors.New("some net error")}, -1},
+			"DNS problem: networking error looking up MX for hostname",
+		}, {
+			&dnsError{dns.TypeTXT, "hostname", nil, dns.RcodeNameError},
+			"DNS problem: NXDOMAIN looking up TXT for hostname",
+		}, {
+			&dnsError{dns.TypeTXT, "hostname", context.DeadlineExceeded, -1},
+			"DNS problem: query timed out looking up TXT for hostname",
+		}, {
+			&dnsError{dns.TypeTXT, "hostname", context.Canceled, -1},
+			"DNS problem: query timed out looking up TXT for hostname",
 		},
 	}
 	for _, tc := range testCases {

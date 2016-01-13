@@ -11,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/metrics"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -41,14 +42,20 @@ func main() {
 		if c.VA.PortConfig.TLSPort != 0 {
 			pc.TLSPort = c.VA.PortConfig.TLSPort
 		}
+		clk := clock.Default()
 		sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
-		vai := va.NewValidationAuthorityImpl(pc, sbc, stats, clock.Default())
+		vai := va.NewValidationAuthorityImpl(pc, sbc, stats, clk)
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
+		scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
+		dnsTries := c.VA.DNSTries
+		if dnsTries < 1 {
+			dnsTries = 1
+		}
 		if !c.Common.DNSAllowLoopbackAddresses {
-			vai.DNSResolver = bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+			vai.DNSResolver = bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
 		} else {
-			vai.DNSResolver = bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+			vai.DNSResolver = bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
 		}
 		vai.UserAgent = c.VA.UserAgent
 		vai.IssuerDomain = c.VA.IssuerDomain

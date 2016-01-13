@@ -6,8 +6,8 @@
 package core
 
 import (
-	"bytes"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -99,7 +99,6 @@ func TestErrors(t *testing.T) {
 		MalformedRequestError(testMessage),
 		UnauthorizedError(testMessage),
 		NotFoundError(testMessage),
-		SyntaxError(testMessage),
 		SignatureValidationError(testMessage),
 		CertificateIssuanceError(testMessage),
 	}
@@ -111,50 +110,10 @@ func TestErrors(t *testing.T) {
 	}
 }
 
-func TestB64(t *testing.T) {
-	b64Enc := "Ee9hR5p2cdudb5FHm1Z_M2nGcQG-yvZit1M6qaaM5w4"
-	binEnc := []byte{0x11, 0xef, 0x61, 0x47, 0x9a, 0x76, 0x71, 0xdb,
-		0x9d, 0x6f, 0x91, 0x47, 0x9b, 0x56, 0x7f, 0x33,
-		0x69, 0xc6, 0x71, 0x01, 0xbe, 0xca, 0xf6, 0x62,
-		0xb7, 0x53, 0x3a, 0xa9, 0xa6, 0x8c, 0xe7, 0x0e}
-
-	testB64 := B64enc(binEnc)
-	if testB64 != b64Enc {
-		t.Errorf("Base64 encoding produced incorrect result: %s", testB64)
-	}
-
-	b64Dec := "wJD0zUMZ-6YMIiNbcCG0jLzxVerTxfnQ"
-	binDec := []byte{192, 144, 244, 205, 67, 25, 251, 166,
-		12, 34, 35, 91, 112, 33, 180, 140,
-		188, 241, 85, 234, 211, 197, 249, 208}
-
-	testBin, err := B64dec(b64Dec)
-	if err != nil {
-		t.Errorf("Error in base64 decode: %v", err)
-	}
-	if bytes.Compare(testBin, binDec) != 0 {
-		t.Errorf("Base64 decoded to wrong value: %v", testBin)
-	}
-
-	b64Dec2 := "wJD0zUMZ-6YMIiNbcCG0jLzxVerTxfn"
-	binDec2 := []byte{192, 144, 244, 205, 67, 25, 251, 166,
-		12, 34, 35, 91, 112, 33, 180, 140,
-		188, 241, 85, 234, 211, 197, 249}
-
-	testBin2, err := B64dec(b64Dec2)
-	if err != nil {
-		t.Errorf("Error in base64 decode: %v", err)
-	}
-	if bytes.Compare(testBin2, binDec2) != 0 {
-		t.Errorf("Base64 decoded to wrong value: %v", testBin)
-	}
-
-}
-
 func TestRandomString(t *testing.T) {
 	byteLength := 256
 	b64 := RandomString(byteLength)
-	bin, err := B64dec(b64)
+	bin, err := base64.RawURLEncoding.DecodeString(b64)
 	if err != nil {
 		t.Errorf("Error in base64 decode: %v", err)
 	}
@@ -176,7 +135,7 @@ func TestFingerprint(t *testing.T) {
 		37, 99, 42, 171, 40, 236, 55, 187}
 
 	digest := Fingerprint256(in)
-	if digest != B64enc(out) {
+	if digest != base64.RawURLEncoding.EncodeToString(out) {
 		t.Errorf("Incorrect SHA-256 fingerprint: %v", digest)
 	}
 }

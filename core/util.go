@@ -8,7 +8,6 @@ package core
 import (
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -81,9 +80,6 @@ type NotFoundError string
 // LengthRequiredError indicates a POST was sent with no Content-Length.
 type LengthRequiredError string
 
-// SyntaxError indicates the user improperly formatted their data.
-type SyntaxError string
-
 // SignatureValidationError indicates that the user's signature could not
 // be verified, either through adversarial activity, or misconfiguration of
 // the user client.
@@ -116,7 +112,6 @@ func (e MalformedRequestError) Error() string    { return string(e) }
 func (e UnauthorizedError) Error() string        { return string(e) }
 func (e NotFoundError) Error() string            { return string(e) }
 func (e LengthRequiredError) Error() string      { return string(e) }
-func (e SyntaxError) Error() string              { return string(e) }
 func (e SignatureValidationError) Error() string { return string(e) }
 func (e CertificateIssuanceError) Error() string { return string(e) }
 func (e NoSuchRegistrationError) Error() string  { return string(e) }
@@ -137,7 +132,7 @@ func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
 	switch e := err.(type) {
 	case *probs.ProblemDetails:
 		return e
-	case MalformedRequestError, SyntaxError:
+	case MalformedRequestError:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case NotSupportedError:
 		return &probs.ProblemDetails{
@@ -170,36 +165,6 @@ func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
 	}
 }
 
-// Base64 functions
-
-func pad(x string) string {
-	switch len(x) % 4 {
-	case 2:
-		return x + "=="
-	case 3:
-		return x + "="
-	}
-	return x
-}
-
-func unpad(x string) string {
-	end := len(x)
-	for end != 0 && x[end-1] == '=' {
-		end--
-	}
-	return x[:end]
-}
-
-// B64enc encodes a byte array as unpadded, URL-safe Base64
-func B64enc(x []byte) string {
-	return unpad(base64.URLEncoding.EncodeToString(x))
-}
-
-// B64dec decodes a byte array from unpadded, URL-safe Base64
-func B64dec(x string) ([]byte, error) {
-	return base64.URLEncoding.DecodeString(pad(x))
-}
-
 // Random stuff
 
 // RandomString returns a randomly generated string of the requested length.
@@ -211,7 +176,7 @@ func RandomString(byteLength int) string {
 		logger := blog.GetAuditLogger()
 		logger.EmergencyExit(ohdear)
 	}
-	return B64enc(b)
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 // NewToken produces a random string for Challenges, etc.
@@ -234,97 +199,7 @@ func LooksLikeAToken(token string) bool {
 func Fingerprint256(data []byte) string {
 	d := sha256.New()
 	_, _ = d.Write(data) // Never returns an error
-	return B64enc(d.Sum(nil))
-}
-
-// Thumbprint produces a JWK thumbprint [RFC7638] of a JWK.
-// XXX(rlb): This is adapted from a PR to go-jose, but we need it here until
-//           that PR is merged and we update to that version.
-//           https://github.com/square/go-jose/pull/37
-// XXX(rlb): Once that lands, we should replace the digest methods below
-//           with this standard thumbprint.
-const rsaThumbprintTemplate = `{"e":"%s","kty":"RSA","n":"%s"}`
-const ecThumbprintTemplate = `{"crv":"%s","kty":"EC","x":"%s","y":"%s"}`
-
-// Get JOSE name of curve
-func curveName(crv elliptic.Curve) (string, error) {
-	switch crv {
-	case elliptic.P256():
-		return "P-256", nil
-	case elliptic.P384():
-		return "P-384", nil
-	case elliptic.P521():
-		return "P-521", nil
-	default:
-		return "", fmt.Errorf("square/go-jose: unsupported/unknown elliptic curve")
-	}
-}
-
-// Get size of curve in bytes
-func curveSize(crv elliptic.Curve) int {
-	bits := crv.Params().BitSize
-
-	div := bits / 8
-	mod := bits % 8
-
-	if mod == 0 {
-		return div
-	}
-
-	return div + 1
-}
-
-func newFixedSizeBuffer(data []byte, length int) []byte {
-	if len(data) > length {
-		panic("square/go-jose: invalid call to newFixedSizeBuffer (len(data) > length)")
-	}
-	pad := make([]byte, length-len(data))
-	return append(pad, data...)
-}
-
-func ecThumbprintInput(curve elliptic.Curve, x, y *big.Int) (string, error) {
-	coordLength := curveSize(curve)
-	crv, err := curveName(curve)
-	if err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf(ecThumbprintTemplate, crv,
-		B64enc(newFixedSizeBuffer(x.Bytes(), coordLength)),
-		B64enc(newFixedSizeBuffer(y.Bytes(), coordLength))), nil
-}
-
-func rsaThumbprintInput(n *big.Int, e int) (string, error) {
-	return fmt.Sprintf(rsaThumbprintTemplate,
-		B64enc(big.NewInt(int64(e)).Bytes()),
-		B64enc(n.Bytes())), nil
-}
-
-// Thumbprint computes the JWK Thumbprint of a key using the
-// indicated hash algorithm.
-func Thumbprint(k *jose.JsonWebKey) (string, error) {
-	var input string
-	var err error
-	switch key := k.Key.(type) {
-	case *ecdsa.PublicKey:
-		input, err = ecThumbprintInput(key.Curve, key.X, key.Y)
-	case *ecdsa.PrivateKey:
-		input, err = ecThumbprintInput(key.Curve, key.X, key.Y)
-	case *rsa.PublicKey:
-		input, err = rsaThumbprintInput(key.N, key.E)
-	case *rsa.PrivateKey:
-		input, err = rsaThumbprintInput(key.N, key.E)
-	default:
-		return "", fmt.Errorf("square/go-jose: unkown key type")
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	h := sha256.New()
-	h.Write([]byte(input))
-	return B64enc(h.Sum(nil)), nil
+	return base64.RawURLEncoding.EncodeToString(d.Sum(nil))
 }
 
 // KeyDigest produces a padded, standard Base64-encoded SHA256 digest of a
@@ -585,7 +460,7 @@ func LoadCertBundle(filename string) ([]*x509.Certificate, error) {
 	return bundle, nil
 }
 
-// LoadCert loads a PEM certificate specified by filename or returns a error
+// LoadCert loads a PEM certificate specified by filename or returns an error
 func LoadCert(filename string) (cert *x509.Certificate, err error) {
 	certPEM, err := ioutil.ReadFile(filename)
 	if err != nil {

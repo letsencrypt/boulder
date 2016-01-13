@@ -22,12 +22,15 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -144,6 +147,12 @@ func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
 	return
 }
 
+var testKeyPolicy = core.KeyPolicy{
+	AllowRSA:           true,
+	AllowECDSANISTP256: true,
+	AllowECDSANISTP384: true,
+}
+
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
@@ -213,7 +222,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		fc,
 		stats,
 		caCert,
-		caKey)
+		caKey,
+		testKeyPolicy)
 	test.AssertNotError(t, err, "Couldn't create CA")
 	ca.SA = ssa
 	ca.PA = pa
@@ -240,12 +250,12 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 				Threshold: 100,
 				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
-		}, 1)
+		}, 1, testKeyPolicy)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
-	ra.DNSResolver = &mocks.DNSResolver{}
+	ra.DNSResolver = &bdns.MockDNSResolver{}
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -287,25 +297,25 @@ func TestValidateContacts(t *testing.T) {
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	err := ra.validateContacts([]*core.AcmeURL{})
+	err := ra.validateContacts(context.Background(), []*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts([]*core.AcmeURL{tel, validEmail})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{tel, validEmail})
 	test.AssertError(t, err, "Too Many Contacts")
 
-	err = ra.validateContacts([]*core.AcmeURL{tel})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{tel})
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = ra.validateContacts([]*core.AcmeURL{validEmail})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts([]*core.AcmeURL{malformedEmail})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = ra.validateContacts([]*core.AcmeURL{ansible})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{ansible})
 	test.AssertError(t, err, "Unknown scheme")
 
-	err = ra.validateContacts([]*core.AcmeURL{nil})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{nil})
 	test.AssertError(t, err, "Nil AcmeURL")
 }
 
@@ -314,26 +324,31 @@ func TestValidateEmail(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"an email`", errUnparseableEmail.Error()},
-		{"a@always.invalid", "Server failure at resolver"},
-		{"a@always.timeout", "DNS query timed out"},
-		{"a@always.error", "DNS networking error"},
+		{"an email`", unparseableEmailDetail},
+		{"a@always.invalid", emptyDNSResponseDetail},
+		{"a@always.timeout", "DNS problem: query timed out looking up A for always.timeout"},
+		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
 	testSuccesses := []string{
 		"a@email.com",
 		"b@email.only",
 	}
+
 	for _, tc := range testFailures {
-		_, _, err := validateEmail(tc.input, &mocks.DNSResolver{})
-		if err.Error() != tc.expected {
+		problem := validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
+		if problem.Type != probs.InvalidEmailProblem {
+			t.Errorf("validateEmail(%q): got problem type %#v, expected %#v", tc.input, problem.Type, probs.InvalidEmailProblem)
+		}
+		if problem.Detail != tc.expected {
 			t.Errorf("validateEmail(%q): got %#v, expected %#v",
-				tc.input, err, tc.expected)
+				tc.input, problem.Detail, tc.expected)
 		}
 	}
+
 	for _, addr := range testSuccesses {
-		if _, _, err := validateEmail(addr, &mocks.DNSResolver{}); err != nil {
+		if prob := validateEmail(context.Background(), addr, &bdns.MockDNSResolver{}); prob != nil {
 			t.Errorf("validateEmail(%q): expected success, but it failed: %s",
-				addr, err)
+				addr, prob)
 		}
 	}
 }
@@ -715,6 +730,36 @@ func TestTotalCertRateLimit(t *testing.T) {
 
 	_, err = ra.NewCertificate(certRequest, Registration.ID)
 	test.AssertError(t, err, "Total certificate rate limit failed")
+}
+
+func TestAuthzRateLimiting(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.rlPolicies = cmd.RateLimitConfig{
+		PendingAuthorizationsPerAccount: cmd.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+		},
+	}
+	fc.Add(24 * 90 * time.Hour)
+
+	// Should be able to create an authzRequest
+	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	fc.Add(time.Hour)
+
+	// Second one should trigger rate limit
+	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertError(t, err, "Pending Authorization rate limit failed.")
+
+	// Finalize pending authz
+	ra.OnValidationUpdate(authz)
+
+	// Try to create a new authzRequest, should be fine now.
+	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {

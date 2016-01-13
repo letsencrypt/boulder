@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -23,114 +21,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-
 	"github.com/letsencrypt/boulder/core"
 )
-
-// DNSResolver is a mock
-type DNSResolver struct {
-}
-
-// ExchangeOne is a mock
-func (mock *DNSResolver) ExchangeOne(hostname string, qt uint16) (rsp *dns.Msg, rtt time.Duration, err error) {
-	return nil, 0, nil
-}
-
-// LookupTXT is a mock
-func (mock *DNSResolver) LookupTXT(hostname string) ([]string, time.Duration, error) {
-	if hostname == "_acme-challenge.servfail.com" {
-		return nil, 0, fmt.Errorf("SERVFAIL")
-	}
-	return []string{"hostname"}, 0, nil
-}
-
-// TimeoutError returns a a net.OpError for which Timeout() returns true.
-func TimeoutError() *net.OpError {
-	return &net.OpError{
-		Err: os.NewSyscallError("ugh timeout", timeoutError{}),
-	}
-}
-
-type timeoutError struct{}
-
-func (t timeoutError) Error() string {
-	return "so sloooow"
-}
-func (t timeoutError) Timeout() bool {
-	return true
-}
-
-// LookupHost is a mock
-//
-// Note: see comments on LookupMX regarding email.only
-//
-func (mock *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
-	if hostname == "always.invalid" ||
-		hostname == "invalid.invalid" ||
-		hostname == "email.only" {
-		return []net.IP{}, 0, nil
-	}
-	if hostname == "always.timeout" {
-		return []net.IP{}, 0, TimeoutError()
-	}
-	if hostname == "always.error" {
-		return []net.IP{}, 0, &net.OpError{
-			Err: errors.New("some net error"),
-		}
-	}
-	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, 0, nil
-}
-
-// LookupCAA is a mock
-func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error) {
-	var results []*dns.CAA
-	var record dns.CAA
-	switch strings.TrimRight(domain, ".") {
-	case "caa-timeout.com":
-		return nil, 0, TimeoutError()
-	case "reserved.com":
-		record.Tag = "issue"
-		record.Value = "symantec.com"
-		results = append(results, &record)
-	case "critical.com":
-		record.Flag = 1
-		record.Tag = "issue"
-		record.Value = "symantec.com"
-		results = append(results, &record)
-	case "present.com":
-		record.Tag = "issue"
-		record.Value = "letsencrypt.org"
-		results = append(results, &record)
-	case "com":
-		// Nothing should ever call this, since CAA checking should stop when it
-		// reaches a public suffix.
-		fallthrough
-	case "servfail.com":
-		return results, 0, fmt.Errorf("SERVFAIL")
-	}
-	return results, 0, nil
-}
-
-// LookupMX is a mock
-//
-// Note: the email.only domain must have an MX but no A or AAAA
-// records. The mock LookupHost returns an address of 127.0.0.1 for
-// all domains except for special cases, so MX-only domains must be
-// handled in both LookupHost and LookupMX.
-//
-func (mock *DNSResolver) LookupMX(domain string) ([]string, time.Duration, error) {
-	switch strings.TrimRight(domain, ".") {
-	case "letsencrypt.org":
-		fallthrough
-	case "email.only":
-		fallthrough
-	case "email.com":
-		return []string{"mail.email.com"}, 0, nil
-	}
-	return nil, 0, nil
-}
 
 // StorageAuthority is a mock
 type StorageAuthority struct {
@@ -426,4 +318,22 @@ func (s *Statter) Inc(metric string, value int64, rate float32) error {
 // NewStatter returns an empty statter with all counters zero
 func NewStatter() Statter {
 	return Statter{statsd.NoopClient{}, map[string]int64{}}
+}
+
+// Mailer is a mock
+type Mailer struct {
+	Messages []string
+}
+
+// Clear removes any previously recorded messages
+func (m *Mailer) Clear() {
+	m.Messages = []string{}
+}
+
+// SendMail is a mock
+func (m *Mailer) SendMail(to []string, subject, msg string) (err error) {
+	for range to {
+		m.Messages = append(m.Messages, msg)
+	}
+	return
 }

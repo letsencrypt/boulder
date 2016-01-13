@@ -28,7 +28,9 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/core"
@@ -121,7 +123,7 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 			test.AssertNotError(t, err, "failed to get server test port")
 			http.Redirect(w, r, fmt.Sprintf("http://other.valid:%d/path", port), 302)
 		} else if strings.HasSuffix(r.URL.Path, pathReLookupInvalid) {
-			t.Logf("HTTPSRV: Got a redirect req to a invalid hostname\n")
+			t.Logf("HTTPSRV: Got a redirect req to an invalid hostname\n")
 			http.Redirect(w, r, "http://invalid.invalid/path", 302)
 		} else if strings.HasSuffix(r.URL.Path, pathLooper) {
 			t.Logf("HTTPSRV: Got a loop req\n")
@@ -194,7 +196,7 @@ func tlssniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 	return hs
 }
 
-func TestHttp(t *testing.T) {
+func TestHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
 	err := setChallengeToken(&chall, expectedToken)
 	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
@@ -220,77 +222,86 @@ func TestHttp(t *testing.T) {
 	}
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: badPort}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 
-	invalidChall, err := va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Server's down; expected refusal. Where did we connect?")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.ConnectionProblem)
+	_, prob := va.validateHTTP01(context.Background(), ident, chall)
+	if prob == nil {
+		t.Fatalf("Server's down; expected refusal. Where did we connect?")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 
 	va = NewValidationAuthorityImpl(&PortConfig{HTTPPort: goodPort}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	log.Clear()
 	t.Logf("Trying to validate: %+v\n", chall)
-	finChall, err := va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, "Error validating http")
+	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	if prob != nil {
+		t.Errorf("Unexpected failure in HTTP validation: %s", prob)
+	}
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, path404)
-	invalidChall, err = va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Should have found a 404 for the challenge.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.UnauthorizedProblem)
+	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	if prob == nil {
+		t.Fatalf("Should have found a 404 for the challenge.")
+	}
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathWrongToken)
 	// The "wrong token" will actually be the expectedToken.  It's wrong
 	// because it doesn't match pathWrongToken.
-	invalidChall, err = va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Should have found the wrong token value.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.UnauthorizedProblem)
+	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	if prob == nil {
+		t.Fatalf("Should have found the wrong token value.")
+	}
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
 	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathMoved)
-	finChall, err = va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, "Failed to follow 301 redirect")
+	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	if prob != nil {
+		t.Fatalf("Failed to follow 301 redirect")
+	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
-	finChall, err = va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, "Failed to follow 302 redirect")
+	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	if prob != nil {
+		t.Fatalf("Failed to follow 302 redirect")
+	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 
 	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
-	invalidChall, err = va.validateHTTP01(ipIdentifier, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.MalformedProblem)
+	_, prob = va.validateHTTP01(context.Background(), ipIdentifier, chall)
+	if prob == nil {
+		t.Fatalf("IdentifierType IP shouldn't have worked.")
+	}
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 
-	invalidChall, err = va.validateHTTP01(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Domain name is invalid.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.UnknownHostProblem)
+	_, prob = va.validateHTTP01(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	if prob == nil {
+		t.Fatalf("Domain name is invalid.")
+	}
+	test.AssertEquals(t, prob.Type, probs.UnknownHostProblem)
 
 	setChallengeToken(&chall, pathWaitLong)
 	started := time.Now()
-	invalidChall, err = va.validateHTTP01(ident, chall)
+	_, prob = va.validateHTTP01(context.Background(), ident, chall)
 	took := time.Since(started)
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
 	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Connection should've timed out")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.ConnectionProblem)
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
@@ -304,47 +315,47 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	log.Clear()
 	setChallengeToken(&chall, pathMoved)
-	finChall, err := va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Token)
+	_, prob := va.validateHTTP01(context.Background(), ident, chall)
+	if prob != nil {
+		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, prob)
+	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
-	finChall, err = va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Token)
+	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	if prob != nil {
+		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, prob)
+	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathFound+`" to ".*/`+pathMoved+`"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookupInvalid)
-	finChall, err = va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
+	_, err = va.validateHTTP01(context.Background(), ident, chall)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`No IPv4 addresses found for invalid.invalid`)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookup)
-	finChall, err = va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, chall.Token)
+	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	if prob != nil {
+		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, prob)
+	}
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathReLookup+`" to ".*other.valid:\d+/path"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathRedirectPort)
-	finChall, err = va.validateHTTP01(ident, chall)
-	fmt.Println(finChall.ValidationRecord)
-	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
+	_, err = va.validateHTTP01(context.Background(), ident, chall)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/port-redirect" to ".*other.valid:8080/path"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
@@ -362,13 +373,13 @@ func TestHTTPRedirectLoop(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	log.Clear()
-	finChall, err := va.validateHTTP01(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, chall.Token)
-	fmt.Println(finChall)
+	_, prob := va.validateHTTP01(context.Background(), ident, chall)
+	if prob == nil {
+		t.Fatalf("Challenge should have failed for %s", chall.Token)
+	}
 }
 
 func TestHTTPRedirectUserAgent(t *testing.T) {
@@ -382,16 +393,20 @@ func TestHTTPRedirectUserAgent(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.UserAgent = rejectUserAgent
 
 	setChallengeToken(&chall, pathMoved)
-	finChall, _ := va.validateHTTP01(ident, chall)
-	test.AssertNotEquals(t, finChall.Status, core.StatusValid)
+	_, prob := va.validateHTTP01(context.Background(), ident, chall)
+	if prob == nil {
+		t.Fatalf("Challenge with rejectUserAgent should have failed (%s).", pathMoved)
+	}
 
 	setChallengeToken(&chall, pathFound)
-	finChall, _ = va.validateHTTP01(ident, chall)
-	test.AssertNotEquals(t, finChall.Status, core.StatusValid)
+	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	if prob == nil {
+		t.Fatalf("Challenge with rejectUserAgent should have failed (%s).", pathFound)
+	}
 }
 
 func getPort(hs *httptest.Server) (int, error) {
@@ -420,28 +435,31 @@ func TestTLSSNI(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
 
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	log.Clear()
-	finChall, err := va.validateTLSSNI01(ident, chall)
-	test.AssertEquals(t, finChall.Status, core.StatusValid)
-	test.AssertNotError(t, err, "")
+	_, prob := va.validateTLSSNI01(context.Background(), ident, chall)
+	if prob != nil {
+		t.Fatalf("Unexpected failre in validateTLSSNI01: %s", prob)
+	}
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
-	invalidChall, err := va.validateTLSSNI01(core.AcmeIdentifier{
+	_, prob = va.validateTLSSNI01(context.Background(), core.AcmeIdentifier{
 		Type:  core.IdentifierType("ip"),
 		Value: net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", port)),
 	}, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "IdentifierType IP shouldn't have worked.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.MalformedProblem)
+	if prob == nil {
+		t.Fatalf("IdentifierType IP shouldn't have worked.")
+	}
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 
 	log.Clear()
-	invalidChall, err = va.validateTLSSNI01(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Domain name was supposed to be invalid.")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.UnknownHostProblem)
+	_, prob = va.validateTLSSNI01(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	if prob == nil {
+		t.Fatalf("Domain name was supposed to be invalid.")
+	}
+	test.AssertEquals(t, prob.Type, probs.UnknownHostProblem)
 
 	// Need to create a new authorized keys object to get an unknown SNI (from the signature value)
 	chall.Token = core.NewToken()
@@ -450,22 +468,24 @@ func TestTLSSNI(t *testing.T) {
 
 	log.Clear()
 	started := time.Now()
-	invalidChall, err = va.validateTLSSNI01(ident, chall)
+	_, prob = va.validateTLSSNI01(context.Background(), ident, chall)
 	took := time.Since(started)
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
 	test.Assert(t, (took < (time.Second * 10)), "HTTP connection didn't timeout after 5 seconds")
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Connection should've timed out")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.ConnectionProblem)
+	if prob == nil {
+		t.Fatalf("Connection should've timed out")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	// Take down validation server and check that validation fails.
 	hs.Close()
-	invalidChall, err = va.validateTLSSNI01(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "Server's down; expected refusal. Where did we connect?")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.ConnectionProblem)
+	_, err = va.validateTLSSNI01(context.Background(), ident, chall)
+	if err == nil {
+		t.Fatalf("Server's down; expected refusal. Where did we connect?")
+	}
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 }
 
 func brokenTLSSrv() *httptest.Server {
@@ -487,12 +507,13 @@ func TestTLSError(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 
-	invalidChall, err := va.validateTLSSNI01(ident, chall)
-	test.AssertEquals(t, invalidChall.Status, core.StatusInvalid)
-	test.AssertError(t, err, "What cert was used?")
-	test.AssertEquals(t, invalidChall.Error.Type, probs.TLSProblem)
+	_, prob := va.validateTLSSNI01(context.Background(), ident, chall)
+	if prob == nil {
+		t.Fatalf("TLS validation should have failed: What cert was used?")
+	}
+	test.AssertEquals(t, prob.Type, probs.TLSProblem)
 }
 
 func TestValidateHTTP(t *testing.T) {
@@ -505,7 +526,7 @@ func TestValidateHTTP(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -517,7 +538,7 @@ func TestValidateHTTP(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(authz, 0)
+	va.validate(context.Background(), authz, 0)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -562,7 +583,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -572,7 +593,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(authz, 0)
+	va.validate(context.Background(), authz, 0)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -580,7 +601,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 func TestValidateTLSSNINotSane(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default()) // no calls made
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -594,7 +615,7 @@ func TestValidateTLSSNINotSane(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(authz, 0)
+	va.validate(context.Background(), authz, 0)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -602,7 +623,7 @@ func TestValidateTLSSNINotSane(t *testing.T) {
 func TestUpdateValidations(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -629,15 +650,15 @@ func TestUpdateValidations(t *testing.T) {
 func TestCAATimeout(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
-	err := va.checkCAA(core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, 101)
+	err := va.checkCAA(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, 101)
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
 	}
-	expected := "DNS query timed out"
+	expected := "DNS problem: query timed out looking up CAA for always.timeout"
 	if err.Detail != expected {
-		t.Errorf("checkCAA: got %s, expected %s", err.Detail, expected)
+		t.Errorf("checkCAA: got %#v, expected %#v", err.Detail, expected)
 	}
 }
 
@@ -662,7 +683,7 @@ func TestCAAChecking(t *testing.T) {
 
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
 	for _, caaTest := range tests {
 		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
@@ -692,7 +713,7 @@ func TestCAAChecking(t *testing.T) {
 func TestDNSValidationFailure(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -704,7 +725,7 @@ func TestDNSValidationFailure(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(authz, 0)
+	va.validate(context.Background(), authz, 0)
 
 	t.Logf("Resulting Authz: %+v", authz)
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
@@ -729,11 +750,11 @@ func TestDNSValidationInvalid(t *testing.T) {
 
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	va.validate(authz, 0)
+	va.validate(context.Background(), authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -743,7 +764,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 func TestDNSValidationNotSane(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -761,7 +782,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 
 	for i := 0; i < len(authz.Challenges); i++ {
-		va.validate(authz, i)
+		va.validate(context.Background(), authz, i)
 		test.AssertEquals(t, authz.Challenges[i].Status, core.StatusInvalid)
 		test.AssertEquals(t, authz.Challenges[i].Error.Type, probs.MalformedProblem)
 	}
@@ -770,7 +791,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 func TestDNSValidationServFail(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -786,7 +807,7 @@ func TestDNSValidationServFail(t *testing.T) {
 		Identifier:     badIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(authz, 0)
+	va.validate(context.Background(), authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -794,9 +815,10 @@ func TestDNSValidationServFail(t *testing.T) {
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
-	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = bdns.NewTestDNSResolverImpl(time.Second*5, []string{})
+	c, _ := statsd.NewNoopClient()
+	stats := metrics.NewNoopScope()
+	va := NewValidationAuthorityImpl(&PortConfig{}, nil, c, clock.Default())
+	va.DNSResolver = bdns.NewTestDNSResolverImpl(time.Second*5, []string{}, stats, clock.Default(), 1)
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -808,26 +830,58 @@ func TestDNSValidationNoServer(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(authz, 0)
+	va.validate(context.Background(), authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
 	test.AssertEquals(t, authz.Challenges[0].Error.Type, probs.ConnectionProblem)
 }
 
+func TestDNSValidationOK(t *testing.T) {
+	stats, _ := statsd.NewNoopClient()
+	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va.DNSResolver = &bdns.MockDNSResolver{}
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	// create a challenge with well known token
+	chalDNS := core.DNSChallenge01(accountKey)
+	chalDNS.Token = expectedToken
+
+	keyAuthorization, _ := core.NewKeyAuthorization(chalDNS.Token, accountKey)
+	chalDNS.KeyAuthorization = &keyAuthorization
+
+	goodIdent := core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "good-dns01.com",
+	}
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     goodIdent,
+		Challenges:     []core.Challenge{chalDNS},
+	}
+	va.validate(context.Background(), authz, 0)
+
+	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
+	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
+}
+
 // TestDNSValidationLive is an integration test, depending on
-// the existance of some Internet resources. Because of that,
+// the existence of some Internet resources. Because of that,
 // it asserts nothing; it is intended for coverage.
 func TestDNSValidationLive(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
 	goodChalDNS := core.DNSChallenge01(accountKey)
-	// This token is set at _acme-challenge.good.bin.coffee
-	goodChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
+	// The matching value LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo
+	// is set at _acme-challenge.good.bin.coffee
+	goodChalDNS.Token = expectedToken
 
 	var goodIdent = core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
@@ -846,14 +900,14 @@ func TestDNSValidationLive(t *testing.T) {
 		Challenges:     []core.Challenge{goodChalDNS},
 	}
 
-	va.validate(authzGood, 0)
+	va.validate(context.Background(), authzGood, 0)
 
 	if authzGood.Challenges[0].Status != core.StatusValid {
 		t.Logf("TestDNSValidationLive on Good did not succeed.")
 	}
 
 	badChalDNS := core.DNSChallenge01(accountKey)
-	// This token is NOT set at _acme-challenge.bad.bin.coffee
+	// The matching value is NOT set at _acme-challenge.bad.bin.coffee
 	badChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
 
 	var authzBad = core.Authorization{
@@ -863,7 +917,7 @@ func TestDNSValidationLive(t *testing.T) {
 		Challenges:     []core.Challenge{badChalDNS},
 	}
 
-	va.validate(authzBad, 0)
+	va.validate(context.Background(), authzBad, 0)
 	if authzBad.Challenges[0].Status != core.StatusInvalid {
 		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
 	}
@@ -879,7 +933,7 @@ func TestCAAFailure(t *testing.T) {
 
 	stats, _ := statsd.NewNoopClient()
 	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
-	va.DNSResolver = &mocks.DNSResolver{}
+	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
@@ -890,7 +944,7 @@ func TestCAAFailure(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(authz, 0)
+	va.validate(context.Background(), authz, 0)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }

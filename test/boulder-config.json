@@ -123,6 +123,7 @@
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
+    "dnsTries": 3,
     "debugAddr": "localhost:8002",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
@@ -165,6 +166,7 @@
       "tlsPort": 5001
     },
     "maxConcurrentRPCServerRequests": 16,
+    "dnsTries": 3,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -252,6 +254,7 @@
     "server": "mail.example.com",
     "port": "25",
     "username": "cert-master@example.com",
+    "from": "Expiry bot <test@example.com>",
     "password": "password",
     "dbConnectFile": "test/secrets/mailer_dburl",
     "messageLimit": 0,
@@ -304,5 +307,12 @@
     "dbConnectFile": "test/secrets/cert_checker_dburl"
   },
 
-  "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1"
+  "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1",
+
+  "allowedSigningAlgos": {
+    "rsa": true,
+    "ecdsanistp256": true,
+    "ecdsanistp384": true,
+    "ecdsanistp521": false
+  }
 }

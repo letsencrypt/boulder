@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -196,10 +197,17 @@ func signRequest(t *testing.T, req string, nonceService *core.NonceService) stri
 	return ret
 }
 
+var testKeyPolicy = core.KeyPolicy{
+	AllowRSA:           true,
+	AllowECDSANISTP256: true,
+	AllowECDSANISTP384: true,
+}
+
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
 	stats, _ := statsd.NewNoopClient()
-	wfe, err := NewWebFrontEndImpl(stats, fc)
+
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.NewReg = wfe.BaseURL + NewRegPath
@@ -327,7 +335,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
 	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
-	test.AssertEquals(t, rw.Body.String(), "")
+	test.AssertEquals(t, rw.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 
 	wfe.AllowOrigins = []string{"*"}
 	testOrigin := "https://example.com"
@@ -545,7 +553,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
-	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0)
+	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0, testKeyPolicy)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}
@@ -605,7 +613,7 @@ func TestIssueCertificate(t *testing.T) {
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Error unmarshaling certificate request","status":400}`)
 
-	// Valid, signed JWS body, payload has a invalid signature on CSR and no authorizations:
+	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
 	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
 	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=foo.com | \
 	// sed 's/foo.com/fob.com/' | b64url
@@ -1398,6 +1406,34 @@ func TestBadKeyCSR(t *testing.T) {
 	test.AssertEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Invalid key in certificate request :: Key too small: 512","status":400}`)
+}
+
+// This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
+// body from being sent like the net/http Server's actually do.
+func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+	certBlock, _ := pem.Decode(certPemBytes)
+
+	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog.Clear()
+
+	mux, _ := wfe.Handler()
+	s := httptest.NewServer(mux)
+	req, _ := http.NewRequest("HEAD", s.URL+"/acme/cert/0000000000000000000000000000000000b2", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		test.AssertNotError(t, err, "do error")
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		test.AssertNotEquals(t, err, "readall error")
+	}
+	defer resp.Body.Close()
+	test.AssertEquals(t, resp.StatusCode, 200)
+	test.AssertEquals(t, strconv.Itoa(len(certBlock.Bytes)), resp.Header.Get("Content-Length"))
+	test.AssertEquals(t, 0, len(body))
 }
 
 func newRequestEvent() *requestEvent {
