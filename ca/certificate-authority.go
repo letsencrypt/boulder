@@ -6,6 +6,7 @@
 package ca
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/rand"
 	"crypto/x509"
@@ -62,7 +63,41 @@ var oidExtensionRequest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 14}
 //  |-- 02 01 - INTEGER (1 octet)
 //  |   |-- 05 - 5
 var oidTLSFeature = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
-var mustStapleFeatureValue = "3003020105"
+var mustStapleFeatureValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
+
+// Extract supported extensions from a CSR.  The following extensions are
+// currently supported:
+//
+// * 1.3.6.1.5.5.7.1.24 - TLS Feature [RFC7633], with the "must staple" value
+//
+// Other requested extensions are silently ignored.
+func extensionsFromCSR(csr *x509.CertificateRequest) (extensions []signer.Extension) {
+	extensions = []signer.Extension{}
+	for _, attr := range csr.Attributes {
+		if !attr.Type.Equal(oidExtensionRequest) {
+			continue
+		}
+
+		for _, extList := range attr.Value {
+			for _, ext := range extList {
+				if ext.Type.Equal(oidTLSFeature) {
+					value, ok := ext.Value.([]byte)
+					if !ok || !bytes.Equal(value, mustStapleFeatureValue) {
+						fmt.Printf("\n\n\n !!! Unsupported value: %v !!! \n\n\n", ext.Value)
+						continue
+					}
+
+					extensions = append(extensions, signer.Extension{
+						ID:       cfsslConfig.OID(oidTLSFeature),
+						Critical: false,
+						Value:    hex.EncodeToString(mustStapleFeatureValue),
+					})
+				}
+			}
+		}
+	}
+	return
+}
 
 // Metrics for CA statistics
 const (
@@ -312,30 +347,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		}
 	}
 
-	// Process requested extensions.  For now, the only extension we support is
-	// TLS Feature [RFC7633], i.e., "Must Staple", and for that we ignore the
-	// value provided by the client and just overwrite it with the specific value
-	// that only requires stapling.
-	//
-	// Other requested extensions are silently ignored.
-	requestedExtensions := []signer.Extension{}
-	for _, attr := range csr.Attributes {
-		if !attr.Type.Equal(oidExtensionRequest) {
-			continue
-		}
-
-		for _, extList := range attr.Value {
-			for _, ext := range extList {
-				if ext.Type.Equal(oidTLSFeature) {
-					requestedExtensions = append(requestedExtensions, signer.Extension{
-						ID:       cfsslConfig.OID(oidTLSFeature),
-						Critical: false,
-						Value:    mustStapleFeatureValue,
-					})
-				}
-			}
-		}
-	}
+	requestedExtensions := extensionsFromCSR(&csr)
 
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)
 

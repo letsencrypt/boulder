@@ -10,7 +10,6 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/asn1"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"sort"
@@ -577,28 +576,26 @@ func TestExtensions(t *testing.T) {
 		if ext.Id.Equal(oidTLSFeature) {
 			foundMustStaple = true
 			test.Assert(t, !ext.Critical, "Extension was marked critical")
-			test.AssertEquals(t, hex.EncodeToString(ext.Value), mustStapleFeatureValue)
+			test.AssertByteEquals(t, ext.Value, mustStapleFeatureValue)
 		}
 	}
 	test.Assert(t, foundMustStaple, "TLS Feature extension not found")
 
-	// ... even if it doesn't ask for stapling
+	// ... but not if it doesn't ask for stapling
 	csr, _ = x509.ParseCertificateRequest(TLSFeatureUnknownCSR)
 	cert, err = ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with an empty TLS feature extension")
 	parsedCert, err = x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
 
-	test.AssertEquals(t, len(parsedCert.Extensions), 9)
+	test.AssertEquals(t, len(parsedCert.Extensions), 8)
 	foundMustStaple = false
 	for _, ext := range parsedCert.Extensions {
 		if ext.Id.Equal(oidTLSFeature) {
 			foundMustStaple = true
-			test.Assert(t, !ext.Critical, "Extension was marked critical")
-			test.AssertEquals(t, hex.EncodeToString(ext.Value), mustStapleFeatureValue)
 		}
 	}
-	test.Assert(t, foundMustStaple, "TLS Feature extension not found")
+	test.Assert(t, !foundMustStaple, "TLS Feature extension should not have been found")
 
 	// Unsupported extensions should be ignored
 	csr, _ = x509.ParseCertificateRequest(UnsupportedExtensionCSR)
