@@ -19,29 +19,25 @@ s/ //g
 s/	//g
 ' )
 
-# echo "DB_VERSION=$DB_VERSION"
-
-# vesion contains 10.0 or 10.1 or 10.?
-DB_MAJOR=$( echo $DB_VERSION | cut -d '.' -f 1 )
-DB_MINOR=$( echo $DB_VERSION | cut -d '.' -f 2 )
-
-if (( "$DB_MAJOR" < 10 )) ; then
-	echo "FAILED: Databse version 10 or newer is supported.  Found $DB_VERSION"
-	exit 1
-fi
-if [ -f test/create_db_users_$DB_VERSION.sql ] ; then
-	mysql $dbconn < test/create_db_users_$DB_VERSION.sql
-elif [ -f test/create_db_users.sql ] ; then
+if [[ $DB_VERSION =~ "10.1" ]] ; then
+	mysql $dbconn < test/create_db_users_10.1.sql
+elif [[ $DB_VERSION =~ "10.0" ]] ; then
 	mysql $dbconn < test/create_db_users.sql
+else
+	echo "$DB_VERSION is not a supported version of MariaDB"
+	exit 1
 fi
 
 # Drop all users to get a fresh start
 mysql $dbconn < test/drop_users.sql
 
-if [ -f test/create_db_users_$DB_VERSION.sql ] ; then
-	mysql $dbconn < test/create_db_users_$DB_VERSION.sql
-elif [ -f test/create_db_users.sql ] ; then
+if [[ $DB_VERSION =~ "10.1" ]] ; then
+	mysql $dbconn < test/create_db_users_10.1.sql
+elif [[ $DB_VERSION =~ "10.0" ]] ; then
 	mysql $dbconn < test/create_db_users.sql
+else
+	echo "$DB_VERSION is not a supported version of MariaDB"
+	exit 1
 fi
 
 for svc in $SERVICES; do
@@ -59,7 +55,7 @@ for svc in $SERVICES; do
 
 		USERS_SQL=test/${svc}_db_users.sql
 		if [[ -f "$USERS_SQL" ]]; then
-			mysql $dbconn -D $db < $USERS_SQL || die "PJS1 unable to add users to ${db}"
+			mysql $dbconn -D $db < $USERS_SQL || die "unable to add users to ${db}"
 			echo "added users to ${db}"
 		fi
 		) &
