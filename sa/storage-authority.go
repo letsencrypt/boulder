@@ -677,7 +677,7 @@ const collectAuthIDs = `SELECT id FROM %s
 WHERE identifier = :ident AND
 status != :invalid AND
 status != :revoked AND
-expires > :no`
+expires > :now`
 
 // RevokeAuthorizationsByDomain invalidates all pending or finalized authorization
 // and any associated challenges for a single domain
