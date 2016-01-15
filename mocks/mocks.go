@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -23,116 +21,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
-
 	"github.com/letsencrypt/boulder/core"
 )
-
-// DNSResolver is a mock
-type DNSResolver struct {
-}
-
-// LookupTXT is a mock
-func (mock *DNSResolver) LookupTXT(ctx context.Context, hostname string) ([]string, error) {
-	if hostname == "_acme-challenge.servfail.com" {
-		return nil, fmt.Errorf("SERVFAIL")
-	}
-	if hostname == "_acme-challenge.good-dns01.com" {
-		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
-		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
-		// expected token + test account jwk thumbprint
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, nil
-	}
-	return []string{"hostname"}, nil
-}
-
-// TimeoutError returns a net.OpError for which Timeout() returns true.
-func TimeoutError() *net.OpError {
-	return &net.OpError{
-		Err: os.NewSyscallError("ugh timeout", timeoutError{}),
-	}
-}
-
-type timeoutError struct{}
-
-func (t timeoutError) Error() string {
-	return "so sloooow"
-}
-func (t timeoutError) Timeout() bool {
-	return true
-}
-
-// LookupHost is a mock
-//
-// Note: see comments on LookupMX regarding email.only
-//
-func (mock *DNSResolver) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
-	if hostname == "always.invalid" ||
-		hostname == "invalid.invalid" ||
-		hostname == "email.only" {
-		return []net.IP{}, nil
-	}
-	if hostname == "always.timeout" {
-		return []net.IP{}, TimeoutError()
-	}
-	if hostname == "always.error" {
-		return []net.IP{}, &net.OpError{
-			Err: errors.New("some net error"),
-		}
-	}
-	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, nil
-}
-
-// LookupCAA is a mock
-func (mock *DNSResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
-	var results []*dns.CAA
-	var record dns.CAA
-	switch strings.TrimRight(domain, ".") {
-	case "caa-timeout.com":
-		return nil, TimeoutError()
-	case "reserved.com":
-		record.Tag = "issue"
-		record.Value = "symantec.com"
-		results = append(results, &record)
-	case "critical.com":
-		record.Flag = 1
-		record.Tag = "issue"
-		record.Value = "symantec.com"
-		results = append(results, &record)
-	case "present.com":
-		record.Tag = "issue"
-		record.Value = "letsencrypt.org"
-		results = append(results, &record)
-	case "com":
-		// Nothing should ever call this, since CAA checking should stop when it
-		// reaches a public suffix.
-		fallthrough
-	case "servfail.com":
-		return results, fmt.Errorf("SERVFAIL")
-	}
-	return results, nil
-}
-
-// LookupMX is a mock
-//
-// Note: the email.only domain must have an MX but no A or AAAA
-// records. The mock LookupHost returns an address of 127.0.0.1 for
-// all domains except for special cases, so MX-only domains must be
-// handled in both LookupHost and LookupMX.
-//
-func (mock *DNSResolver) LookupMX(ctx context.Context, domain string) ([]string, error) {
-	switch strings.TrimRight(domain, ".") {
-	case "letsencrypt.org":
-		fallthrough
-	case "email.only":
-		fallthrough
-	case "email.com":
-		return []string{"mail.email.com"}, nil
-	}
-	return nil, nil
-}
 
 // StorageAuthority is a mock
 type StorageAuthority struct {
@@ -158,6 +48,20 @@ const (
 		"n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw",
 		"e":"AAEAAQ"
 	}`
+
+	testE1KeyPublicJSON = `{
+     "kty":"EC",
+     "crv":"P-256",
+     "x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
+     "y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
+   }`
+	testE2KeyPublicJSON = `{
+     "kty":"EC",
+     "crv":"P-256",
+     "x":"S8FOmrZ3ywj4yyFqt0etAD90U-EnkNaOBSLfQmf7pNg",
+     "y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"
+   }`
+
 	agreementURL = "http://example.invalid/terms"
 )
 
@@ -189,8 +93,12 @@ func (sa *StorageAuthority) GetRegistration(id int64) (core.Registration, error)
 func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
 	var test1KeyPublic jose.JsonWebKey
 	var test2KeyPublic jose.JsonWebKey
+	var testE1KeyPublic jose.JsonWebKey
+	var testE2KeyPublic jose.JsonWebKey
 	test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
 	test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
+	testE1KeyPublic.UnmarshalJSON([]byte(testE1KeyPublicJSON))
+	testE2KeyPublic.UnmarshalJSON([]byte(testE2KeyPublicJSON))
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
 		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL}, nil
@@ -199,6 +107,14 @@ func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Regi
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
 		return core.Registration{ID: 2}, core.NoSuchRegistrationError("reg not found")
+	}
+
+	if core.KeyDigestEquals(jwk, testE1KeyPublic) {
+		return core.Registration{ID: 3, Key: jwk, Agreement: agreementURL}, nil
+	}
+
+	if core.KeyDigestEquals(jwk, testE2KeyPublic) {
+		return core.Registration{ID: 4}, core.NoSuchRegistrationError("reg not found")
 	}
 
 	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.
@@ -438,4 +354,22 @@ func (s *Statter) Inc(metric string, value int64, rate float32) error {
 // NewStatter returns an empty statter with all counters zero
 func NewStatter() Statter {
 	return Statter{statsd.NoopClient{}, map[string]int64{}}
+}
+
+// Mailer is a mock
+type Mailer struct {
+	Messages []string
+}
+
+// Clear removes any previously recorded messages
+func (m *Mailer) Clear() {
+	m.Messages = []string{}
+}
+
+// SendMail is a mock
+func (m *Mailer) SendMail(to []string, subject, msg string) (err error) {
+	for range to {
+		m.Messages = append(m.Messages, msg)
+	}
+	return
 }

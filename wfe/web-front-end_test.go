@@ -7,6 +7,7 @@ package wfe
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
@@ -111,6 +112,32 @@ TkLlEeVOuQfxTadw05gzKX0jKkMC4igGxvEeilYc6NR6a4nvRulG84Q8VV9Sy9Ie
 wk6Oiadty3eQqSBJv0HnpmiEdQVffIK5Pg4M8Dd+aOBnEkbopAJOuA==
 -----END RSA PRIVATE KEY-----
 `
+	testE1KeyPublicJSON = `{
+    "kty":"EC",
+    "crv":"P-256",
+    "x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
+    "y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
+  }`
+	testE1KeyPrivatePEM = `
+-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIH+p32RUnqT/iICBEGKrLIWFcyButv0S0lU/BLPOyHn2oAoGCCqGSM49
+AwEHoUQDQgAEFwvSZpu06i3frSk/mz9HcD9nETn4wf3mQ+zDtG21GapLytH7R1Zr
+ycBzDV9u6cX9qNLc9Bn5DAumz7Zp2AuA+Q==
+-----END EC PRIVATE KEY-----
+`
+
+	testE2KeyPublicJSON = `{
+    "kty":"EC",
+    "crv":"P-256",
+    "x":"S8FOmrZ3ywj4yyFqt0etAD90U-EnkNaOBSLfQmf7pNg",
+    "y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"
+  }`
+	testE2KeyPrivatePEM = `
+-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIFRcPxQ989AY6se2RyIoF1ll9O6gHev4oY15SWJ+Jf5eoAoGCCqGSM49
+AwEHoUQDQgAES8FOmrZ3ywj4yyFqt0etAD90U+EnkNaOBSLfQmf7pNi8y+kPKoUN
+EeMZ9nWyIM6bktLrE11HnFOnKhAYsM5fZA==
+-----END EC PRIVATE KEY-----`
 )
 
 type MockRegistrationAuthority struct{}
@@ -197,10 +224,17 @@ func signRequest(t *testing.T, req string, nonceService *core.NonceService) stri
 	return ret
 }
 
+var testKeyPolicy = core.KeyPolicy{
+	AllowRSA:           true,
+	AllowECDSANISTP256: true,
+	AllowECDSANISTP384: true,
+}
+
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
 	stats, _ := statsd.NewNoopClient()
-	wfe, err := NewWebFrontEndImpl(stats, fc)
+
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.NewReg = wfe.BaseURL + NewRegPath
@@ -546,7 +580,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
-	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0)
+	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0, testKeyPolicy)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &MockCA{}
 	ra.PA = &MockPA{}
@@ -757,6 +791,52 @@ func TestBadNonce(t *testing.T) {
 	wfe.NewRegistration(newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
+}
+
+func TestNewECDSARegistration(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	// E1 always exists; E2 never exists
+	key, err := jose.LoadPrivateKey([]byte(testE2KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	ecdsaKey, ok := key.(*ecdsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load ECDSA key")
+	signer, err := jose.NewSigner("ES256", ecdsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+	signer.SetNonceSource(wfe.nonceService)
+
+	responseWriter := httptest.NewRecorder()
+	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Failed to sign")
+	wfe.NewRegistration(newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
+
+	var reg core.Registration
+	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
+	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
+	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
+	test.AssertEquals(t, reg.Contact[0].String(), "tel:123456789")
+	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
+	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
+
+	test.AssertEquals(t, responseWriter.Header().Get("Location"), "/acme/reg/0")
+
+	key, err = jose.LoadPrivateKey([]byte(testE1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	ecdsaKey, ok = key.(*ecdsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load ECDSA key")
+	signer, err = jose.NewSigner("ES256", ecdsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+	signer.SetNonceSource(wfe.nonceService)
+
+	// Reset the body and status code
+	responseWriter = httptest.NewRecorder()
+	// POST, Valid JSON, Key already in use
+	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"` + agreementURL + `"}`))
+
+	wfe.NewRegistration(newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
+	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
+	test.AssertEquals(t, responseWriter.Header().Get("Location"), "/acme/reg/3")
+	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
 func TestNewRegistration(t *testing.T) {

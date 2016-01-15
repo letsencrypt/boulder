@@ -66,6 +66,9 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.A = net.ParseIP("127.0.0.1")
 				appendAnswer(record)
 			}
+			if q.Name == "nxdomain.letsencrypt.org." {
+				m.SetRcode(r, dns.RcodeNameError)
+			}
 		case dns.TypeCNAME:
 			if q.Name == "cname.letsencrypt.org." {
 				record := new(dns.CNAME)
@@ -110,6 +113,20 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.Txt = []string{"a", "b", "c"}
 				appendAnswer(record)
 			}
+			if q.Name == "nxdomain.letsencrypt.org." {
+				m.SetRcode(r, dns.RcodeNameError)
+			}
+
+			auth := new(dns.SOA)
+			auth.Hdr = dns.RR_Header{Name: "letsencrypt.org.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 0}
+			auth.Ns = "ns.letsencrypt.org."
+			auth.Mbox = "master.letsencrypt.org."
+			auth.Serial = 1
+			auth.Refresh = 1
+			auth.Retry = 1
+			auth.Expire = 1
+			auth.Minttl = 1
+			m.Ns = append(m.Ns, auth)
 		}
 	}
 
@@ -182,7 +199,7 @@ func TestDNSDuplicateServers(t *testing.T) {
 func TestDNSLookupsNoServer(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{}, testStats, clock.NewFake(), 1)
 
-	_, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
+	_, _, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
 	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
@@ -196,7 +213,7 @@ func TestDNSServFail(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 	bad := "servfail.com"
 
-	_, err := obj.LookupTXT(context.Background(), bad)
+	_, _, err := obj.LookupTXT(context.Background(), bad)
 	test.AssertError(t, err, "LookupTXT didn't return an error")
 
 	_, err = obj.LookupHost(context.Background(), bad)
@@ -212,11 +229,11 @@ func TestDNSServFail(t *testing.T) {
 func TestDNSLookupTXT(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
-	a, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
+	a, _, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	t.Logf("A: %v", a)
 	test.AssertNotError(t, err, "No message")
 
-	a, err = obj.LookupTXT(context.Background(), "split-txt.letsencrypt.org")
+	a, _, err = obj.LookupTXT(context.Background(), "split-txt.letsencrypt.org")
 	t.Logf("A: %v ", a)
 	test.AssertNotError(t, err, "No message")
 	test.AssertEquals(t, len(a), 1)
@@ -253,6 +270,23 @@ func TestDNSLookupHost(t *testing.T) {
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 }
 
+func TestDNSNXDOMAIN(t *testing.T) {
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+
+	hostname := "nxdomain.letsencrypt.org"
+	_, err := obj.LookupHost(context.Background(), hostname)
+	expected := dnsError{dns.TypeA, hostname, nil, dns.RcodeNameError}
+	if err, ok := err.(*dnsError); !ok || *err != expected {
+		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expected)
+	}
+
+	_, _, err = obj.LookupTXT(context.Background(), hostname)
+	expected.recordType = dns.TypeTXT
+	if err, ok := err.(*dnsError); !ok || *err != expected {
+		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expected)
+	}
+}
+
 func TestDNSLookupCAA(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
@@ -267,6 +301,15 @@ func TestDNSLookupCAA(t *testing.T) {
 	caas, err = obj.LookupCAA(context.Background(), "cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
+}
+
+func TestDNSTXTAuthorities(t *testing.T) {
+	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
+
+	_, auths, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
+	test.AssertNotError(t, err, "TXT lookup failed")
+	test.AssertEquals(t, len(auths), 1)
+	test.AssertEquals(t, auths[0], "letsencrypt.org.	0	IN	SOA	ns.letsencrypt.org. master.letsencrypt.org. 1 1 1 1 1")
 }
 
 type testExchanger struct {
@@ -295,40 +338,45 @@ func (te *testExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration
 func TestRetry(t *testing.T) {
 	isTempErr := &net.OpError{Op: "read", Err: tempError(true)}
 	nonTempErr := &net.OpError{Op: "read", Err: tempError(false)}
+	servFailError := errors.New("DNS problem: server failure at resolver looking up TXT for example.com")
+	netError := errors.New("DNS problem: networking error looking up TXT for example.com")
 	type testCase struct {
-		maxTries int
-		expected int
-		te       *testExchanger
+		maxTries      int
+		te            *testExchanger
+		expected      error
+		expectedCount int
 	}
 	tests := []*testCase{
 		// The success on first try case
 		{
 			maxTries: 3,
-			expected: 1,
 			te: &testExchanger{
 				errs: []error{nil},
 			},
+			expected:      nil,
+			expectedCount: 1,
 		},
 		// Immediate non-OpError, error returns immediately
 		{
 			maxTries: 3,
-			expected: 1,
 			te: &testExchanger{
 				errs: []error{errors.New("nope")},
 			},
+			expected:      servFailError,
+			expectedCount: 1,
 		},
 		// Temporary err, then non-OpError stops at two tries
 		{
 			maxTries: 3,
-			expected: 2,
 			te: &testExchanger{
 				errs: []error{isTempErr, errors.New("nope")},
 			},
+			expected:      servFailError,
+			expectedCount: 2,
 		},
 		// Temporary error given always
 		{
 			maxTries: 3,
-			expected: 3,
 			te: &testExchanger{
 				errs: []error{
 					isTempErr,
@@ -336,31 +384,34 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
+			expected:      netError,
+			expectedCount: 3,
 		},
 		// Even with maxTries at 0, we should still let a single request go
 		// through
 		{
 			maxTries: 0,
-			expected: 1,
 			te: &testExchanger{
 				errs: []error{nil},
 			},
+			expected:      nil,
+			expectedCount: 1,
 		},
 		// Temporary error given just once causes two tries
 		{
 			maxTries: 3,
-			expected: 2,
 			te: &testExchanger{
 				errs: []error{
 					isTempErr,
 					nil,
 				},
 			},
+			expected:      nil,
+			expectedCount: 2,
 		},
 		// Temporary error given twice causes three tries
 		{
 			maxTries: 3,
-			expected: 3,
 			te: &testExchanger{
 				errs: []error{
 					isTempErr,
@@ -368,11 +419,12 @@ func TestRetry(t *testing.T) {
 					nil,
 				},
 			},
+			expected:      nil,
+			expectedCount: 3,
 		},
 		// Temporary error given thrice causes three tries and fails
 		{
 			maxTries: 3,
-			expected: 3,
 			te: &testExchanger{
 				errs: []error{
 					isTempErr,
@@ -380,17 +432,20 @@ func TestRetry(t *testing.T) {
 					isTempErr,
 				},
 			},
+			expected:      netError,
+			expectedCount: 3,
 		},
 		// temporary then non-Temporary error causes two retries
 		{
 			maxTries: 3,
-			expected: 2,
 			te: &testExchanger{
 				errs: []error{
 					isTempErr,
 					nonTempErr,
 				},
 			},
+			expected:      netError,
+			expectedCount: 2,
 		},
 	}
 
@@ -398,16 +453,18 @@ func TestRetry(t *testing.T) {
 		dr := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
 
 		dr.DNSClient = tc.te
-		_, err := dr.LookupTXT(context.Background(), "example.com")
+		_, _, err := dr.LookupTXT(context.Background(), "example.com")
 		if err == errTooManyRequests {
 			t.Errorf("#%d, sent more requests than the test case handles", i)
 		}
-		expectedErr := tc.te.errs[tc.expected-1]
-		if err != expectedErr {
+		expectedErr := tc.expected
+		if (expectedErr == nil && err != nil) ||
+			(expectedErr != nil && err == nil) ||
+			(expectedErr != nil && expectedErr.Error() != err.Error()) {
 			t.Errorf("#%d, error, expected %v, got %v", i, expectedErr, err)
 		}
-		if tc.expected != tc.te.count {
-			t.Errorf("#%d, count, expected %d, got %d", i, tc.expected, tc.te.count)
+		if tc.expectedCount != tc.te.count {
+			t.Errorf("#%d, error, expectedCount %v, got %v", i, tc.expectedCount, tc.te.count)
 		}
 	}
 
@@ -415,23 +472,26 @@ func TestRetry(t *testing.T) {
 	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := dr.LookupTXT(ctx, "example.com")
-	if err != context.Canceled {
+	_, _, err := dr.LookupTXT(ctx, "example.com")
+	if err == nil ||
+		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
 	}
 
 	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, _ = context.WithTimeout(context.Background(), -10*time.Hour)
-	_, err = dr.LookupTXT(ctx, "example.com")
-	if err != context.DeadlineExceeded {
+	_, _, err = dr.LookupTXT(ctx, "example.com")
+	if err == nil ||
+		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
 
 	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, deadlineCancel := context.WithTimeout(context.Background(), -10*time.Hour)
 	deadlineCancel()
-	_, err = dr.LookupTXT(ctx, "example.com")
-	if err != context.DeadlineExceeded {
+	_, _, err = dr.LookupTXT(ctx, "example.com")
+	if err == nil ||
+		err.Error() != "DNS problem: query timed out looking up TXT for example.com" {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
 }
