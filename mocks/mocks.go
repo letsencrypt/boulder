@@ -151,11 +151,6 @@ func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, err
 	return core.Authorization{}, fmt.Errorf("authz not found")
 }
 
-// GetAuthorizationsByDomain is a mock
-func (sa *StorageAuthority) GetAuthorizationsByDomain(ident core.AcmeIdentifier) ([]core.Authorization, error) {
-	return nil, nil
-}
-
 // RevokeAuthorizationsByDomain is a mock
 func (sa *StorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
 	return 0, 0, nil

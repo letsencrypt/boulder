@@ -234,15 +234,15 @@ func main() {
 			Usage: "Revoke all pending/valid authorizations for a domain",
 			Action: func(c *cli.Context) {
 				domain := c.Args().First()
-				_, _, _, sac, stats := setupContext(c)
+				_, logger, _, sac, stats := setupContext(c)
 				ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
 				authsRevoked, pendingAuthsRevoked, err := sac.RevokeAuthorizationsByDomain(ident)
 				cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorizations for %s", ident.Value))
-				fmt.Printf(
+				logger.Info(fmt.Sprintf(
 					"Revoked %d pending authorizations and %d final authorizations\n",
 					authsRevoked,
 					pendingAuthsRevoked,
-				)
+				))
 				stats.Inc("admin-revoker.revokedAuthorizations", authsRevoked, 1.0)
 				stats.Inc("admin-revoker.revokedPendingAuthorizations", pendingAuthsRevoked, 1.0)
 			},

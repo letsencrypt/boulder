@@ -166,11 +166,20 @@ type countPendingAuthorizationsRequest struct {
 	RegID int64
 }
 
+type revokeAuthsRequest struct {
+	Ident core.AcmeIdentifier
+}
+
 // Response structs
 type caaResponse struct {
 	Present bool
 	Valid   bool
 	Err     error
+}
+
+type revokeAuthsResponse struct {
+	FinalRevoked   int64
+	PendingRevoked int64
 }
 
 func improperMessage(method string, err error, obj interface{}) {
@@ -957,21 +966,16 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	})
 
 	rpc.Handle(MethodRevokeAuthorizationsByDomain, func(req []byte) (response []byte, err error) {
-		var ident core.AcmeIdentifier
-		err = json.Unmarshal(req, &ident)
+		var reqObj revokeAuthsRequest
+		err = json.Unmarshal(req, &reqObj)
 		if err != nil {
 			return
 		}
-		aRevoked, paRevoked, err := impl.RevokeAuthorizationsByDomain(ident)
+		aRevoked, paRevoked, err := impl.RevokeAuthorizationsByDomain(reqObj.Ident)
 		if err != nil {
 			return
 		}
-		var raResp struct {
-			authsRevoked        int64
-			pendingAuthsRevoked int64
-		}
-		raResp.authsRevoked = aRevoked
-		raResp.pendingAuthsRevoked = paRevoked
+		var raResp = revokeAuthsResponse{FinalRevoked: aRevoked, PendingRevoked: paRevoked}
 		response, err = json.Marshal(raResp)
 		return
 	})
@@ -1366,7 +1370,7 @@ func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization
 // RevokeAuthorizationsByDomain sends a request to revoke all pending or finalized authorizations
 // for a single domain
 func (cac StorageAuthorityClient) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (aRevoked int64, paRevoked int64, err error) {
-	data, err := json.Marshal(ident)
+	data, err := json.Marshal(revokeAuthsRequest{Ident: ident})
 	if err != nil {
 		return
 	}
@@ -1374,16 +1378,13 @@ func (cac StorageAuthorityClient) RevokeAuthorizationsByDomain(ident core.AcmeId
 	if err != nil {
 		return
 	}
-	var raResp struct {
-		authsRevoked        int64
-		pendingAuthsRevoked int64
-	}
+	var raResp revokeAuthsResponse
 	err = json.Unmarshal(resp, &raResp)
 	if err != nil {
 		return
 	}
-	aRevoked = raResp.authsRevoked
-	paRevoked = raResp.pendingAuthsRevoked
+	aRevoked = raResp.FinalRevoked
+	paRevoked = raResp.PendingRevoked
 	return
 }
 

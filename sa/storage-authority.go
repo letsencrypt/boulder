@@ -673,6 +673,12 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
+const collectAuthIDs = `SELECT id FROM %s
+WHERE identifier = :ident AND
+status != :invalid AND
+status != :revoked AND
+expires > :no`
+
 // RevokeAuthorizationsByDomain invalidates all pending or finalized authorization
 // and any associated challenges for a single domain
 func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
@@ -692,12 +698,13 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
 	var allIDs []string
 	_, err = tx.Select(
 		&allIDs,
-		`SELECT id FROM authz
-    WHERE identifier = :ident AND
-    status != :invalid AND
-    status != :revoked AND
-    expires > :now`,
-		map[string]interface{}{"ident": identifier, "invalid": invalidStatus, "revoked": revokedStatus, "now": now},
+		fmt.Sprintf(collectAuthIDs, "authz"),
+		map[string]interface{}{
+			"ident":   identifier,
+			"invalid": invalidStatus,
+			"revoked": revokedStatus,
+			"now":     now,
+		},
 	)
 	if err != nil {
 		tx.Rollback()
@@ -705,12 +712,13 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
 	}
 	_, err = tx.Select(
 		&allIDs,
-		`SELECT id FROM pendingAuthorizations
-    WHERE identifier = :ident AND
-    status != :invalid AND
-    status != :revoked AND
-    expires > :now`,
-		map[string]interface{}{"ident": identifier, "invalid": invalidStatus, "revoked": revokedStatus, "now": now},
+		fmt.Sprintf(collectAuthIDs, "pendingAuthorizations"),
+		map[string]interface{}{
+			"ident":   identifier,
+			"invalid": invalidStatus,
+			"revoked": revokedStatus,
+			"now":     now,
+		},
 	)
 	if err != nil {
 		tx.Rollback()
