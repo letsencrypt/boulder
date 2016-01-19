@@ -48,6 +48,20 @@ const (
 		"n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw",
 		"e":"AAEAAQ"
 	}`
+
+	testE1KeyPublicJSON = `{
+     "kty":"EC",
+     "crv":"P-256",
+     "x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
+     "y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
+   }`
+	testE2KeyPublicJSON = `{
+     "kty":"EC",
+     "crv":"P-256",
+     "x":"S8FOmrZ3ywj4yyFqt0etAD90U-EnkNaOBSLfQmf7pNg",
+     "y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"
+   }`
+
 	agreementURL = "http://example.invalid/terms"
 )
 
@@ -79,8 +93,12 @@ func (sa *StorageAuthority) GetRegistration(id int64) (core.Registration, error)
 func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
 	var test1KeyPublic jose.JsonWebKey
 	var test2KeyPublic jose.JsonWebKey
+	var testE1KeyPublic jose.JsonWebKey
+	var testE2KeyPublic jose.JsonWebKey
 	test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
 	test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
+	testE1KeyPublic.UnmarshalJSON([]byte(testE1KeyPublicJSON))
+	testE2KeyPublic.UnmarshalJSON([]byte(testE2KeyPublicJSON))
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
 		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL}, nil
@@ -89,6 +107,14 @@ func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Regi
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
 		return core.Registration{ID: 2}, core.NoSuchRegistrationError("reg not found")
+	}
+
+	if core.KeyDigestEquals(jwk, testE1KeyPublic) {
+		return core.Registration{ID: 3, Key: jwk, Agreement: agreementURL}, nil
+	}
+
+	if core.KeyDigestEquals(jwk, testE2KeyPublic) {
+		return core.Registration{ID: 4}, core.NoSuchRegistrationError("reg not found")
 	}
 
 	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.

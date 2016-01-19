@@ -2,6 +2,7 @@ package wfe
 
 import (
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"testing"
 
@@ -64,15 +65,6 @@ func TestCheckAlgorithm(t *testing.T) {
 		expectedErr  string
 		expectedStat string
 	}{
-		{
-			jose.JsonWebKey{
-				Algorithm: "ES256",
-				Key:       &ecdsa.PublicKey{},
-			},
-			jose.JsonWebSignature{},
-			"no signature algorithms suitable for given key type",
-			"WFE.Errors.NoAlgorithmForKey",
-		},
 		{
 			jose.JsonWebKey{
 				Algorithm: "HS256",
@@ -172,5 +164,40 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("RS256 key: Expected nil error, got '%s'", err)
+	}
+
+	_, err = checkAlgorithm(&jose.JsonWebKey{
+		Algorithm: "ES256",
+		Key: &ecdsa.PublicKey{
+			Curve: elliptic.P256(),
+		},
+	}, &jose.JsonWebSignature{
+		Signatures: []jose.Signature{
+			jose.Signature{
+				Header: jose.JoseHeader{
+					Algorithm: "ES256",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Errorf("ES256 key: Expected nil error, got '%s'", err)
+	}
+
+	_, err = checkAlgorithm(&jose.JsonWebKey{
+		Key: &ecdsa.PublicKey{
+			Curve: elliptic.P256(),
+		},
+	}, &jose.JsonWebSignature{
+		Signatures: []jose.Signature{
+			jose.Signature{
+				Header: jose.JoseHeader{
+					Algorithm: "ES256",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Errorf("ES256 key: Expected nil error, got '%s'", err)
 	}
 }

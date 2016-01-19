@@ -1,6 +1,7 @@
 package wfe
 
 import (
+	"crypto/ecdsa"
 	"crypto/rsa"
 	"fmt"
 
@@ -9,10 +10,18 @@ import (
 )
 
 func algorithmForKey(key *jose.JsonWebKey) (string, error) {
-	// TODO(https://github.com/letsencrypt/boulder/issues/792): Support EC.
-	switch key.Key.(type) {
+	switch k := key.Key.(type) {
 	case *rsa.PublicKey:
 		return string(jose.RS256), nil
+	case *ecdsa.PublicKey:
+		switch k.Params().Name {
+		case "P-256":
+			return string(jose.ES256), nil
+		case "P-384":
+			return string(jose.ES384), nil
+		case "P-521":
+			return string(jose.ES512), nil
+		}
 	}
 	return "", core.SignatureValidationError("no signature algorithms suitable for given key type")
 }
