@@ -655,7 +655,7 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 
 	ident := core.AcmeIdentifier{Value: "a.com", Type: core.IdentifierDNS}
 	ar, par, err := sa.RevokeAuthorizationsByDomain(ident)
-	test.AssertNotError(t, err, "Failed to revoke pending authorization")
+	test.AssertNotError(t, err, "Failed to revoke authorizations for a.com")
 	test.AssertEquals(t, ar, int64(1))
 	test.AssertEquals(t, par, int64(1))
 
