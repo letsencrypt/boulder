@@ -36,7 +36,8 @@
 
   "ca": {
     "serialPrefix": 255,
-    "profile": "ee",
+    "rsaProfile": "rsaEE",
+    "ecdsaProfile": "ecdsaEE",
     "debugAddr": "localhost:8001",
     "Key": {
       "File": "test/test-ca.key"
@@ -47,10 +48,46 @@
     "cfssl": {
       "signing": {
         "profiles": {
-          "ee": {
+          "rsaEE": {
             "usages": [
               "digital signature",
               "key encipherment",
+              "server auth",
+              "client auth"
+            ],
+            "backdate": "1h",
+            "is_ca": false,
+            "issuer_urls": [
+              "http://127.0.0.1:4000/acme/issuer-cert"
+            ],
+            "ocsp_url": "http://127.0.0.1:4002/",
+            "crl_url": "http://example.com/crl",
+            "policies": [
+              {
+                "ID": "2.23.140.1.2.1"
+              },
+              {
+                "ID": "1.2.3.4",
+                "Qualifiers": [ {
+                  "type": "id-qt-cps",
+                  "value": "http://example.com/cps"
+                }, {
+                  "type": "id-qt-unotice",
+                  "value": "Do What Thou Wilt"
+                } ]
+              }
+            ],
+            "expiry": "2160h",
+            "CSRWhitelist": {
+              "PublicKeyAlgorithm": true,
+              "PublicKey": true,
+              "SignatureAlgorithm": true
+            },
+            "ClientProvidesSerialNumbers": true
+          },
+          "ecdsaEE": {
+            "usages": [
+              "digital signature",
               "server auth",
               "client auth"
             ],
