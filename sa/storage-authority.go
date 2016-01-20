@@ -700,10 +700,50 @@ func getAuthorizationIDsByDomain(tx *gorp.Transaction, ident string, now time.Ti
 	return allIDs, nil
 }
 
+func revokeAuthorizationsByDomain(tx *gorp.Transaction, ident string, now time.Time) (int64, int64, error) {
+	results := []int64{}
+	for _, tableName := range []string{"authz", "pendingAuthorizations"} {
+		affected := int64(0)
+		for {
+			result, err := tx.Exec(
+				fmt.Sprintf(
+					`UPDATE %s
+           SET status = ?
+           WHERE identifier = ? AND
+           status != ? AND
+           status != ? AND
+           expires > ?
+           LIMIT ?`,
+					tableName,
+				),
+				string(core.StatusRevoked),
+				ident,
+				string(core.StatusInvalid),
+				string(core.StatusRevoked),
+				now,
+				500,
+			)
+			if err != nil {
+				return 0, 0, err
+			}
+			batchSize, err := result.RowsAffected()
+			if err != nil {
+				return 0, 0, err
+			}
+			if batchSize > 0 {
+				affected += batchSize
+			} else {
+				break
+			}
+		}
+		results = append(results, affected)
+	}
+	return results[0], results[1], nil // final revoked, pending revoked
+}
+
 // RevokeAuthorizationsByDomain invalidates all pending or finalized authorization
 // and any associated challenges for a single domain
 func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
-	invalidStatus, revokedStatus := string(core.StatusInvalid), string(core.StatusRevoked)
 	identifier, err := json.Marshal(ident)
 	if err != nil {
 		return 0, 0, err
@@ -722,35 +762,8 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
 		return 0, 0, err
 	}
 
-	// revoke any final authorizations
-	authRes, err := tx.Exec(
-		`UPDATE authz
-    SET status = ?
-    WHERE identifier = ? AND
-    status != ? AND
-    expires > ?`,
-		revokedStatus,
-		string(identifier),
-		invalidStatus,
-		now,
-	)
-	if err != nil {
-		tx.Rollback()
-		return 0, 0, err
-	}
-
-	// revoke any pending authorizations
-	pendingAuthRes, err := tx.Exec(
-		`UPDATE pendingAuthorizations
-    SET status = ?
-    WHERE identifier = ? AND
-    status != "invalid" AND
-    status != "revoked" AND
-    expires > ?`,
-		revokedStatus,
-		string(identifier),
-		now,
-	)
+	// revoke actual authorizations
+	finalRevoked, pendingRevoked, err := revokeAuthorizationsByDomain(tx, string(identifier), now)
 	if err != nil {
 		tx.Rollback()
 		return 0, 0, err
@@ -763,7 +776,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
        SET status = ?
        WHERE authorizationID = ? AND
        status != "invalid"`,
-			revokedStatus,
+			string(core.StatusRevoked),
 			authID,
 		)
 		if err != nil {
@@ -776,15 +789,8 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
 	if err != nil {
 		return 0, 0, err
 	}
-	authsRevoked, err := authRes.RowsAffected()
-	if err != nil {
-		return 0, 0, err
-	}
-	pendingAuthsRevoked, err := pendingAuthRes.RowsAffected()
-	if err != nil {
-		return 0, 0, err
-	}
-	return authsRevoked, pendingAuthsRevoked, nil
+
+	return finalRevoked, pendingRevoked, nil
 }
 
 // AddCertificate stores an issued certificate.
