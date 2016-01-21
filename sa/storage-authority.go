@@ -673,10 +673,10 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
-func getAuthorizationIDsByDomain(tx *gorp.Transaction, ident string, now time.Time) ([]string, error) {
+func getAuthorizationIDsByDomain(db *gorp.DbMap, ident string, now time.Time) ([]string, error) {
 	var allIDs []string
 	for _, tableName := range []string{"authz", "pendingAuthorizations"} {
-		_, err := tx.Select(
+		_, err := db.Select(
 			&allIDs,
 			fmt.Sprintf(
 				`SELECT id FROM %s
@@ -700,12 +700,12 @@ func getAuthorizationIDsByDomain(tx *gorp.Transaction, ident string, now time.Ti
 	return allIDs, nil
 }
 
-func revokeAuthorizationsByDomain(tx *gorp.Transaction, ident string, now time.Time) (int64, int64, error) {
+func revokeAuthorizationsByDomain(db *gorp.DbMap, ident string, now time.Time) (int64, int64, error) {
 	results := []int64{}
 	for _, tableName := range []string{"authz", "pendingAuthorizations"} {
 		affected := int64(0)
 		for {
-			result, err := tx.Exec(
+			result, err := db.Exec(
 				fmt.Sprintf(
 					`UPDATE %s
            SET status = ?
@@ -749,29 +749,22 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
 		return 0, 0, err
 	}
 
-	tx, err := ssa.dbMap.Begin()
-	if err != nil {
-		return 0, 0, err
-	}
-
 	// collect authorization IDs before beginning revocations
 	now := ssa.clk.Now()
-	allIDs, err := getAuthorizationIDsByDomain(tx, string(identifier), now)
+	allIDs, err := getAuthorizationIDsByDomain(ssa.dbMap, string(identifier), now)
 	if err != nil {
-		tx.Rollback()
 		return 0, 0, err
 	}
 
 	// revoke actual authorizations
-	finalRevoked, pendingRevoked, err := revokeAuthorizationsByDomain(tx, string(identifier), now)
+	finalRevoked, pendingRevoked, err := revokeAuthorizationsByDomain(ssa.dbMap, string(identifier), now)
 	if err != nil {
-		tx.Rollback()
 		return 0, 0, err
 	}
 
 	// revoke any challenges associated with the domain
 	for _, authID := range allIDs {
-		_, err = tx.Exec(
+		_, err = ssa.dbMap.Exec(
 			`UPDATE challenges
        SET status = ?
        WHERE authorizationID = ? AND
@@ -780,14 +773,8 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
 			authID,
 		)
 		if err != nil {
-			tx.Rollback()
 			return 0, 0, err
 		}
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		return 0, 0, err
 	}
 
 	return finalRevoked, pendingRevoked, nil
