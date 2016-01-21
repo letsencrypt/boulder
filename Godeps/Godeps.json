@@ -114,7 +114,7 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/net/publicsuffix",
-			"Rev": "f564ebf2f38110ad192d071f20536b605349e2f1"
+			"Rev": "13c140962d9691f998ad9ca4f60e82815bc4685d"
 		},
 		{
 			"ImportPath": "github.com/miekg/dns",
