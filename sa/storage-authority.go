@@ -673,9 +673,14 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
+var authorizationTables = []string{
+	"authz",
+	"pendingAuthorizations",
+}
+
 func getAuthorizationIDsByDomain(db *gorp.DbMap, ident string, now time.Time) ([]string, error) {
 	var allIDs []string
-	for _, tableName := range []string{"authz", "pendingAuthorizations"} {
+	for _, tableName := range authorizationTables {
 		_, err := db.Select(
 			&allIDs,
 			fmt.Sprintf(
@@ -702,7 +707,7 @@ func getAuthorizationIDsByDomain(db *gorp.DbMap, ident string, now time.Time) ([
 
 func revokeAuthorizationsByDomain(db *gorp.DbMap, ident string, now time.Time) (int64, int64, error) {
 	results := []int64{}
-	for _, tableName := range []string{"authz", "pendingAuthorizations"} {
+	for _, tableName := range authorizationTables {
 		affected := int64(0)
 		for {
 			result, err := db.Exec(

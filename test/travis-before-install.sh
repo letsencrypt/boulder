@@ -1,6 +1,11 @@
 #!/bin/bash
 set -o xtrace
 
+# MariaDB sets the default binlog_format to STATEMENT,
+# which causes warnings that fail tests. Instead set it
+# to the format we use in production, MIXED.
+mysql -u root -e "SET GLOBAL binlog_format = 'MIXED';"
+
 # Boulder consists of multiple Go packages, which
 # refer to each other by their absolute GitHub path,
 # e.g. github.com/letsencrypt/boulder/analysis. That means, by default, if
