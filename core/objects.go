@@ -179,7 +179,7 @@ func (r *Registration) MergeUpdate(input Registration) {
 // and the IP addresses that were resolved and used
 type ValidationRecord struct {
 	// DNS only
-	Authorities []string
+	Authorities []string `json:",omitempty"`
 
 	// SimpleHTTP only
 	URL string `json:"url,omitempty"`
@@ -358,7 +358,7 @@ func (ch Challenge) RecordsSane() bool {
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
-		if len(ch.ValidationRecord[0].Authorities) == 0 || ch.ValidationRecord[0].Hostname == "" {
+		if ch.ValidationRecord[0].Hostname == "" {
 			return false
 		}
 		return true

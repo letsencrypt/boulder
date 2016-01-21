@@ -26,6 +26,12 @@ func (mock *MockDNSResolver) LookupTXT(_ context.Context, hostname string) ([]st
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, []string{"respect my authority!"}, nil
 	}
+	if hostname == "_acme-challenge.no-authority-dns01.com" {
+		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
+		// expected token + test account jwk thumbprint
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, nil, nil
+	}
 	return []string{"hostname"}, []string{"respect my authority!"}, nil
 }
 
