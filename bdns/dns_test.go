@@ -112,21 +112,21 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.Hdr = dns.RR_Header{Name: "split-txt.letsencrypt.org.", Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 0}
 				record.Txt = []string{"a", "b", "c"}
 				appendAnswer(record)
+			} else {
+				auth := new(dns.SOA)
+				auth.Hdr = dns.RR_Header{Name: "letsencrypt.org.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 0}
+				auth.Ns = "ns.letsencrypt.org."
+				auth.Mbox = "master.letsencrypt.org."
+				auth.Serial = 1
+				auth.Refresh = 1
+				auth.Retry = 1
+				auth.Expire = 1
+				auth.Minttl = 1
+				m.Ns = append(m.Ns, auth)
 			}
 			if q.Name == "nxdomain.letsencrypt.org." {
 				m.SetRcode(r, dns.RcodeNameError)
 			}
-
-			auth := new(dns.SOA)
-			auth.Hdr = dns.RR_Header{Name: "letsencrypt.org.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 0}
-			auth.Ns = "ns.letsencrypt.org."
-			auth.Mbox = "master.letsencrypt.org."
-			auth.Serial = 1
-			auth.Refresh = 1
-			auth.Retry = 1
-			auth.Expire = 1
-			auth.Minttl = 1
-			m.Ns = append(m.Ns, auth)
 		}
 	}
 
@@ -307,6 +307,7 @@ func TestDNSTXTAuthorities(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
 	_, auths, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
+
 	test.AssertNotError(t, err, "TXT lookup failed")
 	test.AssertEquals(t, len(auths), 1)
 	test.AssertEquals(t, auths[0], "letsencrypt.org.	0	IN	SOA	ns.letsencrypt.org. master.letsencrypt.org. 1 1 1 1 1")
