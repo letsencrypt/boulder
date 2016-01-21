@@ -179,7 +179,7 @@ func (r *Registration) MergeUpdate(input Registration) {
 // and the IP addresses that were resolved and used
 type ValidationRecord struct {
 	// DNS only
-	Authorities []string
+	Authorities []string `json:",omitempty"`
 
 	// SimpleHTTP only
 	URL string `json:"url,omitempty"`
