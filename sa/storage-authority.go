@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -678,6 +679,8 @@ var authorizationTables = []string{
 	"pendingAuthorizations",
 }
 
+const getAuthorizationIDsMax = 1000
+
 func getAuthorizationIDsByDomain(db *gorp.DbMap, ident string, now time.Time) ([]string, error) {
 	var allIDs []string
 	for _, tableName := range authorizationTables {
@@ -688,7 +691,8 @@ func getAuthorizationIDsByDomain(db *gorp.DbMap, ident string, now time.Time) ([
          WHERE identifier = :ident AND
          status != :invalid AND
          status != :revoked AND
-         expires > :now`,
+         expires > :now
+         LIMIT :limit`,
 				tableName,
 			),
 			map[string]interface{}{
@@ -696,89 +700,85 @@ func getAuthorizationIDsByDomain(db *gorp.DbMap, ident string, now time.Time) ([
 				"invalid": string(core.StatusInvalid),
 				"revoked": string(core.StatusRevoked),
 				"now":     now,
+				"limit":   getAuthorizationIDsMax,
 			},
 		)
 		if err != nil {
 			return nil, err
 		}
+		if len(allIDs) == getAuthorizationIDsMax {
+			break
+		}
 	}
 	return allIDs, nil
 }
 
-func revokeAuthorizationsByDomain(db *gorp.DbMap, ident string, now time.Time) (int64, int64, error) {
-	results := []int64{}
-	for _, tableName := range authorizationTables {
-		affected := int64(0)
-		for {
-			result, err := db.Exec(
-				fmt.Sprintf(
-					`UPDATE %s
-           SET status = ?
-           WHERE identifier = ? AND
-           status != ? AND
-           status != ? AND
-           expires > ?
-           LIMIT ?`,
-					tableName,
-				),
-				string(core.StatusRevoked),
-				ident,
-				string(core.StatusInvalid),
-				string(core.StatusRevoked),
-				now,
-				500,
-			)
-			if err != nil {
-				return 0, 0, err
-			}
-			batchSize, err := result.RowsAffected()
-			if err != nil {
-				return 0, 0, err
-			}
-			if batchSize > 0 {
-				affected += batchSize
-			} else {
-				break
-			}
-		}
-		results = append(results, affected)
+func revokeAuthorizations(db *gorp.DbMap, authIDs []string) (int64, int64, error) {
+	results := []int64{0, 0}
+	quotedIDs := []string{}
+	for _, id := range authIDs {
+		quotedIDs = append(quotedIDs, strconv.Quote(id))
 	}
-	return results[0], results[1], nil // final revoked, pending revoked
+	idStr := strings.Join(quotedIDs, ", ")
+	for i, tableName := range authorizationTables {
+		result, err := db.Exec(
+			fmt.Sprintf(
+				`UPDATE %s
+         SET status = ?
+         WHERE id IN (%s)`,
+				tableName,
+				idStr,
+			),
+			string(core.StatusRevoked),
+		)
+		if err != nil {
+			return results[0], results[1], err
+		}
+		batchSize, err := result.RowsAffected()
+		if err != nil {
+			return results[0], results[1], err
+		}
+		results[i] = batchSize
+	}
+	_, err := db.Exec(
+		fmt.Sprintf(
+			`UPDATE challenges
+       SET status = ?
+       WHERE authorizationID IN (%s)`,
+			idStr,
+		),
+		string(core.StatusRevoked),
+	)
+	return results[0], results[1], err // final revoked, pending revoked
 }
 
 // RevokeAuthorizationsByDomain invalidates all pending or finalized authorization
 // and any associated challenges for a single domain
 func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
-	identifier, err := json.Marshal(ident)
+	identifierJSON, err := json.Marshal(ident)
 	if err != nil {
 		return 0, 0, err
 	}
+	identifier := string(identifierJSON)
 
 	// collect authorization IDs before beginning revocations
 	now := ssa.clk.Now()
-	allIDs, err := getAuthorizationIDsByDomain(ssa.dbMap, string(identifier), now)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	// revoke actual authorizations
-	finalRevoked, pendingRevoked, err := revokeAuthorizationsByDomain(ssa.dbMap, string(identifier), now)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	// revoke any challenges associated with the domain
-	for _, authID := range allIDs {
-		_, err = ssa.dbMap.Exec(
-			`UPDATE challenges
-       SET status = ?
-       WHERE authorizationID = ? AND
-       status != "invalid"`,
-			string(core.StatusRevoked),
-			authID,
-		)
+	finalRevoked, pendingRevoked := int64(0), int64(0)
+	for {
+		authz, err := getAuthorizationIDsByDomain(ssa.dbMap, identifier, now)
 		if err != nil {
-			return 0, 0, err
+			return finalRevoked, pendingRevoked, err
+		}
+
+		// revoke actual authorizations
+		fRevoked, pRevoked, err := revokeAuthorizations(ssa.dbMap, authz)
+		if err != nil {
+			return finalRevoked, pendingRevoked, err
+		}
+		finalRevoked += fRevoked
+		pendingRevoked += pRevoked
+		if len(authz) < getAuthorizationIDsMax {
+			break
 		}
 	}
 
