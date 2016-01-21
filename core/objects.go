@@ -358,7 +358,7 @@ func (ch Challenge) RecordsSane() bool {
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
-		if len(ch.ValidationRecord[0].Authorities) == 0 || ch.ValidationRecord[0].Hostname == "" {
+		if ch.ValidationRecord[0].Hostname == "" {
 			return false
 		}
 		return true
