@@ -497,7 +497,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Verify the CSR
 	csr := req.CSR
-	if err = core.VerifyCSR(csr); err != nil {
+	if err = csr.CheckSignature(); err != nil {
 		logEvent.Error = err.Error()
 		err = core.UnauthorizedError("Invalid signature on CSR")
 		return emptyCert, err

@@ -12,7 +12,7 @@ import (
 )
 
 // A 2048-bit RSA private key
-var pemPrivateKey = `-----BEGIN RSA PRIVATE KEY-----
+var rsaPrivateKey = `-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA5cpXqfCaUDD+hf93j5jxbrhK4jrJAzfAEjeZj/Lx5Rv/7eEO
 uhS2DdCU2is82vR6yJ7EidUYVz/nUAjSTP7JIEsbyvfsfACABbqRyGltHlJnULVH
 y/EMjt9xKZf17T8tOLHVUEAJTxsvjKn4TMIQJTNrAqm/lNrUXmCIR41Go+3RBGC6
@@ -40,8 +40,15 @@ Wi8EsQKBgG8iGy3+kVBIjKHxrN5jVs3vj/l/fQL0WRMLCMmVuDBfsKyy3f9n8R1B
 A2NgiQ+UeWMia16dZVd6gGDlY3lQpeyLdsdDd+YppNfy9vedjbvT
 -----END RSA PRIVATE KEY-----`
 
+// NISTP256 ECDSA private key
+var ecdsaPrivateKey = `-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIKwK8ik0Zgw26bWaGuNYa/QAtCDRwpOPS5FIhbwuFqWuoAoGCCqGSM49
+AwEHoUQDQgAEfkxXCNEy4/zfwQ4arciDYQql7/+ftYvf51JTLCJAFu8kWKvNBENT
+X8ays994FANu2VsJTF5Ud5JPYWHT87hjAA==
+-----END EC PRIVATE KEY-----`
+
 func main() {
-	block, _ := pem.Decode([]byte(pemPrivateKey))
+	block, _ := pem.Decode([]byte(rsaPrivateKey))
 	rsaPriv, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
 		log.Fatalf("Failed to parse private key: %s", err)

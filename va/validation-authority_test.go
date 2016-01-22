@@ -868,6 +868,37 @@ func TestDNSValidationOK(t *testing.T) {
 	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
 }
 
+func TestDNSValidationNoAuthorityOK(t *testing.T) {
+	stats, _ := statsd.NewNoopClient()
+	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va.DNSResolver = &bdns.MockDNSResolver{}
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	// create a challenge with well known token
+	chalDNS := core.DNSChallenge01(accountKey)
+	chalDNS.Token = expectedToken
+
+	keyAuthorization, _ := core.NewKeyAuthorization(chalDNS.Token, accountKey)
+	chalDNS.KeyAuthorization = &keyAuthorization
+
+	goodIdent := core.AcmeIdentifier{
+		Type:  core.IdentifierDNS,
+		Value: "no-authority-dns01.com",
+	}
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     goodIdent,
+		Challenges:     []core.Challenge{chalDNS},
+	}
+	va.validate(context.Background(), authz, 0)
+
+	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
+	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
+}
+
 // TestDNSValidationLive is an integration test, depending on
 // the existence of some Internet resources. Because of that,
 // it asserts nothing; it is intended for coverage.
