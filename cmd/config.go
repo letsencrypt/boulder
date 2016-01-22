@@ -289,6 +289,8 @@ type CAConfig struct {
 	DBConfig
 
 	Profile      string
+	RSAProfile   string
+	ECDSAProfile string
 	TestMode     bool
 	SerialPrefix int
 	Key          KeyConfig

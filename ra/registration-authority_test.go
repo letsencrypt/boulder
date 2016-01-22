@@ -206,6 +206,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		LifespanOCSP: "1h",
 		Expiry:       "1h",
 		CFSSL:        cfsslC,
+		RSAProfile:   "rsaEE",
+		ECDSAProfile: "ecdsaEE",
 	}
 	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	if err != nil {
