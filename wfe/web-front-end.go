@@ -147,6 +147,9 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 			nonce, err := wfe.nonceService.Nonce()
 			if err == nil {
 				response.Header().Set("Replay-Nonce", nonce)
+				logEvent.ResponseNonce = nonce
+			} else {
+				logEvent.AddError("unable to make nonce: %s", err)
 			}
 
 			switch request.Method {
@@ -399,14 +402,15 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 
 	// Check that the request has a known anti-replay nonce
 	nonce := parsedJws.Signatures[0].Header.Nonce
-	if err != nil || len(nonce) == 0 {
+	logEvent.RequestNonce = nonce
+	if len(nonce) == 0 {
 		wfe.stats.Inc("WFE.Errors.JWSMissingNonce", 1, 1.0)
 		logEvent.AddError("JWS is missing an anti-replay nonce")
 		return nil, nil, reg, probs.BadNonce("JWS has no anti-replay nonce")
 	} else if !wfe.nonceService.Valid(nonce) {
 		wfe.stats.Inc("WFE.Errors.JWSInvalidNonce", 1, 1.0)
-		logEvent.AddError("JWS has an invalid anti-replay nonce")
-		return nil, nil, reg, probs.BadNonce("JWS has invalid anti-replay nonce")
+		logEvent.AddError("JWS has an invalid anti-replay nonce: %s", nonce)
+		return nil, nil, reg, probs.BadNonce(fmt.Sprintf("JWS has invalid anti-replay nonce %v", nonce))
 	}
 
 	// Check that the "resource" field is present and has the correct value
