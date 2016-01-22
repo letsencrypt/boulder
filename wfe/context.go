@@ -23,6 +23,7 @@ type requestEvent struct {
 	Contacts      []*core.AcmeURL        `json:",omitempty"`
 	RequestNonce  string                 `json:",omitempty"`
 	ResponseNonce string                 `json:",omitempty"`
+	UserAgent     string                 `json:",omitempty"`
 	Extra         map[string]interface{} `json:",omitempty"`
 }
 
@@ -53,6 +54,7 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ClientAddr:  getClientAddr(r),
 		Method:      r.Method,
 		RequestTime: time.Now(),
+		UserAgent:   r.Header.Get("User-Agent"),
 		Extra:       make(map[string]interface{}, 0),
 	}
 	if r.URL != nil {
