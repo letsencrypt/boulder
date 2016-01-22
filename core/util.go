@@ -7,14 +7,9 @@ package core
 
 import (
 	"crypto"
-	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha1"
 	"crypto/sha256"
-	"crypto/sha512"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -22,7 +17,6 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
-	"hash"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -281,76 +275,6 @@ func (u *AcmeURL) UnmarshalJSON(data []byte) error {
 	}
 	*u = AcmeURL(*uu)
 	return nil
-}
-
-// VerifyCSR verifies that a Certificate Signature Request is well-formed.
-//
-// Note: this is the missing CertificateRequest.Verify() method
-func VerifyCSR(csr *x509.CertificateRequest) error {
-	// Compute the hash of the TBSCertificateRequest
-	var hashID crypto.Hash
-	var hash hash.Hash
-	switch csr.SignatureAlgorithm {
-	case x509.SHA1WithRSA:
-		fallthrough
-	case x509.ECDSAWithSHA1:
-		hashID = crypto.SHA1
-		hash = sha1.New()
-	case x509.SHA256WithRSA:
-		fallthrough
-	case x509.ECDSAWithSHA256:
-		hashID = crypto.SHA256
-		hash = sha256.New()
-	case x509.SHA384WithRSA:
-		fallthrough
-	case x509.ECDSAWithSHA384:
-		hashID = crypto.SHA384
-		hash = sha512.New384()
-	case x509.SHA512WithRSA:
-		fallthrough
-	case x509.ECDSAWithSHA512:
-		hashID = crypto.SHA512
-		hash = sha512.New()
-	default:
-		return errors.New("Unsupported CSR signing algorithm")
-	}
-	_, _ = hash.Write(csr.RawTBSCertificateRequest) // Never returns an error
-	inputHash := hash.Sum(nil)
-
-	// Verify the signature using the public key in the CSR
-	switch csr.SignatureAlgorithm {
-	case x509.SHA1WithRSA:
-		fallthrough
-	case x509.SHA256WithRSA:
-		fallthrough
-	case x509.SHA384WithRSA:
-		fallthrough
-	case x509.SHA512WithRSA:
-		rsaKey := csr.PublicKey.(*rsa.PublicKey)
-		return rsa.VerifyPKCS1v15(rsaKey, hashID, inputHash, csr.Signature)
-	case x509.ECDSAWithSHA1:
-		fallthrough
-	case x509.ECDSAWithSHA256:
-		fallthrough
-	case x509.ECDSAWithSHA384:
-		fallthrough
-	case x509.ECDSAWithSHA512:
-		ecKey := csr.PublicKey.(*ecdsa.PublicKey)
-
-		var sig struct{ R, S *big.Int }
-		_, err := asn1.Unmarshal(csr.Signature, &sig)
-		if err != nil {
-			return err
-		}
-
-		if ecdsa.Verify(ecKey, inputHash, sig.R, sig.S) {
-			return nil
-		}
-
-		return errors.New("Invalid ECDSA signature on CSR")
-	}
-
-	return errors.New("Unsupported CSR signing algorithm")
 }
 
 // SerialToString converts a certificate serial number (big.Int) to a String
