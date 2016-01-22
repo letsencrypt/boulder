@@ -7,7 +7,9 @@ package ca
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -59,7 +61,8 @@ const (
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
-	profile        string
+	rsaProfile     string
+	ecdsaProfile   string
 	signer         signer.Signer
 	ocspSigner     ocsp.Signer
 	SA             core.StorageAuthority
@@ -134,10 +137,26 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
+	rsaProfile := config.RSAProfile
+	ecdsaProfile := config.ECDSAProfile
+	if config.Profile != "" {
+		if rsaProfile != "" || ecdsaProfile != "" {
+			return nil, errors.New("either specify profile or rsaProfile and ecdsaProfile, but not both")
+		}
+
+		rsaProfile = config.Profile
+		ecdsaProfile = config.Profile
+	}
+
+	if rsaProfile == "" || ecdsaProfile == "" {
+		return nil, errors.New("must specify rsaProfile and ecdsaProfile")
+	}
+
 	ca = &CertificateAuthorityImpl{
 		signer:          signer,
 		ocspSigner:      ocspSigner,
-		profile:         config.Profile,
+		rsaProfile:      rsaProfile,
+		ecdsaProfile:    ecdsaProfile,
 		prefix:          config.SerialPrefix,
 		clk:             clk,
 		log:             logger,
@@ -325,10 +344,23 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 
+	var profile string
+	switch key.(type) {
+	case *rsa.PublicKey:
+		profile = ca.rsaProfile
+	case *ecdsa.PublicKey:
+		profile = ca.ecdsaProfile
+	default:
+		err = core.InternalServerError(fmt.Sprintf("unsupported key type %T", key))
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
+	}
+
 	// Send the cert off for signing
 	req := signer.SignRequest{
 		Request: csrPEM,
-		Profile: ca.profile,
+		Profile: profile,
 		Hosts:   hostNames,
 		Subject: &signer.Subject{
 			CN: commonName,
