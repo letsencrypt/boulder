@@ -9,6 +9,7 @@ import (
 	"crypto"
 	"crypto/subtle"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -594,10 +595,11 @@ type DeniedCSR struct {
 
 // OCSPSigningRequest is a transfer object representing an OCSP Signing Request
 type OCSPSigningRequest struct {
-	CertDER   []byte
-	Status    string
-	Reason    RevocationCode
-	RevokedAt time.Time
+	CertDER    []byte
+	Status     string
+	Reason     RevocationCode
+	RevokedAt  time.Time
+	Extensions []pkix.Extension
 }
 
 // SignedCertificateTimestamp is the internal representation of ct.SignedCertificateTimestamp
