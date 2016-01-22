@@ -51,7 +51,8 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA1:             true,
 }
 
-// PKCS#9 attribute for requesting certificate extensions
+// Miscellaneous PKIX OIDs that we need to refer to
+var oidSubjectAltName = asn1.ObjectIdentifier{2, 5, 29, 17}
 var oidExtensionRequest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 14}
 
 // OID and fixed value for the "must staple" variant of the TLS Feature
@@ -66,6 +67,11 @@ var oidExtensionRequest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 14}
 //  |   |-- 05 - 5
 var oidTLSFeature = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
 var mustStapleFeatureValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
+var mustStapleExtension = signer.Extension{
+	ID:       cfsslConfig.OID(oidTLSFeature),
+	Critical: false,
+	Value:    hex.EncodeToString(mustStapleFeatureValue),
+}
 
 // Extract supported extensions from a CSR.  The following extensions are
 // currently supported:
@@ -73,7 +79,7 @@ var mustStapleFeatureValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
 // * 1.3.6.1.5.5.7.1.24 - TLS Feature [RFC7633], with the "must staple" value
 //
 // Other requested extensions are silently ignored.
-func extensionsFromCSR(csr *x509.CertificateRequest) (extensions []signer.Extension) {
+func extensionsFromCSR(csr *x509.CertificateRequest) (extensions []signer.Extension, err error) {
 	extensions = []signer.Extension{}
 	for _, attr := range csr.Attributes {
 		if !attr.Type.Equal(oidExtensionRequest) {
@@ -82,18 +88,27 @@ func extensionsFromCSR(csr *x509.CertificateRequest) (extensions []signer.Extens
 
 		for _, extList := range attr.Value {
 			for _, ext := range extList {
-				if ext.Type.Equal(oidTLSFeature) {
+				switch {
+				case ext.Type.Equal(oidTLSFeature):
 					value, ok := ext.Value.([]byte)
-					if !ok || !bytes.Equal(value, mustStapleFeatureValue) {
-						fmt.Printf("\n\n\n !!! Unsupported value: %v !!! \n\n\n", ext.Value)
-						continue
+					if !ok {
+						msg := fmt.Sprintf("Mal-formed extension with OID %v", ext.Type)
+						err = core.CertificateIssuanceError(msg)
+						return
+					} else if !bytes.Equal(value, mustStapleFeatureValue) {
+						msg := fmt.Sprintf("Unsupported value for extension with OID %v", ext.Type)
+						err = core.CertificateIssuanceError(msg)
+						return
 					}
 
-					extensions = append(extensions, signer.Extension{
-						ID:       cfsslConfig.OID(oidTLSFeature),
-						Critical: false,
-						Value:    hex.EncodeToString(mustStapleFeatureValue),
-					})
+					extensions = append(extensions, mustStapleExtension)
+				case ext.Type.Equal(oidSubjectAltName):
+					// subjectAltName is handled elsewhere
+					continue
+				default:
+					msg := fmt.Sprintf("Unsupported extension with OID %v", ext.Type)
+					err = core.CertificateIssuanceError(msg)
+					return
 				}
 			}
 		}
@@ -366,7 +381,10 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		}
 	}
 
-	requestedExtensions := extensionsFromCSR(&csr)
+	requestedExtensions, err := extensionsFromCSR(&csr)
+	if err != nil {
+		return emptyCert, err
+	}
 
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)
 

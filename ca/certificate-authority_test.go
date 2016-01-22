@@ -629,10 +629,6 @@ func TestExtensions(t *testing.T) {
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
 
-	// We already expect 8 extensions: extKeyUsage, basicConstraints,
-	// subjectKeyIdentifier, authorityKeyIdentifier, subjectAlternativeName,
-	// crlDistributionPoints, authorityInfoAccess, certificatePolicies
-	test.AssertEquals(t, len(parsedCert.Extensions), 9)
 	foundMustStaple := false
 	for _, ext := range parsedCert.Extensions {
 		if ext.Id.Equal(oidTLSFeature) {
@@ -643,27 +639,13 @@ func TestExtensions(t *testing.T) {
 	}
 	test.Assert(t, foundMustStaple, "TLS Feature extension not found")
 
-	// ... but not if it doesn't ask for stapling
+	// ... but if it doesn't ask for stapling, there should be an error
 	csr, _ = x509.ParseCertificateRequest(TLSFeatureUnknownCSR)
 	cert, err = ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with an empty TLS feature extension")
-	parsedCert, err = x509.ParseCertificate(cert.DER)
-	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
+	test.AssertError(t, err, "Allowed a CSR with an empty TLS feature extension")
 
-	test.AssertEquals(t, len(parsedCert.Extensions), 8)
-	foundMustStaple = false
-	for _, ext := range parsedCert.Extensions {
-		if ext.Id.Equal(oidTLSFeature) {
-			foundMustStaple = true
-		}
-	}
-	test.Assert(t, !foundMustStaple, "TLS Feature extension should not have been found")
-
-	// Unsupported extensions should be ignored
+	// Unsupported extensions should produce an error
 	csr, _ = x509.ParseCertificateRequest(UnsupportedExtensionCSR)
 	cert, err = ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with an unsupported extension")
-	parsedCert, err = x509.ParseCertificate(cert.DER)
-	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
-	test.AssertEquals(t, len(parsedCert.Extensions), 8)
+	test.AssertError(t, err, "Allowed a CSR with an unsupported extension")
 }
