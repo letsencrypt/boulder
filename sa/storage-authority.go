@@ -15,13 +15,13 @@ import (
 	"math/big"
 	"net"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -672,84 +672,6 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 
 	err = tx.Commit()
 	return
-}
-
-var authorizationTables = []string{
-	"authz",
-	"pendingAuthorizations",
-}
-
-const getAuthorizationIDsMax = 1000
-
-func getAuthorizationIDsByDomain(db *gorp.DbMap, ident string, now time.Time) ([]string, error) {
-	var allIDs []string
-	for _, tableName := range authorizationTables {
-		_, err := db.Select(
-			&allIDs,
-			fmt.Sprintf(
-				`SELECT id FROM %s
-         WHERE identifier = :ident AND
-         status != :invalid AND
-         status != :revoked AND
-         expires > :now
-         LIMIT :limit`,
-				tableName,
-			),
-			map[string]interface{}{
-				"ident":   ident,
-				"invalid": string(core.StatusInvalid),
-				"revoked": string(core.StatusRevoked),
-				"now":     now,
-				"limit":   getAuthorizationIDsMax,
-			},
-		)
-		if err != nil {
-			return nil, err
-		}
-		if len(allIDs) == getAuthorizationIDsMax {
-			break
-		}
-	}
-	return allIDs, nil
-}
-
-func revokeAuthorizations(db *gorp.DbMap, authIDs []string) (int64, int64, error) {
-	results := []int64{0, 0}
-	quotedIDs := []string{}
-	for _, id := range authIDs {
-		quotedIDs = append(quotedIDs, strconv.Quote(id))
-	}
-	idStr := strings.Join(quotedIDs, ", ")
-	for i, tableName := range authorizationTables {
-		result, err := db.Exec(
-			fmt.Sprintf(
-				`UPDATE %s
-         SET status = ?
-         WHERE id IN (%s)`,
-				tableName,
-				idStr,
-			),
-			string(core.StatusRevoked),
-		)
-		if err != nil {
-			return results[0], results[1], err
-		}
-		batchSize, err := result.RowsAffected()
-		if err != nil {
-			return results[0], results[1], err
-		}
-		results[i] = batchSize
-	}
-	_, err := db.Exec(
-		fmt.Sprintf(
-			`UPDATE challenges
-       SET status = ?
-       WHERE authorizationID IN (%s)`,
-			idStr,
-		),
-		string(core.StatusRevoked),
-	)
-	return results[0], results[1], err // final revoked, pending revoked
 }
 
 // RevokeAuthorizationsByDomain invalidates all pending or finalized authorization

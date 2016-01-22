@@ -666,11 +666,4 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 
 	test.AssertEquals(t, PA.Status, core.StatusRevoked)
 	test.AssertEquals(t, FA.Status, core.StatusRevoked)
-
-	for _, c := range PA.Challenges {
-		test.AssertEquals(t, c.Status, core.StatusRevoked)
-	}
-	for _, c := range FA.Challenges {
-		test.AssertEquals(t, c.Status, core.StatusRevoked)
-	}
 }
