@@ -13,9 +13,15 @@ go get \
   github.com/jcjones/github-pr-status \
   github.com/jsha/listenbuddy &
 
+if [ $(uname) == "Darwin" ]; then
+  UNZIP="gunzip -c"
+else
+  UNZIP="zcat"
+fi
+
 (wget https://github.com/jsha/boulder-tools/raw/master/goose.gz &&
  mkdir -p $GOPATH/bin &&
- zcat goose.gz > $GOPATH/bin/goose &&
+ $UNZIP goose.gz > $GOPATH/bin/goose &&
  chmod +x $GOPATH/bin/goose &&
  ./test/create_db.sh) &
 
