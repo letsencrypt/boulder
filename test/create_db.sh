@@ -10,14 +10,15 @@ if [[ ! -z "$MYSQL_CONTAINER" ]]; then
 	dbconn="-u root -h 127.0.0.1 --port 3306"
 fi
 
+#s/\.[0-9][0-9]*$//
 
 DB_VERSION=$(  mysql $dbconn -e "status;" | grep "Server version" | sed -e 's/-Maria.*//
-s/\.[0-9][0-9]*$//
 s/Server version://
 s/^.*-//
 s/ //g
 s/	//g
 ' )
+#echo "dbversion=$DB_VERSION"
 
 if [[ $DB_VERSION =~ "10.1" ]] ; then
 	mysql $dbconn < test/create_db_users_10.1.sql
