@@ -21,21 +21,15 @@ s/	//g
 #echo "dbversion=$DB_VERSION"
 
 if [[ $DB_VERSION =~ "10.1" ]] ; then
+	# Create uses so that if they do not exists the drop will not fail
+	mysql $dbconn < test/create_db_users_10.1.sql
+	# Drop all users to get a fresh start
+	mysql $dbconn < test/drop_users.sql
+	# in 10.1.7+ will not automaticaly create uses via a grant - must explicitly create them.
 	mysql $dbconn < test/create_db_users_10.1.sql
 elif [[ $DB_VERSION =~ "10.0" ]] ; then
-	mysql $dbconn < test/create_db_users.sql
-else
-	echo "$DB_VERSION is not a supported version of MariaDB"
-	exit 1
-fi
-
-# Drop all users to get a fresh start
-mysql $dbconn < test/drop_users.sql
-
-if [[ $DB_VERSION =~ "10.1" ]] ; then
-	mysql $dbconn < test/create_db_users_10.1.sql
-elif [[ $DB_VERSION =~ "10.0" ]] ; then
-	mysql $dbconn < test/create_db_users.sql
+	# Drop all users to get a fresh start
+	mysql $dbconn < test/drop_users.sql
 else
 	echo "$DB_VERSION is not a supported version of MariaDB"
 	exit 1
