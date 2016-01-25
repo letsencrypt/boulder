@@ -406,7 +406,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 		Key: ShortKey,
 	})
 	test.AssertNotError(t, err, "Could not update registration")
-	test.AssertEquals(t, result2.ID, id)
+	test.Assert(t, result2.ID != 33, fmt.Sprintf("ID shouldn't be overwritten. expected %d, got %d", id, result2.ID))
 	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
 }
 
