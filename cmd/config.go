@@ -230,9 +230,9 @@ func (pc *PasswordConfig) Pass() (string, error) {
 	if pc.PasswordFile != "" {
 		contents, err := ioutil.ReadFile(pc.PasswordFile)
 		if err != nil {
-			return "", nil
+			return "", err
 		}
-		return string(contents), nil
+		return strings.TrimRight(string(contents), "\n"), nil
 	}
 	return pc.Password, nil
 }
