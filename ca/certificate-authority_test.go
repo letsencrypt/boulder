@@ -626,11 +626,11 @@ func TestExtensions(t *testing.T) {
 	csr, _ := x509.ParseCertificateRequest(MustStapleCSR)
 	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with must_staple")
-	parsedCert, err := x509.ParseCertificate(cert.DER)
+	parsedCert1, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
 
 	foundMustStaple := false
-	for _, ext := range parsedCert.Extensions {
+	for _, ext := range parsedCert1.Extensions {
 		if ext.Id.Equal(oidTLSFeature) {
 			foundMustStaple = true
 			test.Assert(t, !ext.Critical, "Extension was marked critical")
@@ -638,14 +638,25 @@ func TestExtensions(t *testing.T) {
 		}
 	}
 	test.Assert(t, foundMustStaple, "TLS Feature extension not found")
+	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeature], int64(1))
 
 	// ... but if it doesn't ask for stapling, there should be an error
 	csr, _ = x509.ParseCertificateRequest(TLSFeatureUnknownCSR)
 	cert, err = ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertError(t, err, "Allowed a CSR with an empty TLS feature extension")
+	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeature], int64(2))
+	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeatureInvalid], int64(1))
 
-	// Unsupported extensions should produce an error
+	// Unsupported extensions should be silently ignored, having the same
+	// extensions as the TLS Feature cert above, minus the TLS Feature Extension
 	csr, _ = x509.ParseCertificateRequest(UnsupportedExtensionCSR)
 	cert, err = ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertError(t, err, "Allowed a CSR with an unsupported extension")
+	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with an unknown extension")
+	parsedCert2, err := x509.ParseCertificate(cert.DER)
+	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
+	test.AssertEquals(t, len(parsedCert2.Extensions), len(parsedCert1.Extensions)-1)
+	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionOther], int64(1))
+
+	// None of the above CSRs have basic extensions
+	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionBasic], int64(0))
 }

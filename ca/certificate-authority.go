@@ -52,8 +52,22 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 }
 
 // Miscellaneous PKIX OIDs that we need to refer to
-var oidSubjectAltName = asn1.ObjectIdentifier{2, 5, 29, 17}
-var oidExtensionRequest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 14}
+var (
+	// X.509 Extensions
+	oidAuthorityInfoAccess    = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 1}
+	oidAuthorityKeyIdentifier = asn1.ObjectIdentifier{2, 5, 29, 35}
+	oidBasicConstraints       = asn1.ObjectIdentifier{2, 5, 29, 19}
+	oidCertificatePolicies    = asn1.ObjectIdentifier{2, 5, 29, 32}
+	oidCrlDistributionPoints  = asn1.ObjectIdentifier{2, 5, 29, 31}
+	oidExtKeyUsage            = asn1.ObjectIdentifier{2, 5, 29, 37}
+	oidKeyUsage               = asn1.ObjectIdentifier{2, 5, 29, 15}
+	oidSubjectAltName         = asn1.ObjectIdentifier{2, 5, 29, 17}
+	oidSubjectKeyIdentifier   = asn1.ObjectIdentifier{2, 5, 29, 14}
+	oidTLSFeature             = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
+
+	// CSR attribute requesting extensions
+	oidExtensionRequest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 14}
+)
 
 // OID and fixed value for the "must staple" variant of the TLS Feature
 // extension:
@@ -65,56 +79,14 @@ var oidExtensionRequest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 14}
 //  30 03 - SEQUENCE (3 octets)
 //  |-- 02 01 - INTEGER (1 octet)
 //  |   |-- 05 - 5
-var oidTLSFeature = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
-var mustStapleFeatureValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
-var mustStapleExtension = signer.Extension{
-	ID:       cfsslConfig.OID(oidTLSFeature),
-	Critical: false,
-	Value:    hex.EncodeToString(mustStapleFeatureValue),
-}
-
-// Extract supported extensions from a CSR.  The following extensions are
-// currently supported:
-//
-// * 1.3.6.1.5.5.7.1.24 - TLS Feature [RFC7633], with the "must staple" value
-//
-// Other requested extensions are silently ignored.
-func extensionsFromCSR(csr *x509.CertificateRequest) (extensions []signer.Extension, err error) {
-	extensions = []signer.Extension{}
-	for _, attr := range csr.Attributes {
-		if !attr.Type.Equal(oidExtensionRequest) {
-			continue
-		}
-
-		for _, extList := range attr.Value {
-			for _, ext := range extList {
-				switch {
-				case ext.Type.Equal(oidTLSFeature):
-					value, ok := ext.Value.([]byte)
-					if !ok {
-						msg := fmt.Sprintf("Mal-formed extension with OID %v", ext.Type)
-						err = core.CertificateIssuanceError(msg)
-						return
-					} else if !bytes.Equal(value, mustStapleFeatureValue) {
-						msg := fmt.Sprintf("Unsupported value for extension with OID %v", ext.Type)
-						err = core.CertificateIssuanceError(msg)
-						return
-					}
-
-					extensions = append(extensions, mustStapleExtension)
-				case ext.Type.Equal(oidSubjectAltName):
-					// subjectAltName is handled elsewhere
-					continue
-				default:
-					msg := fmt.Sprintf("Unsupported extension with OID %v", ext.Type)
-					err = core.CertificateIssuanceError(msg)
-					return
-				}
-			}
-		}
+var (
+	mustStapleFeatureValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
+	mustStapleExtension    = signer.Extension{
+		ID:       cfsslConfig.OID(oidTLSFeature),
+		Critical: false,
+		Value:    hex.EncodeToString(mustStapleFeatureValue),
 	}
-	return
-}
+)
 
 // Metrics for CA statistics
 const (
@@ -123,6 +95,23 @@ const (
 
 	// Increments when CA rejects a request due to an HSM fault
 	metricHSMFaultRejected = "CA.OCSP.HSMFault.Rejected"
+
+	// Increments when CA handles a CSR requesting a "basic" extension:
+	// authorityInfoAccess, authorityKeyIdentifier, extKeyUsage, keyUsage,
+	// basicConstraints, certificatePolicies, crlDistributionPoints,
+	// subjectAlternativeName, subjectKeyIdentifier,
+	metricCSRExtensionBasic = "CA.OCSP.CSRExtensions.Basic"
+
+	// Increments when CA handles a CSR requesting a TLS Feature extension
+	metricCSRExtensionTLSFeature = "CA.OCSP.CSRExtensions.TLSFeature"
+
+	// Increments when CA handles a CSR requesting a TLS Feature extension with
+	// an invalid value
+	metricCSRExtensionTLSFeatureInvalid = "CA.OCSP.CSRExtensions.TLSFeatureInvalid"
+
+	// Increments when CA handles a CSR requesting an extension other than those
+	// listed above
+	metricCSRExtensionOther = "CA.OCSP.CSRExtensions.Other"
 )
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -282,6 +271,58 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 	return
 }
 
+// Extract supported extensions from a CSR.  The following extensions are
+// currently supported:
+//
+// * 1.3.6.1.5.5.7.1.24 - TLS Feature [RFC7633], with the "must staple" value.
+//                        Any other value will result in an error.
+//
+// Other requested extensions are silently ignored.
+func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateRequest) (extensions []signer.Extension, err error) {
+	extensions = []signer.Extension{}
+	for _, attr := range csr.Attributes {
+		if !attr.Type.Equal(oidExtensionRequest) {
+			continue
+		}
+
+		for _, extList := range attr.Value {
+			for _, ext := range extList {
+				switch {
+				case ext.Type.Equal(oidTLSFeature):
+					ca.stats.Inc(metricCSRExtensionTLSFeature, 1, 1.0)
+					value, ok := ext.Value.([]byte)
+					if !ok {
+						msg := fmt.Sprintf("Mal-formed extension with OID %v", ext.Type)
+						err = core.CertificateIssuanceError(msg)
+						return
+					} else if !bytes.Equal(value, mustStapleFeatureValue) {
+						msg := fmt.Sprintf("Unsupported value for extension with OID %v", ext.Type)
+						ca.stats.Inc(metricCSRExtensionTLSFeatureInvalid, 1, 1.0)
+						err = core.CertificateIssuanceError(msg)
+						return
+					}
+
+					extensions = append(extensions, mustStapleExtension)
+				case ext.Type.Equal(oidAuthorityInfoAccess),
+					ext.Type.Equal(oidAuthorityKeyIdentifier),
+					ext.Type.Equal(oidBasicConstraints),
+					ext.Type.Equal(oidCertificatePolicies),
+					ext.Type.Equal(oidCrlDistributionPoints),
+					ext.Type.Equal(oidExtKeyUsage),
+					ext.Type.Equal(oidKeyUsage),
+					ext.Type.Equal(oidSubjectAltName),
+					ext.Type.Equal(oidSubjectKeyIdentifier):
+					fmt.Printf(">>>> EEE >>>> %v\n", ext.Type)
+					ca.stats.Inc(metricCSRExtensionBasic, 1, 1.0)
+				default:
+					ca.stats.Inc(metricCSRExtensionOther, 1, 1.0)
+				}
+			}
+		}
+	}
+	return
+}
+
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
 	if err := ca.checkHSMFault(); err != nil {
@@ -381,7 +422,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		}
 	}
 
-	requestedExtensions, err := extensionsFromCSR(&csr)
+	requestedExtensions, err := ca.extensionsFromCSR(&csr)
 	if err != nil {
 		return emptyCert, err
 	}
