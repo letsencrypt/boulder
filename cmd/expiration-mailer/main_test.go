@@ -129,6 +129,14 @@ func TestSendNags(t *testing.T) {
 	err = m.sendNags(cert, []*core.AcmeURL{})
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
+
+	templates, err := template.ParseGlob("../../data/*.template")
+	test.AssertNotError(t, err, "Failed to parse templates")
+	for _, template := range templates.Templates() {
+		m.emailTemplate = template
+		err = m.sendNags(cert, []*core.AcmeURL{})
+		test.AssertNotError(t, err, "failed to send nag")
+	}
 }
 
 var n = bigIntFromB64("n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw==")
