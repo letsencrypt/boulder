@@ -9,6 +9,11 @@ if [[ ! -z "$MYSQL_CONTAINER" ]]; then
 	dbconn="-u root -h 127.0.0.1 --port 3306"
 fi
 
+# MariaDB sets the default binlog_format to STATEMENT,
+# which causes warnings that fail tests. Instead set it
+# to the format we use in production, MIXED.
+mysql $dbconn -e "SET GLOBAL binlog_format = 'MIXED';"
+
 # Drop all users to get a fresh start
 mysql $dbconn < test/drop_users.sql
 
