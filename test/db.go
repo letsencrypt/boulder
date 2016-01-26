@@ -70,7 +70,11 @@ func deleteEverythingInAllTables(db CleanUpDB) error {
 		// rejecting the DELETE for not having a WHERE clause.
 		_, err := db.Exec("delete from `" + tn + "` where 1 = 1")
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to delete all rows from table %#v: %s", tn, err)
+		}
+		_, err = db.Exec("alter table `" + tn + "` AUTO_INCREMENT = 1")
+		if err != nil {
+			return fmt.Errorf("unable to reset autoincrement on table %#v: %s", tn, err)
 		}
 	}
 	return err
