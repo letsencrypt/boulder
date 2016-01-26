@@ -206,6 +206,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		LifespanOCSP: "1h",
 		Expiry:       "1h",
 		CFSSL:        cfsslC,
+		RSAProfile:   "rsaEE",
+		ECDSAProfile: "ecdsaEE",
 	}
 	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	if err != nil {
@@ -666,9 +668,19 @@ func TestNewCertificate(t *testing.T) {
 	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
 	sa.FinalizeAuthorization(authzFinalWWW)
 
+	// Check that we fail if the CSR signature is invalid
+	ExampleCSR.Signature[0] += 1
+	certRequest := core.CertificateRequest{
+		CSR: ExampleCSR,
+	}
+
+	_, err := ra.NewCertificate(certRequest, Registration.ID)
+	ExampleCSR.Signature[0] -= 1
+	test.AssertError(t, err, "Failed to check CSR signature")
+
 	// Check that we don't fail on case mismatches
 	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
-	certRequest := core.CertificateRequest{
+	certRequest = core.CertificateRequest{
 		CSR: ExampleCSR,
 	}
 
