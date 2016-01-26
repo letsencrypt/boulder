@@ -358,6 +358,8 @@ func (m *Mailer) Clear() {
 
 // SendMail is a mock
 func (m *Mailer) SendMail(to []string, subject, msg string) (err error) {
+
+	// TODO(1421): clean up this To: stuff
 	for range to {
 		m.Messages = append(m.Messages, msg)
 	}
