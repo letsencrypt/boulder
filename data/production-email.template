@@ -1,0 +1,16 @@
+Hello,
+
+Your certificate (or certificates) for the names listed below will expire in
+{{.DaysToExpiration}} days (on {{.ExpirationDate}}). Please make sure to renew
+your certificate before then, or visitors to your website will encounter errors.
+
+{{.DNSNames}}
+
+For any questions or support, please visit https://community.letsencrypt.org/.
+Unfortunately, we can't provide support by email.
+
+If you want to stop receiving all email from this address, click
+|UNSUB:https://mandrillapp.com/unsub|.
+
+Regards,
+The Let's Encrypt Team
