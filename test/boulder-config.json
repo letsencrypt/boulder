@@ -292,7 +292,7 @@
     "port": "25",
     "username": "cert-master@example.com",
     "from": "Expiry bot <test@example.com>",
-    "password": "password",
+    "passwordFile": "test/secrets/smtp_password",
     "dbConnectFile": "test/secrets/mailer_dburl",
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],
