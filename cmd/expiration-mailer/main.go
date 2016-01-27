@@ -252,7 +252,9 @@ func main() {
 		_, err = netmail.ParseAddress(c.Mailer.From)
 		cmd.FailOnError(err, fmt.Sprintf("Could not parse from address: %s", c.Mailer.From))
 
-		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, c.Mailer.Password, c.Mailer.From)
+		smtpPassword, err := c.Mailer.PasswordConfig.Pass()
+		cmd.FailOnError(err, "Failed to load SMTP password")
+		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, c.Mailer.From)
 		err = mailClient.Connect()
 		cmd.FailOnError(err, "Couldn't connect to mail server.")
 
