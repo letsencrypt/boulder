@@ -684,7 +684,6 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
 	identifier := string(identifierJSON)
 	results := []int64{0, 0}
 
-	// collect authorization IDs before beginning revocations
 	now := ssa.clk.Now()
 	for i, table := range []string{"authz", "pendingAuthorizations"} {
 		for {
