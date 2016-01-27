@@ -43,7 +43,7 @@ func NewNonceService() (*NonceService, error) {
 	if err != nil {
 		panic("Failure in NewCipher: " + err.Error())
 	}
-	gcm, _ := cipher.NewGCM(c)
+	gcm, err := cipher.NewGCM(c)
 	if err != nil {
 		panic("Failure in NewGCM: " + err.Error())
 	}
