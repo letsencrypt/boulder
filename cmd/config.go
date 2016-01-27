@@ -113,11 +113,11 @@ type Config struct {
 	Mailer struct {
 		ServiceConfig
 		DBConfig
+		PasswordConfig
 
 		Server   string
 		Port     string
 		Username string
-		Password string
 		From     string
 		Subject  string
 
@@ -217,6 +217,26 @@ func (config *Config) KeyPolicy() core.KeyPolicy {
 	}
 }
 
+// PasswordConfig either contains a password or the path to a file
+// containing a password
+type PasswordConfig struct {
+	Password     string
+	PasswordFile string
+}
+
+// Pass returns a password, either directly from the configuration
+// struct or by reading from a specified file
+func (pc *PasswordConfig) Pass() (string, error) {
+	if pc.PasswordFile != "" {
+		contents, err := ioutil.ReadFile(pc.PasswordFile)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimRight(string(contents), "\n"), nil
+	}
+	return pc.Password, nil
+}
+
 // ServiceConfig contains config items that are common to all our services, to
 // be embedded in other config structs.
 type ServiceConfig struct {
@@ -289,6 +309,8 @@ type CAConfig struct {
 	DBConfig
 
 	Profile      string
+	RSAProfile   string
+	ECDSAProfile string
 	TestMode     bool
 	SerialPrefix int
 	Key          KeyConfig

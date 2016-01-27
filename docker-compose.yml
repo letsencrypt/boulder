@@ -7,7 +7,7 @@ boulder:
     environment:
         MYSQL_CONTAINER: "yes"
 mysql:
-    image: mariadb:10
+    image: mariadb:10.0
     net: host
     ports:
         - "3306:3306"
