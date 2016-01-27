@@ -313,7 +313,6 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 					ext.Type.Equal(oidKeyUsage),
 					ext.Type.Equal(oidSubjectAltName),
 					ext.Type.Equal(oidSubjectKeyIdentifier):
-					fmt.Printf(">>>> EEE >>>> %v\n", ext.Type)
 					ca.stats.Inc(metricCSRExtensionBasic, 1, 1.0)
 				default:
 					ca.stats.Inc(metricCSRExtensionOther, 1, 1.0)
