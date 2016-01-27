@@ -386,7 +386,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate,
 	}
 	if certObj == nil {
 		ssa.log.Debug(fmt.Sprintf("Nil cert for %s", serial))
-		return core.Certificate{}, fmt.Errorf("Certificate does not exist for %s", serial)
+		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
 	}
 
 	certPtr, ok := certObj.(*core.Certificate)
