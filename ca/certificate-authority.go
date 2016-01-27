@@ -13,6 +13,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -524,7 +525,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("Failed RPC to store at SA, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
+		ca.log.Audit(fmt.Sprintf(
+			"Failed RPC to store at SA, orphaning certificate: b64der=[%s] err=[%v], regID=[%d]",
+			base64.StdEncoding.EncodeToString(certDER),
+			err,
+			regID,
+		))
 		return emptyCert, err
 	}
 
