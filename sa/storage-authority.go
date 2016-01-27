@@ -674,37 +674,40 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	return
 }
 
-// RevokeAuthorizationsByDomain invalidates all pending or finalized authorization
-// and any associated challenges for a single domain
+// RevokeAuthorizationsByDomain invalidates all pending or finalized authorizations
+// for a specific domain
 func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
 	identifierJSON, err := json.Marshal(ident)
 	if err != nil {
 		return 0, 0, err
 	}
 	identifier := string(identifierJSON)
+	results := []int64{0, 0}
 
 	// collect authorization IDs before beginning revocations
 	now := ssa.clk.Now()
-	finalRevoked, pendingRevoked := int64(0), int64(0)
-	for {
-		authz, err := getAuthorizationIDsByDomain(ssa.dbMap, identifier, now)
-		if err != nil {
-			return finalRevoked, pendingRevoked, err
-		}
+	for i, table := range []string{"authz", "pendingAuthorizations"} {
+		for {
+			authz, err := getAuthorizationIDsByDomain(ssa.dbMap, table, identifier, now)
+			if err != nil {
+				return results[0], results[1], err
+			}
+			if len(authz) == 0 {
+				break
+			}
 
-		// revoke actual authorizations
-		fRevoked, pRevoked, err := revokeAuthorizations(ssa.dbMap, authz)
-		if err != nil {
-			return finalRevoked, pendingRevoked, err
-		}
-		finalRevoked += fRevoked
-		pendingRevoked += pRevoked
-		if len(authz) < getAuthorizationIDsMax {
-			break
+			numRevoked, err := revokeAuthorizations(ssa.dbMap, table, authz)
+			if err != nil {
+				return results[0], results[1], err
+			}
+			results[i] += numRevoked
+			if numRevoked < getAuthorizationIDsMax {
+				break
+			}
 		}
 	}
 
-	return finalRevoked, pendingRevoked, nil
+	return results[0], results[1], nil
 }
 
 // AddCertificate stores an issued certificate.
