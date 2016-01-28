@@ -69,7 +69,7 @@ const (
 	whitelistedPartnerRegID = 131
 )
 
-var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
+var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-_]{0,62}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
 
 func isDNSCharacter(ch byte) bool {
@@ -77,6 +77,10 @@ func isDNSCharacter(ch byte) bool {
 		('A' <= ch && ch <= 'Z') ||
 		('0' <= ch && ch <= '9') ||
 		ch == '.' || ch == '-'
+}
+
+func isDomainCharacter(ch byte) bool {
+	return ch == '_' || isDNSCharacter(ch)
 }
 
 // Test whether the domain name indicated by the label set is a label-wise
@@ -140,9 +144,19 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 		return errEmptyName
 	}
 
-	for _, ch := range []byte(domain) {
+	tld, _ := publicsuffix.EffectiveTLDPlusOne(domain)
+	for _, ch := range []byte(tld) {
 		if !isDNSCharacter(ch) {
 			return errInvalidDNSCharacter
+		}
+	}
+
+	subdomain := strings.Replace(domain, tld, "", 1)
+	if subdomain != "" {
+		for _, ch := range []byte(subdomain) {
+			if !isDomainCharacter(ch) {
+				return errInvalidDNSCharacter
+			}
 		}
 	}
 
@@ -165,6 +179,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 		if len(label) < 1 {
 			return errLabelTooShort
 		}
+
 		if len(label) > maxLabelLength {
 			return errLabelTooLong
 		}

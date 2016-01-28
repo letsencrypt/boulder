@@ -126,6 +126,8 @@ func TestWillingToIssue(t *testing.T) {
 		"zombo-.com",
 		"www.zom-bo.com",
 		"www.zombo-.com",
+		"app.zombo.com",
+		"my_app.zombo.com",
 	}
 
 	pa, cleanup := paImpl(t)
