@@ -681,6 +681,26 @@ func TestCAAChecking(t *testing.T) {
 		CAATest{"present.com", true, true},
 		// Good (multiple critical, one matching)
 		CAATest{"multi-crit-present.com", true, true},
+		// Bad (unknown critical)
+		CAATest{"unknown-critical.com", true, false},
+		CAATest{"unknown-critical2.com", true, false},
+		// Good (unknown noncritical, no issue/issuewild records)
+		CAATest{"unknown-noncritical.com", true, true},
+		// Good (issue record with unknown parameters)
+		CAATest{"present-with-parameter.com", true, true},
+		// Bad (unsatisfiable issue record)
+		CAATest{"unsatisfiable.com", true, false},
+		// Bad (issuewild prevents)
+		CAATest{"*.issuewild.com", true, false},
+		// Good (issuewild allows)
+		CAATest{"*.issuewild2.com", true, true},
+		// CAA records pertain to more than just direct descendents
+		CAATest{"*.foo.bar.issuewild.com", true, false},
+		CAATest{"*.foo.bar.issuewild2.com", true, true},
+		// The presence of an issuewild directive does not affect non-wildcard issuance
+		CAATest{"foo.bar.issuewild2.com", true, true},
+		// Good (issuewild defaults to issue, which allows)
+		CAATest{"*.present.com", true, true},
 	}
 
 	stats, _ := statsd.NewNoopClient()
