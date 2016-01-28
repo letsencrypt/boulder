@@ -113,20 +113,20 @@ func TestSendNags(t *testing.T) {
 	email, _ := core.ParseAcmeURL("mailto:rolandshoemaker@gmail.com")
 	emailB, _ := core.ParseAcmeURL("mailto:test@gmail.com")
 
-	err := m.sendNags(cert, []*core.AcmeURL{email})
+	err := m.sendNags([]*core.AcmeURL{email}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)), mc.Messages[0])
 
 	mc.Clear()
-	err = m.sendNags(cert, []*core.AcmeURL{email, emailB})
+	err = m.sendNags([]*core.AcmeURL{email, emailB}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[0])
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter), mc.Messages[1])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)), mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)), mc.Messages[1])
 
 	mc.Clear()
-	err = m.sendNags(cert, []*core.AcmeURL{})
+	err = m.sendNags([]*core.AcmeURL{}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
 
@@ -134,7 +134,7 @@ func TestSendNags(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse templates")
 	for _, template := range templates.Templates() {
 		m.emailTemplate = template
-		err = m.sendNags(cert, []*core.AcmeURL{})
+		err = m.sendNags(nil, []*x509.Certificate{cert})
 		test.AssertNotError(t, err, "failed to send nag")
 	}
 }
@@ -278,8 +278,8 @@ func TestFindExpiringCertificates(t *testing.T) {
 	// Should get 001 and 003
 	test.AssertEquals(t, len(ctx.mc.Messages), 2)
 
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 0 days (%s)`, rawCertA.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), ctx.mc.Messages[0])
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (%s)`, rawCertC.NotAfter.UTC().Format("2006-01-02 15:04:05 -0700 MST")), ctx.mc.Messages[1])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 0 days (%s)`, rawCertA.NotAfter.UTC().Format(time.RFC822Z)), ctx.mc.Messages[0])
+	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (%s)`, rawCertC.NotAfter.UTC().Format(time.RFC822Z)), ctx.mc.Messages[1])
 
 	// A consecutive run shouldn't find anything
 	ctx.mc.Clear()
@@ -450,6 +450,88 @@ func TestDontFindRevokedCert(t *testing.T) {
 	if len(ctx.mc.Messages) != 0 {
 		t.Errorf("no emails should have been sent, but sent %d", len(ctx.mc.Messages))
 	}
+}
+
+func TestDedupOnRegistration(t *testing.T) {
+	expiresIn := 96 * time.Hour
+	ctx := setup(t, []time.Duration{expiresIn})
+
+	var keyA jose.JsonWebKey
+	err := json.Unmarshal(jsonKeyA, &keyA)
+	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
+
+	regA := core.Registration{
+		ID: 1,
+		Contact: []*core.AcmeURL{
+			email1,
+		},
+		Key:       keyA,
+		InitialIP: net.ParseIP("6.5.5.6"),
+	}
+	regA, err = ctx.ssa.NewRegistration(regA)
+	if err != nil {
+		t.Fatalf("Couldn't store regA: %s", err)
+	}
+	rawCertA := newX509Cert("happy A",
+		ctx.fc.Now().Add(72*time.Hour),
+		[]string{"example-a.com", "shared-example.com"},
+		1338,
+	)
+
+	certDerA, _ := x509.CreateCertificate(rand.Reader, rawCertA, rawCertA, &testKey.PublicKey, &testKey)
+	certA := &core.Certificate{
+		RegistrationID: regA.ID,
+		Serial:         "001",
+		Expires:        rawCertA.NotAfter,
+		DER:            certDerA,
+	}
+	certStatusA := &core.CertificateStatus{
+		Serial:                "001",
+		LastExpirationNagSent: time.Unix(0, 0),
+		Status:                core.OCSPStatusGood,
+	}
+
+	rawCertB := newX509Cert("happy B",
+		ctx.fc.Now().Add(48*time.Hour),
+		[]string{"example-b.com", "shared-example.com"},
+		1337,
+	)
+	certDerB, _ := x509.CreateCertificate(rand.Reader, rawCertB, rawCertB, &testKey.PublicKey, &testKey)
+	certB := &core.Certificate{
+		RegistrationID: regA.ID,
+		Serial:         "002",
+		Expires:        rawCertB.NotAfter,
+		DER:            certDerB,
+	}
+	certStatusB := &core.CertificateStatus{
+		Serial:                "002",
+		LastExpirationNagSent: time.Unix(0, 0),
+		Status:                core.OCSPStatusGood,
+	}
+
+	setupDBMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
+	err = setupDBMap.Insert(certA)
+	test.AssertNotError(t, err, "Couldn't add certA")
+	err = setupDBMap.Insert(certB)
+	test.AssertNotError(t, err, "Couldn't add certB")
+	err = setupDBMap.Insert(certStatusA)
+	test.AssertNotError(t, err, "Couldn't add certStatusA")
+	err = setupDBMap.Insert(certStatusB)
+	test.AssertNotError(t, err, "Couldn't add certStatusB")
+
+	err = ctx.m.findExpiringCertificates()
+	test.AssertNotError(t, err, "error calling findExpiringCertificates")
+	if len(ctx.mc.Messages) > 1 {
+		t.Errorf("num of messages, want %d, got %d", 1, len(ctx.mc.Messages))
+	}
+	if len(ctx.mc.Messages) == 0 {
+		t.Fatalf("no messages sent")
+	}
+	domains := "example-a.com\nexample-b.com\nshared-example.com"
+	expected := fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
+		domains,
+		rawCertB.NotAfter.Format(time.RFC822Z))
+	test.AssertEquals(t, expected, ctx.mc.Messages[0])
 }
 
 type testCtx struct {
