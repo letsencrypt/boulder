@@ -8,7 +8,9 @@ import (
 
 func TestProblemDetails(t *testing.T) {
 	pd := &ProblemDetails{
-		Type:   MalformedProblem,
-		Detail: "Wat? o.O"}
+		Type:       MalformedProblem,
+		Detail:     "Wat? o.O",
+		HTTPStatus: 403,
+	}
 	test.AssertEquals(t, pd.Error(), "urn:acme:error:malformed :: Wat? o.O")
 }

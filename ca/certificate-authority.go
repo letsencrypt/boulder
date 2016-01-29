@@ -7,7 +7,9 @@ package ca
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -59,12 +61,14 @@ const (
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
-	profile        string
+	rsaProfile     string
+	ecdsaProfile   string
 	signer         signer.Signer
 	ocspSigner     ocsp.Signer
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
 	Publisher      core.Publisher
+	keyPolicy      core.KeyPolicy
 	clk            clock.Clock // TODO(jmhodges): should be private, like log
 	log            *blog.AuditLogger
 	stats          statsd.Statter
@@ -90,6 +94,7 @@ func NewCertificateAuthorityImpl(
 	stats statsd.Statter,
 	issuer *x509.Certificate,
 	privateKey crypto.Signer,
+	keyPolicy core.KeyPolicy,
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
@@ -132,16 +137,33 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
+	rsaProfile := config.RSAProfile
+	ecdsaProfile := config.ECDSAProfile
+	if config.Profile != "" {
+		if rsaProfile != "" || ecdsaProfile != "" {
+			return nil, errors.New("either specify profile or rsaProfile and ecdsaProfile, but not both")
+		}
+
+		rsaProfile = config.Profile
+		ecdsaProfile = config.Profile
+	}
+
+	if rsaProfile == "" || ecdsaProfile == "" {
+		return nil, errors.New("must specify rsaProfile and ecdsaProfile")
+	}
+
 	ca = &CertificateAuthorityImpl{
 		signer:          signer,
 		ocspSigner:      ocspSigner,
-		profile:         config.Profile,
+		rsaProfile:      rsaProfile,
+		ecdsaProfile:    ecdsaProfile,
 		prefix:          config.SerialPrefix,
 		clk:             clk,
 		log:             logger,
 		stats:           stats,
 		notAfter:        issuer.NotAfter,
 		hsmFaultTimeout: config.HSMFaultTimeout.Duration,
+		keyPolicy:       keyPolicy,
 	}
 
 	if config.Expiry == "" {
@@ -218,12 +240,6 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 	return ocspResponse, err
 }
 
-// RevokeCertificate revokes the trust of the Cert referred to by the provided Serial.
-func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
-	err = ca.SA.MarkCertificateRevoked(serial, reasonCode)
-	return err
-}
-
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
 // enforcing all policies. Names (domains) in the CertificateRequest will be
 // lowercased before storage.
@@ -242,7 +258,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
-	if err = core.GoodKey(key); err != nil {
+	if err = ca.keyPolicy.GoodKey(key); err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid public key in CSR: %s", err.Error()))
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
@@ -328,10 +344,23 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 
+	var profile string
+	switch key.(type) {
+	case *rsa.PublicKey:
+		profile = ca.rsaProfile
+	case *ecdsa.PublicKey:
+		profile = ca.ecdsaProfile
+	default:
+		err = core.InternalServerError(fmt.Sprintf("unsupported key type %T", key))
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
+	}
+
 	// Send the cert off for signing
 	req := signer.SignRequest{
 		Request: csrPEM,
-		Profile: ca.profile,
+		Profile: profile,
 		Hosts:   hostNames,
 		Subject: &signer.Subject{
 			CN: commonName,

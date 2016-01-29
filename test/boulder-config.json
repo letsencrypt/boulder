@@ -36,7 +36,8 @@
 
   "ca": {
     "serialPrefix": 255,
-    "profile": "ee",
+    "rsaProfile": "rsaEE",
+    "ecdsaProfile": "ecdsaEE",
     "debugAddr": "localhost:8001",
     "Key": {
       "File": "test/test-ca.key"
@@ -47,10 +48,46 @@
     "cfssl": {
       "signing": {
         "profiles": {
-          "ee": {
+          "rsaEE": {
             "usages": [
               "digital signature",
               "key encipherment",
+              "server auth",
+              "client auth"
+            ],
+            "backdate": "1h",
+            "is_ca": false,
+            "issuer_urls": [
+              "http://127.0.0.1:4000/acme/issuer-cert"
+            ],
+            "ocsp_url": "http://127.0.0.1:4002/",
+            "crl_url": "http://example.com/crl",
+            "policies": [
+              {
+                "ID": "2.23.140.1.2.1"
+              },
+              {
+                "ID": "1.2.3.4",
+                "Qualifiers": [ {
+                  "type": "id-qt-cps",
+                  "value": "http://example.com/cps"
+                }, {
+                  "type": "id-qt-unotice",
+                  "value": "Do What Thou Wilt"
+                } ]
+              }
+            ],
+            "expiry": "2160h",
+            "CSRWhitelist": {
+              "PublicKeyAlgorithm": true,
+              "PublicKey": true,
+              "SignatureAlgorithm": true
+            },
+            "ClientProvidesSerialNumbers": true
+          },
+          "ecdsaEE": {
+            "usages": [
+              "digital signature",
               "server auth",
               "client auth"
             ],
@@ -113,8 +150,6 @@
   "pa": {
     "dbConnect": "mysql+tcp://policy@localhost:3306/boulder_policy_integration",
     "challenges": {
-      "simpleHttp": true,
-      "dvsni": true,
       "http-01": true,
       "tls-sni-01": true,
       "dns-01": true
@@ -125,6 +160,7 @@
     "rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
+    "dnsTries": 3,
     "debugAddr": "localhost:8002",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
@@ -159,6 +195,7 @@
 
   "va": {
     "userAgent": "boulder",
+    "issuerDomain": "happy-hacker-ca.invalid",
     "debugAddr": "localhost:8004",
     "portConfig": {
       "httpPort": 5002,
@@ -166,6 +203,7 @@
       "tlsPort": 5001
     },
     "maxConcurrentRPCServerRequests": 16,
+    "dnsTries": 3,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -253,6 +291,7 @@
     "server": "mail.example.com",
     "port": "25",
     "username": "cert-master@example.com",
+    "from": "Expiry bot <test@example.com>",
     "password": "password",
     "dbConnectFile": "test/secrets/mailer_dburl",
     "messageLimit": 0,
@@ -294,7 +333,7 @@
       "logs": [
         {
           "uri": "http://127.0.0.1:4500",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfahLEimAoz2t01p3uMziiLOl/fHTDM0YDOhBRuiBARsV4UvxG2LdNgoIGLrtCzWE0J5APC2em4JlvR8EEEFMoA=="
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ],
       "intermediateBundleFilename": "test/test-ca.pem"
@@ -305,5 +344,12 @@
     "dbConnectFile": "test/secrets/cert_checker_dburl"
   },
 
-  "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1"
+  "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1",
+
+  "allowedSigningAlgos": {
+    "rsa": true,
+    "ecdsanistp256": true,
+    "ecdsanistp384": true,
+    "ecdsanistp521": false
+  }
 }

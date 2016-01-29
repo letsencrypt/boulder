@@ -192,7 +192,7 @@ type rpcError struct {
 	HTTPStatus int    `json:"status,omitempty"`
 }
 
-// Wraps a error in a rpcError so it can be marshalled to
+// Wraps an error in a rpcError so it can be marshalled to
 // JSON.
 func wrapError(err error) *rpcError {
 	if err != nil {
@@ -210,8 +210,6 @@ func wrapError(err error) *rpcError {
 			wrapped.Type = "UnauthorizedError"
 		case core.NotFoundError:
 			wrapped.Type = "NotFoundError"
-		case core.SyntaxError:
-			wrapped.Type = "SyntaxError"
 		case core.SignatureValidationError:
 			wrapped.Type = "SignatureValidationError"
 		case core.CertificateIssuanceError:
@@ -248,8 +246,6 @@ func unwrapError(rpcError *rpcError) error {
 			return core.UnauthorizedError(rpcError.Value)
 		case "NotFoundError":
 			return core.NotFoundError(rpcError.Value)
-		case "SyntaxError":
-			return core.SyntaxError(rpcError.Value)
 		case "SignatureValidationError":
 			return core.SignatureValidationError(rpcError.Value)
 		case "CertificateIssuanceError":
@@ -302,7 +298,7 @@ func (r rpcResponse) debugString() string {
 	return fmt.Sprintf("%s, RPCERR: %v", ret, r.Error)
 }
 
-// makeAmqpChannel sets a AMQP connection up using SSL if configuration is provided
+// makeAmqpChannel sets an AMQP connection up using SSL if configuration is provided
 func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 	var err error

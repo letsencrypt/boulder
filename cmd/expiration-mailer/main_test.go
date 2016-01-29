@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
@@ -40,21 +41,6 @@ func bigIntFromB64(b64 string) *big.Int {
 
 func intFromB64(b64 string) int {
 	return int(bigIntFromB64(b64).Int64())
-}
-
-type mockMail struct {
-	Messages []string
-}
-
-func (m *mockMail) Clear() {
-	m.Messages = []string{}
-}
-
-func (m *mockMail) SendMail(to []string, msg string) (err error) {
-	for range to {
-		m.Messages = append(m.Messages, msg)
-	}
-	return
 }
 
 type fakeRegStore struct {
@@ -104,7 +90,7 @@ var (
 
 func TestSendNags(t *testing.T) {
 	stats, _ := statsd.NewNoopClient(nil)
-	mc := mockMail{}
+	mc := mocks.Mailer{}
 	rs := newFakeRegStore()
 	fc := newFakeClock(t)
 
@@ -143,6 +129,14 @@ func TestSendNags(t *testing.T) {
 	err = m.sendNags(cert, []*core.AcmeURL{})
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
+
+	templates, err := template.ParseGlob("../../data/*.template")
+	test.AssertNotError(t, err, "Failed to parse templates")
+	for _, template := range templates.Templates() {
+		m.emailTemplate = template
+		err = m.sendNags(cert, []*core.AcmeURL{})
+		test.AssertNotError(t, err, "failed to send nag")
+	}
 }
 
 var n = bigIntFromB64("n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw==")
@@ -461,7 +455,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 type testCtx struct {
 	dbMap   *gorp.DbMap
 	ssa     core.StorageAdder
-	mc      *mockMail
+	mc      *mocks.Mailer
 	fc      clock.FakeClock
 	m       *mailer
 	cleanUp func()
@@ -482,7 +476,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	cleanUp := test.ResetSATestDatabase(t)
 
 	stats, _ := statsd.NewNoopClient(nil)
-	mc := &mockMail{}
+	mc := &mocks.Mailer{}
 
 	offsetNags := make([]time.Duration, len(nagTimes))
 	for i, t := range nagTimes {

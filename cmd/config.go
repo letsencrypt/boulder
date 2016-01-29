@@ -62,6 +62,11 @@ type Config struct {
 
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
+
+		// The number of times to try a DNS query (that has a temporary error)
+		// before giving up. May be short-circuited by deadlines. A zero value
+		// will be turned into 1.
+		DNSTries int
 	}
 
 	SA struct {
@@ -76,11 +81,18 @@ type Config struct {
 
 		UserAgent string
 
+		IssuerDomain string
+
 		PortConfig va.PortConfig
 
 		MaxConcurrentRPCServerRequests int64
 
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
+
+		// The number of times to try a DNS query (that has a temporary error)
+		// before giving up. May be short-circuited by deadlines. A zero value
+		// will be turned into 1.
+		DNSTries int
 	}
 
 	SQL struct {
@@ -106,6 +118,8 @@ type Config struct {
 		Port     string
 		Username string
 		Password string
+		From     string
+		Subject  string
 
 		CertLimit int
 		NagTimes  []string
@@ -129,7 +143,7 @@ type Config struct {
 
 		Path          string
 		ListenAddress string
-		// MaxAge is the max-age to set in the Cache-Controler response
+		// MaxAge is the max-age to set in the Cache-Control response
 		// header. It is a time.Duration formatted string.
 		MaxAge ConfigDuration
 
@@ -174,8 +188,33 @@ type Config struct {
 		Workers             int
 		ReportDirectoryPath string
 	}
+	AllowedSigningAlgos *AllowedSigningAlgos
 
 	SubscriberAgreementURL string
+}
+
+// AllowedSigningAlgos defines which algorithms be used for keys that we will
+// sign.
+type AllowedSigningAlgos struct {
+	RSA           bool
+	ECDSANISTP256 bool
+	ECDSANISTP384 bool
+	ECDSANISTP521 bool
+}
+
+// KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
+func (config *Config) KeyPolicy() core.KeyPolicy {
+	if config.AllowedSigningAlgos != nil {
+		return core.KeyPolicy{
+			AllowRSA:           config.AllowedSigningAlgos.RSA,
+			AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
+			AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
+			AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
+		}
+	}
+	return core.KeyPolicy{
+		AllowRSA: true,
+	}
 }
 
 // ServiceConfig contains config items that are common to all our services, to
@@ -250,6 +289,8 @@ type CAConfig struct {
 	DBConfig
 
 	Profile      string
+	RSAProfile   string
+	ECDSAProfile string
 	TestMode     bool
 	SerialPrefix int
 	Key          KeyConfig
@@ -280,26 +321,15 @@ type PAConfig struct {
 // CheckChallenges checks whether the list of challenges in the PA config
 // actually contains valid challenge names
 func (pc PAConfig) CheckChallenges() error {
+	if len(pc.Challenges) == 0 {
+		return errors.New("empty challenges map in the Policy Authority config is not allowed")
+	}
 	for name := range pc.Challenges {
 		if !core.ValidChallenge(name) {
 			return fmt.Errorf("Invalid challenge in PA config: %s", name)
 		}
 	}
 	return nil
-}
-
-// SetDefaultChallengesIfEmpty sets a default list of challenges if no
-// challenges are enabled in the PA config.  The set of challenges specified
-// corresponds to the set that was hard-coded before these configuration
-// options were added.
-func (pc *PAConfig) SetDefaultChallengesIfEmpty() {
-	if len(pc.Challenges) == 0 {
-		pc.Challenges = map[string]bool{}
-		pc.Challenges[core.ChallengeTypeSimpleHTTP] = true
-		pc.Challenges[core.ChallengeTypeDVSNI] = true
-		pc.Challenges[core.ChallengeTypeHTTP01] = true
-		pc.Challenges[core.ChallengeTypeTLSSNI01] = true
-	}
 }
 
 // KeyConfig should contain either a File path to a PEM-format private key,

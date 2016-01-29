@@ -3,11 +3,16 @@ set -o errexit
 cd $(dirname $0)/..
 source test/db-common.sh
 
-# set db connection for if running in a seperate container or not
+# set db connection for if running in a separate container or not
 dbconn="-u root"
-if [[ ! -z "MYSQL_CONTAINER" ]]; then
+if [[ ! -z "$MYSQL_CONTAINER" ]]; then
 	dbconn="-u root -h 127.0.0.1 --port 3306"
 fi
+
+# MariaDB sets the default binlog_format to STATEMENT,
+# which causes warnings that fail tests. Instead set it
+# to the format we use in production, MIXED.
+mysql $dbconn -e "SET GLOBAL binlog_format = 'MIXED';"
 
 # Drop all users to get a fresh start
 mysql $dbconn < test/drop_users.sql
