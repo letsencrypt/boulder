@@ -130,14 +130,6 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 		record.Tag = "issue"
 		record.Value = ";"
 		results = append(results, &record)
-	case "issuewild.com":
-		record.Tag = "issuewild"
-		record.Value = "symantec.com"
-		results = append(results, &record)
-	case "issuewild2.com":
-		record.Tag = "issuewild"
-		record.Value = "letsencrypt.org"
-		results = append(results, &record)
 	}
 	return results, nil
 }

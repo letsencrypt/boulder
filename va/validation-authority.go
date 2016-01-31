@@ -668,17 +668,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 		va.stats.Inc("VA.CAA.WithUnknownNoncritical", 1, 1.0)
 	}
 
-	checkSet := caaSet.Issue
-	if strings.SplitN(hostname, ".", 2)[0] == "*" {
-		// 'issuewild' policy defaults to 'issue' policy, so check against
-		// 'issue' unless one or more 'issuewild' directives were actually
-		// specified.
-		if len(caaSet.Issuewild) > 0 {
-			checkSet = caaSet.Issuewild // TODO check this
-		}
-	}
-
-	if len(checkSet) == 0 {
+	if len(caaSet.Issue) == 0 {
 		// Although CAA records exist, none of them pertain to issuance in this case.
 		// (e.g. there is only an issuewild directive, but we are checking for a
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
@@ -693,7 +683,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	// prevent issuance by any CA under any circumstance.
 	//
 	// Our CAA identity must be found in the chosen checkSet.
-	for _, caa := range checkSet {
+	for _, caa := range caaSet.Issue {
 		if extractIssuerDomain(caa) == va.IssuerDomain {
 			va.stats.Inc("VA.CAA.Authorized", 1, 1.0)
 			valid = true
