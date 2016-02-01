@@ -1,9 +1,5 @@
 # Contributing to Boulder
 
-> **Note:** We are currently in a *General Availability* only merge window, meaning
-> we will only be reviewing & merging patches which close an issue tagged with the *General
-> Availability* milestone.
-
 Thanks for helping us build Boulder, if you haven't already had a chance to look
 over our patch submission guidelines take a minute to do so now.
 

@@ -173,6 +173,10 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 			return errInvalidDNSCharacter
 		}
 
+		if label[len(label)-1] == '-' {
+			return errInvalidDNSCharacter
+		}
+
 		if punycodeRegexp.MatchString(label) {
 			return errIDNNotSupported
 		}
