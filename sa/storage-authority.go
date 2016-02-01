@@ -691,7 +691,8 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
 			if err != nil {
 				return results[0], results[1], err
 			}
-			if len(authz) == 0 {
+			numAuthz := len(authz)
+			if numAuthz == 0 {
 				break
 			}
 
@@ -700,8 +701,8 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
 				return results[0], results[1], err
 			}
 			results[i] += numRevoked
-			if numRevoked < getAuthorizationIDsMax {
-				break
+			if numRevoked < int64(numAuthz) {
+				return results[0], results[1], fmt.Errorf("Didn't revoke all found authorizations")
 			}
 		}
 	}
