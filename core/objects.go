@@ -204,15 +204,26 @@ func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, 
 		return KeyAuthorization{}, fmt.Errorf("Cannot authorize a nil key")
 	}
 
-	thumbprint, err := key.Thumbprint(crypto.SHA256)
+	thumbprint, err := KeyThumbprintBase64(key)
 	if err != nil {
 		return KeyAuthorization{}, err
 	}
 
 	return KeyAuthorization{
 		Token:      token,
-		Thumbprint: base64.RawURLEncoding.EncodeToString(thumbprint),
+		Thumbprint: thumbprint,
 	}, nil
+}
+
+// KeyThumbprintBase64 returns the SHA-256 JWK key thumbprint for a key encoded
+// using base64url without padding.
+func KeyThumbprintBase64(key *jose.JsonWebKey) (string, error) {
+	thumbprint, err := key.Thumbprint(crypto.SHA256)
+	if err != nil {
+		return "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(thumbprint), nil
 }
 
 // NewKeyAuthorizationFromString parses the string and composes a key authorization struct

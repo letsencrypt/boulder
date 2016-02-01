@@ -46,6 +46,7 @@ const (
 	MethodAdministrativelyRevokeCertificate = "AdministrativelyRevokeCertificate" // RA
 	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
 	MethodUpdateValidations                 = "UpdateValidations"                 // VA
+	MethodUpdateValidation                  = "UpdateValidation"                  // VA
 	MethodIsSafeDomain                      = "IsSafeDomain"                      // VA
 	MethodIssueCertificate                  = "IssueCertificate"                  // CA
 	MethodGenerateOCSP                      = "GenerateOCSP"                      // CA
@@ -532,6 +533,18 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 		return
 	})
 
+	rpc.Handle(MethodUpdateValidation, func(req []byte) (response []byte, err error) {
+		var vaReq core.UpdateValidationRequest
+		if err = json.Unmarshal(req, &vaReq); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodUpdateValidation, err, req)
+			return
+		}
+
+		err = impl.UpdateValidation(&vaReq)
+		return
+	})
+
 	rpc.Handle(MethodIsSafeDomain, func(req []byte) ([]byte, error) {
 		r := &core.IsSafeDomainRequest{}
 		if err := json.Unmarshal(req, r); err != nil {
@@ -564,7 +577,7 @@ func NewValidationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, s
 	return &ValidationAuthorityClient{rpc: client}, err
 }
 
-// UpdateValidations sends an Update Validations request
+// UpdateValidations sends an Update Validations request. Deprecated; to be removed.
 func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization, index int) error {
 	vaReq := validationRequest{
 		Authz: authz,
@@ -576,6 +589,17 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 	}
 
 	_, err = vac.rpc.DispatchSync(MethodUpdateValidations, data)
+	return nil
+}
+
+// UpdateValidation sends an Update Validation request
+func (vac ValidationAuthorityClient) UpdateValidation(req *core.UpdateValidationRequest) error {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	_, err = vac.rpc.DispatchSync(MethodUpdateValidation, data)
 	return nil
 }
 

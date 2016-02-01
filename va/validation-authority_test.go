@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -538,7 +539,10 @@ func TestValidateHTTP(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -593,7 +597,10 @@ func TestValidateTLSSNI01(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -615,7 +622,10 @@ func TestValidateTLSSNINotSane(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -640,7 +650,10 @@ func TestUpdateValidations(t *testing.T) {
 	}
 
 	started := time.Now()
-	va.UpdateValidations(authz, 0)
+	va.UpdateValidation(&core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 	took := time.Since(started)
 
 	// Check that the call to va.UpdateValidations didn't block for 3 seconds
@@ -652,7 +665,15 @@ func TestCAATimeout(t *testing.T) {
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
-	err := va.checkCAA(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, 101)
+	err := va.validateCAA(context.Background(), &core.UpdateValidationRequest{
+		Authorization: core.Authorization{
+			Identifier: core.AcmeIdentifier{
+				Type:  core.IdentifierDNS,
+				Value: "caa-timeout.com",
+			},
+			RegistrationID: 101,
+		},
+	})
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
 	}
@@ -664,32 +685,52 @@ func TestCAATimeout(t *testing.T) {
 
 func TestCAAChecking(t *testing.T) {
 	type CAATest struct {
-		Domain  string
-		Present bool
-		Valid   bool
+		Domain               string
+		Present              bool
+		Valid                bool
+		AccountKeyThumbprint string
 	}
+	const akPrint1 = `QdfmOFQqMHUTPXyDHZFRmaLDeYDGO1rLISOmC0-QtkU`
+	const akPrint2 = `BbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBbBb1`
 	tests := []CAATest{
 		// Reserved
-		CAATest{"reserved.com", true, false},
+		CAATest{"reserved.com", true, false, ""},
 		// Critical
-		CAATest{"critical.com", true, false},
-		CAATest{"nx.critical.com", true, false},
+		CAATest{"critical.com", true, false, ""},
+		CAATest{"nx.critical.com", true, false, ""},
 		// Good (absent)
-		CAATest{"absent.com", false, true},
-		CAATest{"example.co.uk", false, true},
+		CAATest{"absent.com", false, true, ""},
+		CAATest{"absent.com", false, true, akPrint1},
+		CAATest{"example.co.uk", false, true, ""},
 		// Good (present)
-		CAATest{"present.com", true, true},
+		CAATest{"present.com", true, true, ""},
+		CAATest{"present.com", true, true, akPrint1},
 		// Good (multiple critical, one matching)
-		CAATest{"multi-crit-present.com", true, true},
+		CAATest{"multi-crit-present.com", true, true, ""},
 		// Bad (unknown critical)
-		CAATest{"unknown-critical.com", true, false},
-		CAATest{"unknown-critical2.com", true, false},
+		CAATest{"unknown-critical.com", true, false, ""},
+		CAATest{"unknown-critical2.com", true, false, ""},
 		// Good (unknown noncritical, no issue/issuewild records)
-		CAATest{"unknown-noncritical.com", true, true},
+		CAATest{"unknown-noncritical.com", true, true, ""},
 		// Good (issue record with unknown parameters)
-		CAATest{"present-with-parameter.com", true, true},
+		CAATest{"present-with-parameter.com", true, true, ""},
 		// Bad (unsatisfiable issue record)
-		CAATest{"unsatisfiable.com", true, false},
+		CAATest{"unsatisfiable.com", true, false, ""},
+		// Bad (domain has unsatisfied account key restriction)
+		CAATest{"restricted-ak1.com", true, false, akPrint2},
+		// Good (domain has satisfied account key restriction)
+		CAATest{"restricted-ak1.com", true, true, akPrint1},
+		// Good (domain has account key restriction, but account key unknown)
+		CAATest{"restricted-ak1.com", true, true, ""},
+		// Good (domain has multiple records with account key restriction, one OK)
+		CAATest{"restricted-ak2.com", true, true, akPrint1},
+		// Bad (domain has multiple records with account key restriction, none OK)
+		CAATest{"restricted-ak2.com", true, false, akPrint2},
+		// Good (domain has record without account key restriction, so anything goes)
+		CAATest{"useless-ak.com", true, true, akPrint1},
+		CAATest{"useless-ak.com", true, true, akPrint2},
+		// Bad (domain has unsatisfiable account key restriction)
+		CAATest{"unsatisfiable-ak.com", true, false, akPrint1},
 	}
 
 	stats, _ := statsd.NewNoopClient()
@@ -697,24 +738,31 @@ func TestCAAChecking(t *testing.T) {
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
 	for _, caaTest := range tests {
-		present, valid, err := va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
+		present, valid, err := va.CheckCAA(context.Background(), &CheckCAARequest{
+			AcmeIdentifier:       core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain},
+			AccountKeyThumbprint: caaTest.AccountKeyThumbprint,
+		})
 		if err != nil {
-			t.Errorf("CheckCAARecords error for %s: %s", caaTest.Domain, err)
+			t.Errorf("CheckCAA error for %s: %s", caaTest.Domain, err)
 		}
 		if present != caaTest.Present {
-			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
+			t.Errorf("CheckCAA presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
 		}
 		if valid != caaTest.Valid {
-			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, valid, caaTest.Valid)
+			t.Errorf("CheckCAA validity mismatch for %s: got %t expected %t", caaTest.Domain, valid, caaTest.Valid)
 		}
 	}
 
-	present, valid, err := va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	present, valid, err := va.CheckCAA(context.Background(), &CheckCAARequest{
+		AcmeIdentifier: core.AcmeIdentifier{Type: "dns", Value: "servfail.com"},
+	})
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	_, _, err = va.CheckCAA(context.Background(), &CheckCAARequest{
+		AcmeIdentifier: core.AcmeIdentifier{Type: "dns", Value: "servfail.com"},
+	})
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
 	}
@@ -735,7 +783,10 @@ func TestDNSValidationFailure(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 
 	t.Logf("Resulting Authz: %+v", authz)
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
@@ -764,7 +815,10 @@ func TestDNSValidationInvalid(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	va.validate(context.Background(), authz, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -792,7 +846,10 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 
 	for i := 0; i < len(authz.Challenges); i++ {
-		va.validate(context.Background(), authz, i)
+		va.validate(context.Background(), &core.UpdateValidationRequest{
+			Authorization:  authz,
+			ChallengeIndex: i,
+		})
 		test.AssertEquals(t, authz.Challenges[i].Status, core.StatusInvalid)
 		test.AssertEquals(t, authz.Challenges[i].Error.Type, probs.MalformedProblem)
 	}
@@ -817,7 +874,10 @@ func TestDNSValidationServFail(t *testing.T) {
 		Identifier:     badIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -840,7 +900,10 @@ func TestDNSValidationNoServer(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -872,7 +935,10 @@ func TestDNSValidationOK(t *testing.T) {
 		Identifier:     goodIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
@@ -903,7 +969,10 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 		Identifier:     goodIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
@@ -941,7 +1010,10 @@ func TestDNSValidationLive(t *testing.T) {
 		Challenges:     []core.Challenge{goodChalDNS},
 	}
 
-	va.validate(context.Background(), authzGood, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authzGood,
+		ChallengeIndex: 0,
+	})
 
 	if authzGood.Challenges[0].Status != core.StatusValid {
 		t.Logf("TestDNSValidationLive on Good did not succeed.")
@@ -958,7 +1030,10 @@ func TestDNSValidationLive(t *testing.T) {
 		Challenges:     []core.Challenge{badChalDNS},
 	}
 
-	va.validate(context.Background(), authzBad, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authzBad,
+		ChallengeIndex: 0,
+	})
 	if authzBad.Challenges[0].Status != core.StatusInvalid {
 		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
 	}
@@ -985,7 +1060,10 @@ func TestCAAFailure(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(context.Background(), &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: 0,
+	})
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -1025,4 +1103,62 @@ func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(cert x509
 func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization) error {
 	ra.lastAuthz = &authz
 	return nil
+}
+
+func TestCAAParseParams(t *testing.T) {
+	var tests = []struct {
+		In   string
+		Out  map[string]string
+		Fail bool
+	}{
+		{
+			In:  " \t ",
+			Out: map[string]string{},
+		},
+		{
+			In: "foo=bar",
+			Out: map[string]string{
+				"foo": "bar",
+			},
+		},
+		{
+			In: "foo=",
+			Out: map[string]string{
+				"foo": "",
+			},
+		},
+		{
+			In: "foo=bar BAZ=1;  q=3;;s=4\t  x=; t=5 ",
+			Out: map[string]string{
+				"foo": "bar",
+				"baz": "1",
+				"q":   "3",
+				"s":   "4",
+				"t":   "5",
+				"x":   "",
+			},
+		},
+		{
+			In:   "foo=bar baz baf=1",
+			Fail: true,
+		},
+		{
+			In:   "foo=bar baz=1 Foo=bar2",
+			Fail: true,
+		},
+	}
+
+	for _, tst := range tests {
+		out, err := parseCAAParams(tst.In)
+		if (err != nil) != tst.Fail {
+			t.Logf("failed to parse: %v", err)
+			t.Fail()
+			continue
+		}
+
+		if !reflect.DeepEqual(tst.Out, out) {
+			t.Logf("expected %v, got %v", tst.Out, out)
+			t.Fail()
+		}
+	}
 }

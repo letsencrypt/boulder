@@ -163,6 +163,7 @@
     "maxContactsPerRegistration": 100,
     "dnsTries": 3,
     "debugAddr": "localhost:8002",
+    "useUpdateValidationRPC": true,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,

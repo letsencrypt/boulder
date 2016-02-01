@@ -7,8 +7,10 @@ package core
 
 // ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {
-	// [RegistrationAuthority]
+	// [RegistrationAuthority] Deprecated; to be removed.
 	UpdateValidations(Authorization, int) error
+	// [RegistrationAuthority]
+	UpdateValidation(*UpdateValidationRequest) error
 	IsSafeDomain(*IsSafeDomainRequest) (*IsSafeDomainResponse, error)
 }
 
@@ -23,4 +25,17 @@ type IsSafeDomainRequest struct {
 // domain is safe.
 type IsSafeDomainResponse struct {
 	IsSafe bool
+}
+
+// UpdateValidationRequest is the request struct for the UpdateValidation call.
+type UpdateValidationRequest struct {
+	// The authorization containing the challenge to update.
+	Authorization Authorization
+
+	// The index of the challenge in the authorization to update.
+	ChallengeIndex int
+
+	// Optional. JWK account key thumbprint in base64url form. If not specified,
+	// account key validation is not performed.
+	AccountKeyThumbprint string
 }
