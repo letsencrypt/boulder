@@ -111,16 +111,14 @@ type StorageGetter interface {
 type StorageAdder interface {
 	NewRegistration(Registration) (Registration, error)
 	UpdateRegistration(Registration) error
-
 	NewPendingAuthorization(Authorization) (Authorization, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
 	MarkCertificateRevoked(serial string, reasonCode RevocationCode) error
 	UpdateOCSP(serial string, ocspResponse []byte) error
-
 	AddCertificate([]byte, int64) (string, error)
-
 	AddSCTReceipt(SignedCertificateTimestamp) error
+	RevokeAuthorizationsByDomain(AcmeIdentifier) (int64, int64, error)
 }
 
 // StorageAuthority interface represents a simple key/value
