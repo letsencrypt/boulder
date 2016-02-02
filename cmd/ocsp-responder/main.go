@@ -205,7 +205,5 @@ func mux(stats statsd.Statter, responderPath string, source cfocsp.Source) http.
 		}
 		m.ServeHTTP(w, r)
 	})
-	mon := metrics.NewHTTPMonitor(stats, h, "OCSP")
-	return mon.Handle()
-
+	return metrics.NewHTTPMonitor(stats, h, "OCSP")
 }
