@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -386,7 +387,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate,
 	}
 	if certObj == nil {
 		ssa.log.Debug(fmt.Sprintf("Nil cert for %s", serial))
-		return core.Certificate{}, fmt.Errorf("Certificate does not exist for %s", serial)
+		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
 	}
 
 	certPtr, ok := certObj.(*core.Certificate)
@@ -671,6 +672,42 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 
 	err = tx.Commit()
 	return
+}
+
+// RevokeAuthorizationsByDomain invalidates all pending or finalized authorizations
+// for a specific domain
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
+	identifierJSON, err := json.Marshal(ident)
+	if err != nil {
+		return 0, 0, err
+	}
+	identifier := string(identifierJSON)
+	results := []int64{0, 0}
+
+	now := ssa.clk.Now()
+	for i, table := range []string{"authz", "pendingAuthorizations"} {
+		for {
+			authz, err := getAuthorizationIDsByDomain(ssa.dbMap, table, identifier, now)
+			if err != nil {
+				return results[0], results[1], err
+			}
+			numAuthz := len(authz)
+			if numAuthz == 0 {
+				break
+			}
+
+			numRevoked, err := revokeAuthorizations(ssa.dbMap, table, authz)
+			if err != nil {
+				return results[0], results[1], err
+			}
+			results[i] += numRevoked
+			if numRevoked < int64(numAuthz) {
+				return results[0], results[1], fmt.Errorf("Didn't revoke all found authorizations")
+			}
+		}
+	}
+
+	return results[0], results[1], nil
 }
 
 // AddCertificate stores an issued certificate.
