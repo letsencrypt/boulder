@@ -177,13 +177,10 @@ func main() {
 		cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
 		killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
 		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
-
-		m := http.StripPrefix(c.OCSPResponder.Path, cfocsp.NewResponder(source))
-
-		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
+		m := mux(stats, c.OCSPResponder.Path, source)
 		srv := &http.Server{
 			Addr:    c.OCSPResponder.ListenAddress,
-			Handler: httpMonitor.Handle(),
+			Handler: m,
 		}
 
 		hd := &httpdown.HTTP{
@@ -196,4 +193,17 @@ func main() {
 	}
 
 	app.Run()
+}
+
+func mux(stats statsd.Statter, responderPath string, source cfocsp.Source) http.Handler {
+	m := http.StripPrefix(responderPath, cfocsp.NewResponder(source))
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/" {
+			w.Header().Set("Cache-Control", "max-age=43200") // Cache for 12 hours
+			w.WriteHeader(200)
+			return
+		}
+		m.ServeHTTP(w, r)
+	})
+	return metrics.NewHTTPMonitor(stats, h, "OCSP")
 }

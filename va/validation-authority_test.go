@@ -679,6 +679,8 @@ func TestCAAChecking(t *testing.T) {
 		CAATest{"example.co.uk", false, true},
 		// Good (present)
 		CAATest{"present.com", true, true},
+		// Good (multiple critical, one matching)
+		CAATest{"multi-crit-present.com", true, true},
 	}
 
 	stats, _ := statsd.NewNoopClient()

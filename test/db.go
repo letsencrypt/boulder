@@ -15,6 +15,7 @@ var (
 // rows in all tables in a database plus close the database
 // connection. It is satisfied by *sql.DB.
 type CleanUpDB interface {
+	Begin() (*sql.Tx, error)
 	Exec(query string, args ...interface{}) (sql.Result, error)
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 
@@ -66,11 +67,38 @@ func deleteEverythingInAllTables(db CleanUpDB) error {
 		return err
 	}
 	for _, tn := range ts {
+		// We do this in a transaction to make sure that the foreign
+		// key checks remain disabled even if the db object chooses
+		// another connection to make the deletion on. Note that
+		// `alter table` statements will silently cause transactions
+		// to commit, so we do them outside of the transaction.
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("unable to start transaction to delete all rows from table %#v: %s", tn, err)
+		}
+		_, err = tx.Exec("set FOREIGN_KEY_CHECKS = 0")
+		if err != nil {
+			return fmt.Errorf("unable to disable FOREIGN_KEY_CHECKS to delete all rows from table %#v: %s", tn, err)
+		}
 		// 1 = 1 here prevents the MariaDB i_am_a_dummy setting from
 		// rejecting the DELETE for not having a WHERE clause.
-		_, err := db.Exec("delete from `" + tn + "` where 1 = 1")
+
+		_, err = tx.Exec("delete from `" + tn + "` where 1 = 1")
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to delete all rows from table %#v: %s", tn, err)
+		}
+		_, err = tx.Exec("set FOREIGN_KEY_CHECKS = 1")
+		if err != nil {
+			return fmt.Errorf("unable to re-enable FOREIGN_KEY_CHECKS to delete all rows from table %#v: %s", tn, err)
+		}
+		err = tx.Commit()
+		if err != nil {
+			return fmt.Errorf("unable to commit transaction to delete all rows from table %#v: %s", tn, err)
+		}
+
+		_, err = db.Exec("alter table `" + tn + "` AUTO_INCREMENT = 1")
+		if err != nil {
+			return fmt.Errorf("unable to reset autoincrement on table %#v: %s", tn, err)
 		}
 	}
 	return err

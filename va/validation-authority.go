@@ -658,9 +658,6 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 			if caa.Value == va.IssuerDomain {
 				valid = true
 				return
-			} else if caa.Flag > 0 {
-				valid = false
-				return
 			}
 		}
 

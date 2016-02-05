@@ -36,6 +36,8 @@ matrix:
 branches:
   only:
     - master
+    - staging
+    - release
     - /^test-.*$/
 
 before_install:

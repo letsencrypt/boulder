@@ -99,6 +99,14 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 		fallthrough
 	case "servfail.com":
 		return results, fmt.Errorf("SERVFAIL")
+	case "multi-crit-present.com":
+		record.Flag = 1
+		record.Tag = "issue"
+		record.Value = "symantec.com"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Value = "letsencrypt.org"
+		results = append(results, &secondRecord)
 	}
 	return results, nil
 }
