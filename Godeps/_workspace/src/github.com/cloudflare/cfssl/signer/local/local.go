@@ -7,26 +7,25 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
-	"math"
 	"math/big"
 	"net"
 	"net/mail"
 
-	"encoding/asn1"
-	"encoding/binary"
-
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/certdb"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
-
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go/client"
 )
@@ -34,10 +33,11 @@ import (
 // Signer contains a signer that uses the standard library to
 // support both ECDSA and RSA CA keys.
 type Signer struct {
-	ca      *x509.Certificate
-	priv    crypto.Signer
-	policy  *config.Signing
-	sigAlgo x509.SignatureAlgorithm
+	ca         *x509.Certificate
+	priv       crypto.Signer
+	policy     *config.Signing
+	sigAlgo    x509.SignatureAlgorithm
+	dbAccessor certdb.Accessor
 }
 
 // NewSigner creates a new Signer directly from a
@@ -102,12 +102,14 @@ func (s *Signer) sign(template *x509.Certificate, profile *config.SigningProfile
 			return
 		}
 		template.DNSNames = nil
+		template.EmailAddresses = nil
 		s.ca = template
 		initRoot = true
 		template.MaxPathLen = signer.MaxPathLen
 	} else if template.IsCA {
 		template.MaxPathLen = 1
 		template.DNSNames = nil
+		template.EmailAddresses = nil
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, s.ca, template.PublicKey, s.priv)
@@ -228,6 +230,9 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 		if profile.CSRWhitelist.IPAddresses {
 			safeTemplate.IPAddresses = csrTemplate.IPAddresses
 		}
+		if profile.CSRWhitelist.EmailAddresses {
+			safeTemplate.EmailAddresses = csrTemplate.EmailAddresses
+		}
 	}
 
 	OverrideHosts(&safeTemplate, req.Hosts)
@@ -245,6 +250,11 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 				return nil, cferr.New(cferr.PolicyError, cferr.InvalidPolicy)
 			}
 		}
+		for _, name := range safeTemplate.EmailAddresses {
+			if profile.NameWhitelist.Find([]byte(name)) == nil {
+				return nil, cferr.New(cferr.PolicyError, cferr.InvalidPolicy)
+			}
+		}
 	}
 
 	if profile.ClientProvidesSerialNumbers {
@@ -254,11 +264,25 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 		}
 		safeTemplate.SerialNumber = req.Serial
 	} else {
-		serialNumber, err := rand.Int(rand.Reader, new(big.Int).SetInt64(math.MaxInt64))
+		// RFC 5280 4.1.2.2:
+		// Certificate users MUST be able to handle serialNumber
+		// values up to 20 octets.  Conforming CAs MUST NOT use
+		// serialNumber values longer than 20 octets.
+		//
+		// If CFSSL is providing the serial numbers, it makes
+		// sense to use the max supported size.
+		serialNumber := make([]byte, 20)
+		_, err = io.ReadFull(rand.Reader, serialNumber)
 		if err != nil {
 			return nil, cferr.Wrap(cferr.CertificateError, cferr.Unknown, err)
 		}
-		safeTemplate.SerialNumber = serialNumber
+
+		// SetBytes interprets buf as the bytes of a big-endian
+		// unsigned integer. The leading byte should be masked
+		// off to ensure it isn't negative.
+		serialNumber[0] &= 0x7F
+
+		safeTemplate.SerialNumber = new(big.Int).SetBytes(serialNumber)
 	}
 
 	if len(req.Extensions) > 0 {
@@ -323,7 +347,29 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 		var SCTListExtension = pkix.Extension{Id: signer.SCTListOID, Critical: false, Value: serializedSCTList}
 		certTBS.ExtraExtensions = append(certTBS.ExtraExtensions, SCTListExtension)
 	}
-	return s.sign(&certTBS, profile)
+	var signedCert []byte
+	signedCert, err = s.sign(&certTBS, profile)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.dbAccessor != nil {
+		var certRecord = &certdb.CertificateRecord{
+			Serial:  certTBS.SerialNumber.String(),
+			CALabel: req.Label,
+			Status:  "good",
+			Expiry:  certTBS.NotAfter,
+			PEM:     string(signedCert),
+		}
+
+		err = s.dbAccessor.InsertCertificate(certRecord)
+		if err != nil {
+			return nil, err
+		}
+		log.Debug("saved certificate with serial number ", certTBS.SerialNumber)
+	}
+
+	return signedCert, nil
 }
 
 func serializeSCTList(sctList []ct.SignedCertificateTimestamp) ([]byte, error) {
@@ -378,6 +424,11 @@ func (s *Signer) Certificate(label, profile string) (*x509.Certificate, error) {
 // SetPolicy sets the signer's signature policy.
 func (s *Signer) SetPolicy(policy *config.Signing) {
 	s.policy = policy
+}
+
+// SetDBAccessor sets the signers' cert db accessor
+func (s *Signer) SetDBAccessor(dba certdb.Accessor) {
+	s.dbAccessor = dba
 }
 
 // Policy returns the signer's policy.
