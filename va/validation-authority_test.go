@@ -688,11 +688,10 @@ func TestCAAChecking(t *testing.T) {
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
 	for _, caaTest := range tests {
-		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
+		present, valid, err := va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		if err != nil {
 			t.Errorf("CheckCAARecords error for %s: %s", caaTest.Domain, err)
 		}
-		fmt.Println(caaTest.Domain, caaTest.Present == present, caaTest.Valid == valid)
 		if present != caaTest.Present {
 			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
 		}
@@ -701,12 +700,12 @@ func TestCAAChecking(t *testing.T) {
 		}
 	}
 
-	present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	present, valid, err := va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	_, _, err = va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
 	}
