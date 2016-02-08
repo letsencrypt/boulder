@@ -400,13 +400,13 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	// TODO: Enable this test case once we validate terms agreement.
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
 
-	id := result.ID
+	id := result.ID + 5
 	result2, err := ra.UpdateRegistration(result, core.Registration{
-		ID:  33,
+		ID:  id,
 		Key: ShortKey,
 	})
 	test.AssertNotError(t, err, "Could not update registration")
-	test.Assert(t, result2.ID != 33, fmt.Sprintf("ID shouldn't be overwritten. expected %d, got %d", id, result2.ID))
+	test.Assert(t, id != result2.ID, fmt.Sprintf("ID shouldn't be overwritten and set to %d but was", result2.ID))
 	test.Assert(t, !core.KeyDigestEquals(result2.Key, ShortKey), "Key shouldn't be overwritten")
 }
 
