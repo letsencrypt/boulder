@@ -95,11 +95,6 @@ func deleteEverythingInAllTables(db CleanUpDB) error {
 		if err != nil {
 			return fmt.Errorf("unable to commit transaction to delete all rows from table %#v: %s", tn, err)
 		}
-
-		_, err = db.Exec("alter table `" + tn + "` AUTO_INCREMENT = 1")
-		if err != nil {
-			return fmt.Errorf("unable to reset autoincrement on table %#v: %s", tn, err)
-		}
 	}
 	return err
 }
