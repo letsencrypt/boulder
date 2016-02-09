@@ -82,10 +82,6 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 			src.log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 		}
 	}()
-	// Note: we first check for an OCSP response in the certificateStatus table (
-	// the new method) if we don't find a response there we instead look in the
-	// ocspResponses table (the old method) while transitioning between the two
-	// tables.
 	err := src.dbMap.SelectOne(
 		&response,
 		"SELECT ocspResponse FROM certificateStatus WHERE serial = :serial",
@@ -93,19 +89,6 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	)
 	if err != nil && err != sql.ErrNoRows {
 		src.log.Err(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
-	}
-	// TODO(#970): Delete this ocspResponses check once the table has been removed
-	if len(response) == 0 {
-		// Ignoring possible error, if response hasn't been filled, attempt to find
-		// response in old table
-		err = src.dbMap.SelectOne(
-			&response,
-			"SELECT response from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
-			map[string]interface{}{"serial": serialString},
-		)
-		if err != nil && err != sql.ErrNoRows {
-			src.log.Err(fmt.Sprintf("Failed to retrieve response from ocspResponses table: %s", err))
-		}
 	}
 	if err != nil {
 		return nil, false
