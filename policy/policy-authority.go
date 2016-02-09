@@ -69,7 +69,7 @@ const (
 	whitelistedPartnerRegID = 131
 )
 
-var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
+var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9-]{1,63}$")
 var punycodeRegexp = regexp.MustCompile("^xn--")
 
 func isDNSCharacter(ch byte) bool {
@@ -170,10 +170,6 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 		}
 
 		if !dnsLabelRegexp.MatchString(label) {
-			return errInvalidDNSCharacter
-		}
-
-		if label[len(label)-1] == '-' {
 			return errInvalidDNSCharacter
 		}
 
