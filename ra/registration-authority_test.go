@@ -198,6 +198,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 					SignatureAlgorithm: true,
 					DNSNames:           true,
 				},
+				ClientProvidesSerialNumbers: true,
 			},
 		},
 	}
