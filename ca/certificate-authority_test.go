@@ -204,6 +204,7 @@ func setup(t *testing.T) *testCtx {
 							PublicKey:          true,
 							SignatureAlgorithm: true,
 						},
+						ClientProvidesSerialNumbers: true,
 					},
 					ecdsaProfileName: &cfsslConfig.SigningProfile{
 						Usage:     []string{"digital signature", "server auth"},
@@ -224,6 +225,7 @@ func setup(t *testing.T) *testCtx {
 							PublicKey:          true,
 							SignatureAlgorithm: true,
 						},
+						ClientProvidesSerialNumbers: true,
 					},
 				},
 				Default: &cfsslConfig.SigningProfile{
