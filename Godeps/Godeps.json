@@ -12,58 +12,63 @@
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/auth",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
+		},
+		{
+			"ImportPath": "github.com/cloudflare/cfssl/certdb",
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/config",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs11key",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/crypto/pkcs7",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/csr",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/errors",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/helpers",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/info",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/log",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/ocsp",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
-			"Comment": "1.1.0-268-ge32101b",
-			"Rev": "e32101b1ae6cb0e1f1653c8ebec92c0113908136"
+			"Comment": "1.1.0-345-g3cc473b",
+			"Rev": "3cc473b970536c9c35099bc46be861cd33f8bda2"
 		},
 		{
 			"ImportPath": "github.com/codegangsta/cli",
@@ -134,11 +139,11 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/ocsp",
-			"Rev": "beef0f4390813b96e8e68fd78570396d0f4751fc"
+			"Rev": "1f22c0103821b9390939b6776727195525381532"
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/pkcs12",
-			"Rev": "beef0f4390813b96e8e68fd78570396d0f4751fc"
+			"Rev": "1f22c0103821b9390939b6776727195525381532"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
