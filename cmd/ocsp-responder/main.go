@@ -82,10 +82,6 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 			src.log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 		}
 	}()
-	// Note: we first check for an OCSP response in the certificateStatus table (
-	// the new method) if we don't find a response there we instead look in the
-	// ocspResponses table (the old method) while transitioning between the two
-	// tables.
 	err := src.dbMap.SelectOne(
 		&response,
 		"SELECT ocspResponse FROM certificateStatus WHERE serial = :serial",
@@ -93,19 +89,6 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	)
 	if err != nil && err != sql.ErrNoRows {
 		src.log.Err(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
-	}
-	// TODO(#970): Delete this ocspResponses check once the table has been removed
-	if len(response) == 0 {
-		// Ignoring possible error, if response hasn't been filled, attempt to find
-		// response in old table
-		err = src.dbMap.SelectOne(
-			&response,
-			"SELECT response from ocspResponses WHERE serial = :serial ORDER BY id DESC LIMIT 1;",
-			map[string]interface{}{"serial": serialString},
-		)
-		if err != nil && err != sql.ErrNoRows {
-			src.log.Err(fmt.Sprintf("Failed to retrieve response from ocspResponses table: %s", err))
-		}
 	}
 	if err != nil {
 		return nil, false
@@ -177,13 +160,10 @@ func main() {
 		cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
 		killTimeout, err := time.ParseDuration(c.OCSPResponder.ShutdownKillTimeout)
 		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
-
-		m := http.StripPrefix(c.OCSPResponder.Path, cfocsp.NewResponder(source))
-
-		httpMonitor := metrics.NewHTTPMonitor(stats, m, "OCSP")
+		m := mux(stats, c.OCSPResponder.Path, source)
 		srv := &http.Server{
 			Addr:    c.OCSPResponder.ListenAddress,
-			Handler: httpMonitor.Handle(),
+			Handler: m,
 		}
 
 		hd := &httpdown.HTTP{
@@ -196,4 +176,17 @@ func main() {
 	}
 
 	app.Run()
+}
+
+func mux(stats statsd.Statter, responderPath string, source cfocsp.Source) http.Handler {
+	m := http.StripPrefix(responderPath, cfocsp.NewResponder(source))
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/" {
+			w.Header().Set("Cache-Control", "max-age=43200") // Cache for 12 hours
+			w.WriteHeader(200)
+			return
+		}
+		m.ServeHTTP(w, r)
+	})
+	return metrics.NewHTTPMonitor(stats, h, "OCSP")
 }

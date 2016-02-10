@@ -93,7 +93,7 @@ func main() {
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
 		srv := &http.Server{
 			Addr:    c.WFE.ListenAddress,
-			Handler: httpMonitor.Handle(),
+			Handler: httpMonitor,
 		}
 
 		hd := &httpdown.HTTP{

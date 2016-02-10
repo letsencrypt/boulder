@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/certdb"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/csr"
 	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
@@ -94,6 +95,7 @@ func SplitHosts(hostList string) []string {
 type Signer interface {
 	Info(info.Req) (*info.Resp, error)
 	Policy() *config.Signing
+	SetDBAccessor(certdb.Accessor)
 	SetPolicy(*config.Signing)
 	SigAlgo() x509.SignatureAlgorithm
 	Sign(req SignRequest) (cert []byte, err error)
@@ -172,6 +174,7 @@ func ParseCertificateRequest(s Signer, csrBytes []byte) (template *x509.Certific
 		SignatureAlgorithm: s.SigAlgo(),
 		DNSNames:           csr.DNSNames,
 		IPAddresses:        csr.IPAddresses,
+		EmailAddresses:     csr.EmailAddresses,
 	}
 
 	return

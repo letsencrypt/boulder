@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/certdb"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
@@ -149,6 +150,11 @@ func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, err
 	}
 
 	return core.Authorization{}, fmt.Errorf("authz not found")
+}
+
+// RevokeAuthorizationsByDomain is a mock
+func (sa *StorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
+	return 0, 0, nil
 }
 
 // GetCertificate is a mock
@@ -303,6 +309,11 @@ func (bhs BadHSMSigner) Policy() *config.Signing {
 
 // SetPolicy is a mock
 func (bhs BadHSMSigner) SetPolicy(*config.Signing) {
+	return
+}
+
+// SetDBAccessor is a mock.
+func (bhs BadHSMSigner) SetDBAccessor(certdb.Accessor) {
 	return
 }
 
