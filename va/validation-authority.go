@@ -639,18 +639,14 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	hostname := strings.ToLower(identifier.Value)
 	caaSet, err := va.getCAASet(ctx, hostname)
 	if err != nil {
-		return
+		return false, false, err
 	}
 
 	if caaSet == nil {
 		// No CAA records found, can issue
 		va.stats.Inc("VA.CAA.None", 1, 1.0)
-		present = false
-		valid = true
-		return
+		return false, true, nil
 	}
-
-	present = true
 
 	// Record stats on directives not currently processed.
 	if len(caaSet.Iodef) > 0 {
@@ -660,8 +656,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	if caaSet.criticalUnknown() {
 		// Contains unknown critical directives.
 		va.stats.Inc("VA.CAA.UnknownCritical", 1, 1.0)
-		valid = false
-		return
+		return true, false, nil
 	}
 
 	if len(caaSet.Unknown) > 0 {
@@ -674,8 +669,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
 		// directive.)
 		va.stats.Inc("VA.CAA.NoneRelevant", 1, 1.0)
-		valid = true
-		return
+		return true, true, nil
 	}
 
 	// There are CAA records pertaining to issuance in our case. Note that this
@@ -686,15 +680,13 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	for _, caa := range caaSet.Issue {
 		if extractIssuerDomain(caa) == va.IssuerDomain {
 			va.stats.Inc("VA.CAA.Authorized", 1, 1.0)
-			valid = true
-			return
+			return true, true, nil
 		}
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
 	va.stats.Inc("VA.CAA.Unauthorized", 1, 1.0)
-	valid = false
-	return
+	return true, false, nil
 }
 
 // Given a CAA record, assume that the Value is in the issue/issuewild format,
