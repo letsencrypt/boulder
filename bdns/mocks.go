@@ -107,6 +107,29 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 		secondRecord := record
 		secondRecord.Value = "letsencrypt.org"
 		results = append(results, &secondRecord)
+	case "unknown-critical.com":
+		record.Flag = 128
+		record.Tag = "foo"
+		record.Value = "bar"
+		results = append(results, &record)
+	case "unknown-critical2.com":
+		record.Flag = 1
+		record.Tag = "foo"
+		record.Value = "bar"
+		results = append(results, &record)
+	case "unknown-noncritical.com":
+		record.Flag = 0x7E // all bits we don't treat as meaning "critical"
+		record.Tag = "foo"
+		record.Value = "bar"
+		results = append(results, &record)
+	case "present-with-parameter.com":
+		record.Tag = "issue"
+		record.Value = "  letsencrypt.org  ;foo=bar;baz=bar"
+		results = append(results, &record)
+	case "unsatisfiable.com":
+		record.Tag = "issue"
+		record.Value = ";"
+		results = append(results, &record)
 	}
 	return results, nil
 }
