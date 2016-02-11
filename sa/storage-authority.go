@@ -333,21 +333,26 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(domains []string, earli
 	return ret, nil
 }
 
+type countByNamesHolder struct {
+	Serial       string
+	ReversedName string
+	NotBefore    time.Time
+}
+
 // countCertificatesByNames returns, for a single domain, the count of
 // certificates issued in the given time range for that domain and its
-// subdomains.
+// subdomains. If multiple certificates with the same FQDN are found
+// only the most recently issued one is counted.
 // The highest count this function can return is 10,000. If there are more
 // certificates than that matching one of the provided domain names, it will return
 // TooManyCertificatesError.
 func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
 	var count int64
 	const max = 10000
-	var serials []struct {
-		Serial string
-	}
+	var names []countByNamesHolder
 	_, err := ssa.dbMap.Select(
-		&serials,
-		`SELECT serial from issuedNames
+		&names,
+		`SELECT serial, reversedName, notBefore from issuedNames
 		 WHERE (reversedName = :reversedDomain OR
 			      reversedName LIKE CONCAT(:reversedDomain, ".%"))
 		 AND notBefore > :earliest AND notBefore <= :latest
@@ -365,9 +370,16 @@ func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest,
 	} else if count > max {
 		return max, TooManyCertificatesError(fmt.Sprintf("More than %d issuedName entries for %s.", max, domain))
 	}
-	serialMap := make(map[string]struct{}, len(serials))
-	for _, s := range serials {
-		serialMap[s.Serial] = struct{}{}
+	latestCerts := make(map[string]countByNamesHolder)
+	for _, n := range names {
+		existing, present := latestCerts[n.ReversedName]
+		if (present && n.NotBefore.After(existing.NotBefore)) || !present {
+			latestCerts[n.ReversedName] = n
+		}
+	}
+	serialMap := make(map[string]struct{})
+	for _, n := range latestCerts {
+		serialMap[n.Serial] = struct{}{}
 	}
 
 	return len(serialMap), nil

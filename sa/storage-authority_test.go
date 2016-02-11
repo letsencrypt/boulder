@@ -399,6 +399,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 
 	// Time range including now should find the cert
 	counts, err = sa.CountCertificatesByNames([]string{"example.com"}, yesterday, now)
+	fmt.Println(counts)
 	test.AssertEquals(t, len(counts), 1)
 	test.AssertEquals(t, counts["example.com"], 1)
 
@@ -426,6 +427,22 @@ func TestCountCertificatesByNames(t *testing.T) {
 	test.AssertEquals(t, counts["foo.com"], 0)
 	test.AssertEquals(t, counts["example.com"], 1)
 	test.AssertEquals(t, counts["example.co.bn"], 1)
+
+	// Add another certificate with the same nameset
+	certDER, err = ioutil.ReadFile("test-cert-dup.der")
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+
+	cert, err = x509.ParseCertificate(certDER)
+	test.AssertNotError(t, err, "Couldn't parse example cert DER")
+
+	_, err = sa.AddCertificate(certDER, reg.ID)
+	test.AssertNotError(t, err, "Couldn't add test-cert-dup.der")
+
+	// Only latest cert should be found
+	counts, err = sa.CountCertificatesByNames([]string{"example.com"}, yesterday, now)
+	fmt.Println(counts)
+	test.AssertEquals(t, len(counts), 1)
+	test.AssertEquals(t, counts["example.com"], 1)
 }
 
 func TestDeniedCSR(t *testing.T) {
