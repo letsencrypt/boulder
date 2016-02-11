@@ -12,12 +12,12 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"math/big"
 	"net"
 	"net/mail"
+	"os"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/certdb"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
@@ -80,7 +80,13 @@ func NewSignerFromFile(caFile, caKeyFile string, policy *config.Signing) (*Signe
 		return nil, err
 	}
 
-	priv, err := helpers.ParsePrivateKeyPEM(cakey)
+	strPassword := os.Getenv("CFSSL_CA_PK_PASSWORD")
+	password := []byte(strPassword)
+	if strPassword == "" {
+		password = nil
+	}
+
+	priv, err := helpers.ParsePrivateKeyPEMWithPassword(cakey, password)
 	if err != nil {
 		log.Debug("Malformed private key %v", err)
 		return nil, err
@@ -156,7 +162,9 @@ func PopulateSubjectFromCSR(s *signer.Subject, req pkix.Name) pkix.Name {
 	replaceSliceIfEmpty(&name.Locality, &req.Locality)
 	replaceSliceIfEmpty(&name.Organization, &req.Organization)
 	replaceSliceIfEmpty(&name.OrganizationalUnit, &req.OrganizationalUnit)
-
+	if name.SerialNumber == "" {
+		name.SerialNumber = req.SerialNumber
+	}
 	return name
 }
 
@@ -259,7 +267,6 @@ func (s *Signer) Sign(req signer.SignRequest) (cert []byte, err error) {
 
 	if profile.ClientProvidesSerialNumbers {
 		if req.Serial == nil {
-			fmt.Printf("xx %#v\n", profile)
 			return nil, cferr.New(cferr.CertificateError, cferr.MissingSerial)
 		}
 		safeTemplate.SerialNumber = req.Serial
