@@ -34,12 +34,12 @@ func TestLoadAndDumpRules(t *testing.T) {
 
 	load := RuleSet{
 		Blacklist: []BlacklistRule{
-			BlacklistRule{
+			{
 				Host: "bad.com",
 			},
 		},
 		Whitelist: []WhitelistRule{
-			WhitelistRule{
+			{
 				Host: "good.bad.com",
 			},
 		},
@@ -88,12 +88,12 @@ func TestBlacklist(t *testing.T) {
 
 	err := p.LoadRules(RuleSet{
 		Blacklist: []BlacklistRule{
-			BlacklistRule{
+			{
 				Host: "bad.com",
 			},
 		},
 		Whitelist: []WhitelistRule{
-			WhitelistRule{
+			{
 				Host: "good.bad.com",
 			},
 		},
@@ -120,15 +120,15 @@ func TestWhitelist(t *testing.T) {
 
 	err := p.LoadRules(RuleSet{
 		Blacklist: []BlacklistRule{
-			BlacklistRule{
+			{
 				Host: "bad.com",
 			},
 		},
 		Whitelist: []WhitelistRule{
-			WhitelistRule{
+			{
 				Host: "good.bad.com",
 			},
-			WhitelistRule{
+			{
 				Host: "good.com",
 			},
 		},

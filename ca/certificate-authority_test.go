@@ -222,7 +222,7 @@ func setup(t *testing.T) *testCtx {
 		CFSSL: cfsslConfig.Config{
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{
-					rsaProfileName: &cfsslConfig.SigningProfile{
+					rsaProfileName: {
 						Usage:     []string{"digital signature", "key encipherment", "server auth"},
 						CA:        false,
 						IssuerURL: []string{"http://not-example.com/issuer-url"},
@@ -230,7 +230,7 @@ func setup(t *testing.T) *testCtx {
 						CRL:       "http://not-example.com/crl",
 
 						Policies: []cfsslConfig.CertificatePolicy{
-							cfsslConfig.CertificatePolicy{
+							{
 								ID: cfsslConfig.OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}),
 							},
 						},
@@ -246,7 +246,7 @@ func setup(t *testing.T) *testCtx {
 							cfsslConfig.OID(oidTLSFeature),
 						},
 					},
-					ecdsaProfileName: &cfsslConfig.SigningProfile{
+					ecdsaProfileName: {
 						Usage:     []string{"digital signature", "server auth"},
 						CA:        false,
 						IssuerURL: []string{"http://not-example.com/issuer-url"},
@@ -254,7 +254,7 @@ func setup(t *testing.T) *testCtx {
 						CRL:       "http://not-example.com/crl",
 
 						Policies: []cfsslConfig.CertificatePolicy{
-							cfsslConfig.CertificatePolicy{
+							{
 								ID: cfsslConfig.OID(asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}),
 							},
 						},

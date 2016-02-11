@@ -55,11 +55,11 @@ func TestKeyAuthorization(t *testing.T) {
 
 func TestRecordSanityCheckOnUnsupportChallengeType(t *testing.T) {
 	rec := []ValidationRecord{
-		ValidationRecord{
+		{
 			URL:               "http://localhost/test",
 			Hostname:          "localhost",
 			Port:              "80",
-			AddressesResolved: []net.IP{net.IP{127, 0, 0, 1}},
+			AddressesResolved: []net.IP{{127, 0, 0, 1}},
 			AddressUsed:       net.IP{127, 0, 0, 1},
 		},
 	}

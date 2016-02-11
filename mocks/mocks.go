@@ -130,7 +130,7 @@ func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, err
 		RegistrationID: 1,
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
 		Challenges: []core.Challenge{
-			core.Challenge{
+			{
 				ID:   23,
 				Type: "dns",
 			},

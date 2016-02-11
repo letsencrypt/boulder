@@ -126,7 +126,7 @@ var (
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-example.com"},
 		RegistrationID: 1,
 		Status:         "pending",
-		Combinations:   [][]int{[]int{0}, []int{1}},
+		Combinations:   [][]int{{0}, {1}},
 	}
 	AuthzFinal = core.Authorization{}
 
