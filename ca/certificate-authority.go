@@ -57,6 +57,9 @@ const (
 
 	// Increments when CA rejects a request due to an HSM fault
 	metricHSMFaultRejected = "CA.OCSP.HSMFault.Rejected"
+
+	// Maximum length allowed for the common name. RFC 5280
+	maxCNLength = 64
 )
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -277,16 +280,18 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	commonName := ""
 	hostNames := make([]string, len(csr.DNSNames))
 	copy(hostNames, csr.DNSNames)
-	if len(csr.Subject.CommonName) > 0 {
-		commonName = strings.ToLower(csr.Subject.CommonName)
-		hostNames = append(hostNames, commonName)
-	} else if len(hostNames) > 0 {
-		commonName = strings.ToLower(hostNames[0])
-	} else {
-		err = core.MalformedRequestError("Cannot issue a certificate without a hostname.")
+	if len(csr.Subject.CommonName) > maxCNLength {
+		msg := fmt.Sprintf("Common name was longer than 64 bytes, was %d",
+			len(csr.Subject.CommonName))
+		err := core.MalformedRequestError(msg)
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
+	}
+
+	if len(csr.Subject.CommonName) > 0 {
+		commonName = strings.ToLower(csr.Subject.CommonName)
+		hostNames = append(hostNames, commonName)
 	}
 
 	// Collapse any duplicate names.  Note that this operation may re-order the names
@@ -298,15 +303,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Verify that names are allowed by policy
-	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
-	if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", commonName))
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
-	}
 	for _, name := range hostNames {
-		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
 			err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", name))
 			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
