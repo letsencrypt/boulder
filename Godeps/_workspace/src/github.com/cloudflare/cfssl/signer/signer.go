@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/certdb"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/csr"
 	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
@@ -28,8 +29,9 @@ var MaxPathLen = 2
 // Subject contains the information that should be used to override the
 // subject information when signing a certificate.
 type Subject struct {
-	CN    string
-	Names []csr.Name `json:"names"`
+	CN           string
+	Names        []csr.Name `json:"names"`
+	SerialNumber string
 }
 
 // Extension represents a raw extension to be included in the certificate.  The
@@ -76,6 +78,7 @@ func (s *Subject) Name() pkix.Name {
 		appendIf(n.O, &name.Organization)
 		appendIf(n.OU, &name.OrganizationalUnit)
 	}
+	name.SerialNumber = s.SerialNumber
 	return name
 }
 
@@ -94,6 +97,7 @@ func SplitHosts(hostList string) []string {
 type Signer interface {
 	Info(info.Req) (*info.Resp, error)
 	Policy() *config.Signing
+	SetDBAccessor(certdb.Accessor)
 	SetPolicy(*config.Signing)
 	SigAlgo() x509.SignatureAlgorithm
 	Sign(req SignRequest) (cert []byte, err error)
@@ -172,6 +176,7 @@ func ParseCertificateRequest(s Signer, csrBytes []byte) (template *x509.Certific
 		SignatureAlgorithm: s.SigAlgo(),
 		DNSNames:           csr.DNSNames,
 		IPAddresses:        csr.IPAddresses,
+		EmailAddresses:     csr.EmailAddresses,
 	}
 
 	return
