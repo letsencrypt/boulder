@@ -417,8 +417,8 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
 		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
 		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
-		len(parsedCertificate.Subject.PostalCode) > 0 || len(parsedCertificate.Subject.SerialNumber) > 0 {
-		err = core.InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
+		len(parsedCertificate.Subject.PostalCode) > 0 {
+		err = core.InternalServerError("Generated certificate Subject contains fields other than CommonName, or SerialNumber")
 		return
 	}
 	now := ra.clk.Now()
