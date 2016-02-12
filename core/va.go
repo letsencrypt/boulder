@@ -9,7 +9,6 @@ package core
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
 	UpdateValidations(Authorization, int) error
-	CheckCAARecords(AcmeIdentifier) (bool, bool, error)
 	IsSafeDomain(*IsSafeDomainRequest) (*IsSafeDomainResponse, error)
 }
 
