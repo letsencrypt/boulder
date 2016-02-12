@@ -628,13 +628,6 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	return nil, nil
 }
 
-// CheckCAARecords verifies that, if the indicated subscriber domain has any CAA
-// records, they authorize the configured CA domain to issue a certificate
-func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
-	// TODO(#1292): add a proper deadline here
-	return va.checkCAARecords(context.TODO(), identifier)
-}
-
 func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	hostname := strings.ToLower(identifier.Value)
 	caaSet, err := va.getCAASet(ctx, hostname)
