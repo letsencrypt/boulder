@@ -196,10 +196,7 @@ func TestChallengesFor(t *testing.T) {
 		t.Errorf("Error unmarshaling JWK: %v", err)
 	}
 
-	challenges, combinations, err := pa.ChallengesFor(core.AcmeIdentifier{}, accountKey)
-	if err != nil {
-		t.Errorf("Error generating challenges: %v", err)
-	}
+	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{}, accountKey)
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 	test.Assert(t, len(combinations) == len(enabledChallenges), "Wrong number of combinations returned")

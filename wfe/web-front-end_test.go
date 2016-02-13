@@ -199,7 +199,7 @@ func (ca *MockCA) RevokeCertificate(serial string, reasonCode core.RevocationCod
 
 type MockPA struct{}
 
-func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
 	return
 }
 
