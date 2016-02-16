@@ -14,7 +14,6 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -113,6 +112,9 @@ const (
 	// Increments when CA handles a CSR requesting an extension other than those
 	// listed above
 	metricCSRExtensionOther = "CA.OCSP.CSRExtensions.Other"
+
+	// Maximum length allowed for the common name. RFC 5280
+	maxCNLength = 64
 )
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -133,6 +135,7 @@ type CertificateAuthorityImpl struct {
 	validityPeriod time.Duration
 	notAfter       time.Time
 	maxNames       int
+	forceCNFromSAN bool
 
 	hsmFaultLock         sync.Mutex
 	hsmFaultLastObserved time.Time
@@ -221,6 +224,7 @@ func NewCertificateAuthorityImpl(
 		notAfter:        issuer.NotAfter,
 		hsmFaultTimeout: config.HSMFaultTimeout.Duration,
 		keyPolicy:       keyPolicy,
+		forceCNFromSAN:  !config.DoNotForceCN, // Note the inversion here
 	}
 
 	if config.Expiry == "" {
@@ -391,12 +395,13 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	commonName := ""
 	hostNames := make([]string, len(csr.DNSNames))
 	copy(hostNames, csr.DNSNames)
+
 	if len(csr.Subject.CommonName) > 0 {
 		commonName = strings.ToLower(csr.Subject.CommonName)
 		hostNames = append(hostNames, commonName)
-	} else if len(hostNames) > 0 {
-		commonName = strings.ToLower(hostNames[0])
-	} else {
+	}
+
+	if len(hostNames) == 0 {
 		err = core.MalformedRequestError("Cannot issue a certificate without a hostname.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
@@ -405,6 +410,20 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	// Collapse any duplicate names.  Note that this operation may re-order the names
 	hostNames = core.UniqueLowerNames(hostNames)
+
+	if ca.forceCNFromSAN && commonName == "" {
+		commonName = hostNames[0]
+	}
+
+	if len(commonName) > maxCNLength {
+		msg := fmt.Sprintf("Common name was longer than 64 bytes, was %d",
+			len(csr.Subject.CommonName))
+		err := core.MalformedRequestError(msg)
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
+	}
+
 	if ca.maxNames > 0 && len(hostNames) > ca.maxNames {
 		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames))
 		ca.log.WarningErr(err)
@@ -412,15 +431,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Verify that names are allowed by policy
-	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
-	if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", commonName))
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
-	}
 	for _, name := range hostNames {
-		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
 			err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", name))
 			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
@@ -460,9 +472,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.Audit(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		return emptyCert, err
 	}
-	serialHex := hex.EncodeToString(serialBytes)
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
+	serialHex := core.SerialToString(serialBigInt)
 
 	var profile string
 	switch key.(type) {
@@ -488,7 +500,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Serial:     serialBigInt,
 		Extensions: requestedExtensions,
 	}
-
+	if !ca.forceCNFromSAN {
+		req.Subject.SerialNumber = serialHex
+	}
 	certPEM, err := ca.signer.Sign(req)
 	ca.noteHSMFault(err)
 	if err != nil {

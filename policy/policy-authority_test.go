@@ -66,8 +66,9 @@ func TestWillingToIssue(t *testing.T) {
 		{`www.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.com`, errLabelTooLong}, // Label too long (>63 characters)
 
 		{`www.-ombo.com`, errInvalidDNSCharacter}, // Label starts with '-'
+		{`www.zomb-.com`, errInvalidDNSCharacter}, // Label ends with '-'
+		{`xn--.net`, errInvalidDNSCharacter},      // Label ends with '-'
 		{`www.xn--hmr.net`, errIDNNotSupported},   // Punycode (disallowed for now)
-		{`xn--.net`, errIDNNotSupported},          // No punycode for now.
 		{`0`, errTooFewLabels},
 		{`1`, errTooFewLabels},
 		{`*`, errInvalidDNSCharacter},
@@ -123,9 +124,7 @@ func TestWillingToIssue(t *testing.T) {
 		"www.8675309.com",
 		"8675309.com",
 		"zom2bo.com",
-		"zombo-.com",
 		"www.zom-bo.com",
-		"www.zombo-.com",
 	}
 
 	pa, cleanup := paImpl(t)

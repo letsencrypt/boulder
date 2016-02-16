@@ -46,7 +46,6 @@ const (
 	MethodAdministrativelyRevokeCertificate = "AdministrativelyRevokeCertificate" // RA
 	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
 	MethodUpdateValidations                 = "UpdateValidations"                 // VA
-	MethodCheckCAARecords                   = "CheckCAARecords"                   // VA
 	MethodIsSafeDomain                      = "IsSafeDomain"                      // VA
 	MethodIssueCertificate                  = "IssueCertificate"                  // CA
 	MethodGenerateOCSP                      = "GenerateOCSP"                      // CA
@@ -70,6 +69,7 @@ const (
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
+	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
 )
 
 // Request structs
@@ -165,11 +165,20 @@ type countPendingAuthorizationsRequest struct {
 	RegID int64
 }
 
+type revokeAuthsRequest struct {
+	Ident core.AcmeIdentifier
+}
+
 // Response structs
 type caaResponse struct {
 	Present bool
 	Valid   bool
 	Err     error
+}
+
+type revokeAuthsResponse struct {
+	FinalRevoked   int64
+	PendingRevoked int64
 }
 
 func improperMessage(method string, err error, obj interface{}) {
@@ -523,32 +532,6 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 		return
 	})
 
-	rpc.Handle(MethodCheckCAARecords, func(req []byte) (response []byte, err error) {
-		var caaReq caaRequest
-		if err = json.Unmarshal(req, &caaReq); err != nil {
-			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodCheckCAARecords, err, req)
-			return
-		}
-
-		present, valid, err := impl.CheckCAARecords(caaReq.Ident)
-		if err != nil {
-			return
-		}
-
-		var caaResp caaResponse
-		caaResp.Present = present
-		caaResp.Valid = valid
-		caaResp.Err = err
-		response, err = json.Marshal(caaResp)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodCheckCAARecords, err, caaReq)
-			return
-		}
-		return
-	})
-
 	rpc.Handle(MethodIsSafeDomain, func(req []byte) ([]byte, error) {
 		r := &core.IsSafeDomainRequest{}
 		if err := json.Unmarshal(req, r); err != nil {
@@ -594,31 +577,6 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 
 	_, err = vac.rpc.DispatchSync(MethodUpdateValidations, data)
 	return nil
-}
-
-// CheckCAARecords sends a request to check CAA records
-func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) (present bool, valid bool, err error) {
-	var caaReq caaRequest
-	caaReq.Ident = ident
-	data, err := json.Marshal(caaReq)
-	if err != nil {
-		return
-	}
-
-	jsonResp, err := vac.rpc.DispatchSync(MethodCheckCAARecords, data)
-	if err != nil {
-		return
-	}
-
-	var caaResp caaResponse
-
-	err = json.Unmarshal(jsonResp, &caaResp)
-	if err != nil {
-		return
-	}
-	present = caaResp.Present
-	valid = caaResp.Valid
-	return
 }
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
@@ -952,6 +910,21 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		}
 
 		err = impl.FinalizeAuthorization(authz)
+		return
+	})
+
+	rpc.Handle(MethodRevokeAuthorizationsByDomain, func(req []byte) (response []byte, err error) {
+		var reqObj revokeAuthsRequest
+		err = json.Unmarshal(req, &reqObj)
+		if err != nil {
+			return
+		}
+		aRevoked, paRevoked, err := impl.RevokeAuthorizationsByDomain(reqObj.Ident)
+		if err != nil {
+			return
+		}
+		var raResp = revokeAuthsResponse{FinalRevoked: aRevoked, PendingRevoked: paRevoked}
+		response, err = json.Marshal(raResp)
 		return
 	})
 
@@ -1339,6 +1312,27 @@ func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization
 	}
 
 	_, err = cac.rpc.DispatchSync(MethodFinalizeAuthorization, jsonAuthz)
+	return
+}
+
+// RevokeAuthorizationsByDomain sends a request to revoke all pending or finalized authorizations
+// for a single domain
+func (cac StorageAuthorityClient) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (aRevoked int64, paRevoked int64, err error) {
+	data, err := json.Marshal(revokeAuthsRequest{Ident: ident})
+	if err != nil {
+		return
+	}
+	resp, err := cac.rpc.DispatchSync(MethodRevokeAuthorizationsByDomain, data)
+	if err != nil {
+		return
+	}
+	var raResp revokeAuthsResponse
+	err = json.Unmarshal(resp, &raResp)
+	if err != nil {
+		return
+	}
+	aRevoked = raResp.FinalRevoked
+	paRevoked = raResp.PendingRevoked
 	return
 }
 

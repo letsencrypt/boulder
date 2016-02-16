@@ -11,7 +11,10 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"io/ioutil"
+	"strconv"
+	"strings"
 	"time"
 
 	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
@@ -19,6 +22,21 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 )
+
+// revocationReasonCodes is a map between string reason codes
+// to integers as defined in RFC 5280
+var revocationReasonCodes = map[string]int{
+	"unspecified":          ocsp.Unspecified,
+	"keycompromise":        ocsp.KeyCompromise,
+	"cacompromise":         ocsp.CACompromise,
+	"affiliationchanged":   ocsp.AffiliationChanged,
+	"superseded":           ocsp.Superseded,
+	"cessationofoperation": ocsp.CessationOfOperation,
+	"certificatehold":      ocsp.CertificateHold,
+	"removefromcrl":        ocsp.RemoveFromCRL,
+	"privilegewithdrawn":   ocsp.PrivilegeWithdrawn,
+	"aacompromise":         ocsp.AACompromise,
+}
 
 // StatusCode is a map between string statuses sent by cli/api
 // to ocsp int statuses
@@ -35,6 +53,7 @@ type SignRequest struct {
 	Status      string
 	Reason      int
 	RevokedAt   time.Time
+	Extensions  []pkix.Extension
 }
 
 // Signer represents a general signer of OCSP responses.  It is
@@ -54,6 +73,27 @@ type StandardSigner struct {
 	responder *x509.Certificate
 	key       crypto.Signer
 	interval  time.Duration
+}
+
+// ReasonStringToCode tries to convert a reason string to an integer code
+func ReasonStringToCode(reason string) (reasonCode int, err error) {
+	// default to 0
+	if reason == "" {
+		return 0, nil
+	}
+
+	reasonCode, present := revocationReasonCodes[strings.ToLower(reason)]
+	if !present {
+		reasonCode, err = strconv.Atoi(reason)
+		if err != nil {
+			return
+		}
+		if reasonCode >= ocsp.AACompromise || reasonCode <= ocsp.Unspecified {
+			return 0, cferr.New(cferr.OCSPError, cferr.InvalidStatus)
+		}
+	}
+
+	return
 }
 
 // NewSignerFromFile reads the issuer cert, the responder cert and the responder key
@@ -138,11 +178,12 @@ func (s StandardSigner) Sign(req SignRequest) ([]byte, error) {
 	}
 
 	template := ocsp.Response{
-		Status:       status,
-		SerialNumber: req.Certificate.SerialNumber,
-		ThisUpdate:   thisUpdate,
-		NextUpdate:   nextUpdate,
-		Certificate:  certificate,
+		Status:          status,
+		SerialNumber:    req.Certificate.SerialNumber,
+		ThisUpdate:      thisUpdate,
+		NextUpdate:      nextUpdate,
+		Certificate:     certificate,
+		ExtraExtensions: req.Extensions,
 	}
 
 	if status == ocsp.Revoked {

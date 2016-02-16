@@ -1,7 +1,7 @@
 # This Makefile also tricks Travis into not running 'go get' for our
 # build. See http://docs.travis-ci.com/user/languages/go/
 
-OBJDIR ?= ./bin
+OBJDIR ?= $(shell pwd)/bin
 DESTDIR ?= /usr/local/bin
 ARCHIVEDIR ?= /tmp
 
@@ -9,7 +9,7 @@ VERSION ?= 1.0.0
 EPOCH ?= 1
 MAINTAINER ?= "Community"
 
-CMDS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d)
+CMDS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d | grep -v testdata)
 CMD_BASENAMES = $(shell echo $(CMDS) | xargs -n1 basename)
 CMD_BINS = $(addprefix $(OBJDIR)/, $(CMD_BASENAMES) )
 OBJECTS = $(CMD_BINS)

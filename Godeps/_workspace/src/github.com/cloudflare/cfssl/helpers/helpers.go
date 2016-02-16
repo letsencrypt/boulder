@@ -327,7 +327,14 @@ func LoadPEMCertPool(certsFile string) (*x509.CertPool, error) {
 // key. The private key may be either an unencrypted PKCS#8, PKCS#1,
 // or elliptic private key.
 func ParsePrivateKeyPEM(keyPEM []byte) (key crypto.Signer, err error) {
-	keyDER, err := GetKeyDERFromPEM(keyPEM)
+	return ParsePrivateKeyPEMWithPassword(keyPEM, nil)
+}
+
+// ParsePrivateKeyPEMWithPassword parses and returns a PEM-encoded private
+// key. The private key may be a potentially encrypted PKCS#8, PKCS#1,
+// or elliptic private key.
+func ParsePrivateKeyPEMWithPassword(keyPEM []byte, password []byte) (key crypto.Signer, err error) {
+	keyDER, err := GetKeyDERFromPEM(keyPEM, password)
 	if err != nil {
 		return nil, err
 	}
@@ -336,11 +343,14 @@ func ParsePrivateKeyPEM(keyPEM []byte) (key crypto.Signer, err error) {
 }
 
 // GetKeyDERFromPEM parses a PEM-encoded private key and returns DER-format key bytes.
-func GetKeyDERFromPEM(in []byte) ([]byte, error) {
+func GetKeyDERFromPEM(in []byte, password []byte) ([]byte, error) {
 	keyDER, _ := pem.Decode(in)
 	if keyDER != nil {
 		if procType, ok := keyDER.Headers["Proc-Type"]; ok {
 			if strings.Contains(procType, "ENCRYPTED") {
+				if password != nil {
+					return x509.DecryptPEMBlock(keyDER, password)
+				}
 				return nil, cferr.New(cferr.PrivateKeyError, cferr.Encrypted)
 			}
 		}
@@ -419,6 +429,21 @@ func ParseCSR(in []byte) (csr *x509.CertificateRequest, rest []byte, err error) 
 	}
 
 	return csr, rest, nil
+}
+
+// ParseCSRPEM parses a PEM-encoded certificiate signing request.
+// It does not check the signature. This is useful for dumping data from a CSR
+// locally.
+func ParseCSRPEM(csrPEM []byte) (*x509.CertificateRequest, error) {
+	block, _ := pem.Decode([]byte(csrPEM))
+	der := block.Bytes
+	csrObject, err := x509.ParseCertificateRequest(der)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return csrObject, nil
 }
 
 // SignerAlgo returns an X.509 signature algorithm corresponding to
