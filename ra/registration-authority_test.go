@@ -49,10 +49,6 @@ func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization,
 	return
 }
 
-func (dva *DummyValidationAuthority) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
-	return false, true, nil
-}
-
 func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
 	if dva.IsSafeDomainErr != nil {
 		return nil, dva.IsSafeDomainErr

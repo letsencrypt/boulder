@@ -46,7 +46,6 @@ const (
 	MethodAdministrativelyRevokeCertificate = "AdministrativelyRevokeCertificate" // RA
 	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
 	MethodUpdateValidations                 = "UpdateValidations"                 // VA
-	MethodCheckCAARecords                   = "CheckCAARecords"                   // VA
 	MethodIsSafeDomain                      = "IsSafeDomain"                      // VA
 	MethodIssueCertificate                  = "IssueCertificate"                  // CA
 	MethodGenerateOCSP                      = "GenerateOCSP"                      // CA
@@ -533,32 +532,6 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 		return
 	})
 
-	rpc.Handle(MethodCheckCAARecords, func(req []byte) (response []byte, err error) {
-		var caaReq caaRequest
-		if err = json.Unmarshal(req, &caaReq); err != nil {
-			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodCheckCAARecords, err, req)
-			return
-		}
-
-		present, valid, err := impl.CheckCAARecords(caaReq.Ident)
-		if err != nil {
-			return
-		}
-
-		var caaResp caaResponse
-		caaResp.Present = present
-		caaResp.Valid = valid
-		caaResp.Err = err
-		response, err = json.Marshal(caaResp)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodCheckCAARecords, err, caaReq)
-			return
-		}
-		return
-	})
-
 	rpc.Handle(MethodIsSafeDomain, func(req []byte) ([]byte, error) {
 		r := &core.IsSafeDomainRequest{}
 		if err := json.Unmarshal(req, r); err != nil {
@@ -604,31 +577,6 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 
 	_, err = vac.rpc.DispatchSync(MethodUpdateValidations, data)
 	return nil
-}
-
-// CheckCAARecords sends a request to check CAA records
-func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) (present bool, valid bool, err error) {
-	var caaReq caaRequest
-	caaReq.Ident = ident
-	data, err := json.Marshal(caaReq)
-	if err != nil {
-		return
-	}
-
-	jsonResp, err := vac.rpc.DispatchSync(MethodCheckCAARecords, data)
-	if err != nil {
-		return
-	}
-
-	var caaResp caaResponse
-
-	err = json.Unmarshal(jsonResp, &caaResp)
-	if err != nil {
-		return
-	}
-	present = caaResp.Present
-	valid = caaResp.Valid
-	return
 }
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an

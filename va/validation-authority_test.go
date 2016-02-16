@@ -681,6 +681,15 @@ func TestCAAChecking(t *testing.T) {
 		CAATest{"present.com", true, true},
 		// Good (multiple critical, one matching)
 		CAATest{"multi-crit-present.com", true, true},
+		// Bad (unknown critical)
+		CAATest{"unknown-critical.com", true, false},
+		CAATest{"unknown-critical2.com", true, false},
+		// Good (unknown noncritical, no issue/issuewild records)
+		CAATest{"unknown-noncritical.com", true, true},
+		// Good (issue record with unknown parameters)
+		CAATest{"present-with-parameter.com", true, true},
+		// Bad (unsatisfiable issue record)
+		CAATest{"unsatisfiable.com", true, false},
 	}
 
 	stats, _ := statsd.NewNoopClient()
@@ -688,11 +697,10 @@ func TestCAAChecking(t *testing.T) {
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
 	for _, caaTest := range tests {
-		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
+		present, valid, err := va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		if err != nil {
 			t.Errorf("CheckCAARecords error for %s: %s", caaTest.Domain, err)
 		}
-		fmt.Println(caaTest.Domain, caaTest.Present == present, caaTest.Valid == valid)
 		if present != caaTest.Present {
 			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
 		}
@@ -701,12 +709,12 @@ func TestCAAChecking(t *testing.T) {
 		}
 	}
 
-	present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	present, valid, err := va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	_, _, err = va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
 	}

@@ -568,9 +568,13 @@ type CAASet struct {
 func (caaSet CAASet) criticalUnknown() bool {
 	if len(caaSet.Unknown) > 0 {
 		for _, caaRecord := range caaSet.Unknown {
-			// Critical flag is 1, but according to RFC 6844 any flag other than
-			// 0 should currently be interpreted as critical.
-			if caaRecord.Flag > 0 {
+			// The critical flag is the bit with significance 128. However, many CAA
+			// record users have misinterpreted the RFC and concluded that the bit
+			// with significance 1 is the critical bit. This is sufficiently
+			// widespread that that bit must reasonably be considered an alias for
+			// the critical bit. The remaining bits are 0/ignore as proscribed by the
+			// RFC.
+			if (caaRecord.Flag & (128 | 1)) != 0 {
 				return true
 			}
 		}
@@ -624,46 +628,73 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	return nil, nil
 }
 
-// CheckCAARecords verifies that, if the indicated subscriber domain has any CAA
-// records, they authorize the configured CA domain to issue a certificate
-func (va *ValidationAuthorityImpl) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
-	// TODO(#1292): add a proper deadline here
-	return va.checkCAARecords(context.TODO(), identifier)
-}
-
 func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier) (present, valid bool, err error) {
 	hostname := strings.ToLower(identifier.Value)
 	caaSet, err := va.getCAASet(ctx, hostname)
 	if err != nil {
-		return
+		return false, false, err
 	}
+
 	if caaSet == nil {
 		// No CAA records found, can issue
-		present = false
-		valid = true
-		return
-	} else if caaSet.criticalUnknown() {
-		present = true
-		valid = false
-		return
-	} else if len(caaSet.Issue) > 0 || len(caaSet.Issuewild) > 0 {
-		present = true
-		var checkSet []*dns.CAA
-		if strings.SplitN(hostname, ".", 2)[0] == "*" {
-			checkSet = caaSet.Issuewild
-		} else {
-			checkSet = caaSet.Issue
-		}
-		for _, caa := range checkSet {
-			if caa.Value == va.IssuerDomain {
-				valid = true
-				return
-			}
-		}
-
-		valid = false
-		return
+		va.stats.Inc("VA.CAA.None", 1, 1.0)
+		return false, true, nil
 	}
 
-	return
+	// Record stats on directives not currently processed.
+	if len(caaSet.Iodef) > 0 {
+		va.stats.Inc("VA.CAA.WithIodef", 1, 1.0)
+	}
+
+	if caaSet.criticalUnknown() {
+		// Contains unknown critical directives.
+		va.stats.Inc("VA.CAA.UnknownCritical", 1, 1.0)
+		return true, false, nil
+	}
+
+	if len(caaSet.Unknown) > 0 {
+		va.stats.Inc("VA.CAA.WithUnknownNoncritical", 1, 1.0)
+	}
+
+	if len(caaSet.Issue) == 0 {
+		// Although CAA records exist, none of them pertain to issuance in this case.
+		// (e.g. there is only an issuewild directive, but we are checking for a
+		// non-wildcard identifier, or there is only an iodef or non-critical unknown
+		// directive.)
+		va.stats.Inc("VA.CAA.NoneRelevant", 1, 1.0)
+		return true, true, nil
+	}
+
+	// There are CAA records pertaining to issuance in our case. Note that this
+	// includes the case of the unsatisfiable CAA record value ";", used to
+	// prevent issuance by any CA under any circumstance.
+	//
+	// Our CAA identity must be found in the chosen checkSet.
+	for _, caa := range caaSet.Issue {
+		if extractIssuerDomain(caa) == va.IssuerDomain {
+			va.stats.Inc("VA.CAA.Authorized", 1, 1.0)
+			return true, true, nil
+		}
+	}
+
+	// The list of authorized issuers is non-empty, but we are not in it. Fail.
+	va.stats.Inc("VA.CAA.Unauthorized", 1, 1.0)
+	return true, false, nil
+}
+
+// Given a CAA record, assume that the Value is in the issue/issuewild format,
+// that is, a domain name with zero or more additional key-value parameters.
+// Returns the domain name, which may be "" (unsatisfiable).
+func extractIssuerDomain(caa *dns.CAA) string {
+	v := caa.Value
+	v = strings.Trim(v, " \t") // Value can start and end with whitespace.
+	idx := strings.IndexByte(v, ';')
+	if idx < 0 {
+		return v // no parameters; domain only
+	}
+
+	// Currently, ignore parameters. Unfortunately, the RFC makes no statement on
+	// whether any parameters are critical. Treat unknown parameters as
+	// non-critical.
+	return strings.Trim(v[0:idx], " \t")
 }
