@@ -209,7 +209,7 @@ func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) 
 func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAuthority, regID int64) (authz core.Authorization) {
 
 	// create pending auth
-	authz, err := sa.NewPendingAuthorization(core.Authorization{RegistrationID: regID, Challenges: []core.Challenge{core.Challenge{}}})
+	authz, err := sa.NewPendingAuthorization(core.Authorization{RegistrationID: regID, Challenges: []core.Challenge{{}}})
 	if err != nil {
 		t.Fatalf("Couldn't create new pending authorization: %s", err)
 	}
