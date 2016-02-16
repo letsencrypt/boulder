@@ -44,7 +44,7 @@ func main() {
 	}
 
 	app.Commands = append(app.Commands, []cli.Command{
-		cli.Command{
+		{
 			Name:  "dump-rules",
 			Usage: "Write out whitelist and blacklist from database to a rule file",
 			Action: func(c *cli.Context) {
@@ -68,7 +68,7 @@ func main() {
 				fmt.Printf("# Saved rule list to %s\n", ruleFile)
 			},
 		},
-		cli.Command{
+		{
 			Name:  "load-rules",
 			Usage: "Load whitelist and blacklist into database from a rule file",
 			Action: func(c *cli.Context) {
