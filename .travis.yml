@@ -55,6 +55,7 @@ env:
   matrix:
     - RUN="integration vet lint fmt migrations"
     - RUN="unit"
+    - RUN="godep-restore"
 
 script:
   - bash test.sh
