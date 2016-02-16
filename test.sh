@@ -156,8 +156,14 @@ function run_unit_tests() {
     # treat that as a failure.
     [ -e $GOBIN/goveralls ] && $GOBIN/goveralls -coverprofile=gover.coverprofile -service=travis-ci
   else
-    # Run all the tests together if local, for speed
-    run go test $GOTESTFLAGS ./...
+    # When running locally, we skip the -race flag for speedier test runs. We
+    # also pass -p 1 to require the tests to run serially instead of in
+    # parallel. This is because our unittests depend on mutating a database and
+    # then cleaning up after themselves. If they run in parallel, they can fail
+    # spuriously because one test is modifying a table (especially
+    # registrations) while another test is reading it.
+    # https://github.com/letsencrypt/boulder/issues/1499
+    run go test -p 1 $GOTESTFLAGS ./...
   fi
 }
 
