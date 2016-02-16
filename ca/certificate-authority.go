@@ -14,6 +14,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -283,9 +284,12 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 //                        Any other value will result in an error.
 //
 // Other requested extensions are silently ignored.
-func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateRequest) (extensions []signer.Extension, err error) {
-	extensions = []signer.Extension{}
+func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateRequest) ([]signer.Extension, error) {
+	extensions := []signer.Extension{}
+
 	extensionSeen := map[string]bool{}
+	hasBasic := false
+	hasOther := false
 
 	for _, attr := range csr.Attributes {
 		if !attr.Type.Equal(oidExtensionRequest) {
@@ -305,13 +309,11 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 					value, ok := ext.Value.([]byte)
 					if !ok {
 						msg := fmt.Sprintf("Mal-formed extension with OID %v", ext.Type)
-						err = core.CertificateIssuanceError(msg)
-						return
+						return nil, core.CertificateIssuanceError(msg)
 					} else if !bytes.Equal(value, mustStapleFeatureValue) {
 						msg := fmt.Sprintf("Unsupported value for extension with OID %v", ext.Type)
 						ca.stats.Inc(metricCSRExtensionTLSFeatureInvalid, 1, 1.0)
-						err = core.CertificateIssuanceError(msg)
-						return
+						return nil, core.CertificateIssuanceError(msg)
 					}
 
 					extensions = append(extensions, mustStapleExtension)
@@ -324,14 +326,23 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 					ext.Type.Equal(oidKeyUsage),
 					ext.Type.Equal(oidSubjectAltName),
 					ext.Type.Equal(oidSubjectKeyIdentifier):
-					ca.stats.Inc(metricCSRExtensionBasic, 1, 1.0)
+					hasBasic = true
 				default:
-					ca.stats.Inc(metricCSRExtensionOther, 1, 1.0)
+					hasOther = true
 				}
 			}
 		}
 	}
-	return
+
+	if hasBasic {
+		ca.stats.Inc(metricCSRExtensionBasic, 1, 1.0)
+	}
+
+	if hasOther {
+		ca.stats.Inc(metricCSRExtensionOther, 1, 1.0)
+	}
+
+	return extensions, nil
 }
 
 // GenerateOCSP produces a new OCSP response and returns it
