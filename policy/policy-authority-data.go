@@ -169,6 +169,8 @@ func (padb *PolicyAuthorityDatabaseImpl) allowedByWhitelist(host string) bool {
 
 // CheckHostLists will query the database for white/blacklist rules that match host,
 // if both whitelist and blacklist rules are found the blacklist will always win
+// Returns errNotWhitelisted, errBlacklisted, or errDBFailure for the
+// appropriate problems, or nil if the host is allowable.
 func (padb *PolicyAuthorityDatabaseImpl) CheckHostLists(host string, requireWhitelisted bool) error {
 	if requireWhitelisted {
 		if !padb.allowedByWhitelist(host) {
