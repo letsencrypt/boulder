@@ -302,6 +302,7 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 					// Ignore duplicate certificate extensions
 					continue
 				}
+				extensionSeen[ext.Type.String()] = true
 
 				switch {
 				case ext.Type.Equal(oidTLSFeature):
