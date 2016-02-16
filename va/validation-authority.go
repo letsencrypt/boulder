@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -455,43 +456,44 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	}
 }
 
-func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier, regID int64) *probs.ProblemDetails {
-	// Check CAA records for the requested identifier
-	present, valid, err := va.checkCAARecords(ctx, identifier)
-	if err != nil {
-		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
-		return bdns.ProblemDetailsFromDNSError(err)
-	}
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", identifier.Value, regID, present, valid))
-	if !valid {
-		return &probs.ProblemDetails{
-			Type:   probs.ConnectionProblem,
-			Detail: fmt.Sprintf("CAA check for %s failed", identifier.Value),
-		}
-	}
+// UpdateValidations is a deprecated RPC method which should be removed
+// as soon as deployment considerations permit.
+func (va *ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
+	return va.UpdateValidation(&core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: challengeIndex,
+	})
+}
+
+// UpdateValidation runs the validate() method asynchronously using goroutines.
+func (va *ValidationAuthorityImpl) UpdateValidation(req *core.UpdateValidationRequest) error {
+	// TODO(#1292): add a proper deadline here
+	go va.validate(context.TODO(), req)
 	return nil
 }
 
 // Overall validation process
 
-func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Authorization, challengeIndex int) {
+func (va *ValidationAuthorityImpl) validate(ctx context.Context, req *core.UpdateValidationRequest) {
 	logEvent := verificationRequestEvent{
-		ID:          authz.ID,
-		Requester:   authz.RegistrationID,
+		ID:          req.Authorization.ID,
+		Requester:   req.Authorization.RegistrationID,
 		RequestTime: va.clk.Now(),
 	}
-	challenge := &authz.Challenges[challengeIndex]
+	challenge := &req.Authorization.Challenges[req.ChallengeIndex]
+
+	// Actual check.
 	vStart := va.clk.Now()
-	validationRecords, prob := va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge, authz.RegistrationID)
+	validationRecords, prob := va.validateActual(ctx, req, *challenge)
 	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart), 1.0)
 
+	// Update validation information and send it to the RA.
 	challenge.ValidationRecord = validationRecords
 	if prob != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
-	} else if !authz.Challenges[challengeIndex].RecordsSane() {
+	} else if !req.Authorization.Challenges[req.ChallengeIndex].RecordsSane() {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = &probs.ProblemDetails{Type: probs.ServerInternalProblem,
 			Detail: "Records for validation failed sanity check"}
@@ -504,19 +506,21 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
 
-	va.log.Notice(fmt.Sprintf("Validations: %+v", authz))
+	va.log.Notice(fmt.Sprintf("Validations: %+v", req.Authorization))
 
-	va.RA.OnValidationUpdate(authz)
+	va.RA.OnValidationUpdate(req.Authorization)
 }
 
-func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, regID int64) ([]core.ValidationRecord, *probs.ProblemDetails) {
+// Do the actual validation. The challenge is the chosen challenge which is
+// part of the req.Authorization.
+func (va *ValidationAuthorityImpl) validateActual(ctx context.Context, req *core.UpdateValidationRequest, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier, regID)
+		ch <- va.validateCAA(ctx, req)
 	}()
 
 	// TODO(#1292): send into another goroutine
-	validationRecords, err := va.validateChallenge(ctx, identifier, challenge)
+	validationRecords, err := va.validateChallenge(ctx, req.Authorization.Identifier, challenge)
 	if err != nil {
 		return validationRecords, err
 	}
@@ -526,6 +530,27 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, 
 		return validationRecords, caaProblem
 	}
 	return validationRecords, nil
+}
+
+func (va *ValidationAuthorityImpl) validateCAA(ctx context.Context, req *core.UpdateValidationRequest) *probs.ProblemDetails {
+	// Check CAA records for the requested identifier
+	present, valid, err := va.CheckCAA(ctx, &CheckCAARequest{
+		AcmeIdentifier:       req.Authorization.Identifier,
+		AccountKeyThumbprint: req.AccountKeyThumbprint,
+	})
+	if err != nil {
+		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
+		return bdns.ProblemDetailsFromDNSError(err)
+	}
+	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+	va.log.Audit(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", req.Authorization.Identifier.Value, req.Authorization.RegistrationID, present, valid))
+	if !valid {
+		return &probs.ProblemDetails{
+			Type:   probs.ConnectionProblem,
+			Detail: fmt.Sprintf("CAA check for %s failed", req.Authorization.Identifier.Value),
+		}
+	}
+	return nil
 }
 
 func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -547,13 +572,6 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 		Type:   probs.MalformedProblem,
 		Detail: fmt.Sprintf("invalid challenge type %s", challenge.Type),
 	}
-}
-
-// UpdateValidations runs the validate() method asynchronously using goroutines.
-func (va *ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
-	// TODO(#1292): add a proper deadline here
-	go va.validate(context.TODO(), authz, challengeIndex)
-	return nil
 }
 
 // CAASet consists of filtered CAA records
@@ -603,33 +621,17 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 	return &filtered
 }
 
-func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, error) {
-	hostname = strings.TrimRight(hostname, ".")
-	labels := strings.Split(hostname, ".")
-	// See RFC 6844 "Certification Authority Processing" for pseudocode.
-	// Essentially: check CAA records for the FDQN to be issued, and all parent
-	// domains.
-	// We depend on our resolver to snap CNAME and DNAME records.
-	for i := 0; i < len(labels); i++ {
-		name := strings.Join(labels[i:len(labels)], ".")
-		// Break if we've reached an ICANN TLD.
-		if tld, err := publicsuffix.ICANNTLD(name); err != nil || tld == name {
-			break
-		}
-		CAAs, err := va.DNSResolver.LookupCAA(ctx, name)
-		if err != nil {
-			return nil, err
-		}
-		if len(CAAs) > 0 {
-			return newCAASet(CAAs), nil
-		}
-	}
-	// no CAA records found
-	return nil, nil
+// CheckCAARequest is the request structure for CheckCAA.
+type CheckCAARequest struct {
+	AcmeIdentifier       core.AcmeIdentifier
+	AccountKeyThumbprint string
 }
 
-func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier) (present, valid bool, err error) {
-	hostname := strings.ToLower(identifier.Value)
+// CheckCAA verifies that, if the indicated subscriber domain has any CAA
+// records, they authorize the configured CA domain to issue a certificate.
+func (va *ValidationAuthorityImpl) CheckCAA(ctx context.Context, req *CheckCAARequest) (present, valid bool, err error) {
+	hostname := strings.ToLower(req.AcmeIdentifier.Value)
+
 	caaSet, err := va.getCAASet(ctx, hostname)
 	if err != nil {
 		return false, false, err
@@ -671,10 +673,25 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	//
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range caaSet.Issue {
-		if extractIssuerDomain(caa) == va.IssuerDomain {
-			va.stats.Inc("VA.CAA.Authorized", 1, 1.0)
-			return true, true, nil
+		domain, params, err2 := parseIssuer(caa)
+		if err2 != nil {
+			// Ignore unparseables.
+			continue
 		}
+
+		if domain != va.IssuerDomain {
+			// Not for us.
+			continue
+		}
+
+		if !validateCAAParams(params, req) {
+			// Transaction does not match restrictions specified on the CAA record
+			// in parameters.
+			continue
+		}
+
+		va.stats.Inc("VA.CAA.Authorized", 1, 1.0)
+		return true, true, nil
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
@@ -682,19 +699,112 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	return true, false, nil
 }
 
+// CAA utilities
+
+func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, error) {
+	hostname = strings.TrimRight(hostname, ".")
+	labels := strings.Split(hostname, ".")
+	// See RFC 6844 "Certification Authority Processing" for pseudocode.
+	// Essentially: check CAA records for the FDQN to be issued, and all parent
+	// domains.
+	// We depend on our resolver to snap CNAME and DNAME records.
+	for i := 0; i < len(labels); i++ {
+		name := strings.Join(labels[i:len(labels)], ".")
+		// Break if we've reached an ICANN TLD.
+		if tld, err := publicsuffix.ICANNTLD(name); err != nil || tld == name {
+			break
+		}
+		CAAs, err := va.DNSResolver.LookupCAA(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		if len(CAAs) > 0 {
+			return newCAASet(CAAs), nil
+		}
+	}
+	// no CAA records found
+	return nil, nil
+}
+
+func validateCAAParams(params map[string]string, req *CheckCAARequest) bool {
+	if req.AccountKeyThumbprint == "" {
+		return true
+	}
+
+	ak, ok := params["acme-ak"]
+	return !ok || req.AccountKeyThumbprint == ak
+}
+
 // Given a CAA record, assume that the Value is in the issue/issuewild format,
 // that is, a domain name with zero or more additional key-value parameters.
 // Returns the domain name, which may be "" (unsatisfiable).
-func extractIssuerDomain(caa *dns.CAA) string {
+func parseIssuer(caa *dns.CAA) (domain string, params map[string]string, err error) {
 	v := caa.Value
 	v = strings.Trim(v, " \t") // Value can start and end with whitespace.
 	idx := strings.IndexByte(v, ';')
 	if idx < 0 {
-		return v // no parameters; domain only
+		return v, nil, nil // no parameters; domain only
 	}
 
-	// Currently, ignore parameters. Unfortunately, the RFC makes no statement on
-	// whether any parameters are critical. Treat unknown parameters as
-	// non-critical.
-	return strings.Trim(v[0:idx], " \t")
+	// Parse parameters. Unfortunately, the RFC makes no statement on whether any
+	// parameters are critical. Treat unknown parameters as non-critical.
+	domain = strings.Trim(v[0:idx], " \t")
+	params, err = parseCAAParams(v[idx+1:])
+	if err != nil {
+		return "", nil, err
+	}
+
+	return domain, params, nil
+}
+
+var reCAAParamSplit = regexp.MustCompile(`[; \t]+`)
+
+func parseCAAParams(params string) (map[string]string, error) {
+	ps := map[string]string{}
+	// Some parts of the CAA specification suggest that multiple parameters be
+	// encoded like this:
+	//   "example.com; foo=bar bar=baz"
+	// with spaces not allowed.
+	//
+	// Other points in the document imply:
+	//   "example.com; foo=bar; bar=baz"
+	//
+	// This implementation allows, but does not require semicolons between
+	// parameters and does not support spaces in values.
+
+	params = strings.Trim(params, "; \t")
+	if params == "" {
+		return ps, nil
+	}
+
+	parts := reCAAParamSplit.Split(params, -1)
+	for _, p := range parts {
+		k, v, err := parseCAAParam(p)
+		if err != nil {
+			return nil, err
+		}
+
+		_, ok := ps[k]
+		if ok {
+			return nil, fmt.Errorf("CAA parameter cannot appear more than once")
+		}
+		ps[k] = v
+	}
+
+	return ps, nil
+}
+
+// Parses a CAA record parameter of the form " foo=bar " and stores it in params.
+func parseCAAParam(param string) (k, v string, err error) {
+	idx := strings.IndexByte(param, '=')
+	if idx < 0 {
+		return "", "", fmt.Errorf("invalid CAA parameter; parameter value must be specified")
+	}
+
+	// Specification is unclear, consider parameters case insensitive.
+	// Unfortunately, the RFC makes no statement on whether any parameters are
+	// critical. Treat unknown parameters as non-critical.
+	k = strings.ToLower(param[0:idx])
+	v = param[idx+1:]
+	return
 }

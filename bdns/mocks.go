@@ -130,6 +130,31 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 		record.Tag = "issue"
 		record.Value = ";"
 		results = append(results, &record)
+	case "restricted-ak1.com":
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; acme-ak=QdfmOFQqMHUTPXyDHZFRmaLDeYDGO1rLISOmC0-QtkU"
+		results = append(results, &record)
+	case "restricted-ak2.com":
+		// Multiple account keys, only one of which will be satisfied.
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; acme-ak=QdfmOFQqMHUTPXyDHZFRmaLDeYDGO1rLISOmC0-QtkU"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Value = "letsencrypt.org; acme-ak=AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa0"
+		results = append(results, &secondRecord)
+	case "useless-ak.com":
+		// Record with an account key, and another without, meaning no restriction.
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; acme-ak=AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa0"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Value = "letsencrypt.org; unknown-param=1"
+		results = append(results, &secondRecord)
+	case "unsatisfiable-ak.com":
+		// Cannot be satisfied.
+		record.Tag = "issue"
+		record.Value = "letsencrypt.org; acme-ak=AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa0"
+		results = append(results, &record)
 	}
 	return results, nil
 }

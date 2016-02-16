@@ -38,14 +38,23 @@ import (
 
 type DummyValidationAuthority struct {
 	Called          bool
-	Argument        core.Authorization
+	Argument        *core.UpdateValidationRequest
 	IsNotSafe       bool
 	IsSafeDomainErr error
 }
 
 func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
 	dva.Called = true
-	dva.Argument = authz
+	dva.Argument = &core.UpdateValidationRequest{
+		Authorization:  authz,
+		ChallengeIndex: index,
+	}
+	return
+}
+
+func (dva *DummyValidationAuthority) UpdateValidation(req *core.UpdateValidationRequest) (err error) {
+	dva.Called = true
+	dva.Argument = req
 	return
 }
 
@@ -249,7 +258,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 				Threshold: 100,
 				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
-		}, 1, testKeyPolicy)
+		}, 1, testKeyPolicy, true)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -507,10 +516,10 @@ func TestUpdateAuthorization(t *testing.T) {
 
 	// Verify that the VA got the authz, and it's the same as the others
 	test.Assert(t, va.Called, "Authorization was not passed to the VA")
-	assertAuthzEqual(t, authz, va.Argument)
+	assertAuthzEqual(t, authz, va.Argument.Authorization)
 
 	// Verify that the responses are reflected
-	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
+	test.Assert(t, len(va.Argument.Authorization.Challenges) > 0, "Authz passed to VA has no challenges")
 
 	t.Log("DONE TestUpdateAuthorization")
 }

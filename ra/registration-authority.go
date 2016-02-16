@@ -65,14 +65,15 @@ type RegistrationAuthorityImpl struct {
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
 
-	regByIPStats         metrics.Scope
-	pendAuthByRegIDStats metrics.Scope
-	certsForDomainStats  metrics.Scope
-	totalCertsStats      metrics.Scope
+	regByIPStats           metrics.Scope
+	pendAuthByRegIDStats   metrics.Scope
+	certsForDomainStats    metrics.Scope
+	totalCertsStats        metrics.Scope
+	useUpdateValidationRPC bool // temporary
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, useUpdateValidationRPC bool) *RegistrationAuthorityImpl {
 	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
@@ -86,6 +87,7 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
+		useUpdateValidationRPC:       useUpdateValidationRPC,
 
 		regByIPStats:         scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
 		pendAuthByRegIDStats: scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
@@ -733,7 +735,23 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	}
 
 	// Dispatch to the VA for service
-	ra.VA.UpdateValidations(authz, challengeIndex)
+	// Gating for RPC method signature change. To be removed.
+	if ra.useUpdateValidationRPC {
+		req := &core.UpdateValidationRequest{
+			Authorization:  authz,
+			ChallengeIndex: challengeIndex,
+		}
+
+		req.AccountKeyThumbprint, err = core.KeyThumbprintBase64(&reg.Key)
+		if err != nil {
+			err = core.InternalServerError(err.Error())
+			return
+		}
+
+		ra.VA.UpdateValidation(req)
+	} else {
+		ra.VA.UpdateValidations(authz, challengeIndex)
+	}
 
 	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	return
