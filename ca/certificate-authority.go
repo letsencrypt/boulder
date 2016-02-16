@@ -281,6 +281,8 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 // Other requested extensions are silently ignored.
 func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateRequest) (extensions []signer.Extension, err error) {
 	extensions = []signer.Extension{}
+	extensionSeen := map[string]bool{}
+
 	for _, attr := range csr.Attributes {
 		if !attr.Type.Equal(oidExtensionRequest) {
 			continue
@@ -288,6 +290,11 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 
 		for _, extList := range attr.Value {
 			for _, ext := range extList {
+				if extensionSeen[ext.Type.String()] {
+					// Ignore duplicate certificate extensions
+					continue
+				}
+
 				switch {
 				case ext.Type.Equal(oidTLSFeature):
 					ca.stats.Inc(metricCSRExtensionTLSFeature, 1, 1.0)
