@@ -330,7 +330,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Create validations. The WFE will  update them with URIs before sending them out.
-	challenges, combinations, err := ra.PA.ChallengesFor(identifier, &reg.Key)
+	challenges, combinations := ra.PA.ChallengesFor(identifier, &reg.Key)
 
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 
