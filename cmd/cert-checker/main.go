@@ -77,7 +77,7 @@ type certChecker struct {
 }
 
 func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool) certChecker {
-	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, enforceWhitelist, challengeTypes)
+	pa, err := policy.New(paDbMap, enforceWhitelist, challengeTypes)
 	cmd.FailOnError(err, "Failed to create PA")
 	c := certChecker{
 		pa:    pa,

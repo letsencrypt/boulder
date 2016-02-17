@@ -102,7 +102,7 @@ func main() {
 	app.Run(os.Args)
 }
 
-func setupFromContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl, string) {
+func setupFromContext(context *cli.Context) (*policy.AuthorityDatabaseImpl, string) {
 	configFileName := context.GlobalString("config")
 	configJSON, err := ioutil.ReadFile(configFileName)
 	cmd.FailOnError(err, "Couldn't read configuration file")
@@ -115,7 +115,7 @@ func setupFromContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl
 	dbMap, err := sa.NewDbMap(dbURL)
 	cmd.FailOnError(err, "Failed to create DB map")
 
-	padb, err := policy.NewPolicyAuthorityDatabaseImpl(dbMap)
+	padb, err := policy.NewAuthorityDatabaseImpl(dbMap)
 	cmd.FailOnError(err, "Could not connect to PADB")
 
 	ruleFile := context.GlobalString("rule-file")

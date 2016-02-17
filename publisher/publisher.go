@@ -53,8 +53,8 @@ type ctSubmissionRequest struct {
 	Chain []string `json:"chain"`
 }
 
-// PublisherImpl defines a Publisher
-type PublisherImpl struct {
+// Impl defines a Publisher
+type Impl struct {
 	log          *blog.AuditLogger
 	client       *http.Client
 	issuerBundle []ct.ASN1Cert
@@ -63,9 +63,9 @@ type PublisherImpl struct {
 	SA core.StorageAuthority
 }
 
-// NewPublisherImpl creates a Publisher that will submit certificates
+// New creates a Publisher that will submit certificates
 // to any CT logs configured in CTConfig
-func NewPublisherImpl(bundle []ct.ASN1Cert, logs []*Log) (pub PublisherImpl) {
+func New(bundle []ct.ASN1Cert, logs []*Log) (pub Impl) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Publisher Authority Starting")
 
@@ -78,7 +78,7 @@ func NewPublisherImpl(bundle []ct.ASN1Cert, logs []*Log) (pub PublisherImpl) {
 
 // SubmitToCT will submit the certificate represented by certDER to any CT
 // logs configured in pub.CT.Logs
-func (pub *PublisherImpl) SubmitToCT(der []byte) error {
+func (pub *Impl) SubmitToCT(der []byte) error {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
 		pub.log.Audit(fmt.Sprintf("Failed to parse certificate: %s", err))
