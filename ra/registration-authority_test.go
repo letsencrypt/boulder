@@ -126,7 +126,7 @@ var (
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-example.com"},
 		RegistrationID: 1,
 		Status:         "pending",
-		Combinations:   [][]int{[]int{0}, []int{1}},
+		Combinations:   [][]int{{0}, {1}},
 	}
 	AuthzFinal = core.Authorization{}
 
@@ -258,7 +258,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations, err := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
+	challenges, combinations := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 

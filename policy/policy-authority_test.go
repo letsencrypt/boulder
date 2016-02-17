@@ -196,17 +196,14 @@ func TestChallengesFor(t *testing.T) {
 		t.Errorf("Error unmarshaling JWK: %v", err)
 	}
 
-	challenges, combinations, err := pa.ChallengesFor(core.AcmeIdentifier{}, accountKey)
-	if err != nil {
-		t.Errorf("Error generating challenges: %v", err)
-	}
+	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{}, accountKey)
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 	test.Assert(t, len(combinations) == len(enabledChallenges), "Wrong number of combinations returned")
 
 	seenChalls := make(map[string]bool)
 	// Expected only if the pseudo-RNG is seeded with 99.
-	expectedCombos := [][]int{[]int{1}, []int{2}, []int{0}}
+	expectedCombos := [][]int{{1}, {2}, {0}}
 	for _, challenge := range challenges {
 		test.Assert(t, !seenChalls[challenge.Type], "should not already have seen this type")
 		seenChalls[challenge.Type] = true

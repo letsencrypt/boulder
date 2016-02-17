@@ -199,7 +199,7 @@ func (ca *MockCA) RevokeCertificate(serial string, reasonCode core.RevocationCod
 
 type MockPA struct{}
 
-func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int, err error) {
+func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
 	return
 }
 
@@ -261,7 +261,7 @@ func makePostRequest(body string) *http.Request {
 		Method:     "POST",
 		RemoteAddr: "1.1.1.1:7882",
 		Header: map[string][]string{
-			"Content-Length": []string{fmt.Sprintf("%d", len(body))},
+			"Content-Length": {fmt.Sprintf("%d", len(body))},
 		},
 		Body: makeBody(body),
 	}
@@ -601,7 +601,7 @@ func TestIssueCertificate(t *testing.T) {
 	wfe.NewCertificate(newRequestEvent(), responseWriter, &http.Request{
 		Method: "POST",
 		Header: map[string][]string{
-			"Content-Length": []string{"0"},
+			"Content-Length": {"0"},
 		},
 	})
 	test.AssertEquals(t,
@@ -877,7 +877,7 @@ func TestNewRegistration(t *testing.T) {
 				Method: "POST",
 				URL:    mustParseURL(NewRegPath),
 				Header: map[string][]string{
-					"Content-Length": []string{"0"},
+					"Content-Length": {"0"},
 				},
 			},
 			`{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`,
@@ -1140,7 +1140,7 @@ func TestAuthorization(t *testing.T) {
 	wfe.NewAuthorization(newRequestEvent(), responseWriter, &http.Request{
 		Method: "POST",
 		Header: map[string][]string{
-			"Content-Length": []string{"0"},
+			"Content-Length": {"0"},
 		},
 	})
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"No body on POST","status":400}`)

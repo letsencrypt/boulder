@@ -8,6 +8,7 @@ go get \
   golang.org/x/tools/cmd/vet \
   golang.org/x/tools/cmd/cover \
   github.com/golang/lint/golint \
+  github.com/tools/godep \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
   github.com/jcjones/github-pr-status \

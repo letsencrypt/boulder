@@ -283,7 +283,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, zName string) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	addr, allAddrs, problem := va.getAddr(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
-		core.ValidationRecord{
+		{
 			Hostname:          identifier.Value,
 			AddressesResolved: allAddrs,
 			AddressUsed:       addr,
@@ -611,7 +611,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	// domains.
 	// We depend on our resolver to snap CNAME and DNAME records.
 	for i := 0; i < len(labels); i++ {
-		name := strings.Join(labels[i:len(labels)], ".")
+		name := strings.Join(labels[i:], ".")
 		// Break if we've reached an ICANN TLD.
 		if tld, err := publicsuffix.ICANNTLD(name); err != nil || tld == name {
 			break
