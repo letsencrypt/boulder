@@ -203,7 +203,7 @@ func TestChallengesFor(t *testing.T) {
 
 	seenChalls := make(map[string]bool)
 	// Expected only if the pseudo-RNG is seeded with 99.
-	expectedCombos := [][]int{[]int{1}, []int{2}, []int{0}}
+	expectedCombos := [][]int{{1}, {2}, {0}}
 	for _, challenge := range challenges {
 		test.Assert(t, !seenChalls[challenge.Type], "should not already have seen this type")
 		seenChalls[challenge.Type] = true

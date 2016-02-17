@@ -79,7 +79,7 @@ func TestCheckAlgorithm(t *testing.T) {
 			},
 			jose.JsonWebSignature{
 				Signatures: []jose.Signature{
-					jose.Signature{
+					{
 						Header: jose.JoseHeader{
 							Algorithm: "HS256",
 						},
@@ -96,7 +96,7 @@ func TestCheckAlgorithm(t *testing.T) {
 			},
 			jose.JsonWebSignature{
 				Signatures: []jose.Signature{
-					jose.Signature{
+					{
 						Header: jose.JoseHeader{
 							Algorithm: "HS256",
 						},
@@ -113,7 +113,7 @@ func TestCheckAlgorithm(t *testing.T) {
 			},
 			jose.JsonWebSignature{
 				Signatures: []jose.Signature{
-					jose.Signature{
+					{
 						Header: jose.JoseHeader{
 							Algorithm: "RS256",
 						},
@@ -141,7 +141,7 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 		Key:       &rsa.PublicKey{},
 	}, &jose.JsonWebSignature{
 		Signatures: []jose.Signature{
-			jose.Signature{
+			{
 				Header: jose.JoseHeader{
 					Algorithm: "RS256",
 				},
@@ -155,7 +155,7 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 		Key: &rsa.PublicKey{},
 	}, &jose.JsonWebSignature{
 		Signatures: []jose.Signature{
-			jose.Signature{
+			{
 				Header: jose.JoseHeader{
 					Algorithm: "RS256",
 				},
@@ -173,7 +173,7 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 		},
 	}, &jose.JsonWebSignature{
 		Signatures: []jose.Signature{
-			jose.Signature{
+			{
 				Header: jose.JoseHeader{
 					Algorithm: "ES256",
 				},
@@ -190,7 +190,7 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 		},
 	}, &jose.JsonWebSignature{
 		Signatures: []jose.Signature{
-			jose.Signature{
+			{
 				Header: jose.JoseHeader{
 					Algorithm: "ES256",
 				},
