@@ -25,7 +25,7 @@ func main() {
 		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Couldn't connect to SA database")
 
-		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default())
+		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), saConf.EnableAddFQDNSets)
 		cmd.FailOnError(err, "Failed to create SA impl")
 		sai.SetSQLDebug(c.SQL.SQLDebug)
 

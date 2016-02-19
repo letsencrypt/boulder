@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -339,7 +340,8 @@ func GetBuildHost() (retID string) {
 }
 
 // UniqueLowerNames returns the set of all unique names in the input after all
-// of them are lowercased. The returned names will be in their lowercased form.
+// of them are lowercased. The returned names will be in their lowercased form
+// and sorted alphabetically.
 func UniqueLowerNames(names []string) (unique []string) {
 	nameMap := make(map[string]int, len(names))
 	for _, name := range names {
@@ -350,6 +352,7 @@ func UniqueLowerNames(names []string) (unique []string) {
 	for name := range nameMap {
 		unique = append(unique, name)
 	}
+	sort.Strings(unique)
 	return
 }
 

@@ -24,7 +24,7 @@ func TestParseLine(t *testing.T) {
 	}
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc)
+	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, true)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

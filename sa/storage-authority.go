@@ -30,9 +30,10 @@ const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :au
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
-	dbMap *gorp.DbMap
-	clk   clock.Clock
-	log   *blog.AuditLogger
+	dbMap       *gorp.DbMap
+	clk         clock.Clock
+	log         *blog.AuditLogger
+	addFQDNSets bool
 }
 
 func digest256(data []byte) []byte {
@@ -54,15 +55,16 @@ type authzModel struct {
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
-func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock) (*SQLStorageAuthority, error) {
+func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, addFQDNSets bool) (*SQLStorageAuthority, error) {
 	logger := blog.GetAuditLogger()
 
 	logger.Notice("Storage Authority Starting")
 
 	ssa := &SQLStorageAuthority{
-		dbMap: dbMap,
-		clk:   clk,
-		log:   logger,
+		dbMap:       dbMap,
+		clk:         clk,
+		log:         logger,
+		addFQDNSets: addFQDNSets,
 	}
 
 	return ssa, nil
@@ -773,6 +775,20 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		}
 	}
 
+	if ssa.addFQDNSets {
+		err = addFQDNSet(
+			tx,
+			parsedCertificate.DNSNames,
+			serial,
+			parsedCertificate.NotBefore,
+			parsedCertificate.NotAfter,
+		)
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+	}
+
 	err = tx.Commit()
 	return
 }
@@ -868,4 +884,36 @@ func (ssa *SQLStorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestam
 		err = ErrDuplicateReceipt(err.Error())
 	}
 	return err
+}
+
+func hashNames(names []string) []byte {
+	names = core.UniqueLowerNames(names)
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return hash[:]
+}
+
+func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time.Time, expires time.Time) error {
+	return tx.Insert(&core.FQDNSet{
+		SetHash: hashNames(names),
+		Serial:  serial,
+		Issued:  issued,
+		Expires: expires,
+	})
+}
+
+// CountValidFQDNSets reutrns the number of currently valid sets with hash |setHash|
+func (ssa *SQLStorageAuthority) CountValidFQDNSets(window time.Duration, names []string) (int64, error) {
+	var count int64
+	now := ssa.clk.Now()
+	err := ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(serial) FROM fqdnSets
+     WHERE setHash = ?
+     AND expires > ?
+     AND issued > ?`,
+		hashNames(names),
+		now,
+		now.Add(-window),
+	)
+	return count, err
 }
