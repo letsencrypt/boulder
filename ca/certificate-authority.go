@@ -453,11 +453,6 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		}
 	}
 
-	requestedExtensions, err := ca.extensionsFromCSR(&csr)
-	if err != nil {
-		return emptyCert, err
-	}
-
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)
 
 	if ca.notAfter.Before(notAfter) {
@@ -509,8 +504,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Subject: &signer.Subject{
 			CN: commonName,
 		},
-		Serial:     serialBigInt,
-		Extensions: requestedExtensions,
+		Serial: serialBigInt,
 	}
 	if !ca.forceCNFromSAN {
 		req.Subject.SerialNumber = serialHex
