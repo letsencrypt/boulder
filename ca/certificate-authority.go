@@ -121,22 +121,23 @@ const (
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
-	rsaProfile     string
-	ecdsaProfile   string
-	signer         signer.Signer
-	ocspSigner     ocsp.Signer
-	SA             core.StorageAuthority
-	PA             core.PolicyAuthority
-	Publisher      core.Publisher
-	keyPolicy      core.KeyPolicy
-	clk            clock.Clock // TODO(jmhodges): should be private, like log
-	log            *blog.AuditLogger
-	stats          statsd.Statter
-	prefix         int // Prepended to the serial number
-	validityPeriod time.Duration
-	notAfter       time.Time
-	maxNames       int
-	forceCNFromSAN bool
+	rsaProfile       string
+	ecdsaProfile     string
+	signer           signer.Signer
+	ocspSigner       ocsp.Signer
+	SA               core.StorageAuthority
+	PA               core.PolicyAuthority
+	Publisher        core.Publisher
+	keyPolicy        core.KeyPolicy
+	clk              clock.Clock // TODO(jmhodges): should be private, like log
+	log              *blog.AuditLogger
+	stats            statsd.Statter
+	prefix           int // Prepended to the serial number
+	validityPeriod   time.Duration
+	notAfter         time.Time
+	maxNames         int
+	forceCNFromSAN   bool
+	enableMustStaple bool
 
 	hsmFaultLock         sync.Mutex
 	hsmFaultLastObserved time.Time
@@ -214,18 +215,19 @@ func NewCertificateAuthorityImpl(
 	}
 
 	ca = &CertificateAuthorityImpl{
-		signer:          signer,
-		ocspSigner:      ocspSigner,
-		rsaProfile:      rsaProfile,
-		ecdsaProfile:    ecdsaProfile,
-		prefix:          config.SerialPrefix,
-		clk:             clk,
-		log:             logger,
-		stats:           stats,
-		notAfter:        issuer.NotAfter,
-		hsmFaultTimeout: config.HSMFaultTimeout.Duration,
-		keyPolicy:       keyPolicy,
-		forceCNFromSAN:  !config.DoNotForceCN, // Note the inversion here
+		signer:           signer,
+		ocspSigner:       ocspSigner,
+		rsaProfile:       rsaProfile,
+		ecdsaProfile:     ecdsaProfile,
+		prefix:           config.SerialPrefix,
+		clk:              clk,
+		log:              logger,
+		stats:            stats,
+		notAfter:         issuer.NotAfter,
+		hsmFaultTimeout:  config.HSMFaultTimeout.Duration,
+		keyPolicy:        keyPolicy,
+		forceCNFromSAN:   !config.DoNotForceCN, // Note the inversion here
+		enableMustStaple: config.EnableMustStaple,
 	}
 
 	if config.Expiry == "" {
@@ -317,7 +319,9 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 						return nil, core.CertificateIssuanceError(msg)
 					}
 
-					extensions = append(extensions, mustStapleExtension)
+					if ca.enableMustStaple {
+						extensions = append(extensions, mustStapleExtension)
+					}
 				case ext.Type.Equal(oidAuthorityInfoAccess),
 					ext.Type.Equal(oidAuthorityKeyIdentifier),
 					ext.Type.Equal(oidBasicConstraints),
