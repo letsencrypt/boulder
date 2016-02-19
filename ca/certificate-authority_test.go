@@ -242,9 +242,6 @@ func setup(t *testing.T) *testCtx {
 							SignatureAlgorithm: true,
 						},
 						ClientProvidesSerialNumbers: true,
-						AllowedExtensions: []cfsslConfig.OID{
-							cfsslConfig.OID(oidTLSFeature),
-						},
 					},
 					ecdsaProfileName: {
 						Usage:     []string{"digital signature", "server auth"},
@@ -696,7 +693,7 @@ func TestExtensions(t *testing.T) {
 	ca.PA = ctx.pa
 	ca.SA = ctx.sa
 
-	// A TLS feature extension should put a must-staple extension into the cert
+	// A TLS feature extension should not a must-staple extension into the cert
 	csr, _ := x509.ParseCertificateRequest(MustStapleCSR)
 	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with must_staple")
@@ -711,32 +708,8 @@ func TestExtensions(t *testing.T) {
 			test.AssertByteEquals(t, ext.Value, mustStapleFeatureValue)
 		}
 	}
-	test.Assert(t, foundMustStaple, "TLS Feature extension not found")
-	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeature], int64(1))
-
-	// Even if there are multiple TLS Feature extensions, only one extension should be included
-	cert, err = ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with multiple must_staple")
-	parsedCert2, err := x509.ParseCertificate(cert.DER)
-	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
-
-	numMustStaple := 0
-	for _, ext := range parsedCert2.Extensions {
-		if ext.Id.Equal(oidTLSFeature) {
-			numMustStaple += 1
-			test.Assert(t, !ext.Critical, "Extension was marked critical")
-			test.AssertByteEquals(t, ext.Value, mustStapleFeatureValue)
-		}
-	}
-	test.Assert(t, numMustStaple == 1, "Duplicate TLS Feature extensions found")
-	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeature], int64(2))
-
-	// ... but if it doesn't ask for stapling, there should be an error
-	csr, _ = x509.ParseCertificateRequest(TLSFeatureUnknownCSR)
-	cert, err = ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertError(t, err, "Allowed a CSR with an empty TLS feature extension")
-	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeature], int64(3))
-	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeatureInvalid], int64(1))
+	test.Assert(t, !foundMustStaple, "TLS Feature extension found")
+	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeature], int64(0))
 
 	// Unsupported extensions should be silently ignored, having the same
 	// extensions as the TLS Feature cert above, minus the TLS Feature Extension
@@ -745,8 +718,8 @@ func TestExtensions(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with an unknown extension")
 	parsedCert3, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Error parsing certificate produced by CA")
-	test.AssertEquals(t, len(parsedCert3.Extensions), len(parsedCert1.Extensions)-1)
-	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionOther], int64(1))
+	test.AssertEquals(t, len(parsedCert3.Extensions), len(parsedCert1.Extensions))
+	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionOther], int64(0))
 
 	// None of the above CSRs have basic extensions
 	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionBasic], int64(0))
