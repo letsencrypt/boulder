@@ -124,6 +124,7 @@ func (s *State) Restore(filename string) error {
 		if err != nil {
 			continue
 		}
+		signer.SetNonceSource(s)
 		s.regs = append(s.regs, &registration{
 			key:    key,
 			signer: signer,
@@ -317,26 +318,26 @@ func (s *State) post(endpoint string, payload []byte) (*http.Response, error) {
 // required for JWS
 
 func (s *State) signWithNonce(endpoint string, alwaysNew bool, payload []byte, signer jose.Signer) ([]byte, error) {
-	nonce, err := s.getNonce(endpoint, alwaysNew)
+	// nonce, err := s.getNonce(endpoint, alwaysNew)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	jws, err := signer.Sign(payload)
 	if err != nil {
 		return nil, err
 	}
-	jws, err := signer.Sign(payload, nonce)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(jws)
+	return []byte(jws.FullSerialize()), nil
 }
 
-func (s *State) getNonce(from string, alwaysNew bool) (string, error) {
+func (s *State) Nonce() (string, error) {
 	s.nMu.RLock()
-	if len(s.noncePool) == 0 || alwaysNew {
+	if len(s.noncePool) == 0 {
 		s.nMu.RUnlock()
 		started := time.Now()
-		resp, err := s.client.Head(fmt.Sprintf("%s%s", s.apiBase, from))
+		resp, err := s.client.Head(fmt.Sprintf("%s/directory", s.apiBase))
 		finished := time.Now()
 		state := "good"
-		defer func() { s.callLatency.Add(fmt.Sprintf("HEAD %s", from), started, finished, state) }()
+		defer func() { s.callLatency.Add("HEAD /directory", started, finished, state) }()
 		if err != nil {
 			state = "error"
 			return "", err

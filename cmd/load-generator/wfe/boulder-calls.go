@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -29,6 +30,7 @@ func (s *State) newRegistration(_ *registration) {
 		fmt.Println(err)
 		return
 	}
+	signer.SetNonceSource(s)
 
 	// create the registration object
 	regStr := []byte(`{"resource":"new-reg","contact":["mailto:roland@bracewel.net"]}`)
@@ -285,7 +287,7 @@ func (s *State) newCertificate(reg *registration) {
 
 	request := fmt.Sprintf(
 		`{"resource":"new-cert","csr":"%s"}`,
-		core.B64enc(csr),
+		base64.URLEncoding.EncodeToString(csr),
 	)
 
 	// build the JWS object
@@ -351,7 +353,7 @@ func (s *State) revokeCertificate(reg *registration) {
 		return
 	}
 
-	request := fmt.Sprintf(`{"resource":"revoke-cert","certificate":"%s"}`, core.B64enc(body))
+	request := fmt.Sprintf(`{"resource":"revoke-cert","certificate":"%s"}`, base64.URLEncoding.EncodeToString(body))
 	requestPayload, err := s.signWithNonce("/acme/revoke-cert", false, []byte(request), reg.signer)
 	if err != nil {
 		fmt.Printf("[FAILED] revoke-cert: %s\n", err)
