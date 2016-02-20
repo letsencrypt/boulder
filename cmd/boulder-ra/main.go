@@ -10,7 +10,8 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 
@@ -20,18 +21,21 @@ import (
 	"github.com/letsencrypt/boulder/rpc"
 )
 
+const clientName = "RA"
+
 func main() {
 	app := cmd.NewAppShell("boulder-ra", "Handles service orchestration")
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		// Validate PA config and set defaults if needed
 		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
-		c.PA.SetDefaultChallengesIfEmpty()
 
 		go cmd.DebugServer(c.RA.DebugAddr)
 
-		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
+		dbURL, err := c.PA.DBConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+		paDbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Couldn't connect to policy database")
-		pa, err := policy.NewPolicyAuthorityImpl(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
+		pa, err := policy.New(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
 		cmd.FailOnError(err, "Couldn't create PA")
 
 		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
@@ -39,49 +43,46 @@ func main() {
 
 		go cmd.ProfileCmd("RA", stats)
 
-		vaRPC, err := rpc.NewAmqpRPCClient("RA->VA", c.AMQP.VA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		caRPC, err := rpc.NewAmqpRPCClient("RA->CA", c.AMQP.CA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		saRPC, err := rpc.NewAmqpRPCClient("RA->SA", c.AMQP.SA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		vac, err := rpc.NewValidationAuthorityClient(vaRPC)
+		amqpConf := c.RA.AMQP
+		vac, err := rpc.NewValidationAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create VA client")
 
-		cac, err := rpc.NewCertificateAuthorityClient(caRPC)
+		cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create CA client")
 
-		sac, err := rpc.NewStorageAuthorityClient(saRPC)
+		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create SA client")
 
 		var dc *ra.DomainCheck
 		if c.RA.UseIsSafeDomain {
-			dc = &ra.DomainCheck{VA: &vac}
+			dc = &ra.DomainCheck{VA: vac}
 		}
 
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats,
-			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration)
+			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration, c.KeyPolicy())
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
+		scoped := metrics.NewStatsdScope(stats, "RA", "DNS")
+		dnsTries := c.RA.DNSTries
+		if dnsTries < 1 {
+			dnsTries = 1
+		}
 		if !c.Common.DNSAllowLoopbackAddresses {
-			rai.DNSResolver = core.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
+			rai.DNSResolver = bdns.NewDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver}, scoped, clock.Default(), dnsTries)
 		} else {
-			rai.DNSResolver = core.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver})
+			rai.DNSResolver = bdns.NewTestDNSResolverImpl(raDNSTimeout, []string{c.Common.DNSResolver}, scoped, clock.Default(), dnsTries)
 		}
 
-		rai.VA = &vac
-		rai.CA = &cac
-		rai.SA = &sac
+		rai.VA = vac
+		rai.CA = cac
+		rai.SA = sac
 
-		ras, err := rpc.NewAmqpRPCServer(c.AMQP.RA.Server, c.RA.MaxConcurrentRPCServerRequests, c)
+		ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create RA RPC server")
 		rpc.NewRegistrationAuthorityServer(ras, rai)
 
-		err = ras.Start(c)
+		err = ras.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run RA RPC server")
 	}
 

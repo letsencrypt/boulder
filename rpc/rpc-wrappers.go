@@ -13,7 +13,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -40,12 +42,10 @@ const (
 	MethodNewCertificate                    = "NewCertificate"                    // RA
 	MethodUpdateRegistration                = "UpdateRegistration"                // RA, SA
 	MethodUpdateAuthorization               = "UpdateAuthorization"               // RA
-	MethodRevokeCertificate                 = "RevokeCertificate"                 // CA
 	MethodRevokeCertificateWithReg          = "RevokeCertificateWithReg"          // RA
 	MethodAdministrativelyRevokeCertificate = "AdministrativelyRevokeCertificate" // RA
 	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
 	MethodUpdateValidations                 = "UpdateValidations"                 // VA
-	MethodCheckCAARecords                   = "CheckCAARecords"                   // VA
 	MethodIsSafeDomain                      = "IsSafeDomain"                      // VA
 	MethodIssueCertificate                  = "IssueCertificate"                  // CA
 	MethodGenerateOCSP                      = "GenerateOCSP"                      // CA
@@ -69,6 +69,7 @@ const (
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
+	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
 )
 
 // Request structs
@@ -164,11 +165,20 @@ type countPendingAuthorizationsRequest struct {
 	RegID int64
 }
 
+type revokeAuthsRequest struct {
+	Ident core.AcmeIdentifier
+}
+
 // Response structs
 type caaResponse struct {
 	Present bool
 	Valid   bool
 	Err     error
+}
+
+type revokeAuthsResponse struct {
+	FinalRevoked   int64
+	PendingRevoked int64
 }
 
 func improperMessage(method string, err error, obj interface{}) {
@@ -362,9 +372,9 @@ type RegistrationAuthorityClient struct {
 }
 
 // NewRegistrationAuthorityClient constructs an RPC client
-func NewRegistrationAuthorityClient(client Client) (rac RegistrationAuthorityClient, err error) {
-	rac = RegistrationAuthorityClient{rpc: client}
-	return
+func NewRegistrationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*RegistrationAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->RA", amqpConf, amqpConf.RA, stats)
+	return &RegistrationAuthorityClient{rpc: client}, err
 }
 
 // NewRegistration sends a New Registration request
@@ -522,32 +532,6 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 		return
 	})
 
-	rpc.Handle(MethodCheckCAARecords, func(req []byte) (response []byte, err error) {
-		var caaReq caaRequest
-		if err = json.Unmarshal(req, &caaReq); err != nil {
-			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodCheckCAARecords, err, req)
-			return
-		}
-
-		present, valid, err := impl.CheckCAARecords(caaReq.Ident)
-		if err != nil {
-			return
-		}
-
-		var caaResp caaResponse
-		caaResp.Present = present
-		caaResp.Valid = valid
-		caaResp.Err = err
-		response, err = json.Marshal(caaResp)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodCheckCAARecords, err, caaReq)
-			return
-		}
-		return
-	})
-
 	rpc.Handle(MethodIsSafeDomain, func(req []byte) ([]byte, error) {
 		r := &core.IsSafeDomainRequest{}
 		if err := json.Unmarshal(req, r); err != nil {
@@ -575,9 +559,9 @@ type ValidationAuthorityClient struct {
 }
 
 // NewValidationAuthorityClient constructs an RPC client
-func NewValidationAuthorityClient(client Client) (vac ValidationAuthorityClient, err error) {
-	vac = ValidationAuthorityClient{rpc: client}
-	return
+func NewValidationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*ValidationAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->VA", amqpConf, amqpConf.VA, stats)
+	return &ValidationAuthorityClient{rpc: client}, err
 }
 
 // UpdateValidations sends an Update Validations request
@@ -593,31 +577,6 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 
 	_, err = vac.rpc.DispatchSync(MethodUpdateValidations, data)
 	return nil
-}
-
-// CheckCAARecords sends a request to check CAA records
-func (vac ValidationAuthorityClient) CheckCAARecords(ident core.AcmeIdentifier) (present bool, valid bool, err error) {
-	var caaReq caaRequest
-	caaReq.Ident = ident
-	data, err := json.Marshal(caaReq)
-	if err != nil {
-		return
-	}
-
-	jsonResp, err := vac.rpc.DispatchSync(MethodCheckCAARecords, data)
-	if err != nil {
-		return
-	}
-
-	var caaResp caaResponse
-
-	err = json.Unmarshal(jsonResp, &caaResp)
-	if err != nil {
-		return
-	}
-	present = caaResp.Present
-	valid = caaResp.Valid
-	return
 }
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
@@ -655,9 +614,9 @@ type PublisherClient struct {
 }
 
 // NewPublisherClient constructs an RPC client
-func NewPublisherClient(client Client) (pub PublisherClient, err error) {
-	pub = PublisherClient{rpc: client}
-	return
+func NewPublisherClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*PublisherClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->Publisher", amqpConf, amqpConf.Publisher, stats)
+	return &PublisherClient{rpc: client}, err
 }
 
 // SubmitToCT sends a request to submit a certifcate to CT logs
@@ -702,19 +661,6 @@ func NewCertificateAuthorityServer(rpc Server, impl core.CertificateAuthority) (
 		return
 	})
 
-	rpc.Handle(MethodRevokeCertificate, func(req []byte) (response []byte, err error) {
-		var revokeReq revokeCertificateRequest
-		err = json.Unmarshal(req, &revokeReq)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodRevokeCertificate, err, req)
-			return
-		}
-
-		err = impl.RevokeCertificate(revokeReq.Serial, revokeReq.ReasonCode)
-		return
-	})
-
 	rpc.Handle(MethodGenerateOCSP, func(req []byte) (response []byte, err error) {
 		var xferObj core.OCSPSigningRequest
 		err = json.Unmarshal(req, &xferObj)
@@ -741,9 +687,9 @@ type CertificateAuthorityClient struct {
 }
 
 // NewCertificateAuthorityClient constructs an RPC client
-func NewCertificateAuthorityClient(client Client) (cac CertificateAuthorityClient, err error) {
-	cac = CertificateAuthorityClient{rpc: client}
-	return
+func NewCertificateAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*CertificateAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->CA", amqpConf, amqpConf.CA, stats)
+	return &CertificateAuthorityClient{rpc: client}, err
 }
 
 // IssueCertificate sends a request to issue a certificate
@@ -762,23 +708,6 @@ func (cac CertificateAuthorityClient) IssueCertificate(csr x509.CertificateReque
 	}
 
 	err = json.Unmarshal(jsonResponse, &cert)
-	return
-}
-
-// RevokeCertificate sends a request to revoke a certificate
-func (cac CertificateAuthorityClient) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
-	var revokeReq revokeCertificateRequest
-	revokeReq.Serial = serial
-	revokeReq.ReasonCode = reasonCode
-
-	data, err := json.Marshal(revokeReq)
-	if err != nil {
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		errorCondition(MethodRevokeCertificate, err, revokeReq)
-		return
-	}
-
-	_, err = cac.rpc.DispatchSync(MethodRevokeCertificate, data)
 	return
 }
 
@@ -984,6 +913,21 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
+	rpc.Handle(MethodRevokeAuthorizationsByDomain, func(req []byte) (response []byte, err error) {
+		var reqObj revokeAuthsRequest
+		err = json.Unmarshal(req, &reqObj)
+		if err != nil {
+			return
+		}
+		aRevoked, paRevoked, err := impl.RevokeAuthorizationsByDomain(reqObj.Ident)
+		if err != nil {
+			return
+		}
+		var raResp = revokeAuthsResponse{FinalRevoked: aRevoked, PendingRevoked: paRevoked}
+		response, err = json.Marshal(raResp)
+		return
+	})
+
 	rpc.Handle(MethodGetCertificate, func(req []byte) (response []byte, err error) {
 		cert, err := impl.GetCertificate(string(req))
 		if err != nil {
@@ -1134,7 +1078,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		}
 
 		sct, err := impl.GetSCTReceipt(gsctReq.Serial, gsctReq.LogID)
-		jsonResponse, err := json.Marshal(core.RPCSignedCertificateTimestamp(sct))
+		jsonResponse, err := json.Marshal(sct)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			errorCondition(MethodGetSCTReceipt, err, req)
@@ -1145,7 +1089,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	})
 
 	rpc.Handle(MethodAddSCTReceipt, func(req []byte) (response []byte, err error) {
-		var sct core.RPCSignedCertificateTimestamp
+		var sct core.SignedCertificateTimestamp
 		err = json.Unmarshal(req, &sct)
 		if err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
@@ -1172,9 +1116,9 @@ type StorageAuthorityClient struct {
 }
 
 // NewStorageAuthorityClient constructs an RPC client
-func NewStorageAuthorityClient(client Client) (sac StorageAuthorityClient, err error) {
-	sac = StorageAuthorityClient{rpc: client}
-	return
+func NewStorageAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*StorageAuthorityClient, error) {
+	client, err := NewAmqpRPCClient(clientName+"->SA", amqpConf, amqpConf.SA, stats)
+	return &StorageAuthorityClient{rpc: client}, err
 }
 
 // GetRegistration sends a request to get a registration by ID
@@ -1368,6 +1312,27 @@ func (cac StorageAuthorityClient) FinalizeAuthorization(authz core.Authorization
 	}
 
 	_, err = cac.rpc.DispatchSync(MethodFinalizeAuthorization, jsonAuthz)
+	return
+}
+
+// RevokeAuthorizationsByDomain sends a request to revoke all pending or finalized authorizations
+// for a single domain
+func (cac StorageAuthorityClient) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (aRevoked int64, paRevoked int64, err error) {
+	data, err := json.Marshal(revokeAuthsRequest{Ident: ident})
+	if err != nil {
+		return
+	}
+	resp, err := cac.rpc.DispatchSync(MethodRevokeAuthorizationsByDomain, data)
+	if err != nil {
+		return
+	}
+	var raResp revokeAuthsResponse
+	err = json.Unmarshal(resp, &raResp)
+	if err != nil {
+		return
+	}
+	aRevoked = raResp.FinalRevoked
+	paRevoked = raResp.PendingRevoked
 	return
 }
 

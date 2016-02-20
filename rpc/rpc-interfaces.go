@@ -5,17 +5,12 @@
 
 package rpc
 
-import (
-	"time"
-)
-
 // Client describes the functions an RPC Client performs
 type Client interface {
-	SetTimeout(time.Duration)
 	DispatchSync(string, []byte) ([]byte, error)
 }
 
 // Server describes the functions an RPC Server performs
 type Server interface {
-	Handle(string, func([]byte) ([]byte, error))
+	Handle(string, messageHandler)
 }

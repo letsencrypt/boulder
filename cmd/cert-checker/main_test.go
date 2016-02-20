@@ -228,13 +228,13 @@ func TestSaveReport(t *testing.T) {
 		GoodCerts: 2,
 		BadCerts:  1,
 		Entries: map[string]reportEntry{
-			"020000000000004b475da49b91da5c17": reportEntry{
+			"020000000000004b475da49b91da5c17": {
 				Valid: true,
 			},
-			"020000000000004d1613e581432cba7e": reportEntry{
+			"020000000000004d1613e581432cba7e": {
 				Valid: true,
 			},
-			"020000000000004e402bc21035c6634a": reportEntry{
+			"020000000000004e402bc21035c6634a": {
 				Valid:    false,
 				Problems: []string{"None really..."},
 			},

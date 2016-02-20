@@ -22,17 +22,14 @@ import (
 	"github.com/letsencrypt/boulder/wfe"
 )
 
-func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (rpc.RegistrationAuthorityClient, rpc.StorageAuthorityClient) {
-	raRPC, err := rpc.NewAmqpRPCClient("WFE->RA", c.AMQP.RA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
+const clientName = "WFE"
 
-	saRPC, err := rpc.NewAmqpRPCClient("WFE->SA", c.AMQP.SA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
+func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
+	amqpConf := c.WFE.AMQP
+	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create RA client")
 
-	sac, err := rpc.NewStorageAuthorityClient(saRPC)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
 
 	return rac, sac
@@ -56,11 +53,11 @@ func main() {
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.WFE.DebugAddr)
 
-		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default())
+		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), c.KeyPolicy())
 		cmd.FailOnError(err, "Unable to create WFE")
 		rac, sac := setupWFE(c, auditlogger, stats)
-		wfe.RA = &rac
-		wfe.SA = &sac
+		wfe.RA = rac
+		wfe.SA = sac
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
 
 		wfe.AllowOrigins = c.WFE.AllowOrigins
@@ -82,6 +79,8 @@ func main() {
 		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
+		auditlogger.Info(fmt.Sprintf("WFE using key policy: %#v", c.KeyPolicy()))
+
 		go cmd.ProfileCmd("WFE", stats)
 
 		// Set up paths
@@ -94,7 +93,7 @@ func main() {
 		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
 		srv := &http.Server{
 			Addr:    c.WFE.ListenAddress,
-			Handler: httpMonitor.Handle(),
+			Handler: httpMonitor,
 		}
 
 		hd := &httpdown.HTTP{

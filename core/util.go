@@ -7,26 +7,21 @@ package core
 
 import (
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha1"
 	"crypto/sha256"
-	"crypto/sha512"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"expvar"
 	"fmt"
-	"hash"
 	"io"
 	"io/ioutil"
 	"math/big"
 	mrand "math/rand"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -34,6 +29,7 @@ import (
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 // Package Variables Variables
@@ -47,6 +43,11 @@ var BuildHost string
 
 // BuildTime is set by the compiler and is used by GetBuildTime
 var BuildTime string
+
+func init() {
+	expvar.NewString("BuildID").Set(BuildID)
+	expvar.NewString("BuildTime").Set(BuildTime)
+}
 
 // Errors
 
@@ -73,9 +74,6 @@ type NotFoundError string
 // LengthRequiredError indicates a POST was sent with no Content-Length.
 type LengthRequiredError string
 
-// SyntaxError indicates the user improperly formatted their data.
-type SyntaxError string
-
 // SignatureValidationError indicates that the user's signature could not
 // be verified, either through adversarial activity, or misconfiguration of
 // the user client.
@@ -99,48 +97,66 @@ type TooManyRPCRequestsError string
 // satisfy a request
 type ServiceUnavailableError string
 
+// BadNonceError indicates an empty of invalid nonce was provided
+type BadNonceError string
+
 func (e InternalServerError) Error() string      { return string(e) }
 func (e NotSupportedError) Error() string        { return string(e) }
 func (e MalformedRequestError) Error() string    { return string(e) }
 func (e UnauthorizedError) Error() string        { return string(e) }
 func (e NotFoundError) Error() string            { return string(e) }
 func (e LengthRequiredError) Error() string      { return string(e) }
-func (e SyntaxError) Error() string              { return string(e) }
 func (e SignatureValidationError) Error() string { return string(e) }
 func (e CertificateIssuanceError) Error() string { return string(e) }
 func (e NoSuchRegistrationError) Error() string  { return string(e) }
 func (e RateLimitedError) Error() string         { return string(e) }
 func (e TooManyRPCRequestsError) Error() string  { return string(e) }
 func (e ServiceUnavailableError) Error() string  { return string(e) }
+func (e BadNonceError) Error() string            { return string(e) }
 
-// Base64 functions
+// statusTooManyRequests is the HTTP status code meant for rate limiting
+// errors. It's not currently in the net/http library so we add it here.
+const statusTooManyRequests = 429
 
-func pad(x string) string {
-	switch len(x) % 4 {
-	case 2:
-		return x + "=="
-	case 3:
-		return x + "="
+// ProblemDetailsForError turns an error into a ProblemDetails with the special
+// case of returning the same error back if its already a ProblemDetails. If the
+// error is of an type unknown to ProblemDetailsForError, it will return a
+// ServerInternal ProblemDetails.
+func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
+	switch e := err.(type) {
+	case *probs.ProblemDetails:
+		return e
+	case MalformedRequestError:
+		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
+	case NotSupportedError:
+		return &probs.ProblemDetails{
+			Type:       probs.ServerInternalProblem,
+			Detail:     fmt.Sprintf("%s :: %s", msg, err),
+			HTTPStatus: http.StatusNotImplemented,
+		}
+	case UnauthorizedError:
+		return probs.Unauthorized(fmt.Sprintf("%s :: %s", msg, err))
+	case NotFoundError:
+		return probs.NotFound(fmt.Sprintf("%s :: %s", msg, err))
+	case LengthRequiredError:
+		prob := probs.Malformed("missing Content-Length header")
+		prob.HTTPStatus = http.StatusLengthRequired
+		return prob
+	case SignatureValidationError:
+		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
+	case RateLimitedError:
+		return &probs.ProblemDetails{
+			Type:       probs.RateLimitedProblem,
+			Detail:     fmt.Sprintf("%s :: %s", msg, err),
+			HTTPStatus: statusTooManyRequests,
+		}
+	case BadNonceError:
+		return probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
+	default:
+		// Internal server error messages may include sensitive data, so we do
+		// not include it.
+		return probs.ServerInternal(msg)
 	}
-	return x
-}
-
-func unpad(x string) string {
-	end := len(x)
-	for end != 0 && x[end-1] == '=' {
-		end--
-	}
-	return x[:end]
-}
-
-// B64enc encodes a byte array as unpadded, URL-safe Base64
-func B64enc(x []byte) string {
-	return unpad(base64.URLEncoding.EncodeToString(x))
-}
-
-// B64dec decodes a byte array from unpadded, URL-safe Base64
-func B64dec(x string) ([]byte, error) {
-	return base64.URLEncoding.DecodeString(pad(x))
 }
 
 // Random stuff
@@ -154,7 +170,7 @@ func RandomString(byteLength int) string {
 		logger := blog.GetAuditLogger()
 		logger.EmergencyExit(ohdear)
 	}
-	return B64enc(b)
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 // NewToken produces a random string for Challenges, etc.
@@ -177,97 +193,7 @@ func LooksLikeAToken(token string) bool {
 func Fingerprint256(data []byte) string {
 	d := sha256.New()
 	_, _ = d.Write(data) // Never returns an error
-	return B64enc(d.Sum(nil))
-}
-
-// Thumbprint produces a JWK thumbprint [RFC7638] of a JWK.
-// XXX(rlb): This is adapted from a PR to go-jose, but we need it here until
-//           that PR is merged and we update to that version.
-//           https://github.com/square/go-jose/pull/37
-// XXX(rlb): Once that lands, we should replace the digest methods below
-//           with this standard thumbprint.
-const rsaThumbprintTemplate = `{"e":"%s","kty":"RSA","n":"%s"}`
-const ecThumbprintTemplate = `{"crv":"%s","kty":"EC","x":"%s","y":"%s"}`
-
-// Get JOSE name of curve
-func curveName(crv elliptic.Curve) (string, error) {
-	switch crv {
-	case elliptic.P256():
-		return "P-256", nil
-	case elliptic.P384():
-		return "P-384", nil
-	case elliptic.P521():
-		return "P-521", nil
-	default:
-		return "", fmt.Errorf("square/go-jose: unsupported/unknown elliptic curve")
-	}
-}
-
-// Get size of curve in bytes
-func curveSize(crv elliptic.Curve) int {
-	bits := crv.Params().BitSize
-
-	div := bits / 8
-	mod := bits % 8
-
-	if mod == 0 {
-		return div
-	}
-
-	return div + 1
-}
-
-func newFixedSizeBuffer(data []byte, length int) []byte {
-	if len(data) > length {
-		panic("square/go-jose: invalid call to newFixedSizeBuffer (len(data) > length)")
-	}
-	pad := make([]byte, length-len(data))
-	return append(pad, data...)
-}
-
-func ecThumbprintInput(curve elliptic.Curve, x, y *big.Int) (string, error) {
-	coordLength := curveSize(curve)
-	crv, err := curveName(curve)
-	if err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf(ecThumbprintTemplate, crv,
-		B64enc(newFixedSizeBuffer(x.Bytes(), coordLength)),
-		B64enc(newFixedSizeBuffer(y.Bytes(), coordLength))), nil
-}
-
-func rsaThumbprintInput(n *big.Int, e int) (string, error) {
-	return fmt.Sprintf(rsaThumbprintTemplate,
-		B64enc(big.NewInt(int64(e)).Bytes()),
-		B64enc(n.Bytes())), nil
-}
-
-// Thumbprint computes the JWK Thumbprint of a key using the
-// indicated hash algorithm.
-func Thumbprint(k *jose.JsonWebKey) (string, error) {
-	var input string
-	var err error
-	switch key := k.Key.(type) {
-	case *ecdsa.PublicKey:
-		input, err = ecThumbprintInput(key.Curve, key.X, key.Y)
-	case *ecdsa.PrivateKey:
-		input, err = ecThumbprintInput(key.Curve, key.X, key.Y)
-	case *rsa.PublicKey:
-		input, err = rsaThumbprintInput(key.N, key.E)
-	case *rsa.PrivateKey:
-		input, err = rsaThumbprintInput(key.N, key.E)
-	default:
-		return "", fmt.Errorf("square/go-jose: unkown key type")
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	h := sha256.New()
-	h.Write([]byte(input))
-	return B64enc(h.Sum(nil)), nil
+	return base64.RawURLEncoding.EncodeToString(d.Sum(nil))
 }
 
 // KeyDigest produces a padded, standard Base64-encoded SHA256 digest of a
@@ -344,78 +270,11 @@ func (u *AcmeURL) UnmarshalJSON(data []byte) error {
 	}
 
 	uu, err := url.Parse(str)
+	if err != nil {
+		return err
+	}
 	*u = AcmeURL(*uu)
-	return err
-}
-
-// VerifyCSR verifies that a Certificate Signature Request is well-formed.
-//
-// Note: this is the missing CertificateRequest.Verify() method
-func VerifyCSR(csr *x509.CertificateRequest) error {
-	// Compute the hash of the TBSCertificateRequest
-	var hashID crypto.Hash
-	var hash hash.Hash
-	switch csr.SignatureAlgorithm {
-	case x509.SHA1WithRSA:
-		fallthrough
-	case x509.ECDSAWithSHA1:
-		hashID = crypto.SHA1
-		hash = sha1.New()
-	case x509.SHA256WithRSA:
-		fallthrough
-	case x509.ECDSAWithSHA256:
-		hashID = crypto.SHA256
-		hash = sha256.New()
-	case x509.SHA384WithRSA:
-		fallthrough
-	case x509.ECDSAWithSHA384:
-		hashID = crypto.SHA384
-		hash = sha512.New384()
-	case x509.SHA512WithRSA:
-		fallthrough
-	case x509.ECDSAWithSHA512:
-		hashID = crypto.SHA512
-		hash = sha512.New()
-	default:
-		return errors.New("Unsupported CSR signing algorithm")
-	}
-	_, _ = hash.Write(csr.RawTBSCertificateRequest) // Never returns an error
-	inputHash := hash.Sum(nil)
-
-	// Verify the signature using the public key in the CSR
-	switch csr.SignatureAlgorithm {
-	case x509.SHA1WithRSA:
-		fallthrough
-	case x509.SHA256WithRSA:
-		fallthrough
-	case x509.SHA384WithRSA:
-		fallthrough
-	case x509.SHA512WithRSA:
-		rsaKey := csr.PublicKey.(*rsa.PublicKey)
-		return rsa.VerifyPKCS1v15(rsaKey, hashID, inputHash, csr.Signature)
-	case x509.ECDSAWithSHA1:
-		fallthrough
-	case x509.ECDSAWithSHA256:
-		fallthrough
-	case x509.ECDSAWithSHA384:
-		fallthrough
-	case x509.ECDSAWithSHA512:
-		ecKey := csr.PublicKey.(*ecdsa.PublicKey)
-
-		var sig struct{ R, S *big.Int }
-		_, err := asn1.Unmarshal(csr.Signature, &sig)
-		if err != nil {
-			return err
-		}
-
-		if ecdsa.Verify(ecKey, inputHash, sig.R, sig.S) {
-			return nil
-		}
-
-		return errors.New("Invalid ECDSA signature on CSR")
-	}
-
-	return errors.New("Unsupported CSR signing algorithm")
+	return nil
 }
 
 // SerialToString converts a certificate serial number (big.Int) to a String
@@ -525,7 +384,7 @@ func LoadCertBundle(filename string) ([]*x509.Certificate, error) {
 	return bundle, nil
 }
 
-// LoadCert loads a PEM certificate specified by filename or returns a error
+// LoadCert loads a PEM certificate specified by filename or returns an error
 func LoadCert(filename string) (cert *x509.Certificate, err error) {
 	certPEM, err := ioutil.ReadFile(filename)
 	if err != nil {

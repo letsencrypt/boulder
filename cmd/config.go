@@ -9,11 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"strings"
 	"time"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/publisher"
 	"github.com/letsencrypt/boulder/va"
 )
 
@@ -24,28 +26,15 @@ import (
 // Note: NO DEFAULTS are provided.
 type Config struct {
 	ActivityMonitor struct {
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
+		ServiceConfig
 	}
 
-	// General
-	AMQP struct {
-		Server            string
-		Insecure          bool
-		RA                Queue
-		VA                Queue
-		SA                Queue
-		CA                Queue
-		OCSP              Queue
-		Publisher         Queue
-		TLS               *TLSConfig
-		ReconnectTimeouts struct {
-			Base ConfigDuration
-			Max  ConfigDuration
-		}
-	}
+	// Default AMQPConfig for services that don't specify one.
+	// TODO(jsha): Delete this after a deploy.
+	AMQP *AMQPConfig
 
 	WFE struct {
+		ServiceConfig
 		BaseURL       string
 		ListenAddress string
 
@@ -58,19 +47,13 @@ type Config struct {
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	CA CAConfig
 
-	Monolith struct {
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
-	}
-
 	RA struct {
+		ServiceConfig
+
 		RateLimitPoliciesFilename string
 
 		MaxConcurrentRPCServerRequests int64
@@ -80,21 +63,25 @@ type Config struct {
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
 
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
+		// The number of times to try a DNS query (that has a temporary error)
+		// before giving up. May be short-circuited by deadlines. A zero value
+		// will be turned into 1.
+		DNSTries int
 	}
 
 	SA struct {
-		DBConnect string
+		ServiceConfig
+		DBConfig
 
 		MaxConcurrentRPCServerRequests int64
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	VA struct {
+		ServiceConfig
+
 		UserAgent string
+
+		IssuerDomain string
 
 		PortConfig va.PortConfig
 
@@ -102,8 +89,10 @@ type Config struct {
 
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
 
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
+		// The number of times to try a DNS query (that has a temporary error)
+		// before giving up. May be short-circuited by deadlines. A zero value
+		// will be turned into 1.
+		DNSTries int
 	}
 
 	SQL struct {
@@ -115,16 +104,22 @@ type Config struct {
 	Syslog SyslogConfig
 
 	Revoker struct {
-		DBConnect string
+		DBConfig
+		// The revoker isn't a long running service, so doesn't get a full
+		// ServiceConfig, just an AMQPConfig.
+		AMQP *AMQPConfig
 	}
 
 	Mailer struct {
+		ServiceConfig
+		DBConfig
+		PasswordConfig
+
 		Server   string
 		Port     string
 		Username string
-		Password string
-
-		DBConnect string
+		From     string
+		Subject  string
 
 		CertLimit int
 		NagTimes  []string
@@ -134,37 +129,33 @@ type Config struct {
 		NagCheckInterval string
 		// Path to a text/template email template
 		EmailTemplate string
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	OCSPResponder struct {
+		ServiceConfig
+		DBConfig
+
 		// Source indicates the source of pre-signed OCSP responses to be used. It
 		// can be a DBConnect string or a file URL. The file URL style is used
 		// when responding from a static file for intermediates and roots.
+		// If DBConfig has non-empty fields, it takes precedence over this.
 		Source string
 
 		Path          string
 		ListenAddress string
-		// MaxAge is the max-age to set in the Cache-Controler response
+		// MaxAge is the max-age to set in the Cache-Control response
 		// header. It is a time.Duration formatted string.
 		MaxAge ConfigDuration
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	OCSPUpdater OCSPUpdaterConfig
 
 	Publisher struct {
+		ServiceConfig
 		MaxConcurrentRPCServerRequests int64
-
-		// DebugAddr is the address to run the /debug handlers on.
-		DebugAddr string
 	}
 
 	ExternalCertImporter struct {
@@ -185,25 +176,142 @@ type Config struct {
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 
-		CT publisher.CTConfig
+		CT struct {
+			Logs                       []LogDescription
+			IntermediateBundleFilename string
+		}
 	}
 
 	CertChecker struct {
+		DBConfig
+
 		Workers             int
 		ReportDirectoryPath string
-		DBConnect           string
 	}
+	AllowedSigningAlgos *AllowedSigningAlgos
 
 	SubscriberAgreementURL string
+}
+
+// AllowedSigningAlgos defines which algorithms be used for keys that we will
+// sign.
+type AllowedSigningAlgos struct {
+	RSA           bool
+	ECDSANISTP256 bool
+	ECDSANISTP384 bool
+	ECDSANISTP521 bool
+}
+
+// KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
+func (config *Config) KeyPolicy() core.KeyPolicy {
+	if config.AllowedSigningAlgos != nil {
+		return core.KeyPolicy{
+			AllowRSA:           config.AllowedSigningAlgos.RSA,
+			AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
+			AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
+			AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
+		}
+	}
+	return core.KeyPolicy{
+		AllowRSA: true,
+	}
+}
+
+// PasswordConfig either contains a password or the path to a file
+// containing a password
+type PasswordConfig struct {
+	Password     string
+	PasswordFile string
+}
+
+// Pass returns a password, either directly from the configuration
+// struct or by reading from a specified file
+func (pc *PasswordConfig) Pass() (string, error) {
+	if pc.PasswordFile != "" {
+		contents, err := ioutil.ReadFile(pc.PasswordFile)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimRight(string(contents), "\n"), nil
+	}
+	return pc.Password, nil
+}
+
+// ServiceConfig contains config items that are common to all our services, to
+// be embedded in other config structs.
+type ServiceConfig struct {
+	// DebugAddr is the address to run the /debug handlers on.
+	DebugAddr string
+	AMQP      *AMQPConfig
+}
+
+// DBConfig defines how to connect to a database. The connect string may be
+// stored in a file separate from the config, because it can contain a password,
+// which we want to keep out of configs.
+type DBConfig struct {
+	DBConnect string
+	// A file containing a connect URL for the DB.
+	DBConnectFile string
+}
+
+// URL returns the DBConnect URL represented by this DBConfig object, either
+// loading it from disk or returning a default value.
+func (d *DBConfig) URL() (string, error) {
+	if d.DBConnectFile != "" {
+		url, err := ioutil.ReadFile(d.DBConnectFile)
+		return string(url), err
+	}
+	return d.DBConnect, nil
+}
+
+// AMQPConfig describes how to connect to AMQP, and how to speak to each of the
+// RPC services we offer via AMQP.
+type AMQPConfig struct {
+	// A file from which the AMQP Server URL will be read. This allows secret
+	// values (like the password) to be stored separately from the main config.
+	ServerURLFile string
+	// AMQP server URL, including username and password.
+	Server    string
+	Insecure  bool
+	RA        *RPCServerConfig
+	VA        *RPCServerConfig
+	SA        *RPCServerConfig
+	CA        *RPCServerConfig
+	Publisher *RPCServerConfig
+	TLS       *TLSConfig
+	// Queue name on which to listen, if this is an RPC service (vs acting only as
+	// an RPC client).
+	ServiceQueue      string
+	ReconnectTimeouts struct {
+		Base ConfigDuration
+		Max  ConfigDuration
+	}
+}
+
+// ServerURL returns the appropriate server URL for this object, which may
+// involve reading from a file.
+func (a *AMQPConfig) ServerURL() (string, error) {
+	if a.ServerURLFile != "" {
+		url, err := ioutil.ReadFile(a.ServerURLFile)
+		return strings.TrimRight(string(url), "\n"), err
+	}
+	if a.Server == "" {
+		return "", fmt.Errorf("Missing AMQP server URL")
+	}
+	return a.Server, nil
 }
 
 // CAConfig structs have configuration information for the certificate
 // authority, including database parameters as well as controls for
 // issued certificates.
 type CAConfig struct {
+	ServiceConfig
+	DBConfig
+
 	Profile      string
+	RSAProfile   string
+	ECDSAProfile string
 	TestMode     bool
-	DBConnect    string
 	SerialPrefix int
 	Key          KeyConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
@@ -220,15 +328,17 @@ type CAConfig struct {
 
 	HSMFaultTimeout ConfigDuration
 
-	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string
+	// DoNotForceCN is a temporary config setting. It controls whether
+	// to add a certificate's serial to its Subject, and whether to
+	// not pull a SAN entry to be the CN if no CN was given in a CSR.
+	DoNotForceCN bool
 }
 
 // PAConfig specifies how a policy authority should connect to its
 // database, what policies it should enforce, and what challenges
 // it should offer.
 type PAConfig struct {
-	DBConnect              string
+	DBConfig
 	EnforcePolicyWhitelist bool
 	Challenges             map[string]bool
 }
@@ -236,6 +346,9 @@ type PAConfig struct {
 // CheckChallenges checks whether the list of challenges in the PA config
 // actually contains valid challenge names
 func (pc PAConfig) CheckChallenges() error {
+	if len(pc.Challenges) == 0 {
+		return errors.New("empty challenges map in the Policy Authority config is not allowed")
+	}
 	for name := range pc.Challenges {
 		if !core.ValidChallenge(name) {
 			return fmt.Errorf("Invalid challenge in PA config: %s", name)
@@ -244,33 +357,13 @@ func (pc PAConfig) CheckChallenges() error {
 	return nil
 }
 
-// SetDefaultChallengesIfEmpty sets a default list of challenges if no
-// challenges are enabled in the PA config.  The set of challenges specified
-// corresponds to the set that was hard-coded before these configuration
-// options were added.
-func (pc *PAConfig) SetDefaultChallengesIfEmpty() {
-	if len(pc.Challenges) == 0 {
-		pc.Challenges = map[string]bool{}
-		pc.Challenges[core.ChallengeTypeSimpleHTTP] = true
-		pc.Challenges[core.ChallengeTypeDVSNI] = true
-		pc.Challenges[core.ChallengeTypeHTTP01] = true
-		pc.Challenges[core.ChallengeTypeTLSSNI01] = true
-	}
-}
-
 // KeyConfig should contain either a File path to a PEM-format private key,
 // or a PKCS11Config defining how to load a module for an HSM.
 type KeyConfig struct {
-	File   string
-	PKCS11 PKCS11Config
-}
-
-// PKCS11Config defines how to load a module for an HSM.
-type PKCS11Config struct {
-	Module          string
-	TokenLabel      string
-	PIN             string
-	PrivateKeyLabel string
+	// A file from which a pkcs11key.Config will be read and parsed, if present
+	ConfigFile string
+	File       string
+	PKCS11     *pkcs11key.Config
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.
@@ -280,15 +373,18 @@ type TLSConfig struct {
 	CACertFile *string
 }
 
-// Queue describes a queue name
-type Queue struct {
-	Server string
+// RPCServerConfig contains configuration particular to a specific RPC server
+// type (e.g. RA, SA, etc)
+type RPCServerConfig struct {
+	Server     string // Queue name where the server receives requests
+	RPCTimeout ConfigDuration
 }
 
 // OCSPUpdaterConfig provides the various window tick times and batch sizes needed
 // for the OCSP (and SCT) updater
 type OCSPUpdaterConfig struct {
-	DBConnect string
+	ServiceConfig
+	DBConfig
 
 	NewCertificateWindow     ConfigDuration
 	OldOCSPWindow            ConfigDuration
@@ -312,9 +408,6 @@ type OCSPUpdaterConfig struct {
 
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    ConfigDuration
-
-	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the
@@ -383,4 +476,11 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 
 	d.Duration = dur
 	return nil
+}
+
+// LogDescription contains the information needed to submit certificates
+// to a CT log and verify returned receipts
+type LogDescription struct {
+	URI string
+	Key string
 }

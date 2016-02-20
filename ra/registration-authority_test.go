@@ -20,16 +20,17 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -46,10 +47,6 @@ func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization,
 	dva.Called = true
 	dva.Argument = authz
 	return
-}
-
-func (dva *DummyValidationAuthority) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
-	return false, true, nil
 }
 
 func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
@@ -129,7 +126,7 @@ var (
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-example.com"},
 		RegistrationID: 1,
 		Status:         "pending",
-		Combinations:   [][]int{[]int{0}, []int{1}},
+		Combinations:   [][]int{{0}, {1}},
 	}
 	AuthzFinal = core.Authorization{}
 
@@ -144,6 +141,12 @@ func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
 
 	out = core.Challenge{KeyAuthorization: &keyAuthorization}
 	return
+}
+
+var testKeyPolicy = core.KeyPolicy{
+	AllowRSA:           true,
+	AllowECDSANISTP256: true,
+	AllowECDSANISTP384: true,
 }
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
@@ -180,37 +183,50 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
 	caCertPEM, _ := pem.Decode([]byte(CAcertPEM))
 	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
-	basicPolicy := &cfsslConfig.Signing{
-		Default: &cfsslConfig.SigningProfile{
-			Usage:  []string{"server auth", "client auth"},
-			Expiry: 1 * time.Hour,
-			CSRWhitelist: &cfsslConfig.CSRWhitelist{
-				PublicKey:          true,
-				PublicKeyAlgorithm: true,
-				SignatureAlgorithm: true,
-				DNSNames:           true,
+	cfsslC := cfsslConfig.Config{
+		Signing: &cfsslConfig.Signing{
+			Default: &cfsslConfig.SigningProfile{
+				Usage:        []string{"server auth", "client auth"},
+				ExpiryString: "1h",
+				CSRWhitelist: &cfsslConfig.CSRWhitelist{
+					PublicKey:          true,
+					PublicKeyAlgorithm: true,
+					SignatureAlgorithm: true,
+					DNSNames:           true,
+				},
+				ClientProvidesSerialNumbers: true,
 			},
 		},
 	}
-	signer, _ := local.NewSigner(caKey, caCert, x509.SHA256WithRSA, basicPolicy)
-	ocspSigner, _ := ocsp.NewSigner(caCert, caCert, caKey, time.Hour)
+	caConf := cmd.CAConfig{
+		SerialPrefix: 10,
+		LifespanOCSP: "1h",
+		Expiry:       "1h",
+		CFSSL:        cfsslC,
+		RSAProfile:   "rsaEE",
+		ECDSAProfile: "ecdsaEE",
+	}
 	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
-	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false, SupportedChallenges)
+	pa, err := policy.New(paDbMap, false, SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
-	ca := ca.CertificateAuthorityImpl{
-		Signer:         signer,
-		OCSPSigner:     ocspSigner,
-		SA:             ssa,
-		PA:             pa,
-		ValidityPeriod: time.Hour * 2190,
-		NotAfter:       time.Now().Add(time.Hour * 8761),
-		Clk:            fc,
-		Publisher:      &mocks.Publisher{},
-	}
+
+	stats, _ := statsd.NewNoopClient()
+
+	ca, err := ca.NewCertificateAuthorityImpl(
+		caConf,
+		fc,
+		stats,
+		caCert,
+		caKey,
+		testKeyPolicy)
+	test.AssertNotError(t, err, "Couldn't create CA")
+	ca.SA = ssa
+	ca.PA = pa
+	ca.Publisher = &mocks.Publisher{}
 	cleanUp := func() {
 		saDBCleanUp()
 		policyDBCleanUp()
@@ -224,7 +240,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		InitialIP: net.ParseIP("3.2.3.3"),
 	})
 
-	stats, _ := statsd.NewNoopClient()
 	ra := NewRegistrationAuthorityImpl(fc,
 		blog.GetAuditLogger(),
 		stats,
@@ -234,16 +249,16 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 				Threshold: 100,
 				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
-		}, 1)
+		}, 1, testKeyPolicy)
 	ra.SA = ssa
 	ra.VA = va
-	ra.CA = &ca
+	ra.CA = ca
 	ra.PA = pa
-	ra.DNSResolver = &mocks.DNSResolver{}
+	ra.DNSResolver = &bdns.MockDNSResolver{}
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations, err := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
+	challenges, combinations := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 
@@ -281,44 +296,59 @@ func TestValidateContacts(t *testing.T) {
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
-	err := ra.validateContacts([]*core.AcmeURL{})
+	err := ra.validateContacts(context.Background(), []*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts([]*core.AcmeURL{tel, validEmail})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{tel, validEmail})
 	test.AssertError(t, err, "Too Many Contacts")
 
-	err = ra.validateContacts([]*core.AcmeURL{tel})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{tel})
 	test.AssertNotError(t, err, "Simple Telephone")
 
-	err = ra.validateContacts([]*core.AcmeURL{validEmail})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts([]*core.AcmeURL{malformedEmail})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = ra.validateContacts([]*core.AcmeURL{ansible})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{ansible})
 	test.AssertError(t, err, "Unknown scheme")
+
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{nil})
+	test.AssertError(t, err, "Nil AcmeURL")
 }
 
 func TestValidateEmail(t *testing.T) {
-	testCases := []struct {
+	testFailures := []struct {
 		input    string
 		expected string
 	}{
-		{"an email`", errUnparseableEmail.Error()},
-		{"a@always.invalid", "Server failure at resolver"},
-		{"a@always.timeout", "DNS query timed out"},
-		{"a@always.error", "DNS networking error"},
+		{"an email`", unparseableEmailDetail},
+		{"a@always.invalid", emptyDNSResponseDetail},
+		{"a@always.timeout", "DNS problem: query timed out looking up A for always.timeout"},
+		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
-	for _, tc := range testCases {
-		_, err := validateEmail(tc.input, &mocks.DNSResolver{})
-		if err.Error() != tc.expected {
+	testSuccesses := []string{
+		"a@email.com",
+		"b@email.only",
+	}
+
+	for _, tc := range testFailures {
+		problem := validateEmail(context.Background(), tc.input, &bdns.MockDNSResolver{})
+		if problem.Type != probs.InvalidEmailProblem {
+			t.Errorf("validateEmail(%q): got problem type %#v, expected %#v", tc.input, problem.Type, probs.InvalidEmailProblem)
+		}
+		if problem.Detail != tc.expected {
 			t.Errorf("validateEmail(%q): got %#v, expected %#v",
-				tc.input, err, tc.expected)
+				tc.input, problem.Detail, tc.expected)
 		}
 	}
-	if _, err := validateEmail("a@email.com", &mocks.DNSResolver{}); err != nil {
-		t.Errorf("Expected a@email.com to validate, but it failed: %s", err)
+
+	for _, addr := range testSuccesses {
+		if prob := validateEmail(context.Background(), addr, &bdns.MockDNSResolver{}); prob != nil {
+			t.Errorf("validateEmail(%q): expected success, but it failed: %s",
+				addr, prob)
+		}
 	}
 }
 
@@ -436,6 +466,25 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 	dbAuthz, err := sa.GetAuthorization(authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
+}
+
+func TestNewAuthorizationInvalidName(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	authzReq := core.Authorization{
+		Identifier: core.AcmeIdentifier{
+			Type:  core.IdentifierDNS,
+			Value: "127.0.0.1",
+		},
+	}
+	_, err := ra.NewAuthorization(authzReq, Registration.ID)
+	if err == nil {
+		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
+	}
+	if _, ok := err.(core.MalformedRequestError); !ok {
+		t.Errorf("Wrong type for NewAuthorization error: expected core.MalformedRequestError, got %T", err)
+	}
 }
 
 func TestUpdateAuthorization(t *testing.T) {
@@ -616,9 +665,19 @@ func TestNewCertificate(t *testing.T) {
 	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
 	sa.FinalizeAuthorization(authzFinalWWW)
 
+	// Check that we fail if the CSR signature is invalid
+	ExampleCSR.Signature[0]++
+	certRequest := core.CertificateRequest{
+		CSR: ExampleCSR,
+	}
+
+	_, err := ra.NewCertificate(certRequest, Registration.ID)
+	ExampleCSR.Signature[0]--
+	test.AssertError(t, err, "Failed to check CSR signature")
+
 	// Check that we don't fail on case mismatches
 	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
-	certRequest := core.CertificateRequest{
+	certRequest = core.CertificateRequest{
 		CSR: ExampleCSR,
 	}
 
@@ -680,6 +739,36 @@ func TestTotalCertRateLimit(t *testing.T) {
 
 	_, err = ra.NewCertificate(certRequest, Registration.ID)
 	test.AssertError(t, err, "Total certificate rate limit failed")
+}
+
+func TestAuthzRateLimiting(t *testing.T) {
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.rlPolicies = cmd.RateLimitConfig{
+		PendingAuthorizationsPerAccount: cmd.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+		},
+	}
+	fc.Add(24 * 90 * time.Hour)
+
+	// Should be able to create an authzRequest
+	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	fc.Add(time.Hour)
+
+	// Second one should trigger rate limit
+	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertError(t, err, "Pending Authorization rate limit failed.")
+
+	// Finalize pending authz
+	ra.OnValidationUpdate(authz)
+
+	// Try to create a new authzRequest, should be fine now.
+	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {

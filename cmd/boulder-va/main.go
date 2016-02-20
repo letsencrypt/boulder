@@ -10,13 +10,16 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/metrics"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/va"
 )
+
+const clientName = "VA"
 
 func main() {
 	app := cmd.NewAppShell("boulder-va", "Handles challenge validation")
@@ -39,30 +42,35 @@ func main() {
 		if c.VA.PortConfig.TLSPort != 0 {
 			pc.TLSPort = c.VA.PortConfig.TLSPort
 		}
+		clk := clock.Default()
 		sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
-		vai := va.NewValidationAuthorityImpl(pc, sbc, stats, clock.Default())
+		vai := va.NewValidationAuthorityImpl(pc, sbc, stats, clk)
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
+		scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
+		dnsTries := c.VA.DNSTries
+		if dnsTries < 1 {
+			dnsTries = 1
+		}
 		if !c.Common.DNSAllowLoopbackAddresses {
-			vai.DNSResolver = core.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+			vai.DNSResolver = bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
 		} else {
-			vai.DNSResolver = core.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver})
+			vai.DNSResolver = bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
 		}
 		vai.UserAgent = c.VA.UserAgent
+		vai.IssuerDomain = c.VA.IssuerDomain
 
-		raRPC, err := rpc.NewAmqpRPCClient("VA->RA", c.AMQP.RA.Server, c, stats)
-		cmd.FailOnError(err, "Unable to create RPC client")
-
-		rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
+		amqpConf := c.VA.AMQP
+		rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create RA client")
 
-		vai.RA = &rac
+		vai.RA = rac
 
-		vas, err := rpc.NewAmqpRPCServer(c.AMQP.VA.Server, c.VA.MaxConcurrentRPCServerRequests, c)
+		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create VA RPC server")
 		rpc.NewValidationAuthorityServer(vas, vai)
 
-		err = vas.Start(c)
+		err = vas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run VA RPC server")
 	}
 

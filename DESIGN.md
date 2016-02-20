@@ -214,7 +214,7 @@ Notes:
 
 * 7-8: WFE does the following:
   * Create a URL from the certificate's serial number
-  * Return the certificate with it's URL
+  * Return the certificate with its URL
 
 
 ## Revoke Certificate
@@ -244,4 +244,4 @@ Notes:
   * Log the success or failure of the revocation
 
 * 5-6: WFE does the following:
-  * Return an indication of the sucess or failure of the revocation
+  * Return an indication of the success or failure of the revocation

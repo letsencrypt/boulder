@@ -22,14 +22,21 @@ import (
 	"fmt"
 )
 
+// NonceSource represents a source of random nonces to go into JWS objects
+type NonceSource interface {
+	Nonce() (string, error)
+}
+
 // Signer represents a signer which takes a payload and produces a signed JWS object.
 type Signer interface {
-	Sign(payload []byte, nonce string) (*JsonWebSignature, error)
+	Sign(payload []byte) (*JsonWebSignature, error)
+	SetNonceSource(source NonceSource)
 }
 
 // MultiSigner represents a signer which supports multiple recipients.
 type MultiSigner interface {
-	Sign(payload []byte, nonce string) (*JsonWebSignature, error)
+	Sign(payload []byte) (*JsonWebSignature, error)
+	SetNonceSource(source NonceSource)
 	AddRecipient(alg SignatureAlgorithm, signingKey interface{}) error
 }
 
@@ -42,7 +49,8 @@ type payloadVerifier interface {
 }
 
 type genericSigner struct {
-	recipients []recipientSigInfo
+	recipients  []recipientSigInfo
+	nonceSource NonceSource
 }
 
 type recipientSigInfo struct {
@@ -123,7 +131,7 @@ func makeRecipient(alg SignatureAlgorithm, signingKey interface{}) (recipientSig
 	}
 }
 
-func (ctx *genericSigner) Sign(payload []byte, nonce string) (*JsonWebSignature, error) {
+func (ctx *genericSigner) Sign(payload []byte) (*JsonWebSignature, error) {
 	obj := &JsonWebSignature{}
 	obj.payload = payload
 	obj.Signatures = make([]Signature, len(ctx.recipients))
@@ -138,7 +146,11 @@ func (ctx *genericSigner) Sign(payload []byte, nonce string) (*JsonWebSignature,
 			protected.Kid = recipient.publicKey.KeyID
 		}
 
-		if nonce != "" {
+		if ctx.nonceSource != nil {
+			nonce, err := ctx.nonceSource.Nonce()
+			if err != nil {
+				return nil, fmt.Errorf("square/go-jose: Error generating nonce: %v", err)
+			}
 			protected.Nonce = nonce
 		}
 
@@ -160,11 +172,18 @@ func (ctx *genericSigner) Sign(payload []byte, nonce string) (*JsonWebSignature,
 	return obj, nil
 }
 
+// SetNonceSource provides or updates a nonce pool to the first recipients.
+// After this method is called, the signer will consume one nonce per
+// signature, returning an error it is unable to get a nonce.
+func (ctx *genericSigner) SetNonceSource(source NonceSource) {
+	ctx.nonceSource = source
+}
+
 // Verify validates the signature on the object and returns the payload.
-func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, JoseHeader, error) {
+func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, error) {
 	verifier, err := newVerifier(verificationKey)
 	if err != nil {
-		return nil, JoseHeader{}, err
+		return nil, err
 	}
 
 	for _, signature := range obj.Signatures {
@@ -173,13 +192,14 @@ func (obj JsonWebSignature) Verify(verificationKey interface{}) ([]byte, JoseHea
 			// Unsupported crit header
 			continue
 		}
+
 		input := obj.computeAuthData(&signature)
 		alg := SignatureAlgorithm(headers.Alg)
 		err := verifier.verifyPayload(input, signature.Signature, alg)
 		if err == nil {
-			return obj.payload, headers.sanitized(), nil
+			return obj.payload, nil
 		}
 	}
 
-	return nil, JoseHeader{}, ErrCryptoFailure
+	return nil, ErrCryptoFailure
 }

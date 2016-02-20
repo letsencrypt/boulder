@@ -6,15 +6,19 @@
 package ca
 
 import (
+	"bytes"
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"strings"
 	"sync"
@@ -27,8 +31,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
@@ -50,6 +52,43 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA1:             true,
 }
 
+// Miscellaneous PKIX OIDs that we need to refer to
+var (
+	// X.509 Extensions
+	oidAuthorityInfoAccess    = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 1}
+	oidAuthorityKeyIdentifier = asn1.ObjectIdentifier{2, 5, 29, 35}
+	oidBasicConstraints       = asn1.ObjectIdentifier{2, 5, 29, 19}
+	oidCertificatePolicies    = asn1.ObjectIdentifier{2, 5, 29, 32}
+	oidCrlDistributionPoints  = asn1.ObjectIdentifier{2, 5, 29, 31}
+	oidExtKeyUsage            = asn1.ObjectIdentifier{2, 5, 29, 37}
+	oidKeyUsage               = asn1.ObjectIdentifier{2, 5, 29, 15}
+	oidSubjectAltName         = asn1.ObjectIdentifier{2, 5, 29, 17}
+	oidSubjectKeyIdentifier   = asn1.ObjectIdentifier{2, 5, 29, 14}
+	oidTLSFeature             = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
+
+	// CSR attribute requesting extensions
+	oidExtensionRequest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 14}
+)
+
+// OID and fixed value for the "must staple" variant of the TLS Feature
+// extension:
+//
+//  Features ::= SEQUENCE OF INTEGER                  [RFC7633]
+//  enum { ... status_request(5) ...} ExtensionType;  [RFC6066]
+//
+// DER Encoding:
+//  30 03 - SEQUENCE (3 octets)
+//  |-- 02 01 - INTEGER (1 octet)
+//  |   |-- 05 - 5
+var (
+	mustStapleFeatureValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
+	mustStapleExtension    = signer.Extension{
+		ID:       cfsslConfig.OID(oidTLSFeature),
+		Critical: false,
+		Value:    hex.EncodeToString(mustStapleFeatureValue),
+	}
+)
+
 // Metrics for CA statistics
 const (
 	// Increments when CA observes an HSM fault
@@ -57,24 +96,47 @@ const (
 
 	// Increments when CA rejects a request due to an HSM fault
 	metricHSMFaultRejected = "CA.OCSP.HSMFault.Rejected"
+
+	// Increments when CA handles a CSR requesting a "basic" extension:
+	// authorityInfoAccess, authorityKeyIdentifier, extKeyUsage, keyUsage,
+	// basicConstraints, certificatePolicies, crlDistributionPoints,
+	// subjectAlternativeName, subjectKeyIdentifier,
+	metricCSRExtensionBasic = "CA.OCSP.CSRExtensions.Basic"
+
+	// Increments when CA handles a CSR requesting a TLS Feature extension
+	metricCSRExtensionTLSFeature = "CA.OCSP.CSRExtensions.TLSFeature"
+
+	// Increments when CA handles a CSR requesting a TLS Feature extension with
+	// an invalid value
+	metricCSRExtensionTLSFeatureInvalid = "CA.OCSP.CSRExtensions.TLSFeatureInvalid"
+
+	// Increments when CA handles a CSR requesting an extension other than those
+	// listed above
+	metricCSRExtensionOther = "CA.OCSP.CSRExtensions.Other"
+
+	// Maximum length allowed for the common name. RFC 5280
+	maxCNLength = 64
 )
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
-	profile        string
-	Signer         signer.Signer
-	OCSPSigner     ocsp.Signer
+	rsaProfile     string
+	ecdsaProfile   string
+	signer         signer.Signer
+	ocspSigner     ocsp.Signer
 	SA             core.StorageAuthority
 	PA             core.PolicyAuthority
 	Publisher      core.Publisher
-	Clk            clock.Clock // TODO(jmhodges): should be private, like log
+	keyPolicy      core.KeyPolicy
+	clk            clock.Clock // TODO(jmhodges): should be private, like log
 	log            *blog.AuditLogger
 	stats          statsd.Statter
-	Prefix         int // Prepended to the serial number
-	ValidityPeriod time.Duration
-	NotAfter       time.Time
-	MaxNames       int
+	prefix         int // Prepended to the serial number
+	validityPeriod time.Duration
+	notAfter       time.Time
+	maxNames       int
+	forceCNFromSAN bool
 
 	hsmFaultLock         sync.Mutex
 	hsmFaultLastObserved time.Time
@@ -87,7 +149,14 @@ type CertificateAuthorityImpl struct {
 // using CFSSL's authenticated signature scheme.  A CA created in this way
 // issues for a single profile on the remote signer, which is indicated
 // by name in this constructor.
-func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats statsd.Statter, issuerCert string) (*CertificateAuthorityImpl, error) {
+func NewCertificateAuthorityImpl(
+	config cmd.CAConfig,
+	clk clock.Clock,
+	stats statsd.Statter,
+	issuer *x509.Certificate,
+	privateKey crypto.Signer,
+	keyPolicy core.KeyPolicy,
+) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
@@ -109,18 +178,7 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats sta
 		return nil, err
 	}
 
-	// Load the private key, which can be a file or a PKCS#11 key.
-	priv, err := loadKey(config.Key)
-	if err != nil {
-		return nil, err
-	}
-
-	issuer, err := core.LoadCert(issuerCert)
-	if err != nil {
-		return nil, err
-	}
-
-	signer, err := local.NewSigner(priv, issuer, x509.SHA256WithRSA, cfsslConfigObj.Signing)
+	signer, err := local.NewSigner(privateKey, issuer, x509.SHA256WithRSA, cfsslConfigObj.Signing)
 	if err != nil {
 		return nil, err
 	}
@@ -135,59 +193,52 @@ func NewCertificateAuthorityImpl(config cmd.CAConfig, clk clock.Clock, stats sta
 
 	// Set up our OCSP signer. Note this calls for both the issuer cert and the
 	// OCSP signing cert, which are the same in our case.
-	ocspSigner, err := ocsp.NewSigner(issuer, issuer, priv, lifespanOCSP)
+	ocspSigner, err := ocsp.NewSigner(issuer, issuer, privateKey, lifespanOCSP)
 	if err != nil {
 		return nil, err
 	}
 
+	rsaProfile := config.RSAProfile
+	ecdsaProfile := config.ECDSAProfile
+	if config.Profile != "" {
+		if rsaProfile != "" || ecdsaProfile != "" {
+			return nil, errors.New("either specify profile or rsaProfile and ecdsaProfile, but not both")
+		}
+
+		rsaProfile = config.Profile
+		ecdsaProfile = config.Profile
+	}
+
+	if rsaProfile == "" || ecdsaProfile == "" {
+		return nil, errors.New("must specify rsaProfile and ecdsaProfile")
+	}
+
 	ca = &CertificateAuthorityImpl{
-		Signer:          signer,
-		OCSPSigner:      ocspSigner,
-		profile:         config.Profile,
-		Prefix:          config.SerialPrefix,
-		Clk:             clk,
+		signer:          signer,
+		ocspSigner:      ocspSigner,
+		rsaProfile:      rsaProfile,
+		ecdsaProfile:    ecdsaProfile,
+		prefix:          config.SerialPrefix,
+		clk:             clk,
 		log:             logger,
 		stats:           stats,
-		NotAfter:        issuer.NotAfter,
+		notAfter:        issuer.NotAfter,
 		hsmFaultTimeout: config.HSMFaultTimeout.Duration,
+		keyPolicy:       keyPolicy,
+		forceCNFromSAN:  !config.DoNotForceCN, // Note the inversion here
 	}
 
 	if config.Expiry == "" {
 		return nil, errors.New("Config must specify an expiry period.")
 	}
-	ca.ValidityPeriod, err = time.ParseDuration(config.Expiry)
+	ca.validityPeriod, err = time.ParseDuration(config.Expiry)
 	if err != nil {
 		return nil, err
 	}
 
-	ca.MaxNames = config.MaxNames
+	ca.maxNames = config.MaxNames
 
 	return ca, nil
-}
-
-func loadKey(keyConfig cmd.KeyConfig) (priv crypto.Signer, err error) {
-	if keyConfig.File != "" {
-		var keyBytes []byte
-		keyBytes, err = ioutil.ReadFile(keyConfig.File)
-		if err != nil {
-			return nil, fmt.Errorf("Could not read key file %s", keyConfig.File)
-		}
-
-		priv, err = helpers.ParsePrivateKeyPEM(keyBytes)
-		return
-	}
-
-	pkcs11Config := keyConfig.PKCS11
-	if pkcs11Config.Module == "" ||
-		pkcs11Config.TokenLabel == "" ||
-		pkcs11Config.PIN == "" ||
-		pkcs11Config.PrivateKeyLabel == "" {
-		err = fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
-		return
-	}
-	priv, err = pkcs11key.New(pkcs11Config.Module,
-		pkcs11Config.TokenLabel, pkcs11Config.PIN, pkcs11Config.PrivateKeyLabel)
-	return
 }
 
 // checkHSMFault checks whether there has been an HSM fault observed within the
@@ -202,7 +253,7 @@ func (ca *CertificateAuthorityImpl) checkHSMFault() error {
 		return nil
 	}
 
-	now := ca.Clk.Now()
+	now := ca.clk.Now()
 	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
 	if now.Before(timeout) {
 		err := core.ServiceUnavailableError("HSM is unavailable")
@@ -221,9 +272,78 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 
 	if err != nil {
 		ca.stats.Inc(metricHSMFaultObserved, 1, 1.0)
-		ca.hsmFaultLastObserved = ca.Clk.Now()
+		ca.hsmFaultLastObserved = ca.clk.Now()
 	}
 	return
+}
+
+// Extract supported extensions from a CSR.  The following extensions are
+// currently supported:
+//
+// * 1.3.6.1.5.5.7.1.24 - TLS Feature [RFC7633], with the "must staple" value.
+//                        Any other value will result in an error.
+//
+// Other requested extensions are silently ignored.
+func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateRequest) ([]signer.Extension, error) {
+	extensions := []signer.Extension{}
+
+	extensionSeen := map[string]bool{}
+	hasBasic := false
+	hasOther := false
+
+	for _, attr := range csr.Attributes {
+		if !attr.Type.Equal(oidExtensionRequest) {
+			continue
+		}
+
+		for _, extList := range attr.Value {
+			for _, ext := range extList {
+				if extensionSeen[ext.Type.String()] {
+					// Ignore duplicate certificate extensions
+					continue
+				}
+				extensionSeen[ext.Type.String()] = true
+
+				switch {
+				case ext.Type.Equal(oidTLSFeature):
+					ca.stats.Inc(metricCSRExtensionTLSFeature, 1, 1.0)
+					value, ok := ext.Value.([]byte)
+					if !ok {
+						msg := fmt.Sprintf("Mal-formed extension with OID %v", ext.Type)
+						return nil, core.CertificateIssuanceError(msg)
+					} else if !bytes.Equal(value, mustStapleFeatureValue) {
+						msg := fmt.Sprintf("Unsupported value for extension with OID %v", ext.Type)
+						ca.stats.Inc(metricCSRExtensionTLSFeatureInvalid, 1, 1.0)
+						return nil, core.CertificateIssuanceError(msg)
+					}
+
+					extensions = append(extensions, mustStapleExtension)
+				case ext.Type.Equal(oidAuthorityInfoAccess),
+					ext.Type.Equal(oidAuthorityKeyIdentifier),
+					ext.Type.Equal(oidBasicConstraints),
+					ext.Type.Equal(oidCertificatePolicies),
+					ext.Type.Equal(oidCrlDistributionPoints),
+					ext.Type.Equal(oidExtKeyUsage),
+					ext.Type.Equal(oidKeyUsage),
+					ext.Type.Equal(oidSubjectAltName),
+					ext.Type.Equal(oidSubjectKeyIdentifier):
+					hasBasic = true
+				default:
+					hasOther = true
+				}
+			}
+		}
+	}
+
+	if hasBasic {
+		ca.stats.Inc(metricCSRExtensionBasic, 1, 1.0)
+	}
+
+	if hasOther {
+		ca.stats.Inc(metricCSRExtensionOther, 1, 1.0)
+	}
+
+	return extensions, nil
 }
 
 // GenerateOCSP produces a new OCSP response and returns it
@@ -246,15 +366,9 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 		RevokedAt:   xferObj.RevokedAt,
 	}
 
-	ocspResponse, err := ca.OCSPSigner.Sign(signRequest)
+	ocspResponse, err := ca.ocspSigner.Sign(signRequest)
 	ca.noteHSMFault(err)
 	return ocspResponse, err
-}
-
-// RevokeCertificate revokes the trust of the Cert referred to by the provided Serial.
-func (ca *CertificateAuthorityImpl) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
-	err = ca.SA.MarkCertificateRevoked(serial, reasonCode)
-	return err
 }
 
 // IssueCertificate attempts to convert a CSR into a signed Certificate, while
@@ -275,7 +389,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
-	if err = core.GoodKey(key); err != nil {
+	if err = ca.keyPolicy.GoodKey(key); err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid public key in CSR: %s", err.Error()))
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
@@ -293,12 +407,13 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	commonName := ""
 	hostNames := make([]string, len(csr.DNSNames))
 	copy(hostNames, csr.DNSNames)
+
 	if len(csr.Subject.CommonName) > 0 {
 		commonName = strings.ToLower(csr.Subject.CommonName)
 		hostNames = append(hostNames, commonName)
-	} else if len(hostNames) > 0 {
-		commonName = strings.ToLower(hostNames[0])
-	} else {
+	}
+
+	if len(hostNames) == 0 {
 		err = core.MalformedRequestError("Cannot issue a certificate without a hostname.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
@@ -307,22 +422,29 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	// Collapse any duplicate names.  Note that this operation may re-order the names
 	hostNames = core.UniqueLowerNames(hostNames)
-	if ca.MaxNames > 0 && len(hostNames) > ca.MaxNames {
-		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d > %d names", len(hostNames), ca.MaxNames))
+
+	if ca.forceCNFromSAN && commonName == "" {
+		commonName = hostNames[0]
+	}
+
+	if len(commonName) > maxCNLength {
+		msg := fmt.Sprintf("Common name was longer than 64 bytes, was %d",
+			len(csr.Subject.CommonName))
+		err := core.MalformedRequestError(msg)
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
+	}
+
+	if ca.maxNames > 0 && len(hostNames) > ca.maxNames {
+		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames))
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
 
 	// Verify that names are allowed by policy
-	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
-	if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", commonName))
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
-	}
 	for _, name := range hostNames {
-		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
 			err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", name))
 			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
@@ -331,9 +453,14 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		}
 	}
 
-	notAfter := ca.Clk.Now().Add(ca.ValidityPeriod)
+	requestedExtensions, err := ca.extensionsFromCSR(&csr)
+	if err != nil {
+		return emptyCert, err
+	}
 
-	if ca.NotAfter.Before(notAfter) {
+	notAfter := ca.clk.Now().Add(ca.validityPeriod)
+
+	if ca.notAfter.Before(notAfter) {
 		err = core.InternalServerError("Cannot issue a certificate that expires after the intermediate certificate.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
@@ -349,7 +476,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
-	serialBytes[0] = byte(ca.Prefix)
+	serialBytes[0] = byte(ca.prefix)
 	_, err = rand.Read(serialBytes[1:])
 	if err != nil {
 		err = core.InternalServerError(err.Error())
@@ -357,22 +484,38 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.Audit(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		return emptyCert, err
 	}
-	serialHex := hex.EncodeToString(serialBytes)
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
+	serialHex := core.SerialToString(serialBigInt)
+
+	var profile string
+	switch key.(type) {
+	case *rsa.PublicKey:
+		profile = ca.rsaProfile
+	case *ecdsa.PublicKey:
+		profile = ca.ecdsaProfile
+	default:
+		err = core.InternalServerError(fmt.Sprintf("unsupported key type %T", key))
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
+	}
 
 	// Send the cert off for signing
 	req := signer.SignRequest{
 		Request: csrPEM,
-		Profile: ca.profile,
+		Profile: profile,
 		Hosts:   hostNames,
 		Subject: &signer.Subject{
 			CN: commonName,
 		},
-		Serial: serialBigInt,
+		Serial:     serialBigInt,
+		Extensions: requestedExtensions,
 	}
-
-	certPEM, err := ca.Signer.Sign(req)
+	if !ca.forceCNFromSAN {
+		req.Subject.SerialNumber = serialHex
+	}
+	certPEM, err := ca.signer.Sign(req)
 	ca.noteHSMFault(err)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
@@ -414,17 +557,17 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.Audit(fmt.Sprintf("Failed RPC to store at SA, orphaning certificate: pem=[%s] err=[%v]", certPEM, err))
+		ca.log.Audit(fmt.Sprintf(
+			"Failed RPC to store at SA, orphaning certificate: b64der=[%s] err=[%v], regID=[%d]",
+			base64.StdEncoding.EncodeToString(certDER),
+			err,
+			regID,
+		))
 		return emptyCert, err
 	}
 
 	// Submit the certificate to any configured CT logs
-	certObj, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		ca.log.Warning(fmt.Sprintf("Post-Issuance OCSP failed parsing Certificate: %s", err))
-		return cert, nil
-	}
-	go ca.Publisher.SubmitToCT(certObj.Raw)
+	go ca.Publisher.SubmitToCT(certDER)
 
 	// Do not return an err at this point; caller must know that the Certificate
 	// was issued. (Also, it should be impossible for err to be non-nil here)

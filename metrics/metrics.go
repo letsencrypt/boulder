@@ -24,8 +24,8 @@ type HTTPMonitor struct {
 }
 
 // NewHTTPMonitor returns a new initialized HTTPMonitor
-func NewHTTPMonitor(stats statsd.Statter, handler http.Handler, prefix string) HTTPMonitor {
-	return HTTPMonitor{
+func NewHTTPMonitor(stats statsd.Statter, handler http.Handler, prefix string) *HTTPMonitor {
+	return &HTTPMonitor{
 		stats:               stats,
 		handler:             handler,
 		statsPrefix:         prefix,
@@ -33,13 +33,7 @@ func NewHTTPMonitor(stats statsd.Statter, handler http.Handler, prefix string) H
 	}
 }
 
-// Handle wraps handlers and records various metrics about requests to these handlers
-// and sends them to StatsD
-func (h *HTTPMonitor) Handle() http.Handler {
-	return http.HandlerFunc(h.watchAndServe)
-}
-
-func (h *HTTPMonitor) watchAndServe(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPMonitor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.stats.Inc(fmt.Sprintf("%s.HTTP.Rate", h.statsPrefix), 1, 1.0)
 	inFlight := atomic.AddInt64(&h.connectionsInFlight, 1)
 	h.stats.Gauge(fmt.Sprintf("%s.HTTP.OpenConnections", h.statsPrefix), inFlight, 1.0)

@@ -14,6 +14,7 @@ import (
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 var mediumBlobSize = int(math.Pow(2, 24))
@@ -51,12 +52,16 @@ type challModel struct {
 	Error            []byte          `db:"error"`
 	Validated        *time.Time      `db:"validated"`
 	Token            string          `db:"token"`
-	TLS              *bool           `db:"tls"`
 	KeyAuthorization string          `db:"keyAuthorization"`
 	ValidationRecord []byte          `db:"validationRecord"`
 	AccountKey       []byte          `db:"accountKey"`
 
 	LockCol int64
+
+	// obsoleteTLS is obsoleted. Only used for simpleHTTP and simpleHTTP is
+	// dead. Only still here because gorp complains if its gone and locks up if
+	// its private.
+	ObsoleteTLS *bool `db:"tls"`
 }
 
 // newReg creates a reg model object from a core.Registration
@@ -111,7 +116,6 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		Status:          c.Status,
 		Validated:       c.Validated,
 		Token:           c.Token,
-		TLS:             c.TLS,
 	}
 	if c.KeyAuthorization != nil {
 		kaString := c.KeyAuthorization.String()
@@ -160,7 +164,6 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		Status:    cm.Status,
 		Validated: cm.Validated,
 		Token:     cm.Token,
-		TLS:       cm.TLS,
 	}
 	if len(cm.KeyAuthorization) > 0 {
 		ka, err := core.NewKeyAuthorizationFromString(cm.KeyAuthorization)
@@ -170,7 +173,7 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		c.KeyAuthorization = &ka
 	}
 	if len(cm.Error) > 0 {
-		var problem core.ProblemDetails
+		var problem probs.ProblemDetails
 		err := json.Unmarshal(cm.Error, &problem)
 		if err != nil {
 			return core.Challenge{}, err

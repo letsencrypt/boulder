@@ -12,8 +12,6 @@ import (
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -84,14 +82,13 @@ type RegistrationAuthority interface {
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
-	RevokeCertificate(string, RevocationCode) error
 	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
 	WillingToIssue(id AcmeIdentifier, regID int64) error
-	ChallengesFor(AcmeIdentifier, *jose.JsonWebKey) ([]Challenge, [][]int, error)
+	ChallengesFor(AcmeIdentifier, *jose.JsonWebKey) ([]Challenge, [][]int)
 }
 
 // StorageGetter are the Boulder SA's read-only methods
@@ -114,16 +111,14 @@ type StorageGetter interface {
 type StorageAdder interface {
 	NewRegistration(Registration) (Registration, error)
 	UpdateRegistration(Registration) error
-
 	NewPendingAuthorization(Authorization) (Authorization, error)
 	UpdatePendingAuthorization(Authorization) error
 	FinalizeAuthorization(Authorization) error
 	MarkCertificateRevoked(serial string, reasonCode RevocationCode) error
 	UpdateOCSP(serial string, ocspResponse []byte) error
-
 	AddCertificate([]byte, int64) (string, error)
-
 	AddSCTReceipt(SignedCertificateTimestamp) error
+	RevokeAuthorizationsByDomain(AcmeIdentifier) (int64, int64, error)
 }
 
 // StorageAuthority interface represents a simple key/value
@@ -132,21 +127,6 @@ type StorageAdder interface {
 type StorageAuthority interface {
 	StorageGetter
 	StorageAdder
-}
-
-// CertificateAuthorityDatabase represents an atomic sequence source
-type CertificateAuthorityDatabase interface {
-	IncrementAndGetSerial(*gorp.Transaction) (int64, error)
-	Begin() (*gorp.Transaction, error)
-}
-
-// DNSResolver defines methods used for DNS resolution
-type DNSResolver interface {
-	ExchangeOne(string, uint16) (*dns.Msg, time.Duration, error)
-	LookupTXT(string) ([]string, time.Duration, error)
-	LookupHost(string) ([]net.IP, time.Duration, error)
-	LookupCAA(string) ([]*dns.CAA, time.Duration, error)
-	LookupMX(string) ([]string, time.Duration, error)
 }
 
 // Publisher defines the public interface for the Boulder Publisher

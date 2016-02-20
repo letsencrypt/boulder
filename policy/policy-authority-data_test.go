@@ -6,18 +6,21 @@
 package policy
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
-func padbImpl(t *testing.T) (*PolicyAuthorityDatabaseImpl, func()) {
+func padbImpl(t *testing.T) (*AuthorityDatabaseImpl, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	test.AssertNotError(t, err, "Could not construct dbMap")
 
-	padb, err := NewPolicyAuthorityDatabaseImpl(dbMap)
+	padb, err := NewAuthorityDatabaseImpl(dbMap)
 	test.AssertNotError(t, err, "Couldn't create PADB")
 
 	cleanUp := test.ResetPolicyTestDatabase(t)
@@ -31,12 +34,12 @@ func TestLoadAndDumpRules(t *testing.T) {
 
 	load := RuleSet{
 		Blacklist: []BlacklistRule{
-			BlacklistRule{
+			{
 				Host: "bad.com",
 			},
 		},
 		Whitelist: []WhitelistRule{
-			WhitelistRule{
+			{
 				Host: "good.bad.com",
 			},
 		},
@@ -53,18 +56,44 @@ func TestLoadAndDumpRules(t *testing.T) {
 	test.AssertEquals(t, dumped.Blacklist[0], load.Blacklist[0])
 }
 
+// An implementation of the gorpDbMap interface that always returns an error
+// from SelectOne.
+type failureDB struct{}
+
+func (f *failureDB) AddTableWithName(interface{}, string) *gorp.TableMap {
+	return nil // not implemented
+}
+
+func (f *failureDB) Begin() (*gorp.Transaction, error) {
+	return nil, nil // not implemented
+}
+func (f *failureDB) SelectOne(interface{}, string, ...interface{}) error {
+	return fmt.Errorf("DB failure")
+}
+
+func (f *failureDB) Select(interface{}, string, ...interface{}) ([]interface{}, error) {
+	return nil, nil // not implemented
+}
+
+func TestBlacklistError(t *testing.T) {
+	p, err := NewAuthorityDatabaseImpl(&failureDB{})
+	test.AssertNotError(t, err, "Couldn't make PA")
+	err = p.CheckHostLists("bad.com", false)
+	test.AssertEquals(t, err, errDBFailure)
+}
+
 func TestBlacklist(t *testing.T) {
 	p, cleanup := padbImpl(t)
 	defer cleanup()
 
 	err := p.LoadRules(RuleSet{
 		Blacklist: []BlacklistRule{
-			BlacklistRule{
+			{
 				Host: "bad.com",
 			},
 		},
 		Whitelist: []WhitelistRule{
-			WhitelistRule{
+			{
 				Host: "good.bad.com",
 			},
 		},
@@ -91,15 +120,15 @@ func TestWhitelist(t *testing.T) {
 
 	err := p.LoadRules(RuleSet{
 		Blacklist: []BlacklistRule{
-			BlacklistRule{
+			{
 				Host: "bad.com",
 			},
 		},
 		Whitelist: []WhitelistRule{
-			WhitelistRule{
+			{
 				Host: "good.bad.com",
 			},
-			WhitelistRule{
+			{
 				Host: "good.com",
 			},
 		},

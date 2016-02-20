@@ -31,7 +31,7 @@ import (
 // mechanism.
 type CSRWhitelist struct {
 	Subject, PublicKeyAlgorithm, PublicKey, SignatureAlgorithm bool
-	DNSNames, IPAddresses                                      bool
+	DNSNames, IPAddresses, EmailAddresses                      bool
 }
 
 // OID is our own version of asn1's ObjectIdentifier, so we can define a custom
@@ -76,6 +76,9 @@ type SigningProfile struct {
 	NotAfter            time.Time  `json:"not_after"`
 	NameWhitelistString string     `json:"name_whitelist"`
 	AuthRemote          AuthRemote `json:"auth_remote"`
+	CTLogServers        []string   `json:"ct_log_servers"`
+	AllowedExtensions   []OID      `json:"allowed_extensions"`
+	CertStore           string     `json:"cert_store"`
 
 	Policies                    []CertificatePolicy
 	Expiry                      time.Duration
@@ -85,6 +88,7 @@ type SigningProfile struct {
 	RemoteServer                string
 	CSRWhitelist                *CSRWhitelist
 	NameWhitelist               *regexp.Regexp
+	ExtensionWhitelist          map[string]bool
 	ClientProvidesSerialNumbers bool
 }
 
@@ -99,7 +103,6 @@ func (oid *OID) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 	*oid = OID(parsedOid)
-	log.Debugf("Parsed OID %v", *oid)
 	return
 }
 
@@ -262,6 +265,11 @@ func (p *SigningProfile) populate(cfg *Config) error {
 				errors.New("failed to compile name whitelist section"))
 		}
 		p.NameWhitelist = rule
+	}
+
+	p.ExtensionWhitelist = map[string]bool{}
+	for _, oid := range p.AllowedExtensions {
+		p.ExtensionWhitelist[asn1.ObjectIdentifier(oid).String()] = true
 	}
 
 	return nil
@@ -525,6 +533,10 @@ func LoadConfig(config []byte) (*Config, error) {
 	if err != nil {
 		return nil, cferr.Wrap(cferr.PolicyError, cferr.InvalidPolicy,
 			errors.New("failed to unmarshal configuration: "+err.Error()))
+	}
+
+	if cfg.Signing == nil {
+		return nil, errors.New("No \"signing\" field present")
 	}
 
 	if cfg.Signing.Default == nil {

@@ -20,6 +20,7 @@ func newAMQPConnector(
 ) *amqpConnector {
 	return &amqpConnector{
 		queueName:        queueName,
+		routingKey:       queueName,
 		chMaker:          defaultChannelMaker{},
 		clk:              clock.Default(),
 		retryTimeoutBase: retryTimeoutBase,
@@ -29,23 +30,26 @@ func newAMQPConnector(
 
 // channelMaker encapsulates how to create an AMQP channel.
 type channelMaker interface {
-	makeChannel(conf cmd.Config) (amqpChannel, error)
+	makeChannel(conf *cmd.AMQPConfig) (amqpChannel, error)
 }
 
 type defaultChannelMaker struct{}
 
-func (d defaultChannelMaker) makeChannel(conf cmd.Config) (amqpChannel, error) {
-	return AmqpChannel(conf)
+func (d defaultChannelMaker) makeChannel(conf *cmd.AMQPConfig) (amqpChannel, error) {
+	return makeAmqpChannel(conf)
 }
 
 // amqpConnector encapsulates an AMQP channel and a subscription to a specific
 // queue, plus appropriate locking for its members. It provides reconnect logic,
 // and allows publishing via the channel onto an arbitrary queue.
 type amqpConnector struct {
-	mu               sync.RWMutex
-	chMaker          channelMaker
-	channel          amqpChannel
-	queueName        string
+	mu        sync.RWMutex
+	chMaker   channelMaker
+	channel   amqpChannel
+	queueName string
+	// Usually this is the same as queueName, except for Activity Monitor, which
+	// sets it to "#".
+	routingKey       string
 	closeChan        chan *amqp.Error
 	msgs             <-chan amqp.Delivery
 	retryTimeoutBase time.Duration
@@ -68,12 +72,12 @@ func (ac *amqpConnector) closeChannel() chan *amqp.Error {
 // connect attempts to connect to a channel and subscribe to the named queue,
 // returning error if it fails. This is used at first startup, where we want to
 // fail fast if we can't connect.
-func (ac *amqpConnector) connect(config cmd.Config) error {
+func (ac *amqpConnector) connect(config *cmd.AMQPConfig) error {
 	channel, err := ac.chMaker.makeChannel(config)
 	if err != nil {
 		return fmt.Errorf("channel connect failed for %s: %s", ac.queueName, err)
 	}
-	msgs, err := amqpSubscribe(channel, ac.queueName)
+	msgs, err := amqpSubscribe(channel, ac.queueName, ac.routingKey)
 	if err != nil {
 		return fmt.Errorf("queue subscribe failed for %s: %s", ac.queueName, err)
 	}
@@ -89,7 +93,7 @@ func (ac *amqpConnector) connect(config cmd.Config) error {
 // reconnect attempts repeatedly to connect and subscribe to the named queue. It
 // will loop forever until it succeeds. This is used for a running server, where
 // we don't want to shut down because we lost our AMQP connection.
-func (ac *amqpConnector) reconnect(config cmd.Config, log blog.SyslogWriter) {
+func (ac *amqpConnector) reconnect(config *cmd.AMQPConfig, log blog.SyslogWriter) {
 	for i := 0; ; i++ {
 		ac.clk.Sleep(core.RetryBackoff(i, ac.retryTimeoutBase, ac.retryTimeoutMax, 2))
 		log.Info(fmt.Sprintf(" [!] attempting reconnect for %s", ac.queueName))
@@ -114,7 +118,7 @@ func (ac *amqpConnector) cancel() {
 
 // publish publishes a message onto the provided queue. We provide this wrapper
 // because it requires locking around the read of ac.channel.
-func (ac *amqpConnector) publish(queueName, corrId, expiration, replyTo, msgType string, body []byte) error {
+func (ac *amqpConnector) publish(queueName, corrID, expiration, replyTo, msgType string, body []byte) error {
 	ac.mu.RLock()
 	channel := ac.channel
 	ac.mu.RUnlock()
@@ -125,7 +129,7 @@ func (ac *amqpConnector) publish(queueName, corrId, expiration, replyTo, msgType
 		AmqpImmediate,
 		amqp.Publishing{
 			Body:          body,
-			CorrelationId: corrId,
+			CorrelationId: corrID,
 			Expiration:    expiration,
 			ReplyTo:       replyTo,
 			Type:          msgType,

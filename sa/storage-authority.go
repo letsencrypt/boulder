@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -52,7 +53,7 @@ type authzModel struct {
 }
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
-// Boulder. It will modify the given gorp.DbMap by adding relevent tables.
+// Boulder. It will modify the given gorp.DbMap by adding relevant tables.
 func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock) (*SQLStorageAuthority, error) {
 	logger := blog.GetAuditLogger()
 
@@ -318,7 +319,7 @@ func (t TooManyCertificatesError) Error() string {
 // subdomains. It returns a map from domains to counts, which is guaranteed to
 // contain an entry for each input domain, so long as err is nil.
 // The highest count this function can return is 10,000. If there are more
-// certificates than that matching one ofthe provided domain names, it will return
+// certificates than that matching one of the provided domain names, it will return
 // TooManyCertificatesError.
 func (ssa *SQLStorageAuthority) CountCertificatesByNames(domains []string, earliest, latest time.Time) (map[string]int, error) {
 	ret := make(map[string]int, len(domains))
@@ -336,7 +337,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(domains []string, earli
 // certificates issued in the given time range for that domain and its
 // subdomains.
 // The highest count this function can return is 10,000. If there are more
-// certificates than that matching one ofthe provided domain names, it will return
+// certificates than that matching one of the provided domain names, it will return
 // TooManyCertificatesError.
 func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest, latest time.Time) (int, error) {
 	var count int64
@@ -386,7 +387,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate,
 	}
 	if certObj == nil {
 		ssa.log.Debug(fmt.Sprintf("Nil cert for %s", serial))
-		return core.Certificate{}, fmt.Errorf("Certificate does not exist for %s", serial)
+		return core.Certificate{}, core.NotFoundError(fmt.Sprintf("No certificate found for %s", serial))
 	}
 
 	certPtr, ok := certObj.(*core.Certificate)
@@ -633,7 +634,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 
 	// Check that a pending authz exists
 	if !existingPending(tx, authz.ID) {
-		err = errors.New("Cannot finalize a authorization that is not pending")
+		err = errors.New("Cannot finalize an authorization that is not pending")
 		tx.Rollback()
 		return
 	}
@@ -671,6 +672,42 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 
 	err = tx.Commit()
 	return
+}
+
+// RevokeAuthorizationsByDomain invalidates all pending or finalized authorizations
+// for a specific domain
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
+	identifierJSON, err := json.Marshal(ident)
+	if err != nil {
+		return 0, 0, err
+	}
+	identifier := string(identifierJSON)
+	results := []int64{0, 0}
+
+	now := ssa.clk.Now()
+	for i, table := range []string{"authz", "pendingAuthorizations"} {
+		for {
+			authz, err := getAuthorizationIDsByDomain(ssa.dbMap, table, identifier, now)
+			if err != nil {
+				return results[0], results[1], err
+			}
+			numAuthz := len(authz)
+			if numAuthz == 0 {
+				break
+			}
+
+			numRevoked, err := revokeAuthorizations(ssa.dbMap, table, authz)
+			if err != nil {
+				return results[0], results[1], err
+			}
+			results[i] += numRevoked
+			if numRevoked < int64(numAuthz) {
+				return results[0], results[1], fmt.Errorf("Didn't revoke all found authorizations")
+			}
+		}
+	}
+
+	return results[0], results[1], nil
 }
 
 // AddCertificate stores an issued certificate.
@@ -790,7 +827,7 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(regID int64) (count i
 	return
 }
 
-// ErrNoReceipt is a error type for non-existent SCT receipt
+// ErrNoReceipt is an error type for non-existent SCT receipt
 type ErrNoReceipt string
 
 func (e ErrNoReceipt) Error() string {
@@ -817,7 +854,7 @@ func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (rece
 	return
 }
 
-// ErrDuplicateReceipt is a error type for duplicate SCT receipts
+// ErrDuplicateReceipt is an error type for duplicate SCT receipts
 type ErrDuplicateReceipt string
 
 func (e ErrDuplicateReceipt) Error() string {

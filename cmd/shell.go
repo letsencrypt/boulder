@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	_ "expvar" // For DebugServer, below.
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -95,6 +96,53 @@ func (as *AppShell) Run() {
 			config = as.Config(c, config)
 		}
 
+		// Provide default values for each service's AMQP config section.
+		if config.ActivityMonitor.AMQP == nil {
+			config.ActivityMonitor.AMQP = config.AMQP
+		}
+		if config.WFE.AMQP == nil {
+			config.WFE.AMQP = config.AMQP
+		}
+		if config.CA.AMQP == nil {
+			config.CA.AMQP = config.AMQP
+			if config.CA.AMQP != nil && config.AMQP.CA != nil {
+				config.CA.AMQP.ServiceQueue = config.AMQP.CA.Server
+			}
+		}
+		if config.RA.AMQP == nil {
+			config.RA.AMQP = config.AMQP
+			if config.RA.AMQP != nil && config.AMQP.RA != nil {
+				config.RA.AMQP.ServiceQueue = config.AMQP.RA.Server
+			}
+		}
+		if config.SA.AMQP == nil {
+			config.SA.AMQP = config.AMQP
+			if config.SA.AMQP != nil && config.AMQP.SA != nil {
+				config.SA.AMQP.ServiceQueue = config.AMQP.SA.Server
+			}
+		}
+		if config.VA.AMQP == nil {
+			config.VA.AMQP = config.AMQP
+			if config.VA.AMQP != nil && config.AMQP.VA != nil {
+				config.VA.AMQP.ServiceQueue = config.AMQP.VA.Server
+			}
+		}
+		if config.Mailer.AMQP == nil {
+			config.Mailer.AMQP = config.AMQP
+		}
+		if config.OCSPUpdater.AMQP == nil {
+			config.OCSPUpdater.AMQP = config.AMQP
+		}
+		if config.OCSPResponder.AMQP == nil {
+			config.OCSPResponder.AMQP = config.AMQP
+		}
+		if config.Publisher.AMQP == nil {
+			config.Publisher.AMQP = config.AMQP
+			if config.Publisher.AMQP != nil && config.AMQP.Publisher != nil {
+				config.Publisher.AMQP.ServiceQueue = config.AMQP.Publisher.Server
+			}
+		}
+
 		stats, auditlogger := StatsAndLogging(config.Statsd, config.Syslog)
 		auditlogger.Info(as.VersionString())
 
@@ -109,7 +157,7 @@ func (as *AppShell) Run() {
 	FailOnError(err, "Failed to run application")
 }
 
-// StatsAndLogging constructs a Statter and and AuditLogger based on its config
+// StatsAndLogging constructs a Statter and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
 // Also sets the constructed AuditLogger as the default logger.
 func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (statsd.Statter, *blog.AuditLogger) {

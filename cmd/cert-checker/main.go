@@ -77,7 +77,7 @@ type certChecker struct {
 }
 
 func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool) certChecker {
-	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, enforceWhitelist, challengeTypes)
+	pa, err := policy.New(paDbMap, enforceWhitelist, challengeTypes)
 	cmd.FailOnError(err, "Failed to create PA")
 	c := certChecker{
 		pa:    pa,
@@ -237,12 +237,15 @@ func main() {
 	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		// Validate PA config and set defaults if needed
 		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
-		c.PA.SetDefaultChallengesIfEmpty()
 
-		saDbMap, err := sa.NewDbMap(c.CertChecker.DBConnect)
+		saDbURL, err := c.CertChecker.DBConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+		saDbMap, err := sa.NewDbMap(saDbURL)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		paDbMap, err := sa.NewDbMap(c.PA.DBConnect)
+		paDbURL, err := c.PA.DBConfig.URL()
+		cmd.FailOnError(err, "Couldn't load DB URL")
+		paDbMap, err := sa.NewDbMap(paDbURL)
 		cmd.FailOnError(err, "Could not connect to policy database")
 
 		checker := newChecker(saDbMap, paDbMap, clock.Default(), c.PA.EnforcePolicyWhitelist, c.PA.Challenges)

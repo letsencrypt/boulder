@@ -12,112 +12,18 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/certdb"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-
 	"github.com/letsencrypt/boulder/core"
 )
-
-// DNSResolver is a mock
-type DNSResolver struct {
-}
-
-// ExchangeOne is a mock
-func (mock *DNSResolver) ExchangeOne(hostname string, qt uint16) (rsp *dns.Msg, rtt time.Duration, err error) {
-	return nil, 0, nil
-}
-
-// LookupTXT is a mock
-func (mock *DNSResolver) LookupTXT(hostname string) ([]string, time.Duration, error) {
-	if hostname == "_acme-challenge.servfail.com" {
-		return nil, 0, fmt.Errorf("SERVFAIL")
-	}
-	return []string{"hostname"}, 0, nil
-}
-
-// TimeoutError returns a a net.OpError for which Timeout() returns true.
-func TimeoutError() *net.OpError {
-	return &net.OpError{
-		Err: os.NewSyscallError("ugh timeout", timeoutError{}),
-	}
-}
-
-type timeoutError struct{}
-
-func (t timeoutError) Error() string {
-	return "so sloooow"
-}
-func (t timeoutError) Timeout() bool {
-	return true
-}
-
-// LookupHost is a mock
-func (mock *DNSResolver) LookupHost(hostname string) ([]net.IP, time.Duration, error) {
-	if hostname == "always.invalid" || hostname == "invalid.invalid" {
-		return []net.IP{}, 0, nil
-	}
-	if hostname == "always.timeout" {
-		return []net.IP{}, 0, TimeoutError()
-	}
-	if hostname == "always.error" {
-		return []net.IP{}, 0, &net.OpError{
-			Err: errors.New("some net error"),
-		}
-	}
-	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, 0, nil
-}
-
-// LookupCAA is a mock
-func (mock *DNSResolver) LookupCAA(domain string) ([]*dns.CAA, time.Duration, error) {
-	var results []*dns.CAA
-	var record dns.CAA
-	switch strings.TrimRight(domain, ".") {
-	case "caa-timeout.com":
-		return nil, 0, TimeoutError()
-	case "reserved.com":
-		record.Tag = "issue"
-		record.Value = "symantec.com"
-		results = append(results, &record)
-	case "critical.com":
-		record.Flag = 1
-		record.Tag = "issue"
-		record.Value = "symantec.com"
-		results = append(results, &record)
-	case "present.com":
-		record.Tag = "issue"
-		record.Value = "letsencrypt.org"
-		results = append(results, &record)
-	case "com":
-		// Nothing should ever call this, since CAA checking should stop when it
-		// reaches a public suffix.
-		fallthrough
-	case "servfail.com":
-		return results, 0, fmt.Errorf("SERVFAIL")
-	}
-	return results, 0, nil
-}
-
-// LookupMX is a mock
-func (mock *DNSResolver) LookupMX(domain string) ([]string, time.Duration, error) {
-	switch strings.TrimRight(domain, ".") {
-	case "letsencrypt.org":
-		fallthrough
-	case "email.com":
-		return []string{"mail.email.com"}, 0, nil
-	}
-	return nil, 0, nil
-}
 
 // StorageAuthority is a mock
 type StorageAuthority struct {
@@ -143,6 +49,20 @@ const (
 		"n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw",
 		"e":"AAEAAQ"
 	}`
+
+	testE1KeyPublicJSON = `{
+     "kty":"EC",
+     "crv":"P-256",
+     "x":"FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
+     "y":"S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
+   }`
+	testE2KeyPublicJSON = `{
+     "kty":"EC",
+     "crv":"P-256",
+     "x":"S8FOmrZ3ywj4yyFqt0etAD90U-EnkNaOBSLfQmf7pNg",
+     "y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"
+   }`
+
 	agreementURL = "http://example.invalid/terms"
 )
 
@@ -174,8 +94,12 @@ func (sa *StorageAuthority) GetRegistration(id int64) (core.Registration, error)
 func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
 	var test1KeyPublic jose.JsonWebKey
 	var test2KeyPublic jose.JsonWebKey
+	var testE1KeyPublic jose.JsonWebKey
+	var testE2KeyPublic jose.JsonWebKey
 	test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
 	test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
+	testE1KeyPublic.UnmarshalJSON([]byte(testE1KeyPublicJSON))
+	testE2KeyPublic.UnmarshalJSON([]byte(testE2KeyPublicJSON))
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
 		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL}, nil
@@ -184,6 +108,14 @@ func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Regi
 	if core.KeyDigestEquals(jwk, test2KeyPublic) {
 		// No key found
 		return core.Registration{ID: 2}, core.NoSuchRegistrationError("reg not found")
+	}
+
+	if core.KeyDigestEquals(jwk, testE1KeyPublic) {
+		return core.Registration{ID: 3, Key: jwk, Agreement: agreementURL}, nil
+	}
+
+	if core.KeyDigestEquals(jwk, testE2KeyPublic) {
+		return core.Registration{ID: 4}, core.NoSuchRegistrationError("reg not found")
 	}
 
 	// Return a fake registration. Make sure to fill the key field to avoid marshaling errors.
@@ -198,7 +130,7 @@ func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, err
 		RegistrationID: 1,
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
 		Challenges: []core.Challenge{
-			core.Challenge{
+			{
 				ID:   23,
 				Type: "dns",
 			},
@@ -218,6 +150,11 @@ func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, err
 	}
 
 	return core.Authorization{}, fmt.Errorf("authz not found")
+}
+
+// RevokeAuthorizationsByDomain is a mock
+func (sa *StorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
+	return 0, 0, nil
 }
 
 // GetCertificate is a mock
@@ -375,6 +312,11 @@ func (bhs BadHSMSigner) SetPolicy(*config.Signing) {
 	return
 }
 
+// SetDBAccessor is a mock.
+func (bhs BadHSMSigner) SetDBAccessor(certdb.Accessor) {
+	return
+}
+
 // SigAlgo is a mock
 func (bhs BadHSMSigner) SigAlgo() x509.SignatureAlgorithm {
 	return x509.UnknownSignatureAlgorithm
@@ -413,4 +355,24 @@ func (s *Statter) Inc(metric string, value int64, rate float32) error {
 // NewStatter returns an empty statter with all counters zero
 func NewStatter() Statter {
 	return Statter{statsd.NoopClient{}, map[string]int64{}}
+}
+
+// Mailer is a mock
+type Mailer struct {
+	Messages []string
+}
+
+// Clear removes any previously recorded messages
+func (m *Mailer) Clear() {
+	m.Messages = []string{}
+}
+
+// SendMail is a mock
+func (m *Mailer) SendMail(to []string, subject, msg string) (err error) {
+
+	// TODO(1421): clean up this To: stuff
+	for range to {
+		m.Messages = append(m.Messages, msg)
+	}
+	return
 }

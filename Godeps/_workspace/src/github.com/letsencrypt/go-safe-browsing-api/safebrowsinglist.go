@@ -50,7 +50,12 @@ type SafeBrowsingList struct {
 	FullHashRequested *HatTrie
 	FullHashes        *HatTrie
 
-	Logger     logger
+	Logger logger
+	// fsLock is wrapped around the filesystem modifications and a call to
+	// updateLock to prevent more than one set of fs modifications happening at
+	// once.
+	fsLock *sync.Mutex
+	// updateLock prevents more than one pointer swap
 	updateLock *sync.RWMutex
 }
 
@@ -64,6 +69,7 @@ func newSafeBrowsingList(name string, filename string) (sbl *SafeBrowsingList) {
 		FullHashes:        NewTrie(),
 		DeleteChunks:      make(map[ChunkData_ChunkType]map[ChunkNum]bool),
 		Logger:            &DefaultLogger{},
+		fsLock:            new(sync.Mutex),
 		updateLock:        new(sync.RWMutex),
 	}
 	sbl.DeleteChunks[CHUNK_TYPE_ADD] = make(map[ChunkNum]bool)
@@ -113,8 +119,8 @@ func (sbl *SafeBrowsingList) load(newChunks []*ChunkData) (err error) {
 	//	defer debug.FreeOSMemory()
 
 	sbl.Logger.Info("Reloading %s", sbl.Name)
-	sbl.updateLock.Lock()
-	defer sbl.updateLock.Unlock()
+	sbl.fsLock.Lock()
+	defer sbl.fsLock.Unlock()
 
 	//  get the input stream
 	f, err := os.Open(sbl.FileName)
@@ -266,7 +272,6 @@ func (sbl *SafeBrowsingList) load(newChunks []*ChunkData) (err error) {
 }
 
 func (sbl *SafeBrowsingList) updateLookupMap(chunk *ChunkData) {
-
 	hashlen := 0
 	hasheslen := len(chunk.Hashes)
 
@@ -279,7 +284,8 @@ func (sbl *SafeBrowsingList) updateLookupMap(chunk *ChunkData) {
 
 	for i := 0; (i + hashlen) <= hasheslen; i += hashlen {
 		hash := chunk.Hashes[i:(i + hashlen)]
-
+		// We may have to make this more fine grained
+		sbl.updateLock.Lock()
 		switch hashlen {
 		case PREFIX_4B_SZ:
 			// we are a hash-prefix
@@ -311,5 +317,7 @@ func (sbl *SafeBrowsingList) updateLookupMap(chunk *ChunkData) {
 				sbl.FullHashes.Delete(lookupHash)
 			}
 		}
+		sbl.updateLock.Unlock()
+
 	}
 }

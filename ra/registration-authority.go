@@ -19,11 +19,14 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/publicsuffix"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/probs"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/dns"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -48,10 +51,11 @@ type RegistrationAuthorityImpl struct {
 	SA          core.StorageAuthority
 	PA          core.PolicyAuthority
 	stats       statsd.Statter
-	DNSResolver core.DNSResolver
+	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
 	log         *blog.AuditLogger
 	dc          *DomainCheck
+	keyPolicy   core.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
@@ -60,10 +64,17 @@ type RegistrationAuthorityImpl struct {
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
+
+	regByIPStats         metrics.Scope
+	pendAuthByRegIDStats metrics.Scope
+	certsForDomainStats  metrics.Scope
+	totalCertsStats      metrics.Scope
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy) *RegistrationAuthorityImpl {
+	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
+	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
@@ -74,30 +85,50 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 		rlPolicies:                   policies,
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
+		keyPolicy:                    keyPolicy,
+
+		regByIPStats:         scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
+		pendAuthByRegIDStats: scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
+		certsForDomainStats:  scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
+		totalCertsStats:      scope.NewScope("RA", "RateLimit", "TotalCertificates"),
 	}
 	return ra
 }
 
-var errUnparseableEmail = errors.New("not a valid e-mail address")
-var errEmptyDNSResponse = errors.New("empty DNS response")
+const (
+	unparseableEmailDetail = "not a valid e-mail address"
+	emptyDNSResponseDetail = "empty DNS response"
+)
 
-func validateEmail(address string, resolver core.DNSResolver) (rtt time.Duration, err error) {
-	_, err = mail.ParseAddress(address)
+func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
+	_, err := mail.ParseAddress(address)
 	if err != nil {
-		return time.Duration(0), errUnparseableEmail
+		return &probs.ProblemDetails{
+			Type:   probs.InvalidEmailProblem,
+			Detail: unparseableEmailDetail,
+		}
 	}
 	splitEmail := strings.SplitN(address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	result, rtt, err := resolver.LookupHost(domain)
-	if err == nil && len(result) == 0 {
-		err = errEmptyDNSResponse
+	var resultMX []string
+	var resultA []net.IP
+	resultMX, err = resolver.LookupMX(ctx, domain)
+	if err == nil && len(resultMX) == 0 {
+		resultA, err = resolver.LookupHost(ctx, domain)
+		if err == nil && len(resultA) == 0 {
+			return &probs.ProblemDetails{
+				Type:   probs.InvalidEmailProblem,
+				Detail: emptyDNSResponseDetail,
+			}
+		}
 	}
 	if err != nil {
-		problem := dns.ProblemDetailsFromDNSError(err)
-		err = core.MalformedRequestError(problem.Detail)
+		prob := bdns.ProblemDetailsFromDNSError(err)
+		prob.Type = probs.InvalidEmailProblem
+		return prob
 	}
 
-	return
+	return nil
 }
 
 type certificateRequestEvent struct {
@@ -168,15 +199,18 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
 			return err
 		}
 		if count >= limit.GetThreshold(ip.String(), noRegistrationID) {
+			ra.regByIPStats.Inc("Exceeded", 1)
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, RegistrationsByIP, IP: %s", ip))
 			return core.RateLimitedError("Too many registrations from this IP")
 		}
+		ra.regByIPStats.Inc("Pass", 1)
 	}
 	return nil
 }
 
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
-	if err = core.GoodKey(init.Key.Key); err != nil {
+	if err = ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
 	if err = ra.checkRegistrationLimit(init.InitialIP); err != nil {
@@ -192,7 +226,8 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	// MergeUpdate. But we need to fill it in for new registrations.
 	reg.InitialIP = init.InitialIP
 
-	err = ra.validateContacts(reg.Contact)
+	// TODO(#1292): add a proper deadline here
+	err = ra.validateContacts(context.TODO(), reg.Contact)
 	if err != nil {
 		return
 	}
@@ -209,24 +244,29 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) (err error) {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []*core.AcmeURL) (err error) {
 	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
 		return core.MalformedRequestError(fmt.Sprintf("Too many contacts provided: %d > %d",
 			len(contacts), ra.maxContactsPerReg))
 	}
 
 	for _, contact := range contacts {
+		if contact == nil {
+			return core.MalformedRequestError("Invalid contact")
+		}
 		switch contact.Scheme {
 		case "tel":
 			continue
 		case "mailto":
-			rtt, err := validateEmail(contact.Opaque, ra.DNSResolver)
-			ra.stats.TimingDuration("RA.DNS.RTT.A", rtt, 1.0)
-			ra.stats.Inc("RA.DNS.Rate", 1, 1.0)
-			if err != nil {
-				return core.MalformedRequestError(fmt.Sprintf(
-					"Validation of contact %s failed: %s", contact, err))
+			start := ra.clk.Now()
+			ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
+			problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
+			ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
+			if problem != nil {
+				ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
+				return problem
 			}
+			ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
 		default:
 			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
 			return
@@ -236,23 +276,27 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []*core.AcmeURL) 
 	return
 }
 
-func checkPendingAuthorizationLimit(sa core.StorageGetter, limit *cmd.RateLimitPolicy, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(regID int64) error {
+	limit := ra.rlPolicies.PendingAuthorizationsPerAccount
 	if limit.Enabled() {
-		count, err := sa.CountPendingAuthorizations(regID)
+		count, err := ra.SA.CountPendingAuthorizations(regID)
 		if err != nil {
 			return err
 		}
 		// Most rate limits have a key for overrides, but there is no meaningful key
 		// here.
 		noKey := ""
-		if count > limit.GetThreshold(noKey, regID) {
+		if count >= limit.GetThreshold(noKey, regID) {
+			ra.pendAuthByRegIDStats.Inc("Exceeded", 1)
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID))
 			return core.RateLimitedError("Too many currently pending authorizations.")
 		}
+		ra.pendAuthByRegIDStats.Inc("Pass", 1)
 	}
 	return nil
 }
 
-// NewAuthorization constuct a new Authz from a request. Values (domains) in
+// NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
 	reg, err := ra.SA.GetRegistration(regID)
@@ -266,12 +310,10 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Check that the identifier is present and appropriate
 	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
-		err = core.UnauthorizedError(err.Error())
 		return authz, err
 	}
 
-	limit := &ra.rlPolicies.PendingAuthorizationsPerAccount
-	if err = checkPendingAuthorizationLimit(ra.SA, limit, regID); err != nil {
+	if err = ra.checkPendingAuthorizationLimit(regID); err != nil {
 		return authz, err
 	}
 
@@ -288,7 +330,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Create validations. The WFE will  update them with URIs before sending them out.
-	challenges, combinations, err := ra.PA.ChallengesFor(identifier, &reg.Key)
+	challenges, combinations := ra.PA.ChallengesFor(identifier, &reg.Key)
 
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 
@@ -375,8 +417,8 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
 		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
 		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
-		len(parsedCertificate.Subject.PostalCode) > 0 || len(parsedCertificate.Subject.SerialNumber) > 0 {
-		err = core.InternalServerError("Generated certificate Subject contains fields other than CommonName or Names")
+		len(parsedCertificate.Subject.PostalCode) > 0 {
+		err = core.InternalServerError("Generated certificate Subject contains fields other than CommonName, or SerialNumber")
 		return
 	}
 	now := ra.clk.Now()
@@ -455,7 +497,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 
 	// Verify the CSR
 	csr := req.CSR
-	if err = core.VerifyCSR(csr); err != nil {
+	if err = csr.CheckSignature(); err != nil {
 		logEvent.Error = err.Error()
 		err = core.UnauthorizedError("Invalid signature on CSR")
 		return emptyCert, err
@@ -586,10 +628,15 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 		}
 	}
 	if len(badNames) > 0 {
+		domains := strings.Join(badNames, ", ")
+		ra.certsForDomainStats.Inc("Exceeded", 1)
+		ra.log.Info(fmt.Sprintf("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, domains))
 		return core.RateLimitedError(fmt.Sprintf(
-			"Too many certificates already issued for: %s",
-			strings.Join(badNames, ", ")))
+			"Too many certificates already issued for: %s", domains))
+
 	}
+	ra.certsForDomainStats.Inc("Pass", 1)
+
 	return nil
 }
 
@@ -601,8 +648,12 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) er
 			return err
 		}
 		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
+			domains := strings.Join(names, ",")
+			ra.totalCertsStats.Inc("Exceeded", 1)
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, regID: %d, domains: %s, totalIssued: %d", regID, domains, totalIssued))
 			return core.RateLimitedError("Certificate issuance limit reached")
 		}
+		ra.totalCertsStats.Inc("Pass", 1)
 	}
 	if limits.CertificatesPerName.Enabled() {
 		err := ra.checkCertificatesPerNameLimit(names, limits.CertificatesPerName, regID)
@@ -617,7 +668,8 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) er
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	err = ra.validateContacts(base.Contact)
+	// TODO(#1292): add a proper deadline here
+	err = ra.validateContacts(context.TODO(), base.Contact)
 	if err != nil {
 		return
 	}
@@ -648,7 +700,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid challenge index: %d", challengeIndex))
 		return
 	}
-	authz.Challenges[challengeIndex] = authz.Challenges[challengeIndex].MergeResponse(response)
+
+	authz.Challenges[challengeIndex].KeyAuthorization = response.KeyAuthorization
 
 	// At this point, the challenge should be sane as a complete challenge
 	if !authz.Challenges[challengeIndex].IsSane(true) {

@@ -52,7 +52,7 @@ if [[ "$(is_running boulder-mysql)" != "true" ]]; then
 		-p 3306:3306 \
 		-e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
 		--name boulder-mysql \
-		mariadb:10
+		mariadb:10.0
 fi
 
 if [[ "$(is_running boulder-rabbitmq)" != "true" ]]; then

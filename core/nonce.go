@@ -9,6 +9,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"math/big"
 	"sync"
@@ -42,7 +43,7 @@ func NewNonceService() (*NonceService, error) {
 	if err != nil {
 		panic("Failure in NewCipher: " + err.Error())
 	}
-	gcm, _ := cipher.NewGCM(c)
+	gcm, err := cipher.NewGCM(c)
 	if err != nil {
 		panic("Failure in NewGCM: " + err.Error())
 	}
@@ -77,11 +78,11 @@ func (ns *NonceService) encrypt(counter int64) (string, error) {
 	ct := ns.gcm.Seal(nil, nonce, pt, nil)
 	copy(ret, nonce[4:])
 	copy(ret[8:], ct)
-	return B64enc(ret), nil
+	return base64.RawURLEncoding.EncodeToString(ret), nil
 }
 
 func (ns *NonceService) decrypt(nonce string) (int64, error) {
-	decoded, err := B64dec(nonce)
+	decoded, err := base64.RawURLEncoding.DecodeString(nonce)
 	if err != nil {
 		return 0, err
 	}

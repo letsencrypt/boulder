@@ -11,18 +11,20 @@ import (
 )
 
 type requestEvent struct {
-	ID           string    `json:",omitempty"`
-	RealIP       string    `json:",omitempty"`
-	ClientAddr   string    `json:",omitempty"`
-	Endpoint     string    `json:",omitempty"`
-	Method       string    `json:",omitempty"`
-	RequestTime  time.Time `json:",omitempty"`
-	ResponseTime time.Time `json:",omitempty"`
-	Errors       []string
-	Requester    int64           `json:",omitempty"`
-	Contacts     []*core.AcmeURL `json:",omitempty"`
-
-	Extra map[string]interface{} `json:",omitempty"`
+	ID            string    `json:",omitempty"`
+	RealIP        string    `json:",omitempty"`
+	ClientAddr    string    `json:",omitempty"`
+	Endpoint      string    `json:",omitempty"`
+	Method        string    `json:",omitempty"`
+	RequestTime   time.Time `json:",omitempty"`
+	ResponseTime  time.Time `json:",omitempty"`
+	Errors        []string
+	Requester     int64                  `json:",omitempty"`
+	Contacts      []*core.AcmeURL        `json:",omitempty"`
+	RequestNonce  string                 `json:",omitempty"`
+	ResponseNonce string                 `json:",omitempty"`
+	UserAgent     string                 `json:",omitempty"`
+	Extra         map[string]interface{} `json:",omitempty"`
 }
 
 func (e *requestEvent) AddError(msg string, args ...interface{}) {
@@ -52,6 +54,7 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ClientAddr:  getClientAddr(r),
 		Method:      r.Method,
 		RequestTime: time.Now(),
+		UserAgent:   r.Header.Get("User-Agent"),
 		Extra:       make(map[string]interface{}, 0),
 	}
 	if r.URL != nil {

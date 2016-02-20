@@ -16,8 +16,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -36,28 +38,27 @@ func loadConfig(c *cli.Context) (config cmd.Config, err error) {
 	return
 }
 
-func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.AuditLogger, *gorp.DbMap, rpc.StorageAuthorityClient) {
+const clientName = "AdminRevoker"
+
+func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.AuditLogger, *gorp.DbMap, rpc.StorageAuthorityClient, statsd.Statter) {
 	c, err := loadConfig(context)
 	cmd.FailOnError(err, "Failed to load Boulder configuration")
 
 	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 
-	raRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->RA", c.AMQP.RA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	rac, err := rpc.NewRegistrationAuthorityClient(raRPC)
+	amqpConf := c.Revoker.AMQP
+	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	dbMap, err := sa.NewDbMap(c.Revoker.DBConnect)
+	dbURL, err := c.Revoker.DBConfig.URL()
+	cmd.FailOnError(err, "Couldn't load DB URL")
+	dbMap, err := sa.NewDbMap(dbURL)
 	cmd.FailOnError(err, "Couldn't setup database connection")
 
-	saRPC, err := rpc.NewAmqpRPCClient("AdminRevoker->SA", c.AMQP.SA.Server, c, stats)
-	cmd.FailOnError(err, "Unable to create RPC client")
-
-	sac, err := rpc.NewStorageAuthorityClient(saRPC)
+	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Failed to create SA client")
 
-	return rac, auditlogger, dbMap, sac
+	return *rac, auditlogger, dbMap, *sac, stats
 }
 
 func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
@@ -124,17 +125,9 @@ func revokeByReg(regID int64, reasonCode core.RevocationCode, deny bool, rac rpc
 // This abstraction is needed so that we can use sort.Sort below
 type revocationCodes []core.RevocationCode
 
-func (rc revocationCodes) Len() int {
-	return len(rc)
-}
-
-func (rc revocationCodes) Less(i, j int) bool {
-	return rc[i] < rc[j]
-}
-
-func (rc revocationCodes) Swap(i, j int) {
-	rc[i], rc[j] = rc[j], rc[i]
-}
+func (rc revocationCodes) Len() int           { return len(rc) }
+func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
+func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
 func main() {
 	app := cli.NewApp()
@@ -164,10 +157,10 @@ func main() {
 				// 1: serial,  2: reasonCode (3: deny flag)
 				serial := c.Args().First()
 				reasonCode, err := strconv.Atoi(c.Args().Get(1))
-				cmd.FailOnError(err, "Reason code argument must be a integer")
+				cmd.FailOnError(err, "Reason code argument must be an integer")
 				deny := c.GlobalBool("deny")
 
-				cac, auditlogger, dbMap, _ := setupContext(c)
+				cac, auditlogger, dbMap, _, _ := setupContext(c)
 
 				tx, err := dbMap.Begin()
 				if err != nil {
@@ -191,12 +184,12 @@ func main() {
 			Action: func(c *cli.Context) {
 				// 1: registration ID,  2: reasonCode (3: deny flag)
 				regID, err := strconv.ParseInt(c.Args().First(), 10, 64)
-				cmd.FailOnError(err, "Registration ID argument must be a integer")
+				cmd.FailOnError(err, "Registration ID argument must be an integer")
 				reasonCode, err := strconv.Atoi(c.Args().Get(1))
-				cmd.FailOnError(err, "Reason code argument must be a integer")
+				cmd.FailOnError(err, "Reason code argument must be an integer")
 				deny := c.GlobalBool("deny")
 
-				cac, auditlogger, dbMap, sac := setupContext(c)
+				cac, auditlogger, dbMap, sac, _ := setupContext(c)
 				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 				defer auditlogger.AuditPanic()
 
@@ -234,6 +227,24 @@ func main() {
 				for _, k := range codes {
 					fmt.Printf("%d: %s\n", k, core.RevocationReasons[k])
 				}
+			},
+		},
+		{
+			Name:  "auth-revoke",
+			Usage: "Revoke all pending/valid authorizations for a domain",
+			Action: func(c *cli.Context) {
+				domain := c.Args().First()
+				_, logger, _, sac, stats := setupContext(c)
+				ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
+				authsRevoked, pendingAuthsRevoked, err := sac.RevokeAuthorizationsByDomain(ident)
+				cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorizations for %s", ident.Value))
+				logger.Info(fmt.Sprintf(
+					"Revoked %d pending authorizations and %d final authorizations\n",
+					authsRevoked,
+					pendingAuthsRevoked,
+				))
+				stats.Inc("admin-revoker.revokedAuthorizations", authsRevoked, 1.0)
+				stats.Inc("admin-revoker.revokedPendingAuthorizations", pendingAuthsRevoked, 1.0)
 			},
 		},
 	}
