@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.5.3
+  - 1.6
 
 addons:
   hosts:
@@ -52,6 +52,7 @@ install:
 env:
   global:
     - LETSENCRYPT_PATH=$HOME/letsencrypt
+    - GO15VENDOREXPERIMENT=0
   matrix:
     - RUN="integration vet lint fmt migrations"
     - RUN="unit"
