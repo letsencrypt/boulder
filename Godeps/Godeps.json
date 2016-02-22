@@ -51,6 +51,10 @@
 			"Rev": "3f3fa68e8d6ce6ceace60ea86461f8be41fa477b"
 		},
 		{
+			"ImportPath": "github.com/cloudflare/cfssl/helpers/derhelpers",
+			"Rev": "3f3fa68e8d6ce6ceace60ea86461f8be41fa477b"
+		},
+		{
 			"ImportPath": "github.com/cloudflare/cfssl/info",
 			"Comment": "1.1.0-355-g3f3fa68",
 			"Rev": "3f3fa68e8d6ce6ceace60ea86461f8be41fa477b"
@@ -66,8 +70,16 @@
 			"Rev": "3f3fa68e8d6ce6ceace60ea86461f8be41fa477b"
 		},
 		{
+			"ImportPath": "github.com/cloudflare/cfssl/ocsp/config",
+			"Rev": "3f3fa68e8d6ce6ceace60ea86461f8be41fa477b"
+		},
+		{
 			"ImportPath": "github.com/cloudflare/cfssl/signer",
 			"Comment": "1.1.0-355-g3f3fa68",
+			"Rev": "3f3fa68e8d6ce6ceace60ea86461f8be41fa477b"
+		},
+		{
+			"ImportPath": "github.com/cloudflare/cfssl/signer/local",
 			"Rev": "3f3fa68e8d6ce6ceace60ea86461f8be41fa477b"
 		},
 		{
@@ -105,11 +117,31 @@
 			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
 		},
 		{
+			"ImportPath": "github.com/google/certificate-transparency/go/asn1",
+			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency/go/client",
+			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency/go/x509",
+			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
+		},
+		{
+			"ImportPath": "github.com/google/certificate-transparency/go/x509/pkix",
+			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
+		},
+		{
 			"ImportPath": "github.com/jmhodges/clock",
 			"Rev": "3c4ebd218625c9364c33db6d39c276d80c3090c6"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/go-jose",
+			"Rev": "15b73d6f0363b256ddb080db1c64563064a4e773"
+		},
+		{
+			"ImportPath": "github.com/letsencrypt/go-jose/cipher",
 			"Rev": "15b73d6f0363b256ddb080db1c64563064a4e773"
 		},
 		{
@@ -143,6 +175,10 @@
 		},
 		{
 			"ImportPath": "golang.org/x/crypto/pkcs12",
+			"Rev": "1f22c0103821b9390939b6776727195525381532"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/pkcs12/internal/rc2",
 			"Rev": "1f22c0103821b9390939b6776727195525381532"
 		},
 		{
