@@ -60,7 +60,7 @@ const (
 
 	// This is based off maxLabels * maxLabelLength, but is also a restriction based
 	// on the max size of indexed storage in the issuedNames table.
-	maxDNSIdentifierLength = 640
+	maxDNSIdentifierLength = 255
 
 	// whitelistedPartnerRegID is the registartion ID we check for to see if we need
 	// to skip the domain whitelist (but not the blacklist). This is for an
@@ -146,7 +146,7 @@ func (pa AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) erro
 		}
 	}
 
-	if len(domain) > 255 {
+	if len(domain) > maxDNSIdentifierLength {
 		return errNameTooLong
 	}
 
