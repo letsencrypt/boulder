@@ -182,7 +182,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc := clock.NewFake()
 
 	checker := newChecker(saDbMap, paDbMap, fc, false, nil)
-	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc, true)
+	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetSATestDatabase(t)
 	paCleanUp := test.ResetPolicyTestDatabase(t)

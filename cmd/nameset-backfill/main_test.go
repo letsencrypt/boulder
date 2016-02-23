@@ -8,6 +8,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -15,7 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-func setup(t *testing.T, addFQDNSets bool) (backfiller, func()) {
+func TestBackfill(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
 
 	// Create an SA
@@ -25,24 +26,20 @@ func setup(t *testing.T, addFQDNSets bool) (backfiller, func()) {
 	}
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, addFQDNSets)
+	sa, err := sa.NewSQLStorageAuthority(dbMap, fc)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	cleanup := test.ResetSATestDatabase(t)
+	defer test.ResetSATestDatabase(t)
+	b := backfiller{sa, dbMap, stats, blog.GetAuditLogger(), fc}
 
 	certDER, err := ioutil.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
+
 	reg := satest.CreateWorkingRegistration(t, sa)
-	_, err = sa.AddCertificate(certDER, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add certificate")
 
-	return backfiller{sa, dbMap, stats, blog.GetAuditLogger(), fc}, cleanup
-}
-
-func TestFindAndAddCerts(t *testing.T) {
-	b, cleanup := setup(t, false)
-	defer cleanup()
+	err = dbMap.Insert(&core.Certificate{RegistrationID: reg.ID, DER: certDER})
+	test.AssertNotError(t, err, "Couldn't insert stub certificate")
 
 	results, err := b.findCerts()
 	test.AssertNotError(t, err, "Failed to find missing name sets")
@@ -52,15 +49,6 @@ func TestFindAndAddCerts(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add missing name sets")
 
 	results, err = b.findCerts()
-	test.AssertNotError(t, err, "Failed to find missing name sets")
-	test.AssertEquals(t, len(results), 0)
-}
-
-func TestDontAdd(t *testing.T) {
-	b, cleanup := setup(t, true)
-	defer cleanup()
-
-	results, err := b.findCerts()
 	test.AssertNotError(t, err, "Failed to find missing name sets")
 	test.AssertEquals(t, len(results), 0)
 }

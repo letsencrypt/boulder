@@ -72,19 +72,15 @@ func (b *backfiller) run() error {
 func (b *backfiller) findCerts() ([]resultHolder, error) {
 	var allResults []resultHolder
 	for {
-		fmt.Println("check")
 		var results []resultHolder
 		_, err := b.dbMap.Select(
 			&results,
-			// idk left outer join instead?
 			`SELECT c.serial, c.issued, c.expires, c.der FROM certificates AS c
        LEFT JOIN fqdnSets AS ns ON c.serial=ns.serial
        WHERE ns.serial IS NULL
-       AND c.expires > ?
        ORDER BY c.issued DESC
        LIMIT ?
        OFFSET ?`,
-			b.clk.Now(),
 			1000,
 			len(allResults),
 		)
@@ -112,7 +108,7 @@ func (b *backfiller) processResults(results []resultHolder) error {
 	for _, r := range results {
 		c, err := x509.ParseCertificate(r.DER)
 		if err != nil {
-			b.log.Err(fmt.Sprintf("Failed to parse certificate retrieved from database: %s", err))
+			b.log.Err(fmt.Sprintf("Failed to parse certificate [serial: %s] retrieved from database: %s", r.Serial, err))
 			continue
 		}
 		err = b.dbMap.Insert(&core.FQDNSet{
@@ -122,43 +118,60 @@ func (b *backfiller) processResults(results []resultHolder) error {
 			Expires: r.Expires,
 		})
 		if err != nil {
-			b.log.Err(fmt.Sprintf("Failed to add name set to database: %s", err))
+			b.log.Err(fmt.Sprintf("Failed to add name set for %s to database: %s", r.Serial, err))
 			continue
 		}
 		added++
 		b.stats.Inc("db-backfill.fqdnSets.added", 1, 1.0)
 	}
 	if added < numResults {
-		return fmt.Errorf("Didn'd add all name sets, %d out of %d failed", numResults-added, numResults)
+		return fmt.Errorf("Didn't add all name sets, %d out of %d failed", numResults-added, numResults)
 	}
 	return nil
 }
 
 func main() {
-	amqpURI := flag.String("amqpURI", "amqp://guest:guest@localhost:5673", "")
-	statsdURI := flag.String("statsdURI", "localhost:8125", "")
-	dbURI := flag.String("dbURI", "mysql+tcp://backfiller@localhost:3306/boulder_sa_test", "")
-	syslogNet := flag.String("syslogNetwork", "", "")
-	syslogServer := flag.String("syslogServer", "", "")
-	syslogLevel := flag.Int("syslogLevel", 7, "")
+	amqpURI := flag.String("amqpURI", "", "AMQP connection URI")
+	amqpURIFile := flag.String("amqpURIFile", "", "File to read AMQP connection URI from")
+	amqpCert := flag.String("amqpCert", "", "AMQP client certificate to use")
+	amqpKey := flag.String("amqpKey", "", "Key for AMQP client certificate")
+	amqpCA := flag.String("amqpCA", "", "Root CA to trust for AMQP connections")
+
+	statsdURI := flag.String("statsdURI", "", "StatsD URI")
+
+	dbConnect := flag.String("dbConnect", "", "DB connection URI")
+	dbConnectFile := flag.String("dbConnectFile", "", "File to read DB connection URI from")
+
+	syslogNet := flag.String("syslogNetwork", "", "Syslog network")
+	syslogURI := flag.String("syslogServer", "", "Syslog URI")
+	syslogLevel := flag.Int("syslogLevel", 7, "Level at which to log")
 	flag.Parse()
 
-	b, err := new(
-		&cmd.AMQPConfig{
-			Server:   *amqpURI,
-			Insecure: true,
-			SA: &cmd.RPCServerConfig{
-				Server:     "SA.server",
-				RPCTimeout: cmd.ConfigDuration{Duration: time.Second * 15},
-			},
+	dbConf := cmd.DBConfig{DBConnect: *dbConnect, DBConnectFile: *dbConnectFile}
+	dbURI, err := dbConf.URL()
+
+	amqpConf := &cmd.AMQPConfig{
+		Server:        *amqpURI,
+		ServerURLFile: *amqpURIFile,
+		SA: &cmd.RPCServerConfig{
+			Server:     "SA.server",
+			RPCTimeout: cmd.ConfigDuration{Duration: time.Second * 15},
 		},
+	}
+	if *amqpCert != "" && *amqpKey != "" && *amqpCA != "" {
+		amqpConf.Insecure = false
+		amqpConf.TLS = &cmd.TLSConfig{CertFile: amqpCert, KeyFile: amqpKey, CACertFile: amqpCA}
+	}
+	cmd.FailOnError(err, "Failed to read db URI")
+	b, err := new(
+		amqpConf,
 		cmd.SyslogConfig{
 			Network:     *syslogNet,
-			Server:      *syslogServer,
+			Server:      *syslogURI,
 			StdoutLevel: syslogLevel,
 		},
 		*statsdURI,
-		*dbURI,
+		dbURI,
 	)
 	cmd.FailOnError(err, "Failed to create backfiller")
 	err = b.run()

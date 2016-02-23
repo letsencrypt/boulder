@@ -189,7 +189,7 @@ func setup(t *testing.T) *testCtx {
 	}
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, true)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

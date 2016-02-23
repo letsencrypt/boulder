@@ -641,7 +641,7 @@ var RevocationReasons = map[RevocationCode]string{
 	10: "aAcompromise",
 }
 
-// FQDNSet contains the hash of the lowercased, comma joined dNSNames
+// FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames
 // contained in a certificate.
 type FQDNSet struct {
 	ID      int64

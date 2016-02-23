@@ -74,7 +74,6 @@ type Config struct {
 		DBConfig
 
 		MaxConcurrentRPCServerRequests int64
-		EnableAddFQDNSets              bool
 	}
 
 	VA struct {

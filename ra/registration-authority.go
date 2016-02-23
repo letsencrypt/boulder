@@ -648,7 +648,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(names []st
 	names = core.UniqueLowerNames(names)
 	if int(count) > limit.GetThreshold(strings.Join(names, ","), regID) {
 		return core.RateLimitedError(fmt.Sprintf(
-			"Too many certificates already issued for name set: %s",
+			"Too many certificates already issued for exact set of domains: %s",
 			strings.Join(names, ","),
 		))
 	}

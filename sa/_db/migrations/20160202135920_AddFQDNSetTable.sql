@@ -11,7 +11,7 @@ CREATE TABLE `fqdnSets` (
        `issued` DATETIME NOT NULL,
        `expires` DATETIME NOT NULL,
        PRIMARY KEY (`id`),
-       KEY `setHash_serial` (`setHash`, `serial`)
+       KEY `setHash` (`setHash`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- +goose Down

@@ -30,10 +30,9 @@ const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :au
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
-	dbMap       *gorp.DbMap
-	clk         clock.Clock
-	log         *blog.AuditLogger
-	addFQDNSets bool
+	dbMap *gorp.DbMap
+	clk   clock.Clock
+	log   *blog.AuditLogger
 }
 
 func digest256(data []byte) []byte {
@@ -55,16 +54,15 @@ type authzModel struct {
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
-func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, addFQDNSets bool) (*SQLStorageAuthority, error) {
+func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock) (*SQLStorageAuthority, error) {
 	logger := blog.GetAuditLogger()
 
 	logger.Notice("Storage Authority Starting")
 
 	ssa := &SQLStorageAuthority{
-		dbMap:       dbMap,
-		clk:         clk,
-		log:         logger,
-		addFQDNSets: addFQDNSets,
+		dbMap: dbMap,
+		clk:   clk,
+		log:   logger,
 	}
 
 	return ssa, nil
@@ -775,18 +773,16 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		}
 	}
 
-	if ssa.addFQDNSets {
-		err = addFQDNSet(
-			tx,
-			parsedCertificate.DNSNames,
-			serial,
-			parsedCertificate.NotBefore,
-			parsedCertificate.NotAfter,
-		)
-		if err != nil {
-			tx.Rollback()
-			return
-		}
+	err = addFQDNSet(
+		tx,
+		parsedCertificate.DNSNames,
+		serial,
+		parsedCertificate.NotBefore,
+		parsedCertificate.NotAfter,
+	)
+	if err != nil {
+		tx.Rollback()
+		return
 	}
 
 	err = tx.Commit()
@@ -904,16 +900,13 @@ func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time
 // CountValidFQDNSets reutrns the number of currently valid sets with hash |setHash|
 func (ssa *SQLStorageAuthority) CountValidFQDNSets(window time.Duration, names []string) (int64, error) {
 	var count int64
-	now := ssa.clk.Now()
 	err := ssa.dbMap.SelectOne(
 		&count,
-		`SELECT COUNT(serial) FROM fqdnSets
+		`SELECT COUNT(1) FROM fqdnSets
      WHERE setHash = ?
-     AND expires > ?
      AND issued > ?`,
 		hashNames(names),
-		now,
-		now.Add(-window),
+		ssa.clk.Now().Add(-window),
 	)
 	return count, err
 }
