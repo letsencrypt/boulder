@@ -114,23 +114,23 @@
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go",
-			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
+			"Rev": "c78982664ca89efe5204eb83a91b15866b04b1f1"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/asn1",
-			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
+			"Rev": "c78982664ca89efe5204eb83a91b15866b04b1f1"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/client",
-			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
+			"Rev": "c78982664ca89efe5204eb83a91b15866b04b1f1"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/x509",
-			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
+			"Rev": "c78982664ca89efe5204eb83a91b15866b04b1f1"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/x509/pkix",
-			"Rev": "72d5367bd7ff1f4401c5649817dca766b668e322"
+			"Rev": "c78982664ca89efe5204eb83a91b15866b04b1f1"
 		},
 		{
 			"ImportPath": "github.com/jmhodges/clock",
