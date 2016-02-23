@@ -27,9 +27,9 @@ var enabledChallenges = map[string]bool{
 	core.ChallengeTypeDNS01:    true,
 }
 
-func paImpl(t *testing.T) (*PolicyAuthorityImpl, func()) {
+func paImpl(t *testing.T) (*AuthorityImpl, func()) {
 	dbMap, cleanUp := paDBMap(t)
-	pa, err := NewPolicyAuthorityImpl(dbMap, false, enabledChallenges)
+	pa, err := New(dbMap, false, enabledChallenges)
 	if err != nil {
 		cleanUp()
 		t.Fatalf("Couldn't create policy implementation: %s", err)
@@ -217,7 +217,7 @@ func TestChallengesFor(t *testing.T) {
 func TestWillingToIssueWithWhitelist(t *testing.T) {
 	dbMap, cleanUp := paDBMap(t)
 	defer cleanUp()
-	pa, err := NewPolicyAuthorityImpl(dbMap, true, nil)
+	pa, err := New(dbMap, true, nil)
 	test.AssertNotError(t, err, "Couldn't create policy implementation")
 	googID := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,

@@ -16,11 +16,11 @@ import (
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
-func padbImpl(t *testing.T) (*PolicyAuthorityDatabaseImpl, func()) {
+func padbImpl(t *testing.T) (*AuthorityDatabaseImpl, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	test.AssertNotError(t, err, "Could not construct dbMap")
 
-	padb, err := NewPolicyAuthorityDatabaseImpl(dbMap)
+	padb, err := NewAuthorityDatabaseImpl(dbMap)
 	test.AssertNotError(t, err, "Couldn't create PADB")
 
 	cleanUp := test.ResetPolicyTestDatabase(t)
@@ -76,7 +76,7 @@ func (f *failureDB) Select(interface{}, string, ...interface{}) ([]interface{}, 
 }
 
 func TestBlacklistError(t *testing.T) {
-	p, err := NewPolicyAuthorityDatabaseImpl(&failureDB{})
+	p, err := NewAuthorityDatabaseImpl(&failureDB{})
 	test.AssertNotError(t, err, "Couldn't make PA")
 	err = p.CheckHostLists("bad.com", false)
 	test.AssertEquals(t, err, errDBFailure)

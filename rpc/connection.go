@@ -118,7 +118,7 @@ func (ac *amqpConnector) cancel() {
 
 // publish publishes a message onto the provided queue. We provide this wrapper
 // because it requires locking around the read of ac.channel.
-func (ac *amqpConnector) publish(queueName, corrId, expiration, replyTo, msgType string, body []byte) error {
+func (ac *amqpConnector) publish(queueName, corrID, expiration, replyTo, msgType string, body []byte) error {
 	ac.mu.RLock()
 	channel := ac.channel
 	ac.mu.RUnlock()
@@ -129,7 +129,7 @@ func (ac *amqpConnector) publish(queueName, corrId, expiration, replyTo, msgType
 		AmqpImmediate,
 		amqp.Publishing{
 			Body:          body,
-			CorrelationId: corrId,
+			CorrelationId: corrID,
 			Expiration:    expiration,
 			ReplyTo:       replyTo,
 			Type:          msgType,

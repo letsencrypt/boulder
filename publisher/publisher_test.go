@@ -253,10 +253,10 @@ func badLogSrv() *httptest.Server {
 	return server
 }
 
-func setup(t *testing.T) (*PublisherImpl, *x509.Certificate, *ecdsa.PrivateKey) {
+func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
-	pub := NewPublisherImpl(nil, nil)
+	pub := New(nil, nil)
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert(intermediatePEM.Bytes))
 	pub.SA = mocks.NewStorageAuthority(clock.NewFake())
 
@@ -270,7 +270,7 @@ func setup(t *testing.T) (*PublisherImpl, *x509.Certificate, *ecdsa.PrivateKey) 
 	return &pub, leaf, k
 }
 
-func addLog(t *testing.T, pub *PublisherImpl, port int, pubKey *ecdsa.PublicKey) {
+func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
 	verifier, err := ct.NewSignatureVerifier(pubKey)
 	test.AssertNotError(t, err, "Couldn't create signature verifier")
 

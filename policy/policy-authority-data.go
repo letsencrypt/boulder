@@ -50,22 +50,22 @@ type gorpDbMap interface {
 	Select(interface{}, string, ...interface{}) ([]interface{}, error)
 }
 
-// PolicyAuthorityDatabaseImpl enforces policy decisions based on various rule
+// AuthorityDatabaseImpl enforces policy decisions based on various rule
 // lists
-type PolicyAuthorityDatabaseImpl struct {
+type AuthorityDatabaseImpl struct {
 	log   *blog.AuditLogger
 	dbMap gorpDbMap
 }
 
-// NewPolicyAuthorityDatabaseImpl constructs a Policy Authority Database (and
+// NewAuthorityDatabaseImpl constructs a Policy Authority Database (and
 // creates tables if they are non-existent)
-func NewPolicyAuthorityDatabaseImpl(dbMap gorpDbMap) (padb *PolicyAuthorityDatabaseImpl, err error) {
+func NewAuthorityDatabaseImpl(dbMap gorpDbMap) (padb *AuthorityDatabaseImpl, err error) {
 	logger := blog.GetAuditLogger()
 
 	dbMap.AddTableWithName(BlacklistRule{}, "blacklist")
 	dbMap.AddTableWithName(WhitelistRule{}, "whitelist")
 
-	padb = &PolicyAuthorityDatabaseImpl{
+	padb = &AuthorityDatabaseImpl{
 		dbMap: dbMap,
 		log:   logger,
 	}
@@ -75,7 +75,7 @@ func NewPolicyAuthorityDatabaseImpl(dbMap gorpDbMap) (padb *PolicyAuthorityDatab
 
 // LoadRules loads the whitelist and blacklist into the database in a transaction
 // deleting any previous content
-func (padb *PolicyAuthorityDatabaseImpl) LoadRules(rs RuleSet) error {
+func (padb *AuthorityDatabaseImpl) LoadRules(rs RuleSet) error {
 	tx, err := padb.dbMap.Begin()
 	if err != nil {
 		tx.Rollback()
@@ -105,7 +105,7 @@ func (padb *PolicyAuthorityDatabaseImpl) LoadRules(rs RuleSet) error {
 
 // DumpRules retrieves all domainRules in the database so they can be written to
 // disk
-func (padb *PolicyAuthorityDatabaseImpl) DumpRules() (rs RuleSet, err error) {
+func (padb *AuthorityDatabaseImpl) DumpRules() (rs RuleSet, err error) {
 	var bList []BlacklistRule
 	_, err = padb.dbMap.Select(&bList, "SELECT * FROM blacklist")
 	if err != nil {
@@ -127,7 +127,7 @@ func (padb *PolicyAuthorityDatabaseImpl) DumpRules() (rs RuleSet, err error) {
 // allowedByBlacklist returns nil if the host is allowed, errBlacklisted if the
 // host is disallowed, or an InternalServerError if there was another problem
 // checking the database.
-func (padb *PolicyAuthorityDatabaseImpl) allowedByBlacklist(host string) error {
+func (padb *AuthorityDatabaseImpl) allowedByBlacklist(host string) error {
 	var rule BlacklistRule
 	// Use lexical ordering to quickly find blacklisted root domains
 	err := padb.dbMap.SelectOne(
@@ -151,7 +151,7 @@ func (padb *PolicyAuthorityDatabaseImpl) allowedByBlacklist(host string) error {
 	return nil
 }
 
-func (padb *PolicyAuthorityDatabaseImpl) allowedByWhitelist(host string) bool {
+func (padb *AuthorityDatabaseImpl) allowedByWhitelist(host string) bool {
 	var rule WhitelistRule
 	err := padb.dbMap.SelectOne(
 		&rule,
@@ -171,7 +171,7 @@ func (padb *PolicyAuthorityDatabaseImpl) allowedByWhitelist(host string) bool {
 // if both whitelist and blacklist rules are found the blacklist will always win
 // Returns errNotWhitelisted, errBlacklisted, or errDBFailure for the
 // appropriate problems, or nil if the host is allowable.
-func (padb *PolicyAuthorityDatabaseImpl) CheckHostLists(host string, requireWhitelisted bool) error {
+func (padb *AuthorityDatabaseImpl) CheckHostLists(host string, requireWhitelisted bool) error {
 	if requireWhitelisted {
 		if !padb.allowedByWhitelist(host) {
 			return errNotWhitelisted
