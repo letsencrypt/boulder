@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	ctClient "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go/client"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -55,25 +57,30 @@ type ctSubmissionRequest struct {
 
 // Impl defines a Publisher
 type Impl struct {
-	log          *blog.AuditLogger
-	client       *http.Client
-	issuerBundle []ct.ASN1Cert
-	ctLogs       []*Log
+	log               *blog.AuditLogger
+	client            *http.Client
+	issuerBundle      []ct.ASN1Cert
+	ctLogs            []*Log
+	submissionTimeout time.Duration
 
 	SA core.StorageAuthority
 }
 
 // New creates a Publisher that will submit certificates
 // to any CT logs configured in CTConfig
-func New(bundle []ct.ASN1Cert, logs []*Log) (pub Impl) {
+func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration) *Impl {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Publisher Authority Starting")
 
-	pub.issuerBundle = bundle
-	pub.log = logger
-	pub.ctLogs = logs
-
-	return
+	if submissionTimeout == 0 {
+		submissionTimeout = time.Hour * 12
+	}
+	return &Impl{
+		submissionTimeout: submissionTimeout,
+		issuerBundle:      bundle,
+		ctLogs:            logs,
+		log:               logger,
+	}
 }
 
 // SubmitToCT will submit the certificate represented by certDER to any CT
@@ -87,7 +94,9 @@ func (pub *Impl) SubmitToCT(der []byte) error {
 
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 	for _, ctLog := range pub.ctLogs {
-		sct, err := ctLog.client.AddChain(chain)
+		ctx, cancel := context.WithTimeout(context.Background(), pub.submissionTimeout)
+		defer cancel()
+		sct, err := ctLog.client.AddChainWithContext(ctx, chain)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.Audit(fmt.Sprintf("Failed to submit certificate to CT log: %s", err))

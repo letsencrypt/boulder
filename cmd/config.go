@@ -155,6 +155,7 @@ type Config struct {
 
 	Publisher struct {
 		ServiceConfig
+		SubmissionTimeout              ConfigDuration
 		MaxConcurrentRPCServerRequests int64
 	}
 
