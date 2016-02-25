@@ -81,7 +81,7 @@ func New(bundle []ct.ASN1Cert, logs []*Log) (pub Impl) {
 func (pub *Impl) SubmitToCT(der []byte) error {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		pub.log.Audit(fmt.Sprintf("Failed to parse certificate: %s", err))
+		pub.log.AuditErr(fmt.Errorf("Failed to parse certificate: %s", err))
 		return err
 	}
 
@@ -90,7 +90,7 @@ func (pub *Impl) SubmitToCT(der []byte) error {
 		sct, err := ctLog.client.AddChain(chain)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.Audit(fmt.Sprintf("Failed to submit certificate to CT log: %s", err))
+			pub.log.AuditErr(fmt.Errorf("Failed to submit certificate to CT log: %s", err))
 			continue
 		}
 
@@ -105,21 +105,21 @@ func (pub *Impl) SubmitToCT(der []byte) error {
 		})
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.Audit(fmt.Sprintf("Failed to verify SCT receipt: %s", err))
+			pub.log.AuditErr(fmt.Errorf("Failed to verify SCT receipt: %s", err))
 			continue
 		}
 
 		internalSCT, err := sctToInternal(sct, core.SerialToString(cert.SerialNumber))
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.Audit(fmt.Sprintf("Failed to convert SCT receipt: %s", err))
+			pub.log.AuditErr(fmt.Errorf("Failed to convert SCT receipt: %s", err))
 			continue
 		}
 
 		err = pub.SA.AddSCTReceipt(internalSCT)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.Audit(fmt.Sprintf("Failed to store SCT receipt in database: %s", err))
+			pub.log.AuditErr(fmt.Errorf("Failed to store SCT receipt in database: %s", err))
 			continue
 		}
 	}
