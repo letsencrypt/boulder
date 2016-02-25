@@ -14,7 +14,7 @@ import (
 	"time"
 
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/va"
 )
@@ -155,6 +155,7 @@ type Config struct {
 
 	Publisher struct {
 		ServiceConfig
+		SubmissionTimeout              ConfigDuration
 		MaxConcurrentRPCServerRequests int64
 	}
 

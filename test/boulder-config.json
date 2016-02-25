@@ -312,6 +312,7 @@
 
   "publisher": {
     "maxConcurrentRPCServerRequests": 16,
+    "submissionTimeout": "5s",
     "debugAddr": "localhost:8009",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",

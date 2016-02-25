@@ -222,7 +222,8 @@ func retryableLogSrv(leaf []byte, k *ecdsa.PrivateKey, retries int, after *int) 
 		} else {
 			hits++
 			if after != nil {
-				w.Header().Set("Retry-After", fmt.Sprintf("%d", *after))
+				w.Header().Add("Retry-After", fmt.Sprintf("%d", *after))
+				w.WriteHeader(503)
 			}
 			w.WriteHeader(http.StatusRequestTimeout)
 		}
@@ -256,7 +257,7 @@ func badLogSrv() *httptest.Server {
 func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
-	pub := New(nil, nil)
+	pub := New(nil, nil, 0)
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert(intermediatePEM.Bytes))
 	pub.SA = mocks.NewStorageAuthority(clock.NewFake())
 
@@ -267,7 +268,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Couldn't generate test key")
 
-	return &pub, leaf, k
+	return pub, leaf, k
 }
 
 func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
@@ -346,8 +347,25 @@ func TestRetryAfter(t *testing.T) {
 	err = pub.SubmitToCT(leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
+	test.Assert(t, time.Since(startedWaiting) > time.Duration(retryAfter*2)*time.Second, fmt.Sprintf("Submitter retried submission too fast: %s", time.Since(startedWaiting)))
+}
 
-	test.Assert(t, time.Since(startedWaiting) < time.Duration(retryAfter*2)*time.Second, fmt.Sprintf("Submitter retried submission too fast: %s", time.Since(startedWaiting)))
+func TestRetryAfterContext(t *testing.T) {
+	pub, leaf, k := setup(t)
+
+	retryAfter := 2
+	server := retryableLogSrv(leaf.Raw, k, 2, &retryAfter)
+	defer server.Close()
+	port, err := getPort(server)
+	test.AssertNotError(t, err, "Failed to get test server port")
+	addLog(t, pub, port, &k.PublicKey)
+
+	pub.submissionTimeout = time.Second
+	s := time.Now()
+	pub.SubmitToCT(leaf.Raw)
+	took := time.Since(s)
+	test.Assert(t, len(log.GetAllMatching(".*Failed to submit certificate to CT log: context deadline exceeded.*")) == 1, "Submission didn't timeout")
+	test.Assert(t, took >= time.Second, fmt.Sprintf("Submission took too long to timeout: %s", took))
 }
 
 func TestMultiLog(t *testing.T) {
