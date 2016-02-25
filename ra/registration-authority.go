@@ -765,7 +765,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(cert x509.Certific
 		//   Revocation reason
 		//   Registration ID of requester
 		//   Error (if there was one)
-		ra.log.Audit(fmt.Sprintf(
+		ra.log.AuditNotice(fmt.Sprintf(
 			"%s, Request by registration ID: %d",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
 			regID,
@@ -798,7 +798,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(cert x509
 		//   Revocation reason
 		//   Name of admin-revoker user
 		//   Error (if there was one)
-		ra.log.Audit(fmt.Sprintf(
+		ra.log.AuditNotice(fmt.Sprintf(
 			"%s, admin-revoker user: %s",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
 			user,

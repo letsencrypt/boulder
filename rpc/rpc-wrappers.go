@@ -183,11 +183,11 @@ type revokeAuthsResponse struct {
 
 func improperMessage(method string, err error, obj interface{}) {
 	log := blog.GetAuditLogger()
-	log.Audit(fmt.Sprintf("Improper message. method: %s err: %s data: %+v", method, err, obj))
+	log.AuditErr(fmt.Errorf("Improper message. method: %s err: %s data: %+v", method, err, obj))
 }
 func errorCondition(method string, err error, obj interface{}) {
 	log := blog.GetAuditLogger()
-	log.Audit(fmt.Sprintf("Error condition. method: %s err: %s data: %+v", method, err, obj))
+	log.AuditErr(fmt.Errorf("Error condition. method: %s err: %s data: %+v", method, err, obj))
 }
 
 // NewRegistrationAuthorityServer constructs an RPC server
