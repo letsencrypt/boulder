@@ -41,7 +41,7 @@ func main() {
 			bundle = append(bundle, ct.ASN1Cert(cert.Raw))
 		}
 
-		pubi := publisher.New(bundle, logs)
+		pubi := publisher.New(bundle, logs, c.Publisher.SubmissionTimeout.Duration)
 
 		go cmd.DebugServer(c.Publisher.DebugAddr)
 		go cmd.ProfileCmd("Publisher", stats)
@@ -52,7 +52,7 @@ func main() {
 
 		pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create Publisher RPC server")
-		rpc.NewPublisherServer(pubs, &pubi)
+		rpc.NewPublisherServer(pubs, pubi)
 
 		err = pubs.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run Publisher RPC server")
