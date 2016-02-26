@@ -70,16 +70,16 @@ func TestConstructionNil(t *testing.T) {
 
 func TestEmit(t *testing.T) {
 	t.Parallel()
-	audit := setup(t)
+	log := setup(t)
 
-	audit.Audit("test message")
+	log.AuditNotice("test message")
 }
 
 func TestEmitEmpty(t *testing.T) {
 	t.Parallel()
-	audit := setup(t)
+	log := setup(t)
 
-	audit.Audit("")
+	log.AuditNotice("")
 }
 
 func TestEmitErrors(t *testing.T) {
@@ -94,7 +94,8 @@ func TestSyslogMethods(t *testing.T) {
 	t.Parallel()
 	audit := setup(t)
 
-	audit.Audit("audit-logger_test.go: audit-notice")
+	audit.AuditNotice("audit-logger_test.go: audit-notice")
+	audit.AuditErr(errors.New("audit-logger_test.go: audit-err"))
 	audit.Crit("audit-logger_test.go: critical")
 	audit.Debug("audit-logger_test.go: debug")
 	audit.Emerg("audit-logger_test.go: emerg")
@@ -178,7 +179,11 @@ func TestTransmission(t *testing.T) {
 
 	data := make([]byte, 128)
 
-	audit.Audit("audit-logger_test.go: audit-notice")
+	audit.AuditNotice("audit-logger_test.go: audit-notice")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+
+	audit.AuditErr(errors.New("audit-logger_test.go: audit-err"))
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 

@@ -1,7 +1,7 @@
 Boulder - An ACME CA
 ====================
 
-This is an initial implementation of an ACME-based CA. The [ACME protocol](https://github.com/letsencrypt/acme-spec/) allows the CA to automatically verify that an applicant for a certificate actually controls an identifier, and allows domain holders to issue and revoke certificates for their domains.
+This is an implementation of an ACME-based CA. The [ACME protocol](https://github.com/letsencrypt/acme-spec/) allows the CA to automatically verify that an applicant for a certificate actually controls an identifier, and allows domain holders to issue and revoke certificates for their domains.
 
 [![Build Status](https://travis-ci.org/letsencrypt/boulder.svg)](https://travis-ci.org/letsencrypt/boulder)
 [![Coverage Status](https://coveralls.io/repos/letsencrypt/boulder/badge.svg)](https://coveralls.io/r/letsencrypt/boulder)
@@ -21,6 +21,10 @@ Slow start
 
 This approach is better if you intend to develop on Boulder frequently, because
 it's challenging to develop inside the Docker container.
+
+We recommend setting git's [fsckObjects
+setting](https://groups.google.com/forum/#!topic/binary-transparency/f-BI4o8HZW0/discussion)
+for better integrity guarantees when getting updates.
 
 Boulder requires an installation of RabbitMQ, libtool-ltdl, goose, and
 MariaDB 10 to work correctly. On Ubuntu and CentOS, you may have to
@@ -55,7 +59,7 @@ or
 
 Resolve Go-dependencies, set up a database and RabbitMQ:
 
-  > ./test/setup.sh
+    ./test/setup.sh
 
 **Note**: `setup.sh` calls `create_db.sh`, which uses the root MariaDB
 user with the default password, so if you have disabled that account
@@ -63,15 +67,21 @@ or changed the password you may have to adjust the file or recreate the commands
 
 Start each boulder component with test configs (Ctrl-C kills all):
 
-    > ./start.py
+    ./start.py
 
 Run tests:
 
-    > ./test.sh
+    ./test.sh
 
 Working with a client:
 
-Check out the official Let's Encrypt client from https://github.com/letsencrypt/letsencrypt/ and follow the setup instructions there.
+Check out the official Let's Encrypt client from https://github.com/letsencrypt/letsencrypt/ and follow the setup instructions there. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for letsencrypt that has all those flags:
+
+    source ~/letsencrypt/tests/integration/_common.sh
+    letsencrypt_test certonly -a standalone -d example.com
+
+Your local Boulder instance uses a fake DNS server that returns 127.0.0.1 for
+any query, so you can use any value for the -d flag.
 
 Component Model
 ---------------
@@ -109,7 +119,7 @@ The full details of how the various ACME operations happen in Boulder are laid o
 Dependencies
 ------------
 
-All Go dependencies are vendorized under the Godeps directory,
+All Go dependencies are vendored under the Godeps directory,
 to [make dependency management easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8).
 
 Local development also requires a RabbitMQ installation and MariaDB
@@ -135,8 +145,3 @@ godep save -r ./...
 git add Godeps
 git commit
 ```
-
-TODO
-----
-
-See [the issues list](https://github.com/letsencrypt/boulder/issues)

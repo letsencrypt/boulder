@@ -54,13 +54,10 @@ func New(dbMap *gorp.DbMap, enforceWhitelist bool, challengeTypes map[string]boo
 const (
 	maxLabels = 10
 
-	// DNS defines max label length as 63 characters. Some implementations allow
-	// more, but we will be conservative.
-	maxLabelLength = 63
-
-	// This is based off maxLabels * maxLabelLength, but is also a restriction based
-	// on the max size of indexed storage in the issuedNames table.
-	maxDNSIdentifierLength = 640
+	// RFC 1034 says DNS labels have a max of 63 octets, and names have a max of 255
+	// octets: https://tools.ietf.org/html/rfc1035#page-10
+	maxLabelLength         = 63
+	maxDNSIdentifierLength = 255
 
 	// whitelistedPartnerRegID is the registartion ID we check for to see if we need
 	// to skip the domain whitelist (but not the blacklist). This is for an
@@ -146,7 +143,7 @@ func (pa AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) erro
 		}
 	}
 
-	if len(domain) > 255 {
+	if len(domain) > maxDNSIdentifierLength {
 		return errNameTooLong
 	}
 

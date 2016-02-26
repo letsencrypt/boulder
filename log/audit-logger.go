@@ -188,10 +188,10 @@ func caller(level int) string {
 func (log *AuditLogger) AuditPanic() {
 	if err := recover(); err != nil {
 		buf := make([]byte, 8192)
-		log.Audit(fmt.Sprintf("Panic caused by err: %s", err))
+		log.AuditErr(fmt.Errorf("Panic caused by err: %s", err))
 
 		runtime.Stack(buf, false)
-		log.Audit(fmt.Sprintf("Stack Trace (Current frame) %s", buf))
+		log.AuditErr(fmt.Errorf("Stack Trace (Current frame) %s", buf))
 
 		runtime.Stack(buf, true)
 		log.Warning(fmt.Sprintf("Stack Trace (All frames): %s", buf))
@@ -243,9 +243,9 @@ func (log *AuditLogger) Notice(msg string) (err error) {
 	return log.logAtLevel(syslog.LOG_NOTICE, msg)
 }
 
-// Audit sends a NOTICE-severity message that is prefixed with the
+// AuditNotice sends a NOTICE-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
-func (log *AuditLogger) Audit(msg string) (err error) {
+func (log *AuditLogger) AuditNotice(msg string) (err error) {
 	return log.auditAtLevel(syslog.LOG_NOTICE, msg)
 }
 
