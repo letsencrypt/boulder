@@ -47,7 +47,7 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 		return prob.HTTPStatus
 	}
 	switch prob.Type {
-	case ConnectionProblem, MalformedProblem, TLSProblem, UnknownHostProblem, BadNonceProblem:
+	case ConnectionProblem, MalformedProblem, TLSProblem, UnknownHostProblem, BadNonceProblem, InvalidEmailProblem:
 		return http.StatusBadRequest
 	case ServerInternalProblem:
 		return http.StatusInternalServerError
