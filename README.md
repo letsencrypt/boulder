@@ -22,6 +22,10 @@ Slow start
 This approach is better if you intend to develop on Boulder frequently, because
 it's challenging to develop inside the Docker container.
 
+We recommend setting git's [fsckObjects
+setting](https://groups.google.com/forum/#!topic/binary-transparency/f-BI4o8HZW0/discussion)
+for better integrity guarantees when getting updates.
+
 Boulder requires an installation of RabbitMQ, libtool-ltdl, goose, and
 MariaDB 10 to work correctly. On Ubuntu and CentOS, you may have to
 install RabbitMQ from https://rabbitmq.com/download.html to get a
