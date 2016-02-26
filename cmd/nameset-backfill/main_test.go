@@ -38,12 +38,13 @@ func TestBackfill(t *testing.T) {
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
-	err = dbMap.Insert(&core.Certificate{RegistrationID: reg.ID, DER: certDER})
+	err = dbMap.Insert(&core.Certificate{RegistrationID: reg.ID, DER: certDER, Serial: "serial"})
 	test.AssertNotError(t, err, "Couldn't insert stub certificate")
 
 	results, err := b.findCerts()
 	test.AssertNotError(t, err, "Failed to find missing name sets")
 	test.AssertEquals(t, len(results), 1)
+	test.AssertEquals(t, results[0].Serial, "serial")
 
 	err = b.processResults(results)
 	test.AssertNotError(t, err, "Failed to add missing name sets")

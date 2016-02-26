@@ -897,8 +897,9 @@ func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time
 	})
 }
 
-// CountValidFQDNSets reutrns the number of currently valid sets with hash |setHash|
-func (ssa *SQLStorageAuthority) CountValidFQDNSets(window time.Duration, names []string) (int64, error) {
+// CountFQDNSets returns the number of sets with hash |setHash| within the window
+// |window|
+func (ssa *SQLStorageAuthority) CountFQDNSets(window time.Duration, names []string) (int64, error) {
 	var count int64
 	err := ssa.dbMap.SelectOne(
 		&count,

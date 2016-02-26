@@ -70,7 +70,7 @@ const (
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
 	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
-	MethodCountValidFQDNSets                = "CountValidFQDNSets"                // SA
+	MethodCountFQDNSets                     = "CountFQDNSets"                     // SA
 )
 
 // Request structs
@@ -168,12 +168,6 @@ type countPendingAuthorizationsRequest struct {
 
 type revokeAuthsRequest struct {
 	Ident core.AcmeIdentifier
-}
-
-type addFQDNSetRequest struct {
-	Names   []string
-	Serial  string
-	Expires time.Time
 }
 
 type countValidFQDNsRequest struct {
@@ -1123,25 +1117,25 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return nil, nil
 	})
 
-	rpc.Handle(MethodCountValidFQDNSets, func(req []byte) (response []byte, err error) {
+	rpc.Handle(MethodCountFQDNSets, func(req []byte) (response []byte, err error) {
 		var r countValidFQDNsRequest
 		err = json.Unmarshal(req, &r)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodCountValidFQDNSets, err, req)
+			errorCondition(MethodCountFQDNSets, err, req)
 			return
 		}
-		count, err := impl.CountValidFQDNSets(r.Window, r.Names)
+		count, err := impl.CountFQDNSets(r.Window, r.Names)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodCountValidFQDNSets, err, req)
+			errorCondition(MethodCountFQDNSets, err, req)
 			return
 		}
 
 		response, err = json.Marshal(countFQDNSetsResponse{count})
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodCountValidFQDNSets, err, req)
+			errorCondition(MethodCountFQDNSets, err, req)
 			return
 		}
 
@@ -1522,13 +1516,13 @@ func (cac StorageAuthorityClient) AddSCTReceipt(sct core.SignedCertificateTimest
 	return
 }
 
-// CountValidFQDNSets reutrns the number of currently valid sets with hash |setHash|
-func (cac StorageAuthorityClient) CountValidFQDNSets(window time.Duration, names []string) (int64, error) {
+// CountFQDNSets reutrns the number of currently valid sets with hash |setHash|
+func (cac StorageAuthorityClient) CountFQDNSets(window time.Duration, names []string) (int64, error) {
 	data, err := json.Marshal(countValidFQDNsRequest{window, names})
 	if err != nil {
 		return 0, err
 	}
-	response, err := cac.rpc.DispatchSync(MethodCountValidFQDNSets, data)
+	response, err := cac.rpc.DispatchSync(MethodCountFQDNSets, data)
 	if err != nil {
 		return 0, err
 	}

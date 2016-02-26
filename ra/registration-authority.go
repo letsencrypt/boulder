@@ -641,7 +641,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(names []string, limit cmd.RateLimitPolicy, regID int64) error {
-	count, err := ra.SA.CountValidFQDNSets(limit.Window.Duration, names)
+	count, err := ra.SA.CountFQDNSets(limit.Window.Duration, names)
 	if err != nil {
 		return err
 	}

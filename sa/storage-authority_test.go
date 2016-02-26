@@ -683,12 +683,12 @@ func TestFQDNSets(t *testing.T) {
 
 	// only one valid
 	threeHours := time.Hour * 3
-	count, err := sa.CountValidFQDNSets(threeHours, names)
+	count, err := sa.CountFQDNSets(threeHours, names)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, count, int64(1))
 
 	// check hash isn't affected by changing name order/casing
-	count, err = sa.CountValidFQDNSets(threeHours, []string{"b.example.com", "A.example.COM"})
+	count, err = sa.CountFQDNSets(threeHours, []string{"b.example.com", "A.example.COM"})
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, count, int64(1))
 
@@ -700,7 +700,7 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// only two valid
-	count, err = sa.CountValidFQDNSets(threeHours, names)
+	count, err = sa.CountFQDNSets(threeHours, names)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, count, int64(2))
 
@@ -718,7 +718,7 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// only two valid
-	count, err = sa.CountValidFQDNSets(threeHours, names)
+	count, err = sa.CountFQDNSets(threeHours, names)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, count, int64(2))
 }

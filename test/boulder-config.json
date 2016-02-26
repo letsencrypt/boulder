@@ -191,8 +191,7 @@
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "SA.server"
-    },
-    "enableAddFQDNSets": false
+    }
   },
 
   "va": {

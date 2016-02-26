@@ -253,8 +253,8 @@ func (sa *StorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) (
 	return
 }
 
-// CountValidFQDNSets is a mock
-func (sa *StorageAuthority) CountValidFQDNSets(since time.Duration, names []string) (int64, error) {
+// CountFQDNSets is a mock
+func (sa *StorageAuthority) CountFQDNSets(since time.Duration, names []string) (int64, error) {
 	return 0, nil
 }
 
