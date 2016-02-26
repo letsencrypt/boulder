@@ -1,5 +1,3 @@
-// +build !nopkcs11
-
 package pkcs11key
 
 import (
