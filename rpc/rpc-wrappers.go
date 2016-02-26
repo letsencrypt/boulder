@@ -170,7 +170,7 @@ type revokeAuthsRequest struct {
 	Ident core.AcmeIdentifier
 }
 
-type countValidFQDNsRequest struct {
+type countFQDNsRequest struct {
 	Window time.Duration
 	Names  []string
 }
@@ -1118,7 +1118,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 	})
 
 	rpc.Handle(MethodCountFQDNSets, func(req []byte) (response []byte, err error) {
-		var r countValidFQDNsRequest
+		var r countFQDNsRequest
 		err = json.Unmarshal(req, &r)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -1518,7 +1518,7 @@ func (cac StorageAuthorityClient) AddSCTReceipt(sct core.SignedCertificateTimest
 
 // CountFQDNSets reutrns the number of currently valid sets with hash |setHash|
 func (cac StorageAuthorityClient) CountFQDNSets(window time.Duration, names []string) (int64, error) {
-	data, err := json.Marshal(countValidFQDNsRequest{window, names})
+	data, err := json.Marshal(countFQDNsRequest{window, names})
 	if err != nil {
 		return 0, err
 	}
