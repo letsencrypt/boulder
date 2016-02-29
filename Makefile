@@ -38,7 +38,12 @@ $(OBJDIR):
 
 $(CMD_BINS): build_cmds
 
-build_cmds: | $(OBJDIR)
+psl/table.go: data/public_suffix_list.dat
+	go run Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix/gen.go -version "checked-in" -url '' < data/public_suffix_list.dat > psl/table.go
+psl/list.go: Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix/list.go
+	cp Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix/list.go $@
+
+build_cmds: psl/table.go psl/list.go | $(OBJDIR)
 	GOBIN=$(OBJDIR) go install $(GO_BUILD_FLAGS) ./...
 
 clean:
