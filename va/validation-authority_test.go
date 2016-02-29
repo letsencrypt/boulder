@@ -679,6 +679,7 @@ func TestCAAChecking(t *testing.T) {
 		{"example.co.uk", false, true},
 		// Good (present)
 		{"present.com", true, true},
+		{"present.servfail.com", true, true},
 		// Good (multiple critical, one matching)
 		{"multi-crit-present.com", true, true},
 		// Bad (unknown critical)
@@ -717,6 +718,16 @@ func TestCAAChecking(t *testing.T) {
 	_, _, err = va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
+	}
+
+	present, valid, err = va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
+	test.AssertError(t, err, "servfail.present.com")
+	test.Assert(t, !present, "Present should be false")
+	test.Assert(t, !valid, "Valid should be false")
+
+	_, _, err = va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
+	if err == nil {
+		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.present.com")
 	}
 }
 
