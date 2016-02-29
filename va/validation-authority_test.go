@@ -670,17 +670,26 @@ func TestCAAChecking(t *testing.T) {
 	}
 	tests := []CAATest{
 		// Reserved
-		CAATest{"reserved.com", true, false},
+		{"reserved.com", true, false},
 		// Critical
-		CAATest{"critical.com", true, false},
-		CAATest{"nx.critical.com", true, false},
+		{"critical.com", true, false},
+		{"nx.critical.com", true, false},
 		// Good (absent)
-		CAATest{"absent.com", false, true},
-		CAATest{"example.co.uk", false, true},
+		{"absent.com", false, true},
+		{"example.co.uk", false, true},
 		// Good (present)
-		CAATest{"present.com", true, true},
+		{"present.com", true, true},
 		// Good (multiple critical, one matching)
-		CAATest{"multi-crit-present.com", true, true},
+		{"multi-crit-present.com", true, true},
+		// Bad (unknown critical)
+		{"unknown-critical.com", true, false},
+		{"unknown-critical2.com", true, false},
+		// Good (unknown noncritical, no issue/issuewild records)
+		{"unknown-noncritical.com", true, true},
+		// Good (issue record with unknown parameters)
+		{"present-with-parameter.com", true, true},
+		// Bad (unsatisfiable issue record)
+		{"unsatisfiable.com", true, false},
 	}
 
 	stats, _ := statsd.NewNoopClient()
@@ -688,11 +697,10 @@ func TestCAAChecking(t *testing.T) {
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
 	for _, caaTest := range tests {
-		present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
+		present, valid, err := va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		if err != nil {
 			t.Errorf("CheckCAARecords error for %s: %s", caaTest.Domain, err)
 		}
-		fmt.Println(caaTest.Domain, caaTest.Present == present, caaTest.Valid == valid)
 		if present != caaTest.Present {
 			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
 		}
@@ -701,12 +709,12 @@ func TestCAAChecking(t *testing.T) {
 		}
 	}
 
-	present, valid, err := va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	present, valid, err := va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.CheckCAARecords(core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	_, _, err = va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
 	}

@@ -93,7 +93,7 @@ func newUpdater(
 
 	// Setup loops
 	updater.loops = []*looper{
-		&looper{
+		{
 			clk:                  clk,
 			stats:                stats,
 			batchSize:            config.NewCertificateBatchSize,
@@ -103,7 +103,7 @@ func newUpdater(
 			failureBackoffFactor: config.SignFailureBackoffFactor,
 			failureBackoffMax:    config.SignFailureBackoffMax.Duration,
 		},
-		&looper{
+		{
 			clk:                  clk,
 			stats:                stats,
 			batchSize:            config.OldOCSPBatchSize,
@@ -115,7 +115,7 @@ func newUpdater(
 		},
 		// The missing SCT loop doesn't need to know about failureBackoffFactor or
 		// failureBackoffMax as it doesn't make any calls to the CA
-		&looper{
+		{
 			clk:       clk,
 			stats:     stats,
 			batchSize: config.MissingSCTBatchSize,

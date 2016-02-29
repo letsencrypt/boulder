@@ -7,7 +7,9 @@ fi
 
 # The list of segments to run. To run only some of these segments, pre-set the
 # RUN variable with the ones you want (see .travis.yml for an example).
-# Order doesn't matter.
+# Order doesn't matter. Note: godep-restore is specifically left out of the
+# defaults, because we don't want to run it locally (would be too disruptive to
+# GOPATH).
 RUN=${RUN:-vet lint fmt migrations unit integration}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
@@ -156,8 +158,14 @@ function run_unit_tests() {
     # treat that as a failure.
     [ -e $GOBIN/goveralls ] && $GOBIN/goveralls -coverprofile=gover.coverprofile -service=travis-ci
   else
-    # Run all the tests together if local, for speed
-    run go test $GOTESTFLAGS ./...
+    # When running locally, we skip the -race flag for speedier test runs. We
+    # also pass -p 1 to require the tests to run serially instead of in
+    # parallel. This is because our unittests depend on mutating a database and
+    # then cleaning up after themselves. If they run in parallel, they can fail
+    # spuriously because one test is modifying a table (especially
+    # registrations) while another test is reading it.
+    # https://github.com/letsencrypt/boulder/issues/1499
+    run go test -p 1 $GOTESTFLAGS ./...
   fi
 }
 
@@ -273,6 +281,25 @@ if [[ "$RUN" =~ "integration" ]] ; then
       ;;
   esac
   end_context #integration
+fi
+
+# Run godep-restore (happens only in Travis) to check that the hashes in
+# Godeps.json really exist in the remote repo and match what we have.
+if [[ "$RUN" =~ "godep-restore" ]] ; then
+  start_context "godep-restore"
+  run_and_comment godep restore
+  # Run godep save and do a diff, to ensure that the version we got from
+  # `godep restore` matched what was in the remote repo. We only do this on
+  # builds of the main fork (not PRs from external contributors), because godep
+  # rewrites import paths to the path of the fork we're building from, which
+  # creates spurious diffs if we're not building from the main fork.
+  # Once we switch to Go 1.6's imports and don't need rewriting anymore, we can
+  # do this for all builds.
+  if [[ "${TRAVIS_REPO_SLUG}" == "letsencrypt/boulder" ]] ; then
+    run_and_comment godep save -r ./...
+    run_and_comment git diff --exit-code
+  fi
+  end_context #godep-restore
 fi
 
 exit ${FAILURE}

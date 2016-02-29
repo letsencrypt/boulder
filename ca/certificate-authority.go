@@ -6,11 +6,13 @@
 package ca
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -50,6 +52,43 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA1:             true,
 }
 
+// Miscellaneous PKIX OIDs that we need to refer to
+var (
+	// X.509 Extensions
+	oidAuthorityInfoAccess    = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 1}
+	oidAuthorityKeyIdentifier = asn1.ObjectIdentifier{2, 5, 29, 35}
+	oidBasicConstraints       = asn1.ObjectIdentifier{2, 5, 29, 19}
+	oidCertificatePolicies    = asn1.ObjectIdentifier{2, 5, 29, 32}
+	oidCrlDistributionPoints  = asn1.ObjectIdentifier{2, 5, 29, 31}
+	oidExtKeyUsage            = asn1.ObjectIdentifier{2, 5, 29, 37}
+	oidKeyUsage               = asn1.ObjectIdentifier{2, 5, 29, 15}
+	oidSubjectAltName         = asn1.ObjectIdentifier{2, 5, 29, 17}
+	oidSubjectKeyIdentifier   = asn1.ObjectIdentifier{2, 5, 29, 14}
+	oidTLSFeature             = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
+
+	// CSR attribute requesting extensions
+	oidExtensionRequest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 14}
+)
+
+// OID and fixed value for the "must staple" variant of the TLS Feature
+// extension:
+//
+//  Features ::= SEQUENCE OF INTEGER                  [RFC7633]
+//  enum { ... status_request(5) ...} ExtensionType;  [RFC6066]
+//
+// DER Encoding:
+//  30 03 - SEQUENCE (3 octets)
+//  |-- 02 01 - INTEGER (1 octet)
+//  |   |-- 05 - 5
+var (
+	mustStapleFeatureValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
+	mustStapleExtension    = signer.Extension{
+		ID:       cfsslConfig.OID(oidTLSFeature),
+		Critical: false,
+		Value:    hex.EncodeToString(mustStapleFeatureValue),
+	}
+)
+
 // Metrics for CA statistics
 const (
 	// Increments when CA observes an HSM fault
@@ -57,26 +96,48 @@ const (
 
 	// Increments when CA rejects a request due to an HSM fault
 	metricHSMFaultRejected = "CA.OCSP.HSMFault.Rejected"
+
+	// Increments when CA handles a CSR requesting a "basic" extension:
+	// authorityInfoAccess, authorityKeyIdentifier, extKeyUsage, keyUsage,
+	// basicConstraints, certificatePolicies, crlDistributionPoints,
+	// subjectAlternativeName, subjectKeyIdentifier,
+	metricCSRExtensionBasic = "CA.OCSP.CSRExtensions.Basic"
+
+	// Increments when CA handles a CSR requesting a TLS Feature extension
+	metricCSRExtensionTLSFeature = "CA.OCSP.CSRExtensions.TLSFeature"
+
+	// Increments when CA handles a CSR requesting a TLS Feature extension with
+	// an invalid value
+	metricCSRExtensionTLSFeatureInvalid = "CA.OCSP.CSRExtensions.TLSFeatureInvalid"
+
+	// Increments when CA handles a CSR requesting an extension other than those
+	// listed above
+	metricCSRExtensionOther = "CA.OCSP.CSRExtensions.Other"
+
+	// Maximum length allowed for the common name. RFC 5280
+	maxCNLength = 64
 )
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
-	rsaProfile     string
-	ecdsaProfile   string
-	signer         signer.Signer
-	ocspSigner     ocsp.Signer
-	SA             core.StorageAuthority
-	PA             core.PolicyAuthority
-	Publisher      core.Publisher
-	keyPolicy      core.KeyPolicy
-	clk            clock.Clock // TODO(jmhodges): should be private, like log
-	log            *blog.AuditLogger
-	stats          statsd.Statter
-	prefix         int // Prepended to the serial number
-	validityPeriod time.Duration
-	notAfter       time.Time
-	maxNames       int
+	rsaProfile       string
+	ecdsaProfile     string
+	signer           signer.Signer
+	ocspSigner       ocsp.Signer
+	SA               core.StorageAuthority
+	PA               core.PolicyAuthority
+	Publisher        core.Publisher
+	keyPolicy        core.KeyPolicy
+	clk              clock.Clock // TODO(jmhodges): should be private, like log
+	log              *blog.AuditLogger
+	stats            statsd.Statter
+	prefix           int // Prepended to the serial number
+	validityPeriod   time.Duration
+	notAfter         time.Time
+	maxNames         int
+	forceCNFromSAN   bool
+	enableMustStaple bool
 
 	hsmFaultLock         sync.Mutex
 	hsmFaultLastObserved time.Time
@@ -154,17 +215,19 @@ func NewCertificateAuthorityImpl(
 	}
 
 	ca = &CertificateAuthorityImpl{
-		signer:          signer,
-		ocspSigner:      ocspSigner,
-		rsaProfile:      rsaProfile,
-		ecdsaProfile:    ecdsaProfile,
-		prefix:          config.SerialPrefix,
-		clk:             clk,
-		log:             logger,
-		stats:           stats,
-		notAfter:        issuer.NotAfter,
-		hsmFaultTimeout: config.HSMFaultTimeout.Duration,
-		keyPolicy:       keyPolicy,
+		signer:           signer,
+		ocspSigner:       ocspSigner,
+		rsaProfile:       rsaProfile,
+		ecdsaProfile:     ecdsaProfile,
+		prefix:           config.SerialPrefix,
+		clk:              clk,
+		log:              logger,
+		stats:            stats,
+		notAfter:         issuer.NotAfter,
+		hsmFaultTimeout:  config.HSMFaultTimeout.Duration,
+		keyPolicy:        keyPolicy,
+		forceCNFromSAN:   !config.DoNotForceCN, // Note the inversion here
+		enableMustStaple: config.EnableMustStaple,
 	}
 
 	if config.Expiry == "" {
@@ -214,6 +277,77 @@ func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
 		ca.hsmFaultLastObserved = ca.clk.Now()
 	}
 	return
+}
+
+// Extract supported extensions from a CSR.  The following extensions are
+// currently supported:
+//
+// * 1.3.6.1.5.5.7.1.24 - TLS Feature [RFC7633], with the "must staple" value.
+//                        Any other value will result in an error.
+//
+// Other requested extensions are silently ignored.
+func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateRequest) ([]signer.Extension, error) {
+	extensions := []signer.Extension{}
+
+	extensionSeen := map[string]bool{}
+	hasBasic := false
+	hasOther := false
+
+	for _, attr := range csr.Attributes {
+		if !attr.Type.Equal(oidExtensionRequest) {
+			continue
+		}
+
+		for _, extList := range attr.Value {
+			for _, ext := range extList {
+				if extensionSeen[ext.Type.String()] {
+					// Ignore duplicate certificate extensions
+					continue
+				}
+				extensionSeen[ext.Type.String()] = true
+
+				switch {
+				case ext.Type.Equal(oidTLSFeature):
+					ca.stats.Inc(metricCSRExtensionTLSFeature, 1, 1.0)
+					value, ok := ext.Value.([]byte)
+					if !ok {
+						msg := fmt.Sprintf("Mal-formed extension with OID %v", ext.Type)
+						return nil, core.CertificateIssuanceError(msg)
+					} else if !bytes.Equal(value, mustStapleFeatureValue) {
+						msg := fmt.Sprintf("Unsupported value for extension with OID %v", ext.Type)
+						ca.stats.Inc(metricCSRExtensionTLSFeatureInvalid, 1, 1.0)
+						return nil, core.CertificateIssuanceError(msg)
+					}
+
+					if ca.enableMustStaple {
+						extensions = append(extensions, mustStapleExtension)
+					}
+				case ext.Type.Equal(oidAuthorityInfoAccess),
+					ext.Type.Equal(oidAuthorityKeyIdentifier),
+					ext.Type.Equal(oidBasicConstraints),
+					ext.Type.Equal(oidCertificatePolicies),
+					ext.Type.Equal(oidCrlDistributionPoints),
+					ext.Type.Equal(oidExtKeyUsage),
+					ext.Type.Equal(oidKeyUsage),
+					ext.Type.Equal(oidSubjectAltName),
+					ext.Type.Equal(oidSubjectKeyIdentifier):
+					hasBasic = true
+				default:
+					hasOther = true
+				}
+			}
+		}
+	}
+
+	if hasBasic {
+		ca.stats.Inc(metricCSRExtensionBasic, 1, 1.0)
+	}
+
+	if hasOther {
+		ca.stats.Inc(metricCSRExtensionOther, 1, 1.0)
+	}
+
+	return extensions, nil
 }
 
 // GenerateOCSP produces a new OCSP response and returns it
@@ -277,12 +411,13 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	commonName := ""
 	hostNames := make([]string, len(csr.DNSNames))
 	copy(hostNames, csr.DNSNames)
+
 	if len(csr.Subject.CommonName) > 0 {
 		commonName = strings.ToLower(csr.Subject.CommonName)
 		hostNames = append(hostNames, commonName)
-	} else if len(hostNames) > 0 {
-		commonName = strings.ToLower(hostNames[0])
-	} else {
+	}
+
+	if len(hostNames) == 0 {
 		err = core.MalformedRequestError("Cannot issue a certificate without a hostname.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
@@ -291,6 +426,20 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	// Collapse any duplicate names.  Note that this operation may re-order the names
 	hostNames = core.UniqueLowerNames(hostNames)
+
+	if ca.forceCNFromSAN && commonName == "" {
+		commonName = hostNames[0]
+	}
+
+	if len(commonName) > maxCNLength {
+		msg := fmt.Sprintf("Common name was longer than 64 bytes, was %d",
+			len(csr.Subject.CommonName))
+		err := core.MalformedRequestError(msg)
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
+	}
+
 	if ca.maxNames > 0 && len(hostNames) > ca.maxNames {
 		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames))
 		ca.log.WarningErr(err)
@@ -298,21 +447,19 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Verify that names are allowed by policy
-	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: commonName}
-	if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", commonName))
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
-	}
 	for _, name := range hostNames {
-		identifier = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
 			err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", name))
 			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 			ca.log.AuditErr(err)
 			return emptyCert, err
 		}
+	}
+
+	requestedExtensions, err := ca.extensionsFromCSR(&csr)
+	if err != nil {
+		return emptyCert, err
 	}
 
 	notAfter := ca.clk.Now().Add(ca.validityPeriod)
@@ -341,9 +488,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		ca.log.Audit(fmt.Sprintf("Serial randomness failed, err=[%v]", err))
 		return emptyCert, err
 	}
-	serialHex := hex.EncodeToString(serialBytes)
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
+	serialHex := core.SerialToString(serialBigInt)
 
 	var profile string
 	switch key.(type) {
@@ -366,9 +513,12 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		Subject: &signer.Subject{
 			CN: commonName,
 		},
-		Serial: serialBigInt,
+		Serial:     serialBigInt,
+		Extensions: requestedExtensions,
 	}
-
+	if !ca.forceCNFromSAN {
+		req.Subject.SerialNumber = serialHex
+	}
 	certPEM, err := ca.signer.Sign(req)
 	ca.noteHSMFault(err)
 	if err != nil {

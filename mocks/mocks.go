@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/certdb"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
@@ -129,7 +130,7 @@ func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, err
 		RegistrationID: 1,
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-an-example.com"},
 		Challenges: []core.Challenge{
-			core.Challenge{
+			{
 				ID:   23,
 				Type: "dns",
 			},
@@ -308,6 +309,11 @@ func (bhs BadHSMSigner) Policy() *config.Signing {
 
 // SetPolicy is a mock
 func (bhs BadHSMSigner) SetPolicy(*config.Signing) {
+	return
+}
+
+// SetDBAccessor is a mock.
+func (bhs BadHSMSigner) SetDBAccessor(certdb.Accessor) {
 	return
 }
 

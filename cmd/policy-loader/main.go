@@ -44,7 +44,7 @@ func main() {
 	}
 
 	app.Commands = append(app.Commands, []cli.Command{
-		cli.Command{
+		{
 			Name:  "dump-rules",
 			Usage: "Write out whitelist and blacklist from database to a rule file",
 			Action: func(c *cli.Context) {
@@ -68,7 +68,7 @@ func main() {
 				fmt.Printf("# Saved rule list to %s\n", ruleFile)
 			},
 		},
-		cli.Command{
+		{
 			Name:  "load-rules",
 			Usage: "Load whitelist and blacklist into database from a rule file",
 			Action: func(c *cli.Context) {
@@ -102,7 +102,7 @@ func main() {
 	app.Run(os.Args)
 }
 
-func setupFromContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl, string) {
+func setupFromContext(context *cli.Context) (*policy.AuthorityDatabaseImpl, string) {
 	configFileName := context.GlobalString("config")
 	configJSON, err := ioutil.ReadFile(configFileName)
 	cmd.FailOnError(err, "Couldn't read configuration file")
@@ -115,7 +115,7 @@ func setupFromContext(context *cli.Context) (*policy.PolicyAuthorityDatabaseImpl
 	dbMap, err := sa.NewDbMap(dbURL)
 	cmd.FailOnError(err, "Failed to create DB map")
 
-	padb, err := policy.NewPolicyAuthorityDatabaseImpl(dbMap)
+	padb, err := policy.NewAuthorityDatabaseImpl(dbMap)
 	cmd.FailOnError(err, "Could not connect to PADB")
 
 	ruleFile := context.GlobalString("rule-file")

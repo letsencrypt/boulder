@@ -23,93 +23,93 @@ var (
 	privateNetworks = []net.IPNet{
 		// RFC1918
 		// 10.0.0.0/8
-		net.IPNet{
+		{
 			IP:   []byte{10, 0, 0, 0},
 			Mask: []byte{255, 0, 0, 0},
 		},
 		// 172.16.0.0/12
-		net.IPNet{
+		{
 			IP:   []byte{172, 16, 0, 0},
 			Mask: []byte{255, 240, 0, 0},
 		},
 		// 192.168.0.0/16
-		net.IPNet{
+		{
 			IP:   []byte{192, 168, 0, 0},
 			Mask: []byte{255, 255, 0, 0},
 		},
 		// RFC5735
 		// 127.0.0.0/8
-		net.IPNet{
+		{
 			IP:   []byte{127, 0, 0, 0},
 			Mask: []byte{255, 0, 0, 0},
 		},
 		// RFC1122 Section 3.2.1.3
 		// 0.0.0.0/8
-		net.IPNet{
+		{
 			IP:   []byte{0, 0, 0, 0},
 			Mask: []byte{255, 0, 0, 0},
 		},
 		// RFC3927
 		// 169.254.0.0/16
-		net.IPNet{
+		{
 			IP:   []byte{169, 254, 0, 0},
 			Mask: []byte{255, 255, 0, 0},
 		},
 		// RFC 5736
 		// 192.0.0.0/24
-		net.IPNet{
+		{
 			IP:   []byte{192, 0, 0, 0},
 			Mask: []byte{255, 255, 255, 0},
 		},
 		// RFC 5737
 		// 192.0.2.0/24
-		net.IPNet{
+		{
 			IP:   []byte{192, 0, 2, 0},
 			Mask: []byte{255, 255, 255, 0},
 		},
 		// 198.51.100.0/24
-		net.IPNet{
+		{
 			IP:   []byte{192, 51, 100, 0},
 			Mask: []byte{255, 255, 255, 0},
 		},
 		// 203.0.113.0/24
-		net.IPNet{
+		{
 			IP:   []byte{203, 0, 113, 0},
 			Mask: []byte{255, 255, 255, 0},
 		},
 		// RFC 3068
 		// 192.88.99.0/24
-		net.IPNet{
+		{
 			IP:   []byte{192, 88, 99, 0},
 			Mask: []byte{255, 255, 255, 0},
 		},
 		// RFC 2544
 		// 192.18.0.0/15
-		net.IPNet{
+		{
 			IP:   []byte{192, 18, 0, 0},
 			Mask: []byte{255, 254, 0, 0},
 		},
 		// RFC 3171
 		// 224.0.0.0/4
-		net.IPNet{
+		{
 			IP:   []byte{224, 0, 0, 0},
 			Mask: []byte{240, 0, 0, 0},
 		},
 		// RFC 1112
 		// 240.0.0.0/4
-		net.IPNet{
+		{
 			IP:   []byte{240, 0, 0, 0},
 			Mask: []byte{240, 0, 0, 0},
 		},
 		// RFC 919 Section 7
 		// 255.255.255.255/32
-		net.IPNet{
+		{
 			IP:   []byte{255, 255, 255, 255},
 			Mask: []byte{255, 255, 255, 255},
 		},
 		// RFC 6598
 		// 100.64.0.0./10
-		net.IPNet{
+		{
 			IP:   []byte{100, 64, 0, 0},
 			Mask: []byte{255, 192, 0, 0},
 		},

@@ -18,28 +18,28 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// PolicyAuthorityImpl enforces CA policy decisions.
-type PolicyAuthorityImpl struct {
+// AuthorityImpl enforces CA policy decisions.
+type AuthorityImpl struct {
 	log *blog.AuditLogger
-	DB  *PolicyAuthorityDatabaseImpl
+	DB  *AuthorityDatabaseImpl
 
 	EnforceWhitelist  bool
 	enabledChallenges map[string]bool
 	pseudoRNG         *rand.Rand
 }
 
-// NewPolicyAuthorityImpl constructs a Policy Authority.
-func NewPolicyAuthorityImpl(dbMap *gorp.DbMap, enforceWhitelist bool, challengeTypes map[string]bool) (*PolicyAuthorityImpl, error) {
+// New constructs a Policy Authority.
+func New(dbMap *gorp.DbMap, enforceWhitelist bool, challengeTypes map[string]bool) (*AuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
 	// Setup policy db
-	padb, err := NewPolicyAuthorityDatabaseImpl(dbMap)
+	padb, err := NewAuthorityDatabaseImpl(dbMap)
 	if err != nil {
 		return nil, err
 	}
 
-	pa := PolicyAuthorityImpl{
+	pa := AuthorityImpl{
 		log:               logger,
 		DB:                padb,
 		EnforceWhitelist:  enforceWhitelist,
@@ -130,7 +130,7 @@ var (
 //    where comparison is case-independent (normalized to lower case)
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError.
-func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	if id.Type != core.IdentifierDNS {
 		return errInvalidIdentifier
 	}
@@ -212,7 +212,7 @@ func (pa PolicyAuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
-func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int, error) {
+func (pa AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int) {
 	challenges := []core.Challenge{}
 
 	if pa.enabledChallenges[core.ChallengeTypeHTTP01] {
@@ -242,5 +242,5 @@ func (pa PolicyAuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, acco
 		shuffledCombos[i] = combinations[comboIdx]
 	}
 
-	return shuffled, shuffledCombos, nil
+	return shuffled, shuffledCombos
 }

@@ -49,10 +49,6 @@ func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization,
 	return
 }
 
-func (dva *DummyValidationAuthority) CheckCAARecords(identifier core.AcmeIdentifier) (present, valid bool, err error) {
-	return false, true, nil
-}
-
 func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
 	if dva.IsSafeDomainErr != nil {
 		return nil, dva.IsSafeDomainErr
@@ -130,7 +126,7 @@ var (
 		Identifier:     core.AcmeIdentifier{Type: "dns", Value: "not-example.com"},
 		RegistrationID: 1,
 		Status:         "pending",
-		Combinations:   [][]int{[]int{0}, []int{1}},
+		Combinations:   [][]int{{0}, {1}},
 	}
 	AuthzFinal = core.Authorization{}
 
@@ -198,6 +194,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 					SignatureAlgorithm: true,
 					DNSNames:           true,
 				},
+				ClientProvidesSerialNumbers: true,
 			},
 		},
 	}
@@ -214,7 +211,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
-	pa, err := policy.NewPolicyAuthorityImpl(paDbMap, false, SupportedChallenges)
+	pa, err := policy.New(paDbMap, false, SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
 
 	stats, _ := statsd.NewNoopClient()
@@ -261,7 +258,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	AuthzInitial.RegistrationID = Registration.ID
 
-	challenges, combinations, err := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
+	challenges, combinations := pa.ChallengesFor(AuthzInitial.Identifier, &Registration.Key)
 	AuthzInitial.Challenges = challenges
 	AuthzInitial.Combinations = combinations
 
@@ -669,13 +666,13 @@ func TestNewCertificate(t *testing.T) {
 	sa.FinalizeAuthorization(authzFinalWWW)
 
 	// Check that we fail if the CSR signature is invalid
-	ExampleCSR.Signature[0] += 1
+	ExampleCSR.Signature[0]++
 	certRequest := core.CertificateRequest{
 		CSR: ExampleCSR,
 	}
 
 	_, err := ra.NewCertificate(certRequest, Registration.ID)
-	ExampleCSR.Signature[0] -= 1
+	ExampleCSR.Signature[0]--
 	test.AssertError(t, err, "Failed to check CSR signature")
 
 	// Check that we don't fail on case mismatches

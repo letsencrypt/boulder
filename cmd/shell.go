@@ -27,6 +27,7 @@ import (
 	"errors"
 	_ "expvar" // For DebugServer, below.
 	"fmt"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
 	"io/ioutil"
 	"log"
 	"log/syslog"
@@ -157,6 +158,15 @@ func (as *AppShell) Run() {
 	FailOnError(err, "Failed to run application")
 }
 
+// mysqlLogger proxies blog.AuditLogger to provide a Print(...) method.
+type mysqlLogger struct {
+	*blog.AuditLogger
+}
+
+func (m mysqlLogger) Print(v ...interface{}) {
+	m.Err(fmt.Sprintf("[mysql] %s", fmt.Sprint(v...)))
+}
+
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
 // Also sets the constructed AuditLogger as the default logger.
@@ -175,15 +185,18 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (statsd.Statte
 	if logConf.StdoutLevel != nil {
 		level = *logConf.StdoutLevel
 	}
-	auditlogger, err := blog.NewAuditLogger(syslogger, stats, level)
+	auditLogger, err := blog.NewAuditLogger(syslogger, stats, level)
 	FailOnError(err, "Could not connect to Syslog")
 	// TODO(https://github.com/cloudflare/cfssl/issues/426):
 	// CFSSL's log facility always prints to stdout. Ideally we should send a
 	// patch that would allow us to have CFSSL use our log facility. In the
 	// meantime, inhibit debug and info-level logs from CFSSL.
 	cfsslLog.Level = cfsslLog.LevelWarning
-	blog.SetAuditLogger(auditlogger)
-	return stats, auditlogger
+	blog.SetAuditLogger(auditLogger)
+
+	mysql.SetLogger(mysqlLogger{auditLogger})
+
+	return stats, auditLogger
 }
 
 // VersionString produces a friendly Application version string

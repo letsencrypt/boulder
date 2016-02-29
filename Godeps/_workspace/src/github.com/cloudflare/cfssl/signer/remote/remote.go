@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/cloudflare/cfssl/api/client"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/certdb"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
@@ -104,6 +105,11 @@ func (s *Signer) SigAlgo() x509.SignatureAlgorithm {
 // SetPolicy sets the signer's signature policy.
 func (s *Signer) SetPolicy(policy *config.Signing) {
 	s.policy = policy
+}
+
+// SetDBAccessor sets the signers' cert db accessor
+func (s *Signer) SetDBAccessor(dba certdb.Accessor) {
+	// noop
 }
 
 // Policy returns the signer's policy.

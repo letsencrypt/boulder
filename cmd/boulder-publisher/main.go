@@ -41,7 +41,7 @@ func main() {
 			bundle = append(bundle, ct.ASN1Cert(cert.Raw))
 		}
 
-		pubi := publisher.NewPublisherImpl(bundle, logs)
+		pubi := publisher.New(bundle, logs)
 
 		go cmd.DebugServer(c.Publisher.DebugAddr)
 		go cmd.ProfileCmd("Publisher", stats)
