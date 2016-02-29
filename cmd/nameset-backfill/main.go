@@ -159,8 +159,9 @@ func main() {
 		},
 	}
 	if *amqpCert != "" && *amqpKey != "" && *amqpCA != "" {
-		amqpConf.Insecure = false
 		amqpConf.TLS = &cmd.TLSConfig{CertFile: amqpCert, KeyFile: amqpKey, CACertFile: amqpCA}
+	} else {
+		amqpConf.Insecure = true
 	}
 	cmd.FailOnError(err, "Failed to read db URI")
 	b, err := new(
