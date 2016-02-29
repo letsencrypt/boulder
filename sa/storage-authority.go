@@ -773,6 +773,18 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		}
 	}
 
+	err = addFQDNSet(
+		tx,
+		parsedCertificate.DNSNames,
+		serial,
+		parsedCertificate.NotBefore,
+		parsedCertificate.NotAfter,
+	)
+	if err != nil {
+		tx.Rollback()
+		return
+	}
+
 	err = tx.Commit()
 	return
 }
@@ -868,4 +880,34 @@ func (ssa *SQLStorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestam
 		err = ErrDuplicateReceipt(err.Error())
 	}
 	return err
+}
+
+func hashNames(names []string) []byte {
+	names = core.UniqueLowerNames(names)
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return hash[:]
+}
+
+func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time.Time, expires time.Time) error {
+	return tx.Insert(&core.FQDNSet{
+		SetHash: hashNames(names),
+		Serial:  serial,
+		Issued:  issued,
+		Expires: expires,
+	})
+}
+
+// CountFQDNSets returns the number of sets with hash |setHash| within the window
+// |window|
+func (ssa *SQLStorageAuthority) CountFQDNSets(window time.Duration, names []string) (int64, error) {
+	var count int64
+	err := ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM fqdnSets
+     WHERE setHash = ?
+     AND issued > ?`,
+		hashNames(names),
+		ssa.clk.Now().Add(-window),
+	)
+	return count, err
 }

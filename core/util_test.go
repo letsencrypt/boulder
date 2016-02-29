@@ -109,9 +109,9 @@ func TestAcmeURL(t *testing.T) {
 }
 
 func TestUniqueLowerNames(t *testing.T) {
-	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com"})
+	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com", "a.com"})
 	sort.Strings(u)
-	test.AssertDeepEquals(t, []string{"bar.com", "baz.com", "foobar.com"}, u)
+	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
 }
 
 func TestUnmarshalAcmeURL(t *testing.T) {
