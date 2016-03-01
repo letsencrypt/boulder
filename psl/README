@@ -1,0 +1,3 @@
+We generate a copy of https://github.com/golang/net/tree/master/publicsuffix
+here at build time. We do this so we can use our own checked-in copy of
+public_suffix_list.dat, rather than waiting on upstream to update.

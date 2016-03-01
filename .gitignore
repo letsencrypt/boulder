@@ -34,3 +34,7 @@ _testmain.go
 *.test
 *.prof
 *.coverprofile
+
+# Generated files
+psl/table.go
+psl/list.go
