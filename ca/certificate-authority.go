@@ -25,15 +25,16 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
-	blog "github.com/letsencrypt/boulder/log"
-
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
+	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+
+	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // This map is used to detect algorithms in crypto/x509 that
@@ -92,27 +93,24 @@ var (
 // Metrics for CA statistics
 const (
 	// Increments when CA observes an HSM fault
-	metricHSMFaultObserved = "CA.OCSP.HSMFault.Observed"
-
-	// Increments when CA rejects a request due to an HSM fault
-	metricHSMFaultRejected = "CA.OCSP.HSMFault.Rejected"
+	metricHSMFaultObserved = "CA.HSMFault.Observed"
 
 	// Increments when CA handles a CSR requesting a "basic" extension:
 	// authorityInfoAccess, authorityKeyIdentifier, extKeyUsage, keyUsage,
 	// basicConstraints, certificatePolicies, crlDistributionPoints,
 	// subjectAlternativeName, subjectKeyIdentifier,
-	metricCSRExtensionBasic = "CA.OCSP.CSRExtensions.Basic"
+	metricCSRExtensionBasic = "CA.CSRExtensions.Basic"
 
 	// Increments when CA handles a CSR requesting a TLS Feature extension
-	metricCSRExtensionTLSFeature = "CA.OCSP.CSRExtensions.TLSFeature"
+	metricCSRExtensionTLSFeature = "CA.CSRExtensions.TLSFeature"
 
 	// Increments when CA handles a CSR requesting a TLS Feature extension with
 	// an invalid value
-	metricCSRExtensionTLSFeatureInvalid = "CA.OCSP.CSRExtensions.TLSFeatureInvalid"
+	metricCSRExtensionTLSFeatureInvalid = "CA.CSRExtensions.TLSFeatureInvalid"
 
 	// Increments when CA handles a CSR requesting an extension other than those
 	// listed above
-	metricCSRExtensionOther = "CA.OCSP.CSRExtensions.Other"
+	metricCSRExtensionOther = "CA.CSRExtensions.Other"
 
 	// Maximum length allowed for the common name. RFC 5280
 	maxCNLength = 64
@@ -224,7 +222,6 @@ func NewCertificateAuthorityImpl(
 		log:              logger,
 		stats:            stats,
 		notAfter:         issuer.NotAfter,
-		hsmFaultTimeout:  config.HSMFaultTimeout.Duration,
 		keyPolicy:        keyPolicy,
 		forceCNFromSAN:   !config.DoNotForceCN, // Note the inversion here
 		enableMustStaple: config.EnableMustStaple,
@@ -243,38 +240,13 @@ func NewCertificateAuthorityImpl(
 	return ca, nil
 }
 
-// checkHSMFault checks whether there has been an HSM fault observed within the
-// timeout window.  CA methods that use the HSM should call this method right
-// away, to minimize the performance impact of HSM outages.
-func (ca *CertificateAuthorityImpl) checkHSMFault() error {
-	ca.hsmFaultLock.Lock()
-	defer ca.hsmFaultLock.Unlock()
-
-	// If no timeout is set, never gate on a fault
-	if ca.hsmFaultTimeout == 0 {
-		return nil
-	}
-
-	now := ca.clk.Now()
-	timeout := ca.hsmFaultLastObserved.Add(ca.hsmFaultTimeout)
-	if now.Before(timeout) {
-		err := core.ServiceUnavailableError("HSM is unavailable")
-		ca.log.WarningErr(err)
-		ca.stats.Inc(metricHSMFaultRejected, 1, 1.0)
-		return err
-	}
-	return nil
-}
-
 // noteHSMFault updates the CA's state with regard to HSM faults.  CA methods
 // that use an HSM should pass errors that might be HSM errors to this method.
 func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
-	ca.hsmFaultLock.Lock()
-	defer ca.hsmFaultLock.Unlock()
-
 	if err != nil {
-		ca.stats.Inc(metricHSMFaultObserved, 1, 1.0)
-		ca.hsmFaultLastObserved = ca.clk.Now()
+		if cfErr, ok := err.(*cferr.Error); ok && int(cfErr.ErrorCode/1000) == 1 {
+			ca.stats.Inc(metricHSMFaultObserved, 1, 1.0)
+		}
 	}
 	return
 }
@@ -352,10 +324,6 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 
 // GenerateOCSP produces a new OCSP response and returns it
 func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
-	if err := ca.checkHSMFault(); err != nil {
-		return nil, err
-	}
-
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -380,27 +348,22 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 // lowercased before storage.
 func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
-	var err error
-
-	if err := ca.checkHSMFault(); err != nil {
-		return emptyCert, err
-	}
 
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
-		err = core.MalformedRequestError("Invalid public key in CSR.")
+		err := core.MalformedRequestError("Invalid public key in CSR.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
-	if err = ca.keyPolicy.GoodKey(key); err != nil {
+	if err := ca.keyPolicy.GoodKey(key); err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid public key in CSR: %s", err.Error()))
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
 	}
 	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
-		err = core.MalformedRequestError("Invalid signature algorithm in CSR")
+		err := core.MalformedRequestError("Invalid signature algorithm in CSR")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
@@ -418,7 +381,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	if len(hostNames) == 0 {
-		err = core.MalformedRequestError("Cannot issue a certificate without a hostname.")
+		err := core.MalformedRequestError("Cannot issue a certificate without a hostname.")
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
@@ -441,7 +404,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	if ca.maxNames > 0 && len(hostNames) > ca.maxNames {
-		err = core.MalformedRequestError(fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames))
+		err := core.MalformedRequestError(fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames))
 		ca.log.WarningErr(err)
 		return emptyCert, err
 	}
@@ -449,7 +412,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	// Verify that names are allowed by policy
 	for _, name := range hostNames {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
-		if err = ca.PA.WillingToIssue(identifier, regID); err != nil {
+		if err := ca.PA.WillingToIssue(identifier, regID); err != nil {
 			err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", name))
 			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 			ca.log.AuditErr(err)

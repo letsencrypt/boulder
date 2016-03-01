@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
@@ -508,9 +509,12 @@ func (l *looper) tick() {
 	sleepDur := expectedTickEnd.Sub(tickEnd)
 	if err != nil {
 		l.stats.Inc(fmt.Sprintf("OCSP.%s.FailedTicks", l.name), 1, 1.0)
-		if _, ok := err.(core.ServiceUnavailableError); ok && (l.failureBackoffFactor > 0 && l.failureBackoffMax > 0) {
-			l.failures++
-			sleepDur = core.RetryBackoff(l.failures, l.tickDur, l.failureBackoffMax, l.failureBackoffFactor)
+		if cfErr, ok := err.(*cferr.Error); ok {
+			// CFSSL CertificateError, produced by Signer.Sign, has a 1XXX error code
+			if int(cfErr.ErrorCode/1000) == 1 && (l.failureBackoffFactor > 0 && l.failureBackoffMax > 0) {
+				l.failures++
+				sleepDur = core.RetryBackoff(l.failures, l.tickDur, l.failureBackoffMax, l.failureBackoffFactor)
+			}
 		}
 	} else if l.failures > 0 {
 		// If the tick was successful and previously there were failures reset

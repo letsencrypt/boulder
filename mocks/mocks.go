@@ -6,7 +6,6 @@
 package mocks
 
 import (
-	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -15,11 +14,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/certdb"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/info"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
 	"github.com/letsencrypt/boulder/core"
@@ -297,50 +291,6 @@ type Publisher struct {
 // SubmitToCT is a mock
 func (*Publisher) SubmitToCT([]byte) error {
 	return nil
-}
-
-// BadHSMSigner represents a CFSSL signer that always returns a PKCS#11 error.
-type BadHSMSigner string
-
-// Info is a mock
-func (bhs BadHSMSigner) Info(info.Req) (*info.Resp, error) {
-	return nil, nil
-}
-
-// Policy is a mock
-func (bhs BadHSMSigner) Policy() *config.Signing {
-	return nil
-}
-
-// SetPolicy is a mock
-func (bhs BadHSMSigner) SetPolicy(*config.Signing) {
-	return
-}
-
-// SetDBAccessor is a mock.
-func (bhs BadHSMSigner) SetDBAccessor(certdb.Accessor) {
-	return
-}
-
-// SigAlgo is a mock
-func (bhs BadHSMSigner) SigAlgo() x509.SignatureAlgorithm {
-	return x509.UnknownSignatureAlgorithm
-}
-
-// Sign always returns a PKCS#11 error, in the format used by
-// github.com/miekg/pkcs11
-func (bhs BadHSMSigner) Sign(req signer.SignRequest) (cert []byte, err error) {
-	return nil, fmt.Errorf(string(bhs))
-}
-
-// BadHSMOCSPSigner represents a CFSSL OCSP signer that always returns a
-// PKCS#11 error
-type BadHSMOCSPSigner string
-
-// Sign always returns a PKCS#11 error, in the format used by
-// github.com/miekg/pkcs11
-func (bhos BadHSMOCSPSigner) Sign(ocsp.SignRequest) ([]byte, error) {
-	return nil, fmt.Errorf(string(bhos))
 }
 
 // Statter is a stat counter that is a no-op except for locally handling Inc
