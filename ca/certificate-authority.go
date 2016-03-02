@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
@@ -31,6 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/pkcs11"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -92,8 +92,9 @@ var (
 
 // Metrics for CA statistics
 const (
-	// Increments when CA observes an HSM fault
-	metricHSMFaultObserved = "CA.HSMFault.Observed"
+	// Increments when CA observes an HSM or signing error
+	metricSigningError = "CA.SigningError"
+	metricHSMError     = metricSigningError + ".HSMError"
 
 	// Increments when CA handles a CSR requesting a "basic" extension:
 	// authorityInfoAccess, authorityKeyIdentifier, extKeyUsage, keyUsage,
@@ -136,10 +137,6 @@ type CertificateAuthorityImpl struct {
 	maxNames         int
 	forceCNFromSAN   bool
 	enableMustStaple bool
-
-	hsmFaultLock         sync.Mutex
-	hsmFaultLastObserved time.Time
-	hsmFaultTimeout      time.Duration
 }
 
 // NewCertificateAuthorityImpl creates a CA that talks to a remote CFSSL
@@ -240,12 +237,14 @@ func NewCertificateAuthorityImpl(
 	return ca, nil
 }
 
-// noteHSMFault updates the CA's state with regard to HSM faults.  CA methods
-// that use an HSM should pass errors that might be HSM errors to this method.
-func (ca *CertificateAuthorityImpl) noteHSMFault(err error) {
+// noteSignError is called after operations that may cause a CFSSL
+// or PKCS11 signing error.
+func (ca *CertificateAuthorityImpl) noteSignError(err error) {
 	if err != nil {
-		if cfErr, ok := err.(*cferr.Error); ok && int(cfErr.ErrorCode/1000) == 1 {
-			ca.stats.Inc(metricHSMFaultObserved, 1, 1.0)
+		if _, ok := err.(*pkcs11.Error); ok {
+			ca.stats.Inc(metricHSMError, 1, 1.0)
+		} else if cfErr, ok := err.(*cferr.Error); ok {
+			ca.stats.Inc(fmt.Sprintf("%s.%d", metricSigningError, cfErr.ErrorCode), 1, 1.0)
 		}
 	}
 	return
@@ -339,7 +338,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 	}
 
 	ocspResponse, err := ca.ocspSigner.Sign(signRequest)
-	ca.noteHSMFault(err)
+	ca.noteSignError(err)
 	return ocspResponse, err
 }
 
@@ -483,7 +482,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		req.Subject.SerialNumber = serialHex
 	}
 	certPEM, err := ca.signer.Sign(req)
-	ca.noteHSMFault(err)
+	ca.noteSignError(err)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3

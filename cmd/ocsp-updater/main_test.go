@@ -2,11 +2,11 @@ package main
 
 import (
 	"crypto/x509"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
@@ -329,7 +329,7 @@ func TestLoopTickBackoff(t *testing.T) {
 		failureBackoffFactor: 1.5,
 		failureBackoffMax:    10 * time.Minute,
 		tickDur:              time.Minute,
-		tickFunc:             func(_ int) error { return &cferr.Error{ErrorCode: 1234} },
+		tickFunc:             func(_ int) error { return errors.New("baddie") },
 	}
 
 	start := l.clk.Now()
