@@ -98,25 +98,25 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 const (
 	unparseableEmailDetail = "not a valid e-mail address"
 	emptyDNSResponseDetail = "empty DNS response"
-	multipleAddressDetail  = "more than one @ symbol in email address"
+	multipleAddressDetail  = "more than one e-mail address"
 )
 
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
-	_, err := mail.ParseAddress(address)
+	emails, err := mail.ParseAddressList(address)
 	if err != nil {
 		return &probs.ProblemDetails{
 			Type:   probs.InvalidEmailProblem,
 			Detail: unparseableEmailDetail,
 		}
 	}
-	splitEmail := strings.SplitN(address, "@", -1)
-	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	if len(splitEmail) > 2 {
+	if len(emails) > 1 {
 		return &probs.ProblemDetails{
 			Type:   probs.InvalidEmailProblem,
 			Detail: multipleAddressDetail,
 		}
 	}
+	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
+	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	var resultMX []string
 	var resultA []net.IP
 	resultMX, err = resolver.LookupMX(ctx, domain)
