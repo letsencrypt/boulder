@@ -335,7 +335,7 @@ func main() {
 			emailTemplate: tmpl,
 			nagTimes:      nags,
 			limit:         c.Mailer.CertLimit,
-			clk:           clock.Default(),
+			clk:           cmd.Clock(),
 		}
 
 		auditlogger.Info("expiration-mailer: Starting")
