@@ -2,14 +2,15 @@ package main
 
 import (
 	"crypto/x509"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-	"github.com/letsencrypt/boulder/cmd"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
@@ -328,7 +329,7 @@ func TestLoopTickBackoff(t *testing.T) {
 		failureBackoffFactor: 1.5,
 		failureBackoffMax:    10 * time.Minute,
 		tickDur:              time.Minute,
-		tickFunc:             func(_ int) error { return core.ServiceUnavailableError("sad HSM") },
+		tickFunc:             func(_ int) error { return errors.New("baddie") },
 	}
 
 	start := l.clk.Now()

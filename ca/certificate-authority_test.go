@@ -20,13 +20,13 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	ocspConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
-	"github.com/letsencrypt/boulder/sa/satest"
-
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
@@ -211,14 +211,13 @@ func setup(t *testing.T) *testCtx {
 
 	// Create a CA
 	caConfig := cmd.CAConfig{
-		RSAProfile:      rsaProfileName,
-		ECDSAProfile:    ecdsaProfileName,
-		SerialPrefix:    17,
-		Expiry:          "8760h",
-		LifespanOCSP:    "45m",
-		MaxNames:        2,
-		HSMFaultTimeout: cmd.ConfigDuration{Duration: 60 * time.Second},
-		DoNotForceCN:    true,
+		RSAProfile:   rsaProfileName,
+		ECDSAProfile: ecdsaProfileName,
+		SerialPrefix: 17,
+		Expiry:       "8760h",
+		LifespanOCSP: "45m",
+		MaxNames:     2,
+		DoNotForceCN: true,
 		CFSSL: cfsslConfig.Config{
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{
@@ -618,73 +617,6 @@ func TestProfileSelection(t *testing.T) {
 		t.Logf("expected key usage %v, got %v", testCase.ExpectedKeyUsage, cert.KeyUsage)
 		test.AssertEquals(t, cert.KeyUsage, testCase.ExpectedKeyUsage)
 	}
-}
-
-func TestHSMFaultTimeout(t *testing.T) {
-	ctx := setup(t)
-	defer ctx.cleanUp()
-
-	ca, err := NewCertificateAuthorityImpl(ctx.caConfig, ctx.fc, ctx.stats, caCert, caKey, ctx.keyPolicy)
-	ca.Publisher = &mocks.Publisher{}
-	ca.PA = ctx.pa
-	ca.SA = ctx.sa
-
-	// Issue a certificate so that we can use it later
-	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
-	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
-	ocspRequest := core.OCSPSigningRequest{
-		CertDER: cert.DER,
-		Status:  "good",
-	}
-
-	// Swap in a bad signer
-	goodSigner := ca.signer
-	badHSMErrorMessage := "This is really serious.  You should wait"
-	badSigner := mocks.BadHSMSigner(badHSMErrorMessage)
-	badOCSPSigner := mocks.BadHSMOCSPSigner(badHSMErrorMessage)
-
-	// Cause the CA to enter the HSM fault condition
-	ca.signer = badSigner
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertError(t, err, "CA failed to return HSM error")
-	test.AssertEquals(t, err.Error(), badHSMErrorMessage)
-
-	// Check that the CA rejects the next call as the HSM being down
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertError(t, err, "CA failed to persist HSM fault")
-	test.AssertEquals(t, err.Error(), "HSM is unavailable")
-
-	_, err = ca.GenerateOCSP(ocspRequest)
-	test.AssertError(t, err, "CA failed to persist HSM fault")
-	test.AssertEquals(t, err.Error(), "HSM is unavailable")
-
-	// Swap in a good signer and move the clock forward to clear the fault
-	ca.signer = goodSigner
-	ctx.fc.Add(ca.hsmFaultTimeout)
-	ctx.fc.Add(10 * time.Second)
-
-	// Check that the CA has recovered
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertNotError(t, err, "CA failed to recover from HSM fault")
-	_, err = ca.GenerateOCSP(ocspRequest)
-
-	// Check that GenerateOCSP can also trigger an HSM failure, in the same way
-	ca.ocspSigner = badOCSPSigner
-	_, err = ca.GenerateOCSP(ocspRequest)
-	test.AssertError(t, err, "CA failed to return HSM error")
-	test.AssertEquals(t, err.Error(), badHSMErrorMessage)
-
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
-	test.AssertError(t, err, "CA failed to persist HSM fault")
-	test.AssertEquals(t, err.Error(), "HSM is unavailable")
-
-	_, err = ca.GenerateOCSP(ocspRequest)
-	test.AssertError(t, err, "CA failed to persist HSM fault")
-	test.AssertEquals(t, err.Error(), "HSM is unavailable")
-
-	// Verify that the appropriate stats got recorded for all this
-	test.AssertEquals(t, ctx.stats.Counters[metricHSMFaultObserved], int64(2))
-	test.AssertEquals(t, ctx.stats.Counters[metricHSMFaultRejected], int64(4))
 }
 
 func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
