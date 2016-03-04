@@ -18,11 +18,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/probs"
@@ -606,24 +606,45 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, error) {
 	hostname = strings.TrimRight(hostname, ".")
 	labels := strings.Split(hostname, ".")
+
 	// See RFC 6844 "Certification Authority Processing" for pseudocode.
-	// Essentially: check CAA records for the FDQN to be issued, and all parent
-	// domains.
+	// Essentially: check CAA records for the FDQN to be issued, and all
+	// parent domains.
+	//
+	// The lookups are performed in parallel in order to avoid timing out
+	// the RPC call.
+	//
 	// We depend on our resolver to snap CNAME and DNAME records.
+
+	type result struct {
+		records []*dns.CAA
+		err     error
+	}
+	results := make([]result, len(labels))
+
+	var wg sync.WaitGroup
+
 	for i := 0; i < len(labels); i++ {
-		name := strings.Join(labels[i:], ".")
-		// Break if we've reached an ICANN TLD.
-		if tld, err := publicsuffix.ICANNTLD(name); err != nil || tld == name {
-			break
+		// Start the concurrent DNS lookup.
+		wg.Add(1)
+		go func(name string, r *result) {
+			r.records, r.err = va.DNSResolver.LookupCAA(ctx, name)
+			wg.Done()
+		}(strings.Join(labels[i:], "."), &results[i])
+	}
+
+	wg.Wait()
+
+	// Return the first result
+	for _, res := range results {
+		if res.err != nil {
+			return nil, res.err
 		}
-		CAAs, err := va.DNSResolver.LookupCAA(ctx, name)
-		if err != nil {
-			return nil, err
-		}
-		if len(CAAs) > 0 {
-			return newCAASet(CAAs), nil
+		if len(res.records) > 0 {
+			return newCAASet(res.records), nil
 		}
 	}
+
 	// no CAA records found
 	return nil, nil
 }

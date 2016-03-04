@@ -73,7 +73,7 @@ func (mock *MockDNSResolver) LookupHost(_ context.Context, hostname string) ([]n
 	return []net.IP{ip}, nil
 }
 
-// LookupCAA is a mock
+// LookupCAA returns mock records for use in tests.
 func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, error) {
 	var results []*dns.CAA
 	var record dns.CAA
@@ -89,15 +89,14 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 		record.Tag = "issue"
 		record.Value = "symantec.com"
 		results = append(results, &record)
-	case "present.com":
+	case "present.com", "present.servfail.com":
 		record.Tag = "issue"
 		record.Value = "letsencrypt.org"
 		results = append(results, &record)
 	case "com":
-		// Nothing should ever call this, since CAA checking should stop when it
-		// reaches a public suffix.
-		fallthrough
-	case "servfail.com":
+		// com has no CAA records.
+		return nil, nil
+	case "servfail.com", "servfail.present.com":
 		return results, fmt.Errorf("SERVFAIL")
 	case "multi-crit-present.com":
 		record.Flag = 1
