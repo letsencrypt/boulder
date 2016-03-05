@@ -94,7 +94,7 @@ var (
 	errInvalidIdentifier   = core.MalformedRequestError("Invalid identifier type")
 	errNonPublic           = core.MalformedRequestError("Name does not end in a public suffix")
 	errICANNTLD            = core.MalformedRequestError("Name is an ICANN TLD")
-	errBlacklisted         = core.MalformedRequestError("Name is blacklisted")
+	errBlacklisted         = core.MalformedRequestError("Policy forbids issuing for name")
 	errNotWhitelisted      = core.MalformedRequestError("Name is not whitelisted")
 	errInvalidDNSCharacter = core.MalformedRequestError("Invalid character in DNS name")
 	errNameTooLong         = core.MalformedRequestError("DNS name too long")
