@@ -36,15 +36,6 @@ if [[ ! -z "$DOCKER_HOST" ]]; then
 	hostip="$(echo $DOCKER_HOST | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')"
 fi
 
-# In order to talk to a letsencrypt client running on the host, the fake DNS
-# client used in Boulder's start.py needs to know what the host's IP is from the
-# perspective of the container. We try to figure it out automatically. If you'd
-# like your Boulder instance to always talk to some other host, you can set
-# FAKE_DNS to that host's IP address.
-if [ -z "${FAKE_DNS}" ] ; then
-  FAKE_DNS=$(/sbin/ifconfig docker0 | sed -n 's/ *inet addr:\([0-9.]\+\).*/\1/p')
-fi
-
 if [[ "$(is_running boulder-mysql)" != "true" ]]; then
 	# bring up mysql mariadb container
 	docker run -d \
@@ -67,6 +58,16 @@ fi
 # build the boulder docker image
 docker build --rm --force-rm -t letsencrypt/boulder .
 
+# In order to talk to a letsencrypt client running on the host, the fake DNS
+# client used in Boulder's start.py needs to know what the host's IP is from the
+# perspective of the container. The default value is 127.0.0.1. If you'd
+# like your Boulder instance to always talk to some other host, you can set
+# FAKE_DNS to that host's IP address.
+fake_dns_args=()
+if [[ $FAKE_DNS ]]; then
+    fake_dns_args=(-e "FAKE_DNS=$FAKE_DNS")
+fi
+
 # run the boulder container
 # The excluding `-d` command makes the instance interactive, so you can kill
 # the boulder container with Ctrl-C.
@@ -74,5 +75,6 @@ docker run --rm -it \
 	--net host \
 	-p 4000:4000 \
 	-e MYSQL_CONTAINER=yes \
+	"${fake_dns_args[@]}" \
 	--name boulder \
 	letsencrypt/boulder
