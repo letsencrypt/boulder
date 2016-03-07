@@ -409,14 +409,19 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Verify that names are allowed by policy
+	var badNames []string
 	for _, name := range hostNames {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 		if err := ca.PA.WillingToIssue(identifier, regID); err != nil {
-			err = core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for name %s", name))
-			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 			ca.log.AuditErr(err)
-			return emptyCert, err
+			badNames = append(badNames, name)
 		}
+	}
+	if len(badNames) > 0 {
+		err := core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for: %s", strings.Join(badNames, ", ")))
+		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+		ca.log.AuditErr(err)
+		return emptyCert, err
 	}
 
 	requestedExtensions, err := ca.extensionsFromCSR(&csr)
