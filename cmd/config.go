@@ -53,6 +53,7 @@ type Config struct {
 
 	RA struct {
 		ServiceConfig
+		HostnamePolicyConfig
 
 		RateLimitPoliciesFilename string
 
@@ -308,6 +309,7 @@ func (a *AMQPConfig) ServerURL() (string, error) {
 type CAConfig struct {
 	ServiceConfig
 	DBConfig
+	HostnamePolicyConfig
 
 	Profile      string
 	RSAProfile   string
@@ -344,6 +346,12 @@ type PAConfig struct {
 	DBConfig
 	EnforcePolicyWhitelist bool
 	Challenges             map[string]bool
+}
+
+// HostnamePolicyConfig specifies a file from which to load a policy regarding
+// what hostnames to issue for.
+type HostnamePolicyConfig struct {
+	HostnamePolicyFile string
 }
 
 // CheckChallenges checks whether the list of challenges in the PA config
