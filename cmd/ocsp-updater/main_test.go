@@ -50,6 +50,7 @@ var log = mocks.UseMockLog()
 func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Failed to create dbMap")
+	sa.SetSQLDebug(dbMap, true)
 
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
