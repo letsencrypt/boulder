@@ -38,7 +38,7 @@ def install(race_detection):
     # BUILD_ID.
     cmd = "make GO_BUILD_FLAGS=''  "
     if race_detection:
-        cmd = "make GO_BUILD_FLAGS=-race"
+        cmd = "make GO_BUILD_FLAGS='-race -tags integration'"
 
     return subprocess.call(cmd, shell=True) == 0
 
