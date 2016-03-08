@@ -199,6 +199,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 			CommonName: "not-blacklisted.com",
 		},
 		BasicConstraintsValid: true,
+		DNSNames:              []string{"not-blacklisted.com"},
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
 	reg := satest.CreateWorkingRegistration(t, sa)

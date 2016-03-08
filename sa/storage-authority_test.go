@@ -11,6 +11,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"math/big"
 	"net"
 	"net/url"
+	"reflect"
 	"testing"
 	"time"
 
@@ -721,4 +723,42 @@ func TestFQDNSets(t *testing.T) {
 	count, err = sa.CountFQDNSets(threeHours, names)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, count, int64(2))
+}
+
+type execRecorder struct {
+	query string
+	args  []interface{}
+}
+
+func (e *execRecorder) Exec(query string, args ...interface{}) (sql.Result, error) {
+	e.query = query
+	e.args = args
+	return nil, nil
+}
+
+func TestAddIssuedNames(t *testing.T) {
+	var e execRecorder
+	addIssuedNames(&e, &x509.Certificate{
+		DNSNames: []string{
+			"example.co.uk",
+			"example.xyz",
+		},
+		SerialNumber: big.NewInt(1),
+		NotBefore:    time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC),
+	})
+	expected := "INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?, ?, ?), (?, ?, ?);"
+	if e.query != expected {
+		t.Errorf("Wrong query: got %q, expected %q", e.query, expected)
+	}
+	expectedArgs := []interface{}{
+		"uk.co.example",
+		"000000000000000000000000000000000001",
+		time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC),
+		"xyz.example",
+		"000000000000000000000000000000000001",
+		time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC),
+	}
+	if !reflect.DeepEqual(e.args, expectedArgs) {
+		t.Errorf("Wrong args: got\n%#v, expected\n%#v", e.args, expectedArgs)
+	}
 }

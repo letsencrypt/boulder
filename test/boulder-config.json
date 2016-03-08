@@ -134,7 +134,6 @@
       }
     },
     "maxConcurrentRPCServerRequests": 16,
-    "hsmFaultTimeout": "300s",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,

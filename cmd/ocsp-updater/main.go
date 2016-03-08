@@ -508,12 +508,10 @@ func (l *looper) tick() {
 	sleepDur := expectedTickEnd.Sub(tickEnd)
 	if err != nil {
 		l.stats.Inc(fmt.Sprintf("OCSP.%s.FailedTicks", l.name), 1, 1.0)
-		if _, ok := err.(core.ServiceUnavailableError); ok && (l.failureBackoffFactor > 0 && l.failureBackoffMax > 0) {
-			l.failures++
-			sleepDur = core.RetryBackoff(l.failures, l.tickDur, l.failureBackoffMax, l.failureBackoffFactor)
-		}
+		l.failures++
+		sleepDur = core.RetryBackoff(l.failures, l.tickDur, l.failureBackoffMax, l.failureBackoffFactor)
 	} else if l.failures > 0 {
-		// If the tick was successful and previously there were failures reset
+		// If the tick was successful but previously there were failures reset
 		// counter to 0
 		l.failures = 0
 	}
