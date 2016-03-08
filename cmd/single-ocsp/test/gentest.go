@@ -12,7 +12,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
 )
 
 const pkcs11FileName = "pkcs11.json"

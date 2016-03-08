@@ -70,6 +70,7 @@ const (
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
 	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
+	MethodCountFQDNSets                     = "CountFQDNSets"                     // SA
 )
 
 // Request structs
@@ -169,6 +170,11 @@ type revokeAuthsRequest struct {
 	Ident core.AcmeIdentifier
 }
 
+type countFQDNsRequest struct {
+	Window time.Duration
+	Names  []string
+}
+
 // Response structs
 type caaResponse struct {
 	Present bool
@@ -181,13 +187,17 @@ type revokeAuthsResponse struct {
 	PendingRevoked int64
 }
 
+type countFQDNSetsResponse struct {
+	Count int64
+}
+
 func improperMessage(method string, err error, obj interface{}) {
 	log := blog.GetAuditLogger()
-	log.Audit(fmt.Sprintf("Improper message. method: %s err: %s data: %+v", method, err, obj))
+	log.AuditErr(fmt.Errorf("Improper message. method: %s err: %s data: %+v", method, err, obj))
 }
 func errorCondition(method string, err error, obj interface{}) {
 	log := blog.GetAuditLogger()
-	log.Audit(fmt.Sprintf("Error condition. method: %s err: %s data: %+v", method, err, obj))
+	log.AuditErr(fmt.Errorf("Error condition. method: %s err: %s data: %+v", method, err, obj))
 }
 
 // NewRegistrationAuthorityServer constructs an RPC server
@@ -1107,6 +1117,31 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return nil, nil
 	})
 
+	rpc.Handle(MethodCountFQDNSets, func(req []byte) (response []byte, err error) {
+		var r countFQDNsRequest
+		err = json.Unmarshal(req, &r)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodCountFQDNSets, err, req)
+			return
+		}
+		count, err := impl.CountFQDNSets(r.Window, r.Names)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodCountFQDNSets, err, req)
+			return
+		}
+
+		response, err = json.Marshal(countFQDNSetsResponse{count})
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodCountFQDNSets, err, req)
+			return
+		}
+
+		return
+	})
+
 	return nil
 }
 
@@ -1479,4 +1514,19 @@ func (cac StorageAuthorityClient) AddSCTReceipt(sct core.SignedCertificateTimest
 
 	_, err = cac.rpc.DispatchSync(MethodAddSCTReceipt, data)
 	return
+}
+
+// CountFQDNSets reutrns the number of currently valid sets with hash |setHash|
+func (cac StorageAuthorityClient) CountFQDNSets(window time.Duration, names []string) (int64, error) {
+	data, err := json.Marshal(countFQDNsRequest{window, names})
+	if err != nil {
+		return 0, err
+	}
+	response, err := cac.rpc.DispatchSync(MethodCountFQDNSets, data)
+	if err != nil {
+		return 0, err
+	}
+	var count countFQDNSetsResponse
+	err = json.Unmarshal(response, &count)
+	return count.Count, err
 }

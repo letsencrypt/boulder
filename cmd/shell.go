@@ -187,13 +187,9 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (statsd.Statte
 	}
 	auditLogger, err := blog.NewAuditLogger(syslogger, stats, level)
 	FailOnError(err, "Could not connect to Syslog")
-	// TODO(https://github.com/cloudflare/cfssl/issues/426):
-	// CFSSL's log facility always prints to stdout. Ideally we should send a
-	// patch that would allow us to have CFSSL use our log facility. In the
-	// meantime, inhibit debug and info-level logs from CFSSL.
-	cfsslLog.Level = cfsslLog.LevelWarning
-	blog.SetAuditLogger(auditLogger)
 
+	blog.SetAuditLogger(auditLogger)
+	cfsslLog.SetLogger(auditLogger)
 	mysql.SetLogger(mysqlLogger{auditLogger})
 
 	return stats, auditLogger

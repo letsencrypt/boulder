@@ -24,6 +24,9 @@ type RateLimitConfig struct {
 	// Number of pending authorizations that can exist per account. Overrides by
 	// key are not applied, but overrides by registration are.
 	PendingAuthorizationsPerAccount RateLimitPolicy `yaml:"pendingAuthorizationsPerAccount"`
+	// Number of certificates that can be extant containing a specific set
+	// of DNS names.
+	CertificatesPerFQDNSet RateLimitPolicy `yaml:"certificatesPerFQDNSet"`
 }
 
 // RateLimitPolicy describes a general limiting policy

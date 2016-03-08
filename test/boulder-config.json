@@ -46,6 +46,7 @@
     "lifespanOCSP": "96h",
     "maxNames": 1000,
     "doNotForceCN": true,
+    "enableMustStaple": true,
     "cfssl": {
       "signing": {
         "profiles": {
@@ -84,7 +85,8 @@
               "PublicKey": true,
               "SignatureAlgorithm": true
             },
-            "ClientProvidesSerialNumbers": true
+            "ClientProvidesSerialNumbers": true,
+            "allowed_extensions": [ "1.3.6.1.5.5.7.1.24" ]
           },
           "ecdsaEE": {
             "usages": [
@@ -312,6 +314,7 @@
 
   "publisher": {
     "maxConcurrentRPCServerRequests": 16,
+    "submissionTimeout": "5s",
     "debugAddr": "localhost:8009",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",

@@ -667,3 +667,58 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 	test.AssertEquals(t, PA.Status, core.StatusRevoked)
 	test.AssertEquals(t, FA.Status, core.StatusRevoked)
 }
+
+func TestFQDNSets(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	tx, err := sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Failed to open transaction")
+	names := []string{"a.example.com", "B.example.com"}
+	expires := fc.Now().Add(time.Hour * 2).UTC()
+	issued := fc.Now()
+	err = addFQDNSet(tx, names, "serial", issued, expires)
+	test.AssertNotError(t, err, "Failed to add name set")
+	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+
+	// only one valid
+	threeHours := time.Hour * 3
+	count, err := sa.CountFQDNSets(threeHours, names)
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, count, int64(1))
+
+	// check hash isn't affected by changing name order/casing
+	count, err = sa.CountFQDNSets(threeHours, []string{"b.example.com", "A.example.COM"})
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, count, int64(1))
+
+	// add another valid set
+	tx, err = sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Failed to open transaction")
+	err = addFQDNSet(tx, names, "anotherSerial", issued, expires)
+	test.AssertNotError(t, err, "Failed to add name set")
+	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+
+	// only two valid
+	count, err = sa.CountFQDNSets(threeHours, names)
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, count, int64(2))
+
+	// add an expired set
+	tx, err = sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Failed to open transaction")
+	err = addFQDNSet(
+		tx,
+		names,
+		"yetAnotherSerial",
+		issued.Add(-threeHours),
+		expires.Add(-threeHours),
+	)
+	test.AssertNotError(t, err, "Failed to add name set")
+	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+
+	// only two valid
+	count, err = sa.CountFQDNSets(threeHours, names)
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, count, int64(2))
+}

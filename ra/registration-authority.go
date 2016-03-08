@@ -640,6 +640,21 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 	return nil
 }
 
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(names []string, limit cmd.RateLimitPolicy, regID int64) error {
+	count, err := ra.SA.CountFQDNSets(limit.Window.Duration, names)
+	if err != nil {
+		return err
+	}
+	names = core.UniqueLowerNames(names)
+	if int(count) > limit.GetThreshold(strings.Join(names, ","), regID) {
+		return core.RateLimitedError(fmt.Sprintf(
+			"Too many certificates already issued for exact set of domains: %s",
+			strings.Join(names, ","),
+		))
+	}
+	return nil
+}
+
 func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) error {
 	limits := ra.rlPolicies
 	if limits.TotalCertificates.Enabled() {
@@ -657,6 +672,12 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) er
 	}
 	if limits.CertificatesPerName.Enabled() {
 		err := ra.checkCertificatesPerNameLimit(names, limits.CertificatesPerName, regID)
+		if err != nil {
+			return err
+		}
+	}
+	if limits.CertificatesPerFQDNSet.Enabled() {
+		err := ra.checkCertificatesPerFQDNSetLimit(names, limits.CertificatesPerFQDNSet, regID)
 		if err != nil {
 			return err
 		}
@@ -765,7 +786,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(cert x509.Certific
 		//   Revocation reason
 		//   Registration ID of requester
 		//   Error (if there was one)
-		ra.log.Audit(fmt.Sprintf(
+		ra.log.AuditNotice(fmt.Sprintf(
 			"%s, Request by registration ID: %d",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
 			regID,
@@ -798,7 +819,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(cert x509
 		//   Revocation reason
 		//   Name of admin-revoker user
 		//   Error (if there was one)
-		ra.log.Audit(fmt.Sprintf(
+		ra.log.AuditNotice(fmt.Sprintf(
 			"%s, admin-revoker user: %s",
 			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
 			user,

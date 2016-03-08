@@ -26,6 +26,7 @@ GRANT SELECT,INSERT ON deniedCSRs TO 'sa'@'localhost';
 GRANT INSERT ON ocspResponses TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'localhost';
+GRANT SELECT,INSERT on fqdnSets TO 'sa'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
@@ -52,6 +53,10 @@ GRANT SELECT,UPDATE ON certificateStatus TO 'mailer'@'localhost';
 
 -- Cert checker
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
+
+-- Name set table backfiller
+GRANT SELECT ON certificates to 'backfiller'@'localhost';
+GRANT INSERT,SELECT ON fqdnSets to 'backfiller'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';

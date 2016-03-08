@@ -19,4 +19,5 @@ GRANT USAGE ON *.* TO 'mailer'@'localhost';
 DROP USER 'mailer'@'localhost';
 GRANT USAGE ON *.* TO 'cert_checker'@'localhost';
 DROP USER 'cert_checker'@'localhost';
-
+GRANT USAGE ON *.* TO 'backfiller'@'localhost';
+DROP USER 'backfiller'@'localhost';

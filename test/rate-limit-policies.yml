@@ -25,3 +25,6 @@ registrationsPerIP:
 pendingAuthorizationsPerAccount:
   window: 168h # 1 week, should match pending authorization lifetime.
   threshold: 3
+certificatesPerFQDNSet:
+  window: 24h
+  threshold: 5
