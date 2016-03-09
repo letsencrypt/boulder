@@ -814,6 +814,10 @@ func (m mockSAWithNameCounts) CountCertificatesByNames(names []string, earliest,
 	return m.nameCounts, nil
 }
 
+func (m mockSAWithNameCounts) FQDNSetExists(names []string) (bool, error) {
+	return false, nil
+}
+
 func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
