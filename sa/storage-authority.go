@@ -914,8 +914,7 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(window time.Duration, names []stri
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
 		WHERE setHash = ?
-		AND issued > ?
-		LIMIT 1`,
+		AND issued > ?`,
 		hashNames(names),
 		ssa.clk.Now().Add(-window),
 	)
@@ -929,7 +928,8 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(names []string) (bool, error) {
 	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
-     WHERE setHash = ?`,
+		WHERE setHash = ?
+		LIMIT 1`,
 		hashNames(names),
 	)
 	return count > 0, err
