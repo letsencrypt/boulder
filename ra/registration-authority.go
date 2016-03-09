@@ -452,9 +452,16 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registration *core.Registration) error {
 	now := ra.clk.Now()
 	var badNames []string
+	for i := range names {
+		names[i] = strings.ToLower(names[i])
+	}
+	auths, err := ra.SA.GetValidAuthorizations(registration.ID, names, now)
+	if err != nil {
+		return err
+	}
 	for _, name := range names {
-		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
-		if err != nil || authz.Expires.Before(now) {
+		authz := auths[name]
+		if authz == nil || authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		}
 	}
