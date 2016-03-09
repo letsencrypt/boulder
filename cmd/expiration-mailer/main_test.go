@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"strconv"
 	"testing"
 	"text/template"
 	"time"
@@ -28,6 +29,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
@@ -258,7 +260,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Status: core.OCSPStatusGood,
 	}
 
-	setupDBMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	err = setupDBMap.Insert(certB)
@@ -287,6 +289,138 @@ func TestFindExpiringCertificates(t *testing.T) {
 	err = ctx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	test.AssertEquals(t, len(ctx.mc.Messages), 0)
+}
+
+func TestCertIsRenewed(t *testing.T) {
+	ctx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
+
+	reg := satest.CreateWorkingRegistration(t, ctx.ssa)
+
+	testCerts := []*struct {
+		Serial       int
+		stringSerial string
+		FQDNHash     []byte
+		DNS          string
+		NotBefore    time.Time
+		NotAfter     time.Time
+		// this field is the test assertion
+		IsRenewed bool
+	}{
+		{
+			Serial:    1001,
+			FQDNHash:  []byte("hash of A"),
+			DNS:       "a.example.com",
+			NotBefore: ctx.fc.Now().Add((-1 * 24) * time.Hour),
+			NotAfter:  ctx.fc.Now().Add((89 * 24) * time.Hour),
+			IsRenewed: true,
+		},
+		{
+			Serial:    1002,
+			FQDNHash:  []byte("hash of A"),
+			DNS:       "a.example.com",
+			NotBefore: ctx.fc.Now().Add((0 * 24) * time.Hour),
+			NotAfter:  ctx.fc.Now().Add((90 * 24) * time.Hour),
+			IsRenewed: false,
+		},
+		{
+			Serial:    1003,
+			FQDNHash:  []byte("hash of B"),
+			DNS:       "b.example.net",
+			NotBefore: ctx.fc.Now().Add((0 * 24) * time.Hour),
+			NotAfter:  ctx.fc.Now().Add((90 * 24) * time.Hour),
+			IsRenewed: false,
+		},
+		{
+			Serial:    1004,
+			FQDNHash:  []byte("hash of C"),
+			DNS:       "c.example.org",
+			NotBefore: ctx.fc.Now().Add((-100 * 24) * time.Hour),
+			NotAfter:  ctx.fc.Now().Add((-10 * 24) * time.Hour),
+			IsRenewed: true,
+		},
+		{
+			Serial:    1005,
+			FQDNHash:  []byte("hash of C"),
+			DNS:       "c.example.org",
+			NotBefore: ctx.fc.Now().Add((-80 * 24) * time.Hour),
+			NotAfter:  ctx.fc.Now().Add((10 * 24) * time.Hour),
+			IsRenewed: true,
+		},
+		{
+			Serial:    1006,
+			FQDNHash:  []byte("hash of C"),
+			DNS:       "c.example.org",
+			NotBefore: ctx.fc.Now().Add((-75 * 24) * time.Hour),
+			NotAfter:  ctx.fc.Now().Add((15 * 24) * time.Hour),
+			IsRenewed: true,
+		},
+		{
+			Serial:    1007,
+			FQDNHash:  []byte("hash of C"),
+			DNS:       "c.example.org",
+			NotBefore: ctx.fc.Now().Add((-1 * 24) * time.Hour),
+			NotAfter:  ctx.fc.Now().Add((89 * 24) * time.Hour),
+			IsRenewed: false,
+		},
+	}
+
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, testData := range testCerts {
+		testData.stringSerial = strconv.Itoa(testData.Serial)
+
+		rawCert := x509.Certificate{
+			Subject: pkix.Name{
+				CommonName: testData.DNS,
+			},
+			NotBefore:    testData.NotBefore,
+			NotAfter:     testData.NotAfter,
+			DNSNames:     []string{testData.DNS},
+			SerialNumber: big.NewInt(int64(testData.Serial)),
+		}
+		certDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, &testKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cert := &core.Certificate{
+			RegistrationID: reg.ID,
+			Serial:         testData.stringSerial,
+			Issued:         testData.NotBefore,
+			Expires:        testData.NotAfter,
+			DER:            certDer,
+		}
+		certStatus := &core.CertificateStatus{
+			Serial: testData.stringSerial,
+			Status: core.OCSPStatusGood,
+		}
+		fqdnStatus := &core.FQDNSet{
+			SetHash: testData.FQDNHash,
+			Serial:  testData.stringSerial,
+			Issued:  testData.NotBefore,
+			Expires: testData.NotAfter,
+		}
+
+		err = setupDBMap.Insert(cert)
+		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add cert %s", testData.stringSerial))
+		err = setupDBMap.Insert(certStatus)
+		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add certStatus %s", testData.stringSerial))
+		err = setupDBMap.Insert(fqdnStatus)
+		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add fqdnStatus %s", testData.stringSerial))
+	}
+
+	for _, testData := range testCerts {
+		renewed, err := ctx.m.certIsRenewed(testData.stringSerial)
+		if err != nil {
+			t.Errorf("error checking renewal state for %s: %v", testData.stringSerial, err)
+			continue
+		}
+		if renewed != testData.IsRenewed {
+			t.Errorf("for %s: got %v, expected %v", testData.stringSerial, renewed, testData.IsRenewed)
+		}
+	}
 }
 
 func TestLifetimeOfACert(t *testing.T) {
@@ -333,7 +467,7 @@ func TestLifetimeOfACert(t *testing.T) {
 		Status: core.OCSPStatusGood,
 	}
 
-	setupDBMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
 	err = setupDBMap.Insert(certStatusA)
@@ -438,7 +572,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 		Status: core.OCSPStatusRevoked,
 	}
 
-	setupDBMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
 	err = setupDBMap.Insert(certStatusA)
@@ -509,7 +643,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Status:                core.OCSPStatusGood,
 	}
 
-	setupDBMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	err = setupDBMap.Insert(certB)

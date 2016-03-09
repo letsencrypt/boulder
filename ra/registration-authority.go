@@ -262,8 +262,6 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 			return core.MalformedRequestError("Invalid contact")
 		}
 		switch contact.Scheme {
-		case "tel":
-			continue
 		case "mailto":
 			start := ra.clk.Now()
 			ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
