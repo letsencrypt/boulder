@@ -786,7 +786,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make signer")
 
 	responseWriter := httptest.NewRecorder()
-	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"` + agreementURL + `"}`))
+	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewRegistration(newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
@@ -806,7 +806,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	signer.SetNonceSource(wfe.nonceService)
 
 	responseWriter := httptest.NewRecorder()
-	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"` + agreementURL + `"}`))
+	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Failed to sign")
 	wfe.NewRegistration(newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
 
@@ -814,7 +814,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, reg.Contact[0].String(), "tel:123456789")
+	test.AssertEquals(t, reg.Contact[0].String(), "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
@@ -831,7 +831,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	// Reset the body and status code
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
-	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"` + agreementURL + `"}`))
+	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
 
 	wfe.NewRegistration(newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
@@ -854,7 +854,7 @@ func TestNewRegistration(t *testing.T) {
 	fooBody, err := signer.Sign([]byte("foo"))
 	test.AssertNotError(t, err, "Unable to sign")
 
-	wrongAgreementBody, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"https://letsencrypt.org/im-bad"}`))
+	wrongAgreementBody, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"https://letsencrypt.org/im-bad"}`))
 	test.AssertNotError(t, err, "Unable to sign")
 
 	type newRegErrorTest struct {
@@ -926,7 +926,7 @@ func TestNewRegistration(t *testing.T) {
 	}
 
 	responseWriter := httptest.NewRecorder()
-	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"` + agreementURL + `"}`))
+	result, err := signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
 	wfe.NewRegistration(newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
 
@@ -934,7 +934,7 @@ func TestNewRegistration(t *testing.T) {
 	err = json.Unmarshal([]byte(responseWriter.Body.String()), &reg)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned registration object")
 	test.Assert(t, len(reg.Contact) >= 1, "No contact field in registration")
-	test.AssertEquals(t, reg.Contact[0].String(), "tel:123456789")
+	test.AssertEquals(t, reg.Contact[0].String(), "mailto:person@mail.com")
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
@@ -960,7 +960,7 @@ func TestNewRegistration(t *testing.T) {
 	// Reset the body and status code
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
-	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["tel:123456789"],"agreement":"` + agreementURL + `"}`))
+	result, err = signer.Sign([]byte(`{"resource":"new-reg","contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`))
 
 	wfe.NewRegistration(newRequestEvent(), responseWriter,
 		makePostRequest(result.FullSerialize()))
