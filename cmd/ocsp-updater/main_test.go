@@ -240,18 +240,24 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 }
 
 func TestMissingReceiptsTick(t *testing.T) {
-	updater, sa, _, _, cleanUp := setup(t)
+	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
+	fc.Set(parsedCert.NotBefore.Add(time.Minute))
 	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	updater.numLogs = 1
-	updater.oldestIssuedSCT = 1 * time.Hour
-	updater.missingReceiptsTick(10)
+	updater.oldestIssuedSCT = 2 * time.Hour
+
+	serials, err := updater.getSerialsIssuedSince(fc.Now().Add(-2*time.Hour), 1)
+	test.AssertNotError(t, err, "Failed to retrieve serials")
+	test.AssertEquals(t, len(serials), 1)
+
+	updater.missingReceiptsTick(5)
 
 	count, err := updater.getNumberOfReceipts("00")
 	test.AssertNotError(t, err, "Couldn't get number of receipts")
