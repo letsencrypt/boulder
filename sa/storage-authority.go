@@ -913,10 +913,24 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(window time.Duration, names []stri
 	err := ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM fqdnSets
-     WHERE setHash = ?
-     AND issued > ?`,
+		WHERE setHash = ?
+		AND issued > ?`,
 		hashNames(names),
 		ssa.clk.Now().Add(-window),
 	)
 	return count, err
+}
+
+// FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
+// exists in the database
+func (ssa *SQLStorageAuthority) FQDNSetExists(names []string) (bool, error) {
+	var count int64
+	err := ssa.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(1) FROM fqdnSets
+		WHERE setHash = ?
+		LIMIT 1`,
+		hashNames(names),
+	)
+	return count > 0, err
 }
