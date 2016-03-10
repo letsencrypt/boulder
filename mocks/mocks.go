@@ -268,8 +268,8 @@ func (sa *StorageAuthority) GetLatestValidAuthorization(registrationID int64, id
 	return core.Authorization{}, errors.New("no authz")
 }
 
-// CountCertificatesRange is a mock
-func (sa *StorageAuthority) CountCertificatesRange(_, _ time.Time) (int64, error) {
+// CountValidCertificatesAtTime is a mock
+func (sa *StorageAuthority) CountValidCertificatesAtTime(_ time.Time) (int64, error) {
 	return 0, nil
 }
 

@@ -100,7 +100,7 @@ type StorageGetter interface {
 	GetCertificate(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
-	CountCertificatesRange(time.Time, time.Time) (int64, error)
+	CountValidCertificatesAtTime(time.Time) (int64, error)
 	CountCertificatesByNames([]string, time.Time, time.Time) (map[string]int, error)
 	CountRegistrationsByIP(net.IP, time.Time, time.Time) (int, error)
 	CountPendingAuthorizations(regID int64) (int, error)
