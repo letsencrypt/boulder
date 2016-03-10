@@ -2,14 +2,15 @@ package main
 
 import (
 	"crypto/x509"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
-	"github.com/letsencrypt/boulder/cmd"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
@@ -49,6 +50,7 @@ var log = mocks.UseMockLog()
 func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Failed to create dbMap")
+	sa.SetSQLDebug(dbMap, true)
 
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
@@ -328,7 +330,7 @@ func TestLoopTickBackoff(t *testing.T) {
 		failureBackoffFactor: 1.5,
 		failureBackoffMax:    10 * time.Minute,
 		tickDur:              time.Minute,
-		tickFunc:             func(_ int) error { return core.ServiceUnavailableError("sad HSM") },
+		tickFunc:             func(_ int) error { return errors.New("baddie") },
 	}
 
 	start := l.clk.Now()

@@ -220,8 +220,6 @@ func wrapError(err error) *rpcError {
 			wrapped.Type = "TooManyRPCRequestsError"
 		case core.RateLimitedError:
 			wrapped.Type = "RateLimitedError"
-		case core.ServiceUnavailableError:
-			wrapped.Type = "ServiceUnavailableError"
 		case *probs.ProblemDetails:
 			wrapped.Type = string(terr.Type)
 			wrapped.Value = terr.Detail
@@ -256,8 +254,6 @@ func unwrapError(rpcError *rpcError) error {
 			return core.TooManyRPCRequestsError(rpcError.Value)
 		case "RateLimitedError":
 			return core.RateLimitedError(rpcError.Value)
-		case "ServiceUnavailableError":
-			return core.ServiceUnavailableError(rpcError.Value)
 		default:
 			if strings.HasPrefix(rpcError.Type, "urn:") {
 				return &probs.ProblemDetails{

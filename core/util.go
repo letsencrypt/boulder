@@ -94,10 +94,6 @@ type RateLimitedError string
 // limit
 type TooManyRPCRequestsError string
 
-// ServiceUnavailableError indicates that a component is not available to
-// satisfy a request
-type ServiceUnavailableError string
-
 // BadNonceError indicates an empty of invalid nonce was provided
 type BadNonceError string
 
@@ -112,7 +108,6 @@ func (e CertificateIssuanceError) Error() string { return string(e) }
 func (e NoSuchRegistrationError) Error() string  { return string(e) }
 func (e RateLimitedError) Error() string         { return string(e) }
 func (e TooManyRPCRequestsError) Error() string  { return string(e) }
-func (e ServiceUnavailableError) Error() string  { return string(e) }
 func (e BadNonceError) Error() string            { return string(e) }
 
 // statusTooManyRequests is the HTTP status code meant for rate limiting

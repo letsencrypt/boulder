@@ -738,14 +738,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		RevokedReason:      0,
 		LockCol:            0,
 	}
-	issuedNames := make([]issuedNameModel, len(parsedCertificate.DNSNames))
-	for i, name := range parsedCertificate.DNSNames {
-		issuedNames[i] = issuedNameModel{
-			ReversedName: core.ReverseName(name),
-			Serial:       serial,
-			NotBefore:    parsedCertificate.NotBefore,
-		}
-	}
 
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
@@ -765,12 +757,10 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		return
 	}
 
-	for _, issuedName := range issuedNames {
-		err = tx.Insert(&issuedName)
-		if err != nil {
-			tx.Rollback()
-			return
-		}
+	err = addIssuedNames(tx, parsedCertificate)
+	if err != nil {
+		tx.Rollback()
+		return
 	}
 
 	err = addFQDNSet(
@@ -895,6 +885,25 @@ func addFQDNSet(tx *gorp.Transaction, names []string, serial string, issued time
 		Issued:  issued,
 		Expires: expires,
 	})
+}
+
+type execable interface {
+	Exec(string, ...interface{}) (sql.Result, error)
+}
+
+func addIssuedNames(tx execable, cert *x509.Certificate) error {
+	var qmarks []string
+	var values []interface{}
+	for _, name := range cert.DNSNames {
+		values = append(values,
+			core.ReverseName(name),
+			core.SerialToString(cert.SerialNumber),
+			cert.NotBefore)
+		qmarks = append(qmarks, "(?, ?, ?)")
+	}
+	query := `INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES ` + strings.Join(qmarks, ", ") + `;`
+	_, err := tx.Exec(query, values...)
+	return err
 }
 
 // CountFQDNSets returns the number of sets with hash |setHash| within the window
