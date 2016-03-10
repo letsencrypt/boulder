@@ -639,6 +639,17 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 		}
 	}
 	if len(badNames) > 0 {
+		// check if there is already a existing certificate for
+		// the exact name set we are issuing for. If so bypass the
+		// the certificatesPerName limit.
+		exists, err := ra.SA.FQDNSetExists(names)
+		if err != nil {
+			return err
+		}
+		if exists {
+			ra.certsForDomainStats.Inc("FQDNSetBypass", 1)
+			return nil
+		}
 		domains := strings.Join(badNames, ", ")
 		ra.certsForDomainStats.Inc("Exceeded", 1)
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, domains))
