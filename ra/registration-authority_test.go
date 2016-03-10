@@ -786,7 +786,11 @@ func TestDomainsForRateLimiting(t *testing.T) {
 	test.AssertEquals(t, domains[1], "example.co.uk")
 
 	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
-	test.AssertError(t, err, "should fail on public suffix")
+	test.AssertNotError(t, err, "should not fail on public suffix")
+	test.AssertEquals(t, len(domains), 3)
+	test.AssertEquals(t, domains[0], "example.com")
+	test.AssertEquals(t, domains[1], "example.co.uk")
+	test.AssertEquals(t, domains[2], "co.uk")
 
 	domains, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
 	test.AssertNotError(t, err, "failed on foo.bar.baz")

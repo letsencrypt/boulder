@@ -600,7 +600,13 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	for _, name := range names {
 		eTLDPlusOne, err := publicsuffix.EffectiveTLDPlusOne(name)
 		if err != nil {
-			return nil, err
+			// The only possible errors are:
+			// (1) publicsuffix.PublicSuffix is giving garbage
+			//     values
+			// (2) the public suffix is the domain itself
+			//
+			// Assume (2).
+			eTLDPlusOne = name
 		}
 		if _, ok := domainsMap[eTLDPlusOne]; !ok {
 			domainsMap[eTLDPlusOne] = struct{}{}
