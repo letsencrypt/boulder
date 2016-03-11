@@ -459,7 +459,7 @@ func sanitizeHTTPConnError(err error) string {
 	case strings.HasPrefix(errStr, "tls: oversized record received with length"):
 		return "oversized tls record"
 	// HTTP
-	case strings.Contains(errStr, "Timeout exceeded while reading body"):
+	case strings.HasSuffix(errStr, "net/http: request canceled (Client.Timeout exceeded while reading body)"):
 		return "http request timed out waiting for response"
 	}
 
