@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -419,10 +420,14 @@ func parseHTTPConnError(err error) probs.ProblemType {
 // error provided.
 //
 // To preserve the privacy of internal IPs, only constant strings are ever
-// returned from this function.
+// returned from this function unless it's a ProblemDetails, which is assumed
+// to already be sanitized.
 func sanitizeHTTPConnError(err error) string {
 	if urlErr, ok := err.(*url.Error); ok {
 		err = urlErr.Err
+	}
+	if probs, ok := err.(*probs.ProblemDetails); ok {
+		return probs.Error()
 	}
 
 	errStr := err.Error()
@@ -450,7 +455,7 @@ func sanitizeHTTPConnError(err error) string {
 		return "server does not recognize DVSNI challenge name"
 	} else if errStr == "tls: failed to parse certificate from server: x509: negative serial number" {
 		return "server presented certificate with negative serial. please use a valid self-signed certificate"
-	} else if strings.HasPrefix("tls: oversized record received with length") {
+	} else if strings.HasPrefix(errStr, "tls: oversized record received with length") {
 		return "oversized tls record"
 	}
 
