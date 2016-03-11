@@ -71,6 +71,7 @@ const (
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
 	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
 	MethodCountFQDNSets                     = "CountFQDNSets"                     // SA
+	MethodFQDNSetExists                     = "FQDNSetExists"                     // SA
 )
 
 // Request structs
@@ -175,6 +176,10 @@ type countFQDNsRequest struct {
 	Names  []string
 }
 
+type fqdnSetExistsRequest struct {
+	Names []string
+}
+
 // Response structs
 type caaResponse struct {
 	Present bool
@@ -189,6 +194,10 @@ type revokeAuthsResponse struct {
 
 type countFQDNSetsResponse struct {
 	Count int64
+}
+
+type fqdnSetExistsResponse struct {
+	Exists bool
 }
 
 func improperMessage(method string, err error, obj interface{}) {
@@ -1142,6 +1151,30 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
+	rpc.Handle(MethodFQDNSetExists, func(req []byte) (response []byte, err error) {
+		var r fqdnSetExistsRequest
+		err = json.Unmarshal(req, &r)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodFQDNSetExists, err, req)
+			return
+		}
+		exists, err := impl.FQDNSetExists(r.Names)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodFQDNSetExists, err, req)
+			return
+		}
+		response, err = json.Marshal(fqdnSetExistsResponse{exists})
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodFQDNSetExists, err, req)
+			return
+		}
+
+		return
+	})
+
 	return nil
 }
 
@@ -1529,4 +1562,20 @@ func (cac StorageAuthorityClient) CountFQDNSets(window time.Duration, names []st
 	var count countFQDNSetsResponse
 	err = json.Unmarshal(response, &count)
 	return count.Count, err
+}
+
+// FQDNSetExists returns a bool indicating whether the FQDN set |name|
+// exists in the database
+func (cac StorageAuthorityClient) FQDNSetExists(names []string) (bool, error) {
+	data, err := json.Marshal(fqdnSetExistsRequest{names})
+	if err != nil {
+		return false, err
+	}
+	response, err := cac.rpc.DispatchSync(MethodFQDNSetExists, data)
+	if err != nil {
+		return false, err
+	}
+	var exists fqdnSetExistsResponse
+	err = json.Unmarshal(response, exists)
+	return exists.Exists, err
 }

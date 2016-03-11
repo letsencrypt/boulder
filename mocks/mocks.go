@@ -252,6 +252,11 @@ func (sa *StorageAuthority) CountFQDNSets(since time.Duration, names []string) (
 	return 0, nil
 }
 
+// FQDNSetExists is a mock
+func (sa *StorageAuthority) FQDNSetExists(names []string) (bool, error) {
+	return false, nil
+}
+
 // GetLatestValidAuthorization is a mock
 func (sa *StorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	if registrationID == 1 && identifier.Type == "dns" {

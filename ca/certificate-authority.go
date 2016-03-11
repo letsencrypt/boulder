@@ -486,19 +486,27 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if !ca.forceCNFromSAN {
 		req.Subject.SerialNumber = serialHex
 	}
+
+	ca.log.AuditNotice(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
+		serialHex, strings.Join(hostNames, ", "), csrPEM))
+
 	certPEM, err := ca.signer.Sign(req)
 	ca.noteSignError(err)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.AuditErr(fmt.Errorf("Signer failed, rolling back: serial=[%s] err=[%v]", serialHex, err))
+		ca.log.AuditErr(fmt.Errorf("Signing failed: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
+
+	ca.log.AuditNotice(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] pem=[%s]",
+		serialHex, strings.Join(hostNames, ", "), csrPEM,
+		base64.StdEncoding.EncodeToString(certPEM)))
 
 	if len(certPEM) == 0 {
 		err = core.InternalServerError("No certificate returned by server")
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.AuditErr(fmt.Errorf("PEM empty from Signer, rolling back: serial=[%s] err=[%v]", serialHex, err))
+		ca.log.AuditErr(fmt.Errorf("PEM empty from Signer: serial=[%s] err=[%v]", serialHex, err))
 		return emptyCert, err
 	}
 
@@ -506,7 +514,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if block == nil || block.Type != "CERTIFICATE" {
 		err = core.InternalServerError("Invalid certificate value returned")
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.AuditErr(fmt.Errorf("PEM decode error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
+		ca.log.AuditErr(fmt.Errorf("PEM decode error, aborting: serial=[%s] pem=[%s] err=[%v]",
+			serialHex, certPEM, err))
 		return emptyCert, err
 	}
 	certDER := block.Bytes
@@ -519,7 +528,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		ca.log.AuditErr(fmt.Errorf("Uncaught error, aborting and rolling back issuance: pem=[%s] err=[%v]", certPEM, err))
+		ca.log.AuditErr(fmt.Errorf("Uncaught error, aborting: serial=[%s] pem=[%s] err=[%v]",
+			serialHex, certPEM, err))
 		return emptyCert, err
 	}
 
@@ -529,7 +539,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		ca.log.AuditErr(fmt.Errorf(
-			"Failed RPC to store at SA, orphaning certificate: b64der=[%s] err=[%v], regID=[%d]",
+			"Failed RPC to store at SA, orphaning certificate: serial=[%s] b64der=[%s] err=[%v], regID=[%d]",
+			serialHex,
 			base64.StdEncoding.EncodeToString(certDER),
 			err,
 			regID,

@@ -146,6 +146,20 @@ func (m *mailer) updateCertStatus(serial string) error {
 	return nil
 }
 
+func (m *mailer) certIsRenewed(serial string) (renewed bool, err error) {
+	present, err := m.dbMap.SelectInt(`
+		SELECT b.serial IS NOT NULL
+		FROM fqdnSets a
+		LEFT OUTER JOIN fqdnSets b
+			ON a.setHash = b.setHash
+			AND a.issued < b.issued
+		WHERE a.serial = :serial
+		LIMIT 1`,
+		map[string]interface{}{"serial": serial},
+	)
+	return present == 1, err
+}
+
 func (m *mailer) processCerts(allCerts []core.Certificate) {
 	m.log.Info(fmt.Sprintf("expiration-mailer: Found %d certificates, starting sending messages", len(allCerts)))
 
@@ -174,6 +188,16 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 				m.stats.Inc("Mailer.Expiration.Errors.ParseCertificate", 1, 1.0)
 				continue
 			}
+
+			renewed, err := m.certIsRenewed(cert.Serial)
+			if err != nil {
+				m.log.Err(fmt.Sprintf("expiration-mailer: error fetching renewal state: %v", err))
+				// assume not renewed
+			} else if renewed {
+				m.stats.Inc("Mailer.Expiration.Renewed", 1, 1.0)
+				continue
+			}
+
 			parsedCerts = append(parsedCerts, parsedCert)
 		}
 
@@ -229,11 +253,14 @@ func (m *mailer) findExpiringCertificates() error {
 			m.log.Err(fmt.Sprintf("expiration-mailer: Error loading certificates: %s", err))
 			return err // fatal
 		}
-		if len(certs) > 0 {
-			processingStarted := m.clk.Now()
-			m.processCerts(certs)
-			m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", time.Since(processingStarted), 1.0)
+
+		if len(certs) == 0 {
+			continue // nothing to do
 		}
+
+		processingStarted := m.clk.Now()
+		m.processCerts(certs)
+		m.stats.TimingDuration("Mailer.Expiration.ProcessingCertificatesLatency", time.Since(processingStarted), 1.0)
 	}
 
 	return nil
@@ -335,7 +362,7 @@ func main() {
 			emailTemplate: tmpl,
 			nagTimes:      nags,
 			limit:         c.Mailer.CertLimit,
-			clk:           clock.Default(),
+			clk:           cmd.Clock(),
 		}
 
 		auditlogger.Info("expiration-mailer: Starting")
