@@ -13,6 +13,17 @@
 set -o errexit
 cd $(dirname $0)/..
 
+# By default use host networking so non-docker clients running on the
+# host can connect to the service using 127.0.0.1 and port
+# 4000. NET_CONTAINER allows to replace that with a name or ID of
+# another container where a client runs or that client uses for its
+# networking. The latter is the case with Kubernetes.
+
+docker_net=host
+if [[ $NET_CONTAINER ]]; then
+    docker_net="container:$NET_CONTAINER"
+fi
+
 # helper function to return the state of the container (true if running, false if not)
 is_running(){
 	local name=$1
@@ -26,31 +37,21 @@ is_running(){
 	echo $state
 }
 
-# helper function to get boot2docker ip if we are on a mac
-hostip=0.0.0.0
-if command -v boot2docker >/dev/null 2>&1 ; then
-	hostip="$(boot2docker ip)"
-fi
-# if the DOCKER_HOST variable exists, lets get the host ip from that
-if [[ ! -z "$DOCKER_HOST" ]]; then
-	hostip="$(echo $DOCKER_HOST | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')"
-fi
-
 if [[ "$(is_running boulder-mysql)" != "true" ]]; then
-	# bring up mysql mariadb container
+	# bring up mysql mariadb container - no need to specify 3306
+	# port with host or container networking
 	docker run -d \
-		--net host \
-		-p 3306:3306 \
+		--net "$docker_net" \
 		-e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
 		--name boulder-mysql \
 		mariadb:10.0
 fi
 
 if [[ "$(is_running boulder-rabbitmq)" != "true" ]]; then
-	# bring up rabbitmq container
+	# bring up rabbitmq container - no need to specify 5672 port
+	# with host or container networking
 	docker run -d \
-		--net host \
-		-p 5672:5672 \
+		--net "$docker_net" \
 		--name boulder-rabbitmq \
 		rabbitmq:3
 fi
@@ -72,8 +73,7 @@ fi
 # The excluding `-d` command makes the instance interactive, so you can kill
 # the boulder container with Ctrl-C.
 docker run --rm -it \
-	--net host \
-	-p 4000:4000 \
+	--net "$docker_net" \
 	-e MYSQL_CONTAINER=yes \
 	"${fake_dns_args[@]}" \
 	--name boulder \
