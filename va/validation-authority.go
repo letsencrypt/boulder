@@ -415,6 +415,11 @@ func parseHTTPConnError(err error) probs.ProblemType {
 	return probs.ConnectionProblem
 }
 
+// sanitizeHTTPConnError returns a human-readable and clean version of the
+// error provided.
+//
+// To preserve the privacy of internal IPs, only constant strings are ever
+// returned from this function.
 func sanitizeHTTPConnError(err error) string {
 	if urlErr, ok := err.(*url.Error); ok {
 		err = urlErr.Err
