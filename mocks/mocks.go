@@ -268,6 +268,29 @@ func (sa *StorageAuthority) GetLatestValidAuthorization(registrationID int64, id
 	return core.Authorization{}, errors.New("no authz")
 }
 
+// GetValidAuthorizations is a mock
+func (sa *StorageAuthority) GetValidAuthorizations(regID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
+	if regID == 1 {
+		auths := make(map[string]*core.Authorization)
+		for _, name := range names {
+			if sa.authorizedDomains[name] || name == "not-an-example.com" {
+				exp := now.AddDate(100, 0, 0)
+				auths[name] = &core.Authorization{
+					Status:         core.StatusValid,
+					RegistrationID: 1,
+					Expires:        &exp,
+					Identifier: core.AcmeIdentifier{
+						Type:  "dns",
+						Value: name,
+					},
+				}
+			}
+		}
+		return auths, nil
+	}
+	return nil, errors.New("no authz")
+}
+
 // CountCertificatesRange is a mock
 func (sa *StorageAuthority) CountCertificatesRange(_, _ time.Time) (int64, error) {
 	return 0, nil
