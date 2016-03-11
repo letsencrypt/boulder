@@ -432,35 +432,34 @@ func sanitizeHTTPConnError(err error) string {
 
 	errStr := err.Error()
 
+	switch true {
 	// DVSNI
-	if strings.HasSuffix(errStr, "connection refused") {
+	case strings.HasSuffix(errStr, "connection refused"):
 		return "tcp connection refused"
-	} else if strings.HasSuffix(errStr, "i/o timeout") {
+	case strings.HasSuffix(errStr, "i/o timeout"):
 		return "tcp connection timed out"
-	} else if strings.HasSuffix(errStr, "getsockopt: no route to host") {
+	case strings.HasSuffix(errStr, "getsockopt: no route to host"):
 		return "no route to host"
-	} else if strings.HasSuffix(errStr, "read: connection reset by peer") {
+	case strings.HasSuffix(errStr, "read: connection reset by peer"):
 		return "connection reset"
-	} else if errStr == io.EOF.Error() {
+	case errStr == io.EOF.Error():
 		return "premature EOF"
-	} else if errStr == "tls: DialWithDialer timed out" {
+	case errStr == "tls: DialWithDialer timed out":
 		return "connection timed out"
-	} else if errStr == "remote error: internal error" {
+	case errStr == "remote error: internal error":
 		return "remote host encountered a TLS error"
-	} else if errStr == "remote error: handshake failure" {
+	case errStr == "remote error: handshake failure":
 		return "tls handshake failure"
-	} else if errStr == "tls: first record does not look like a TLS handshake" {
+	case errStr == "tls: first record does not look like a TLS handshake":
 		return "tls protocol error, is 443 not a web server?"
-	} else if errStr == "remote error: alert(112)" {
+	case errStr == "remote error: alert(112)":
 		return "server does not recognize DVSNI challenge name"
-	} else if errStr == "tls: failed to parse certificate from server: x509: negative serial number" {
+	case errStr == "tls: failed to parse certificate from server: x509: negative serial number":
 		return "server presented certificate with negative serial. please use a valid self-signed certificate"
-	} else if strings.HasPrefix(errStr, "tls: oversized record received with length") {
+	case strings.HasPrefix(errStr, "tls: oversized record received with length"):
 		return "oversized tls record"
-	}
-
 	// HTTP
-	if strings.Contains(errStr, "Timeout exceeded while reading body") {
+	case strings.Contains(errStr, "Timeout exceeded while reading body"):
 		return "http request timed out waiting for response"
 	}
 
