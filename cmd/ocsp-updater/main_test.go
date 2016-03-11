@@ -35,14 +35,20 @@ type mockPub struct {
 }
 
 func (p *mockPub) SubmitToCT(_ []byte) error {
-	return p.sa.AddSCTReceipt(core.SignedCertificateTimestamp{
+	sct := core.SignedCertificateTimestamp{
 		SCTVersion:        0,
 		LogID:             "id",
 		Timestamp:         0,
 		Extensions:        []byte{},
 		Signature:         []byte{0},
 		CertificateSerial: "00",
-	})
+	}
+	err := p.sa.AddSCTReceipt(sct)
+	if err != nil {
+		return err
+	}
+	sct.LogID = "another-id"
+	return p.sa.AddSCTReceipt(sct)
 }
 
 var log = mocks.UseMockLog()
@@ -261,7 +267,12 @@ func TestMissingReceiptsTick(t *testing.T) {
 
 	count, err := updater.getNumberOfReceipts("00")
 	test.AssertNotError(t, err, "Couldn't get number of receipts")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count, 2)
+
+	// make sure we don't spin forever after reducing the
+	// number of logs we submit to
+	updater.numLogs = 1
+	updater.missingReceiptsTick(10)
 }
 
 func TestRevokedCertificatesTick(t *testing.T) {
