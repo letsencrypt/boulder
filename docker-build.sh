@@ -1,5 +1,6 @@
 #!/bin/bash
 set -o xtrace
+set -e
 
 if [ -z "$VERSION" ]; then
     VERSION="1.0.0"
@@ -12,7 +13,9 @@ if [ -z "$ARCHIVEDIR" ]; then
 fi
 
 docker build -f Dockerfile-build -t boulder-build .
-docker rm builder
+if [ -n "$(docker ps -a -f name=builder -q)" ]; then
+    docker rm builder
+fi
 docker run --name builder boulder-build
-docker cp builder:/tmp/boulder-$VERSION-$COMMIT_ID.x86_64.rpm $ARCHIVEDIR/
+docker cp builder:$ARCHIVEDIR/boulder-$VERSION-$COMMIT_ID.x86_64.rpm $ARCHIVEDIR/
 docker rm builder
