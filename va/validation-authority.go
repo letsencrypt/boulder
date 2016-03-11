@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -254,10 +255,10 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	}
 	httpResponse, err := client.Do(httpRequest)
 	if err != nil {
-		va.log.Debug(err.Error())
+		va.log.Debug(fmt.Sprintf("Could not connect to %s: %v", url, err))
 		return nil, validationRecords, &probs.ProblemDetails{
 			Type:   parseHTTPConnError(err),
-			Detail: fmt.Sprintf("Could not connect to %s", url),
+			Detail: fmt.Sprintf("Could not connect to %s: %s", url, sanitizeHTTPConnError(err)),
 		}
 	}
 	defer httpResponse.Body.Close()
@@ -274,7 +275,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	if err != nil {
 		return nil, validationRecords, &probs.ProblemDetails{
 			Type:   probs.UnauthorizedProblem,
-			Detail: fmt.Sprintf("Error reading HTTP response body: %v", err),
+			Detail: fmt.Sprintf("Error reading HTTP response body: %s", sanitizeHTTPConnError(err)),
 		}
 	}
 	return body, validationRecords, nil
@@ -307,7 +308,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 		va.log.Debug(fmt.Sprintf("%s [%s] TLS Connection failure: %s", challenge.Type, identifier, err))
 		return validationRecords, &probs.ProblemDetails{
 			Type:   parseHTTPConnError(err),
-			Detail: "Failed to connect to host for DVSNI challenge",
+			Detail: fmt.Sprintf("Failed to connect to host for DVSNI challenge: %s", sanitizeHTTPConnError(err)),
 		}
 	}
 	defer conn.Close()
@@ -415,6 +416,66 @@ func parseHTTPConnError(err error) probs.ProblemType {
 	return probs.ConnectionProblem
 }
 
+// sanitizeHTTPConnError returns a human-readable and clean version of the
+// error provided.
+//
+// To preserve the privacy of internal IPs, only constant strings are ever
+// returned from this function unless it's a ProblemDetails, which is assumed
+// to already be sanitized.
+func sanitizeHTTPConnError(err error) string {
+	if urlErr, ok := err.(*url.Error); ok {
+		err = urlErr.Err
+	}
+	if probs, ok := err.(*probs.ProblemDetails); ok {
+		return probs.Error()
+	}
+
+	errStr := err.Error()
+
+	switch true {
+	// DVSNI
+	case strings.HasSuffix(errStr, "connection refused"):
+		return "tcp connection refused"
+	case strings.HasSuffix(errStr, "i/o timeout"):
+		return "tcp connection timed out"
+	case strings.HasSuffix(errStr, "getsockopt: no route to host"):
+		return "no route to host"
+	case strings.HasSuffix(errStr, "read: connection reset by peer"):
+		return "connection reset"
+	case errStr == io.EOF.Error():
+		return "premature EOF"
+	case errStr == "tls: DialWithDialer timed out":
+		return "connection timed out"
+	case errStr == "remote error: internal error":
+		return "remote host encountered a TLS error"
+	case errStr == "remote error: handshake failure":
+		return "tls handshake failure"
+	case errStr == "tls: first record does not look like a TLS handshake":
+		return "tls protocol error, is 443 not a web server?"
+	case errStr == "remote error: alert(112)":
+		return "server does not recognize DVSNI challenge name"
+	case errStr == "tls: failed to parse certificate from server: x509: negative serial number":
+		return "server presented certificate with negative serial. please use a valid self-signed certificate"
+	case strings.HasPrefix(errStr, "tls: oversized record received with length"):
+		return "oversized tls record"
+	// HTTP
+	case strings.HasSuffix(errStr, "net/http: request canceled (Client.Timeout exceeded while reading body)"):
+		return "http request timed out waiting for response"
+	}
+
+	if netErr, ok := err.(*net.OpError); ok {
+		dnsErr, ok := netErr.Err.(*net.DNSError)
+		if ok && !dnsErr.Timeout() && !dnsErr.Temporary() {
+			return "dns failed"
+		} else if fmt.Sprintf("%T", netErr.Err) == "tls.alert" {
+			return "tls failure"
+		}
+	}
+
+	blog.GetAuditLogger().Info(fmt.Sprintf("sanitizeHTTPConnError: unknown error type: %T %v", err, err))
+	return "other error"
+}
+
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != core.IdentifierDNS {
 		va.log.Debug(fmt.Sprintf("DNS [%s] Identifier failure", identifier))
@@ -451,7 +512,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 
 	return nil, &probs.ProblemDetails{
 		Type:   probs.UnauthorizedProblem,
-		Detail: "Correct value not found for DNS challenge",
+		Detail: fmt.Sprintf("Correct value not found for DNS challenge. Found: [%s]", strings.Join(txts, "], [")),
 	}
 }
 
@@ -467,7 +528,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 	if !valid {
 		return &probs.ProblemDetails{
 			Type:   probs.ConnectionProblem,
-			Detail: fmt.Sprintf("CAA check for %s failed", identifier.Value),
+			Detail: fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value),
 		}
 	}
 	return nil
