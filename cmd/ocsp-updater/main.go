@@ -416,22 +416,30 @@ func (updater *OCSPUpdater) oldOCSPResponsesTick(batchSize int) error {
 }
 
 func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int) ([]string, error) {
-	var serials []string
-	_, err := updater.dbMap.Select(
-		&serials,
-		`SELECT serial FROM certificates
+	var allSerials []string
+	for {
+		serials := []string{}
+		_, err := updater.dbMap.Select(
+			&serials,
+			`SELECT serial FROM certificates
 			 WHERE issued > :since
 			 ORDER BY issued ASC
-			 LIMIT :limit`,
-		map[string]interface{}{
-			"since": since,
-			"limit": batchSize,
-		},
-	)
-	if err == sql.ErrNoRows {
-		return serials, nil
+			 LIMIT :limit OFFSET :offset`,
+			map[string]interface{}{
+				"since":  since,
+				"limit":  batchSize,
+				"offset": len(allSerials),
+			},
+		)
+		if err == sql.ErrNoRows || len(serials) == 0 {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		allSerials = append(allSerials, serials...)
 	}
-	return serials, err
+	return allSerials, nil
 }
 
 func (updater *OCSPUpdater) getNumberOfReceipts(serial string) (int, error) {
@@ -469,7 +477,6 @@ func (updater *OCSPUpdater) missingReceiptsTick(batchSize int) error {
 			updater.log.AuditErr(fmt.Errorf("Failed to get certificate: %s", err))
 			continue
 		}
-
 		err = updater.pubc.SubmitToCT(cert.DER)
 		if err != nil {
 			updater.log.AuditErr(fmt.Errorf("Failed to submit certificate to CT log: %s", err))
