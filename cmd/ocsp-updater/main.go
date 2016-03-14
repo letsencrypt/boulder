@@ -469,7 +469,7 @@ func (updater *OCSPUpdater) missingReceiptsTick(batchSize int) error {
 			updater.log.AuditErr(fmt.Errorf("Failed to get number of SCT receipts for certificate: %s", err))
 			continue
 		}
-		if count == updater.numLogs {
+		if count >= updater.numLogs {
 			continue
 		}
 		cert, err := updater.sac.GetCertificate(serial)
