@@ -467,7 +467,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 	if !valid {
 		return &probs.ProblemDetails{
 			Type:   probs.ConnectionProblem,
-			Detail: fmt.Sprintf("CAA check for %s failed", identifier.Value),
+			Detail: fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value),
 		}
 	}
 	return nil
