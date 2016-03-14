@@ -37,14 +37,16 @@ type AuthorityImpl struct {
 }
 
 // New constructs a Policy Authority.
+// TODO(https://github.com/letsencrypt/boulder/issues/1616): Remove the _ bool
+// argument (used to be enforceWhitelist). Update all callers.
 func New(dbMap *gorp.DbMap, _ bool, challengeTypes map[string]bool) (*AuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
 	logger.Notice("Policy Authority Starting")
 
 	var padb *AuthorityDatabaseImpl
-	var err error
 	if dbMap != nil {
 		// Setup policy db
+		var err error
 		padb, err = NewAuthorityDatabaseImpl(dbMap)
 		if err != nil {
 			return nil, err

@@ -17,7 +17,7 @@ func TestNoStat(t *testing.T) {
 	filename := os.TempDir() + "/doesntexist.123456789"
 	_, err := New(filename, noop)
 	if err == nil {
-		t.Errorf("Expected New to return error when the file doesn't exist.")
+		t.Fatalf("Expected New to return error when the file doesn't exist.")
 	}
 }
 
@@ -27,7 +27,7 @@ func TestNoRead(t *testing.T) {
 	f.Chmod(0) // no read permissions
 	_, err := New(f.Name(), noop)
 	if err == nil {
-		t.Errorf("Expected New to return error when permission denied.")
+		t.Fatalf("Expected New to return error when permission denied.")
 	}
 }
 
@@ -38,19 +38,20 @@ func TestFirstError(t *testing.T) {
 		return fmt.Errorf("i die")
 	})
 	if err == nil {
-		t.Errorf("Expected New to return error when the callback returned error the first time.")
+		t.Fatalf("Expected New to return error when the callback returned error the first time.")
 	}
 }
 
 func TestFirstSuccess(t *testing.T) {
 	f, _ := ioutil.TempFile("", "test-first-success.txt")
 	defer os.Remove(f.Name())
-	_, err := New(f.Name(), func([]byte, error) error {
+	r, err := New(f.Name(), func([]byte, error) error {
 		return nil
 	})
 	if err != nil {
 		t.Errorf("Expected New to succeed, got %s", err)
 	}
+	r.Stop()
 }
 
 // Override makeTicker for testing.
@@ -70,20 +71,18 @@ func makeFakeMakeTicker() (chan<- time.Time, func()) {
 func TestReload(t *testing.T) {
 	// Mock out makeTicker
 	fakeTick, restoreMakeTicker := makeFakeMakeTicker()
+	defer restoreMakeTicker()
 
 	f, _ := ioutil.TempFile("", "test-reload.txt")
 	filename := f.Name()
-	defer func() {
-		restoreMakeTicker()
-		os.Remove(filename)
-	}()
+	defer os.Remove(filename)
 
 	f.Write([]byte("first body"))
 	f.Close()
 
 	var bodies []string
 	reloads := make(chan []byte, 1)
-	_, err := New(filename, func(b []byte, err error) error {
+	r, err := New(filename, func(b []byte, err error) error {
 		if err != nil {
 			t.Fatalf("Got error in callback: %s", err)
 		}
@@ -92,8 +91,9 @@ func TestReload(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Errorf("Expected New to succeed, got %s", err)
+		t.Fatalf("Expected New to succeed, got %s", err)
 	}
+	defer r.Stop()
 	expected := []string{"first body"}
 	if !reflect.DeepEqual(bodies, expected) {
 		t.Errorf("Expected bodies = %#v, got %#v", expected, bodies)

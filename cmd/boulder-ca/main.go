@@ -85,7 +85,7 @@ func main() {
 		cmd.FailOnError(err, "Couldn't create PA")
 
 		if c.CA.HostnamePolicyFile != "" {
-			err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
+			err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
 			cmd.FailOnError(err, "Couldn't load hostname policy file")
 		}
 
