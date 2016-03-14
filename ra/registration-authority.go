@@ -464,7 +464,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registr
 		if authz == nil {
 			badNames = append(badNames, name)
 		} else if authz.Expires == nil {
-			return fmt.Errorf("Found an authorization with a nil Expires field: id %d", authz.ID)
+			return fmt.Errorf("Found an authorization with a nil Expires field: id %s", authz.ID)
 		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		}

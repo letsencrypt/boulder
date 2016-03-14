@@ -1627,6 +1627,6 @@ func (cac StorageAuthorityClient) FQDNSetExists(names []string) (bool, error) {
 		return false, err
 	}
 	var exists fqdnSetExistsResponse
-	err = json.Unmarshal(response, exists)
+	err = json.Unmarshal(response, &exists)
 	return exists.Exists, err
 }
