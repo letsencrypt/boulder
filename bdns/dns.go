@@ -126,8 +126,8 @@ type DNSResolver interface {
 
 // DNSResolverImpl represents a client that talks to an external resolver
 type DNSResolverImpl struct {
-	DNSClient                exchanger
-	Servers                  []string
+	dnsClient                exchanger
+	servers                  []string
 	allowRestrictedAddresses bool
 	maxTries                 int
 	clk                      clock.Clock
@@ -155,8 +155,8 @@ func NewDNSResolverImpl(readTimeout time.Duration, servers []string, stats metri
 	dnsClient.Net = "tcp"
 
 	return &DNSResolverImpl{
-		DNSClient:                dnsClient,
-		Servers:                  servers,
+		dnsClient:                dnsClient,
+		servers:                  servers,
 		allowRestrictedAddresses: false,
 		maxTries:                 maxTries,
 		clk:                      clk,
@@ -188,16 +188,16 @@ func (dnsResolver *DNSResolverImpl) exchangeOne(ctx context.Context, hostname st
 	// Set DNSSEC OK bit for resolver
 	m.SetEdns0(4096, true)
 
-	if len(dnsResolver.Servers) < 1 {
+	if len(dnsResolver.servers) < 1 {
 		return nil, fmt.Errorf("Not configured with at least one DNS Server")
 	}
 
 	dnsResolver.stats.Inc("Rate", 1)
 
 	// Randomly pick a server
-	chosenServer := dnsResolver.Servers[rand.Intn(len(dnsResolver.Servers))]
+	chosenServer := dnsResolver.servers[rand.Intn(len(dnsResolver.servers))]
 
-	client := dnsResolver.DNSClient
+	client := dnsResolver.dnsClient
 
 	tries := 1
 	start := dnsResolver.clk.Now()
