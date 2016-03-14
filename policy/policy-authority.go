@@ -76,6 +76,7 @@ func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
 func (pa *AuthorityImpl) loadHostnamePolicy(b []byte, err error) error {
 	if err != nil {
 		pa.log.Err(fmt.Sprintf("loading hostname policy: %s", err))
+		return err
 	}
 	hash := sha256.Sum256(b)
 	pa.log.Info(fmt.Sprintf("loading hostname policy, sha256: %s",
