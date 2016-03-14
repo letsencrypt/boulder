@@ -53,6 +53,7 @@ const (
 	MethodGetRegistrationByKey              = "GetRegistrationByKey"              // RA, SA
 	MethodGetAuthorization                  = "GetAuthorization"                  // SA
 	MethodGetLatestValidAuthorization       = "GetLatestValidAuthorization"       // SA
+	MethodGetValidAuthorizations            = "GetValidAuthorizations"            // SA
 	MethodGetCertificate                    = "GetCertificate"                    // SA
 	MethodGetCertificateStatus              = "GetCertificateStatus"              // SA
 	MethodMarkCertificateRevoked            = "MarkCertificateRevoked"            // SA
@@ -101,6 +102,12 @@ type updateAuthorizationRequest struct {
 type latestValidAuthorizationRequest struct {
 	RegID      int64
 	Identifier core.AcmeIdentifier
+}
+
+type getValidAuthorizationsRequest struct {
+	RegID int64
+	Names []string
+	Now   time.Time
 }
 
 type certificateRequest struct {
@@ -846,6 +853,28 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
+	rpc.Handle(MethodGetValidAuthorizations, func(req []byte) (response []byte, err error) {
+		var mreq getValidAuthorizationsRequest
+		if err = json.Unmarshal(req, &mreq); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodGetValidAuthorizations, err, req)
+			return
+		}
+
+		auths, err := impl.GetValidAuthorizations(mreq.RegID, mreq.Names, mreq.Now)
+		if err != nil {
+			return
+		}
+
+		response, err = json.Marshal(auths)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetValidAuthorizations, err, req)
+			return
+		}
+		return
+	})
+
 	rpc.Handle(MethodAddCertificate, func(req []byte) (response []byte, err error) {
 		var acReq addCertificateRequest
 		err = json.Unmarshal(req, &acReq)
@@ -1253,6 +1282,28 @@ func (cac StorageAuthorityClient) GetLatestValidAuthorization(registrationID int
 	}
 
 	err = json.Unmarshal(jsonAuthz, &authz)
+	return
+}
+
+// GetValidAuthorizations sends a request to get a batch of Authorizations by
+// RegID and dnsName. The current time is also included in the request to
+// assist filtering.
+func (cac StorageAuthorityClient) GetValidAuthorizations(registrationID int64, names []string, now time.Time) (auths map[string]*core.Authorization, err error) {
+	data, err := json.Marshal(getValidAuthorizationsRequest{
+		RegID: registrationID,
+		Names: names,
+		Now:   now,
+	})
+	if err != nil {
+		return
+	}
+
+	jsonAuths, err := cac.rpc.DispatchSync(MethodGetValidAuthorizations, data)
+	if err != nil {
+		return
+	}
+
+	err = json.Unmarshal(jsonAuths, &auths)
 	return
 }
 

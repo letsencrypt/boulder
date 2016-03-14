@@ -26,31 +26,26 @@ is_running(){
 	echo $state
 }
 
-# helper function to get boot2docker ip if we are on a mac
-hostip=0.0.0.0
-if command -v boot2docker >/dev/null 2>&1 ; then
-	hostip="$(boot2docker ip)"
-fi
-# if the DOCKER_HOST variable exists, lets get the host ip from that
-if [[ ! -z "$DOCKER_HOST" ]]; then
-	hostip="$(echo $DOCKER_HOST | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')"
-fi
+# To share the same boulder config between docker and non-docker cases
+# we use host networking but restrict containers to listen to
+# 127.0.0.1 to avoid exposing services beyond the host.
 
 if [[ "$(is_running boulder-mysql)" != "true" ]]; then
-	# bring up mysql mariadb container
+	# bring up mysql mariadb container - no need to publish port
+	# 3306 with host networking
 	docker run -d \
 		--net host \
-		-p 3306:3306 \
 		-e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
 		--name boulder-mysql \
-		mariadb:10.0
+		mariadb:10.0 mysqld --bind-address=127.0.0.1
 fi
 
 if [[ "$(is_running boulder-rabbitmq)" != "true" ]]; then
-	# bring up rabbitmq container
+	# bring up rabbitmq container - no need to publish port 5672
+	# with host networking
 	docker run -d \
 		--net host \
-		-p 5672:5672 \
+		-e RABBITMQ_NODE_IP_ADDRESS=127.0.0.1 \
 		--name boulder-rabbitmq \
 		rabbitmq:3
 fi
@@ -73,7 +68,6 @@ fi
 # the boulder container with Ctrl-C.
 docker run --rm -it \
 	--net host \
-	-p 4000:4000 \
 	-e MYSQL_CONTAINER=yes \
 	"${fake_dns_args[@]}" \
 	--name boulder \
