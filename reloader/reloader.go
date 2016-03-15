@@ -69,5 +69,5 @@ func New(filename string, callback func([]byte, error) error) (*Reloader, error)
 		return nil, err
 	}
 	go loop()
-	return &Reloader{stopChan}, err
+	return &Reloader{stopChan}, nil
 }
