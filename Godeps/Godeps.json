@@ -135,14 +135,6 @@
 			"Rev": "3c4ebd218625c9364c33db6d39c276d80c3090c6"
 		},
 		{
-			"ImportPath": "github.com/letsencrypt/go-jose",
-			"Rev": "15b73d6f0363b256ddb080db1c64563064a4e773"
-		},
-		{
-			"ImportPath": "github.com/letsencrypt/go-jose/cipher",
-			"Rev": "15b73d6f0363b256ddb080db1c64563064a4e773"
-		},
-		{
 			"ImportPath": "github.com/letsencrypt/go-safe-browsing-api",
 			"Comment": "2.0.0-9-gf1b4fa4",
 			"Rev": "f1b4fa409d9efcee2ceee9047549413861603033"
@@ -166,6 +158,18 @@
 		{
 			"ImportPath": "github.com/mreiferson/go-httpclient",
 			"Rev": "63fe23f7434723dc904c901043af07931f293c47"
+		},
+		{
+			"ImportPath": "github.com/square/go-jose",
+			"Rev": "70a7e670bd0d4bb35902d31f3a75a6689843abed"
+		},
+		{
+			"ImportPath": "github.com/square/go-jose/cipher",
+			"Rev": "70a7e670bd0d4bb35902d31f3a75a6689843abed"
+		},
+		{
+			"ImportPath": "github.com/square/go-jose/json",
+			"Rev": "70a7e670bd0d4bb35902d31f3a75a6689843abed"
 		},
 		{
 			"ImportPath": "github.com/streadway/amqp",

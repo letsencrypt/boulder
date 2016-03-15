@@ -112,7 +112,14 @@ func (ctx *cbcAEAD) Open(dst, nonce, ciphertext, data []byte) ([]byte, error) {
 	}
 
 	cbc := cipher.NewCBCDecrypter(ctx.blockCipher, nonce)
-	buffer := []byte(ciphertext[:offset])
+
+	// Make copy of ciphertext buffer, don't want to modify in place
+	buffer := append([]byte{}, []byte(ciphertext[:offset])...)
+
+	if len(buffer)%ctx.blockCipher.BlockSize() > 0 {
+		return nil, errors.New("square/go-jose: invalid ciphertext (invalid length)")
+	}
+
 	cbc.CryptBlocks(buffer, buffer)
 
 	// Remove padding
@@ -176,7 +183,7 @@ func unpadBuffer(buffer []byte, blockSize int) ([]byte, error) {
 	last := buffer[len(buffer)-1]
 	count := int(last)
 
-	if count > blockSize || count > len(buffer) {
+	if count == 0 || count > blockSize || count > len(buffer) {
 		return nil, errors.New("square/go-jose: invalid padding")
 	}
 

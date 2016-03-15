@@ -1,6 +1,6 @@
 # Go JOSE 
 
-[![godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/square/go-jose) [![license](http://img.shields.io/badge/license-apache_2.0-red.svg?style=flat)](https://raw.githubusercontent.com/square/go-jose/master/LICENSE) [![build](https://img.shields.io/travis/square/go-jose.svg?style=flat)](https://travis-ci.org/square/go-jose) [![coverage](https://img.shields.io/coveralls/square/go-jose.svg?style=flat)](https://coveralls.io/r/square/go-jose)
+[![godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/gopkg.in/square/go-jose.v1) [![license](http://img.shields.io/badge/license-apache_2.0-red.svg?style=flat)](https://raw.githubusercontent.com/square/go-jose/master/LICENSE) [![build](https://travis-ci.org/square/go-jose.svg?branch=master)](https://travis-ci.org/square/go-jose) [![coverage](https://coveralls.io/repos/github/square/go-jose/badge.svg?branch=master)](https://coveralls.io/r/square/go-jose)
 
 Package jose aims to provide an implementation of the Javascript Object Signing
 and Encryption set of standards. For the moment, it mainly focuses on encryption
@@ -23,8 +23,30 @@ standard (RFC 7516) and
 standard (RFC 7515). Tables of supported algorithms are shown below.
 The library supports both the compact and full serialization formats, and has
 optional support for multiple recipients. It also comes with a small
-command-line utility (`jose-util`) for encrypting/decrypting JWE messages in a
-shell.
+command-line utility
+([`jose-util`](https://github.com/square/go-jose/tree/master/jose-util))
+for dealing with JOSE messages in a shell.
+
+**Note**: We use a forked version of the `encoding/json` package from the Go
+standard library which uses case-sensitive matching for member names (instead
+of [case-insensitive matching](https://www.ietf.org/mail-archive/web/json/current/msg03763.html)).
+This is to avoid differences in interpretation of messages between go-jose and
+libraries in other languages. See [issue #73](https://github.com/square/go-jose/issues/73)
+for more info. If you do not like this behavior, you can use the `std_json`
+build tag to disable it (though we do not recommend doing so).
+
+### Versions
+
+We use [gopkg.in](https://gopkg.in) for versioning.
+
+[Version 1](https://gopkg.in/square/go-jose.v1) is the current stable version:
+
+    import "gopkg.in/square/go-jose.v1"
+
+The interface for [go-jose.v1](https://gopkg.in/square/go-jose.v1) will remain
+backwards compatible. We're currently sketching out ideas for a new version, to
+clean up the interface a bit. If you have ideas or feature requests [please let
+us know](https://github.com/square/go-jose/issues/64)!
 
 ### Supported algorithms
 
@@ -67,13 +89,15 @@ has a list of constants.
 
 See below for a table of supported key types. These are understood by the
 library, and can be passed to corresponding functions such as `NewEncrypter` or
-`NewSigner`.
+`NewSigner`. Note that if you are creating a new encrypter or signer with a
+JsonWebKey, the key id of the JsonWebKey (if present) will be added to any
+resulting messages.
 
  Algorithm(s)               | Corresponding types
  :------------------------- | -------------------------------
- RSA                        | *[rsa.PublicKey](http://golang.org/pkg/crypto/rsa/#PublicKey), *[rsa.PrivateKey](http://golang.org/pkg/crypto/rsa/#PrivateKey)
- ECDH, ECDSA                | *[ecdsa.PublicKey](http://golang.org/pkg/crypto/ecdsa/#PublicKey), *[ecdsa.PrivateKey](http://golang.org/pkg/crypto/ecdsa/#PrivateKey)
- AES, HMAC                  | []byte
+ RSA                        | *[rsa.PublicKey](http://golang.org/pkg/crypto/rsa/#PublicKey), *[rsa.PrivateKey](http://golang.org/pkg/crypto/rsa/#PrivateKey), *[jose.JsonWebKey](https://godoc.org/github.com/square/go-jose#JsonWebKey)
+ ECDH, ECDSA                | *[ecdsa.PublicKey](http://golang.org/pkg/crypto/ecdsa/#PublicKey), *[ecdsa.PrivateKey](http://golang.org/pkg/crypto/ecdsa/#PrivateKey), *[jose.JsonWebKey](https://godoc.org/github.com/square/go-jose#JsonWebKey)
+ AES, HMAC                  | []byte, *[jose.JsonWebKey](https://godoc.org/github.com/square/go-jose#JsonWebKey)
 
 ## Examples
 
@@ -181,5 +205,6 @@ fmt.Printf(string(output))
 
 More examples can be found in the [Godoc
 reference](https://godoc.org/github.com/square/go-jose) for this package. The
-`jose-util` subdirectory also contains a small command-line utility for
-encrypting/decrypting JWE messages which might be useful as an example.
+[`jose-util`](https://github.com/square/go-jose/tree/master/jose-util)
+subdirectory also contains a small command-line utility which might
+be useful as an example.
