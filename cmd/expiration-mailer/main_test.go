@@ -74,9 +74,14 @@ func newFakeClock(t *testing.T) clock.FakeClock {
 }
 
 const testTmpl = `hi, cert for DNS names {{.DNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`
+const testEmailSubject = `email subject for test`
+const emailARaw = "rolandshoemaker@gmail.com"
+const emailBRaw = "test@gmail.com"
 
 var (
-	jsonKeyA = []byte(`{
+	emailA, _ = core.ParseAcmeURL("mailto:" + emailARaw)
+	emailB, _ = core.ParseAcmeURL("mailto:" + emailBRaw)
+	jsonKeyA  = []byte(`{
   "kty":"RSA",
   "n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
   "e":"AQAB"
@@ -100,6 +105,7 @@ func TestSendNags(t *testing.T) {
 		stats:         stats,
 		mailer:        &mc,
 		emailTemplate: tmpl,
+		subject:       testEmailSubject,
 		rs:            rs,
 		clk:           fc,
 	}
@@ -112,20 +118,29 @@ func TestSendNags(t *testing.T) {
 		DNSNames: []string{"example.com"},
 	}
 
-	email, _ := core.ParseAcmeURL("mailto:rolandshoemaker@gmail.com")
-	emailB, _ := core.ParseAcmeURL("mailto:test@gmail.com")
-
-	err := m.sendNags([]*core.AcmeURL{email}, []*x509.Certificate{cert})
+	err := m.sendNags([]*core.AcmeURL{emailA}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)), mc.Messages[0])
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      emailARaw,
+		Subject: testEmailSubject,
+		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)),
+	}, mc.Messages[0])
 
 	mc.Clear()
-	err = m.sendNags([]*core.AcmeURL{email, emailB}, []*x509.Certificate{cert})
+	err = m.sendNags([]*core.AcmeURL{emailA, emailB}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)), mc.Messages[0])
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)), mc.Messages[1])
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      emailARaw,
+		Subject: testEmailSubject,
+		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)),
+	}, mc.Messages[0])
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      emailBRaw,
+		Subject: testEmailSubject,
+		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)),
+	}, mc.Messages[1])
 
 	mc.Clear()
 	err = m.sendNags([]*core.AcmeURL{}, []*x509.Certificate{cert})
@@ -162,8 +177,6 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching("Searching for certificates that expire between.*")), 3)
 
 	// Add some expiring certificates and registrations
-	emailA, _ := core.ParseAcmeURL("mailto:one@mail.com")
-	emailB, _ := core.ParseAcmeURL("mailto:twp@mail.com")
 	var keyA jose.JsonWebKey
 	var keyB jose.JsonWebKey
 	err = json.Unmarshal(jsonKeyA, &keyA)
@@ -280,8 +293,16 @@ func TestFindExpiringCertificates(t *testing.T) {
 	// Should get 001 and 003
 	test.AssertEquals(t, len(ctx.mc.Messages), 2)
 
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 0 days (%s)`, rawCertA.NotAfter.UTC().Format(time.RFC822Z)), ctx.mc.Messages[0])
-	test.AssertEquals(t, fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (%s)`, rawCertC.NotAfter.UTC().Format(time.RFC822Z)), ctx.mc.Messages[1])
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      emailARaw,
+		Subject: "",
+		Body:    fmt.Sprintf(`hi, cert for DNS names example-a.com is going to expire in 0 days (%s)`, rawCertA.NotAfter.UTC().Format(time.RFC822Z)),
+	}, ctx.mc.Messages[0])
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      emailBRaw,
+		Subject: "",
+		Body:    fmt.Sprintf(`hi, cert for DNS names example-c.com is going to expire in 7 days (%s)`, rawCertC.NotAfter.UTC().Format(time.RFC822Z)),
+	}, ctx.mc.Messages[1])
 
 	// A consecutive run shouldn't find anything
 	ctx.mc.Clear()
@@ -430,8 +451,6 @@ func TestLifetimeOfACert(t *testing.T) {
 	var keyA jose.JsonWebKey
 	err := json.Unmarshal(jsonKeyA, &keyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
-
-	emailA, _ := core.ParseAcmeURL("mailto:one@mail.com")
 
 	regA := core.Registration{
 		ID: 1,
@@ -597,7 +616,7 @@ func TestDedupOnRegistration(t *testing.T) {
 	regA := core.Registration{
 		ID: 1,
 		Contact: []*core.AcmeURL{
-			email1,
+			emailA,
 		},
 		Key:       keyA,
 		InitialIP: net.ParseIP("6.5.5.6"),
@@ -662,9 +681,13 @@ func TestDedupOnRegistration(t *testing.T) {
 		t.Fatalf("no messages sent")
 	}
 	domains := "example-a.com\nexample-b.com\nshared-example.com"
-	expected := fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
-		domains,
-		rawCertB.NotAfter.Format(time.RFC822Z))
+	expected := mocks.MailerMessage{
+		To:      emailARaw,
+		Subject: "",
+		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
+			domains,
+			rawCertB.NotAfter.Format(time.RFC822Z)),
+	}
 	test.AssertEquals(t, expected, ctx.mc.Messages[0])
 }
 
