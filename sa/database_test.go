@@ -21,12 +21,12 @@ func TestInvalidDSN(t *testing.T) {
 var errExpected = errors.New("expected")
 
 func TestNewDbMap(t *testing.T) {
-	const mysqlConnectUrl = "mysql+tcp://policy:password@localhost:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
+	const mysqlConnectURL = "mysql+tcp://policy:password@localhost:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
 	const expectedTransformed = "policy:password@tcp(localhost:3306)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&strict=true&writeTimeout=800ms"
 
-	oldSqlOpen := sqlOpen
+	oldSQLOpen := sqlOpen
 	defer func() {
-		sqlOpen = oldSqlOpen
+		sqlOpen = oldSQLOpen
 	}()
 	sqlOpen = func(dbType, connectString string) (*sql.DB, error) {
 		if connectString != expectedTransformed {
@@ -35,7 +35,7 @@ func TestNewDbMap(t *testing.T) {
 		return nil, errExpected
 	}
 
-	dbMap, err := NewDbMap(mysqlConnectUrl)
+	dbMap, err := NewDbMap(mysqlConnectURL)
 	if err != errExpected {
 		t.Errorf("got incorrect error: %v", err)
 	}

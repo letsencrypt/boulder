@@ -35,14 +35,20 @@ type mockPub struct {
 }
 
 func (p *mockPub) SubmitToCT(_ []byte) error {
-	return p.sa.AddSCTReceipt(core.SignedCertificateTimestamp{
+	sct := core.SignedCertificateTimestamp{
 		SCTVersion:        0,
 		LogID:             "id",
 		Timestamp:         0,
 		Extensions:        []byte{},
 		Signature:         []byte{0},
 		CertificateSerial: "00",
-	})
+	}
+	err := p.sa.AddSCTReceipt(sct)
+	if err != nil {
+		return err
+	}
+	sct.LogID = "another-id"
+	return p.sa.AddSCTReceipt(sct)
 }
 
 var log = mocks.UseMockLog()
@@ -240,22 +246,33 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 }
 
 func TestMissingReceiptsTick(t *testing.T) {
-	updater, sa, _, _, cleanUp := setup(t)
+	updater, sa, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
+	fc.Set(parsedCert.NotBefore.Add(time.Minute))
 	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	updater.numLogs = 1
-	updater.oldestIssuedSCT = 1 * time.Hour
-	updater.missingReceiptsTick(10)
+	updater.oldestIssuedSCT = 2 * time.Hour
+
+	serials, err := updater.getSerialsIssuedSince(fc.Now().Add(-2*time.Hour), 1)
+	test.AssertNotError(t, err, "Failed to retrieve serials")
+	test.AssertEquals(t, len(serials), 1)
+
+	updater.missingReceiptsTick(5)
 
 	count, err := updater.getNumberOfReceipts("00")
 	test.AssertNotError(t, err, "Couldn't get number of receipts")
-	test.AssertEquals(t, count, 1)
+	test.AssertEquals(t, count, 2)
+
+	// make sure we don't spin forever after reducing the
+	// number of logs we submit to
+	updater.numLogs = 1
+	updater.missingReceiptsTick(10)
 }
 
 func TestRevokedCertificatesTick(t *testing.T) {

@@ -252,6 +252,11 @@ func (sa *StorageAuthority) CountFQDNSets(since time.Duration, names []string) (
 	return 0, nil
 }
 
+// FQDNSetExists is a mock
+func (sa *StorageAuthority) FQDNSetExists(names []string) (bool, error) {
+	return false, nil
+}
+
 // GetLatestValidAuthorization is a mock
 func (sa *StorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	if registrationID == 1 && identifier.Type == "dns" {
@@ -261,6 +266,29 @@ func (sa *StorageAuthority) GetLatestValidAuthorization(registrationID int64, id
 		}
 	}
 	return core.Authorization{}, errors.New("no authz")
+}
+
+// GetValidAuthorizations is a mock
+func (sa *StorageAuthority) GetValidAuthorizations(regID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
+	if regID == 1 {
+		auths := make(map[string]*core.Authorization)
+		for _, name := range names {
+			if sa.authorizedDomains[name] || name == "not-an-example.com" {
+				exp := now.AddDate(100, 0, 0)
+				auths[name] = &core.Authorization{
+					Status:         core.StatusValid,
+					RegistrationID: 1,
+					Expires:        &exp,
+					Identifier: core.AcmeIdentifier{
+						Type:  "dns",
+						Value: name,
+					},
+				}
+			}
+		}
+		return auths, nil
+	}
+	return nil, errors.New("no authz")
 }
 
 // CountCertificatesRange is a mock
@@ -314,20 +342,29 @@ func NewStatter() Statter {
 
 // Mailer is a mock
 type Mailer struct {
-	Messages []string
+	Messages []MailerMessage
+}
+
+// MailerMessage holds the captured emails from SendMail()
+type MailerMessage struct {
+	To      string
+	Subject string
+	Body    string
 }
 
 // Clear removes any previously recorded messages
 func (m *Mailer) Clear() {
-	m.Messages = []string{}
+	m.Messages = nil
 }
 
 // SendMail is a mock
-func (m *Mailer) SendMail(to []string, subject, msg string) (err error) {
-
-	// TODO(1421): clean up this To: stuff
-	for range to {
-		m.Messages = append(m.Messages, msg)
+func (m *Mailer) SendMail(to []string, subject, msg string) error {
+	for _, rcpt := range to {
+		m.Messages = append(m.Messages, MailerMessage{
+			To:      rcpt,
+			Subject: subject,
+			Body:    msg,
+		})
 	}
-	return
+	return nil
 }

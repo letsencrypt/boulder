@@ -97,6 +97,7 @@ type StorageGetter interface {
 	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
 	GetAuthorization(string) (Authorization, error)
 	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
+	GetValidAuthorizations(int64, []string, time.Time) (map[string]*Authorization, error)
 	GetCertificate(string) (Certificate, error)
 	GetCertificateStatus(string) (CertificateStatus, error)
 	AlreadyDeniedCSR([]string) (bool, error)
@@ -106,6 +107,7 @@ type StorageGetter interface {
 	CountPendingAuthorizations(regID int64) (int, error)
 	GetSCTReceipt(string, string) (SignedCertificateTimestamp, error)
 	CountFQDNSets(time.Duration, []string) (int64, error)
+	FQDNSetExists([]string) (bool, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods

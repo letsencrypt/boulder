@@ -37,7 +37,7 @@ func GoodJWK() jose.JsonWebKey {
 // full-fledged SQLSAImpl. Long term, when the CA tests no longer need
 // CreateWorkingRegistration, this and CreateWorkingRegistration can
 // be pushed back into the SA tests proper.
-func CreateWorkingRegistration(t *testing.T, sa core.StorageAuthority) core.Registration {
+func CreateWorkingRegistration(t *testing.T, sa core.StorageAdder) core.Registration {
 	contact, err := core.ParseAcmeURL("mailto:foo@example.com")
 	if err != nil {
 		t.Fatalf("unable to parse contact link: %s", err)

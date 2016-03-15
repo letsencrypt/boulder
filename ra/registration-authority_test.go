@@ -291,19 +291,16 @@ func TestValidateContacts(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	tel, _ := core.ParseAcmeURL("tel:")
 	ansible, _ := core.ParseAcmeURL("ansible:earth.sol.milkyway.laniakea/letsencrypt")
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
+	otherValidEmail, _ := core.ParseAcmeURL("mailto:other-admin@email.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
 	err := ra.validateContacts(context.Background(), []*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{tel, validEmail})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail, otherValidEmail})
 	test.AssertError(t, err, "Too Many Contacts")
-
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{tel})
-	test.AssertNotError(t, err, "Simple Telephone")
 
 	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
@@ -789,7 +786,11 @@ func TestDomainsForRateLimiting(t *testing.T) {
 	test.AssertEquals(t, domains[1], "example.co.uk")
 
 	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
-	test.AssertError(t, err, "should fail on public suffix")
+	test.AssertNotError(t, err, "should not fail on public suffix")
+	test.AssertEquals(t, len(domains), 3)
+	test.AssertEquals(t, domains[0], "example.com")
+	test.AssertEquals(t, domains[1], "example.co.uk")
+	test.AssertEquals(t, domains[2], "co.uk")
 
 	domains, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
 	test.AssertNotError(t, err, "failed on foo.bar.baz")
