@@ -167,7 +167,6 @@ func TestReloadFailure(t *testing.T) {
 	// Create a file with no permissions
 	ioutil.WriteFile(filename, []byte("second body"), 0)
 	fakeTick <- time.Now()
-	fakeTick <- time.Now()
 	select {
 	case r := <-reloads:
 		if r.err == nil {
@@ -186,18 +185,16 @@ func TestReloadFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	fakeTick <- time.Now()
-	for {
-		select {
-		case r := <-reloads:
-			if r.err != nil {
-				continue
-			}
-			if string(r.b) != "third body" {
-				t.Errorf("Expected 'third body' reading file after restoring it.")
-			}
-			return
-		case <-time.After(5 * time.Second):
-			t.Fatalf("timed out waiting for successful reload")
+	select {
+	case r := <-reloads:
+		if r.err != nil {
+			t.Errorf("Unexpected error: %s", err)
 		}
+		if string(r.b) != "third body" {
+			t.Errorf("Expected 'third body' reading file after restoring it.")
+		}
+		return
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for successful reload")
 	}
 }
