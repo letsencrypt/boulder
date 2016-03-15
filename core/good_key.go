@@ -196,6 +196,11 @@ func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 	if modulusBitLen > maxKeySize {
 		return MalformedRequestError(fmt.Sprintf("Key too large: %d > %d", modulusBitLen, maxKeySize))
 	}
+	// Bit lengths that are not a multiple of 8 may cause problems on some
+	// client implementations.
+	if modulusBitLen%8 != 0 {
+		return MalformedRequestError(fmt.Sprintf("Key length wasn't a multiple of 8: %d", modulusBitLen))
+	}
 	// The CA SHALL confirm that the value of the public exponent is an
 	// odd number equal to 3 or more. Additionally, the public exponent
 	// SHOULD be in the range between 2^16 + 1 and 2^256-1.

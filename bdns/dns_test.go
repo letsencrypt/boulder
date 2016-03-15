@@ -453,7 +453,7 @@ func TestRetry(t *testing.T) {
 	for i, tc := range tests {
 		dr := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), tc.maxTries)
 
-		dr.DNSClient = tc.te
+		dr.dnsClient = tc.te
 		_, _, err := dr.LookupTXT(context.Background(), "example.com")
 		if err == errTooManyRequests {
 			t.Errorf("#%d, sent more requests than the test case handles", i)
@@ -470,7 +470,7 @@ func TestRetry(t *testing.T) {
 	}
 
 	dr := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 3)
-	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
+	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, _, err := dr.LookupTXT(ctx, "example.com")
@@ -479,7 +479,7 @@ func TestRetry(t *testing.T) {
 		t.Errorf("expected %s, got %s", context.Canceled, err)
 	}
 
-	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
+	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, _ = context.WithTimeout(context.Background(), -10*time.Hour)
 	_, _, err = dr.LookupTXT(ctx, "example.com")
 	if err == nil ||
@@ -487,7 +487,7 @@ func TestRetry(t *testing.T) {
 		t.Errorf("expected %s, got %s", context.DeadlineExceeded, err)
 	}
 
-	dr.DNSClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
+	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, deadlineCancel := context.WithTimeout(context.Background(), -10*time.Hour)
 	deadlineCancel()
 	_, _, err = dr.LookupTXT(ctx, "example.com")

@@ -41,6 +41,15 @@ func TestLargeModulus(t *testing.T) {
 	test.AssertError(t, testingPolicy.GoodKey(private.PublicKey), "Should have rejected too-long key.")
 }
 
+func TestModulusModulo8(t *testing.T) {
+	bigOne := big.NewInt(1)
+	key := rsa.PublicKey{
+		N: bigOne.Lsh(bigOne, 2049),
+		E: 5,
+	}
+	test.AssertError(t, testingPolicy.GoodKey(&key), "Should have rejected modulus with length not divisible by 8.")
+}
+
 func TestSmallExponent(t *testing.T) {
 	bigOne := big.NewInt(1)
 	key := rsa.PublicKey{

@@ -342,20 +342,29 @@ func NewStatter() Statter {
 
 // Mailer is a mock
 type Mailer struct {
-	Messages []string
+	Messages []MailerMessage
+}
+
+// MailerMessage holds the captured emails from SendMail()
+type MailerMessage struct {
+	To      string
+	Subject string
+	Body    string
 }
 
 // Clear removes any previously recorded messages
 func (m *Mailer) Clear() {
-	m.Messages = []string{}
+	m.Messages = nil
 }
 
 // SendMail is a mock
-func (m *Mailer) SendMail(to []string, subject, msg string) (err error) {
-
-	// TODO(1421): clean up this To: stuff
-	for range to {
-		m.Messages = append(m.Messages, msg)
+func (m *Mailer) SendMail(to []string, subject, msg string) error {
+	for _, rcpt := range to {
+		m.Messages = append(m.Messages, MailerMessage{
+			To:      rcpt,
+			Subject: subject,
+			Body:    msg,
+		})
 	}
-	return
+	return nil
 }
