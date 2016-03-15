@@ -10,6 +10,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -31,12 +32,20 @@ func main() {
 
 		go cmd.DebugServer(c.RA.DebugAddr)
 
-		dbURL, err := c.PA.DBConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
-		paDbMap, err := sa.NewDbMap(dbURL)
-		cmd.FailOnError(err, "Couldn't connect to policy database")
+		var paDbMap *gorp.DbMap
+		if c.RA.HostnamePolicyFile == "" {
+			dbURL, err := c.PA.DBConfig.URL()
+			cmd.FailOnError(err, "Couldn't load DB URL")
+			paDbMap, err = sa.NewDbMap(dbURL)
+			cmd.FailOnError(err, "Couldn't connect to policy database")
+		}
 		pa, err := policy.New(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
 		cmd.FailOnError(err, "Couldn't create PA")
+
+		if c.RA.HostnamePolicyFile != "" {
+			err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
+			cmd.FailOnError(err, "Couldn't load hostname policy file")
+		}
 
 		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
 		cmd.FailOnError(err, "Couldn't load rate limit policies file")

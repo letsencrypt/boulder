@@ -47,6 +47,7 @@
     "maxNames": 1000,
     "doNotForceCN": true,
     "enableMustStaple": true,
+    "hostnamePolicyFile": "test/hostname-policy.json",
     "cfssl": {
       "signing": {
         "profiles": {
@@ -150,7 +151,6 @@
   },
 
   "pa": {
-    "dbConnect": "mysql+tcp://policy@localhost:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms",
     "challenges": {
       "http-01": true,
       "tls-sni-01": true,
@@ -164,6 +164,7 @@
     "maxContactsPerRegistration": 100,
     "dnsTries": 3,
     "debugAddr": "localhost:8002",
+    "hostnamePolicyFile": "test/hostname-policy.json",
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
