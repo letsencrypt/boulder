@@ -71,6 +71,7 @@ type genericEncrypter struct {
 }
 
 type recipientKeyInfo struct {
+	keyID        string
 	keyAlg       KeyAlgorithm
 	keyEncrypter keyEncrypter
 }
@@ -93,30 +94,46 @@ func NewEncrypter(alg KeyAlgorithm, enc ContentEncryption, encryptionKey interfa
 		return nil, ErrUnsupportedAlgorithm
 	}
 
+	var keyID string
+	var rawKey interface{}
+	switch encryptionKey := encryptionKey.(type) {
+	case *JsonWebKey:
+		keyID = encryptionKey.KeyID
+		rawKey = encryptionKey.Key
+	default:
+		rawKey = encryptionKey
+	}
+
 	switch alg {
 	case DIRECT:
 		// Direct encryption mode must be treated differently
-		if reflect.TypeOf(encryptionKey) != reflect.TypeOf([]byte{}) {
+		if reflect.TypeOf(rawKey) != reflect.TypeOf([]byte{}) {
 			return nil, ErrUnsupportedKeyType
 		}
 		encrypter.keyGenerator = staticKeyGenerator{
-			key: encryptionKey.([]byte),
+			key: rawKey.([]byte),
 		}
-		recipient, _ := newSymmetricRecipient(alg, encryptionKey.([]byte))
+		recipient, _ := newSymmetricRecipient(alg, rawKey.([]byte))
+		if keyID != "" {
+			recipient.keyID = keyID
+		}
 		encrypter.recipients = []recipientKeyInfo{recipient}
 		return encrypter, nil
 	case ECDH_ES:
 		// ECDH-ES (w/o key wrapping) is similar to DIRECT mode
-		typeOf := reflect.TypeOf(encryptionKey)
+		typeOf := reflect.TypeOf(rawKey)
 		if typeOf != reflect.TypeOf(&ecdsa.PublicKey{}) {
 			return nil, ErrUnsupportedKeyType
 		}
 		encrypter.keyGenerator = ecKeyGenerator{
 			size:      encrypter.cipher.keySize(),
 			algID:     string(enc),
-			publicKey: encryptionKey.(*ecdsa.PublicKey),
+			publicKey: rawKey.(*ecdsa.PublicKey),
 		}
-		recipient, _ := newECDHRecipient(alg, encryptionKey.(*ecdsa.PublicKey))
+		recipient, _ := newECDHRecipient(alg, rawKey.(*ecdsa.PublicKey))
+		if keyID != "" {
+			recipient.keyID = keyID
+		}
 		encrypter.recipients = []recipientKeyInfo{recipient}
 		return encrypter, nil
 	default:
@@ -158,21 +175,31 @@ func (ctx *genericEncrypter) AddRecipient(alg KeyAlgorithm, encryptionKey interf
 		return fmt.Errorf("square/go-jose: key algorithm '%s' not supported in multi-recipient mode", alg)
 	}
 
-	switch encryptionKey := encryptionKey.(type) {
-	case *rsa.PublicKey:
-		recipient, err = newRSARecipient(alg, encryptionKey)
-	case []byte:
-		recipient, err = newSymmetricRecipient(alg, encryptionKey)
-	case *ecdsa.PublicKey:
-		recipient, err = newECDHRecipient(alg, encryptionKey)
-	default:
-		return ErrUnsupportedKeyType
-	}
+	recipient, err = makeJWERecipient(alg, encryptionKey)
 
 	if err == nil {
 		ctx.recipients = append(ctx.recipients, recipient)
 	}
 	return err
+}
+
+func makeJWERecipient(alg KeyAlgorithm, encryptionKey interface{}) (recipientKeyInfo, error) {
+	switch encryptionKey := encryptionKey.(type) {
+	case *rsa.PublicKey:
+		return newRSARecipient(alg, encryptionKey)
+	case *ecdsa.PublicKey:
+		return newECDHRecipient(alg, encryptionKey)
+	case []byte:
+		return newSymmetricRecipient(alg, encryptionKey)
+	case *JsonWebKey:
+		recipient, err := makeJWERecipient(alg, encryptionKey.Key)
+		if err == nil && encryptionKey.KeyID != "" {
+			recipient.keyID = encryptionKey.KeyID
+		}
+		return recipient, err
+	default:
+		return recipientKeyInfo{}, ErrUnsupportedKeyType
+	}
 }
 
 // newDecrypter creates an appropriate decrypter based on the key type
@@ -190,6 +217,8 @@ func newDecrypter(decryptionKey interface{}) (keyDecrypter, error) {
 		return &symmetricKeyCipher{
 			key: decryptionKey,
 		}, nil
+	case *JsonWebKey:
+		return newDecrypter(decryptionKey.Key)
 	default:
 		return nil, ErrUnsupportedKeyType
 	}
@@ -228,6 +257,9 @@ func (ctx *genericEncrypter) EncryptWithAuthData(plaintext, aad []byte) (*JsonWe
 		}
 
 		recipient.header.Alg = string(info.keyAlg)
+		if info.keyID != "" {
+			recipient.header.Kid = info.keyID
+		}
 		obj.recipients[i] = recipient
 	}
 

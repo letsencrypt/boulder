@@ -25,9 +25,10 @@ import (
 	"crypto/sha512"
 	"crypto/subtle"
 	"errors"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose/cipher"
 	"hash"
 	"io"
+
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose/cipher"
 )
 
 // Random reader (stubbed out in tests)

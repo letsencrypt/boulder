@@ -21,7 +21,6 @@ import (
 	"compress/flate"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"io"
 	"math/big"
 	"regexp"
@@ -46,13 +45,13 @@ func base64URLDecode(data string) ([]byte, error) {
 // Helper function to serialize known-good objects.
 // Precondition: value is not a nil pointer.
 func mustSerializeJSON(value interface{}) []byte {
-	out, err := json.Marshal(value)
+	out, err := MarshalJSON(value)
 	if err != nil {
 		panic(err)
 	}
 	// We never want to serialize the top-level value "null," since it's not a
 	// valid JOSE message. But if a caller passes in a nil pointer to this method,
-	// json.Marshal will happily serialize it as the top-level value "null". If
+	// MarshalJSON will happily serialize it as the top-level value "null". If
 	// that value is then embedded in another operation, for instance by being
 	// base64-encoded and fed as input to a signing algorithm
 	// (https://github.com/square/go-jose/issues/22), the result will be
@@ -147,12 +146,12 @@ func newBufferFromInt(num uint64) *byteBuffer {
 }
 
 func (b *byteBuffer) MarshalJSON() ([]byte, error) {
-	return json.Marshal(b.base64())
+	return MarshalJSON(b.base64())
 }
 
 func (b *byteBuffer) UnmarshalJSON(data []byte) error {
 	var encoded string
-	err := json.Unmarshal(data, &encoded)
+	err := UnmarshalJSON(data, &encoded)
 	if err != nil {
 		return err
 	}
