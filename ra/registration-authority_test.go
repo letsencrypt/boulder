@@ -45,6 +45,12 @@ func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization,
 	return
 }
 
+func (dva *DummyValidationAuthority) PerformValidation(domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+	dva.Called = true
+	dva.Argument = authz
+	return nil, nil
+}
+
 func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
 	if dva.IsSafeDomainErr != nil {
 		return nil, dva.IsSafeDomainErr

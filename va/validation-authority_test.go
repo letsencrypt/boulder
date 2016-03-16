@@ -653,7 +653,7 @@ func TestCAATimeout(t *testing.T) {
 	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
-	err := va.checkCAA(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, 101)
+	err := va.checkCAA(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
 	}
