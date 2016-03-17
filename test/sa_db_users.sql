@@ -15,48 +15,48 @@
 -- the user exists and then drop the user.
 
 -- Storage Authority
-GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE,DELETE ON pendingAuthorizations TO 'sa'@'localhost';
-GRANT SELECT(id,Lockcol) ON pendingAuthorizations TO 'sa'@'localhost';
-GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE ON certificateStatus TO 'sa'@'localhost';
-GRANT SELECT,INSERT ON issuedNames TO 'sa'@'localhost';
-GRANT SELECT,INSERT ON sctReceipts TO 'sa'@'localhost';
-GRANT SELECT,INSERT ON deniedCSRs TO 'sa'@'localhost';
-GRANT INSERT ON ocspResponses TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'localhost';
-GRANT SELECT,INSERT on fqdnSets TO 'sa'@'localhost';
+GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'boulder';
+GRANT SELECT,INSERT,UPDATE,DELETE ON pendingAuthorizations TO 'sa'@'boulder';
+GRANT SELECT(id,Lockcol) ON pendingAuthorizations TO 'sa'@'boulder';
+GRANT SELECT,INSERT ON certificates TO 'sa'@'boulder';
+GRANT SELECT,INSERT,UPDATE ON certificateStatus TO 'sa'@'boulder';
+GRANT SELECT,INSERT ON issuedNames TO 'sa'@'boulder';
+GRANT SELECT,INSERT ON sctReceipts TO 'sa'@'boulder';
+GRANT SELECT,INSERT ON deniedCSRs TO 'sa'@'boulder';
+GRANT INSERT ON ocspResponses TO 'sa'@'boulder';
+GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'boulder';
+GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'boulder';
+GRANT SELECT,INSERT on fqdnSets TO 'sa'@'boulder';
 
 -- OCSP Responder
-GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
-GRANT SELECT ON ocspResponses TO 'ocsp_resp'@'localhost';
+GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'boulder';
+GRANT SELECT ON ocspResponses TO 'ocsp_resp'@'boulder';
 
 -- OCSP Generator Tool (Updater)
-GRANT INSERT ON ocspResponses TO 'ocsp_update'@'localhost';
-GRANT SELECT ON certificates TO 'ocsp_update'@'localhost';
-GRANT SELECT,UPDATE ON certificateStatus TO 'ocsp_update'@'localhost';
-GRANT SELECT ON sctReceipts TO 'ocsp_update'@'localhost';
+GRANT INSERT ON ocspResponses TO 'ocsp_update'@'boulder';
+GRANT SELECT ON certificates TO 'ocsp_update'@'boulder';
+GRANT SELECT,UPDATE ON certificateStatus TO 'ocsp_update'@'boulder';
+GRANT SELECT ON sctReceipts TO 'ocsp_update'@'boulder';
 
 -- Revoker Tool
-GRANT SELECT ON registrations TO 'revoker'@'localhost';
-GRANT SELECT ON certificates TO 'revoker'@'localhost';
-GRANT SELECT,INSERT ON deniedCSRs TO 'revoker'@'localhost';
+GRANT SELECT ON registrations TO 'revoker'@'boulder';
+GRANT SELECT ON certificates TO 'revoker'@'boulder';
+GRANT SELECT,INSERT ON deniedCSRs TO 'revoker'@'boulder';
 
 -- External Cert Importer
-GRANT SELECT,INSERT,UPDATE,DELETE ON identifierData TO 'importer'@'localhost';
-GRANT SELECT,INSERT,UPDATE,DELETE ON externalCerts TO 'importer'@'localhost';
+GRANT SELECT,INSERT,UPDATE,DELETE ON identifierData TO 'importer'@'boulder';
+GRANT SELECT,INSERT,UPDATE,DELETE ON externalCerts TO 'importer'@'boulder';
 
 -- Expiration mailer
-GRANT SELECT ON certificates TO 'mailer'@'localhost';
-GRANT SELECT,UPDATE ON certificateStatus TO 'mailer'@'localhost';
+GRANT SELECT ON certificates TO 'mailer'@'boulder';
+GRANT SELECT,UPDATE ON certificateStatus TO 'mailer'@'boulder';
 
 -- Cert checker
-GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
+GRANT SELECT ON certificates TO 'cert_checker'@'boulder';
 
 -- Name set table backfiller
-GRANT SELECT ON certificates to 'backfiller'@'localhost';
-GRANT INSERT,SELECT ON fqdnSets to 'backfiller'@'localhost';
+GRANT SELECT ON certificates to 'backfiller'@'boulder';
+GRANT INSERT,SELECT ON fqdnSets to 'backfiller'@'boulder';
 
 -- Test setup and teardown
-GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
+GRANT ALL PRIVILEGES ON * to 'test_setup'@'boulder';

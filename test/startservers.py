@@ -123,7 +123,7 @@ def start(race_detection):
 
 def forward():
     """Add a TCP forwarder between Boulder and RabbitMQ to simulate failures."""
-    cmd = """exec listenbuddy -listen :5673 -speak localhost:5672"""
+    cmd = """exec listenbuddy -listen :5673 -speak boulder-rabbitmq:5672"""
     p = subprocess.Popen(cmd, shell=True)
     p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))

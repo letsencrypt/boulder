@@ -57,6 +57,10 @@ or
 
 (On OS X, using port, you will have to add `CGO_CFLAGS="-I/opt/local/include" CGO_LDFLAGS="-L/opt/local/lib"` to your environment or `go` invocations.)
 
+Edit /etc/hosts to add this line:
+
+    127.0.0.1 boulder boulder-rabbitmq boulder-mysql
+
 Resolve Go-dependencies, set up a database and RabbitMQ:
 
     ./test/setup.sh
