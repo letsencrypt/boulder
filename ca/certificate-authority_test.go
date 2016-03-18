@@ -195,15 +195,11 @@ func setup(t *testing.T) *testCtx {
 	}
 	saDBCleanUp := test.ResetSATestDatabase(t)
 
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	test.AssertNotError(t, err, "Could not construct dbMap")
-	pa, err := policy.New(paDbMap, false, nil)
-	test.AssertNotError(t, err, "Couldn't create PADB")
-	paDBCleanUp := test.ResetPolicyTestDatabase(t)
+	pa, err := policy.New(nil)
+	test.AssertNotError(t, err, "Couldn't create PA")
 
 	cleanUp := func() {
 		saDBCleanUp()
-		paDBCleanUp()
 	}
 
 	// TODO(jmhodges): use of this pkg here is a bug caused by using a real SA

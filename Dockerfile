@@ -25,11 +25,14 @@ RUN go get -v github.com/golang/lint/golint
 # Assume the configuration is in /etc/boulder
 ENV BOULDER_CONFIG /go/src/github.com/letsencrypt/boulder/test/boulder-config.json
 ENV GOPATH /go/src/github.com/letsencrypt/boulder/Godeps/_workspace:$GOPATH
+ENV GOBIN=/go/src/github.com/letsencrypt/boulder/bin
 
 WORKDIR /go/src/github.com/letsencrypt/boulder
 
 # Copy in the Boulder sources
 COPY . /go/src/github.com/letsencrypt/boulder
+RUN go install  ./...
+
 
 ENTRYPOINT [ "./test/entrypoint.sh" ]
 CMD [ "./start.py" ]

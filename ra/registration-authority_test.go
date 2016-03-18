@@ -206,12 +206,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		RSAProfile:   "rsaEE",
 		ECDSAProfile: "ecdsaEE",
 	}
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	if err != nil {
-		t.Fatalf("Failed to create dbMap: %s", err)
-	}
-	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
-	pa, err := policy.New(paDbMap, false, SupportedChallenges)
+	pa, err := policy.New(SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
 
 	stats, _ := statsd.NewNoopClient()
@@ -229,7 +224,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ca.Publisher = &mocks.Publisher{}
 	cleanUp := func() {
 		saDBCleanUp()
-		policyDBCleanUp()
 	}
 
 	csrDER, _ := hex.DecodeString(CSRhex)

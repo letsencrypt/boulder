@@ -76,9 +76,10 @@ type certChecker struct {
 	issuedReport report
 }
 
-func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool) certChecker {
-	pa, err := policy.New(paDbMap, enforceWhitelist, challengeTypes)
+func newChecker(saDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool) certChecker {
+	pa, err := policy.New(challengeTypes)
 	cmd.FailOnError(err, "Failed to create PA")
+	// XXX: Call SetHostnamePolicyFile here.
 	c := certChecker{
 		pa:    pa,
 		dbMap: saDbMap,
@@ -243,12 +244,7 @@ func main() {
 		saDbMap, err := sa.NewDbMap(saDbURL)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		paDbURL, err := c.PA.DBConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
-		paDbMap, err := sa.NewDbMap(paDbURL)
-		cmd.FailOnError(err, "Could not connect to policy database")
-
-		checker := newChecker(saDbMap, paDbMap, clock.Default(), c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
+		checker := newChecker(saDbMap, clock.Default(), c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
 		auditlogger.Info("# Getting certificates issued in the last 90 days")
 
 		// Since we grab certificates in batches we don't want this to block, when it
