@@ -8,6 +8,7 @@ package core
 // ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
+	// TODO(#1167): remove
 	UpdateValidations(Authorization, int) error
 	// PerformValidation checks the challenge with the given index in the
 	// given Authorization and returns the updated ValidationRecords.

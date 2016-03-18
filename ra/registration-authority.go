@@ -64,6 +64,7 @@ type RegistrationAuthorityImpl struct {
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
+	useNewVARPC                  bool
 
 	regByIPStats         metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
@@ -72,7 +73,7 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool) *RegistrationAuthorityImpl {
 	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
@@ -86,6 +87,7 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger *blog.AuditLogger, sta
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
+		useNewVARPC:                  newVARPC,
 
 		regByIPStats:         scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
 		pendAuthByRegIDStats: scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
@@ -787,9 +789,41 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	}
 
 	// Dispatch to the VA for service
-	ra.VA.UpdateValidations(authz, challengeIndex)
 
-	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
+	if !ra.useNewVARPC {
+		// TODO(#1167): remove
+		ra.VA.UpdateValidations(authz, challengeIndex)
+		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
+	} else {
+		go func() {
+			records, err := ra.VA.PerformValidation(authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
+			var prob *probs.ProblemDetails
+			if p, ok := err.(*probs.ProblemDetails); ok {
+				prob = p
+			} else if err != nil {
+				prob = probs.ServerInternal("Could not communicate with RA")
+				ra.log.Err(fmt.Sprintf("Could not communicate with RA: %s", err))
+			}
+
+			// Save the updated records
+			challenge := &authz.Challenges[challengeIndex]
+			challenge.ValidationRecord = records
+			if prob != nil {
+				challenge.Status = core.StatusInvalid
+				challenge.Error = prob
+			} else if !challenge.RecordsSane() {
+				challenge.Status = core.StatusInvalid
+				challenge.Error = probs.ServerInternal("Records for validation failed sanity check")
+			} else {
+				challenge.Status = core.StatusValid
+			}
+			authz.Challenges[challengeIndex] = *challenge
+
+			ra.OnValidationUpdate(authz)
+		}()
+		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
+	}
+
 	return
 }
 
