@@ -6,7 +6,6 @@
 package mocks
 
 import (
-	"log"
 	"log/syslog"
 	"regexp"
 
@@ -77,7 +76,6 @@ func NewSyslogWriter() *SyslogWriter {
 		for {
 			select {
 			case logMsg := <-msgChan:
-				log.Print("MockSyslog:" + logMsg.String())
 				msw.logged = append(msw.logged, logMsg)
 			case getChan <- msw.logged:
 			case <-clearChan:
