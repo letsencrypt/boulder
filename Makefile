@@ -74,3 +74,6 @@ rpm: build
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
 		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
 		test/boulder-config.json sa/_db data/ $(OBJECTS)
+
+docker-rpm:
+	VERSION=$(VERSION) COMMIT_ID=$(COMMIT_ID) ARCHIVEDIR=$(ARCHIVEDIR) ./docker-build.sh
