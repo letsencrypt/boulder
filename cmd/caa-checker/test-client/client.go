@@ -8,7 +8,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	pb "github.com/rolandshoemaker/caa-thing/proto"
+	pb "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 )
 
 func main() {

@@ -1,22 +1,24 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
-	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cmd"
+	pb "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 	"github.com/letsencrypt/boulder/metrics"
-	pb "github.com/rolandshoemaker/caa-thing/proto"
 )
 
 type caaCheckerServer struct {
@@ -24,8 +26,8 @@ type caaCheckerServer struct {
 	resolver bdns.DNSResolver
 }
 
-// CAASet consists of filtered CAA records
-type CAASet struct {
+// caaSet consists of filtered CAA records
+type caaSet struct {
 	Issue     []*dns.CAA
 	Issuewild []*dns.CAA
 	Iodef     []*dns.CAA
@@ -33,7 +35,7 @@ type CAASet struct {
 }
 
 // returns true if any CAA records have unknown tag properties and are flagged critical.
-func (caaSet CAASet) criticalUnknown() bool {
+func (caaSet caaSet) criticalUnknown() bool {
 	if len(caaSet.Unknown) > 0 {
 		for _, caaRecord := range caaSet.Unknown {
 			// The critical flag is the bit with significance 128. However, many CAA
@@ -52,8 +54,8 @@ func (caaSet CAASet) criticalUnknown() bool {
 }
 
 // Filter CAA records by property
-func newCAASet(CAAs []*dns.CAA) *CAASet {
-	var filtered CAASet
+func newCAASet(CAAs []*dns.CAA) *caaSet {
+	var filtered caaSet
 
 	for _, caaRecord := range CAAs {
 		switch caaRecord.Tag {
@@ -71,7 +73,7 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 	return &filtered
 }
 
-func (ccs *caaCheckerServer) getCAASet(ctx context.Context, hostname string) (*CAASet, error) {
+func (ccs *caaCheckerServer) getCAASet(ctx context.Context, hostname string) (*caaSet, error) {
 	hostname = strings.TrimRight(hostname, ".")
 	labels := strings.Split(hostname, ".")
 
@@ -182,19 +184,36 @@ func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, domain *pb.Do
 	return &pb.Valid{valid}, nil
 }
 
+type config struct {
+	Address      string             `yaml:"address"`
+	DNSResolver  string             `yaml:"dns-resolver"`
+	DNSNetwork   string             `yaml:"dns-network"`
+	DNSTimeout   cmd.ConfigDuration `yaml:"dns-timeout"`
+	IssuerDomain string             `yaml:"issuer-domain"`
+}
+
 func main() {
-	l, err := net.Listen("tcp", ":2020")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to listen on ':2020': %s\n", err)
-		os.Exit(1)
-	}
+	configPath := flag.String("config", "config.yml", "Path to configuration file")
+	flag.Parse()
+
+	configBytes, err := ioutil.ReadFile(*configPath)
+	cmd.FailOnError(err, fmt.Sprintf("Failed to read configuration file from '%s'", *configPath))
+	var c config
+	err = yaml.Unmarshal(configBytes, &c)
+	cmd.FailOnError(err, fmt.Sprintf("Failed to parse configuration file from '%s'", *configPath))
+
+	l, err := net.Listen("tcp", c.Address)
+	cmd.FailOnError(err, fmt.Sprintf("Failed to listen on '%s'", c.Address))
 	s := grpc.NewServer()
-	resolver := bdns.NewDNSResolverImpl(time.Second, []string{"8.8.8.8:53"}, metrics.NewNoopScope(), clock.Default(), 5)
-	ccs := &caaCheckerServer{"letsencrypt.org", resolver}
+	resolver := bdns.NewDNSResolverImpl(
+		c.DNSTimeout.Duration,
+		[]string{c.DNSResolver},
+		metrics.NewNoopScope(),
+		clock.Default(),
+		5,
+	)
+	ccs := &caaCheckerServer{c.IssuerDomain, resolver}
 	pb.RegisterCAACheckerServer(s, ccs)
 	err = s.Serve(l)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gRPC server failed: %s\n", err)
-		os.Exit(1)
-	}
+	cmd.FailOnError(err, "gRPC service failed")
 }

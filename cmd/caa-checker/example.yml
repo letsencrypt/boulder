@@ -1,0 +1,4 @@
+address: 127.0.0.1:2020
+issuer-domain: letsencrypt.org
+dns-resolver: 127.0.0.1:9053
+dns-timeout: 10s
