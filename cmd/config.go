@@ -311,15 +311,18 @@ type CAConfig struct {
 	DBConfig
 	HostnamePolicyConfig
 
-	Profile      string
 	RSAProfile   string
 	ECDSAProfile string
 	TestMode     bool
 	SerialPrefix int
-	Key          KeyConfig
+	// TODO(jsha): Remove Key field once we've migrated to Issuers
+	Key *IssuerConfig
+	// Issuers contains configuration information for each issuer cert and key
+	// this CA knows about. The first in the list is used as the default.
+	Issuers []IssuerConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
 	// than the minTimeToExpiry field for the OCSP Updater.
-	LifespanOCSP string
+	LifespanOCSP ConfigDuration
 	// How long issued certificates are valid for, should match expiry field
 	// in cfssl config.
 	Expiry string
@@ -368,13 +371,15 @@ func (pc PAConfig) CheckChallenges() error {
 	return nil
 }
 
-// KeyConfig should contain either a File path to a PEM-format private key,
+// IssuerConfig contains info about an issuer: private key and issuer cert.
+// It should contain either a File path to a PEM-format private key,
 // or a PKCS11Config defining how to load a module for an HSM.
-type KeyConfig struct {
+type IssuerConfig struct {
 	// A file from which a pkcs11key.Config will be read and parsed, if present
 	ConfigFile string
 	File       string
 	PKCS11     *pkcs11key.Config
+	CertFile   string
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.
