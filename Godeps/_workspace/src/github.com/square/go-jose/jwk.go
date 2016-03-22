@@ -21,7 +21,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -35,6 +34,7 @@ type rawJsonWebKey struct {
 	Kid string      `json:"kid,omitempty"`
 	Crv string      `json:"crv,omitempty"`
 	Alg string      `json:"alg,omitempty"`
+	K   *byteBuffer `json:"k,omitempty"`
 	X   *byteBuffer `json:"x,omitempty"`
 	Y   *byteBuffer `json:"y,omitempty"`
 	N   *byteBuffer `json:"n,omitempty"`
@@ -73,6 +73,8 @@ func (k JsonWebKey) MarshalJSON() ([]byte, error) {
 		raw, err = fromEcPrivateKey(key)
 	case *rsa.PrivateKey:
 		raw, err = fromRsaPrivateKey(key)
+	case []byte:
+		raw, err = fromSymmetricKey(key)
 	default:
 		return nil, fmt.Errorf("square/go-jose: unknown key type '%s'", reflect.TypeOf(key))
 	}
@@ -85,13 +87,13 @@ func (k JsonWebKey) MarshalJSON() ([]byte, error) {
 	raw.Alg = k.Algorithm
 	raw.Use = k.Use
 
-	return json.Marshal(raw)
+	return MarshalJSON(raw)
 }
 
 // UnmarshalJSON reads a key from its JSON representation.
 func (k *JsonWebKey) UnmarshalJSON(data []byte) (err error) {
 	var raw rawJsonWebKey
-	err = json.Unmarshal(data, &raw)
+	err = UnmarshalJSON(data, &raw)
 	if err != nil {
 		return err
 	}
@@ -110,6 +112,8 @@ func (k *JsonWebKey) UnmarshalJSON(data []byte) (err error) {
 		} else {
 			key, err = raw.rsaPublicKey()
 		}
+	case "oct":
+		key, err = raw.symmetricKey()
 	default:
 		err = fmt.Errorf("square/go-jose: unkown json web key type '%s'", raw.Kty)
 	}
@@ -359,4 +363,18 @@ func fromEcPrivateKey(ec *ecdsa.PrivateKey) (*rawJsonWebKey, error) {
 	raw.D = newBuffer(ec.D.Bytes())
 
 	return raw, nil
+}
+
+func fromSymmetricKey(key []byte) (*rawJsonWebKey, error) {
+	return &rawJsonWebKey{
+		Kty: "oct",
+		K:   newBuffer(key),
+	}, nil
+}
+
+func (key rawJsonWebKey) symmetricKey() ([]byte, error) {
+	if key.K == nil {
+		return nil, fmt.Errorf("square/go-jose: invalid OCT (symmetric) key, missing k value")
+	}
+	return key.K.bytes(), nil
 }

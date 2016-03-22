@@ -28,3 +28,11 @@ pendingAuthorizationsPerAccount:
 certificatesPerFQDNSet:
   window: 24h
   threshold: 5
+  overrides:
+    le.wtf: 10000
+    le1.wtf: 10000
+    le2.wtf: 10000
+    le3.wtf: 10000
+    le.wtf,le1.wtf: 10000
+    good-caa-reserved.com: 10000
+    nginx.wtf: 10000

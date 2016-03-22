@@ -27,7 +27,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -174,27 +174,6 @@ func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(cert x509
 
 func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization) error {
 	return nil
-}
-
-type MockCA struct{}
-
-func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
-	// Return a basic certificate so NewCertificate can continue
-	certPtr, err := core.LoadCert("test/not-an-example.com.crt")
-	if err != nil {
-		return core.Certificate{}, err
-	}
-	return core.Certificate{
-		DER: certPtr.Raw,
-	}, nil
-}
-
-func (ca *MockCA) GenerateOCSP(xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
-	return
-}
-
-func (ca *MockCA) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
-	return
 }
 
 type MockPA struct{}
@@ -577,12 +556,17 @@ func TestIssueCertificate(t *testing.T) {
 	testTime := time.Date(2015, 9, 9, 22, 56, 0, 0, time.UTC)
 	fc.Add(fc.Now().Sub(testTime))
 
+	mockCertPEM, err := ioutil.ReadFile("test/not-an-example.com.crt")
+	test.AssertNotError(t, err, "Could not load mock cert")
+
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
 	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0, testKeyPolicy)
 	ra.SA = mocks.NewStorageAuthority(fc)
-	ra.CA = &MockCA{}
+	ra.CA = &mocks.MockCA{
+		PEM: mockCertPEM,
+	}
 	ra.PA = &MockPA{}
 	wfe.RA = ra
 	responseWriter := httptest.NewRecorder()

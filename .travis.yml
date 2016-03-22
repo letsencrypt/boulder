@@ -19,7 +19,7 @@ addons:
       - rsyslog
   mariadb: "10.0"
 
-sudo: false
+sudo: true
 
 services:
   - rabbitmq
@@ -54,9 +54,15 @@ env:
     - LETSENCRYPT_PATH=$HOME/letsencrypt
   matrix:
     - RUN="integration vet lint fmt migrations"
+    # Config changes that have landed in master but not yet been applied to
+    # production can be made in boulder-config-next.json.
+    - RUN="integration" BOULDER_CONFIG="test/boulder-config-next.json"
     - RUN="unit"
     - RUN="godep-restore"
 
 script:
   - bash test.sh
 
+after_failure:
+  - sudo cat /var/log/mysql/error.log
+  - ps aux | grep mysql

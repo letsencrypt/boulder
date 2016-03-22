@@ -23,6 +23,7 @@ import (
 
 // Log contains the CT client and signature verifier for a particular CT log
 type Log struct {
+	uri      string
 	client   *ctClient.LogClient
 	verifier *ct.SignatureVerifier
 }
@@ -48,7 +49,7 @@ func NewLog(uri, b64PK string) (*Log, error) {
 		return nil, err
 	}
 
-	return &Log{client, verifier}, nil
+	return &Log{uri, client, verifier}, nil
 }
 
 type ctSubmissionRequest struct {
@@ -99,7 +100,7 @@ func (pub *Impl) SubmitToCT(der []byte) error {
 		sct, err := ctLog.client.AddChainWithContext(ctx, chain)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			pub.log.AuditErr(fmt.Errorf("Failed to submit certificate to CT log: %s", err))
+			pub.log.AuditErr(fmt.Errorf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
 			continue
 		}
 
