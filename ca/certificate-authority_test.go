@@ -362,12 +362,8 @@ func TestIssueCertificate(t *testing.T) {
 			t.Errorf("Improper list of domain names %v", cert.DNSNames)
 		}
 
-		// Test is broken by CFSSL Issue #156
-		// https://github.com/cloudflare/cfssl/issues/156
 		if len(cert.Subject.Country) > 0 {
-			// Uncomment the Errorf as soon as upstream #156 is fixed
-			// t.Errorf("Subject contained unauthorized values: %v", cert.Subject)
-			t.Logf("Subject contained unauthorized values: %v", cert.Subject)
+			t.Errorf("Subject contained unauthorized values: %v", cert.Subject)
 		}
 
 		// Verify that the cert got stored in the DB
