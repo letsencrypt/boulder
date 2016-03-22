@@ -39,9 +39,13 @@
     "rsaProfile": "rsaEE",
     "ecdsaProfile": "ecdsaEE",
     "debugAddr": "localhost:8001",
-    "Key": {
-      "File": "test/test-ca.key"
-    },
+    "Issuers": [ {
+      "File": "test/test-ca.key",
+      "CertFile": "test/test-ca2.pem"
+    }, {
+      "File": "test/test-ca.key",
+      "CertFile": "test/test-ca.pem"
+    }],
     "expiry": "2160h",
     "lifespanOCSP": "96h",
     "maxNames": 1000,
@@ -329,7 +333,7 @@
 
   "common": {
     "baseURL": "http://127.0.0.1:4000",
-    "issuerCert": "test/test-ca.pem",
+    "issuerCert": "test/test-ca2.pem",
     "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "10s",
     "dnsAllowLoopbackAddresses": true,
@@ -340,7 +344,7 @@
           "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q=="
         }
       ],
-      "intermediateBundleFilename": "test/test-ca.pem"
+      "intermediateBundleFilename": "test/test-ca2.pem"
     }
   },
 
