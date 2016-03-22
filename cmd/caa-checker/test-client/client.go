@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "localhost:2020", "CCS address")
+	addr := flag.String("addr", "127.0.0.1:2020", "CCS address")
 	name := flag.String("name", "", "Name to check")
 	flag.Parse()
 

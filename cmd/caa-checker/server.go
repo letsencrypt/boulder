@@ -98,7 +98,7 @@ func (ccs *caaCheckerServer) getCAASet(ctx context.Context, hostname string) (*c
 		// Start the concurrent DNS lookup.
 		wg.Add(1)
 		go func(name string, r *result) {
-			r.records, r.err = ccs.resolver.LookupCAA(ctx, hostname)
+			r.records, r.err = ccs.resolver.LookupCAA(ctx, name)
 			wg.Done()
 		}(strings.Join(labels[i:], "."), &results[i])
 	}
