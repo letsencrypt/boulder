@@ -34,3 +34,5 @@ certificatesPerFQDNSet:
     le2.wtf: 10000
     le3.wtf: 10000
     le.wtf,le1.wtf: 10000
+    good-caa-reserved.com: 10000
+    nginx.wtf: 10000
