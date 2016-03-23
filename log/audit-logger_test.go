@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -80,6 +81,16 @@ func TestEmitEmpty(t *testing.T) {
 	log := setup(t)
 
 	log.AuditNotice("")
+}
+
+func ExampleErrors() {
+	audit := setup(nil)
+
+	audit.clk = clock.NewFake()
+	audit.AuditErr(errors.New("Error Audit"))
+	audit.WarningErr(errors.New("Warning Audit"))
+	// Output: [31m00:00:00 log.test ERR [AUDIT] Error Audit[0m
+	// [33m00:00:00 log.test WARNING Warning Audit[0m
 }
 
 func TestEmitErrors(t *testing.T) {
