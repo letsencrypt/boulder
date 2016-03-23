@@ -10,12 +10,8 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
-	"os"
-	"path"
 	"sync"
 	"testing"
 	"time"
@@ -216,7 +212,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	test.AssertEquals(t, len(checker.certs), 5)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	checker.processCerts(wg)
+	checker.processCerts(wg, false)
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
 	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
 }
@@ -241,14 +237,6 @@ func TestSaveReport(t *testing.T) {
 		},
 	}
 
-	tmpDir, err := ioutil.TempDir("", "cert-checker")
-	test.AssertNotError(t, err, "Couldn't create temporary directory")
-	defer os.RemoveAll(tmpDir)
-	err = r.save(tmpDir)
-	test.AssertNotError(t, err, "Couldn't save report")
-	reportContent, err := ioutil.ReadFile(path.Join(tmpDir, "00010101-00010101-report.json"))
-	test.AssertNotError(t, err, "Couldn't read report file")
-	expectedContent, err := json.Marshal(r)
-	test.AssertNotError(t, err, "Couldn't unmarshal report file")
-	test.AssertByteEquals(t, expectedContent, reportContent)
+	err := r.dump()
+	test.AssertNotError(t, err, "Failed to dump results")
 }
