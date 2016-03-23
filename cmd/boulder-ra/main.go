@@ -68,7 +68,8 @@ func main() {
 		}
 
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats,
-			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration, c.KeyPolicy())
+			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration, c.KeyPolicy(),
+			c.RA.UseNewVARPC)
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")
