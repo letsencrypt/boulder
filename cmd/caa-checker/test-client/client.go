@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
 
 	pb "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 )

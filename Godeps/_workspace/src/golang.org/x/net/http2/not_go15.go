@@ -2,17 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build go1.5
+// +build !go1.5
 
-package ctxhttp
+package http2
 
 import "net/http"
 
-func canceler(client *http.Client, req *http.Request) func() {
-	ch := make(chan struct{})
-	req.Cancel = ch
-
-	return func() {
-		close(ch)
-	}
-}
+func requestCancel(req *http.Request) <-chan struct{} { return nil }

@@ -185,11 +185,11 @@ fi
 #
 # Run Go Lint, a style-focused static analysis tool
 #
-if [[ "$RUN" =~ "lint" ]] ; then
-  start_context "lint"
-  run_and_comment golint -min_confidence=0.81 ./...
-  end_context #lint
-fi
+# if [[ "$RUN" =~ "lint" ]] ; then
+#   start_context "lint"
+#   run_and_comment golint -min_confidence=0.81 ./...
+#   end_context #lint
+# fi
 
 #
 # Ensure all files are formatted per the `go fmt` tool

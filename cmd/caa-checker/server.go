@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
