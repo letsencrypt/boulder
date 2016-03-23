@@ -109,7 +109,7 @@
 		},
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
-			"Rev": "a1dfa5ef89a13a0aa4be5a6f81179db10bfeea36"
+			"Rev": "8d92cf5fc15a4382f8964b08e1f42a75c0591aa3"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go",
