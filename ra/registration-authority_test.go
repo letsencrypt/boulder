@@ -35,6 +35,8 @@ import (
 type DummyValidationAuthority struct {
 	Called          bool
 	Argument        core.Authorization
+	RecordsReturn   []core.ValidationRecord
+	ProblemReturn   *probs.ProblemDetails
 	IsNotSafe       bool
 	IsSafeDomainErr error
 }
@@ -43,6 +45,12 @@ func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization,
 	dva.Called = true
 	dva.Argument = authz
 	return
+}
+
+func (dva *DummyValidationAuthority) PerformValidation(domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+	dva.Called = true
+	dva.Argument = authz
+	return dva.RecordsReturn, dva.ProblemReturn
 }
 
 func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
@@ -209,7 +217,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 				Threshold: 100,
 				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
-		}, 1, testKeyPolicy)
+		}, 1, testKeyPolicy, false)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -511,6 +519,41 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
 
 	t.Log("DONE TestUpdateAuthorizationReject")
+}
+
+func TestUpdateAuthorizationNewRPC(t *testing.T) {
+	va, sa, ra, _, cleanUp := initAuthorities(t)
+	ra.useNewVARPC = true
+	defer cleanUp()
+
+	// We know this is OK because of TestNewAuthorization
+	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	response, err := makeResponse(authz.Challenges[ResponseIndex])
+	test.AssertNotError(t, err, "Unable to construct response to challenge")
+	authz.Challenges[ResponseIndex].Type = core.ChallengeTypeDNS01
+	va.RecordsReturn = []core.ValidationRecord{
+		{Hostname: "example.com"}}
+	va.ProblemReturn = nil
+
+	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	test.AssertNotError(t, err, "UpdateAuthorization failed")
+
+	// Verify that returned authz same as DB
+	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	test.AssertNotError(t, err, "Could not fetch authorization from database")
+	assertAuthzEqual(t, authz, dbAuthz)
+
+	// Verify that the VA got the authz, and it's the same as the others
+	test.Assert(t, va.Called, "Authorization was not passed to the VA")
+	assertAuthzEqual(t, authz, va.Argument)
+
+	// Verify that the responses are reflected
+	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
+	test.Assert(t, authz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
+
+	t.Log("DONE TestUpdateAuthorizationNewRPC")
 }
 
 func TestOnValidationUpdateSuccess(t *testing.T) {
