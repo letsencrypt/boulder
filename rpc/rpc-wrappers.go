@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -46,6 +47,7 @@ const (
 	MethodAdministrativelyRevokeCertificate = "AdministrativelyRevokeCertificate" // RA
 	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
 	MethodUpdateValidations                 = "UpdateValidations"                 // VA
+	MethodPerformValidation                 = "PerformValidation"                 // VA
 	MethodIsSafeDomain                      = "IsSafeDomain"                      // VA
 	MethodIssueCertificate                  = "IssueCertificate"                  // CA
 	MethodGenerateOCSP                      = "GenerateOCSP"                      // CA
@@ -142,6 +144,18 @@ type caaRequest struct {
 type validationRequest struct {
 	Authz core.Authorization
 	Index int
+}
+
+type performValidationRequest struct {
+	Domain    string
+	Challenge core.Challenge
+	// TODO(#1626): remove
+	Authz core.Authorization
+}
+
+type performValidationResponse struct {
+	Records []core.ValidationRecord
+	Problem *probs.ProblemDetails
 }
 
 type alreadyDeniedCSRReq struct {
@@ -554,8 +568,29 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 			return
 		}
 
-		err = impl.UpdateValidations(vaReq.Authz, vaReq.Index)
-		return
+		return nil, impl.UpdateValidations(vaReq.Authz, vaReq.Index)
+	})
+
+	rpc.Handle(MethodPerformValidation, func(req []byte) (response []byte, err error) {
+		var vaReq performValidationRequest
+		if err = json.Unmarshal(req, &vaReq); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodPerformValidation, err, req)
+			return nil, err
+		}
+
+		records, err := impl.PerformValidation(vaReq.Domain, vaReq.Challenge, vaReq.Authz)
+		// If the type of error was a ProblemDetails, we need to return
+		// both that and the records to the caller (so it can update
+		// the challenge / authz in the SA with the failing records).
+		// The least error-prone way of doing this is to send a struct
+		// as the RPC response and return a nil error on the RPC layer,
+		// then unpack that into (records, error) to the caller.
+		probs, ok := err.(*probs.ProblemDetails)
+		if !ok && err != nil {
+			return nil, err
+		}
+		return json.Marshal(performValidationResponse{records, probs})
 	})
 
 	rpc.Handle(MethodIsSafeDomain, func(req []byte) ([]byte, error) {
@@ -569,11 +604,7 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 		if err != nil {
 			return nil, err
 		}
-		jsonResp, err := json.Marshal(resp)
-		if err != nil {
-			return nil, err
-		}
-		return jsonResp, nil
+		return json.Marshal(resp)
 	})
 
 	return nil
@@ -602,7 +633,31 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 	}
 
 	_, err = vac.rpc.DispatchSync(MethodUpdateValidations, data)
-	return nil
+	return err
+}
+
+// PerformValidation has the VA revalidate the specified challenge and returns
+// the updated Challenge object.
+func (vac ValidationAuthorityClient) PerformValidation(domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+	vaReq := performValidationRequest{
+		Domain:    domain,
+		Challenge: challenge,
+		Authz:     authz,
+	}
+	data, err := json.Marshal(vaReq)
+	if err != nil {
+		return nil, err
+	}
+	jsonResp, err := vac.rpc.DispatchSync(MethodPerformValidation, data)
+	if err != nil {
+		return nil, err
+	}
+	var resp performValidationResponse
+	err = json.Unmarshal(jsonResp, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Records, resp.Problem
 }
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
