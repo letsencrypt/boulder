@@ -77,12 +77,13 @@ func NewValidationAuthorityImpl(pc *PortConfig, sbc SafeBrowsing, stats statsd.S
 
 // Used for audit logging
 type verificationRequestEvent struct {
-	ID           string         `json:",omitempty"`
-	Requester    int64          `json:",omitempty"`
-	Challenge    core.Challenge `json:",omitempty"`
-	RequestTime  time.Time      `json:",omitempty"`
-	ResponseTime time.Time      `json:",omitempty"`
-	Error        string         `json:",omitempty"`
+	ID                string                  `json:",omitempty"`
+	Requester         int64                   `json:",omitempty"`
+	ValidationRecords []core.ValidationRecord `json:",omitempty"`
+	Challenge         core.Challenge          `json:",omitempty"`
+	RequestTime       time.Time               `json:",omitempty"`
+	ResponseTime      time.Time               `json:",omitempty"`
+	Error             string                  `json:",omitempty"`
 }
 
 // getAddr will query for all A records associated with hostname and return the
@@ -459,7 +460,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	}
 }
 
-func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier, regID int64) *probs.ProblemDetails {
+func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
 	// Check CAA records for the requested identifier
 	present, valid, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {
@@ -467,7 +468,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 		return bdns.ProblemDetailsFromDNSError(err)
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.AuditNotice(fmt.Sprintf("Checked CAA records for %s, registration ID %d [Present: %t, Valid for issuance: %t]", identifier.Value, regID, present, valid))
+	va.log.AuditNotice(fmt.Sprintf("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]", identifier.Value, present, valid))
 	if !valid {
 		return &probs.ProblemDetails{
 			Type:   probs.ConnectionProblem,
@@ -487,8 +488,7 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 	}
 	challenge := &authz.Challenges[challengeIndex]
 	vStart := va.clk.Now()
-	validationRecords, prob := va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge, authz.RegistrationID)
-	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart), 1.0)
+	validationRecords, prob := va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
 
 	challenge.ValidationRecord = validationRecords
 	if prob != nil {
@@ -505,6 +505,8 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 	}
 	logEvent.Challenge = *challenge
 
+	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart), 1.0)
+
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
 
@@ -513,10 +515,10 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 	va.RA.OnValidationUpdate(authz)
 }
 
-func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge, regID int64) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier, regID)
+		ch <- va.checkCAA(ctx, identifier)
 	}()
 
 	// TODO(#1292): send into another goroutine
@@ -553,11 +555,49 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	}
 }
 
-// UpdateValidations runs the validate() method asynchronously using goroutines.
+// UpdateValidations runs the validate() method asynchronously using
+// goroutines.
+//
+// TODO(#1167): remove this method
 func (va *ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
 	// TODO(#1292): add a proper deadline here
 	go va.validate(context.TODO(), authz, challengeIndex)
 	return nil
+}
+
+// PerformValidation runs the validate() method synchronously and returns the
+// updated Challenge.
+//
+// TODO(#1626): remove authz parameter
+func (va *ValidationAuthorityImpl) PerformValidation(domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+	logEvent := verificationRequestEvent{
+		ID:          authz.ID,
+		Requester:   authz.RegistrationID,
+		RequestTime: va.clk.Now(),
+		Challenge:   challenge,
+	}
+	vStart := va.clk.Now()
+
+	records, prob := va.validateChallengeAndCAA(context.TODO(), core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
+
+	logEvent.ValidationRecords = records
+	resultStatus := core.StatusInvalid
+	if prob != nil {
+		logEvent.Error = prob.Error()
+	} else if !challenge.RecordsSane() {
+		logEvent.Error = (&probs.ProblemDetails{
+			Type:   probs.ServerInternalProblem,
+			Detail: "Records for validation failed sanity check",
+		}).Error()
+	} else {
+		resultStatus = core.StatusValid
+	}
+
+	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, resultStatus), time.Since(vStart), 1.0)
+
+	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+	va.log.AuditObject("Validation result", logEvent)
+	return records, prob
 }
 
 // CAASet consists of filtered CAA records
