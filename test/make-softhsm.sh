@@ -14,7 +14,7 @@ if [ -r /proc/brcm_monitor0 ]; then
 fi
 
 cd $(dirname $0)
-export SOFTHSM_CONF=$PWD/sothsm.conf
+export SOFTHSM_CONF=$PWD/softhsm.conf
 echo 0:${PWD}/softhsm.db > ${SOFTHSM_CONF}
 softhsm --init-token --slot 0 --label "softhsm token" --pin 1234 --so-pin 1234
 softhsm --slot 0 --import test-ca.key  --label "happy hacker key" --pin 1234 --id FF
