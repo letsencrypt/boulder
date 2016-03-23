@@ -44,9 +44,9 @@ const (
 type report struct {
 	begin     time.Time
 	end       time.Time
-	GoodCerts int64
-	BadCerts  int64
-	Entries   map[string]reportEntry
+	GoodCerts int64                  `json:"good-certs"`
+	BadCerts  int64                  `json:"bad-certs"`
+	Entries   map[string]reportEntry `json:"entries"`
 }
 
 func (r *report) dump() error {
@@ -60,7 +60,7 @@ func (r *report) dump() error {
 
 type reportEntry struct {
 	Valid    bool     `json:"valid"`
-	Problems []string `json:"problem,omitempty"`
+	Problems []string `json:"problems,omitempty"`
 }
 
 type certChecker struct {
@@ -95,22 +95,22 @@ const (
 	getCerts      = "SELECT * FROM certificates WHERE issued >= :issued"
 )
 
-func (c *certChecker) getCerts(validOnly bool) error {
+func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	c.issuedReport.end = c.clock.Now()
 	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
 
 	cq := getCertsCount
-	cArgs := map[string]interface{}{"issued": c.issuedReport.begin}
+	args := map[string]interface{}{"issued": c.issuedReport.begin}
 	now := c.clock.Now()
-	if validOnly {
+	if unexpiredOnly {
 		cq += " AND expires >= :now"
-		cArgs["now"] = now
+		args["now"] = now
 	}
 	var count int
 	err := c.dbMap.SelectOne(
 		&count,
 		cq,
-		cArgs,
+		args,
 	)
 	if err != nil {
 		return err
@@ -121,10 +121,9 @@ func (c *certChecker) getCerts(validOnly bool) error {
 	// packet limit.
 	// TODO(#701): This query needs to make better use of indexes
 	q := getCerts
-	args := map[string]interface{}{"issued": c.issuedReport.begin, "limit": batchSize}
-	if validOnly {
+	args["limit"] = batchSize
+	if unexpiredOnly {
 		q += " AND expires >= :now"
-		args["now"] = now
 	}
 	q += " ORDER BY issued ASC LIMIT :limit OFFSET :offset"
 	for offset := 0; offset < count; {
@@ -149,14 +148,16 @@ func (c *certChecker) getCerts(validOnly bool) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(wg *sync.WaitGroup) {
+func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool) {
 	for cert := range c.certs {
 		problems := c.checkCert(cert)
 		valid := len(problems) == 0
 		c.rMu.Lock()
-		c.issuedReport.Entries[cert.Serial] = reportEntry{
-			Valid:    valid,
-			Problems: problems,
+		if !badResultsOnly || (badResultsOnly && !valid) {
+			c.issuedReport.Entries[cert.Serial] = reportEntry{
+				Valid:    valid,
+				Problems: problems,
+			}
 		}
 		c.rMu.Unlock()
 		if !valid {
@@ -220,7 +221,7 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 			if err = c.pa.WillingToIssue(id, cert.RegistrationID); err != nil {
-				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for %s: %s", name, err))
+				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			}
 		}
 		// Check the cert has the correct key usage extensions
@@ -246,12 +247,12 @@ func main() {
 			Usage: "The number of concurrent workers used to process certificates",
 		},
 		cli.BoolFlag{
-			Name:  "valid-only",
+			Name:  "unexpired-only",
 			Usage: "Only check currently unexpired certificates",
 		},
-		cli.StringFlag{
-			Name:  "report-dir-path",
-			Usage: "The path to write a JSON report on the certificates checks to (if no path is provided the report will not be written out)",
+		cli.BoolFlag{
+			Name:  "bad-results-only",
+			Usage: "Only collect and display bad results",
 		},
 		cli.StringFlag{
 			Name:  "db-connect",
@@ -290,16 +291,14 @@ func main() {
 		err = blog.SetAuditLogger(logger)
 		cmd.FailOnError(err, "Failed to set audit logger")
 
-		config.CertChecker.ReportDirectoryPath = c.GlobalString("report-dir-path")
 		if connect := c.GlobalString("db-connect"); connect != "" {
 			config.CertChecker.DBConnect = connect
 		}
 		if workers := c.GlobalInt("workers"); workers != 0 {
 			config.CertChecker.Workers = workers
 		}
-		if c.GlobalBool("valid-only") {
-			config.CertChecker.ValidOnly = true
-		}
+		config.CertChecker.UnexpiredOnly = c.GlobalBool("valid-only")
+		config.CertChecker.BadResultsOnly = c.GlobalBool("bad-results-only")
 		if cp := c.GlobalString("check-period"); cp != "" {
 			config.CertChecker.CheckPeriod.Duration, err = time.ParseDuration(cp)
 			cmd.FailOnError(err, "Failed to parse check period")
@@ -326,13 +325,13 @@ func main() {
 			config.PA.Challenges,
 			config.CertChecker.CheckPeriod.Duration,
 		)
-		fmt.Fprintln(os.Stderr, "# Getting certificates issued in the last 90 days")
+		fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
 
 		// Since we grab certificates in batches we don't want this to block, when it
 		// is finished it will close the certificate channel which allows the range
 		// loops in checker.processCerts to break
 		go func() {
-			err = checker.getCerts(config.CertChecker.ValidOnly)
+			err = checker.getCerts(config.CertChecker.UnexpiredOnly)
 			cmd.FailOnError(err, "Batch retrieval of certificates failed")
 		}()
 
@@ -342,7 +341,7 @@ func main() {
 			wg.Add(1)
 			go func() {
 				s := checker.clock.Now()
-				checker.processCerts(wg)
+				checker.processCerts(wg, config.CertChecker.BadResultsOnly)
 				stats.TimingDuration("certChecker.processingLatency", time.Since(s), 1.0)
 			}()
 		}

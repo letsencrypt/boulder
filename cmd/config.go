@@ -192,7 +192,8 @@ type Config struct {
 
 		Workers             int
 		ReportDirectoryPath string
-		ValidOnly           bool
+		UnexpiredOnly       bool
+		BadResultsOnly      bool
 		CheckPeriod         ConfigDuration
 	}
 	AllowedSigningAlgos *AllowedSigningAlgos
