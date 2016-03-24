@@ -28,7 +28,7 @@ BUILD_TIME_VAR = github.com/letsencrypt/boulder/core.BuildTime
 
 GO_BUILD_FLAGS = -ldflags "-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" -X \"$(BUILD_HOST_VAR)=$(BUILD_HOST)\""
 
-.PHONY: all build
+.PHONY: all build grpc
 all: build
 
 build: $(OBJECTS)
@@ -58,6 +58,14 @@ install:
 archive:
 	git archive --output=$(ARCHIVEDIR)/boulder-$(COMMIT_ID).tar.gz \
 		--prefix=boulder-$(COMMIT_ID)/ $(COMMIT_ID)
+
+# Rebuild all grpc files
+GRPC_ALL_TARGETS=rpc/pb/*.pb.go
+grpc: rpc/pb/*.proto
+	protoc --go_out=plugins=grpc:. rpc/pb/*.proto
+	sed -i 's@import proto "github.com/golang/protobuf/proto"@import proto "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/golang/protobuf/proto"@' $(GRPC_ALL_TARGETS)
+	sed -i 's@context "golang.org/x/net/context"@context "github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"@' $(GRPC_ALL_TARGETS)
+	sed -i 's@grpc "google.golang.org/grpc"@grpc "github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"@' $(GRPC_ALL_TARGETS)
 
 # Building an RPM requires `fpm` from https://github.com/jordansissel/fpm
 # which you can install with `gem install fpm`.
