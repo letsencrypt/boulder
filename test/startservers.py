@@ -72,7 +72,8 @@ def start(race_detection):
         'ocsp-updater',
         'ocsp-responder',
         'ct-test-srv',
-        'dns-test-srv'
+        'dns-test-srv',
+        'mail-test-srv'
     ]
     if not install(race_detection):
         return False
