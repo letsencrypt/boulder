@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package pb;
+
+message KeyAuthorization {
+        string token = 1;
+        string thumbprint = 2;
+}
+
+message Domain {
+        string name = 1;
+}
+
+message Valid {
+        bool valid = 1;
+}
+
+// This is a dummy service to cause godeps to succeed.
+// TODO(riking): Remove once a real service is in place.
+service DummyService {
+	rpc Dummy(Domain) returns (Valid) {}
+}
