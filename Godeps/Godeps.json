@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.5",
-	"GodepVersion": "v59",
+	"GodepVersion": "v60",
 	"Packages": [
 		"./..."
 	],
@@ -142,7 +142,7 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/net/publicsuffix",
-			"Rev": "7eb31e4ef6d2609d3ef5597cbc65cb68c8027f62"
+			"Rev": "0a8bc7afe9edcfb0ed73c794b730500f61701a07"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/pkcs11key",
