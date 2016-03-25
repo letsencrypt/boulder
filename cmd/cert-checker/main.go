@@ -91,15 +91,15 @@ func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enfor
 }
 
 const (
-	getCertsCount = "SELECT count(*) FROM certificates WHERE issued >= :issued"
-	getCerts      = "SELECT * FROM certificates WHERE issued >= :issued"
+	getCertsCountQuery = "SELECT count(*) FROM certificates WHERE issued >= :issued"
+	getCertsQuery      = "SELECT * FROM certificates WHERE issued >= :issued"
 )
 
 func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	c.issuedReport.end = c.clock.Now()
 	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
 
-	cq := getCertsCount
+	cq := getCertsCountQuery
 	args := map[string]interface{}{"issued": c.issuedReport.begin}
 	now := c.clock.Now()
 	if unexpiredOnly {
@@ -120,7 +120,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
 	// packet limit.
 	// TODO(#701): This query needs to make better use of indexes
-	q := getCerts
+	q := getCertsQuery
 	args["limit"] = batchSize
 	if unexpiredOnly {
 		q += " AND expires >= :now"
