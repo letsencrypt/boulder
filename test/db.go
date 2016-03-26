@@ -45,7 +45,6 @@ func resetTestDatabase(t *testing.T, dbType string) func() {
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}
-	fmt.Printf("db %#v\n", db)
 	if err := deleteEverythingInAllTables(db); err != nil {
 		t.Fatalf("Failed to delete everything: %s", err)
 	}

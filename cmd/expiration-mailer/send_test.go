@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -49,10 +50,16 @@ func TestSendEarliestCertInfo(t *testing.T) {
 		t.Fatalf("no message sent")
 	}
 	domains := "example-a.com\nexample-b.com\nshared-example.com"
-	expected := fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 2 days (%s)`,
-		domains,
-		rawCertB.NotAfter.Format(time.RFC822Z))
+	expected := mocks.MailerMessage{
+		Subject: "",
+		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 2 days (%s)`,
+			domains,
+			rawCertB.NotAfter.Format(time.RFC822Z)),
+	}
+	expected.To = "one@example.com"
 	test.AssertEquals(t, expected, ctx.mc.Messages[0])
+	expected.To = "two@example.com"
+	test.AssertEquals(t, expected, ctx.mc.Messages[1])
 }
 
 func newX509Cert(commonName string, notAfter time.Time, dnsNames []string, serial int64) *x509.Certificate {

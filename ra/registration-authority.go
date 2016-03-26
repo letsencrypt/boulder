@@ -262,8 +262,6 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 			return core.MalformedRequestError("Invalid contact")
 		}
 		switch contact.Scheme {
-		case "tel":
-			continue
 		case "mailto":
 			start := ra.clk.Now()
 			ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
@@ -454,9 +452,20 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registration *core.Registration) error {
 	now := ra.clk.Now()
 	var badNames []string
+	for i := range names {
+		names[i] = strings.ToLower(names[i])
+	}
+	auths, err := ra.SA.GetValidAuthorizations(registration.ID, names, now)
+	if err != nil {
+		return err
+	}
 	for _, name := range names {
-		authz, err := ra.SA.GetLatestValidAuthorization(registration.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name})
-		if err != nil || authz.Expires.Before(now) {
+		authz := auths[name]
+		if authz == nil {
+			badNames = append(badNames, name)
+		} else if authz.Expires == nil {
+			return fmt.Errorf("Found an authorization with a nil Expires field: id %s", authz.ID)
+		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		}
 	}
@@ -602,7 +611,13 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	for _, name := range names {
 		eTLDPlusOne, err := publicsuffix.EffectiveTLDPlusOne(name)
 		if err != nil {
-			return nil, err
+			// The only possible errors are:
+			// (1) publicsuffix.PublicSuffix is giving garbage
+			//     values
+			// (2) the public suffix is the domain itself
+			//
+			// Assume (2).
+			eTLDPlusOne = name
 		}
 		if _, ok := domainsMap[eTLDPlusOne]; !ok {
 			domainsMap[eTLDPlusOne] = struct{}{}
@@ -635,6 +650,17 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 		}
 	}
 	if len(badNames) > 0 {
+		// check if there is already a existing certificate for
+		// the exact name set we are issuing for. If so bypass the
+		// the certificatesPerName limit.
+		exists, err := ra.SA.FQDNSetExists(names)
+		if err != nil {
+			return err
+		}
+		if exists {
+			ra.certsForDomainStats.Inc("FQDNSetBypass", 1)
+			return nil
+		}
 		domains := strings.Join(badNames, ", ")
 		ra.certsForDomainStats.Inc("Exceeded", 1)
 		ra.log.Info(fmt.Sprintf("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, domains))

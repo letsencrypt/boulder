@@ -297,7 +297,7 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   # do this for all builds.
   if [[ "${TRAVIS_REPO_SLUG}" == "letsencrypt/boulder" ]] ; then
     run_and_comment godep save -r ./...
-    run_and_comment git diff --exit-code
+    run_and_comment git diff --exit-code Godeps/_workspace/
   fi
   end_context #godep-restore
 fi

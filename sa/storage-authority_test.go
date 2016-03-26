@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/mocks"
@@ -723,6 +723,28 @@ func TestFQDNSets(t *testing.T) {
 	count, err = sa.CountFQDNSets(threeHours, names)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, count, int64(2))
+}
+
+func TestFQDNSetsExists(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	names := []string{"a.example.com", "B.example.com"}
+	exists, err := sa.FQDNSetExists(names)
+	test.AssertNotError(t, err, "Failed to check FQDN set existence")
+	test.Assert(t, !exists, "FQDN set shouldn't exist")
+
+	tx, err := sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Failed to open transaction")
+	expires := fc.Now().Add(time.Hour * 2).UTC()
+	issued := fc.Now()
+	err = addFQDNSet(tx, names, "serial", issued, expires)
+	test.AssertNotError(t, err, "Failed to add name set")
+	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+
+	exists, err = sa.FQDNSetExists(names)
+	test.AssertNotError(t, err, "Failed to check FQDN set existence")
+	test.Assert(t, exists, "FQDN set does exist")
 }
 
 type execRecorder struct {
