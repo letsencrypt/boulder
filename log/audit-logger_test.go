@@ -83,7 +83,7 @@ func TestEmitEmpty(t *testing.T) {
 	log.AuditNotice("")
 }
 
-func ExampleErrors() {
+func ExampleAuditLogger() {
 	audit := setup(nil)
 
 	audit.clk = clock.NewFake()
