@@ -37,15 +37,13 @@ for svc in $SERVICES; do
 		USERS_SQL=test/${svc}_db_users.sql
 		if [[ -f $USERS_SQL ]]; then
 			if [[ $MYSQL_CONTAINER ]]; then
-				mysql $dbconn -D $db < $USERS_SQL || \
-					die "unable to add users to ${db}"
+				sed -e "s/'localhost'/'172.%'/g" < $USERS_SQL | \
+					mysql $dbconn -D $db
 			else
-				sed -e "s/'boulder'/'localhost'/g" < $USERS_SQL | \
-					mysql $dbconn -D $db || \
-					die "unable to add users to ${db}"
+				mysql $dbconn -D $db < $USERS_SQL
 			fi
 			echo "added users to ${db}"
-		fi
+		fi || die "unable to add users to ${db}"
 		) &
 	done
 done

@@ -34,6 +34,7 @@ if [[ "$(is_running boulder-mysql)" != "true" ]]; then
 	# bring up mysql mariadb container - no need to publish port
 	# 3306 with host networking
 	docker run -d \
+		-p 3306 \
 		-e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
 		--name boulder-mysql \
 		mariadb:10.0 mysqld
@@ -41,6 +42,7 @@ fi
 
 if [[ "$(is_running boulder-rabbitmq)" != "true" ]]; then
 	docker run -d \
+		-p 5672 \
 		--name boulder-rabbitmq \
 		rabbitmq:3
 fi
