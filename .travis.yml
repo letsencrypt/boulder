@@ -6,7 +6,6 @@ go:
 addons:
   hosts:
     - le.wtf
-    - boulder
     - boulder-mysql
     - boulder-rabbitmq
   apt:
