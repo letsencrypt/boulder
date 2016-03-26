@@ -291,8 +291,8 @@
   },
 
   "mailer": {
-    "server": "mail.example.com",
-    "port": "25",
+    "server": "localhost",
+    "port": "9380",
     "username": "cert-master@example.com",
     "from": "Expiry bot <test@example.com>",
     "passwordFile": "test/secrets/smtp_password",

@@ -50,6 +50,7 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON externalCerts TO 'importer'@'boulder';
 -- Expiration mailer
 GRANT SELECT ON certificates TO 'mailer'@'boulder';
 GRANT SELECT,UPDATE ON certificateStatus TO 'mailer'@'boulder';
+GRANT SELECT ON fqdnSets TO 'mailer'@'boulder';
 
 -- Cert checker
 GRANT SELECT ON certificates TO 'cert_checker'@'boulder';
