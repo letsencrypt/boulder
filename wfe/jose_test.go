@@ -1,9 +1,14 @@
 package wfe
 
 import (
+	"crypto"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"io/ioutil"
+	"log"
 	"testing"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
@@ -58,7 +63,33 @@ func TestRejectsHS256(t *testing.T) {
 	}
 }
 
+// parsePEMPrivateKey takes the path to PEM encoded private key in disk, decodes it and
+// returns a Go instance of the key.
+func parsePEMPrivateKey(path string) (crypto.PrivateKey, error) {
+	accountKeyPEM, err := ioutil.ReadFile(path)
+	if err != nil {
+		log.Fatal("failed to read account key:", err)
+	}
+
+	block, _ := pem.Decode(accountKeyPEM)
+	if block == nil {
+		log.Fatal("bad account key data, not PEM encoded:", err)
+	}
+
+	if block.Type == "RSA PRIVATE KEY" {
+		return x509.ParsePKCS1PrivateKey(block.Bytes)
+	}
+
+	return x509.ParseECPrivateKey(block.Bytes)
+}
+
 func TestCheckAlgorithm(t *testing.T) {
+	key, err := parsePEMPrivateKey("./testdata/rsa-2048.pem")
+	if err != nil {
+		t.Fatalf("expected error to be nil, got %q", err)
+	}
+
+	publicKey := key.(*rsa.PrivateKey).Public()
 	testCases := []struct {
 		key          jose.JsonWebKey
 		jws          jose.JsonWebSignature
@@ -70,12 +101,12 @@ func TestCheckAlgorithm(t *testing.T) {
 				Algorithm: "HS256",
 			},
 			jose.JsonWebSignature{},
-			"no signature algorithms suitable for given key type",
-			"WFE.Errors.NoAlgorithmForKey",
+			"POST JWS not signed",
+			jwsNotSigned,
 		},
 		{
 			jose.JsonWebKey{
-				Key: &rsa.PublicKey{},
+				Key: publicKey,
 			},
 			jose.JsonWebSignature{
 				Signatures: []jose.Signature{
@@ -87,12 +118,12 @@ func TestCheckAlgorithm(t *testing.T) {
 				},
 			},
 			"algorithm 'HS256' in JWS header not acceptable",
-			"WFE.Errors.InvalidJWSAlgorithm",
+			invalidJWSAlgorithm,
 		},
 		{
 			jose.JsonWebKey{
 				Algorithm: "HS256",
-				Key:       &rsa.PublicKey{},
+				Key:       publicKey,
 			},
 			jose.JsonWebSignature{
 				Signatures: []jose.Signature{
@@ -104,12 +135,12 @@ func TestCheckAlgorithm(t *testing.T) {
 				},
 			},
 			"algorithm 'HS256' in JWS header not acceptable",
-			"WFE.Errors.InvalidJWSAlgorithm",
+			invalidJWSAlgorithm,
 		},
 		{
 			jose.JsonWebKey{
 				Algorithm: "HS256",
-				Key:       &rsa.PublicKey{},
+				Key:       publicKey,
 			},
 			jose.JsonWebSignature{
 				Signatures: []jose.Signature{
@@ -121,7 +152,7 @@ func TestCheckAlgorithm(t *testing.T) {
 				},
 			},
 			"algorithm 'HS256' on JWK is unacceptable",
-			"WFE.Errors.InvalidAlgorithmOnKey",
+			invalidAlgorithmOnKey,
 		},
 	}
 	for i, tc := range testCases {
@@ -136,68 +167,54 @@ func TestCheckAlgorithm(t *testing.T) {
 }
 
 func TestCheckAlgorithmSuccess(t *testing.T) {
-	_, err := checkAlgorithm(&jose.JsonWebKey{
-		Algorithm: "RS256",
-		Key:       &rsa.PublicKey{},
-	}, &jose.JsonWebSignature{
-		Signatures: []jose.Signature{
-			{
-				Header: jose.JoseHeader{
-					Algorithm: "RS256",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Errorf("RS256 key: Expected nil error, got '%s'", err)
-	}
-	_, err = checkAlgorithm(&jose.JsonWebKey{
-		Key: &rsa.PublicKey{},
-	}, &jose.JsonWebSignature{
-		Signatures: []jose.Signature{
-			{
-				Header: jose.JoseHeader{
-					Algorithm: "RS256",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Errorf("RS256 key: Expected nil error, got '%s'", err)
+	tests := []struct {
+		keyType      string
+		jwkAlgorithm string
+		bitSize      int
+		err          error
+	}{
+		{"rsa", "RS256", 2048, nil},
+		{"rsa", "RS384", 3072, nil},
+		{"rsa", "RS512", 4096, nil},
+		{"ecdsa", "ES256", 256, nil},
+		{"ecdsa", "ES384", 384, nil},
+		{"ecdsa", "ES512", 521, nil},
 	}
 
-	_, err = checkAlgorithm(&jose.JsonWebKey{
-		Algorithm: "ES256",
-		Key: &ecdsa.PublicKey{
-			Curve: elliptic.P256(),
-		},
-	}, &jose.JsonWebSignature{
-		Signatures: []jose.Signature{
-			{
-				Header: jose.JoseHeader{
-					Algorithm: "ES256",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Errorf("ES256 key: Expected nil error, got '%s'", err)
-	}
+	for _, tt := range tests {
+		var publicKey crypto.PublicKey
+		var err error
 
-	_, err = checkAlgorithm(&jose.JsonWebKey{
-		Key: &ecdsa.PublicKey{
-			Curve: elliptic.P256(),
-		},
-	}, &jose.JsonWebSignature{
-		Signatures: []jose.Signature{
+		switch tt.keyType {
+		case "rsa":
+			key, err := parsePEMPrivateKey(fmt.Sprintf("./testdata/rsa-%d.pem", tt.bitSize))
+			if err != nil {
+				t.Errorf("%s key: Expected nil error, got %q", tt.jwkAlgorithm, err)
+			}
+			publicKey = key.(*rsa.PrivateKey).Public()
+		case "ecdsa":
+			key, err := parsePEMPrivateKey(fmt.Sprintf("./testdata/ecdsa-%d.pem", tt.bitSize))
+			if err != nil {
+				t.Errorf("%s key: Expected nil error, got %q", tt.jwkAlgorithm, err)
+			}
+			publicKey = key.(*ecdsa.PrivateKey).Public()
+		}
+
+		jwk := &jose.JsonWebKey{
+			Key:       publicKey,
+			Algorithm: tt.jwkAlgorithm,
+		}
+
+		jws := &jose.JsonWebSignature{Signatures: []jose.Signature{
 			{
 				Header: jose.JoseHeader{
-					Algorithm: "ES256",
+					Algorithm: tt.jwkAlgorithm,
 				},
 			},
-		},
-	})
-	if err != nil {
-		t.Errorf("ES256 key: Expected nil error, got '%s'", err)
+		}}
+
+		if _, err = checkAlgorithm(jwk, jws); err != tt.err {
+			t.Errorf("%s key: Expected nil error, got %q", tt.jwkAlgorithm, err)
+		}
 	}
 }
