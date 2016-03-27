@@ -22,7 +22,7 @@ exec 6>&-
 exec 6<&-
 
 # create the database
-source $DIR/create_db.sh
+$DIR/create_db.sh
 
 # Set up rabbitmq exchange and activity monitor queue
 go run cmd/rabbitmq-setup/main.go -server amqp://boulder-rabbitmq

@@ -31,5 +31,7 @@ WORKDIR /go/src/github.com/letsencrypt/boulder
 # Copy in the Boulder sources
 COPY . /go/src/github.com/letsencrypt/boulder
 
+RUN GOBIN=/go/src/github.com/letsencrypt/boulder/bin go install  ./...
+
 ENTRYPOINT [ "./test/entrypoint.sh" ]
 CMD [ "./start.py" ]
