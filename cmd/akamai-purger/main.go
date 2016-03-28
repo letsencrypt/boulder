@@ -55,9 +55,6 @@ func main() {
 		stats, auditlogger := cmd.StatsAndLogging(config.Statsd, config.Syslog)
 		auditlogger.Info(app.Version)
 
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
-
 		akamaiClient, err := akamai.NewCachePurgeClient(
 			config.OCSPUpdater.AkamaiBaseURL,
 			config.OCSPUpdater.AkamaiClientToken,

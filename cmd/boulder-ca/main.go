@@ -108,9 +108,6 @@ func main() {
 		// Validate PA config and set defaults if needed
 		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
-
 		go cmd.DebugServer(c.CA.DebugAddr)
 
 		var paDbMap *gorp.DbMap

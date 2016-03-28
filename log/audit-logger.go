@@ -101,7 +101,6 @@ func initializeAuditLogger() {
 	if err != nil {
 		panic(err)
 	}
-	audit.Notice("Using default logging configuration.")
 
 	SetAuditLogger(audit)
 }
