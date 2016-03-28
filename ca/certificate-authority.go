@@ -314,12 +314,12 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 					ca.stats.Inc(metricCSRExtensionTLSFeature, 1, 1.0)
 					value, ok := ext.Value.([]byte)
 					if !ok {
-						msg := fmt.Sprintf("Mal-formed extension with OID %v", ext.Type)
-						return nil, core.CertificateIssuanceError(msg)
+						msg := fmt.Sprintf("Malformed extension with OID %v", ext.Type)
+						return nil, core.MalformedRequestError(msg)
 					} else if !bytes.Equal(value, mustStapleFeatureValue) {
 						msg := fmt.Sprintf("Unsupported value for extension with OID %v", ext.Type)
 						ca.stats.Inc(metricCSRExtensionTLSFeatureInvalid, 1, 1.0)
-						return nil, core.CertificateIssuanceError(msg)
+						return nil, core.MalformedRequestError(msg)
 					}
 
 					if ca.enableMustStaple {
