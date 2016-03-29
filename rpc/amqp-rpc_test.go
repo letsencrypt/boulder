@@ -23,7 +23,6 @@ func TestWrapError(t *testing.T) {
 		core.UnauthorizedError("foo"),
 		core.NotFoundError("foo"),
 		core.SignatureValidationError("foo"),
-		core.CertificateIssuanceError("foo"),
 		core.NoSuchRegistrationError("foo"),
 		core.RateLimitedError("foo"),
 		core.TooManyRPCRequestsError("foo"),
