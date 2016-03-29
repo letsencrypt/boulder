@@ -9,5 +9,6 @@ message Domain {
 }
 
 message Valid {
-        bool valid = 1;
+        bool present = 1;
+        bool valid = 2;
 }

@@ -8,11 +8,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
-
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -24,6 +24,7 @@ import (
 type caaCheckerServer struct {
 	issuer   string
 	resolver bdns.DNSResolver
+	stats    statsd.Statter
 }
 
 // caaSet consists of filtered CAA records
@@ -136,21 +137,26 @@ func extractIssuerDomain(caa *dns.CAA) string {
 	return strings.Trim(v[0:idx], " \t")
 }
 
-func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string) (bool, error) {
+func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string) (bool, bool, error) {
 	hostname = strings.ToLower(hostname)
 	caaSet, err := ccs.getCAASet(ctx, hostname)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	if caaSet == nil {
 		// No CAA records found, can issue
-		return true, nil
+		return false, true, nil
 	}
 
 	if caaSet.criticalUnknown() {
 		// Contains unknown critical directives.
-		return false, nil
+		ccs.stats.Inc("CCS.UnknownCritical", 1, 1.0)
+		return true, false, nil
+	}
+
+	if len(caaSet.Unknown) > 0 {
+		ccs.stats.Inc("CCS.WithUnknownNoncritical", 1, 1.0)
 	}
 
 	if len(caaSet.Issue) == 0 {
@@ -158,7 +164,8 @@ func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string) (boo
 		// (e.g. there is only an issuewild directive, but we are checking for a
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
 		// directive.)
-		return true, nil
+		ccs.stats.Inc("CCS.CAA.NoneRelevant", 1, 1.0)
+		return true, true, nil
 	}
 
 	// There are CAA records pertaining to issuance in our case. Note that this
@@ -168,20 +175,22 @@ func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string) (boo
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range caaSet.Issue {
 		if extractIssuerDomain(caa) == ccs.issuer {
-			return true, nil
+			ccs.stats.Inc("CCS.CAA.Authorized", 1, 1.0)
+			return true, true, nil
 		}
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
-	return false, nil
+	ccs.stats.Inc("CCS.CAA.Unauthorized", 1, 1.0)
+	return true, false, nil
 }
 
 func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, domain *pb.Domain) (*pb.Valid, error) {
-	valid, err := ccs.checkCAA(ctx, domain.Name)
+	present, valid, err := ccs.checkCAA(ctx, domain.Name)
 	if err != nil {
 		return nil, err
 	}
-	return &pb.Valid{valid}, nil
+	return &pb.Valid{present, valid}, nil
 }
 
 type config struct {
@@ -190,6 +199,8 @@ type config struct {
 	DNSNetwork   string             `yaml:"dns-network"`
 	DNSTimeout   cmd.ConfigDuration `yaml:"dns-timeout"`
 	IssuerDomain string             `yaml:"issuer-domain"`
+	StatsdServer string
+	StatsdPrefix string
 }
 
 func main() {
@@ -202,6 +213,9 @@ func main() {
 	err = yaml.Unmarshal(configBytes, &c)
 	cmd.FailOnError(err, fmt.Sprintf("Failed to parse configuration file from '%s'", *configPath))
 
+	stats, err := statsd.NewClient()
+	cmd.FailOnError(err, "Failed to create StatsD client")
+
 	l, err := net.Listen("tcp", c.Address)
 	cmd.FailOnError(err, fmt.Sprintf("Failed to listen on '%s'", c.Address))
 	s := grpc.NewServer()
@@ -212,7 +226,8 @@ func main() {
 		clock.Default(),
 		5,
 	)
-	ccs := &caaCheckerServer{c.IssuerDomain, resolver}
+
+	ccs := &caaCheckerServer{c.IssuerDomain, resolver, stats}
 	pb.RegisterCAACheckerServer(s, ccs)
 	err = s.Serve(l)
 	cmd.FailOnError(err, "gRPC service failed")
