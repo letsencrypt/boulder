@@ -15,9 +15,9 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 )
 
 // A SyslogWriter logs messages with explicit priority levels. It is
@@ -66,6 +66,7 @@ type AuditLogger struct {
 	Stats          statsd.Statter
 	exitFunction   exitFunction
 	stdoutLogLevel int
+	clk            clock.Clock
 }
 
 const defaultPriority = syslog.LOG_INFO | syslog.LOG_LOCAL0
@@ -81,6 +82,7 @@ func NewAuditLogger(log SyslogWriter, stats statsd.Statter, stdoutLogLevel int) 
 		stats,
 		defaultEmergencyExit,
 		stdoutLogLevel,
+		clock.Default(),
 	}
 	return audit, nil
 }
@@ -133,35 +135,62 @@ func GetAuditLogger() *AuditLogger {
 
 // Log the provided message at the appropriate level, writing to
 // both stdout and the Logger, as well as informing statsd.
-func (log *AuditLogger) logAtLevel(level syslog.Priority, msg string) (err error) {
-	if int(level) <= log.stdoutLogLevel {
-		fmt.Printf("%s %11s %s\n",
-			time.Now().Format("15:04:05"),
-			path.Base(os.Args[0]),
-			msg)
-	}
+func (log *AuditLogger) logAtLevel(level syslog.Priority, msg string) error {
+	var name, color string
+	var err error
+
+	const red = "\033[31m"
+	const yellow = "\033[33m"
 
 	switch level {
 	case syslog.LOG_ALERT:
 		err = log.SyslogWriter.Alert(msg)
+		name = "ALERT"
+		color = red
 	case syslog.LOG_CRIT:
 		err = log.SyslogWriter.Crit(msg)
+		name = "CRIT"
+		color = red
 	case syslog.LOG_DEBUG:
 		err = log.SyslogWriter.Debug(msg)
+		name = "DEBUG"
 	case syslog.LOG_EMERG:
 		err = log.SyslogWriter.Emerg(msg)
+		name = "EMERG"
+		color = red
 	case syslog.LOG_ERR:
 		err = log.SyslogWriter.Err(msg)
+		name = "ERR"
+		color = red
 	case syslog.LOG_INFO:
 		err = log.SyslogWriter.Info(msg)
+		name = "INFO"
 	case syslog.LOG_WARNING:
 		err = log.SyslogWriter.Warning(msg)
+		name = "WARNING"
+		color = yellow
 	case syslog.LOG_NOTICE:
 		err = log.SyslogWriter.Notice(msg)
+		name = "NOTICE"
 	default:
 		err = fmt.Errorf("Unknown logging level: %d", int(level))
 	}
-	return
+
+	var reset string
+	if color != "" {
+		reset = "\033[0m"
+	}
+
+	if int(level) <= log.stdoutLogLevel {
+		fmt.Printf("%s%s %s %s %s%s\n",
+			color,
+			log.clk.Now().Format("15:04:05"),
+			path.Base(os.Args[0]),
+			name,
+			msg,
+			reset)
+	}
+	return err
 }
 
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
