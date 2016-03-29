@@ -25,10 +25,10 @@ func main() {
 	defer conn.Close()
 	c := pb.NewCAACheckerClient(conn)
 
-	r, err := c.ValidForIssuance(context.Background(), &pb.Domain{*name})
+	r, err := c.ValidForIssuance(context.Background(), &pb.Domain{Name: *name})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ValidForIssuance call failed: %s\n", err)
 		os.Exit(1)
 	}
-	fmt.Fprintf(os.Stderr, "%s valid for issuance: %v\n", *name, r.Valid)
+	fmt.Fprintf(os.Stderr, "%s valid for issuance: %t\n", *name, r.Valid)
 }

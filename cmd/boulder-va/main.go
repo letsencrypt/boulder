@@ -6,17 +6,24 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/credentials"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/va"
+
+	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 )
 
 const clientName = "VA"
@@ -42,9 +49,29 @@ func main() {
 		if c.VA.PortConfig.TLSPort != 0 {
 			pc.TLSPort = c.VA.PortConfig.TLSPort
 		}
+		var caaClient caaPB.CAACheckerClient
+		if c.VA.CAAService != nil {
+			serverIssuerBytes, err := ioutil.ReadFile(c.VA.CAAService.ServerIssuerPath)
+			cmd.FailOnError(err, "Failed to read CAA issuer file")
+			serverIssuer, err := x509.ParseCertificate(serverIssuerBytes)
+			cmd.FailOnError(err, "Failed to parse CAA issuer file")
+			rootCAs := x509.NewCertPool()
+			rootCAs.AddCert(serverIssuer)
+			clientCert, err := tls.LoadX509KeyPair(c.VA.CAAService.ClientCertificatePath, c.VA.CAAService.ClientKeyPath)
+			cmd.FailOnError(err, "Failed to load and parse client certificate")
+			clientConf := &tls.Config{
+				ServerName:   c.VA.CAAService.ServerHostname,
+				RootCAs:      rootCAs,
+				Certificates: []tls.Certificate{clientCert},
+			}
+			creds := credentials.NewTLS(clientConf)
+			conn, err := grpc.Dial(c.VA.CAAService.ServerAddress, grpc.WithTransportCredentials(creds))
+			cmd.FailOnError(err, "Failed to dial CAA service")
+			caaClient = caaPB.NewCAACheckerClient(conn)
+		}
 		clk := clock.Default()
 		sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
-		vai := va.NewValidationAuthorityImpl(pc, sbc, stats, clk)
+		vai := va.NewValidationAuthorityImpl(pc, sbc, caaClient, stats, clk)
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
@@ -58,7 +85,11 @@ func main() {
 			vai.DNSResolver = bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
 		}
 		vai.UserAgent = c.VA.UserAgent
-		vai.IssuerDomain = c.VA.IssuerDomain
+
+		// TODO(): Remove once switch to independent CAA service is complete
+		if c.VA.CAAService == nil {
+			vai.IssuerDomain = c.VA.IssuerDomain
+		}
 
 		amqpConf := c.VA.AMQP
 		rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)

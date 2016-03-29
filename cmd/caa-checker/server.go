@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -13,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/credentials"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -190,17 +193,20 @@ func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, domain *pb.Do
 	if err != nil {
 		return nil, err
 	}
-	return &pb.Valid{present, valid}, nil
+	return &pb.Valid{Present: present, Valid: valid}, nil
 }
 
 type config struct {
-	Address      string             `yaml:"address"`
-	DNSResolver  string             `yaml:"dns-resolver"`
-	DNSNetwork   string             `yaml:"dns-network"`
-	DNSTimeout   cmd.ConfigDuration `yaml:"dns-timeout"`
-	IssuerDomain string             `yaml:"issuer-domain"`
-	StatsdServer string
-	StatsdPrefix string
+	Address          string             `yaml:"address"`
+	DNSResolver      string             `yaml:"dns-resolver"`
+	DNSNetwork       string             `yaml:"dns-network"`
+	DNSTimeout       cmd.ConfigDuration `yaml:"dns-timeout"`
+	IssuerDomain     string             `yaml:"issuer-domain"`
+	StatsdServer     string             `yaml:"statsd-server"`
+	StatsdPrefix     string             `yaml:"statsd-prefix"`
+	CertificatePath  string             `yaml:"certificate-path"`
+	KeyPath          string             `yaml:"key-path"`
+	ClientIssuerPath string             `yaml:"client-issuer-path"`
 }
 
 func main() {
@@ -213,12 +219,30 @@ func main() {
 	err = yaml.Unmarshal(configBytes, &c)
 	cmd.FailOnError(err, fmt.Sprintf("Failed to parse configuration file from '%s'", *configPath))
 
-	stats, err := statsd.NewClient()
+	stats, err := statsd.NewClient(c.StatsdServer, c.StatsdPrefix)
 	cmd.FailOnError(err, "Failed to create StatsD client")
+
+	cert, err := tls.LoadX509KeyPair(c.CertificatePath, c.KeyPath)
+	cmd.FailOnError(err, "Failed to load certificate")
+
+	clientIssuerBytes, err := ioutil.ReadFile(c.ClientIssuerPath)
+	cmd.FailOnError(err, "Failed to read client issuer")
+	clientIssuer, err := x509.ParseCertificate(clientIssuerBytes)
+	cmd.FailOnError(err, "Fail to parse client issuer")
+	clientCAs := x509.NewCertPool()
+	clientCAs.AddCert(clientIssuer)
+
+	servConf := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    clientCAs,
+		// should also set ciphers + other things! (hard coded?)
+	}
+	creds := credentials.NewTLS(servConf)
 
 	l, err := net.Listen("tcp", c.Address)
 	cmd.FailOnError(err, fmt.Sprintf("Failed to listen on '%s'", c.Address))
-	s := grpc.NewServer()
+	s := grpc.NewServer(grpc.Creds(creds))
 	resolver := bdns.NewDNSResolverImpl(
 		c.DNSTimeout.Duration,
 		[]string{c.DNSResolver},

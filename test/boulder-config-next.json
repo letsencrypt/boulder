@@ -198,7 +198,6 @@
 
   "va": {
     "userAgent": "boulder",
-    "issuerDomain": "happy-hacker-ca.invalid",
     "debugAddr": "localhost:8004",
     "portConfig": {
       "httpPort": 5002,
@@ -207,7 +206,14 @@
     },
     "maxConcurrentRPCServerRequests": 16,
     "dnsTries": 3,
-    "amqp": {
+      "caaService": {
+          "serverAddress": "127.0.0.1:9090",
+          "serverHostname": "localhost",
+          "serverIssuerPath": "test/test-grpc-ca.der",
+          "clientCertificatePath": "test/test-grpc-client.pem",
+          "clientKeyPath": "test/test-grpc-key.pem"
+      },
+      "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "VA.server",

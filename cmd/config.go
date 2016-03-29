@@ -93,6 +93,8 @@ type Config struct {
 
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
 
+		CAAService *CAAConfig
+
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
@@ -502,4 +504,14 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 type LogDescription struct {
 	URI string
 	Key string
+}
+
+// CAAConfig contains the information needed to talk to the CAA service
+// over gRPC
+type CAAConfig struct {
+	ServerAddress         string
+	ServerHostname        string
+	ServerIssuerPath      string
+	ClientCertificatePath string
+	ClientKeyPath         string
 }
