@@ -80,10 +80,6 @@ type LengthRequiredError string
 // the user client.
 type SignatureValidationError string
 
-// CertificateIssuanceError indicates the certificate failed to be issued
-// for some reason.
-type CertificateIssuanceError string
-
 // NoSuchRegistrationError indicates that a registration could not be found.
 type NoSuchRegistrationError string
 
@@ -104,7 +100,6 @@ func (e UnauthorizedError) Error() string        { return string(e) }
 func (e NotFoundError) Error() string            { return string(e) }
 func (e LengthRequiredError) Error() string      { return string(e) }
 func (e SignatureValidationError) Error() string { return string(e) }
-func (e CertificateIssuanceError) Error() string { return string(e) }
 func (e NoSuchRegistrationError) Error() string  { return string(e) }
 func (e RateLimitedError) Error() string         { return string(e) }
 func (e TooManyRPCRequestsError) Error() string  { return string(e) }
