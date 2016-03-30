@@ -91,25 +91,23 @@ func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enfor
 }
 
 const (
-	getCertsCountQuery = "SELECT count(*) FROM certificates WHERE issued >= :issued"
-	getCertsQuery      = "SELECT * FROM certificates WHERE issued >= :issued"
+	getCertsCountQuery = "SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now"
+	getCertsQuery      = "SELECT * FROM certificates WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit"
 )
 
 func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	c.issuedReport.end = c.clock.Now()
 	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
 
-	cq := getCertsCountQuery
-	args := map[string]interface{}{"issued": c.issuedReport.begin}
-	now := c.clock.Now()
+	args := map[string]interface{}{"issued": c.issuedReport.begin, "now": 0}
 	if unexpiredOnly {
-		cq += " AND expires >= :now"
+		now := c.clock.Now()
 		args["now"] = now
 	}
 	var count int
 	err := c.dbMap.SelectOne(
 		&count,
-		cq,
+		getCertsCountQuery,
 		args,
 	)
 	if err != nil {
@@ -119,19 +117,16 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	// Retrieve certs in batches of 1000 (the size of the certificate channel)
 	// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
 	// packet limit.
-	// TODO(#701): This query needs to make better use of indexes
-	q := getCertsQuery
 	args["limit"] = batchSize
-	if unexpiredOnly {
-		q += " AND expires >= :now"
-	}
-	q += " ORDER BY issued ASC LIMIT :limit OFFSET :offset"
+	args["lastSerial"] = ""
 	for offset := 0; offset < count; {
 		var certs []core.Certificate
-		args["offset"] = offset
+		if offset > 0 {
+			args["lastSerial"] = certs[len(certs)-1].Serial
+		}
 		_, err = c.dbMap.Select(
 			&certs,
-			q,
+			getCertsQuery,
 			args,
 		)
 		if err != nil {
