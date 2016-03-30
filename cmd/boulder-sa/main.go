@@ -27,7 +27,6 @@ func main() {
 
 		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default())
 		cmd.FailOnError(err, "Failed to create SA impl")
-		sai.SetSQLDebug(c.SQL.SQLDebug)
 
 		go cmd.ProfileCmd("SA", stats)
 

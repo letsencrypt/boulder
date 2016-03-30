@@ -129,14 +129,9 @@ func recombineCustomMySQLURL(dbConnect string) (string, error) {
 	return dbConn + dbURL.EscapedPath() + "?" + dbURL.RawQuery, nil
 }
 
-// SetSQLDebug enables/disables GORP SQL-level Debugging
-func SetSQLDebug(dbMap *gorp.DbMap, state bool) {
-	dbMap.TraceOff()
-
-	if state {
-		// Enable logging
-		dbMap.TraceOn("SQL: ", &SQLLogger{blog.GetAuditLogger()})
-	}
+// SetSQLDebug enables GORP SQL-level Debugging
+func SetSQLDebug(dbMap *gorp.DbMap, log blog.SyslogWriter) {
+	dbMap.TraceOn("SQL: ", &SQLLogger{log})
 }
 
 // SQLLogger adapts the AuditLogger to a format GORP can use.

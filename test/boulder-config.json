@@ -218,10 +218,6 @@
     }
   },
 
-  "sql": {
-    "SQLDebug": true
-  },
-
   "revoker": {
     "dbConnectFile": "test/secrets/revoker_dburl",
     "amqp": {
