@@ -33,7 +33,7 @@ import (
 )
 
 const maxRedirect = 10
-const whitespaceCutset = "\n\t "
+const whitespaceCutset = "\n\r\t "
 
 var validationTimeout = time.Second * 5
 
