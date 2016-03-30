@@ -869,6 +869,9 @@ func TestExtensions(t *testing.T) {
 	// ... but if it doesn't ask for stapling, there should be an error
 	_, err = ca.IssueCertificate(*tlsFeatureUnknownCSR, ctx.reg.ID)
 	test.AssertError(t, err, "Allowed a CSR with an empty TLS feature extension")
+	if _, ok := err.(core.MalformedRequestError); !ok {
+		t.Errorf("Wrong error type when rejecting a CSR with empty TLS feature extension")
+	}
 	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeature], int64(4))
 	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeatureInvalid], int64(1))
 

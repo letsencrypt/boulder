@@ -57,6 +57,9 @@ func loadIssuer(issuerConfig cmd.IssuerConfig) (crypto.Signer, *x509.Certificate
 	}
 
 	signer, err := loadSigner(issuerConfig)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	if !core.KeyDigestEquals(signer.Public(), cert.PublicKey) {
 		return nil, nil, fmt.Errorf("Issuer key did not match issuer cert %s", issuerConfig.CertFile)
