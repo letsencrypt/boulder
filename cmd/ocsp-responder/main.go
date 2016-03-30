@@ -138,9 +138,7 @@ func main() {
 			auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
 			dbMap, err := sa.NewDbMap(config.Source)
 			cmd.FailOnError(err, "Could not connect to database")
-			if c.SQL.SQLDebug {
-				sa.SetSQLDebug(dbMap, true)
-			}
+			sa.SetSQLDebug(dbMap, auditlogger)
 			source, err = makeDBSource(dbMap, c.Common.IssuerCert, auditlogger)
 			cmd.FailOnError(err, "Couldn't load OCSP DB")
 		} else if url.Scheme == "file" {

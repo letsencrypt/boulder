@@ -58,6 +58,7 @@ func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock) (*SQLStorageAuth
 	logger := blog.GetAuditLogger()
 
 	logger.Notice("Storage Authority Starting")
+	SetSQLDebug(dbMap, logger)
 
 	ssa := &SQLStorageAuthority{
 		dbMap: dbMap,
@@ -66,11 +67,6 @@ func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock) (*SQLStorageAuth
 	}
 
 	return ssa, nil
-}
-
-// SetSQLDebug enables/disables GORP SQL-level Debugging
-func (ssa *SQLStorageAuthority) SetSQLDebug(state bool) {
-	SetSQLDebug(ssa.dbMap, state)
 }
 
 func statusIsPending(status core.AcmeStatus) bool {
