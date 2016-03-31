@@ -98,7 +98,6 @@ func TestErrors(t *testing.T) {
 		UnauthorizedError(testMessage),
 		NotFoundError(testMessage),
 		SignatureValidationError(testMessage),
-		CertificateIssuanceError(testMessage),
 	}
 
 	for i, err := range errors {
