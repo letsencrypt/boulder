@@ -36,11 +36,12 @@ if [[ "$(is_running boulder-mysql)" != "true" ]]; then
 	docker run -d \
 		-e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
 		--name boulder-mysql \
-		mariadb:10.0 mysqld
+		mariadb:10.0 mysqld --bind-address=0.0.0.0
 fi
 
 if [[ "$(is_running boulder-rabbitmq)" != "true" ]]; then
 	docker run -d \
+		-e RABBITMQ_NODE_IP_ADDRESS=0.0.0.0 \
 		--name boulder-rabbitmq \
 		rabbitmq:3
 fi

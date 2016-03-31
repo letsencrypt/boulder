@@ -42,7 +42,7 @@ for svc in $SERVICES; do
 		USERS_SQL=test/${svc}_db_users.sql
 		if [[ -f $USERS_SQL ]]; then
 			if [[ $MYSQL_CONTAINER ]]; then
-				sed -e "s/'localhost'/'172.%'/g" < $USERS_SQL | \
+				sed -e "s/'localhost'/'%'/g" < $USERS_SQL | \
 					mysql $dbconn -D $db || die "unable to add users to ${db}"
 			else
 				sed -e "s/'localhost'/'127.%'/g" < $USERS_SQL | \
