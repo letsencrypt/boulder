@@ -50,10 +50,6 @@ var sqlOpen = func(dbType, connectStr string) (*sql.DB, error) {
 func NewDbMapFromConfig(config *mysql.Config) (*gorp.DbMap, error) {
 	adjustMySQLConfig(config)
 
-	logger := blog.GetAuditLogger()
-
-	logger.Debug("Connecting to database")
-
 	db, err := sqlOpen("mysql", config.FormatDSN())
 	if err != nil {
 		return nil, err
@@ -66,8 +62,6 @@ func NewDbMapFromConfig(config *mysql.Config) (*gorp.DbMap, error) {
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 	initTables(dbmap)
-
-	logger.Debug("Connected to database")
 
 	return dbmap, err
 }
@@ -135,14 +129,9 @@ func recombineCustomMySQLURL(dbConnect string) (string, error) {
 	return dbConn + dbURL.EscapedPath() + "?" + dbURL.RawQuery, nil
 }
 
-// SetSQLDebug enables/disables GORP SQL-level Debugging
-func SetSQLDebug(dbMap *gorp.DbMap, state bool) {
-	dbMap.TraceOff()
-
-	if state {
-		// Enable logging
-		dbMap.TraceOn("SQL: ", &SQLLogger{blog.GetAuditLogger()})
-	}
+// SetSQLDebug enables GORP SQL-level Debugging
+func SetSQLDebug(dbMap *gorp.DbMap, log blog.SyslogWriter) {
+	dbMap.TraceOn("SQL: ", &SQLLogger{log})
 }
 
 // SQLLogger adapts the AuditLogger to a format GORP can use.

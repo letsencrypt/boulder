@@ -99,10 +99,6 @@ type Config struct {
 		DNSTries int
 	}
 
-	SQL struct {
-		SQLDebug bool
-	}
-
 	Statsd StatsdConfig
 
 	Syslog SyslogConfig
@@ -192,6 +188,9 @@ type Config struct {
 
 		Workers             int
 		ReportDirectoryPath string
+		UnexpiredOnly       bool
+		BadResultsOnly      bool
+		CheckPeriod         ConfigDuration
 	}
 	AllowedSigningAlgos *AllowedSigningAlgos
 

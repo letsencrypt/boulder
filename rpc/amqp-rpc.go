@@ -212,8 +212,6 @@ func wrapError(err error) *rpcError {
 			wrapped.Type = "NotFoundError"
 		case core.SignatureValidationError:
 			wrapped.Type = "SignatureValidationError"
-		case core.CertificateIssuanceError:
-			wrapped.Type = "CertificateIssuanceError"
 		case core.NoSuchRegistrationError:
 			wrapped.Type = "NoSuchRegistrationError"
 		case core.TooManyRPCRequestsError:
@@ -246,8 +244,6 @@ func unwrapError(rpcError *rpcError) error {
 			return core.NotFoundError(rpcError.Value)
 		case "SignatureValidationError":
 			return core.SignatureValidationError(rpcError.Value)
-		case "CertificateIssuanceError":
-			return core.CertificateIssuanceError(rpcError.Value)
 		case "NoSuchRegistrationError":
 			return core.NoSuchRegistrationError(rpcError.Value)
 		case "TooManyRPCRequestsError":

@@ -92,7 +92,7 @@
 		},
 		{
 			"ImportPath": "github.com/facebookgo/httpdown",
-			"Rev": "1fa03998d20119dfe4ef73f56a638d83048052e2"
+			"Rev": "a3b1354551a26449fbe05f5d855937f6e7acbd71"
 		},
 		{
 			"ImportPath": "github.com/facebookgo/stats",

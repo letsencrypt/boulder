@@ -5,7 +5,6 @@ package httpdown
 import (
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -349,7 +348,6 @@ func ListenAndServe(s *http.Server, hd *HTTP) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("serving on http://%s/ with pid %d\n", s.Addr, os.Getpid())
 
 	waiterr := make(chan error, 1)
 	go func() {
@@ -365,9 +363,8 @@ func ListenAndServe(s *http.Server, hd *HTTP) error {
 		if err != nil {
 			return err
 		}
-	case s := <-signals:
+	case <-signals:
 		signal.Stop(signals)
-		log.Printf("signal received: %s\n", s)
 		if err := hs.Stop(); err != nil {
 			return err
 		}
@@ -375,6 +372,5 @@ func ListenAndServe(s *http.Server, hd *HTTP) error {
 			return err
 		}
 	}
-	log.Println("exiting")
 	return nil
 }
