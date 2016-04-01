@@ -901,7 +901,9 @@ func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (rece
 func (ssa *SQLStorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) error {
 	err := ssa.dbMap.Insert(&sct)
 	// For AddSCTReceipt, duplicates are explicitly OK, so don't return errors
-	// based on duplicates.
+	// based on duplicates, especially because we currently retry all submissions
+	// for a certificate if even one of them fails. Once https://github.com/letsencrypt/boulder/issues/891
+	// is fixed, we may want to start returning this as an error, or logging it.
 	if err != nil && strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
 		return nil
 	}
