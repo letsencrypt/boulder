@@ -135,7 +135,7 @@ func GetAuditLogger() *AuditLogger {
 // Log the provided message at the appropriate level, writing to
 // both stdout and the Logger, as well as informing statsd.
 func (log *AuditLogger) logAtLevel(level syslog.Priority, msg string) error {
-	var name, color string
+	var prefix string
 	var err error
 
 	const red = "\033[31m"
@@ -144,48 +144,42 @@ func (log *AuditLogger) logAtLevel(level syslog.Priority, msg string) error {
 	switch level {
 	case syslog.LOG_ALERT:
 		err = log.SyslogWriter.Alert(msg)
-		name = "ALERT"
-		color = red
+		prefix = red + "A"
 	case syslog.LOG_CRIT:
 		err = log.SyslogWriter.Crit(msg)
-		name = "CRIT"
-		color = red
+		prefix = red + "C"
 	case syslog.LOG_DEBUG:
 		err = log.SyslogWriter.Debug(msg)
-		name = "DEBUG"
+		prefix = "D"
 	case syslog.LOG_EMERG:
 		err = log.SyslogWriter.Emerg(msg)
-		name = "EMERG"
-		color = red
+		prefix = red + "!"
 	case syslog.LOG_ERR:
 		err = log.SyslogWriter.Err(msg)
-		name = "ERR"
-		color = red
+		prefix = red + "E"
 	case syslog.LOG_INFO:
 		err = log.SyslogWriter.Info(msg)
-		name = "INFO"
+		prefix = "I"
 	case syslog.LOG_WARNING:
 		err = log.SyslogWriter.Warning(msg)
-		name = "WARNING"
-		color = yellow
+		prefix = yellow + "W"
 	case syslog.LOG_NOTICE:
 		err = log.SyslogWriter.Notice(msg)
-		name = "NOTICE"
+		prefix = "N"
 	default:
 		err = fmt.Errorf("Unknown logging level: %d", int(level))
 	}
 
 	var reset string
-	if color != "" {
+	if strings.HasPrefix(prefix, "\033") {
 		reset = "\033[0m"
 	}
 
 	if int(level) <= log.stdoutLogLevel {
-		fmt.Printf("%s%s %s %s %s%s\n",
-			color,
-			log.clk.Now().Format("15:04:05"),
+		fmt.Printf("%s%s %s %s%s\n",
+			prefix,
+			log.clk.Now().Format("150405"),
 			path.Base(os.Args[0]),
-			name,
 			msg,
 			reset)
 	}
