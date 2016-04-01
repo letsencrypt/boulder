@@ -10,12 +10,8 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
-	"os"
-	"path"
 	"sync"
 	"testing"
 	"time"
@@ -41,13 +37,11 @@ func BenchmarkCheckCert(b *testing.B) {
 		return
 	}
 	defer func() {
-		err = saDbMap.TruncateTables()
-		fmt.Printf("Failed to truncate tables: %s\n", err)
-		err = paDbMap.TruncateTables()
-		fmt.Printf("Failed to truncate tables: %s\n", err)
+		test.ResetSATestDatabase(b)()
+		test.ResetPolicyTestDatabase(b)()
 	}()
 
-	checker := newChecker(saDbMap, paDbMap, clock.Default(), false, nil)
+	checker := newChecker(saDbMap, paDbMap, clock.Default(), false, nil, expectedValidityPeriod)
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
@@ -89,10 +83,10 @@ func TestCheckCert(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Add(time.Hour * 24 * 90)
 
-	checker := newChecker(saDbMap, paDbMap, fc, false, nil)
+	checker := newChecker(saDbMap, paDbMap, fc, false, nil, expectedValidityPeriod)
 
 	issued := checker.clock.Now().Add(-time.Hour * 24 * 45)
-	goodExpiry := issued.Add(checkPeriod)
+	goodExpiry := issued.Add(expectedValidityPeriod)
 	serial := big.NewInt(1337)
 	// Problems
 	//   Expiry period is too long
@@ -100,7 +94,7 @@ func TestCheckCert(t *testing.T) {
 	//   Wrong key usage (none)
 	rawCert := x509.Certificate{
 		Subject: pkix.Name{
-			CommonName: "example.com",
+			CommonName: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com",
 		},
 		NotBefore:             issued,
 		NotAfter:              goodExpiry.AddDate(0, 0, 1), // Period too long
@@ -132,8 +126,9 @@ func TestCheckCert(t *testing.T) {
 		"Certificate has a validity period longer than 2160h0m0s":                   1,
 		"Stored issuance date is outside of 6 hour window of certificate NotBefore": 1,
 		"Certificate has incorrect key usage extensions":                            1,
+		"Certificate has common name >64 characters long (65)":                      1,
 	}
-	test.AssertEquals(t, len(problems), 7)
+	test.AssertEquals(t, len(problems), 8)
 	for _, p := range problems {
 		_, ok := problemsMap[p]
 		if !ok {
@@ -181,7 +176,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't connect to policy database")
 	fc := clock.NewFake()
 
-	checker := newChecker(saDbMap, paDbMap, fc, false, nil)
+	checker := newChecker(saDbMap, paDbMap, fc, false, nil, expectedValidityPeriod)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetSATestDatabase(t)
@@ -212,12 +207,12 @@ func TestGetAndProcessCerts(t *testing.T) {
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 
-	err = checker.getCerts()
+	err = checker.getCerts(false)
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 	test.AssertEquals(t, len(checker.certs), 5)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	checker.processCerts(wg)
+	checker.processCerts(wg, false)
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
 	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
 }
@@ -242,14 +237,6 @@ func TestSaveReport(t *testing.T) {
 		},
 	}
 
-	tmpDir, err := ioutil.TempDir("", "cert-checker")
-	test.AssertNotError(t, err, "Couldn't create temporary directory")
-	defer os.RemoveAll(tmpDir)
-	err = r.save(tmpDir)
-	test.AssertNotError(t, err, "Couldn't save report")
-	reportContent, err := ioutil.ReadFile(path.Join(tmpDir, "00010101-00010101-report.json"))
-	test.AssertNotError(t, err, "Couldn't read report file")
-	expectedContent, err := json.Marshal(r)
-	test.AssertNotError(t, err, "Couldn't unmarshal report file")
-	test.AssertByteEquals(t, expectedContent, reportContent)
+	err := r.dump()
+	test.AssertNotError(t, err, "Failed to dump results")
 }
