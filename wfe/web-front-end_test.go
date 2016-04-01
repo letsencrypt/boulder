@@ -1431,7 +1431,10 @@ type mockSADifferentStoredKey struct {
 func (sa mockSADifferentStoredKey) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
 	keyJSON := []byte(test2KeyPublicJSON)
 	var parsedKey jose.JsonWebKey
-	parsedKey.UnmarshalJSON(keyJSON)
+	err := parsedKey.UnmarshalJSON(keyJSON)
+	if err != nil {
+		panic(err)
+	}
 
 	return core.Registration{
 		Key: parsedKey,

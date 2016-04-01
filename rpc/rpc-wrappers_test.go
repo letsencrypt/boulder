@@ -62,14 +62,15 @@ func TestRANewRegistration(t *testing.T) {
 	client := RegistrationAuthorityClient{mock}
 
 	var jwk jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk)
+	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
+	test.AssertNotError(t, err, "jwk unmarshal error")
 
 	reg := core.Registration{
 		ID:  1,
 		Key: jwk,
 	}
 
-	_, err := client.NewRegistration(reg)
+	_, err = client.NewRegistration(reg)
 	test.AssertNotError(t, err, "Updated Registration")
 	test.Assert(t, len(mock.LastBody) > 0, "Didn't send Registration")
 	test.AssertEquals(t, "NewRegistration", mock.LastMethod)

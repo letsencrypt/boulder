@@ -128,5 +128,8 @@ func TestPublish(t *testing.T) {
 			Type:          "testMsg",
 			Timestamp:     ac.clk.Now(),
 		})
-	ac.publish("fooqueue", "03c52e", "3000", "replyTo", "testMsg", []byte("body"))
+	err := ac.publish("fooqueue", "03c52e", "3000", "replyTo", "testMsg", []byte("body"))
+	if err != nil {
+		t.Error(err)
+	}
 }

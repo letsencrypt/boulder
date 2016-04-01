@@ -196,5 +196,6 @@ func main() {
 		},
 	}
 
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	cmd.FailOnError(err, "Failed to run application")
 }

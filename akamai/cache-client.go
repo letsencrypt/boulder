@@ -131,12 +131,18 @@ func (cpc *CachePurgeClient) constructAuthHeader(request *http.Request, body []b
 
 	// Create signing key using a HMAC of the client secret over the timestamp
 	h := hmac.New(sha256.New, []byte(cpc.clientSecret))
-	h.Write([]byte(timestamp))
+	_, err := h.Write([]byte(timestamp))
+	if err != nil {
+		return "", err
+	}
 	key := make([]byte, base64.StdEncoding.EncodedLen(32))
 	base64.StdEncoding.Encode(key, h.Sum(nil))
 
 	h = hmac.New(sha256.New, key)
-	h.Write([]byte(tbs))
+	_, err = h.Write([]byte(tbs))
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf(
 		"%ssignature=%s",
 		header,
@@ -188,8 +194,12 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	if resp.Body == nil {
 		return fmt.Errorf("No response body")
 	}
-	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		_ = resp.Body.Close()
+		return err
+	}
+	err = resp.Body.Close()
 	if err != nil {
 		return err
 	}

@@ -512,7 +512,10 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 
 	va.log.Notice(fmt.Sprintf("Validations: %+v", authz))
 
-	va.RA.OnValidationUpdate(authz)
+	err := va.RA.OnValidationUpdate(authz)
+	if err != nil {
+		va.log.Err(fmt.Sprintf("va: unable to communicate updated authz [%d] to RA: %q authz=[%#v]", authz.RegistrationID, err, authz))
+	}
 }
 
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {

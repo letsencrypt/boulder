@@ -164,13 +164,19 @@ func main() {
 
 				tx, err := dbMap.Begin()
 				if err != nil {
-					tx.Rollback()
+					rollbackErr := tx.Rollback()
+					if rollbackErr != nil {
+						fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
+					}
 				}
 				cmd.FailOnError(err, "Couldn't begin transaction")
 
 				err = revokeBySerial(serial, core.RevocationCode(reasonCode), deny, cac, auditlogger, tx)
 				if err != nil {
-					tx.Rollback()
+					rollbackErr := tx.Rollback()
+					if rollbackErr != nil {
+						fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
+					}
 				}
 				cmd.FailOnError(err, "Couldn't revoke certificate")
 
@@ -195,7 +201,10 @@ func main() {
 
 				tx, err := dbMap.Begin()
 				if err != nil {
-					tx.Rollback()
+					rollbackErr := tx.Rollback()
+					if rollbackErr != nil {
+						fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
+					}
 				}
 				cmd.FailOnError(err, "Couldn't begin transaction")
 
@@ -206,7 +215,10 @@ func main() {
 
 				err = revokeByReg(regID, core.RevocationCode(reasonCode), deny, cac, auditlogger, tx)
 				if err != nil {
-					tx.Rollback()
+					rollbackErr := tx.Rollback()
+					if rollbackErr != nil {
+						fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
+					}
 				}
 				cmd.FailOnError(err, "Couldn't revoke certificate")
 

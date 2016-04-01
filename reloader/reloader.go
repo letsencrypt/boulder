@@ -49,18 +49,21 @@ func New(filename string, callback func([]byte, error) error) (*Reloader, error)
 			case <-tickChan:
 				currentFileInfo, err := os.Stat(filename)
 				if err != nil {
-					callback(nil, err)
+					_ = callback(nil, err)
 					continue
 				}
-				if currentFileInfo.ModTime().After(fileInfo.ModTime()) {
-					b, err := ioutil.ReadFile(filename)
-					if err != nil {
-						callback(nil, err)
-						continue
-					}
-					fileInfo = currentFileInfo
-					callback(b, nil)
+				if !currentFileInfo.ModTime().After(fileInfo.ModTime()) {
+					continue
 				}
+				b, err := ioutil.ReadFile(filename)
+				if err != nil {
+					_ = callback(nil, err)
+					continue
+				}
+				fileInfo = currentFileInfo
+				err = callback(b, nil)
+				// TODO(#1685): change reloader design to have error callback
+				_ = err
 			}
 		}
 	}

@@ -52,7 +52,7 @@ func resetTestDatabase(t testing.TB, dbType string) func() {
 		if err := deleteEverythingInAllTables(db); err != nil {
 			t.Fatalf("Failed to truncate tables after the test: %s", err)
 		}
-		db.Close()
+		_ = db.Close()
 	}
 }
 

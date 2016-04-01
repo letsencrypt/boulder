@@ -117,14 +117,20 @@ func (m *mailer) updateCertStatus(serial string) error {
 	tx, err := m.dbMap.Begin()
 	if err != nil {
 		m.log.Err(fmt.Sprintf("Error opening transaction for certificate %s: %s", serial, err))
-		tx.Rollback()
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			m.log.Err(fmt.Sprintf("Also, an error occured when rolling back the transaction: %s", rollbackErr))
+		}
 		return err
 	}
 
 	csObj, err := tx.Get(&core.CertificateStatus{}, serial)
 	if err != nil {
 		m.log.Err(fmt.Sprintf("Error fetching status for certificate %s: %s", serial, err))
-		tx.Rollback()
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			m.log.Err(fmt.Sprintf("Also, an error occured when rolling back the transaction: %s", rollbackErr))
+		}
 		return err
 	}
 	certStatus := csObj.(*core.CertificateStatus)
@@ -133,14 +139,20 @@ func (m *mailer) updateCertStatus(serial string) error {
 	_, err = tx.Update(certStatus)
 	if err != nil {
 		m.log.Err(fmt.Sprintf("Error updating status for certificate %s: %s", serial, err))
-		tx.Rollback()
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			m.log.Err(fmt.Sprintf("Also, an error occured when rolling back the transaction: %s", rollbackErr))
+		}
 		return err
 	}
 
 	err = tx.Commit()
 	if err != nil {
 		m.log.Err(fmt.Sprintf("Error committing transaction for certificate %s: %s", serial, err))
-		tx.Rollback()
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			m.log.Err(fmt.Sprintf("Also, an error occured when rolling back the transaction: %s", rollbackErr))
+		}
 		return err
 	}
 
@@ -327,7 +339,9 @@ func main() {
 		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, c.Mailer.From)
 		err = mailClient.Connect()
 		cmd.FailOnError(err, "Couldn't connect to mail server.")
-		defer mailClient.Close()
+		defer func() {
+			_ = mailClient.Close()
+		}()
 
 		nagCheckInterval := defaultNagCheckInterval
 		if s := c.Mailer.NagCheckInterval; s != "" {

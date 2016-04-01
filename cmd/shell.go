@@ -187,7 +187,8 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 
 	blog.SetAuditLogger(auditLogger)
 	cfsslLog.SetLogger(auditLogger)
-	mysql.SetLogger(mysqlLogger{auditLogger})
+	// only possible error is if parameter is nil
+	_ = mysql.SetLogger(mysqlLogger{auditLogger})
 
 	return stats, auditLogger
 }
@@ -287,5 +288,8 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server on %#v", addr)
 	}
-	http.Serve(ln, nil)
+	err = http.Serve(ln, nil)
+	if err != nil {
+		log.Fatalf("unable to boot debug server: %v", err)
+	}
 }

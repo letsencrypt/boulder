@@ -109,7 +109,7 @@ func (ac *amqpConnector) cancel() {
 	ac.mu.RLock()
 	channel := ac.channel
 	ac.mu.RUnlock()
-	channel.Cancel(consumerName, false)
+	_ = channel.Cancel(consumerName, false)
 }
 
 // publish publishes a message onto the provided queue. We provide this wrapper

@@ -78,25 +78,48 @@ func NewAuthorityDatabaseImpl(dbMap gorpDbMap) (padb *AuthorityDatabaseImpl, err
 func (padb *AuthorityDatabaseImpl) LoadRules(rs RuleSet) error {
 	tx, err := padb.dbMap.Begin()
 	if err != nil {
-		tx.Rollback()
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
+		}
 		return err
 	}
 	_, err = tx.Exec("DELETE FROM blacklist")
 	if err != nil {
-		tx.Rollback()
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
+		}
 		return err
 	}
 	for _, r := range rs.Blacklist {
 		r.Host = core.ReverseName(r.Host)
-		tx.Insert(&r)
+		err = tx.Insert(&r)
+		if err != nil {
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil {
+				fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
+			}
+			return err
+		}
 	}
 	_, err = tx.Exec("DELETE FROM whitelist")
 	if err != nil {
-		tx.Rollback()
+		rollbackErr := tx.Rollback()
+		if rollbackErr != nil {
+			fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
+		}
 		return err
 	}
 	for _, r := range rs.Whitelist {
-		tx.Insert(&r)
+		err = tx.Insert(&r)
+		if err != nil {
+			rollbackErr := tx.Rollback()
+			if rollbackErr != nil {
+				fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
+			}
+			return err
+		}
 	}
 
 	err = tx.Commit()
