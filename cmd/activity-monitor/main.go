@@ -12,19 +12,19 @@ package main
 import (
 	"expvar"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/analysis"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
 func main() {
 	app := cmd.NewAppShell("activity-monitor", "RPC activity monitor")
 
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.ActivityMonitor.DebugAddr)
 
 		amqpConf := c.ActivityMonitor.AMQP
