@@ -42,7 +42,6 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	dbMap.TraceOn("SQL: ", &SQLLogger{log})
 
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
@@ -471,8 +470,7 @@ func TestAddSCTReceipt(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add SCT receipt")
 	// Append only and unique on signature and across LogID and CertificateSerial
 	err = sa.AddSCTReceipt(sct)
-	test.AssertError(t, err, "Incorrectly added duplicate SCT receipt")
-	fmt.Println(err)
+	test.AssertNotError(t, err, "Incorrectly returned error on duplicate SCT receipt")
 }
 
 func TestGetSCTReceipt(t *testing.T) {

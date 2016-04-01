@@ -897,18 +897,13 @@ func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (rece
 	return
 }
 
-// ErrDuplicateReceipt is an error type for duplicate SCT receipts
-type ErrDuplicateReceipt string
-
-func (e ErrDuplicateReceipt) Error() string {
-	return string(e)
-}
-
 // AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table
 func (ssa *SQLStorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) error {
 	err := ssa.dbMap.Insert(&sct)
+	// For AddSCTReceipt, duplicates are explicitly OK, so don't return errors
+	// based on duplicates.
 	if err != nil && strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-		err = ErrDuplicateReceipt(err.Error())
+		return nil
 	}
 	return err
 }
