@@ -71,7 +71,7 @@ type certChecker struct {
 	rMu          *sync.Mutex
 	issuedReport report
 	checkPeriod  time.Duration
-	stats        statsd.Statter
+	stats        metrics.Statter
 }
 
 func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool, period time.Duration) certChecker {

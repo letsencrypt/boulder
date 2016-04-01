@@ -49,7 +49,7 @@ import (
 
 // AppShell contains CLI Metadata
 type AppShell struct {
-	Action func(Config, statsd.Statter, *blog.AuditLogger)
+	Action func(Config, metrics.Statter, *blog.AuditLogger)
 	Config func(*cli.Context, Config) Config
 	App    *cli.App
 }
@@ -170,7 +170,7 @@ func (m mysqlLogger) Print(v ...interface{}) {
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
 // Also sets the constructed AuditLogger as the default logger.
-func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (statsd.Statter, *blog.AuditLogger) {
+func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statter, *blog.AuditLogger) {
 	stats, err := metrics.NewStatter(statConf.Server, statConf.Prefix)
 	FailOnError(err, "Couldn't connect to statsd")
 
@@ -212,7 +212,7 @@ func FailOnError(err error, msg string) {
 }
 
 // ProfileCmd runs forever, sending Go runtime statistics to StatsD.
-func ProfileCmd(profileName string, stats statsd.Statter) {
+func ProfileCmd(profileName string, stats metrics.Statter) {
 	var memoryStats runtime.MemStats
 	prevNumGC := int64(0)
 	c := time.Tick(1 * time.Second)
