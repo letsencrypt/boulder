@@ -26,7 +26,7 @@ BUILD_HOST_VAR = github.com/letsencrypt/boulder/core.BuildHost
 BUILD_TIME = $(shell date -u)
 BUILD_TIME_VAR = github.com/letsencrypt/boulder/core.BuildTime
 
-GO_BUILD_FLAGS = -ldflags "-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" -X \"$(BUILD_HOST_VAR)=$(BUILD_HOST)\"" -tags std_json
+GO_BUILD_FLAGS = -ldflags "-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" -X \"$(BUILD_HOST_VAR)=$(BUILD_HOST)\""
 
 .PHONY: all build
 all: build

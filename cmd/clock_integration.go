@@ -18,7 +18,7 @@ import (
 // The FAKECLOCK env var is in the time.UnixDate format, returned by `date -d`.
 func Clock() clock.Clock {
 	if tgt := os.Getenv("FAKECLOCK"); tgt != "" {
-		targetTime, err := time.Parse(tgt, time.UnixDate)
+		targetTime, err := time.Parse(time.UnixDate, tgt)
 		FailOnError(err, fmt.Sprintf("cmd.Clock: bad format for FAKECLOCK: %v\n", err))
 
 		cl := clock.NewFake()

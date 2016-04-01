@@ -8,7 +8,16 @@ package core
 // ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
+	// TODO(#1167): remove
 	UpdateValidations(Authorization, int) error
+	// PerformValidation checks the challenge with the given index in the
+	// given Authorization and returns the updated ValidationRecords.
+	//
+	// A failure to validate the Challenge will result in a error of type
+	// *probs.ProblemDetails.
+	//
+	// TODO(#1626): remove authz parameter
+	PerformValidation(string, Challenge, Authorization) ([]ValidationRecord, error)
 	IsSafeDomain(*IsSafeDomainRequest) (*IsSafeDomainResponse, error)
 }
 
