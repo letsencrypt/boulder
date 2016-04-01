@@ -1200,8 +1200,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 			return
 		}
 
-		err = impl.AddSCTReceipt(core.SignedCertificateTimestamp(sct))
-		return
+		return nil, impl.AddSCTReceipt(core.SignedCertificateTimestamp(sct))
 	})
 
 	rpc.Handle(MethodCountFQDNSets, func(req []byte) (response []byte, err error) {
