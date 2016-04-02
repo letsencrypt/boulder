@@ -80,7 +80,7 @@ func main() {
 
 		auditlogger.Info(fmt.Sprintf("WFE using key policy: %#v", c.KeyPolicy()))
 
-		wfe.UseAuthList = c.WFE.UseAuthList
+		wfe.UseAuthList = true
 
 		go cmd.ProfileCmd("WFE", stats)
 
