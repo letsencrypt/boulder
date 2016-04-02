@@ -31,6 +31,9 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 
 Once a pull requests has two reviews and the tests are passing, we'll merge it. We always use [squash merges](https://github.com/blog/2141-squash-your-commits) via GitHub's web interface. That means that during the course of your review you should generally not squash or amend commits, or force push. Even if the changes in each commit are small, keeping them separate makes it easier for us to review incremental changes to a pull request. Rest assured that those tiny changes will get squashed into a nice meaningful-size commit when we merge.
 
+When submitting a squash merge, the merger should copy the URL of the pull
+request into the body of the commit message.
+
 If the Travis tests are failing on your branch, you should look at the logs to figure out why. Sometimes they fail spuriously, in which case you can post a comment requesting that a project owner kick the build.
 
 # Deployability
