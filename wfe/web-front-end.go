@@ -1235,7 +1235,7 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 func (wfe *WebFrontEndImpl) AuthList(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	var expiry time.Time
 	var limit int64 = 100
-	// Reguest Format /acme/auth-list/regID/expiresAfter with expiresAfter being
+	// Request Format /acme/auth-list/regID/expiresAfter with expiresAfter being
 	// optional and defaulting to now
 	slug := strings.Split(request.URL.Path[len(AuthListPath):], "/")
 	if len(slug) < 1 || len(slug) > 2 {
