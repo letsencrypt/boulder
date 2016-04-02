@@ -173,7 +173,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

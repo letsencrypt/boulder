@@ -10,6 +10,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -26,7 +27,7 @@ func TestBackfill(t *testing.T) {
 	}
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc)
+	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, mocks.UseMockLog())
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
