@@ -98,9 +98,6 @@ func (as *AppShell) Run() {
 		}
 
 		// Provide default values for each service's AMQP config section.
-		if config.ActivityMonitor.AMQP == nil {
-			config.ActivityMonitor.AMQP = config.AMQP
-		}
 		if config.WFE.AMQP == nil {
 			config.WFE.AMQP = config.AMQP
 		}

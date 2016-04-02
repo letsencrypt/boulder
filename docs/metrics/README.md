@@ -14,7 +14,7 @@ The prefix will be prepended to all sent metrics to differentiate different sets
 This list is split up into metric topics with the names of the clients that submit these metrics.
 
 * Logging (`cmd/boulder-*` + `cmd/ocsp-responder` + `cmd/ocsp-updater` + `cmd/admin-revoker`
-  + `cmd/activity-monitor` + `cmd/expiration-mailer` + `cmd/external-cert-importer`)
+  + `cmd/expiration-mailer` + `cmd/external-cert-importer`)
 
     ```
 	[counter] Boulder.Logging.Audit
@@ -27,7 +27,7 @@ This list is split up into metric topics with the names of the clients that subm
 	[counter] Boulder.Logging.Warning
 	```
 
-* RPC activity (`cmd/activity-monitor`)
+* RPC activity (all RPC servers/clients)
 
     ```
 	[counter] Boulder.RPC.Rate.Success

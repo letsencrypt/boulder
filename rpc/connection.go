@@ -43,13 +43,11 @@ func (d defaultChannelMaker) makeChannel(conf *cmd.AMQPConfig) (amqpChannel, err
 // queue, plus appropriate locking for its members. It provides reconnect logic,
 // and allows publishing via the channel onto an arbitrary queue.
 type amqpConnector struct {
-	mu        sync.RWMutex
-	chMaker   channelMaker
-	channel   amqpChannel
-	queueName string
-	// Usually this is the same as queueName, except for Activity Monitor, which
-	// sets it to "#".
-	routingKey       string
+	mu               sync.RWMutex
+	chMaker          channelMaker
+	channel          amqpChannel
+	queueName        string
+	routingKey       string // This is the same as queueName
 	closeChan        chan *amqp.Error
 	msgs             <-chan amqp.Delivery
 	retryTimeoutBase time.Duration

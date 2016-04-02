@@ -5,8 +5,8 @@
 
 package main
 
-// This command does a one-time setup of the RabbitMQ exchange and the Activity
-// Monitor queue, suitable for setting up a dev environment or Travis.
+// This command does a one-time setup of the RabbitMQ exchange suitable
+// for setting up a dev environment or Travis.
 
 import (
 	"flag"
