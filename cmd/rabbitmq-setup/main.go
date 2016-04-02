@@ -10,7 +10,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 
@@ -62,18 +61,5 @@ func main() {
 		nil)
 	if err != nil {
 		cmd.FailOnError(err, "Could not declare queue")
-	}
-
-	routingKey := "#" //wildcard
-
-	err = ch.QueueBind(
-		monitorQueueName,
-		routingKey,
-		amqpExchange,
-		false,
-		nil)
-	if err != nil {
-		txt := fmt.Sprintf("Could not bind to queue [%s]. NOTE: You may need to delete %s to re-trigger the bind attempt after fixing permissions, or manually bind the queue to %s.", monitorQueueName, monitorQueueName, routingKey)
-		cmd.FailOnError(err, txt)
 	}
 }
