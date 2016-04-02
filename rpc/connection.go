@@ -20,7 +20,6 @@ func newAMQPConnector(
 ) *amqpConnector {
 	return &amqpConnector{
 		queueName:        queueName,
-		routingKey:       queueName,
 		chMaker:          defaultChannelMaker{},
 		clk:              clock.Default(),
 		retryTimeoutBase: retryTimeoutBase,
@@ -47,7 +46,6 @@ type amqpConnector struct {
 	chMaker          channelMaker
 	channel          amqpChannel
 	queueName        string
-	routingKey       string // This is the same as queueName
 	closeChan        chan *amqp.Error
 	msgs             <-chan amqp.Delivery
 	retryTimeoutBase time.Duration
@@ -75,7 +73,7 @@ func (ac *amqpConnector) connect(config *cmd.AMQPConfig) error {
 	if err != nil {
 		return fmt.Errorf("channel connect failed for %s: %s", ac.queueName, err)
 	}
-	msgs, err := amqpSubscribe(channel, ac.queueName, ac.routingKey)
+	msgs, err := amqpSubscribe(channel, ac.queueName, ac.queueName)
 	if err != nil {
 		return fmt.Errorf("queue subscribe failed for %s: %s", ac.queueName, err)
 	}
