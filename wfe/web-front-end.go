@@ -1235,11 +1235,14 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 func (wfe *WebFrontEndImpl) AuthList(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	var expiry time.Time
 	var limit int64 = 100
+	// Reguest Format /acme/auth-list/regID/expiresAfter with expiresAfter being
+	// optional and defaulting to now
 	slug := strings.Split(request.URL.Path[len(AuthListPath):], "/")
 	if len(slug) < 1 || len(slug) > 2 {
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid request Format"), nil)
 		return
 	}
+	// Parse regID
 	id, err := strconv.ParseInt(slug[0], 10, 64)
 	if err != nil {
 		logEvent.AddError("registration ID must be an integer, was %#v", slug[0])
@@ -1251,8 +1254,9 @@ func (wfe *WebFrontEndImpl) AuthList(logEvent *requestEvent, response http.Respo
 		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
 		return
 	}
+	// Parse expiresAfter if present
 	if len(slug) == 2 {
-		exp, _ := strconv.ParseInt(slug[1], 10, 64)
+		exp, err := strconv.ParseInt(slug[1], 10, 64)
 		if err != nil {
 			logEvent.AddError("expiry must be an integer, was %#v", slug[1])
 			wfe.sendError(response, logEvent, probs.Malformed("Registration ID must be an integer"), err)
@@ -1265,13 +1269,15 @@ func (wfe *WebFrontEndImpl) AuthList(logEvent *requestEvent, response http.Respo
 		}
 		expiry = time.Unix(exp, 0)
 	}
+	// Get list of AuthIDs
 	authIDs, err := wfe.SA.GetAuthorizationsByRegID(id, expiry, limit)
 	if err != nil {
 		logEvent.AddError("No such authorizations at id %s", id)
 		wfe.sendError(response, logEvent, probs.ServerInternal("unable to find Authorizations"), err)
 		return
 	}
-
+	// Set link rel next to url with expiresAfter being the expiry of the last
+	// authorization if limit is reached
 	if int64(len(authIDs)) == limit {
 		auth, err := wfe.SA.GetAuthorization(authIDs[limit-1])
 		if err != nil {
