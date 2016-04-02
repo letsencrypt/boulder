@@ -75,6 +75,7 @@ const (
 	MethodRevokeAuthorizationsByDomain      = "RevokeAuthorizationsByDomain"      // SA
 	MethodCountFQDNSets                     = "CountFQDNSets"                     // SA
 	MethodFQDNSetExists                     = "FQDNSetExists"                     // SA
+	MethodGetAuthorizationsByRegID          = "GetAuthorizationsByRegID"          // SA
 )
 
 // Request structs
@@ -201,6 +202,12 @@ type fqdnSetExistsRequest struct {
 	Names []string
 }
 
+type getAuthorizationsByRegIDRequest struct {
+	RegID        int64
+	ExpiresAfter time.Time
+	Limit        int64
+}
+
 // Response structs
 type caaResponse struct {
 	Present bool
@@ -219,6 +226,10 @@ type countFQDNSetsResponse struct {
 
 type fqdnSetExistsResponse struct {
 	Exists bool
+}
+
+type getAuthorizationsByRegIDResponse struct {
+	AuthIds []string
 }
 
 func improperMessage(method string, err error, obj interface{}) {
@@ -1259,6 +1270,30 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
+	rpc.Handle(MethodGetAuthorizationsByRegID, func(req []byte) (response []byte, err error) {
+		var r getAuthorizationsByRegIDRequest
+		err = json.Unmarshal(req, &r)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetAuthorizationsByRegID, err, req)
+			return
+		}
+		authzIds, err := impl.GetAuthorizationsByRegID(r.RegID, r.ExpiresAfter, r.Limit)
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetAuthorizationsByRegID, err, req)
+			return
+		}
+		response, err = json.Marshal(getAuthorizationsByRegIDResponse{authzIds})
+		if err != nil {
+			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+			errorCondition(MethodGetAuthorizationsByRegID, err, req)
+			return
+		}
+
+		return
+	})
+
 	return nil
 }
 
@@ -1684,4 +1719,21 @@ func (cac StorageAuthorityClient) FQDNSetExists(names []string) (bool, error) {
 	var exists fqdnSetExistsResponse
 	err = json.Unmarshal(response, &exists)
 	return exists.Exists, err
+}
+
+// GetAuthorizationsByRegID returns the authorization Ids matching the regID given.
+// The number of IDs returned is dependent on the limit variable. If exiresAfter is
+// before now it willl return the list as if now was given
+func (cac StorageAuthorityClient) GetAuthorizationsByRegID(regID int64, expiresAfter time.Time, limit int64) ([]string, error) {
+	data, err := json.Marshal(getAuthorizationsByRegIDRequest{regID, expiresAfter, limit})
+	if err != nil {
+		return nil, err
+	}
+	response, err := cac.rpc.DispatchSync(MethodGetAuthorizationsByRegID, data)
+	if err != nil {
+		return nil, err
+	}
+	var authzIds getAuthorizationsByRegIDResponse
+	err = json.Unmarshal(response, &authzIds)
+	return authzIds.AuthIds, err
 }
