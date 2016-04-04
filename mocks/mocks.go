@@ -368,3 +368,8 @@ func (m *Mailer) SendMail(to []string, subject, msg string) error {
 	}
 	return nil
 }
+
+// Close is a mock
+func (m *Mailer) Close() error {
+	return nil
+}

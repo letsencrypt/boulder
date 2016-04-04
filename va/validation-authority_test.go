@@ -140,9 +140,9 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 			t.Logf("HTTPSRV: Path = %s\n", r.URL.Path)
 
 			keyAuthz, _ := core.NewKeyAuthorization(currentToken, accountKey)
-			t.Logf("HTTPSRV: Key Authz = '%s%s'\n", keyAuthz.String(), "\\n \\t")
+			t.Logf("HTTPSRV: Key Authz = '%s%s'\n", keyAuthz.String(), "\\n\\r \\t")
 
-			fmt.Fprint(w, keyAuthz.String(), "\n \t")
+			fmt.Fprint(w, keyAuthz.String(), "\n\r \t")
 			currentToken = defaultToken
 		}
 	})

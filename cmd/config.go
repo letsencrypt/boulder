@@ -101,10 +101,6 @@ type Config struct {
 		DNSTries int
 	}
 
-	SQL struct {
-		SQLDebug bool
-	}
-
 	Statsd StatsdConfig
 
 	Syslog SyslogConfig

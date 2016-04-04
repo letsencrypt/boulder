@@ -326,6 +326,7 @@ func main() {
 		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, c.Mailer.From)
 		err = mailClient.Connect()
 		cmd.FailOnError(err, "Couldn't connect to mail server.")
+		defer mailClient.Close()
 
 		nagCheckInterval := defaultNagCheckInterval
 		if s := c.Mailer.NagCheckInterval; s != "" {
