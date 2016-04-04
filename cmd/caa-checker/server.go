@@ -234,7 +234,6 @@ func main() {
 		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    clientCAs,
-		// should also set ciphers + other things! (hard coded?)
 	}
 	creds := credentials.NewTLS(servConf)
 
