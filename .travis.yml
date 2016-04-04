@@ -6,6 +6,8 @@ go:
 addons:
   hosts:
     - le.wtf
+    - boulder-mysql
+    - boulder-rabbitmq
   apt:
     packages:
       - lsb-release
