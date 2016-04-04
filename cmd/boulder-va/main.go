@@ -70,10 +70,7 @@ func main() {
 		}
 		vai.UserAgent = c.VA.UserAgent
 
-		// TODO(): Remove once switch to independent CAA service is complete
-		if c.VA.CAAService == nil {
-			vai.IssuerDomain = c.VA.IssuerDomain
-		}
+		vai.IssuerDomain = c.VA.IssuerDomain
 
 		amqpConf := c.VA.AMQP
 		rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
