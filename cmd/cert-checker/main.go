@@ -18,7 +18,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
@@ -26,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -71,7 +71,7 @@ type certChecker struct {
 	rMu          *sync.Mutex
 	issuedReport report
 	checkPeriod  time.Duration
-	stats        statsd.Statter
+	stats        metrics.Statter
 }
 
 func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool, period time.Duration) certChecker {
@@ -277,7 +277,7 @@ func main() {
 		err = json.Unmarshal(configBytes, &config)
 		cmd.FailOnError(err, "Failed to parse config file")
 
-		stats, err := statsd.NewClient(config.Statsd.Server, config.Statsd.Prefix)
+		stats, err := metrics.NewStatter(config.Statsd.Server, config.Statsd.Prefix)
 		cmd.FailOnError(err, "Failed to create StatsD client")
 		syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 		cmd.FailOnError(err, "Failed to dial syslog")

@@ -278,15 +278,6 @@
     }
   },
 
-  "activityMonitor": {
-    "debugAddr": "localhost:8007",
-    "amqp": {
-      "serviceQueue": "Monitor",
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true
-    }
-  },
-
   "mailer": {
     "server": "localhost",
     "port": "9380",
