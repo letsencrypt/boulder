@@ -10,7 +10,8 @@ fi
 # Order doesn't matter. Note: godep-restore is specifically left out of the
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH).
-RUN=${RUN:-vet lint fmt migrations unit integration}
+RUN=${RUN:-vet lint fmt migrations unit integration errcheck}
+# RUN=$RUN godep-restore errcheck
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.  By defuault, we only hard-fail for gofmt,
@@ -298,6 +299,12 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
     run_and_comment git diff --exit-code Godeps/_workspace/
   fi
   end_context #godep-restore
+fi
+
+if [[ "$RUN" =~ "errcheck" ]] ; then
+  start_context "errcheck"
+  run_and_comment errcheck -ignore 'io:Write,Close,os:Remove,github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1:Rollback,net/http:Write' -ignorepkg 'github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd,github.com/letsencrypt/boulder/log,github.com/letsencrypt/boulder/metrics,github.com/letsencrypt/boulder/rpc/pb' ./akamai/ ./bdns/ ./bin/ ./ca/ ./cmd/ ./core/ ./data/ ./log/ ./mail ./metrics ./mocks ./policy ./probs ./publisher ./ra ./reloader ./rpc ./sa ./test ./va ./wfe
+  end_context #errcheck
 fi
 
 exit ${FAILURE}
