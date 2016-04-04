@@ -601,15 +601,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	// Submit the certificate to any configured CT logs
 	go func() {
-		err := ca.Publisher.SubmitToCT(certDER)
-		if err != nil {
-			ca.log.AuditErr(fmt.Errorf(
-				"Failed RPC to submit certificate to CT: serial=[%s] err=[%v], regID=[%d]",
-				serialHex,
-				err,
-				regID,
-			))
-		}
+		_ = ca.Publisher.SubmitToCT(certDER)
 	}()
 
 	// Do not return an err at this point; caller must know that the Certificate
