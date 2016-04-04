@@ -1,5 +1,5 @@
 address: 127.0.0.1:9090
-issuer-domain: letsencrypt.org
+issuer-domain: happy-hacker-ca.invalid
 dns-resolver: 127.0.0.1:8053
 dns-timeout: 10s
 statsd-server: localhost:8125

@@ -207,15 +207,16 @@
     },
     "maxConcurrentRPCServerRequests": 16,
     "dnsTries": 3,
-      "caaService": {
-          "serverAddress": "127.0.0.1:9090",
-          "serverHostname": "localhost",
-          "serverIssuerPath": "test/grpc-creds/ca.der",
-          "clientCertificatePath": "test/grpc-creds/client.pem",
-          "clientKeyPath": "test/grpc-creds/key.pem"
-      },
-      "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
+    "issuerDomain": "happy-hacker-ca.invalid",
+    "caaService": {
+      "serverAddress": "127.0.0.1:9090",
+      "serverHostname": "localhost",
+      "serverIssuerPath": "test/grpc-creds/ca.der",
+      "clientCertificatePath": "test/grpc-creds/client.pem",
+      "clientKeyPath": "test/grpc-creds/key.pem"
+    },
+    "amqp": {
+    "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "VA.server",
       "RA": {
