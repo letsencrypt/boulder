@@ -219,7 +219,7 @@ func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, 
 func NewKeyAuthorizationFromString(input string) (ka KeyAuthorization, err error) {
 	parts := strings.Split(input, ".")
 	if len(parts) != 2 {
-		err = fmt.Errorf("Invalid key authorization: %d parts", len(parts))
+		err = fmt.Errorf("Invalid key authorization: does not look like a key authorization (found %d periods)", len(parts)-1)
 		return
 	} else if !LooksLikeAToken(parts[0]) {
 		err = fmt.Errorf("Invalid key authorization: malformed token")
