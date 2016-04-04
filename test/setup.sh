@@ -20,7 +20,7 @@ go get \
  chmod +x $GOPATH/bin/goose &&
  ./test/create_db.sh) &
 
-# Set up rabbitmq exchange and activity monitor queue
+# Set up rabbitmq exchange
 go run cmd/rabbitmq-setup/main.go -server amqp://localhost &
 
 # Wait for all the background commands to finish.

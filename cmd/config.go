@@ -25,10 +25,6 @@ import (
 //
 // Note: NO DEFAULTS are provided.
 type Config struct {
-	ActivityMonitor struct {
-		ServiceConfig
-	}
-
 	// Default AMQPConfig for services that don't specify one.
 	// TODO(jsha): Delete this after a deploy.
 	AMQP *AMQPConfig
@@ -190,6 +186,9 @@ type Config struct {
 
 		Workers             int
 		ReportDirectoryPath string
+		UnexpiredOnly       bool
+		BadResultsOnly      bool
+		CheckPeriod         ConfigDuration
 	}
 	AllowedSigningAlgos *AllowedSigningAlgos
 

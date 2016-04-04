@@ -8,7 +8,6 @@ package main
 import (
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
 
@@ -27,7 +26,7 @@ const clientName = "VA"
 
 func main() {
 	app := cmd.NewAppShell("boulder-va", "Handles challenge validation")
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
 		go cmd.DebugServer(c.VA.DebugAddr)
 
 		go cmd.ProfileCmd("VA", stats)

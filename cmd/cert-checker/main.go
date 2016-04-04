@@ -10,15 +10,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log/syslog"
 	"os"
-	"path"
 	"reflect"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
@@ -26,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -36,7 +36,7 @@ const (
 
 	filenameLayout = "20060102"
 
-	checkPeriod = time.Hour * 24 * 90
+	expectedValidityPeriod = time.Hour * 24 * 90
 
 	batchSize = 1000
 )
@@ -44,27 +44,23 @@ const (
 type report struct {
 	begin     time.Time
 	end       time.Time
-	GoodCerts int64
-	BadCerts  int64
-	Entries   map[string]reportEntry
+	GoodCerts int64                  `json:"good-certs"`
+	BadCerts  int64                  `json:"bad-certs"`
+	Entries   map[string]reportEntry `json:"entries"`
 }
 
-func (r *report) save(directory string) error {
-	filename := path.Join(directory, fmt.Sprintf(
-		"%s-%s-report.json",
-		r.begin.Format(filenameLayout),
-		r.end.Format(filenameLayout),
-	))
-	content, err := json.Marshal(r)
+func (r *report) dump() error {
+	content, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(filename, content, os.ModePerm)
+	fmt.Fprintln(os.Stdout, string(content))
+	return nil
 }
 
 type reportEntry struct {
 	Valid    bool     `json:"valid"`
-	Problems []string `json:"problem,omitempty"`
+	Problems []string `json:"problems,omitempty"`
 }
 
 type certChecker struct {
@@ -74,32 +70,45 @@ type certChecker struct {
 	clock        clock.Clock
 	rMu          *sync.Mutex
 	issuedReport report
+	checkPeriod  time.Duration
+	stats        metrics.Statter
 }
 
-func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool) certChecker {
+func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool, period time.Duration) certChecker {
 	pa, err := policy.New(paDbMap, enforceWhitelist, challengeTypes)
 	cmd.FailOnError(err, "Failed to create PA")
 	c := certChecker{
-		pa:    pa,
-		dbMap: saDbMap,
-		certs: make(chan core.Certificate, batchSize),
-		rMu:   new(sync.Mutex),
-		clock: clk,
+		pa:          pa,
+		dbMap:       saDbMap,
+		certs:       make(chan core.Certificate, batchSize),
+		rMu:         new(sync.Mutex),
+		clock:       clk,
+		checkPeriod: period,
 	}
 	c.issuedReport.Entries = make(map[string]reportEntry)
 
 	return c
 }
 
-func (c *certChecker) getCerts() error {
-	c.issuedReport.end = c.clock.Now()
-	c.issuedReport.begin = c.issuedReport.end.Add(-checkPeriod)
+const (
+	getCertsCountQuery = "SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now"
+	getCertsQuery      = "SELECT * FROM certificates WHERE issued >= :issued AND expires >= :now AND serial > :lastSerial LIMIT :limit"
+)
 
+func (c *certChecker) getCerts(unexpiredOnly bool) error {
+	c.issuedReport.end = c.clock.Now()
+	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
+
+	args := map[string]interface{}{"issued": c.issuedReport.begin, "now": 0}
+	if unexpiredOnly {
+		now := c.clock.Now()
+		args["now"] = now
+	}
 	var count int
 	err := c.dbMap.SelectOne(
 		&count,
-		"SELECT count(*) FROM certificates WHERE issued >= :issued",
-		map[string]interface{}{"issued": c.issuedReport.begin},
+		getCertsCountQuery,
+		args,
 	)
 	if err != nil {
 		return err
@@ -108,13 +117,17 @@ func (c *certChecker) getCerts() error {
 	// Retrieve certs in batches of 1000 (the size of the certificate channel)
 	// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
 	// packet limit.
-	// TODO(#701): This query needs to make better use of indexes
+	args["limit"] = batchSize
+	args["lastSerial"] = ""
 	for offset := 0; offset < count; {
 		var certs []core.Certificate
+		if offset > 0 {
+			args["lastSerial"] = certs[len(certs)-1].Serial
+		}
 		_, err = c.dbMap.Select(
 			&certs,
-			"SELECT * FROM certificates WHERE issued >= :issued ORDER BY issued ASC LIMIT :limit OFFSET :offset",
-			map[string]interface{}{"issued": c.issuedReport.begin, "limit": batchSize, "offset": offset},
+			getCertsQuery,
+			args,
 		)
 		if err != nil {
 			return err
@@ -130,14 +143,16 @@ func (c *certChecker) getCerts() error {
 	return nil
 }
 
-func (c *certChecker) processCerts(wg *sync.WaitGroup) {
+func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool) {
 	for cert := range c.certs {
 		problems := c.checkCert(cert)
 		valid := len(problems) == 0
 		c.rMu.Lock()
-		c.issuedReport.Entries[cert.Serial] = reportEntry{
-			Valid:    valid,
-			Problems: problems,
+		if !badResultsOnly || (badResultsOnly && !valid) {
+			c.issuedReport.Entries[cert.Serial] = reportEntry{
+				Valid:    valid,
+				Problems: problems,
+			}
 		}
 		c.rMu.Unlock()
 		if !valid {
@@ -181,21 +196,27 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		}
 		// Check the cert has the correct validity period
 		validityPeriod := parsedCert.NotAfter.Sub(parsedCert.NotBefore)
-		if validityPeriod > checkPeriod {
-			problems = append(problems, fmt.Sprintf("Certificate has a validity period longer than %s", checkPeriod))
-		} else if validityPeriod < checkPeriod {
-			problems = append(problems, fmt.Sprintf("Certificate has a validity period shorter than %s", checkPeriod))
+		if validityPeriod > expectedValidityPeriod {
+			problems = append(problems, fmt.Sprintf("Certificate has a validity period longer than %s", expectedValidityPeriod))
+		} else if validityPeriod < expectedValidityPeriod {
+			problems = append(problems, fmt.Sprintf("Certificate has a validity period shorter than %s", expectedValidityPeriod))
 		}
-
+		// Check the stored issuance time isn't too far back/forward dated
 		if parsedCert.NotBefore.Before(cert.Issued.Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.Add(6*time.Hour)) {
 			problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
 		}
-
+		// Check CommonName is <= 64 characters
+		if len(parsedCert.Subject.CommonName) > 64 {
+			problems = append(
+				problems,
+				fmt.Sprintf("Certificate has common name >64 characters long (%d)", len(parsedCert.Subject.CommonName)),
+			)
+		}
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
 			if err = c.pa.WillingToIssue(id, cert.RegistrationID); err != nil {
-				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for %s: %s", name, err))
+				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			}
 		}
 		// Check the cert has the correct key usage extensions
@@ -207,74 +228,129 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 }
 
 func main() {
-	app := cmd.NewAppShell("cert-checker", "Checks validity of certificates issued in the last 90 days")
-	app.App.Flags = append(app.App.Flags, cli.IntFlag{
-		Name:  "workers",
-		Value: runtime.NumCPU(),
-		Usage: "The number of concurrent workers used to process certificates",
-	}, cli.StringFlag{
-		Name:  "report-dir-path",
-		Usage: "The path to write a JSON report on the certificates checks to (if no path is provided the report will not be written out)",
-	}, cli.StringFlag{
-		Name:  "db-connect",
-		Usage: "SQL URI if not provided in the configuration file",
-	})
+	app := cli.NewApp()
+	app.Name = "cert-checker"
+	app.Usage = "Checks validity of issued certificates stored in the database"
+	app.Version = cmd.Version()
+	app.Author = "Boulder contributors"
+	app.Email = "ca-dev@letsencrypt.org"
 
-	app.Config = func(c *cli.Context, config cmd.Config) cmd.Config {
-		config.CertChecker.ReportDirectoryPath = c.GlobalString("report-dir-path")
+	app.Flags = []cli.Flag{
+		cli.IntFlag{
+			Name:  "workers",
+			Value: runtime.NumCPU(),
+			Usage: "The number of concurrent workers used to process certificates",
+		},
+		cli.BoolFlag{
+			Name:  "unexpired-only",
+			Usage: "Only check currently unexpired certificates",
+		},
+		cli.BoolFlag{
+			Name:  "bad-results-only",
+			Usage: "Only collect and display bad results",
+		},
+		cli.StringFlag{
+			Name:  "db-connect",
+			Usage: "SQL URI if not provided in the configuration file",
+		},
+		cli.StringFlag{
+			Name:  "check-period",
+			Value: "2160h",
+			Usage: "How far back to check",
+		},
+		cli.StringFlag{
+			Name:  "config",
+			Value: "config.json",
+			Usage: "Path to configuration file",
+		},
+	}
+
+	app.Action = func(c *cli.Context) {
+		configPath := c.GlobalString("config")
+		if configPath == "" {
+			fmt.Fprintln(os.Stderr, "--config is required")
+			os.Exit(1)
+		}
+		configBytes, err := ioutil.ReadFile(configPath)
+		cmd.FailOnError(err, "Failed to read config file")
+		var config cmd.Config
+		err = json.Unmarshal(configBytes, &config)
+		cmd.FailOnError(err, "Failed to parse config file")
+
+		stats, err := metrics.NewStatter(config.Statsd.Server, config.Statsd.Prefix)
+		cmd.FailOnError(err, "Failed to create StatsD client")
+		syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+		cmd.FailOnError(err, "Failed to dial syslog")
+		logger, err := blog.NewAuditLogger(syslogger, stats, 0)
+		cmd.FailOnError(err, "Failed to construct logger")
+		err = blog.SetAuditLogger(logger)
+		cmd.FailOnError(err, "Failed to set audit logger")
 
 		if connect := c.GlobalString("db-connect"); connect != "" {
 			config.CertChecker.DBConnect = connect
 		}
-
 		if workers := c.GlobalInt("workers"); workers != 0 {
 			config.CertChecker.Workers = workers
 		}
+		config.CertChecker.UnexpiredOnly = c.GlobalBool("valid-only")
+		config.CertChecker.BadResultsOnly = c.GlobalBool("bad-results-only")
+		if cp := c.GlobalString("check-period"); cp != "" {
+			config.CertChecker.CheckPeriod.Duration, err = time.ParseDuration(cp)
+			cmd.FailOnError(err, "Failed to parse check period")
+		}
 
-		return config
-	}
-
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
 		// Validate PA config and set defaults if needed
-		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
+		cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 
-		saDbURL, err := c.CertChecker.DBConfig.URL()
+		saDbURL, err := config.CertChecker.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		saDbMap, err := sa.NewDbMap(saDbURL)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		paDbURL, err := c.PA.DBConfig.URL()
+		paDbURL, err := config.PA.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		paDbMap, err := sa.NewDbMap(paDbURL)
 		cmd.FailOnError(err, "Could not connect to policy database")
 
-		checker := newChecker(saDbMap, paDbMap, clock.Default(), c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
-		auditlogger.Info("# Getting certificates issued in the last 90 days")
+		checker := newChecker(
+			saDbMap,
+			paDbMap,
+			clock.Default(),
+			config.PA.EnforcePolicyWhitelist,
+			config.PA.Challenges,
+			config.CertChecker.CheckPeriod.Duration,
+		)
+		fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
 
 		// Since we grab certificates in batches we don't want this to block, when it
 		// is finished it will close the certificate channel which allows the range
 		// loops in checker.processCerts to break
 		go func() {
-			err = checker.getCerts()
+			err = checker.getCerts(config.CertChecker.UnexpiredOnly)
 			cmd.FailOnError(err, "Batch retrieval of certificates failed")
 		}()
 
-		auditlogger.Info(fmt.Sprintf("# Processing certificates using %d workers", c.CertChecker.Workers))
+		fmt.Fprintf(os.Stderr, "# Processing certificates using %d workers\n", config.CertChecker.Workers)
 		wg := new(sync.WaitGroup)
-		for i := 0; i < c.CertChecker.Workers; i++ {
+		for i := 0; i < config.CertChecker.Workers; i++ {
 			wg.Add(1)
-			go checker.processCerts(wg)
+			go func() {
+				s := checker.clock.Now()
+				checker.processCerts(wg, config.CertChecker.BadResultsOnly)
+				stats.TimingDuration("certChecker.processingLatency", time.Since(s), 1.0)
+			}()
 		}
 		wg.Wait()
-		auditlogger.Info(fmt.Sprintf(
-			"# Finished processing certificates, sample: %d, good: %d, bad: %d",
+		fmt.Fprintf(
+			os.Stderr,
+			"# Finished processing certificates, sample: %d, good: %d, bad: %d\n",
 			len(checker.issuedReport.Entries),
 			checker.issuedReport.GoodCerts,
 			checker.issuedReport.BadCerts,
-		))
-		err = checker.issuedReport.save(c.CertChecker.ReportDirectoryPath)
-		cmd.FailOnError(err, "Couldn't save issued certificate report")
+		)
+		err = checker.issuedReport.dump()
+		cmd.FailOnError(err, "Failed to dump results: %s\n")
 	}
 
-	app.Run()
+	app.Run(os.Args)
 }

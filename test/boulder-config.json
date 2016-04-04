@@ -151,6 +151,7 @@
   },
 
   "pa": {
+    "dbConnectFile": "test/secrets/pa_dburl",
     "challenges": {
       "http-01": true,
       "tls-sni-01": true,
@@ -274,15 +275,6 @@
         "server": "Publisher.server",
         "rpcTimeout": "15s"
       }
-    }
-  },
-
-  "activityMonitor": {
-    "debugAddr": "localhost:8007",
-    "amqp": {
-      "serviceQueue": "Monitor",
-      "serverURLFile": "test/secrets/amqp_url",
-      "insecure": true
     }
   },
 
