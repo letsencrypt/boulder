@@ -24,7 +24,7 @@ exec 6<&-
 # create the database
 source $DIR/create_db.sh
 
-# Set up rabbitmq exchange and activity monitor queue
+# Set up rabbitmq exchange
 go run cmd/rabbitmq-setup/main.go -server amqp://localhost
 
 $@
