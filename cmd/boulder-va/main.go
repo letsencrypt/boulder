@@ -6,18 +6,15 @@
 package main
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"io/ioutil"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/credentials"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
@@ -51,20 +48,8 @@ func main() {
 		}
 		var caaClient caaPB.CAACheckerClient
 		if c.VA.CAAService != nil {
-			serverIssuerBytes, err := ioutil.ReadFile(c.VA.CAAService.ServerIssuerPath)
-			cmd.FailOnError(err, "Failed to read CAA issuer file")
-			serverIssuer, err := x509.ParseCertificate(serverIssuerBytes)
-			cmd.FailOnError(err, "Failed to parse CAA issuer file")
-			rootCAs := x509.NewCertPool()
-			rootCAs.AddCert(serverIssuer)
-			clientCert, err := tls.LoadX509KeyPair(c.VA.CAAService.ClientCertificatePath, c.VA.CAAService.ClientKeyPath)
-			cmd.FailOnError(err, "Failed to load and parse client certificate")
-			clientConf := &tls.Config{
-				ServerName:   c.VA.CAAService.ServerHostname,
-				RootCAs:      rootCAs,
-				Certificates: []tls.Certificate{clientCert},
-			}
-			creds := credentials.NewTLS(clientConf)
+			creds, err := bgrpc.LoadClientCreds(c.VA.CAAService)
+			cmd.FailOnError(err, "Failed to load gRPC client and issuer certificates")
 			conn, err := grpc.Dial(c.VA.CAAService.ServerAddress, grpc.WithTransportCredentials(creds))
 			cmd.FailOnError(err, "Failed to dial CAA service")
 			caaClient = caaPB.NewCAACheckerClient(conn)

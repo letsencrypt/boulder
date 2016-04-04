@@ -14,6 +14,7 @@ import (
 func main() {
 	addr := flag.String("addr", "127.0.0.1:2020", "CCS address")
 	name := flag.String("name", "", "Name to check")
+	issuer := flag.String("issuerDoamin", "", "Issuer domain to check against")
 	flag.Parse()
 
 	// Set up a connection to the server.
@@ -25,7 +26,7 @@ func main() {
 	defer conn.Close()
 	c := pb.NewCAACheckerClient(conn)
 
-	r, err := c.ValidForIssuance(context.Background(), &pb.Domain{Name: *name})
+	r, err := c.ValidForIssuance(context.Background(), &pb.Check{Name: *name, IssuerDomain: *issuer})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ValidForIssuance call failed: %s\n", err)
 		os.Exit(1)

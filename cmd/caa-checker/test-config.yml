@@ -4,6 +4,6 @@ dns-resolver: 127.0.0.1:8053
 dns-timeout: 10s
 statsd-server: localhost:8125
 statsd-prefix: boulder
-certificate-path: test/test-grpc-server.pem
-key-path: test/test-grpc-key.pem
-client-issuer-path: test/test-grpc-ca.der
+certificate-path: test/grpc-creds/server.pem
+key-path: test/grpc-creds/key.pem
+client-issuer-path: test/grpc-creds/ca.der

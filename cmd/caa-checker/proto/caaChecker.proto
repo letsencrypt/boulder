@@ -1,11 +1,12 @@
 syntax = "proto3";
 
 service CAAChecker {
-        rpc ValidForIssuance(Domain) returns (Valid) {}
+        rpc ValidForIssuance(Check) returns (Valid) {}
 }
 
-message Domain {
+message Check {
         string name = 1;
+        string issuerDomain = 2;
 }
 
 message Valid {

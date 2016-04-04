@@ -25,7 +25,6 @@ import (
 )
 
 type caaCheckerServer struct {
-	issuer   string
 	resolver bdns.DNSResolver
 	stats    statsd.Statter
 }
@@ -140,7 +139,7 @@ func extractIssuerDomain(caa *dns.CAA) string {
 	return strings.Trim(v[0:idx], " \t")
 }
 
-func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string) (bool, bool, error) {
+func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string, issuer string) (bool, bool, error) {
 	hostname = strings.ToLower(hostname)
 	caaSet, err := ccs.getCAASet(ctx, hostname)
 	if err != nil {
@@ -177,7 +176,7 @@ func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string) (boo
 	//
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range caaSet.Issue {
-		if extractIssuerDomain(caa) == ccs.issuer {
+		if extractIssuerDomain(caa) == issuer {
 			ccs.stats.Inc("CCS.CAA.Authorized", 1, 1.0)
 			return true, true, nil
 		}
@@ -188,8 +187,8 @@ func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string) (boo
 	return true, false, nil
 }
 
-func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, domain *pb.Domain) (*pb.Valid, error) {
-	present, valid, err := ccs.checkCAA(ctx, domain.Name)
+func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Check) (*pb.Valid, error) {
+	present, valid, err := ccs.checkCAA(ctx, check.Name, check.IssuerDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +200,6 @@ type config struct {
 	DNSResolver      string             `yaml:"dns-resolver"`
 	DNSNetwork       string             `yaml:"dns-network"`
 	DNSTimeout       cmd.ConfigDuration `yaml:"dns-timeout"`
-	IssuerDomain     string             `yaml:"issuer-domain"`
 	StatsdServer     string             `yaml:"statsd-server"`
 	StatsdPrefix     string             `yaml:"statsd-prefix"`
 	CertificatePath  string             `yaml:"certificate-path"`
@@ -251,7 +249,7 @@ func main() {
 		5,
 	)
 
-	ccs := &caaCheckerServer{c.IssuerDomain, resolver, stats}
+	ccs := &caaCheckerServer{resolver, stats}
 	pb.RegisterCAACheckerServer(s, ccs)
 	err = s.Serve(l)
 	cmd.FailOnError(err, "gRPC service failed")

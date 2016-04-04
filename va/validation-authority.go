@@ -483,7 +483,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 }
 
 func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
-	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Domain{Name: ident.Value})
+	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: ident.Value, IssuerDomain: va.IssuerDomain})
 	if err != nil {
 		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
 		return bdns.ProblemDetailsFromDNSError(err) // not sure this will work :/

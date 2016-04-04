@@ -93,7 +93,7 @@ type Config struct {
 
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
 
-		CAAService *CAAConfig
+		CAAService *GRPCClientConfig
 
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
@@ -508,7 +508,7 @@ type LogDescription struct {
 
 // CAAConfig contains the information needed to talk to the CAA service
 // over gRPC
-type CAAConfig struct {
+type GRPCClientConfig struct {
 	ServerAddress         string
 	ServerHostname        string
 	ServerIssuerPath      string
