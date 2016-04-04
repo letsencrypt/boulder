@@ -356,20 +356,11 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 
-	// Parse body as a key authorization object
-	serverKeyAuthorization, authErr := core.NewKeyAuthorizationFromString(payload)
-	if authErr != nil {
-		va.log.Info(fmt.Sprintf("Couldn't parse KeyAuthorization from response from %s. err=[%#v] errStr=[%s]", identifier, authErr, authErr))
-		return validationRecords, &probs.ProblemDetails{
-			Type:   probs.UnauthorizedProblem,
-			Detail: fmt.Sprintf("Error parsing key authorization file: %s", authErr.Error()),
-		}
-	}
-
-	// Check that the account key for this challenge is authorized by this object
-	if !serverKeyAuthorization.Match(challenge.Token, challenge.AccountKey) {
+	// Check that the key authorization matches
+	expectedKeyAuth := core.NewKeyAuthorization(challenge.Token, challenge.AccountKey)
+	if expectedKeyAuth.String() != payload {
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
-			challenge.KeyAuthorization.String(), string(body))
+			expectedKeyAuth.String(), string(body))
 		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
 		return validationRecords, &probs.ProblemDetails{
 			Type:   probs.UnauthorizedProblem,
