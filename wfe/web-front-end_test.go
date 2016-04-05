@@ -522,24 +522,6 @@ func TestIndex(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "")
 }
 
-func TestDirectory(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	wfe.BaseURL = "http://localhost:4300"
-	mux, err := wfe.Handler()
-	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
-
-	responseWriter := httptest.NewRecorder()
-
-	url, _ := url.Parse("/directory")
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    url,
-	})
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
-}
-
 // TODO: Write additional test cases for:
 //  - RA returns with a failure
 func TestIssueCertificate(t *testing.T) {
