@@ -26,23 +26,43 @@ is_running(){
 	echo $state
 }
 
-# To share the same boulder config between docker and non-docker cases
-# we use host networking but restrict containers to listen to
-# 127.0.0.1 to avoid exposing services beyond the host.
+# The DOCKER_NETWORK environment variable allows to override the default
+# Docker bridge networking and instruct all containers either to join
+# the given Docker network or to use the networking stack of another
+# container when DOCKER_NETWORK has container:<name> form.
+#
+# When using the latter form the container shall ensure that boulder,
+# boulder-mysql and boulder-rabbitmq names resolve into 127.0.0.1
+# using, for example, --add-host option to docker run or create. Also
+# that container should expose the tcp ports 400, 4002 an 4003 if the
+# boulder instance should be reachable from outside that container network.
 
+net_args=()
+if [[ ${DOCKER_NETWORK-} ]]; then
+	[[ $DOCKER_NETWORK != host ]] || {
+		echo "Using host networking is not supported" >&2
+		exit 1
+	}
+	net_args=(--net "$DOCKER_NETWORK")
+fi
+
+# Direct mysql and rabbitmq to listen only on IPv4. This avoids
+# accidental exposure of passwordless services to Intrnet when
+# container gets a routable IPv6 address which Docker does not protect
+# with a firewall.
 if [[ "$(is_running boulder-mysql)" != "true" ]]; then
 	# bring up mysql mariadb container - no need to publish port
 	# 3306 with host networking
 	docker run -d \
 		-e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
-		--name boulder-mysql \
+		--name boulder-mysql "${net_args[@]}" \
 		mariadb:10.0 mysqld --bind-address=0.0.0.0
 fi
 
 if [[ "$(is_running boulder-rabbitmq)" != "true" ]]; then
 	docker run -d \
 		-e RABBITMQ_NODE_IP_ADDRESS=0.0.0.0 \
-		--name boulder-rabbitmq \
+		--name boulder-rabbitmq "${net_args[@]}" \
 		rabbitmq:3
 fi
 
@@ -56,7 +76,25 @@ docker build --rm --force-rm -t letsencrypt/boulder .
 # FAKE_DNS to that host's IP address.
 fake_dns_args=()
 if [[ $FAKE_DNS ]]; then
-    fake_dns_args=(-e "FAKE_DNS=$FAKE_DNS")
+	fake_dns_args=(-e "FAKE_DNS=$FAKE_DNS")
+fi
+
+if [[ -z ${DOCKER_NETWORK-} ]]; then
+	net_args+=(
+		-p 4000:4000
+		-p 4002:4002
+		-p 4003:4003
+		--link=boulder-mysql:boulder-mysql
+		--link=boulder-rabbitmq:boulder-rabbitmq
+	)
+elif ! [[ $DOCKER_NETWORK =~ ^container: ]]; then
+	# When joining another container network stack -p is not
+	# supported as ports should be exposed from that container.
+	net_args+=(
+		-p 4000:4000
+		-p 4002:4002
+		-p 4003:4003
+	)
 fi
 
 # run the boulder container
@@ -65,10 +103,6 @@ fi
 docker run --rm -it \
 	-e MYSQL_CONTAINER=yes \
 	"${fake_dns_args[@]}" \
-	-p 4000:4000 \
-	-p 4002:4002 \
-	-p 4003:4003 \
-		--name boulder \
-		--link=boulder-mysql:boulder-mysql \
-		--link=boulder-rabbitmq:boulder-rabbitmq \
+	--name boulder \
+	"${net_args[@]}" \
 	letsencrypt/boulder
