@@ -322,8 +322,7 @@ func (log *AuditLogger) SetEmergencyExitFunc(exit exitFunction) {
 
 // EmergencyExit triggers an immediate Boulder shutdown in the event of serious
 // errors. This function will provide the necessary housekeeping.
-// Currently, make an emergency log entry and exit; the Activity Monitor
-// should notice the Emerg level event and shut down all components.
+// Currently, make an emergency log entry and exit.
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 func (log *AuditLogger) EmergencyExit(msg string) {
 	log.auditAtLevel(syslog.LOG_EMERG, msg)

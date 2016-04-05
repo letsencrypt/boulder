@@ -131,18 +131,6 @@ type AmqpRPCServer struct {
 
 const wildcardRoutingKey = "#"
 
-// NewMonitorServer creates an AmqpRPCServer that binds its queue to the
-// wildcard routing key instead of the default of binding to the queue name.
-// This allows Activity Monitor to observe all messages sent to the exchange.
-func NewMonitorServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
-	server, err := NewAmqpRPCServer(amqpConf, maxConcurrentRPCServerRequests, stats)
-	if err != nil {
-		return nil, err
-	}
-	server.connection.routingKey = wildcardRoutingKey
-	return server, nil
-}
-
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
 func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
@@ -172,15 +160,6 @@ func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests i
 func (rpc *AmqpRPCServer) Handle(method string, handler messageHandler) {
 	rpc.mu.Lock()
 	rpc.dispatchTable[method] = handler
-	rpc.mu.Unlock()
-}
-
-// HandleDeliveries allows a server to receive amqp.Delivery directly (e.g.
-// ActivityMonitor), it can provide one of these. Otherwise processMessage is
-// used by default.
-func (rpc *AmqpRPCServer) HandleDeliveries(handler DeliveryHandler) {
-	rpc.mu.Lock()
-	rpc.handleDelivery = handler
 	rpc.mu.Unlock()
 }
 
