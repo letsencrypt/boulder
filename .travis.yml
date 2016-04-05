@@ -21,7 +21,7 @@ addons:
       - rsyslog
   mariadb: "10.0"
 
-sudo: true
+sudo: false
 
 services:
   - rabbitmq
@@ -65,6 +65,3 @@ env:
 script:
   - bash test.sh
 
-after_failure:
-  - sudo cat /var/log/mysql/error.log
-  - ps aux | grep mysql

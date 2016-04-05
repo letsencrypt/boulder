@@ -26,7 +26,6 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
-	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
@@ -152,15 +151,22 @@ func mustRead(path string) []byte {
 }
 
 type testCtx struct {
-	sa        core.StorageAuthority
 	caConfig  cmd.CAConfig
-	reg       core.Registration
 	pa        core.PolicyAuthority
 	issuers   []Issuer
 	keyPolicy core.KeyPolicy
 	fc        clock.FakeClock
 	stats     *mocks.Statter
 	cleanUp   func()
+}
+
+type mockSA struct {
+	certificate core.Certificate
+}
+
+func (m *mockSA) AddCertificate(der []byte, _ int64) (string, error) {
+	m.certificate.DER = der
+	return "", nil
 }
 
 var caKey crypto.Signer
@@ -179,18 +185,8 @@ func init() {
 }
 
 func setup(t *testing.T) *testCtx {
-	// Create an SA
-	dbMap, err := sa.NewDbMap(vars.DBConnSA)
-	if err != nil {
-		t.Fatalf("Failed to create dbMap: %s", err)
-	}
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc)
-	if err != nil {
-		t.Fatalf("Failed to create SA: %s", err)
-	}
-	saDBCleanUp := test.ResetSATestDatabase(t)
 
 	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
 	test.AssertNotError(t, err, "Could not construct dbMap")
@@ -199,12 +195,8 @@ func setup(t *testing.T) *testCtx {
 	paDBCleanUp := test.ResetPolicyTestDatabase(t)
 
 	cleanUp := func() {
-		saDBCleanUp()
 		paDBCleanUp()
 	}
-
-	// TODO(jmhodges): use of this pkg here is a bug caused by using a real SA
-	reg := satest.CreateWorkingRegistration(t, ssa)
 
 	// Create a CA
 	caConfig := cmd.CAConfig{
@@ -282,9 +274,7 @@ func setup(t *testing.T) *testCtx {
 	}
 
 	return &testCtx{
-		ssa,
 		caConfig,
-		reg,
 		pa,
 		issuers,
 		keyPolicy,
@@ -320,14 +310,15 @@ func TestIssueCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	sa := &mockSA{}
+	ca.SA = sa
 
 	csrs := [][]byte{CNandSANCSR, NoSANCSR}
 	for _, csrDER := range csrs {
 		csr, _ := x509.ParseCertificateRequest(csrDER)
 
 		// Sign CSR
-		issuedCert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+		issuedCert, err := ca.IssueCertificate(*csr, 1001)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 		if err != nil {
 			continue
@@ -367,16 +358,7 @@ func TestIssueCertificate(t *testing.T) {
 		if cert.Subject.SerialNumber != serialString {
 			t.Errorf("SerialNumber: want %#v, got %#v", serialString, cert.Subject.SerialNumber)
 		}
-		storedCert, err := ctx.sa.GetCertificate(serialString)
-		test.AssertNotError(t, err,
-			fmt.Sprintf("Certificate %s not found in database", serialString))
-		test.Assert(t, bytes.Equal(issuedCert.DER, storedCert.DER), "Retrieved cert not equal to issued cert.")
-
-		certStatus, err := ctx.sa.GetCertificateStatus(serialString)
-		test.AssertNotError(t, err,
-			fmt.Sprintf("Error fetching status for certificate %s", serialString))
-		test.Assert(t, certStatus.Status == core.OCSPStatusGood, "Certificate status was not good")
-		test.Assert(t, certStatus.SubscriberApproved == false, "Subscriber shouldn't have approved cert yet.")
+		test.Assert(t, bytes.Equal(issuedCert.DER, sa.certificate.DER), "Retrieved cert not equal to issued cert.")
 	}
 }
 
@@ -406,10 +388,10 @@ func TestIssueCertificateMultipleIssuers(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to remake CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
-	issuedCert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+	issuedCert, err := ca.IssueCertificate(*csr, 1001)
 	test.AssertNotError(t, err, "Failed to sign certificate")
 
 	cert, err := x509.ParseCertificate(issuedCert.DER)
@@ -431,10 +413,10 @@ func TestOCSP(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	csr, _ := x509.ParseCertificateRequest(CNandSANCSR)
-	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+	cert, err := ca.IssueCertificate(*csr, 1001)
 	test.AssertNotError(t, err, "Failed to issue")
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse cert")
@@ -479,10 +461,10 @@ func TestOCSP(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to remake CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	// Now issue a new cert, signed by newIssuerCert
-	newCert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+	newCert, err := ca.IssueCertificate(*csr, 1001)
 	test.AssertNotError(t, err, "Failed to issue newCert")
 	parsedNewCert, err := x509.ParseCertificate(newCert.DER)
 	test.AssertNotError(t, err, "Failed to parse newCert")
@@ -526,10 +508,10 @@ func TestNoHostnames(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	csr, _ := x509.ParseCertificateRequest(NoNamesCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	_, err = ca.IssueCertificate(*csr, 1001)
 	test.AssertError(t, err, "Issued certificate with no names")
 	_, ok := err.(core.MalformedRequestError)
 	test.Assert(t, ok, "Incorrect error type returned")
@@ -547,11 +529,11 @@ func TestRejectTooManyNames(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	// Test that the CA rejects a CSR with too many names
 	csr, _ := x509.ParseCertificateRequest(TooManyNameCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	_, err = ca.IssueCertificate(*csr, 1001)
 	test.AssertError(t, err, "Issued certificate with too many names")
 	_, ok := err.(core.MalformedRequestError)
 	test.Assert(t, ok, "Incorrect error type returned")
@@ -569,11 +551,11 @@ func TestDeduplication(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	// Test that the CA collapses duplicate names
 	csr, _ := x509.ParseCertificateRequest(DupeNameCSR)
-	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+	cert, err := ca.IssueCertificate(*csr, 1001)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with duplicate names")
 
 	parsedCert, err := x509.ParseCertificate(cert.DER)
@@ -597,7 +579,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	// This time is a few minutes before the notAfter in testdata/ca_cert.pem
 	future, err := time.Parse(time.RFC3339, "2025-02-10T00:30:00Z")
@@ -623,11 +605,11 @@ func TestShortKey(t *testing.T) {
 		ctx.keyPolicy)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csr, _ := x509.ParseCertificateRequest(ShortKeyCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	_, err = ca.IssueCertificate(*csr, 1001)
 	test.AssertError(t, err, "Issued a certificate with too short a key.")
 	_, ok := err.(core.MalformedRequestError)
 	test.Assert(t, ok, "Incorrect error type returned")
@@ -645,11 +627,11 @@ func TestAllowNoCN(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create new CA")
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	csr, err := x509.ParseCertificateRequest(NoCNCSR)
 	test.AssertNotError(t, err, "Couldn't parse CSR")
-	issuedCert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+	issuedCert, err := ca.IssueCertificate(*csr, 1001)
 	test.AssertNotError(t, err, "Failed to sign certificate")
 	cert, err := x509.ParseCertificate(issuedCert.DER)
 	test.AssertNotError(t, err, fmt.Sprintf("unable to parse no CN cert: %s", err))
@@ -685,10 +667,10 @@ func TestLongCommonName(t *testing.T) {
 		ctx.keyPolicy)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	csr, _ := x509.ParseCertificateRequest(LongCNCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	_, err = ca.IssueCertificate(*csr, 1001)
 	test.AssertError(t, err, "Issued a certificate with a CN over 64 bytes.")
 	_, ok := err.(core.MalformedRequestError)
 	test.Assert(t, ok, "Incorrect error type returned")
@@ -705,11 +687,11 @@ func TestRejectBadAlgorithm(t *testing.T) {
 		ctx.keyPolicy)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	csr, _ := x509.ParseCertificateRequest(BadAlgorithmCSR)
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	_, err = ca.IssueCertificate(*csr, 1001)
 	test.AssertError(t, err, "Issued a certificate based on a CSR with a weak algorithm.")
 	_, ok := err.(core.MalformedRequestError)
 	test.Assert(t, ok, "Incorrect error type returned")
@@ -727,10 +709,10 @@ func TestCapitalizedLetters(t *testing.T) {
 		ctx.keyPolicy)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	csr, _ := x509.ParseCertificateRequest(CapitalizedCSR)
-	cert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+	cert, err := ca.IssueCertificate(*csr, 1001)
 	test.AssertNotError(t, err, "Failed to gracefully handle a CSR with capitalized names")
 
 	parsedCert, err := x509.ParseCertificate(cert.DER)
@@ -754,12 +736,12 @@ func TestWrongSignature(t *testing.T) {
 		ctx.keyPolicy)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	// x509.ParseCertificateRequest() does not check for invalid signatures...
 	csr, _ := x509.ParseCertificateRequest(WrongSignatureCSR)
 
-	_, err = ca.IssueCertificate(*csr, ctx.reg.ID)
+	_, err = ca.IssueCertificate(*csr, 1001)
 	if err == nil {
 		t.Fatalf("Issued a certificate based on a CSR with an invalid signature.")
 	}
@@ -777,7 +759,7 @@ func TestProfileSelection(t *testing.T) {
 		ctx.keyPolicy)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	testCases := []struct {
 		CSR              []byte
@@ -792,7 +774,7 @@ func TestProfileSelection(t *testing.T) {
 		test.AssertNotError(t, err, "Cannot parse CSR")
 
 		// Sign CSR
-		issuedCert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+		issuedCert, err := ca.IssueCertificate(*csr, 1001)
 		test.AssertNotError(t, err, "Failed to sign certificate")
 
 		// Verify cert contents
@@ -827,7 +809,7 @@ func TestExtensions(t *testing.T) {
 		ctx.keyPolicy)
 	ca.Publisher = &mocks.Publisher{}
 	ca.PA = ctx.pa
-	ca.SA = ctx.sa
+	ca.SA = &mockSA{}
 
 	mustStapleCSR, err := x509.ParseCertificateRequest(MustStapleCSR)
 	test.AssertNotError(t, err, "Error parsing MustStapleCSR")
@@ -842,7 +824,7 @@ func TestExtensions(t *testing.T) {
 	test.AssertNotError(t, err, "Error parsing UnsupportedExtensionCSR")
 
 	sign := func(csr *x509.CertificateRequest) *x509.Certificate {
-		coreCert, err := ca.IssueCertificate(*csr, ctx.reg.ID)
+		coreCert, err := ca.IssueCertificate(*csr, 1001)
 		test.AssertNotError(t, err, "Failed to issue")
 		cert, err := x509.ParseCertificate(coreCert.DER)
 		test.AssertNotError(t, err, "Error parsing certificate produced by CA")
@@ -867,7 +849,7 @@ func TestExtensions(t *testing.T) {
 	test.AssertEquals(t, ctx.stats.Counters[metricCSRExtensionTLSFeature], int64(3))
 
 	// ... but if it doesn't ask for stapling, there should be an error
-	_, err = ca.IssueCertificate(*tlsFeatureUnknownCSR, ctx.reg.ID)
+	_, err = ca.IssueCertificate(*tlsFeatureUnknownCSR, 1001)
 	test.AssertError(t, err, "Allowed a CSR with an empty TLS feature extension")
 	if _, ok := err.(core.MalformedRequestError); !ok {
 		t.Errorf("Wrong error type when rejecting a CSR with empty TLS feature extension")

@@ -32,7 +32,7 @@ const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :au
 type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
 	clk   clock.Clock
-	log   *blog.AuditLogger
+	log   blog.SyslogWriter
 }
 
 func digest256(data []byte) []byte {
@@ -54,9 +54,7 @@ type authzModel struct {
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
-func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock) (*SQLStorageAuthority, error) {
-	logger := blog.GetAuditLogger()
-
+func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, logger blog.SyslogWriter) (*SQLStorageAuthority, error) {
 	logger.Notice("Storage Authority Starting")
 	SetSQLDebug(dbMap, logger)
 

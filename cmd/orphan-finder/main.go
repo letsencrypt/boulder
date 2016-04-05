@@ -26,12 +26,17 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
+type certificateStorage interface {
+	AddCertificate([]byte, int64) (string, error)
+	GetCertificate(string) (core.Certificate, error)
+}
+
 var (
 	b64derOrphan = regexp.MustCompile(`b64der=\[([a-zA-Z0-9+/]+)\]`)
 	regOrphan    = regexp.MustCompile(`regID=\[(\d+)\]`)
 )
 
-func checkDER(sai core.StorageAuthority, der []byte) error {
+func checkDER(sai certificateStorage, der []byte) error {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
 		return fmt.Errorf("Failed to parse DER: %s", err)
@@ -46,7 +51,7 @@ func checkDER(sai core.StorageAuthority, der []byte) error {
 	return fmt.Errorf("Existing certificate lookup failed: %s", err)
 }
 
-func parseLogLine(sa core.StorageAuthority, logger *blog.AuditLogger, line string) (found bool, added bool) {
+func parseLogLine(sa certificateStorage, logger blog.SyslogWriter, line string) (found bool, added bool) {
 	if !strings.Contains(line, "b64der=") {
 		return false, false
 	}
@@ -84,7 +89,7 @@ func parseLogLine(sa core.StorageAuthority, logger *blog.AuditLogger, line strin
 	return true, true
 }
 
-func setup(c *cli.Context) (statsd.Statter, *blog.AuditLogger, *rpc.StorageAuthorityClient) {
+func setup(c *cli.Context) (statsd.Statter, blog.SyslogWriter, *rpc.StorageAuthorityClient) {
 	configJSON, err := ioutil.ReadFile(c.GlobalString("config"))
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
