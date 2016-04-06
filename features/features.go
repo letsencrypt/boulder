@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// List of features and default value
+// List of features and their default value
 var features = map[string]bool{
 	"NewVARPC": true,
 }
@@ -14,7 +14,7 @@ var features = map[string]bool{
 // a feature name that it doesn't know
 func Set(featureSet map[string]bool) error {
 	for n, v := range featureSet {
-		if present, _ := features[n]; !present {
+		if _, present := features[n]; !present {
 			return fmt.Errorf("feature '%s' doesn't exist", n)
 		}
 		features[n] = v
