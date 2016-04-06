@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -790,7 +791,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 
 	// Dispatch to the VA for service
 
-	if !ra.useNewVARPC {
+	if !ra.useNewVARPC || !features.Enabled("NewVARPC") {
 		// TODO(#1167): remove
 		ra.VA.UpdateValidations(authz, challengeIndex)
 		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)

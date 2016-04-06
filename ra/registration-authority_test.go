@@ -20,9 +20,11 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
@@ -524,6 +526,7 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	ra.useNewVARPC = true
+	features.Set(map[string]bool{"NewVARPC": true})
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
