@@ -21,7 +21,7 @@ go get \
  ./test/create_db.sh) &
 
 # Set up rabbitmq exchange
-go run cmd/rabbitmq-setup/main.go -server amqp://localhost &
+go run cmd/rabbitmq-setup/main.go -server amqp://boulder-rabbitmq &
 
 # Wait for all the background commands to finish.
 wait
