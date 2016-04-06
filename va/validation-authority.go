@@ -349,15 +349,24 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	body, validationRecords, err := va.fetchHTTP(ctx, identifier, path, false, challenge)
-	if err != nil {
-		return validationRecords, err
+	body, validationRecords, prob := va.fetchHTTP(ctx, identifier, path, false, challenge)
+	if prob != nil {
+		return validationRecords, prob
 	}
 
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 
 	// Check that the key authorization matches
-	expectedKeyAuth := core.NewKeyAuthorization(challenge.Token, challenge.AccountKey)
+	expectedKeyAuth, err := core.NewKeyAuthorization(challenge.Token, challenge.AccountKey)
+	if err != nil {
+		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
+		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
+		return validationRecords, &probs.ProblemDetails{
+			Type:   probs.MalformedProblem,
+			Detail: errString,
+		}
+	}
+
 	if expectedKeyAuth.String() != payload {
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
 			expectedKeyAuth.String(), string(body))
