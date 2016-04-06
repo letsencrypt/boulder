@@ -145,15 +145,27 @@ func ContentLengthRequired() *ProblemDetails {
 	}
 }
 
+// RollbackError is a combination of a database error and the error, if any,
+// encountered while trying to rollback the transaction.
 type RollbackError struct {
 	Err         error
 	RollbackErr error
 }
 
+// Error implements the error interface
 func (re *RollbackError) Error() string {
+	if re.RollbackErr == nil {
+		return re.Err.Error()
+	}
 	return fmt.Sprintf("%s\nWhile rolling back the database: %s", re.Err, re.RollbackErr)
 }
 
+// WithRollbackError rolls back the provided transaction (if err is non-nil)
+// and wraps the error, if any, of the rollback into a RollbackError.
+//
+// If err is nil, the transaction will NOT be rolled back.
+//
+//   err = probs.WithRollbackError(tx, err)
 func WithRollbackError(tx *gorp.Transaction, err error) *RollbackError {
 	if err == nil {
 		return nil
