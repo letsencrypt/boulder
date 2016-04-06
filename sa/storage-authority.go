@@ -24,6 +24,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :authID ORDER BY id ASC"
@@ -162,7 +163,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 
 	authObj, err := tx.Get(pendingauthzModel{}, id)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 	if authObj != nil {
@@ -171,12 +172,12 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	} else {
 		authObj, err = tx.Get(authzModel{}, id)
 		if err != nil {
-			tx.Rollback()
+			err = probs.WithRollbackError(tx, err)
 			return
 		}
 		if authObj == nil {
 			err = fmt.Errorf("No pendingAuthorization or authz with ID %s", id)
-			tx.Rollback()
+			err = probs.WithRollbackError(tx, err)
 			return
 		}
 		authD := authObj.(*authzModel)
@@ -190,14 +191,14 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 		map[string]interface{}{"authID": authz.ID},
 	)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 	var challs []core.Challenge
 	for _, c := range challObjs {
 		chall, err := modelToChallenge(&c)
 		if err != nil {
-			tx.Rollback()
+			err = probs.WithRollbackError(tx, err)
 			return core.Authorization{}, err
 		}
 		challs = append(challs, chall)
@@ -502,12 +503,12 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, reasonCode
 
 	statusObj, err := tx.Get(core.CertificateStatus{}, serial)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 	if statusObj == nil {
 		err = fmt.Errorf("No certificate with serial %s", serial)
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 	now := ssa.clk.Now()
@@ -518,11 +519,11 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, reasonCode
 
 	n, err := tx.Update(status)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 	if n == 0 {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		err = errors.New("No certificate updated. Maybe the lock column was off?")
 		return
 	}
@@ -582,14 +583,14 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 	pendingAuthz := pendingauthzModel{Authorization: authz}
 	err = tx.Insert(&pendingAuthz)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
 	for i, c := range authz.Challenges {
 		challModel, err := challengeToModel(&c, pendingAuthz.ID)
 		if err != nil {
-			tx.Rollback()
+			err = probs.WithRollbackError(tx, err)
 			return core.Authorization{}, err
 		}
 		// Magic happens here: Gorp will modify challModel, setting challModel.ID
@@ -599,12 +600,12 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 		// See https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
 		err = tx.Insert(challModel)
 		if err != nil {
-			tx.Rollback()
+			err = probs.WithRollbackError(tx, err)
 			return core.Authorization{}, err
 		}
 		challenge, err := modelToChallenge(challModel)
 		if err != nil {
-			tx.Rollback()
+			err = probs.WithRollbackError(tx, err)
 			return core.Authorization{}, err
 		}
 		authz.Challenges[i] = challenge
@@ -625,38 +626,38 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 
 	if !statusIsPending(authz.Status) {
 		err = errors.New("Use FinalizeAuthorization() to update to a final status")
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
 	if existingFinal(tx, authz.ID) {
 		err = errors.New("Cannot update a final authorization")
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
 	if !existingPending(tx, authz.ID) {
 		err = errors.New("Requested authorization not found " + authz.ID)
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
 	authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 	auth := authObj.(*pendingauthzModel)
 	auth.Authorization = authz
 	_, err = tx.Update(auth)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
@@ -674,38 +675,38 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	// Check that a pending authz exists
 	if !existingPending(tx, authz.ID) {
 		err = errors.New("Cannot finalize an authorization that is not pending")
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 	if statusIsPending(authz.Status) {
 		err = errors.New("Cannot finalize to a non-final status")
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
 	auth := &authzModel{authz}
 	authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 	oldAuth := authObj.(*pendingauthzModel)
 
 	err = tx.Insert(auth)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
 	_, err = tx.Delete(oldAuth)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
@@ -786,19 +787,19 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 	// TODO Verify that the serial number doesn't yet exist
 	err = tx.Insert(cert)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
 	err = tx.Insert(certStatus)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
 	err = addIssuedNames(tx, parsedCertificate)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 
@@ -810,7 +811,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		parsedCertificate.NotAfter,
 	)
 	if err != nil {
-		tx.Rollback()
+		err = probs.WithRollbackError(tx, err)
 		return
 	}
 

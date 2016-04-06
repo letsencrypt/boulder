@@ -28,6 +28,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -116,21 +117,15 @@ func (m *mailer) updateCertStatus(serial string) error {
 	// Update CertificateStatus object
 	tx, err := m.dbMap.Begin()
 	if err != nil {
+		err = probs.WithRollbackError(tx, err)
 		m.log.Err(fmt.Sprintf("Error opening transaction for certificate %s: %s", serial, err))
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			m.log.Err(fmt.Sprintf("Also, an error occured when rolling back the transaction: %s", rollbackErr))
-		}
 		return err
 	}
 
 	csObj, err := tx.Get(&core.CertificateStatus{}, serial)
 	if err != nil {
+		err = probs.WithRollbackError(tx, err)
 		m.log.Err(fmt.Sprintf("Error fetching status for certificate %s: %s", serial, err))
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			m.log.Err(fmt.Sprintf("Also, an error occured when rolling back the transaction: %s", rollbackErr))
-		}
 		return err
 	}
 	certStatus := csObj.(*core.CertificateStatus)
@@ -138,21 +133,15 @@ func (m *mailer) updateCertStatus(serial string) error {
 
 	_, err = tx.Update(certStatus)
 	if err != nil {
+		err = probs.WithRollbackError(tx, err)
 		m.log.Err(fmt.Sprintf("Error updating status for certificate %s: %s", serial, err))
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			m.log.Err(fmt.Sprintf("Also, an error occured when rolling back the transaction: %s", rollbackErr))
-		}
 		return err
 	}
 
 	err = tx.Commit()
 	if err != nil {
+		err = probs.WithRollbackError(tx, err)
 		m.log.Err(fmt.Sprintf("Error committing transaction for certificate %s: %s", serial, err))
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			m.log.Err(fmt.Sprintf("Also, an error occured when rolling back the transaction: %s", rollbackErr))
-		}
 		return err
 	}
 

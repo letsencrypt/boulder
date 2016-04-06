@@ -10,10 +10,11 @@ import (
 	"fmt"
 	"strings"
 
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 var errDBFailure = core.InternalServerError("Error checking policy DB.")
@@ -78,46 +79,31 @@ func NewAuthorityDatabaseImpl(dbMap gorpDbMap) (padb *AuthorityDatabaseImpl, err
 func (padb *AuthorityDatabaseImpl) LoadRules(rs RuleSet) error {
 	tx, err := padb.dbMap.Begin()
 	if err != nil {
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
-		}
+		err = probs.WithRollbackError(tx, err)
 		return err
 	}
 	_, err = tx.Exec("DELETE FROM blacklist")
 	if err != nil {
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
-		}
+		err = probs.WithRollbackError(tx, err)
 		return err
 	}
 	for _, r := range rs.Blacklist {
 		r.Host = core.ReverseName(r.Host)
 		err = tx.Insert(&r)
 		if err != nil {
-			rollbackErr := tx.Rollback()
-			if rollbackErr != nil {
-				fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
-			}
+			err = probs.WithRollbackError(tx, err)
 			return err
 		}
 	}
 	_, err = tx.Exec("DELETE FROM whitelist")
 	if err != nil {
-		rollbackErr := tx.Rollback()
-		if rollbackErr != nil {
-			fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
-		}
+		err = probs.WithRollbackError(tx, err)
 		return err
 	}
 	for _, r := range rs.Whitelist {
 		err = tx.Insert(&r)
 		if err != nil {
-			rollbackErr := tx.Rollback()
-			if rollbackErr != nil {
-				fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
-			}
+			err = probs.WithRollbackError(tx, err)
 			return err
 		}
 	}

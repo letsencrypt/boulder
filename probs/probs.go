@@ -3,6 +3,8 @@ package probs
 import (
 	"fmt"
 	"net/http"
+
+	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
 // Error types that can be used in ACME payloads
@@ -140,5 +142,24 @@ func ContentLengthRequired() *ProblemDetails {
 		Type:       MalformedProblem,
 		Detail:     "missing Content-Length header",
 		HTTPStatus: http.StatusLengthRequired,
+	}
+}
+
+type RollbackError struct {
+	Err         error
+	RollbackErr error
+}
+
+func (re *RollbackError) Error() string {
+	return fmt.Sprintf("%s\nWhile rolling back the database: %s", re.Err, re.RollbackErr)
+}
+
+func WithRollbackError(tx *gorp.Transaction, err error) *RollbackError {
+	if err == nil {
+		return nil
+	}
+	return &RollbackError{
+		Err:         err,
+		RollbackErr: tx.Rollback(),
 	}
 }

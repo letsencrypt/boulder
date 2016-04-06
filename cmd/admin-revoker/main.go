@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -163,21 +164,11 @@ func main() {
 				cac, auditlogger, dbMap, _, _ := setupContext(c)
 
 				tx, err := dbMap.Begin()
-				if err != nil {
-					rollbackErr := tx.Rollback()
-					if rollbackErr != nil {
-						fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
-					}
-				}
+				err = probs.WithRollbackError(tx, err)
 				cmd.FailOnError(err, "Couldn't begin transaction")
 
 				err = revokeBySerial(serial, core.RevocationCode(reasonCode), deny, cac, auditlogger, tx)
-				if err != nil {
-					rollbackErr := tx.Rollback()
-					if rollbackErr != nil {
-						fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
-					}
-				}
+				err = probs.WithRollbackError(tx, err)
 				cmd.FailOnError(err, "Couldn't revoke certificate")
 
 				err = tx.Commit()
@@ -200,12 +191,7 @@ func main() {
 				defer auditlogger.AuditPanic()
 
 				tx, err := dbMap.Begin()
-				if err != nil {
-					rollbackErr := tx.Rollback()
-					if rollbackErr != nil {
-						fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
-					}
-				}
+				err = probs.WithRollbackError(tx, err)
 				cmd.FailOnError(err, "Couldn't begin transaction")
 
 				_, err = sac.GetRegistration(regID)
@@ -214,12 +200,7 @@ func main() {
 				}
 
 				err = revokeByReg(regID, core.RevocationCode(reasonCode), deny, cac, auditlogger, tx)
-				if err != nil {
-					rollbackErr := tx.Rollback()
-					if rollbackErr != nil {
-						fmt.Printf("In addition, the transaction rollback failed: %v\n", rollbackErr)
-					}
-				}
+				err = probs.WithRollbackError(tx, err)
 				cmd.FailOnError(err, "Couldn't revoke certificate")
 
 				err = tx.Commit()
