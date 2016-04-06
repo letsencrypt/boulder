@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 service CAAChecker {
-        rpc ValidForIssuance(Check) returns (Valid) {}
+        rpc ValidForIssuance(Check) returns (Result) {}
 }
 
 message Check {
@@ -9,7 +9,7 @@ message Check {
         string issuerDomain = 2;
 }
 
-message Valid {
+message Result {
         bool present = 1;
         bool valid = 2;
 }

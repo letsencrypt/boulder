@@ -25,6 +25,8 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
+	grpcCodes "github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/codes"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -486,7 +488,19 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: ident.Value, IssuerDomain: va.IssuerDomain})
 	if err != nil {
 		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
-		return bdns.ProblemDetailsFromDNSError(err) // not sure this will work :/
+		switch grpc.Code(err) {
+		case grpcCodes.DeadlineExceeded, grpcCodes.Unavailable:
+			return &probs.ProblemDetails{
+				Type:   probs.ConnectionProblem,
+				Detail: err.Error(),
+			}
+		default:
+			va.log.Err(fmt.Sprintf("gRPC communication failure: %s", err))
+			return &probs.ProblemDetails{
+				Type:   probs.ServerInternalProblem,
+				Detail: "Internal communication failure",
+			}
+		}
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditNotice(fmt.Sprintf(

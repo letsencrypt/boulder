@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
+	grpcCodes "github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/codes"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/credentials"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
 
@@ -187,12 +188,18 @@ func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string, issu
 	return true, false, nil
 }
 
-func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Check) (*pb.Valid, error) {
+func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Check) (*pb.Result, error) {
 	present, valid, err := ccs.checkCAA(ctx, check.Name, check.IssuerDomain)
 	if err != nil {
-		return nil, err
+		if err == context.DeadlineExceeded || err == context.Canceled {
+			return nil, grpc.Errorf(grpcCodes.DeadlineExceeded, err.Error())
+		}
+		if dnsErr, ok := err.(*bdns.DNSError); ok {
+			return nil, grpc.Errorf(grpcCodes.Unavailable, dnsErr.Error())
+		}
+		return nil, grpc.Errorf(grpcCodes.Unavailable, "server failure at resolver")
 	}
-	return &pb.Valid{Present: present, Valid: valid}, nil
+	return &pb.Result{Present: present, Valid: valid}, nil
 }
 
 type config struct {
