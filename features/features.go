@@ -6,7 +6,7 @@ import (
 
 // List of features and their default value
 var features = map[string]bool{
-	"NewVARPC": true,
+	"NewVARPC": false,
 }
 
 // Set accepts a list of features and whether they should

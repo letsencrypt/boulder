@@ -43,6 +43,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -96,6 +97,9 @@ func (as *AppShell) Run() {
 		if as.Config != nil {
 			config = as.Config(c, config)
 		}
+
+		err = features.Set(config.Features)
+		FailOnError(err, "Failed to set feature flags")
 
 		// Provide default values for each service's AMQP config section.
 		if config.WFE.AMQP == nil {

@@ -191,6 +191,8 @@ type Config struct {
 	AllowedSigningAlgos *AllowedSigningAlgos
 
 	SubscriberAgreementURL string
+
+	Features map[string]bool
 }
 
 // AllowedSigningAlgos defines which algorithms be used for keys that we will
