@@ -117,6 +117,10 @@ const (
 	maxCNLength = 64
 )
 
+type certificateStorage interface {
+	AddCertificate([]byte, int64) (string, error)
+}
+
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
@@ -126,7 +130,7 @@ type CertificateAuthorityImpl struct {
 	issuers map[string]*internalIssuer
 	// The common name of the default issuer cert
 	defaultIssuer    *internalIssuer
-	SA               core.StorageAuthority
+	SA               certificateStorage
 	PA               core.PolicyAuthority
 	Publisher        core.Publisher
 	keyPolicy        core.KeyPolicy

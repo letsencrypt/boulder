@@ -9,13 +9,25 @@ import (
 	"time"
 )
 
-func noop([]byte, error) error {
+func noop([]byte) error {
 	return nil
+}
+
+func testErrCb(t *testing.T) func(error) {
+	return func(e error) {
+		t.Error(e)
+	}
+}
+
+func testFatalCb(t *testing.T) func(error) {
+	return func(e error) {
+		t.Fatal(e)
+	}
 }
 
 func TestNoStat(t *testing.T) {
 	filename := os.TempDir() + "/doesntexist.123456789"
-	_, err := New(filename, noop)
+	_, err := New(filename, noop, testErrCb(t))
 	if err == nil {
 		t.Fatalf("Expected New to return error when the file doesn't exist.")
 	}
@@ -25,7 +37,7 @@ func TestNoRead(t *testing.T) {
 	f, _ := ioutil.TempFile("", "test-no-read.txt")
 	defer os.Remove(f.Name())
 	f.Chmod(0) // no read permissions
-	_, err := New(f.Name(), noop)
+	_, err := New(f.Name(), noop, testErrCb(t))
 	if err == nil {
 		t.Fatalf("Expected New to return error when permission denied.")
 	}
@@ -34,9 +46,9 @@ func TestNoRead(t *testing.T) {
 func TestFirstError(t *testing.T) {
 	f, _ := ioutil.TempFile("", "test-first-error.txt")
 	defer os.Remove(f.Name())
-	_, err := New(f.Name(), func([]byte, error) error {
+	_, err := New(f.Name(), func([]byte) error {
 		return fmt.Errorf("i die")
-	})
+	}, testErrCb(t))
 	if err == nil {
 		t.Fatalf("Expected New to return error when the callback returned error the first time.")
 	}
@@ -45,9 +57,9 @@ func TestFirstError(t *testing.T) {
 func TestFirstSuccess(t *testing.T) {
 	f, _ := ioutil.TempFile("", "test-first-success.txt")
 	defer os.Remove(f.Name())
-	r, err := New(f.Name(), func([]byte, error) error {
+	r, err := New(f.Name(), func([]byte) error {
 		return nil
-	})
+	}, testErrCb(t))
 	if err != nil {
 		t.Errorf("Expected New to succeed, got %s", err)
 	}
@@ -82,14 +94,11 @@ func TestReload(t *testing.T) {
 
 	var bodies []string
 	reloads := make(chan []byte, 1)
-	r, err := New(filename, func(b []byte, err error) error {
-		if err != nil {
-			t.Fatalf("Got error in callback: %s", err)
-		}
+	r, err := New(filename, func(b []byte) error {
 		bodies = append(bodies, string(b))
 		reloads <- b
 		return nil
-	})
+	}, testFatalCb(t))
 	if err != nil {
 		t.Fatalf("Expected New to succeed, got %s", err)
 	}
@@ -144,9 +153,11 @@ func TestReloadFailure(t *testing.T) {
 	}
 
 	reloads := make(chan res, 1)
-	_, err := New(filename, func(b []byte, err error) error {
-		reloads <- res{b, err}
+	_, err := New(filename, func(b []byte) error {
+		reloads <- res{b, nil}
 		return nil
+	}, func(e error) {
+		reloads <- res{nil, e}
 	})
 	if err != nil {
 		t.Fatalf("Expected New to succeed.")

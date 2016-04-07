@@ -29,7 +29,7 @@ func TestBackfill(t *testing.T) {
 	}
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc)
+	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, blog.GetAuditLogger())
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

@@ -240,7 +240,7 @@ func TestHTTP(t *testing.T) {
 	if prob != nil {
 		t.Errorf("Unexpected failure in HTTP validation: %s", prob)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, path404)
@@ -249,7 +249,7 @@ func TestHTTP(t *testing.T) {
 		t.Fatalf("Should have found a 404 for the challenge.")
 	}
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathWrongToken)
@@ -260,7 +260,7 @@ func TestHTTP(t *testing.T) {
 		t.Fatalf("Should have found the wrong token value.")
 	}
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathMoved)

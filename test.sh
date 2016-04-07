@@ -66,7 +66,6 @@ function run() {
 
   if [ ${status} -eq 0 ]; then
     update_status --state success
-    echo "Success: $@"
   else
     FAILURE=1
     update_status --state failure
@@ -83,7 +82,6 @@ function run_and_comment() {
 
   if [ "x${result}" == "x" ]; then
     update_status --state success
-    echo "Success: $@"
   else
     FAILURE=1
     update_status --state failure
@@ -142,12 +140,12 @@ function run_unit_tests() {
     all_shared_imports=$(go list -f '{{ join .Imports "\n" }}' $TESTPATHS | sort | uniq)
     deps=$(go list -f '{{ if not .Standard }}{{ .ImportPath }}{{ end }}' ${all_shared_imports})
     echo "go installing race detector enabled dependencies"
-    go install -v -race $deps
+    go install -race $deps
 
     # Run each test by itself for Travis, so we can get coverage
     for path in ${TESTPATHS}; do
       dir=$(basename $path)
-      run go test -race -cover -coverprofile=${dir}.coverprofile ${path}
+      go test -race -cover -coverprofile=${dir}.coverprofile ${path} || FAILURE=1
     done
 
     # Gather all the coverprofiles

@@ -1,18 +1,28 @@
-# see comments in test/run-docker.sh about host networking
 boulder:
     build: .
     dockerfile: Dockerfile
-    net: host
+    net: bridge
+    ports:
+      - 4000:4000
+      - 4001:4001
+      - 4002:4002
+      - 4003:4003
     environment:
         MYSQL_CONTAINER: "yes"
-mysql:
+    links:
+      - bmysql:boulder-mysql
+      - brabbitmq:boulder-rabbitmq
+bmysql:
+    name: boulder-mysql
     image: mariadb:10.0
-    net: host
+    net: bridge
     environment:
         MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-    command: mysqld --bind-address=127.0.0.1
-rabbitmq:
+    command: mysqld --bind-address=0.0.0.0
+brabbitmq:
+    name: boulder-rabbitmq
     image: rabbitmq:3
-    net: host
+    net: bridge
     environment:
-        RABBITMQ_NODE_IP_ADDRESS: "127.0.0.1"
+        RABBITMQ_NODE_IP_ADDRESS: "0.0.0.0"
+    log_driver: "none"

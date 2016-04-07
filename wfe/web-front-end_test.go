@@ -1380,7 +1380,7 @@ func TestGetCertificate(t *testing.T) {
 }
 
 func assertCsrLogged(t *testing.T, mockLog *mocks.SyslogWriter) {
-	matches := mockLog.GetAllMatching("^\\[AUDIT\\] Certificate request JSON=")
+	matches := mockLog.GetAllMatching("^NOTICE: \\[AUDIT\\] Certificate request JSON=")
 	test.Assert(t, len(matches) == 1,
 		fmt.Sprintf("Incorrect number of certificate request log entries: %d",
 			len(matches)))
