@@ -89,8 +89,8 @@ func ExampleAuditLogger() {
 	audit.clk = clock.NewFake()
 	audit.AuditErr(errors.New("Error Audit"))
 	audit.WarningErr(errors.New("Warning Audit"))
-	// Output: [31m00:00:00 log.test ERR [AUDIT] Error Audit[0m
-	// [33m00:00:00 log.test WARNING Warning Audit[0m
+	// Output: [31m[1mE000000 log.test [AUDIT] Error Audit[0m
+	// [33mW000000 log.test Warning Audit[0m
 }
 
 func TestEmitErrors(t *testing.T) {

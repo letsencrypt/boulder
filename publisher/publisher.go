@@ -71,7 +71,6 @@ type Impl struct {
 // to any CT logs configured in CTConfig
 func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration) *Impl {
 	logger := blog.GetAuditLogger()
-	logger.Notice("Publisher Authority Starting")
 
 	if submissionTimeout == 0 {
 		submissionTimeout = time.Hour * 12
