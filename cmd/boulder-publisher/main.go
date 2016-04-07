@@ -41,7 +41,7 @@ func main() {
 			bundle = append(bundle, ct.ASN1Cert(cert.Raw))
 		}
 
-		pubi := publisher.New(bundle, logs, c.Publisher.SubmissionTimeout.Duration)
+		pubi := publisher.New(bundle, logs, c.Publisher.SubmissionTimeout.Duration, auditlogger)
 
 		go cmd.DebugServer(c.Publisher.DebugAddr)
 		go cmd.ProfileCmd("Publisher", stats)

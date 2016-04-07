@@ -256,7 +256,7 @@ func badLogSrv() *httptest.Server {
 func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
-	pub := New(nil, nil, 0)
+	pub := New(nil, nil, 0, log)
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert(intermediatePEM.Bytes))
 	pub.SA = mocks.NewStorageAuthority(clock.NewFake())
 
