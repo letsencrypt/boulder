@@ -13,28 +13,22 @@ RUN apt-get update && apt-get install -y \
 	--no-install-recommends \
 	&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# Install port forwarder, database migration tool and go lint
+RUN go get -v \
+	github.com/jsha/listenbuddy \
+	bitbucket.org/liamstask/goose/cmd/goose \
+	github.com/golang/lint/golint
+
 # Boulder exposes its web application at port TCP 4000
-EXPOSE 4000
-EXPOSE 4002
-EXPOSE 4003
+EXPOSE 4000 4002 4003
 
-# Install port forwarder
-RUN go get github.com/jsha/listenbuddy
-# get database migration tool
-RUN go get bitbucket.org/liamstask/goose/cmd/goose
-# install go lint
-RUN go get -v github.com/golang/lint/golint
-
-# Assume the configuration is in /etc/boulder
-ENV BOULDER_CONFIG /go/src/github.com/letsencrypt/boulder/test/boulder-config.json
 ENV GOPATH /go/src/github.com/letsencrypt/boulder/Godeps/_workspace:$GOPATH
 
 WORKDIR /go/src/github.com/letsencrypt/boulder
+
+ENTRYPOINT [ "./test/entrypoint.sh" ]
 
 # Copy in the Boulder sources
 COPY . /go/src/github.com/letsencrypt/boulder
 
 RUN GOBIN=/go/src/github.com/letsencrypt/boulder/bin go install  ./...
-
-ENTRYPOINT [ "./test/entrypoint.sh" ]
-CMD [ "./start.py" ]
