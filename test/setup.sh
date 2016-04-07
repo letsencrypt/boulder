@@ -4,9 +4,10 @@
 # and configure database and RabbitMQ.
 #
 
+set -ev
+
 go get \
-  golang.org/x/tools/cmd/vet \
-  golang.org/x/tools/cmd/cover \
+  golang.org/x/tools/cover \
   github.com/golang/lint/golint \
   github.com/tools/godep \
   github.com/mattn/goveralls \
