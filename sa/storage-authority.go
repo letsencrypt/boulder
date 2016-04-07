@@ -55,7 +55,6 @@ type authzModel struct {
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
 func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, logger blog.SyslogWriter) (*SQLStorageAuthority, error) {
-	logger.Notice("Storage Authority Starting")
 	SetSQLDebug(dbMap, logger)
 
 	ssa := &SQLStorageAuthority{

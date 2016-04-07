@@ -208,7 +208,6 @@ func NewCertificateAuthorityImpl(
 	var ca *CertificateAuthorityImpl
 	var err error
 	logger := blog.GetAuditLogger()
-	logger.Notice("Certificate Authority Starting")
 
 	if config.SerialPrefix <= 0 || config.SerialPrefix >= 256 {
 		err = errors.New("Must have a positive non-zero serial prefix less than 256 for CA.")

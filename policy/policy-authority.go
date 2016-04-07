@@ -41,7 +41,6 @@ type AuthorityImpl struct {
 // argument (used to be enforceWhitelist). Update all callers.
 func New(dbMap *gorp.DbMap, _ bool, challengeTypes map[string]bool) (*AuthorityImpl, error) {
 	logger := blog.GetAuditLogger()
-	logger.Notice("Policy Authority Starting")
 
 	var padb *AuthorityDatabaseImpl
 	if dbMap != nil {

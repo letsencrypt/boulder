@@ -95,7 +95,6 @@ type WebFrontEndImpl struct {
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock, keyPolicy core.KeyPolicy) (WebFrontEndImpl, error) {
 	logger := blog.GetAuditLogger()
-	logger.Notice("Web Front End Starting")
 
 	nonceService, err := core.NewNonceService()
 	if err != nil {
