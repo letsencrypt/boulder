@@ -29,7 +29,10 @@ func (r *Reloader) Stop() {
 // synchronously, so it is easy for the caller to check for errors and fail
 // fast. New will return an error if it occurs on the first load. Otherwise all
 // errors are sent to the callback.
-func New(filename string, callback func([]byte, error) error) (*Reloader, error) {
+func New(filename string, dataCallback func([]byte) error, errorCallback func(error)) (*Reloader, error) {
+	if errorCallback == nil {
+		errorCallback = func(e error) {}
+	}
 	fileInfo, err := os.Stat(filename)
 	if err != nil {
 		return nil, err
@@ -49,23 +52,28 @@ func New(filename string, callback func([]byte, error) error) (*Reloader, error)
 			case <-tickChan:
 				currentFileInfo, err := os.Stat(filename)
 				if err != nil {
-					callback(nil, err)
+					errorCallback(err)
 					continue
 				}
-				if currentFileInfo.ModTime().After(fileInfo.ModTime()) {
-					b, err := ioutil.ReadFile(filename)
-					if err != nil {
-						callback(nil, err)
-						continue
-					}
-					fileInfo = currentFileInfo
-					callback(b, nil)
+				if !currentFileInfo.ModTime().After(fileInfo.ModTime()) {
+					continue
+				}
+				b, err := ioutil.ReadFile(filename)
+				if err != nil {
+					errorCallback(err)
+					continue
+				}
+				fileInfo = currentFileInfo
+				err = dataCallback(b)
+				if err != nil {
+					errorCallback(err)
 				}
 			}
 		}
 	}
-	err = callback(b, nil)
+	err = dataCallback(b)
 	if err != nil {
+		tickerStop()
 		return nil, err
 	}
 	go loop()
