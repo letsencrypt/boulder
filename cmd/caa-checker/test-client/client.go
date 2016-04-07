@@ -22,7 +22,7 @@ func main() {
 	conn, err := bgrpc.ClientSetup(&cmd.GRPCClientConfig{
 		ServerAddress:         *addr,
 		ServerHostname:        "localhost",
-		ServerIssuerPath:      "test/grpc-creds/ca.der",
+		ServerIssuerPath:      "test/grpc-creds/ca.pem",
 		ClientCertificatePath: "test/grpc-creds/client.pem",
 		ClientKeyPath:         "test/grpc-creds/key.pem",
 	})
