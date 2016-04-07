@@ -59,7 +59,7 @@ or
 
 Edit /etc/hosts to add this line:
 
-    127.0.0.1 boulder-rabbitmq boulder-mysql
+    127.0.0.1 boulder boulder-rabbitmq boulder-mysql
 
 Resolve Go-dependencies, set up a database and RabbitMQ:
 
