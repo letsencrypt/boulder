@@ -2,7 +2,7 @@
   "ocspResponder": {
     "source": "file:test/issuer-ocsp-responses.txt",
     "path": "/",
-    "listenAddress": "localhost:4003",
+    "listenAddress": "0.0.0.0:4003",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
     "debugAddr": "localhost:8010"

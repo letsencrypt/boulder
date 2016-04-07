@@ -5,15 +5,18 @@ MAINTAINER William Budington "bill@eff.org"
 
 # Install dependencies packages
 RUN apt-get update && apt-get install -y \
-    libltdl-dev \
+	libltdl-dev \
 	mariadb-client-core-10.0 \
-    nodejs \
+	nodejs \
 	rsyslog \
+	softhsm \
 	--no-install-recommends \
-  	&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+	&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Boulder exposes its web application at port TCP 4000
 EXPOSE 4000
+EXPOSE 4002
+EXPOSE 4003
 
 # Install port forwarder
 RUN go get github.com/jsha/listenbuddy
@@ -30,6 +33,8 @@ WORKDIR /go/src/github.com/letsencrypt/boulder
 
 # Copy in the Boulder sources
 COPY . /go/src/github.com/letsencrypt/boulder
+
+RUN GOBIN=/go/src/github.com/letsencrypt/boulder/bin go install  ./...
 
 ENTRYPOINT [ "./test/entrypoint.sh" ]
 CMD [ "./start.py" ]

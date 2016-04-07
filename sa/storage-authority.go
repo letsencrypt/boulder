@@ -32,7 +32,7 @@ const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :au
 type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
 	clk   clock.Clock
-	log   *blog.AuditLogger
+	log   blog.SyslogWriter
 }
 
 func digest256(data []byte) []byte {
@@ -54,9 +54,7 @@ type authzModel struct {
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
-func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock) (*SQLStorageAuthority, error) {
-	logger := blog.GetAuditLogger()
-
+func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, logger blog.SyslogWriter) (*SQLStorageAuthority, error) {
 	logger.Notice("Storage Authority Starting")
 	SetSQLDebug(dbMap, logger)
 
@@ -897,18 +895,15 @@ func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (rece
 	return
 }
 
-// ErrDuplicateReceipt is an error type for duplicate SCT receipts
-type ErrDuplicateReceipt string
-
-func (e ErrDuplicateReceipt) Error() string {
-	return string(e)
-}
-
 // AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table
 func (ssa *SQLStorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) error {
 	err := ssa.dbMap.Insert(&sct)
+	// For AddSCTReceipt, duplicates are explicitly OK, so don't return errors
+	// based on duplicates, especially because we currently retry all submissions
+	// for a certificate if even one of them fails. Once https://github.com/letsencrypt/boulder/issues/891
+	// is fixed, we may want to start returning this as an error, or logging it.
 	if err != nil && strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-		err = ErrDuplicateReceipt(err.Error())
+		return nil
 	}
 	return err
 }
