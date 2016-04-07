@@ -22,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	pb "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
@@ -192,12 +193,12 @@ func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Che
 	present, valid, err := ccs.checkCAA(ctx, *check.Name, *check.IssuerDomain)
 	if err != nil {
 		if err == context.DeadlineExceeded || err == context.Canceled {
-			return nil, grpc.Errorf(grpcCodes.DeadlineExceeded, err.Error())
+			return nil, bgrpc.CodedError(grpcCodes.DeadlineExceeded, err.Error())
 		}
 		if dnsErr, ok := err.(*bdns.DNSError); ok {
-			return nil, grpc.Errorf(grpcCodes.Unavailable, dnsErr.Error())
+			return nil, bgrpc.CodedError(grpcCodes.Unavailable, dnsErr.Error())
 		}
-		return nil, grpc.Errorf(grpcCodes.Unavailable, "server failure at resolver")
+		return nil, bgrpc.CodedError(grpcCodes.Unavailable, "server failure at resolver")
 	}
 	return &pb.Result{Present: &present, Valid: &valid}, nil
 }

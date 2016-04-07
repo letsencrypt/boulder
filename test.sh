@@ -10,7 +10,7 @@ fi
 # Order doesn't matter. Note: godep-restore is specifically left out of the
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH).
-RUN=${RUN:-fmt migrations unit integration}
+RUN=${RUN:-vet fmt migrations unit integration}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.  By defuault, we only hard-fail for gofmt,
@@ -172,6 +172,15 @@ function run_unit_tests() {
 # Path for installed go package binaries. If yours is different, override with
 # GOBIN=/my/path/to/bin ./test.sh
 GOBIN=${GOBIN:-$HOME/gopath/bin}
+
+#
+# Run Go Vet, a correctness-focused static analysis tool
+#
+if [[ "$RUN" =~ "vet" ]] ; then
+  start_context "vet"
+  run_and_comment go vet ./...
+  end_context #vet
+fi
 
 #
 # Ensure all files are formatted per the `go fmt` tool
