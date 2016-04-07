@@ -51,7 +51,6 @@ func new(amqpConf *cmd.AMQPConfig, syslogConf cmd.SyslogConfig, statsdURI, dbURI
 
 func (b *backfiller) run() error {
 	added := 0
-	defer b.log.Info(fmt.Sprintf("Added %d missing certificate name sets to the fqdnSets table", added))
 	for {
 		results, err := b.findCerts()
 		if err != nil {
@@ -66,6 +65,7 @@ func (b *backfiller) run() error {
 		}
 		added += len(results)
 	}
+	b.log.Info(fmt.Sprintf("Added %d missing certificate name sets to the fqdnSets table", added))
 	return nil
 }
 

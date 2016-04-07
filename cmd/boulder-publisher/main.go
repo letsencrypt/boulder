@@ -8,12 +8,12 @@ package main
 import (
 	"os"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/publisher"
 	"github.com/letsencrypt/boulder/rpc"
 )
@@ -22,7 +22,7 @@ const clientName = "Publisher"
 
 func main() {
 	app := cmd.NewAppShell("boulder-publisher", "Submits issued certificates to CT logs")
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
 		logs := make([]*publisher.Log, len(c.Common.CT.Logs))
 		var err error
 		for i, ld := range c.Common.CT.Logs {

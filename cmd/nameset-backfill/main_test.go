@@ -10,11 +10,14 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
+
+var log = mocks.UseMockLog()
 
 func TestBackfill(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
@@ -26,7 +29,7 @@ func TestBackfill(t *testing.T) {
 	}
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc)
+	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, blog.GetAuditLogger())
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -46,8 +49,9 @@ func TestBackfill(t *testing.T) {
 	test.AssertEquals(t, len(results), 1)
 	test.AssertEquals(t, results[0].Serial, "serial")
 
-	err = b.processResults(results)
-	test.AssertNotError(t, err, "Failed to add missing name sets")
+	err = b.run()
+	test.AssertNotError(t, err, "Failed to find and add missing name sets")
+	test.AssertEquals(t, len(log.GetAllMatching("Added 1 missing certificate name sets to the fqdnSets table")), 1)
 
 	results, err = b.findCerts()
 	test.AssertNotError(t, err, "Failed to find missing name sets")

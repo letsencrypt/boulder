@@ -30,7 +30,6 @@ func setup(t *testing.T) (*amqpConnector, *MockamqpChannel, func()) {
 			channel: mockChannel,
 		},
 		queueName:        "fooqueue",
-		routingKey:       "fooqueue",
 		retryTimeoutBase: time.Second,
 		clk:              clock.NewFake(),
 	}

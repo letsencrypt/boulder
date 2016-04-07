@@ -11,21 +11,6 @@ import tempfile
 import threading
 import time
 
-
-class ToSServerThread(threading.Thread):
-    class ToSHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write("Do What Ye Will (An it Harm None).\n")
-    def run(self):
-        try:
-            BaseHTTPServer.HTTPServer(("localhost", 4001), self.ToSHandler).serve_forever()
-        except Exception as e:
-            print "Problem starting ToSServer: %s" % e
-            sys.exit(1)
-
-
 default_config = os.environ.get('BOULDER_CONFIG')
 if default_config is None:
     default_config = 'test/boulder-config.json'
@@ -59,9 +44,6 @@ def start(race_detection):
     """
     global processes
     forward()
-    t = ToSServerThread()
-    t.daemon = True
-    t.start()
     progs = [
         'boulder-wfe',
         'boulder-ra',
@@ -124,7 +106,7 @@ def start(race_detection):
 
 def forward():
     """Add a TCP forwarder between Boulder and RabbitMQ to simulate failures."""
-    cmd = """exec listenbuddy -listen :5673 -speak localhost:5672"""
+    cmd = """exec listenbuddy -listen :5673 -speak boulder-rabbitmq:5672"""
     p = subprocess.Popen(cmd, shell=True)
     p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))

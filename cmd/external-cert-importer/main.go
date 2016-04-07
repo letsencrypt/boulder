@@ -14,19 +14,19 @@ import (
 	"os"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 )
 
 const datestampFormat string = "2006-01-02 15:04:05"
 
-func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, statsRate float32) {
+func addCerts(csvFilename string, dbMap *gorp.DbMap, stats metrics.Statter, statsRate float32) {
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
@@ -62,7 +62,7 @@ func addCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, stats
 	}
 }
 
-func addIdentifiers(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, statsRate float32) {
+func addIdentifiers(csvFilename string, dbMap *gorp.DbMap, stats metrics.Statter, statsRate float32) {
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
@@ -88,7 +88,7 @@ func addIdentifiers(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter,
 	}
 }
 
-func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap, stats statsd.Statter, statsRate float32) {
+func removeInvalidCerts(csvFilename string, dbMap *gorp.DbMap, stats metrics.Statter, statsRate float32) {
 	file, err := os.Open(csvFilename)
 	cmd.FailOnError(err, "Could not open the file for reading")
 	csvReader := csv.NewReader(file)
@@ -148,7 +148,7 @@ func main() {
 		return config
 	}
 
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
 		// Configure DB
 		dbURL, err := c.PA.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")

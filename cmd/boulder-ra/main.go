@@ -8,7 +8,6 @@ package main
 import (
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/bdns"
@@ -26,7 +25,7 @@ const clientName = "RA"
 
 func main() {
 	app := cmd.NewAppShell("boulder-ra", "Handles service orchestration")
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
 		// Validate PA config and set defaults if needed
 		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
