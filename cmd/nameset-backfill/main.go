@@ -80,6 +80,7 @@ func (b *backfiller) findCerts() ([]resultHolder, error) {
        LEFT JOIN fqdnSets AS ns ON c.serial=ns.serial
        WHERE ns.serial IS NULL
        AND c.serial > ?
+       ORDER BY c.serial
        LIMIT ?`,
 			lastSerial,
 			1000,
