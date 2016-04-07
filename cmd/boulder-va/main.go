@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
@@ -47,10 +46,8 @@ func main() {
 		}
 		var caaClient caaPB.CAACheckerClient
 		if c.VA.CAAService != nil {
-			creds, err := bgrpc.LoadClientCreds(c.VA.CAAService)
-			cmd.FailOnError(err, "Failed to load gRPC client and issuer certificates")
-			conn, err := grpc.Dial(c.VA.CAAService.ServerAddress, grpc.WithTransportCredentials(creds))
-			cmd.FailOnError(err, "Failed to dial CAA service")
+			conn, err := bgrpc.ClientSetup(c.VA.CAAService)
+			cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 			caaClient = caaPB.NewCAACheckerClient(conn)
 		}
 		clk := clock.Default()

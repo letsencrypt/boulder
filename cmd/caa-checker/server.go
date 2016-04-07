@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"strings"
 	"sync"
 
@@ -233,10 +234,11 @@ func main() {
 
 	clientIssuerBytes, err := ioutil.ReadFile(c.ClientIssuerPath)
 	cmd.FailOnError(err, "Failed to read client issuer")
-	clientIssuer, err := x509.ParseCertificate(clientIssuerBytes)
-	cmd.FailOnError(err, "Fail to parse client issuer")
 	clientCAs := x509.NewCertPool()
-	clientCAs.AddCert(clientIssuer)
+	if ok := clientCAs.AppendCertsFromPEM(clientIssuerBytes); !ok {
+		fmt.Fprintf(os.Stderr, "Failed to parse client issuer certificate '%s'\n", c.ClientIssuerPath)
+		os.Exit(1)
+	}
 
 	servConf := &tls.Config{
 		Certificates: []tls.Certificate{cert},
