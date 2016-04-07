@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/cmd"
 	pb "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
@@ -20,19 +19,15 @@ func main() {
 	flag.Parse()
 
 	// Set up a connection to the server.
-	creds, err := bgrpc.LoadClientCreds(&cmd.GRPCClientConfig{
+	conn, err := bgrpc.ClientSetup(&cmd.GRPCClientConfig{
+		ServerAddress:         *addr,
 		ServerHostname:        "localhost",
 		ServerIssuerPath:      "test/grpc-creds/ca.der",
 		ClientCertificatePath: "test/grpc-creds/client.pem",
 		ClientKeyPath:         "test/grpc-creds/key.pem",
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load creds: %s\n", err)
-		os.Exit(1)
-	}
-	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to dial '%s': %s\n", *addr, err)
+		fmt.Fprintf(os.Stderr, "Failed to setup client connection: %s\n", err)
 		os.Exit(1)
 	}
 	defer conn.Close()

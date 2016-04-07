@@ -211,7 +211,7 @@
     "caaService": {
       "serverAddress": "127.0.0.1:9090",
       "serverHostname": "localhost",
-      "serverIssuerPath": "test/grpc-creds/ca.der",
+      "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem"
     },

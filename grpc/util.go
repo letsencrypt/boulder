@@ -3,6 +3,7 @@ package grpc
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io/ioutil"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
@@ -14,21 +15,20 @@ import (
 // CodedError is a alias required to appease go vet
 var CodedError = grpc.Errorf
 
-// LoadClientCreds loads various TLS certificates and creates a
+// ClientSetup loads various TLS certificates and creates a
 // gRPC TransportAuthenticator that presents the client certificate
 // and validates the certificate presented by the server is for a
-// specific hostname and issued by the provided issuer certificate.
+// specific hostname and issued by the provided issuer certificate
+// thens dials and returns a grpc.ClientConn to the remote service.
 func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 	serverIssuerBytes, err := ioutil.ReadFile(c.ServerIssuerPath)
 	if err != nil {
 		return nil, err
 	}
-	serverIssuer, err := x509.ParseCertificate(serverIssuerBytes)
-	if err != nil {
-		return nil, err
-	}
 	rootCAs := x509.NewCertPool()
-	rootCAs.AddCert(serverIssuer)
+	if ok := rootCAs.AppendCertsFromPEM(serverIssuerBytes); !ok {
+		return nil, fmt.Errorf("Failed to parse server issues from '%s'", c.ServerIssuerPath)
+	}
 	clientCert, err := tls.LoadX509KeyPair(c.ClientCertificatePath, c.ClientKeyPath)
 	if err != nil {
 		return nil, err
