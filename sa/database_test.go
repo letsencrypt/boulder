@@ -21,8 +21,8 @@ func TestInvalidDSN(t *testing.T) {
 var errExpected = errors.New("expected")
 
 func TestNewDbMap(t *testing.T) {
-	const mysqlConnectURL = "mysql+tcp://policy:password@localhost:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
-	const expectedTransformed = "policy:password@tcp(localhost:3306)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&strict=true&writeTimeout=800ms"
+	const mysqlConnectURL = "mysql+tcp://policy:password@boulder-mysql:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
+	const expectedTransformed = "policy:password@tcp(boulder-mysql:3306)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&strict=true&writeTimeout=800ms"
 
 	oldSQLOpen := sqlOpen
 	defer func() {
