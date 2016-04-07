@@ -174,8 +174,6 @@ register
   |
 getTerms
   | \
-  |  getAgreement
-  |  |
   |  sendAgreement
   | /
 getDomain
@@ -264,20 +262,15 @@ function getTerms(err, resp) {
   if (state.termsRequired) {
     state.termsURL = links["terms-of-service"];
     console.log(state.termsURL);
-    request.get(state.termsURL, getAgreement)
+    getAgreement();
   } else {
     inquirer.prompt(questions.domain, getChallenges);
   }
 }
 
-function getAgreement(err, resp, body) {
-  if (err) {
-    console.log("getAgreement error:", err);
-    process.exit(1);
-  }
-  // TODO: Check content-type
-  console.log("The CA requires your agreement to terms.");
-  console.log(state.termsURL);
+function getAgreement() {
+  console.log("The CA requires your agreement to terms:",
+    state.termsURL);
   console.log();
 
   if (!cliOptions.agreeTerms) {
