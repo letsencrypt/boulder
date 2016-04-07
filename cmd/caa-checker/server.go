@@ -189,7 +189,7 @@ func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string, issu
 }
 
 func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Check) (*pb.Result, error) {
-	present, valid, err := ccs.checkCAA(ctx, check.Name, check.IssuerDomain)
+	present, valid, err := ccs.checkCAA(ctx, *check.Name, *check.IssuerDomain)
 	if err != nil {
 		if err == context.DeadlineExceeded || err == context.Canceled {
 			return nil, grpc.Errorf(grpcCodes.DeadlineExceeded, err.Error())
@@ -199,7 +199,7 @@ func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Che
 		}
 		return nil, grpc.Errorf(grpcCodes.Unavailable, "server failure at resolver")
 	}
-	return &pb.Result{Present: present, Valid: valid}, nil
+	return &pb.Result{Present: &present, Valid: &valid}, nil
 }
 
 type config struct {

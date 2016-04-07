@@ -1,15 +1,15 @@
-syntax = "proto3";
+syntax = "proto2";
 
 service CAAChecker {
         rpc ValidForIssuance(Check) returns (Result) {}
 }
 
 message Check {
-        string name = 1;
-        string issuerDomain = 2;
+        required string name = 1;
+        required string issuerDomain = 2;
 }
 
 message Result {
-        bool present = 1;
-        bool valid = 2;
+        required bool present = 1;
+        required bool valid = 2;
 }

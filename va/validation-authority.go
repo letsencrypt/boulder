@@ -485,7 +485,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 }
 
 func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
-	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: ident.Value, IssuerDomain: va.IssuerDomain})
+	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: &ident.Value, IssuerDomain: &va.IssuerDomain})
 	if err != nil {
 		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
 		switch grpc.Code(err) {
@@ -509,7 +509,7 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 		r.Present,
 		r.Valid,
 	))
-	if !r.Valid {
+	if !*r.Valid {
 		return &probs.ProblemDetails{
 			Type:   probs.ConnectionProblem,
 			Detail: fmt.Sprintf("CAA record for %s prevents issuance", ident.Value),

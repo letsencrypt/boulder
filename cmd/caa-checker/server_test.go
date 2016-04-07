@@ -47,23 +47,25 @@ func TestChecking(t *testing.T) {
 	issuerDomain := "letsencrypt.org"
 
 	for _, caaTest := range tests {
-		result, err := ccs.ValidForIssuance(context.Background(), &pb.Check{Name: caaTest.Domain, IssuerDomain: issuerDomain})
+		result, err := ccs.ValidForIssuance(context.Background(), &pb.Check{Name: &caaTest.Domain, IssuerDomain: &issuerDomain})
 		if err != nil {
 			t.Errorf("CheckCAARecords error for %s: %s", caaTest.Domain, err)
 		}
-		if result.Present != caaTest.Present {
+		if *result.Present != caaTest.Present {
 			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, result.Present, caaTest.Present)
 		}
-		if result.Valid != caaTest.Valid {
+		if *result.Valid != caaTest.Valid {
 			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, result.Valid, caaTest.Valid)
 		}
 	}
 
-	result, err := ccs.ValidForIssuance(context.Background(), &pb.Check{Name: "servfail.com", IssuerDomain: issuerDomain})
+	servfail := "servfail.com"
+	servfailPresent := "servfail.present.com"
+	result, err := ccs.ValidForIssuance(context.Background(), &pb.Check{Name: &servfail, IssuerDomain: &issuerDomain})
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, result == nil, "result should be nil")
 
-	result, err = ccs.ValidForIssuance(context.Background(), &pb.Check{Name: "servfail.present.com", IssuerDomain: issuerDomain})
+	result, err = ccs.ValidForIssuance(context.Background(), &pb.Check{Name: &servfailPresent, IssuerDomain: &issuerDomain})
 	test.AssertError(t, err, "servfail.present.com")
 	test.Assert(t, result == nil, "result should be nil")
 }

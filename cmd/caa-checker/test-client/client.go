@@ -38,7 +38,7 @@ func main() {
 	defer conn.Close()
 	c := pb.NewCAACheckerClient(conn)
 
-	r, err := c.ValidForIssuance(context.Background(), &pb.Check{Name: *name, IssuerDomain: *issuer})
+	r, err := c.ValidForIssuance(context.Background(), &pb.Check{Name: name, IssuerDomain: issuer})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ValidForIssuance call failed: %s\n", err)
 		os.Exit(1)
