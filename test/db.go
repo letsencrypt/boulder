@@ -41,7 +41,7 @@ func ResetPolicyTestDatabase(t testing.TB) func() {
 }
 
 func resetTestDatabase(t testing.TB, dbType string) func() {
-	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(localhost:3306)/boulder_%s_test", dbType))
+	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(boulder-mysql:3306)/boulder_%s_test", dbType))
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}

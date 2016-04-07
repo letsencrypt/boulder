@@ -236,7 +236,7 @@
   },
 
   "ocspResponder": {
-    "source": "mysql+tcp://ocsp_resp@localhost:3306/boulder_sa_integration?readTimeout=800ms&writeTimeout=800ms",
+    "source": "mysql+tcp://ocsp_resp@boulder-mysql:3306/boulder_sa_integration?readTimeout=800ms&writeTimeout=800ms",
     "path": "/",
     "listenAddress": "localhost:4002",
     "maxAge": "10s",
