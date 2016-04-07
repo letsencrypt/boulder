@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"log/syslog"
 	"os"
 	"path"
@@ -91,15 +92,15 @@ func NewAuditLogger(log SyslogWriter, stats statsd.Statter, stdoutLogLevel int) 
 func initializeAuditLogger() {
 	stats, err := statsd.NewNoopClient(nil)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Initializing stats for AuditLogger: %s", err)
 	}
 	syslogger, err := syslog.Dial("", "", defaultPriority, "test")
 	if err != nil {
-		panic(err)
+		log.Fatalf("Initializing SyslogWriter for AuditLogger: %s", err)
 	}
 	audit, err := NewAuditLogger(syslogger, stats, int(syslog.LOG_DEBUG))
 	if err != nil {
-		panic(err)
+		log.Fatalf("Initializing AuditLogger: %s", err)
 	}
 
 	SetAuditLogger(audit)

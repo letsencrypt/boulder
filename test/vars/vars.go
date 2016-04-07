@@ -3,7 +3,7 @@ package vars
 import "fmt"
 
 const (
-	dbURL = "mysql+tcp://%s@localhost:3306/%s"
+	dbURL = "mysql+tcp://%s@boulder-mysql:3306/%s"
 )
 
 var (

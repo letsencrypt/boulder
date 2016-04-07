@@ -111,7 +111,7 @@ func (msw *SyslogWriter) GetAll() []*LogMessage {
 func (msw *SyslogWriter) GetAllMatching(reString string) (matches []*LogMessage) {
 	re := regexp.MustCompile(reString)
 	for _, logMsg := range <-msw.getChan {
-		if re.MatchString(logMsg.Message) {
+		if re.MatchString(logMsg.String()) {
 			matches = append(matches, logMsg)
 		}
 	}
