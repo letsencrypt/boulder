@@ -138,7 +138,7 @@ func (log *AuditLogger) logAtLevel(level syslog.Priority, msg string) error {
 	var prefix string
 	var err error
 
-	const red = "\033[31m"
+	const red = "\033[31m\033[1m"
 	const yellow = "\033[33m"
 
 	switch level {
