@@ -79,32 +79,27 @@ func NewAuthorityDatabaseImpl(dbMap gorpDbMap) (padb *AuthorityDatabaseImpl, err
 func (padb *AuthorityDatabaseImpl) LoadRules(rs RuleSet) error {
 	tx, err := padb.dbMap.Begin()
 	if err != nil {
-		err = probs.WithRollbackError(tx, err)
-		return err
+		return probs.WithRollbackError(tx, err)
 	}
 	_, err = tx.Exec("DELETE FROM blacklist")
 	if err != nil {
-		err = probs.WithRollbackError(tx, err)
-		return err
+		return probs.WithRollbackError(tx, err)
 	}
 	for _, r := range rs.Blacklist {
 		r.Host = core.ReverseName(r.Host)
 		err = tx.Insert(&r)
 		if err != nil {
-			err = probs.WithRollbackError(tx, err)
-			return err
+			return probs.WithRollbackError(tx, err)
 		}
 	}
 	_, err = tx.Exec("DELETE FROM whitelist")
 	if err != nil {
-		err = probs.WithRollbackError(tx, err)
-		return err
+		return probs.WithRollbackError(tx, err)
 	}
 	for _, r := range rs.Whitelist {
 		err = tx.Insert(&r)
 		if err != nil {
-			err = probs.WithRollbackError(tx, err)
-			return err
+			return probs.WithRollbackError(tx, err)
 		}
 	}
 

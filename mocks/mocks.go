@@ -75,7 +75,7 @@ func (sa *StorageAuthority) GetRegistration(id int64) (core.Registration, error)
 	var parsedKey jose.JsonWebKey
 	err := parsedKey.UnmarshalJSON(keyJSON)
 	if err != nil {
-		panic(err)
+		return core.Registration{}, err
 	}
 
 	return core.Registration{
@@ -96,11 +96,11 @@ func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Regi
 	var err error
 	err = test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
 	if err != nil {
-		panic(err)
+		return core.Registration{}, err
 	}
 	err = test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
 	if err != nil {
-		panic(err)
+		return core.Registration{}, err
 	}
 	err = testE1KeyPublic.UnmarshalJSON([]byte(testE1KeyPublicJSON))
 	if err != nil {

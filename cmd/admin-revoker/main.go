@@ -164,12 +164,14 @@ func main() {
 				cac, auditlogger, dbMap, _, _ := setupContext(c)
 
 				tx, err := dbMap.Begin()
-				err = probs.WithRollbackError(tx, err)
-				cmd.FailOnError(err, "Couldn't begin transaction")
+				if err != nil {
+					cmd.FailOnError(probs.WithRollbackError(tx, err), "Couldn't begin transaction")
+				}
 
 				err = revokeBySerial(serial, core.RevocationCode(reasonCode), deny, cac, auditlogger, tx)
-				err = probs.WithRollbackError(tx, err)
-				cmd.FailOnError(err, "Couldn't revoke certificate")
+				if err != nil {
+					cmd.FailOnError(probs.WithRollbackError(tx, err), "Couldn't revoke certificate")
+				}
 
 				err = tx.Commit()
 				cmd.FailOnError(err, "Couldn't cleanly close transaction")
@@ -191,8 +193,9 @@ func main() {
 				defer auditlogger.AuditPanic()
 
 				tx, err := dbMap.Begin()
-				err = probs.WithRollbackError(tx, err)
-				cmd.FailOnError(err, "Couldn't begin transaction")
+				if err != nil {
+					cmd.FailOnError(probs.WithRollbackError(tx, err), "Couldn't begin transaction")
+				}
 
 				_, err = sac.GetRegistration(regID)
 				if err != nil {
@@ -200,8 +203,9 @@ func main() {
 				}
 
 				err = revokeByReg(regID, core.RevocationCode(reasonCode), deny, cac, auditlogger, tx)
-				err = probs.WithRollbackError(tx, err)
-				cmd.FailOnError(err, "Couldn't revoke certificate")
+				if err != nil {
+					cmd.FailOnError(probs.WithRollbackError(tx, err), "Couldn't revoke certificate")
+				}
 
 				err = tx.Commit()
 				cmd.FailOnError(err, "Couldn't cleanly close transaction")
