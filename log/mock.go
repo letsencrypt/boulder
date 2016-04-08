@@ -41,12 +41,8 @@ type mockWriter struct {
 }
 
 var levelName = map[syslog.Priority]string{
-	syslog.LOG_EMERG:   "EMERG",
-	syslog.LOG_ALERT:   "ALERT",
-	syslog.LOG_CRIT:    "CRIT",
 	syslog.LOG_ERR:     "ERR",
 	syslog.LOG_WARNING: "WARNING",
-	syslog.LOG_NOTICE:  "NOTICE",
 	syslog.LOG_INFO:    "INFO",
 	syslog.LOG_DEBUG:   "DEBUG",
 }
