@@ -537,7 +537,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		req.Subject.SerialNumber = serialHex
 	}
 
-	ca.log.AuditNotice(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
+	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
 		serialHex, strings.Join(hostNames, ", "), csrPEM))
 
 	certPEM, err := issuer.eeSigner.Sign(req)
@@ -549,7 +549,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
-	ca.log.AuditNotice(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] pem=[%s]",
+	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] pem=[%s]",
 		serialHex, strings.Join(hostNames, ", "), csrPEM,
 		certPEM))
 

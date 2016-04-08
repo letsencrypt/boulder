@@ -74,14 +74,14 @@ func TestEmit(t *testing.T) {
 	t.Parallel()
 	log := setup(t)
 
-	log.AuditNotice("test message")
+	log.AuditInfo("test message")
 }
 
 func TestEmitEmpty(t *testing.T) {
 	t.Parallel()
 	log := setup(t)
 
-	log.AuditNotice("")
+	log.AuditInfo("")
 }
 
 func ExampleLogger() {
@@ -101,21 +101,20 @@ func ExampleLogger() {
 
 func TestSyslogMethods(t *testing.T) {
 	t.Parallel()
-	audit := setup(t)
+	impl := setup(t)
 
-	audit.AuditNotice("audit-logger_test.go: audit-notice")
-	audit.AuditErr(errors.New("audit-logger_test.go: audit-err"))
-	audit.Debug("audit-logger_test.go: debug")
-	audit.Err("audit-logger_test.go: err")
-	audit.Info("audit-logger_test.go: info")
-	audit.Notice("audit-logger_test.go: notice")
-	audit.Warning("audit-logger_test.go: warning")
+	impl.AuditInfo("audit-logger_test.go: audit-info")
+	impl.AuditErr(errors.New("audit-logger_test.go: audit-err"))
+	impl.Debug("audit-logger_test.go: debug")
+	impl.Err("audit-logger_test.go: err")
+	impl.Info("audit-logger_test.go: info")
+	impl.Warning("audit-logger_test.go: warning")
 }
 
 func TestPanic(t *testing.T) {
 	t.Parallel()
-	audit := setup(t)
-	defer audit.AuditPanic()
+	impl := setup(t)
+	defer impl.AuditPanic()
 	panic("Test panic")
 	// Can't assert anything here or golint gets angry
 }
@@ -179,7 +178,7 @@ func TestTransmission(t *testing.T) {
 
 	data := make([]byte, 128)
 
-	impl.AuditNotice("audit-logger_test.go: audit-notice")
+	impl.AuditInfo("audit-logger_test.go: audit-notice")
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 

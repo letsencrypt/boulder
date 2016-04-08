@@ -28,7 +28,7 @@ type Logger interface {
 	Info(m string)
 	Debug(m string)
 	AuditPanic()
-	AuditNotice(string)
+	AuditInfo(string)
 	AuditObject(string, interface{})
 	AuditErr(error)
 }
@@ -201,11 +201,6 @@ func (log *impl) Warning(msg string) {
 	log.w.logAtLevel(syslog.LOG_WARNING, msg)
 }
 
-// Notice level messages pass through normally.
-func (log *impl) Notice(msg string) {
-	log.w.logAtLevel(syslog.LOG_NOTICE, msg)
-}
-
 // Info level messages pass through normally.
 func (log *impl) Info(msg string) {
 	log.w.logAtLevel(syslog.LOG_INFO, msg)
@@ -216,13 +211,13 @@ func (log *impl) Debug(msg string) {
 	log.w.logAtLevel(syslog.LOG_DEBUG, msg)
 }
 
-// AuditNotice sends a NOTICE-severity message that is prefixed with the
+// AuditInfo sends an INFO-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
-func (log *impl) AuditNotice(msg string) {
-	log.auditAtLevel(syslog.LOG_NOTICE, msg)
+func (log *impl) AuditInfo(msg string) {
+	log.auditAtLevel(syslog.LOG_INFO, msg)
 }
 
-// AuditObject sends a NOTICE-severity JSON-serialized object message that is prefixed
+// AuditObject sends an INFO-severity JSON-serialized object message that is prefixed
 // with the audit tag, for special handling at the upstream system logger.
 func (log *impl) AuditObject(msg string, obj interface{}) {
 	jsonObj, err := json.Marshal(obj)
@@ -232,7 +227,7 @@ func (log *impl) AuditObject(msg string, obj interface{}) {
 		return
 	}
 
-	log.auditAtLevel(syslog.LOG_NOTICE, fmt.Sprintf("%s JSON=%s", msg, jsonObj))
+	log.auditAtLevel(syslog.LOG_INFO, fmt.Sprintf("%s JSON=%s", msg, jsonObj))
 }
 
 // AuditErr can format an error for auditing; it does so at ERR level.
