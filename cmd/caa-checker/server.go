@@ -1,13 +1,9 @@
 package main
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"net"
-	"os"
 	"strings"
 	"sync"
 
@@ -15,9 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
 	grpcCodes "github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/codes"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/credentials"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
 
 	"github.com/letsencrypt/boulder/bdns"
@@ -142,7 +136,7 @@ func extractIssuerDomain(caa *dns.CAA) string {
 	return strings.Trim(v[0:idx], " \t")
 }
 
-func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string, issuer string) (bool, bool, error) {
+func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string, issuer string) (present, valid bool, err error) {
 	hostname = strings.ToLower(hostname)
 	caaSet, err := ccs.getCAASet(ctx, hostname)
 	if err != nil {
@@ -205,15 +199,13 @@ func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Che
 }
 
 type config struct {
-	Address          string             `yaml:"address"`
-	DNSResolver      string             `yaml:"dns-resolver"`
-	DNSNetwork       string             `yaml:"dns-network"`
-	DNSTimeout       cmd.ConfigDuration `yaml:"dns-timeout"`
-	StatsdServer     string             `yaml:"statsd-server"`
-	StatsdPrefix     string             `yaml:"statsd-prefix"`
-	CertificatePath  string             `yaml:"certificate-path"`
-	KeyPath          string             `yaml:"key-path"`
-	ClientIssuerPath string             `yaml:"client-issuer-path"`
+	GRPC cmd.GRPCServerConfig
+
+	DNSResolver  string             `yaml:"dns-resolver"`
+	DNSNetwork   string             `yaml:"dns-network"`
+	DNSTimeout   cmd.ConfigDuration `yaml:"dns-timeout"`
+	StatsdServer string             `yaml:"statsd-server"`
+	StatsdPrefix string             `yaml:"statsd-prefix"`
 }
 
 func main() {
@@ -229,35 +221,16 @@ func main() {
 	stats, err := statsd.NewClient(c.StatsdServer, c.StatsdPrefix)
 	cmd.FailOnError(err, "Failed to create StatsD client")
 
-	cert, err := tls.LoadX509KeyPair(c.CertificatePath, c.KeyPath)
-	cmd.FailOnError(err, "Failed to load certificate")
-
-	clientIssuerBytes, err := ioutil.ReadFile(c.ClientIssuerPath)
-	cmd.FailOnError(err, "Failed to read client issuer")
-	clientCAs := x509.NewCertPool()
-	if ok := clientCAs.AppendCertsFromPEM(clientIssuerBytes); !ok {
-		fmt.Fprintf(os.Stderr, "Failed to parse client issuer certificate '%s'\n", c.ClientIssuerPath)
-		os.Exit(1)
-	}
-
-	servConf := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    clientCAs,
-	}
-	creds := credentials.NewTLS(servConf)
-
-	l, err := net.Listen("tcp", c.Address)
-	cmd.FailOnError(err, fmt.Sprintf("Failed to listen on '%s'", c.Address))
-	s := grpc.NewServer(grpc.Creds(creds))
 	resolver := bdns.NewDNSResolverImpl(
 		c.DNSTimeout.Duration,
 		[]string{c.DNSResolver},
-		metrics.NewNoopScope(),
+		metrics.NewStatsdScope(stats, "caa-service"),
 		clock.Default(),
 		5,
 	)
 
+	s, l, err := bgrpc.NewServer(&c.GRPC)
+	cmd.FailOnError(err, "Failed to setup gRPC server")
 	ccs := &caaCheckerServer{resolver, stats}
 	pb.RegisterCAACheckerServer(s, ccs)
 	err = s.Serve(l)

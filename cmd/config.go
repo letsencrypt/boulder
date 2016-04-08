@@ -501,12 +501,19 @@ type LogDescription struct {
 	Key string
 }
 
-// CAAConfig contains the information needed to talk to the CAA service
-// over gRPC
+// GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
 	ServerAddress         string
-	ServerHostname        string
 	ServerIssuerPath      string
 	ClientCertificatePath string
 	ClientKeyPath         string
+	Timeout               ConfigDuration
+}
+
+// GRPCServerConfig contains the information needed to run a gRPC service
+type GRPCServerConfig struct {
+	Address               string `json:"address" yaml:"address"`
+	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
+	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
+	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
 }
