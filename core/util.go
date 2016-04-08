@@ -157,9 +157,7 @@ func RandomString(byteLength int) string {
 	b := make([]byte, byteLength)
 	_, err := io.ReadFull(rand.Reader, b)
 	if err != nil {
-		ohdear := "RandomString entropy failure? " + err.Error()
-		logger := blog.GetAuditLogger()
-		logger.EmergencyExit(ohdear)
+		panic(fmt.Sprintf("Error reading random bytes: %s", err))
 	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
