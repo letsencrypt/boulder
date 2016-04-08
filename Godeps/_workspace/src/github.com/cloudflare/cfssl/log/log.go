@@ -64,7 +64,10 @@ func SetLogger(logger SyslogWriter) {
 }
 
 func init() {
-	flag.IntVar(&Level, "loglevel", LevelInfo, "Log level (0 = DEBUG, 5 = FATAL)")
+	// Only define loglevel flag once.
+	if flag.Lookup("loglevel") == nil {
+		flag.IntVar(&Level, "loglevel", LevelInfo, "Log level (0 = DEBUG, 5 = FATAL)")
+	}
 }
 
 func print(l int, msg string) {
