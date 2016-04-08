@@ -83,7 +83,6 @@ type verificationRequestEvent struct {
 	RequestTime       time.Time               `json:",omitempty"`
 	ResponseTime      time.Time               `json:",omitempty"`
 	Error             string                  `json:",omitempty"`
-	DNSName           string                  `json:",omitempty"`
 }
 
 // getAddr will query for all A records associated with hostname and return the
@@ -485,7 +484,6 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
 		RequestTime: va.clk.Now(),
-		DNSName:     authz.Identifier.Value,
 	}
 	challenge := &authz.Challenges[challengeIndex]
 	vStart := va.clk.Now()
@@ -576,7 +574,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(domain string, challenge co
 		Requester:   authz.RegistrationID,
 		RequestTime: va.clk.Now(),
 		Challenge:   challenge,
-		DNSName:     domain,
 	}
 	vStart := va.clk.Now()
 
