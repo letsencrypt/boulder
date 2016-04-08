@@ -84,7 +84,7 @@ func TestEmitEmpty(t *testing.T) {
 	log.AuditNotice("")
 }
 
-func ExampleAuditLogger() {
+func ExampleLogger() {
 	impl := setup(nil)
 
 	bw, ok := impl.w.(*bothWriter)

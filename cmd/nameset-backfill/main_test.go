@@ -10,14 +10,13 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 func TestBackfill(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()

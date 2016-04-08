@@ -10,16 +10,20 @@ import (
 	"regexp"
 )
 
+// UseMock sets a mock logger as the default logger, and returns it.
 func UseMock() *Mock {
 	m := NewMock()
 	_ = Set(m)
 	return m
 }
 
+// NewMock creates a mock logger.
 func NewMock() *Mock {
 	return &Mock{impl{newMockWriter()}}
 }
 
+// Mock is a logger that stores all log messages in memory to be examined by a
+// test.
 type Mock struct {
 	impl
 }

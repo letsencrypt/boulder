@@ -35,15 +35,6 @@ type Logger interface {
 	AuditErr(error)
 }
 
-type Syslog interface {
-	Crit(m string) error
-	Emerg(m string) error
-	Err(m string) error
-	Warning(m string) error
-	Info(m string) error
-	Debug(m string) error
-}
-
 // impl implements Logger.
 type impl struct {
 	w writer
@@ -61,7 +52,7 @@ var _Singleton singleton
 // The constant used to identify audit-specific messages
 const auditTag = "[AUDIT]"
 
-// New returns a new Logger that uses the given Syslog as a backend.
+// New returns a new Logger that uses the given syslog.Writer as a backend.
 func New(log *syslog.Writer, stdoutLogLevel int) (Logger, error) {
 	if log == nil {
 		return nil, errors.New("Attempted to use a nil System Logger.")

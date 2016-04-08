@@ -134,7 +134,7 @@ var (
 	}
 	AuthzFinal = core.Authorization{}
 
-	log = mocks.UseMockLog()
+	log = blog.UseMock()
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
