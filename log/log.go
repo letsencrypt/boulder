@@ -69,12 +69,12 @@ func initialize() {
 	if err != nil {
 		panic(err)
 	}
-	audit, err := New(syslogger, int(syslog.LOG_DEBUG))
+	logger, err := New(syslogger, int(syslog.LOG_DEBUG))
 	if err != nil {
 		panic(err)
 	}
 
-	Set(audit)
+	Set(logger)
 }
 
 // Set configures the singleton Logger. This method
