@@ -21,10 +21,8 @@ import (
 
 // A Logger logs messages with explicit priority levels. It is
 // implemented by a logging back-end as provided by New() or
-// mocks.Logger.
+// NewMock().
 type Logger interface {
-	Crit(m string)
-	Emerg(m string)
 	Err(m string)
 	Warning(m string)
 	Info(m string)
@@ -127,12 +125,6 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	const yellow = "\033[33m"
 
 	switch level {
-	case syslog.LOG_EMERG:
-		err = w.Emerg(msg)
-		prefix = red + "!"
-	case syslog.LOG_CRIT:
-		err = w.Crit(msg)
-		prefix = red + "C"
 	case syslog.LOG_ERR:
 		err = w.Err(msg)
 		prefix = red + "E"
@@ -197,16 +189,6 @@ func (log *impl) AuditPanic() {
 		runtime.Stack(buf, true)
 		log.Warning(fmt.Sprintf("Stack Trace (All frames): %s", buf))
 	}
-}
-
-// Crit level messages are automatically marked for audit
-func (log *impl) Crit(msg string) {
-	log.auditAtLevel(syslog.LOG_CRIT, msg)
-}
-
-// Emerg level messages are automatically marked for audit
-func (log *impl) Emerg(msg string) {
-	log.auditAtLevel(syslog.LOG_EMERG, msg)
 }
 
 // Err level messages are automatically marked for audit

@@ -165,6 +165,20 @@ func (m mysqlLogger) Print(v ...interface{}) {
 	m.Err(fmt.Sprintf("[mysql] %s", fmt.Sprint(v...)))
 }
 
+// cfsslLogger provides two additional methods that are expected by CFSSL's
+// logger but not supported by Boulder's Logger.
+type cfsslLogger struct {
+	blog.Logger
+}
+
+func (cl cfsslLogger) Crit(msg string) {
+	cl.Err(msg)
+}
+
+func (cl cfsslLogger) Emerg(msg string) {
+	cl.Err(msg)
+}
+
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
 // Also sets the constructed AuditLogger as the default logger.
@@ -187,7 +201,7 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	FailOnError(err, "Could not connect to Syslog")
 
 	blog.Set(logger)
-	cfsslLog.SetLogger(logger)
+	cfsslLog.SetLogger(cfsslLogger{logger})
 	mysql.SetLogger(mysqlLogger{logger})
 
 	return stats, logger

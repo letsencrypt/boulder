@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log/syslog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -679,9 +678,9 @@ func TestIssueCertificate(t *testing.T) {
 		"application/pkix-cert")
 	reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
 	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_NOTICE)
-	test.AssertContains(t, reqlogs[0].Message, `[AUDIT] `)
-	test.AssertContains(t, reqlogs[0].Message, `"CommonName":"not-an-example.com",`)
+	test.AssertContains(t, reqlogs[0], `NOTICE: `)
+	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
+	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
 }
 
 func TestGetChallenge(t *testing.T) {
@@ -1344,8 +1343,8 @@ func TestGetCertificate(t *testing.T) {
 	t.Logf("UGH %#v", mockLog.GetAll()[0])
 	reqlogs := mockLog.GetAllMatching(`Successful request`)
 	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_INFO)
-	test.AssertContains(t, reqlogs[0].Message, `"ClientAddr":"192.168.0.1"`)
+	test.AssertContains(t, reqlogs[0], `INFO: `)
+	test.AssertContains(t, reqlogs[0], `"ClientAddr":"192.168.0.1"`)
 
 	// Unused serial, no cache
 	mockLog.Clear()
@@ -1360,8 +1359,8 @@ func TestGetCertificate(t *testing.T) {
 
 	reqlogs = mockLog.GetAllMatching(`Terminated request`)
 	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_INFO)
-	test.AssertContains(t, reqlogs[0].Message, `"ClientAddr":"192.168.99.99,192.168.0.1"`)
+	test.AssertContains(t, reqlogs[0], `INFO: `)
+	test.AssertContains(t, reqlogs[0], `"ClientAddr":"192.168.99.99,192.168.0.1"`)
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
@@ -1385,7 +1384,6 @@ func assertCsrLogged(t *testing.T, mockLog *blog.Mock) {
 	test.Assert(t, len(matches) == 1,
 		fmt.Sprintf("Incorrect number of certificate request log entries: %d",
 			len(matches)))
-	test.AssertEquals(t, matches[0].Priority, syslog.LOG_NOTICE)
 }
 
 func TestLogCsrPem(t *testing.T) {

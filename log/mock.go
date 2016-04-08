@@ -6,6 +6,7 @@
 package log
 
 import (
+	"fmt"
 	"log/syslog"
 	"regexp"
 )
@@ -32,17 +33,11 @@ type Mock struct {
 // stores all logged messages in a buffer for inspection by test
 // functions (via GetAll()) instead of sending them to syslog.
 type mockWriter struct {
-	logged    []*LogMessage
-	msgChan   chan<- *LogMessage
-	getChan   <-chan []*LogMessage
+	logged    []string
+	msgChan   chan<- string
+	getChan   <-chan []string
 	clearChan chan<- struct{}
 	closeChan chan<- struct{}
-}
-
-// LogMessage is a log entry that has been sent to a Mock.
-type LogMessage struct {
-	Priority syslog.Priority // aka Log level
-	Message  string          // content of log message
 }
 
 var levelName = map[syslog.Priority]string{
@@ -56,22 +51,18 @@ var levelName = map[syslog.Priority]string{
 	syslog.LOG_DEBUG:   "DEBUG",
 }
 
-func (lm *LogMessage) String() string {
-	return levelName[lm.Priority&7] + ": " + lm.Message
-}
-
 func (w *mockWriter) logAtLevel(p syslog.Priority, msg string) {
-	w.msgChan <- &LogMessage{Message: msg, Priority: p}
+	w.msgChan <- fmt.Sprintf("%s: %s", levelName[p&7], msg)
 }
 
 // newMockWriter returns a new mockWriter
 func newMockWriter() *mockWriter {
-	msgChan := make(chan *LogMessage)
-	getChan := make(chan []*LogMessage)
+	msgChan := make(chan string)
+	getChan := make(chan []string)
 	clearChan := make(chan struct{})
 	closeChan := make(chan struct{})
 	w := &mockWriter{
-		logged:    []*LogMessage{},
+		logged:    []string{},
 		msgChan:   msgChan,
 		getChan:   getChan,
 		clearChan: clearChan,
@@ -84,7 +75,7 @@ func newMockWriter() *mockWriter {
 				w.logged = append(w.logged, logMsg)
 			case getChan <- w.logged:
 			case <-clearChan:
-				w.logged = []*LogMessage{}
+				w.logged = []string{}
 			case <-closeChan:
 				close(getChan)
 				return
@@ -94,26 +85,27 @@ func newMockWriter() *mockWriter {
 	return w
 }
 
-// GetAll returns all LogMessages logged (since the last call to
-// Clear(), if applicable).
+// GetAll returns all messages logged since insantiation or the last call to
+// Clear().
 //
 // The caller must not modify the returned slice or its elements.
-func (m *Mock) GetAll() []*LogMessage {
+func (m *Mock) GetAll() []string {
 	w := m.w.(*mockWriter)
 	return <-w.getChan
 }
 
-// GetAllMatching returns all LogMessages logged (since the last
-// Clear()) whose text matches the given regexp. The regexp is
+// GetAllMatching returns all messages logged since instantiation or the last
+// Clear() whose text matches the given regexp. The regexp is
 // accepted as a string and compiled on the fly, because convenience
 // is more important than performance.
 //
 // The caller must not modify the elements of the returned slice.
-func (m *Mock) GetAllMatching(reString string) (matches []*LogMessage) {
+func (m *Mock) GetAllMatching(reString string) []string {
+	var matches []string
 	w := m.w.(*mockWriter)
 	re := regexp.MustCompile(reString)
 	for _, logMsg := range <-w.getChan {
-		if re.MatchString(logMsg.String()) {
+		if re.MatchString(logMsg) {
 			matches = append(matches, logMsg)
 		}
 	}

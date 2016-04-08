@@ -21,7 +21,7 @@ const stdoutLevel = 7
 
 func setup(t *testing.T) *impl {
 	// Write all logs to UDP on a high port so as to not bother the system
-	// which is running the test, particularly for Emerg()
+	// which is running the test
 	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
@@ -105,9 +105,7 @@ func TestSyslogMethods(t *testing.T) {
 
 	audit.AuditNotice("audit-logger_test.go: audit-notice")
 	audit.AuditErr(errors.New("audit-logger_test.go: audit-err"))
-	audit.Crit("audit-logger_test.go: critical")
 	audit.Debug("audit-logger_test.go: debug")
-	audit.Emerg("audit-logger_test.go: emerg")
 	audit.Err("audit-logger_test.go: err")
 	audit.Info("audit-logger_test.go: info")
 	audit.Notice("audit-logger_test.go: notice")
@@ -189,15 +187,7 @@ func TestTransmission(t *testing.T) {
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
-	impl.Crit("audit-logger_test.go: critical")
-	_, _, err = l.ReadFrom(data)
-	test.AssertNotError(t, err, "Failed to find packet")
-
 	impl.Debug("audit-logger_test.go: debug")
-	_, _, err = l.ReadFrom(data)
-	test.AssertNotError(t, err, "Failed to find packet")
-
-	impl.Emerg("audit-logger_test.go: emerg")
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
