@@ -11,7 +11,7 @@
   },
 
   "wfe": {
-    "listenAddress": "127.0.0.1:4000",
+    "listenAddress": "0.0.0.0:4000",
     "allowOrigins": ["*"],
     "certCacheDuration": "6h",
     "certNoCacheExpirationWindow": "96h",
@@ -123,7 +123,8 @@
               "PublicKey": true,
               "SignatureAlgorithm": true
             },
-            "ClientProvidesSerialNumbers": true
+            "ClientProvidesSerialNumbers": true,
+            "allowed_extensions": [ "1.3.6.1.5.5.7.1.24" ]
           }
         },
         "default": {
@@ -236,9 +237,9 @@
   },
 
   "ocspResponder": {
-    "source": "mysql+tcp://ocsp_resp@localhost:3306/boulder_sa_integration?readTimeout=800ms&writeTimeout=800ms",
+    "source": "mysql+tcp://ocsp_resp@boulder-mysql:3306/boulder_sa_integration?readTimeout=800ms&writeTimeout=800ms",
     "path": "/",
-    "listenAddress": "localhost:4002",
+    "listenAddress": "0.0.0.0:4002",
     "maxAge": "10s",
     "shutdownStopTimeout": "10s",
     "shutdownKillTimeout": "1m",
@@ -279,8 +280,8 @@
   },
 
   "mailer": {
-    "server": "mail.example.com",
-    "port": "25",
+    "server": "localhost",
+    "port": "9380",
     "username": "cert-master@example.com",
     "from": "Expiry bot <test@example.com>",
     "passwordFile": "test/secrets/smtp_password",
@@ -336,7 +337,7 @@
     "dbConnectFile": "test/secrets/cert_checker_dburl"
   },
 
-  "subscriberAgreementURL": "http://127.0.0.1:4001/terms/v1",
+  "subscriberAgreementURL": "http://boulder:4001/terms/v1",
 
   "allowedSigningAlgos": {
     "rsa": true,

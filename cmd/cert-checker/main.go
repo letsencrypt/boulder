@@ -37,9 +37,9 @@ const (
 	filenameLayout = "20060102"
 
 	expectedValidityPeriod = time.Hour * 24 * 90
-
-	batchSize = 1000
 )
+
+var batchSize = 1000
 
 type report struct {
 	begin     time.Time
@@ -121,9 +121,6 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	args["lastSerial"] = ""
 	for offset := 0; offset < count; {
 		var certs []core.Certificate
-		if offset > 0 {
-			args["lastSerial"] = certs[len(certs)-1].Serial
-		}
 		_, err = c.dbMap.Select(
 			&certs,
 			getCertsQuery,
@@ -135,6 +132,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		for _, cert := range certs {
 			c.certs <- cert
 		}
+		args["lastSerial"] = certs[len(certs)-1].Serial
 		offset += len(certs)
 	}
 
