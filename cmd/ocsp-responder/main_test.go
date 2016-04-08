@@ -13,7 +13,6 @@ import (
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -21,7 +20,6 @@ var (
 	req      = mustRead("./testdata/ocsp.req")
 	resp     = mustRead("./testdata/ocsp.resp")
 	stats, _ = statsd.NewNoopClient()
-	log      = mocks.UseMockLog()
 )
 
 func TestMux(t *testing.T) {
@@ -57,7 +55,7 @@ func TestMux(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", blog.NewMock())
 	if err != nil {
 		t.Fatalf("makeDBSource: %s", err)
 	}
@@ -98,8 +96,8 @@ func (bs brokenSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) er
 }
 
 func TestErrorLog(t *testing.T) {
-	log.Clear()
-	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", log)
+	mockLog := blog.NewMock()
+	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", mockLog)
 	test.AssertNotError(t, err, "Failed to create broken dbMap")
 
 	ocspReq, err := ocsp.ParseRequest(req)
@@ -108,7 +106,7 @@ func TestErrorLog(t *testing.T) {
 	_, found := src.Response(ocspReq)
 	test.Assert(t, !found, "Somehow found OCSP response")
 
-	test.AssertEquals(t, len(log.GetAllMatching("Failed to retrieve response from certificateStatus table")), 1)
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Failed to retrieve response from certificateStatus table")), 1)
 }
 
 func mustRead(path string) []byte {

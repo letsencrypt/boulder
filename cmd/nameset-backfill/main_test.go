@@ -10,14 +10,13 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 func TestBackfill(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
@@ -29,12 +28,12 @@ func TestBackfill(t *testing.T) {
 	}
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, blog.GetAuditLogger())
+	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 	defer test.ResetSATestDatabase(t)
-	b := backfiller{sa, dbMap, stats, blog.GetAuditLogger(), fc}
+	b := backfiller{sa, dbMap, stats, log, fc}
 
 	certDER, err := ioutil.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")

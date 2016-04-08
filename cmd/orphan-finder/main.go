@@ -52,7 +52,7 @@ func checkDER(sai certificateStorage, der []byte) error {
 	return fmt.Errorf("Existing certificate lookup failed: %s", err)
 }
 
-func parseLogLine(sa certificateStorage, logger blog.SyslogWriter, line string) (found bool, added bool) {
+func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found bool, added bool) {
 	if !strings.Contains(line, "b64der=") || !strings.Contains(line, "orphaning certificate") {
 		return false, false
 	}
@@ -94,7 +94,7 @@ func parseLogLine(sa certificateStorage, logger blog.SyslogWriter, line string) 
 	return true, true
 }
 
-func setup(c *cli.Context) (statsd.Statter, blog.SyslogWriter, *rpc.StorageAuthorityClient) {
+func setup(c *cli.Context) (statsd.Statter, blog.Logger, *rpc.StorageAuthorityClient) {
 	configJSON, err := ioutil.ReadFile(c.GlobalString("config"))
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config

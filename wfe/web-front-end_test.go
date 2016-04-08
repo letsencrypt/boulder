@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log/syslog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -32,6 +31,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/test"
@@ -224,7 +224,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	wfe.NewCert = wfe.BaseURL + NewCertPath
 	wfe.CertBase = wfe.BaseURL + CertPath
 	wfe.SubscriberAgreementURL = agreementURL
-	wfe.log.SyslogWriter = mocks.NewSyslogWriter()
+	wfe.log = blog.NewMock()
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = mocks.NewStorageAuthority(fc)
@@ -546,7 +546,7 @@ func TestIssueCertificate(t *testing.T) {
 	wfe, fc := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
-	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog := wfe.log.(*blog.Mock)
 
 	// The mock CA we use always returns the same test certificate, with a Not
 	// Before of 2015-09-22. Since we're currently using a real RA instead of a
@@ -678,9 +678,9 @@ func TestIssueCertificate(t *testing.T) {
 		"application/pkix-cert")
 	reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
 	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_NOTICE)
-	test.AssertContains(t, reqlogs[0].Message, `[AUDIT] `)
-	test.AssertContains(t, reqlogs[0].Message, `"CommonName":"not-an-example.com",`)
+	test.AssertContains(t, reqlogs[0], `INFO: `)
+	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
+	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
 }
 
 func TestGetChallenge(t *testing.T) {
@@ -1328,7 +1328,7 @@ func TestGetCertificate(t *testing.T) {
 
 	responseWriter := httptest.NewRecorder()
 
-	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
 
 	// Valid serial, cached
@@ -1343,8 +1343,8 @@ func TestGetCertificate(t *testing.T) {
 	t.Logf("UGH %#v", mockLog.GetAll()[0])
 	reqlogs := mockLog.GetAllMatching(`Successful request`)
 	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_INFO)
-	test.AssertContains(t, reqlogs[0].Message, `"ClientAddr":"192.168.0.1"`)
+	test.AssertContains(t, reqlogs[0], `INFO: `)
+	test.AssertContains(t, reqlogs[0], `"ClientAddr":"192.168.0.1"`)
 
 	// Unused serial, no cache
 	mockLog.Clear()
@@ -1359,8 +1359,8 @@ func TestGetCertificate(t *testing.T) {
 
 	reqlogs = mockLog.GetAllMatching(`Terminated request`)
 	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertEquals(t, reqlogs[0].Priority, syslog.LOG_INFO)
-	test.AssertContains(t, reqlogs[0].Message, `"ClientAddr":"192.168.99.99,192.168.0.1"`)
+	test.AssertContains(t, reqlogs[0], `INFO: `)
+	test.AssertContains(t, reqlogs[0], `"ClientAddr":"192.168.99.99,192.168.0.1"`)
 
 	// Invalid serial, no cache
 	responseWriter = httptest.NewRecorder()
@@ -1379,12 +1379,11 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
 }
 
-func assertCsrLogged(t *testing.T, mockLog *mocks.SyslogWriter) {
-	matches := mockLog.GetAllMatching("^NOTICE: \\[AUDIT\\] Certificate request JSON=")
+func assertCsrLogged(t *testing.T, mockLog *blog.Mock) {
+	matches := mockLog.GetAllMatching("^INFO: \\[AUDIT\\] Certificate request JSON=")
 	test.Assert(t, len(matches) == 1,
 		fmt.Sprintf("Incorrect number of certificate request log entries: %d",
 			len(matches)))
-	test.AssertEquals(t, matches[0].Priority, syslog.LOG_NOTICE)
 }
 
 func TestLogCsrPem(t *testing.T) {
@@ -1405,7 +1404,7 @@ func TestLogCsrPem(t *testing.T) {
 	req.RemoteAddr = "12.34.98.76"
 	req.Header.Set("X-Forwarded-For", "10.0.0.1,172.16.0.1")
 
-	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
 
 	wfe.logCsr(req, certificateRequest, reg)
@@ -1473,7 +1472,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	certBlock, _ := pem.Decode(certPemBytes)
 
-	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
 
 	mux, _ := wfe.Handler()

@@ -114,7 +114,7 @@ type messageHandler func([]byte) ([]byte, error)
 type AmqpRPCServer struct {
 	serverQueue    string
 	connection     *amqpConnector
-	log            *blog.AuditLogger
+	log            blog.Logger
 	handleDelivery DeliveryHandler
 	// Servers that just care about messages (method + body) add entries to
 	// dispatchTable
@@ -134,7 +134,7 @@ const wildcardRoutingKey = "#"
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
 func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
-	log := blog.GetAuditLogger()
+	log := blog.Get()
 
 	reconnectBase := amqpConf.ReconnectTimeouts.Base.Duration
 	if reconnectBase == 0 {
@@ -274,7 +274,7 @@ func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 	var err error
 
-	log := blog.GetAuditLogger()
+	log := blog.Get()
 
 	serverURL, err := conf.ServerURL()
 	if err != nil {
@@ -497,7 +497,7 @@ type AmqpRPCCLient struct {
 	clientQueue string
 	connection  *amqpConnector
 	timeout     time.Duration
-	log         *blog.AuditLogger
+	log         blog.Logger
 
 	mu      sync.RWMutex
 	pending map[string]chan []byte
@@ -544,7 +544,7 @@ func NewAmqpRPCClient(
 		connection:  newAMQPConnector(clientQueue, reconnectBase, reconnectMax),
 		pending:     make(map[string]chan []byte),
 		timeout:     timeout,
-		log:         blog.GetAuditLogger(),
+		log:         blog.Get(),
 		stats:       stats,
 	}
 

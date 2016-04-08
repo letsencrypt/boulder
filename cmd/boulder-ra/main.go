@@ -25,7 +25,7 @@ const clientName = "RA"
 
 func main() {
 	app := cmd.NewAppShell("boulder-ra", "Handles service orchestration")
-	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		// Validate PA config and set defaults if needed
 		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
@@ -66,7 +66,7 @@ func main() {
 			dc = &ra.DomainCheck{VA: vac}
 		}
 
-		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), auditlogger, stats,
+		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), logger, stats,
 			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration, c.KeyPolicy(),
 			c.RA.UseNewVARPC)
 		rai.PA = pa
