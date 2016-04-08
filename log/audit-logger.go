@@ -111,7 +111,7 @@ func initializeAuditLogger() {
 func SetAuditLogger(logger *AuditLogger) (err error) {
 	if _Singleton.log != nil {
 		err = errors.New("You may not call SetAuditLogger after it has already been implicitly or explicitly set.")
-		_Singleton.log.WarningErr(err)
+		_Singleton.log.Warning(err.Error())
 	} else {
 		_Singleton.log = logger
 	}
@@ -218,11 +218,6 @@ func (log *AuditLogger) AuditPanic() {
 		runtime.Stack(buf, true)
 		log.Warning(fmt.Sprintf("Stack Trace (All frames): %s", buf))
 	}
-}
-
-// WarningErr formats an error for the Warn level.
-func (log *AuditLogger) WarningErr(msg error) (err error) {
-	return log.logAtLevel(syslog.LOG_WARNING, msg.Error())
 }
 
 // Alert level messages pass through normally.

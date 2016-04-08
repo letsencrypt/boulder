@@ -452,9 +452,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	if ca.maxNames > 0 && len(hostNames) > ca.maxNames {
-		err := core.MalformedRequestError(fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames))
-		ca.log.WarningErr(err)
-		return emptyCert, err
+		msg := fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames)
+		ca.log.Info(msg)
+		return emptyCert, core.MalformedRequestError(msg)
 	}
 
 	// Verify that names are allowed by policy
