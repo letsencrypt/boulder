@@ -28,12 +28,12 @@ func TestBackfill(t *testing.T) {
 	}
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, blog.Get())
+	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 	defer test.ResetSATestDatabase(t)
-	b := backfiller{sa, dbMap, stats, blog.Get(), fc}
+	b := backfiller{sa, dbMap, stats, log, fc}
 
 	certDER, err := ioutil.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")

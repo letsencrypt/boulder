@@ -209,7 +209,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	})
 
 	ra := NewRegistrationAuthorityImpl(fc,
-		blog.Get(),
+		log,
 		stats,
 		&DomainCheck{va},
 		cmd.RateLimitConfig{

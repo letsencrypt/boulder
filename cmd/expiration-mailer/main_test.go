@@ -723,7 +723,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 
 	m := &mailer{
-		log:           blog.Get(),
+		log:           log,
 		stats:         stats,
 		mailer:        mc,
 		emailTemplate: tmpl,

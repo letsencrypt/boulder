@@ -55,7 +55,7 @@ func TestMux(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", blog.Get())
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", blog.NewMock())
 	if err != nil {
 		t.Fatalf("makeDBSource: %s", err)
 	}
