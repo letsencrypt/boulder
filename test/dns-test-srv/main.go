@@ -178,7 +178,6 @@ func (ts *testSrv) serveTestResolver() {
 }
 
 func main() {
-	fmt.Println("dns-srv: Starting test DNS server")
 	ts := testSrv{mu: new(sync.RWMutex), txtRecords: make(map[string]string)}
 	ts.serveTestResolver()
 	forever := make(chan bool, 1)

@@ -148,7 +148,7 @@ func main() {
 		return config
 	}
 
-	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		// Configure DB
 		dbURL, err := c.PA.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")

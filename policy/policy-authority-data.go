@@ -53,14 +53,14 @@ type gorpDbMap interface {
 // AuthorityDatabaseImpl enforces policy decisions based on various rule
 // lists
 type AuthorityDatabaseImpl struct {
-	log   *blog.AuditLogger
+	log   blog.Logger
 	dbMap gorpDbMap
 }
 
 // NewAuthorityDatabaseImpl constructs a Policy Authority Database (and
 // creates tables if they are non-existent)
 func NewAuthorityDatabaseImpl(dbMap gorpDbMap) (padb *AuthorityDatabaseImpl, err error) {
-	logger := blog.GetAuditLogger()
+	logger := blog.Get()
 
 	dbMap.AddTableWithName(BlacklistRule{}, "blacklist")
 	dbMap.AddTableWithName(WhitelistRule{}, "whitelist")

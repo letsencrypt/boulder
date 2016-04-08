@@ -130,18 +130,18 @@ func recombineCustomMySQLURL(dbConnect string) (string, error) {
 }
 
 // SetSQLDebug enables GORP SQL-level Debugging
-func SetSQLDebug(dbMap *gorp.DbMap, log blog.SyslogWriter) {
+func SetSQLDebug(dbMap *gorp.DbMap, log blog.Logger) {
 	dbMap.TraceOn("SQL: ", &SQLLogger{log})
 }
 
-// SQLLogger adapts the AuditLogger to a format GORP can use.
+// SQLLogger adapts the Boulder Logger to a format GORP can use.
 type SQLLogger struct {
-	log blog.SyslogWriter
+	blog.Logger
 }
 
 // Printf adapts the AuditLogger to GORP's interface
 func (log *SQLLogger) Printf(format string, v ...interface{}) {
-	log.log.Debug(fmt.Sprintf(format, v...))
+	log.Debug(fmt.Sprintf(format, v...))
 }
 
 // initTables constructs the table map for the ORM.

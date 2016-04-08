@@ -44,7 +44,7 @@ var validationTimeout = time.Second * 5
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
-	log          *blog.AuditLogger
+	log          blog.Logger
 	DNSResolver  bdns.DNSResolver
 	IssuerDomain string
 	SafeBrowsing SafeBrowsing
@@ -67,8 +67,7 @@ type PortConfig struct {
 
 // NewValidationAuthorityImpl constructs a new VA
 func NewValidationAuthorityImpl(pc *PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
-	logger := blog.GetAuditLogger()
-	logger.Notice("Validation Authority Starting")
+	logger := blog.Get()
 	return &ValidationAuthorityImpl{
 		SafeBrowsing: sbc,
 		log:          logger,
@@ -171,7 +170,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	}
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.AuditNotice(fmt.Sprintf("Attempting to validate %s for %s", challenge.Type, url))
+	va.log.AuditInfo(fmt.Sprintf("Attempting to validate %s for %s", challenge.Type, url))
 	httpRequest, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		va.log.Info(fmt.Sprintf("Failed to parse URL '%s'. err=[%#v] errStr=[%s]", identifier, err, err))
@@ -306,7 +305,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 	portString := strconv.Itoa(va.tlsPort)
 	hostPort := net.JoinHostPort(addr.String(), portString)
 	validationRecords[0].Port = portString
-	va.log.Notice(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
+	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, zName))
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: validationTimeout}, "tcp", hostPort, &tls.Config{
 		ServerName:         zName,
 		InsecureSkipVerify: true,
@@ -474,7 +473,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 		return bdns.ProblemDetailsFromDNSError(err)
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.AuditNotice(fmt.Sprintf("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]", identifier.Value, present, valid))
+	va.log.AuditInfo(fmt.Sprintf("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]", identifier.Value, present, valid))
 	if !valid {
 		return &probs.ProblemDetails{
 			Type:   probs.ConnectionProblem,
@@ -503,7 +502,7 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 		}
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.AuditNotice(fmt.Sprintf(
+	va.log.AuditInfo(fmt.Sprintf(
 		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
 		ident.Value,
 		r.Present,
@@ -550,7 +549,7 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
 
-	va.log.Notice(fmt.Sprintf("Validations: %+v", authz))
+	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
 
 	va.RA.OnValidationUpdate(authz)
 }

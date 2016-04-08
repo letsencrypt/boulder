@@ -30,7 +30,7 @@ type backfiller struct {
 	sa    core.StorageAuthority
 	dbMap *gorp.DbMap
 	stats statsd.Statter
-	log   *blog.AuditLogger
+	log   blog.Logger
 	clk   clock.Clock
 }
 
@@ -71,6 +71,7 @@ func (b *backfiller) run() error {
 
 func (b *backfiller) findCerts() ([]resultHolder, error) {
 	var allResults []resultHolder
+	lastSerial := ""
 	for {
 		var results []resultHolder
 		_, err := b.dbMap.Select(
@@ -78,11 +79,11 @@ func (b *backfiller) findCerts() ([]resultHolder, error) {
 			`SELECT c.serial, c.issued, c.expires, c.der FROM certificates AS c
        LEFT JOIN fqdnSets AS ns ON c.serial=ns.serial
        WHERE ns.serial IS NULL
-       ORDER BY c.issued DESC
-       LIMIT ?
-       OFFSET ?`,
+       AND c.serial > ?
+       ORDER BY c.serial ASC
+       LIMIT ?`,
+			lastSerial,
 			1000,
-			len(allResults),
 		)
 		if err != nil {
 			return nil, err
@@ -92,6 +93,7 @@ func (b *backfiller) findCerts() ([]resultHolder, error) {
 		}
 		b.stats.Inc("db-backfill.fqdnSets.missing-found", int64(len(results)), 1.0)
 		allResults = append(allResults, results...)
+		lastSerial = allResults[len(allResults)-1].Serial
 	}
 	return allResults, nil
 }

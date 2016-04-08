@@ -46,7 +46,7 @@ type regStore interface {
 
 type mailer struct {
 	stats         statsd.Statter
-	log           *blog.AuditLogger
+	log           blog.Logger
 	dbMap         *gorp.DbMap
 	rs            regStore
 	mailer        mail.Mailer
@@ -300,7 +300,7 @@ func main() {
 		return config
 	}
 
-	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		go cmd.DebugServer(c.Mailer.DebugAddr)
 
 		// Configure DB
@@ -333,7 +333,7 @@ func main() {
 		if s := c.Mailer.NagCheckInterval; s != "" {
 			nagCheckInterval, err = time.ParseDuration(s)
 			if err != nil {
-				auditlogger.Err(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
+				logger.Err(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
 				return
 			}
 		}
@@ -342,7 +342,7 @@ func main() {
 		for _, nagDuration := range c.Mailer.NagTimes {
 			dur, err := time.ParseDuration(nagDuration)
 			if err != nil {
-				auditlogger.Err(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
+				logger.Err(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
 				return
 			}
 			nags = append(nags, dur+nagCheckInterval)
@@ -357,7 +357,7 @@ func main() {
 		m := mailer{
 			stats:         stats,
 			subject:       subject,
-			log:           auditlogger,
+			log:           logger,
 			dbMap:         dbMap,
 			rs:            sac,
 			mailer:        &mailClient,
@@ -367,7 +367,7 @@ func main() {
 			clk:           cmd.Clock(),
 		}
 
-		auditlogger.Info("expiration-mailer: Starting")
+		logger.Info("expiration-mailer: Starting")
 		err = m.findExpiringCertificates()
 		cmd.FailOnError(err, "expiration-mailer has failed")
 	}

@@ -27,13 +27,13 @@ import (
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/mocks"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 // initSA constructs a SQLStorageAuthority and a clean up function
 // that should be defer'ed to the end of the test.

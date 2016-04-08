@@ -31,7 +31,7 @@ import (
 // OCSPUpdater contains the useful objects for the Updater
 type OCSPUpdater struct {
 	stats statsd.Statter
-	log   *blog.AuditLogger
+	log   blog.Logger
 	clk   clock.Clock
 
 	dbMap *gorp.DbMap
@@ -77,7 +77,7 @@ func newUpdater(
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
 
-	log := blog.GetAuditLogger()
+	log := blog.Get()
 
 	updater := OCSPUpdater{
 		stats:               stats,
@@ -560,7 +560,7 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
 func main() {
 	app := cmd.NewAppShell("ocsp-updater", "Generates and updates OCSP responses")
 
-	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger blog.Logger) {
 		conf := c.OCSPUpdater
 		go cmd.DebugServer(conf.DebugAddr)
 		go cmd.ProfileCmd("OCSP-Updater", stats)

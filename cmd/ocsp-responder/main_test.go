@@ -13,7 +13,6 @@ import (
 	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -56,7 +55,7 @@ func TestMux(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", blog.NewMock())
 	if err != nil {
 		t.Fatalf("makeDBSource: %s", err)
 	}
@@ -97,11 +96,9 @@ func (bs brokenSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) er
 }
 
 func TestErrorLog(t *testing.T) {
-	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
+	mockLog := blog.NewMock()
+	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", mockLog)
 	test.AssertNotError(t, err, "Failed to create broken dbMap")
-
-	src.log.SyslogWriter = mocks.NewSyslogWriter()
-	mockLog := src.log.SyslogWriter.(*mocks.SyslogWriter)
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
