@@ -79,7 +79,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	var response []byte
 	defer func() {
 		if len(response) != 0 {
-			src.log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
+			src.log.Debug(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 		}
 	}()
 	err := src.dbMap.SelectOne(
