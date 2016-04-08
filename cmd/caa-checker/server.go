@@ -185,6 +185,9 @@ func (ccs *caaCheckerServer) checkCAA(ctx context.Context, hostname string, issu
 }
 
 func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Check) (*pb.Result, error) {
+	if check.Name == nil || check.IssuerDomain == nil {
+		return nil, bgrpc.CodedError(grpcCodes.InvalidArgument, "Both name and issuerDomain are required")
+	}
 	present, valid, err := ccs.checkCAA(ctx, *check.Name, *check.IssuerDomain)
 	if err != nil {
 		if err == context.DeadlineExceeded || err == context.Canceled {

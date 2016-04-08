@@ -494,11 +494,18 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 				Detail: err.Error(),
 			}
 		default:
-			va.log.Err(fmt.Sprintf("gRPC communication failure: %s", err))
+			va.log.Err(fmt.Sprintf("gRPC: communication failure: %s", err))
 			return &probs.ProblemDetails{
 				Type:   probs.ServerInternalProblem,
 				Detail: "Internal communication failure",
 			}
+		}
+	}
+	if r.Present == nil || r.Valid == nil {
+		va.log.Err("gRPC: communication failure: response is missing fields")
+		return &probs.ProblemDetails{
+			Type:   probs.ServerInternalProblem,
+			Detail: "Internal communication failure",
 		}
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c

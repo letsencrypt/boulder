@@ -5,11 +5,11 @@ service CAAChecker {
 }
 
 message Check {
-        required string name = 1;
-        required string issuerDomain = 2;
+        optional string name = 1;
+        optional string issuerDomain = 2;
 }
 
 message Result {
-        required bool present = 1;
-        required bool valid = 2;
+        optional bool present = 1;
+        optional bool valid = 2;
 }
