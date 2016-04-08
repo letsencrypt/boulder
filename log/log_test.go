@@ -95,7 +95,8 @@ func ExampleLogger() {
 	bw.clk = clock.NewFake()
 	impl.AuditErr(errors.New("Error Audit"))
 	impl.Warning("Warning Audit")
-	// Output: [31m[1mE000000 log.test [AUDIT] Error Audit[0m
+	// Output:
+	// [31m[1mE000000 log.test [AUDIT] Error Audit[0m
 	// [33mW000000 log.test Warning Audit[0m
 }
 

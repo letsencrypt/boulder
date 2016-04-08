@@ -191,7 +191,8 @@ func (log *impl) AuditPanic() {
 	}
 }
 
-// Err level messages are automatically marked for audit
+// Err level messages are always marked with the audit tag, for special handling
+// at the upstream system logger.
 func (log *impl) Err(msg string) {
 	log.auditAtLevel(syslog.LOG_ERR, msg)
 }
