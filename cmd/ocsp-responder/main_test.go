@@ -21,6 +21,7 @@ var (
 	req      = mustRead("./testdata/ocsp.req")
 	resp     = mustRead("./testdata/ocsp.resp")
 	stats, _ = statsd.NewNoopClient()
+	log      = mocks.UseMockLog()
 )
 
 func TestMux(t *testing.T) {
@@ -97,11 +98,9 @@ func (bs brokenSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) er
 }
 
 func TestErrorLog(t *testing.T) {
-	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
+	log.Clear()
+	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", log)
 	test.AssertNotError(t, err, "Failed to create broken dbMap")
-
-	src.log.SyslogWriter = mocks.NewSyslogWriter()
-	mockLog := src.log.SyslogWriter.(*mocks.SyslogWriter)
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
@@ -109,7 +108,7 @@ func TestErrorLog(t *testing.T) {
 	_, found := src.Response(ocspReq)
 	test.Assert(t, !found, "Somehow found OCSP response")
 
-	test.AssertEquals(t, len(mockLog.GetAllMatching("Failed to retrieve response from certificateStatus table")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("Failed to retrieve response from certificateStatus table")), 1)
 }
 
 func mustRead(path string) []byte {

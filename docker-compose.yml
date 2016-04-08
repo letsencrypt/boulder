@@ -7,8 +7,6 @@ boulder:
       - 4001:4001
       - 4002:4002
       - 4003:4003
-    environment:
-        MYSQL_CONTAINER: "yes"
     links:
       - bmysql:boulder-mysql
       - brabbitmq:boulder-rabbitmq
