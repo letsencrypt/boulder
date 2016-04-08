@@ -678,7 +678,7 @@ func TestIssueCertificate(t *testing.T) {
 		"application/pkix-cert")
 	reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
 	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertContains(t, reqlogs[0], `NOTICE: `)
+	test.AssertContains(t, reqlogs[0], `INFO: `)
 	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
 	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
 }
@@ -1380,7 +1380,7 @@ func TestGetCertificate(t *testing.T) {
 }
 
 func assertCsrLogged(t *testing.T, mockLog *blog.Mock) {
-	matches := mockLog.GetAllMatching("^NOTICE: \\[AUDIT\\] Certificate request JSON=")
+	matches := mockLog.GetAllMatching("^INFO: \\[AUDIT\\] Certificate request JSON=")
 	test.Assert(t, len(matches) == 1,
 		fmt.Sprintf("Incorrect number of certificate request log entries: %d",
 			len(matches)))
