@@ -40,7 +40,7 @@ var validationTimeout = time.Second * 5
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	RA           core.RegistrationAuthority
-	log          *blog.AuditLogger
+	log          blog.Logger
 	DNSResolver  bdns.DNSResolver
 	IssuerDomain string
 	SafeBrowsing SafeBrowsing
@@ -62,7 +62,7 @@ type PortConfig struct {
 
 // NewValidationAuthorityImpl constructs a new VA
 func NewValidationAuthorityImpl(pc *PortConfig, sbc SafeBrowsing, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
-	logger := blog.GetAuditLogger()
+	logger := blog.Get()
 	return &ValidationAuthorityImpl{
 		SafeBrowsing: sbc,
 		log:          logger,

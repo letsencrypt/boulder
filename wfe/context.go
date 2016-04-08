@@ -1,6 +1,7 @@
 package wfe
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -43,7 +44,7 @@ type wfeHandler interface {
 
 type topHandler struct {
 	wfe wfeHandler
-	log *blog.AuditLogger
+	log blog.Logger
 	clk clock.Clock
 }
 

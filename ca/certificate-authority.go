@@ -135,7 +135,7 @@ type CertificateAuthorityImpl struct {
 	Publisher        core.Publisher
 	keyPolicy        core.KeyPolicy
 	clk              clock.Clock
-	log              *blog.AuditLogger
+	log              blog.Logger
 	stats            statsd.Statter
 	prefix           int // Prepended to the serial number
 	validityPeriod   time.Duration
@@ -207,7 +207,7 @@ func NewCertificateAuthorityImpl(
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
-	logger := blog.GetAuditLogger()
+	logger := blog.Get()
 
 	if config.SerialPrefix <= 0 || config.SerialPrefix >= 256 {
 		err = errors.New("Must have a positive non-zero serial prefix less than 256 for CA.")

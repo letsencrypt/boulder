@@ -32,6 +32,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/test"
@@ -224,7 +225,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	wfe.NewCert = wfe.BaseURL + NewCertPath
 	wfe.CertBase = wfe.BaseURL + CertPath
 	wfe.SubscriberAgreementURL = agreementURL
-	wfe.log.SyslogWriter = mocks.NewSyslogWriter()
+	wfe.log = blog.NewMock()
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = mocks.NewStorageAuthority(fc)
@@ -546,7 +547,7 @@ func TestIssueCertificate(t *testing.T) {
 	wfe, fc := setupWFE(t)
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
-	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog := wfe.log.(*blog.Mock)
 
 	// The mock CA we use always returns the same test certificate, with a Not
 	// Before of 2015-09-22. Since we're currently using a real RA instead of a
@@ -1328,7 +1329,7 @@ func TestGetCertificate(t *testing.T) {
 
 	responseWriter := httptest.NewRecorder()
 
-	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
 
 	// Valid serial, cached
@@ -1379,7 +1380,7 @@ func TestGetCertificate(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Certificate not found","status":404}`)
 }
 
-func assertCsrLogged(t *testing.T, mockLog *mocks.SyslogWriter) {
+func assertCsrLogged(t *testing.T, mockLog *blog.Mock) {
 	matches := mockLog.GetAllMatching("^NOTICE: \\[AUDIT\\] Certificate request JSON=")
 	test.Assert(t, len(matches) == 1,
 		fmt.Sprintf("Incorrect number of certificate request log entries: %d",
@@ -1405,7 +1406,7 @@ func TestLogCsrPem(t *testing.T) {
 	req.RemoteAddr = "12.34.98.76"
 	req.Header.Set("X-Forwarded-For", "10.0.0.1,172.16.0.1")
 
-	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
 
 	wfe.logCsr(req, certificateRequest, reg)
@@ -1473,7 +1474,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	certPemBytes, _ := ioutil.ReadFile("test/178.crt")
 	certBlock, _ := pem.Decode(certPemBytes)
 
-	mockLog := wfe.log.SyslogWriter.(*mocks.SyslogWriter)
+	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
 
 	mux, _ := wfe.Handler()

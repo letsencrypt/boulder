@@ -58,7 +58,7 @@ type ctSubmissionRequest struct {
 
 // Impl defines a Publisher
 type Impl struct {
-	log               blog.SyslogWriter
+	log               blog.Logger
 	client            *http.Client
 	issuerBundle      []ct.ASN1Cert
 	ctLogs            []*Log
@@ -69,7 +69,7 @@ type Impl struct {
 
 // New creates a Publisher that will submit certificates
 // to any CT logs configured in CTConfig
-func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration, logger blog.SyslogWriter) *Impl {
+func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration, logger blog.Logger) *Impl {
 	if submissionTimeout == 0 {
 		submissionTimeout = time.Hour * 12
 	}

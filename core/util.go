@@ -199,7 +199,7 @@ func KeyDigest(key crypto.PublicKey) (string, error) {
 	default:
 		keyDER, err := x509.MarshalPKIXPublicKey(key)
 		if err != nil {
-			logger := blog.GetAuditLogger()
+			logger := blog.Get()
 			logger.Debug(fmt.Sprintf("Problem marshaling public key: %s", err))
 			return "", err
 		}
