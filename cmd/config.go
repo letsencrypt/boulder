@@ -16,7 +16,6 @@ import (
 	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/va"
 )
 
 // Config stores configuration parameters that applications
@@ -83,7 +82,7 @@ type Config struct {
 
 		IssuerDomain string
 
-		PortConfig va.PortConfig
+		PortConfig PortConfig
 
 		MaxConcurrentRPCServerRequests int64
 
@@ -516,4 +515,12 @@ type GRPCServerConfig struct {
 	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
 	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
 	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
+}
+
+// PortConfig specifies what ports the VA should call to on the remote
+// host when performing its checks.
+type PortConfig struct {
+	HTTPPort  int
+	HTTPSPort int
+	TLSPort   int
 }

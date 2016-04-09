@@ -37,5 +37,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ValidForIssuance call failed: %s\n", err)
 		os.Exit(1)
 	}
-	fmt.Fprintf(os.Stderr, "%s valid for issuance: %t\n", *name, r.Valid)
+	fmt.Fprintf(os.Stderr, "%s valid for issuance: %t (records present: %t)\n", *name, *r.Valid, *r.Present)
 }

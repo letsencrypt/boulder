@@ -26,10 +26,11 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
-	grpcCodes "github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/codes"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
 
@@ -57,16 +58,8 @@ type ValidationAuthorityImpl struct {
 	caaClient    caaPB.CAACheckerClient
 }
 
-// PortConfig specifies what ports the VA should call to on the remote
-// host when performing its checks.
-type PortConfig struct {
-	HTTPPort  int
-	HTTPSPort int
-	TLSPort   int
-}
-
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
 	logger := blog.Get()
 	return &ValidationAuthorityImpl{
 		SafeBrowsing: sbc,
@@ -486,20 +479,14 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
 	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: &ident.Value, IssuerDomain: &va.IssuerDomain})
 	if err != nil {
-		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
-		switch grpc.Code(err) {
-		case grpcCodes.DeadlineExceeded, grpcCodes.Unavailable:
-			return &probs.ProblemDetails{
-				Type:   probs.ConnectionProblem,
-				Detail: err.Error(),
-			}
-		default:
-			va.log.Err(fmt.Sprintf("gRPC: communication failure: %s", err))
-			return &probs.ProblemDetails{
-				Type:   probs.ServerInternalProblem,
-				Detail: "Internal communication failure",
-			}
+		va.log.Warning(fmt.Sprintf("grpc: error calling ValidForIssuance: %s", err))
+		prob := &probs.ProblemDetails{Type: bgrpc.CodeToProblem(grpc.Code(err))}
+		if prob.Type == probs.ServerInternalProblem {
+			prob.Detail = "Internal communication failure"
+		} else {
+			prob.Detail = err.Error()
 		}
+		return prob
 	}
 	if r.Present == nil || r.Valid == nil {
 		va.log.Err("gRPC: communication failure: response is missing fields")

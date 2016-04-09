@@ -30,7 +30,7 @@ func main() {
 
 		go cmd.ProfileCmd("VA", stats)
 
-		pc := &va.PortConfig{
+		pc := &cmd.PortConfig{
 			HTTPPort:  80,
 			HTTPSPort: 443,
 			TLSPort:   443,
