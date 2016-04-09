@@ -25,7 +25,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	_ "expvar" // For DebugServer, below.
+	"expvar" // For DebugServer, below.
 	"fmt"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
 	"io/ioutil"
@@ -284,6 +284,8 @@ func LoadCert(path string) (cert []byte, err error) {
 //
 //   go cmd.DebugServer(c.XA.DebugAddr)
 func DebugServer(addr string) {
+	m := expvar.NewMap("enabled-features")
+	features.Export(m)
 	if addr == "" {
 		log.Fatalf("unable to boot debug server because no address was given for it. Set debugAddr.")
 	}
