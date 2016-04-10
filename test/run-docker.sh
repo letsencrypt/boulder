@@ -67,6 +67,8 @@ docker run --rm -it \
 	-p 4000:4000 \
 	-p 4002:4002 \
 	-p 4003:4003 \
+	-p 8053:8053 \
+	-p 8055:8055 \
 		--name boulder \
 		--link=boulder-mysql:boulder-mysql \
 		--link=boulder-rabbitmq:boulder-rabbitmq \
