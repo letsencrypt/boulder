@@ -8,7 +8,6 @@ RUN apt-get update && apt-get install -y \
 	libltdl-dev \
 	mariadb-client-core-10.0 \
 	nodejs \
-	rsyslog \
 	softhsm \
 	--no-install-recommends \
 	&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

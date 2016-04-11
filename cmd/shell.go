@@ -34,7 +34,6 @@ import (
 	"net/http"
 	_ "net/http/pprof" // HTTP performance profiling, added transparently to HTTP APIs
 	"os"
-	"path"
 	"runtime"
 	"time"
 
@@ -186,18 +185,11 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	stats, err := metrics.NewStatter(statConf.Server, statConf.Prefix)
 	FailOnError(err, "Couldn't connect to statsd")
 
-	tag := path.Base(os.Args[0])
-	syslogger, err := syslog.Dial(
-		logConf.Network,
-		logConf.Server,
-		syslog.LOG_INFO|syslog.LOG_LOCAL0, // default, overridden by log calls
-		tag)
-	FailOnError(err, "Could not connect to Syslog")
 	level := int(syslog.LOG_DEBUG)
 	if logConf.StdoutLevel != nil {
 		level = *logConf.StdoutLevel
 	}
-	logger, err := blog.New(syslogger, level)
+	logger, err := blog.New(logConf.Network, logConf.Server, "", level)
 	FailOnError(err, "Could not connect to Syslog")
 
 	_ = blog.Set(logger)
