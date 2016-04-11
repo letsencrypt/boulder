@@ -28,7 +28,7 @@ func (re *RollbackError) Error() string {
 // Rollback rolls back the provided transaction (if err is non-nil) and wraps
 // the error, if any, of the rollback into a RollbackError.
 //
-// The err parameter must be non=nil.
+// The err parameter must be non-nil.
 //
 //   err = sa.Rollback(tx, err)
 func Rollback(tx *gorp.Transaction, err error) error {
