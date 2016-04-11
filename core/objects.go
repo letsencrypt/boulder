@@ -311,7 +311,7 @@ type Challenge struct {
 	Token string `json:"token,omitempty"` // Used by http-00, tls-sni-00, and dns-00 challenges
 
 	// Used by http-01, tls-sni-01, and dns-01 challenges
-	KeyAuthorization *KeyAuthorization `json:"keyAuthorization,omitempty"`
+	KeyAuthorization string `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
@@ -382,18 +382,22 @@ func (ch Challenge) IsSane(completed bool) bool {
 	}
 
 	// Before completion, the key authorization field should be empty
-	if !completed && ch.KeyAuthorization != nil {
+	if !completed && ch.KeyAuthorization != "" {
 		return false
 	}
 
 	// If the challenge is completed, then there should be a key authorization,
 	// and it should match the challenge.
 	if completed {
-		if ch.KeyAuthorization == nil {
+		if ch.KeyAuthorization == "" {
 			return false
 		}
 
-		if !ch.KeyAuthorization.Match(ch.Token, ch.AccountKey) {
+		expectedKA, err := NewKeyAuthorization(ch.Token, ch.AccountKey)
+		if err != nil {
+			return false
+		}
+		if ch.KeyAuthorization != expectedKA.String() {
 			return false
 		}
 	}
