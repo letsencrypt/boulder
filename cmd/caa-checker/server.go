@@ -204,6 +204,7 @@ func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Che
 type config struct {
 	GRPC cmd.GRPCServerConfig
 
+	DebugAddr    string             `yaml:"debug-addr"`
 	DNSResolver  string             `yaml:"dns-resolver"`
 	DNSNetwork   string             `yaml:"dns-network"`
 	DNSTimeout   cmd.ConfigDuration `yaml:"dns-timeout"`
@@ -220,6 +221,8 @@ func main() {
 	var c config
 	err = yaml.Unmarshal(configBytes, &c)
 	cmd.FailOnError(err, fmt.Sprintf("Failed to parse configuration file from '%s'", *configPath))
+
+	go cmd.DebugServer(c.DebugAddr)
 
 	stats, err := statsd.NewClient(c.StatsdServer, c.StatsdPrefix)
 	cmd.FailOnError(err, "Failed to create StatsD client")

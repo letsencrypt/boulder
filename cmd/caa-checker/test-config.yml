@@ -1,3 +1,5 @@
+debug-addr: 127.0.0.1:8011
+
 dns-resolver: 127.0.0.1:8053
 dns-timeout: 10s
 
