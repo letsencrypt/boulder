@@ -20,7 +20,7 @@ RUN go get -v \
 	github.com/golang/lint/golint
 
 # Boulder exposes its web application at port TCP 4000
-EXPOSE 4000 4002 4003
+EXPOSE 4000 4002 4003 8053 8055
 
 ENV GOPATH /go/src/github.com/letsencrypt/boulder/Godeps/_workspace:$GOPATH
 
