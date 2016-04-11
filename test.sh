@@ -77,22 +77,23 @@ function run() {
 
 function run_and_comment() {
   echo "$@"
-  result=$("$@" 2>&1)
-  cat <<<"${result}"
+  result_file=$(mktemp -t bouldertestXXXX)
+  "$@" 2>&1 | tee ${result_file}
 
-  if [ "x${result}" == "x" ]; then
-    update_status --state success
-  else
+  # Fail if result_file is nonempty.
+  if [ -s ${result_file} ]; then
     FAILURE=1
     update_status --state failure
     echo "[!] FAILURE: $@"
+  else
+    update_status --state success
   fi
 
   # If this is a travis PR run, post a comment
   if [ "x${TRAVIS}" != "x" ] && [ "${TRAVIS_PULL_REQUEST}" != "false" ] && [ -f "${GITHUB_SECRET_FILE}" ] ; then
     # If the output is non-empty, post a comment and mark this as a failure
     if [ -n "${result}" ] ; then
-      echo $'```\n'${result}$'\n```' | github-pr-status --authfile $GITHUB_SECRET_FILE \
+      (echo '```' ; cat $result_file ; echo -e '\n```') | github-pr-status --authfile $GITHUB_SECRET_FILE \
         --owner "letsencrypt" --repo "boulder" \
         comment --pr "${TRAVIS_PULL_REQUEST}" -b -
     fi
