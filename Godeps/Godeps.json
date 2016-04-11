@@ -99,23 +99,23 @@
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go",
-			"Rev": "c78982664ca89efe5204eb83a91b15866b04b1f1"
+			"Rev": "025a5cab06f6a819c455d9fdc9e2a1b6d0982284"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/asn1",
-			"Rev": "c78982664ca89efe5204eb83a91b15866b04b1f1"
+			"Rev": "025a5cab06f6a819c455d9fdc9e2a1b6d0982284"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/client",
-			"Rev": "c78982664ca89efe5204eb83a91b15866b04b1f1"
+			"Rev": "025a5cab06f6a819c455d9fdc9e2a1b6d0982284"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/x509",
-			"Rev": "c78982664ca89efe5204eb83a91b15866b04b1f1"
+			"Rev": "025a5cab06f6a819c455d9fdc9e2a1b6d0982284"
 		},
 		{
 			"ImportPath": "github.com/google/certificate-transparency/go/x509/pkix",
-			"Rev": "c78982664ca89efe5204eb83a91b15866b04b1f1"
+			"Rev": "025a5cab06f6a819c455d9fdc9e2a1b6d0982284"
 		},
 		{
 			"ImportPath": "github.com/jmhodges/clock",
