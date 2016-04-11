@@ -223,6 +223,13 @@ if [[ "$RUN" =~ "migrations" ]] ; then
   end_context #"migrations"
 fi
 
+if [[ "$RUN" =~ "generate" ]] ; then
+  start_context "generate"
+  run_and_comment go generate ./...
+  run_and_comment git diff --exit-code .
+  end_context #"generate"
+fi
+
 #
 # Unit Tests.
 #
