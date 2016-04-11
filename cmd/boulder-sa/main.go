@@ -17,7 +17,7 @@ import (
 
 func main() {
 	app := cmd.NewAppShell("boulder-sa", "Handles SQL operations")
-	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		saConf := c.SA
 		go cmd.DebugServer(saConf.DebugAddr)
 
@@ -26,7 +26,7 @@ func main() {
 		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Couldn't connect to SA database")
 
-		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), auditlogger)
+		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 		cmd.FailOnError(err, "Failed to create SA impl")
 
 		go cmd.ProfileCmd("SA", stats)

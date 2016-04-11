@@ -23,7 +23,7 @@ import (
 
 const clientName = "WFE"
 
-func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats metrics.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
+func setupWFE(c cmd.Config, logger blog.Logger, stats metrics.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
 	amqpConf := c.WFE.AMQP
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create RA client")
@@ -49,12 +49,12 @@ func main() {
 		}
 		return config
 	}
-	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		go cmd.DebugServer(c.WFE.DebugAddr)
 
 		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), c.KeyPolicy())
 		cmd.FailOnError(err, "Unable to create WFE")
-		rac, sac := setupWFE(c, auditlogger, stats)
+		rac, sac := setupWFE(c, logger, stats)
 		wfe.RA = rac
 		wfe.SA = sac
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
@@ -78,7 +78,7 @@ func main() {
 		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
-		auditlogger.Info(fmt.Sprintf("WFE using key policy: %#v", c.KeyPolicy()))
+		logger.Info(fmt.Sprintf("WFE using key policy: %#v", c.KeyPolicy()))
 
 		go cmd.ProfileCmd("WFE", stats)
 
@@ -89,7 +89,7 @@ func main() {
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
 
-		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
+		logger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
 		srv := &http.Server{
 			Addr:    c.WFE.ListenAddress,
 			Handler: httpMonitor,

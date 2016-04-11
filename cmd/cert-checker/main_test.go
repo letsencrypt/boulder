@@ -20,7 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/mocks"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -179,7 +179,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc := clock.NewFake()
 
 	checker := newChecker(saDbMap, paDbMap, fc, false, nil, expectedValidityPeriod)
-	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc, mocks.UseMockLog())
+	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetSATestDatabase(t)
 	paCleanUp := test.ResetPolicyTestDatabase(t)

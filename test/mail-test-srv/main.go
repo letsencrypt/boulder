@@ -46,7 +46,7 @@ var smtpOk250 = []byte("250 OK \r\n")
 
 func handleConn(conn net.Conn) {
 	defer conn.Close()
-	auditlogger := blog.GetAuditLogger()
+	auditlogger := blog.Get()
 	auditlogger.Info(fmt.Sprintf("mail-test-srv: Got connection from %s", conn.RemoteAddr()))
 
 	readBuf := bufio.NewReader(conn)

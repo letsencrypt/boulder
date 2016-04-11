@@ -134,7 +134,7 @@ var (
 	}
 	AuthzFinal = core.Authorization{}
 
-	log = mocks.UseMockLog()
+	log = blog.UseMock()
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
@@ -209,7 +209,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	})
 
 	ra := NewRegistrationAuthorityImpl(fc,
-		blog.GetAuditLogger(),
+		log,
 		stats,
 		&DomainCheck{va},
 		cmd.RateLimitConfig{

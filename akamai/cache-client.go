@@ -51,7 +51,7 @@ type CachePurgeClient struct {
 	accessToken  string
 	retries      int
 	retryBackoff time.Duration
-	log          *blog.AuditLogger
+	log          blog.Logger
 	stats        statsd.Statter
 	clk          clock.Clock
 }
@@ -76,7 +76,7 @@ func NewCachePurgeClient(
 	accessToken string,
 	retries int,
 	retryBackoff time.Duration,
-	log *blog.AuditLogger,
+	log blog.Logger,
 	stats statsd.Statter,
 ) (*CachePurgeClient, error) {
 	if strings.HasSuffix(endpoint, "/") {

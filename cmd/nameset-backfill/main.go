@@ -30,7 +30,7 @@ type backfiller struct {
 	sa    core.StorageAuthority
 	dbMap *gorp.DbMap
 	stats statsd.Statter
-	log   *blog.AuditLogger
+	log   blog.Logger
 	clk   clock.Clock
 }
 

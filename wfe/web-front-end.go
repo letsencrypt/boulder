@@ -50,7 +50,7 @@ type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
 	stats statsd.Statter
-	log   *blog.AuditLogger
+	log   blog.Logger
 	clk   clock.Clock
 
 	// URL configuration parameters
@@ -94,8 +94,7 @@ type WebFrontEndImpl struct {
 
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock, keyPolicy core.KeyPolicy) (WebFrontEndImpl, error) {
-	logger := blog.GetAuditLogger()
-	logger.Notice("Web Front End Starting")
+	logger := blog.Get()
 
 	nonceService, err := core.NewNonceService()
 	if err != nil {

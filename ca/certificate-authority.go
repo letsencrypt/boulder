@@ -135,7 +135,7 @@ type CertificateAuthorityImpl struct {
 	Publisher        core.Publisher
 	keyPolicy        core.KeyPolicy
 	clk              clock.Clock
-	log              *blog.AuditLogger
+	log              blog.Logger
 	stats            statsd.Statter
 	prefix           int // Prepended to the serial number
 	validityPeriod   time.Duration
@@ -207,8 +207,7 @@ func NewCertificateAuthorityImpl(
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
-	logger := blog.GetAuditLogger()
-	logger.Notice("Certificate Authority Starting")
+	logger := blog.Get()
 
 	if config.SerialPrefix <= 0 || config.SerialPrefix >= 256 {
 		err = errors.New("Must have a positive non-zero serial prefix less than 256 for CA.")
@@ -453,9 +452,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	if ca.maxNames > 0 && len(hostNames) > ca.maxNames {
-		err := core.MalformedRequestError(fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames))
-		ca.log.WarningErr(err)
-		return emptyCert, err
+		msg := fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames)
+		ca.log.Info(msg)
+		return emptyCert, core.MalformedRequestError(msg)
 	}
 
 	// Verify that names are allowed by policy
@@ -538,7 +537,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		req.Subject.SerialNumber = serialHex
 	}
 
-	ca.log.AuditNotice(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
+	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
 		serialHex, strings.Join(hostNames, ", "), csrPEM))
 
 	certPEM, err := issuer.eeSigner.Sign(req)
@@ -550,7 +549,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
-	ca.log.AuditNotice(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] pem=[%s]",
+	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] pem=[%s]",
 		serialHex, strings.Join(hostNames, ", "), csrPEM,
 		certPEM))
 
