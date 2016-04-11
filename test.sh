@@ -303,7 +303,7 @@ fi
 
 if [[ "$RUN" =~ "errcheck" ]] ; then
   start_context "errcheck"
-  run_and_comment errcheck -ignore 'io:Write,Close,os:Remove,net/http:Write,github.com/letsencrypt/boulder/log:.*,github.com/letsencrypt/boulder/metrics:.*' -ignorepkg 'github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd,github.com/letsencrypt/boulder/rpc/pb' ./akamai/ ./bdns/ ./bin/ ./ca/ ./cmd/ ./core/ ./data/ ./log/ ./mail ./metrics ./mocks ./policy ./probs ./publisher ./ra ./reloader ./rpc ./sa ./test ./va ./wfe
+  run_and_comment errcheck -ignore 'io:Write,Close,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*' -ignorepkg 'github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd,github.com/letsencrypt/boulder/rpc/pb' ./akamai/ ./bdns/ ./ca/ ./cmd/ ./core/ ./data/ ./log/ ./mail ./metrics ./mocks ./policy ./probs ./publisher ./ra ./reloader ./rpc ./sa ./test ./va ./wfe
   end_context #errcheck
 fi
 
