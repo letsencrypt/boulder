@@ -200,7 +200,7 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	logger, err := blog.New(syslogger, level)
 	FailOnError(err, "Could not connect to Syslog")
 
-	blog.Set(logger)
+	_ = blog.Set(logger)
 	cfsslLog.SetLogger(cfsslLogger{logger})
 	_ = mysql.SetLogger(mysqlLogger{logger})
 
