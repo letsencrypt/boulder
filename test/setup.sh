@@ -9,6 +9,7 @@ set -ev
 go get \
   golang.org/x/tools/cover \
   github.com/golang/lint/golint \
+  github.com/golang/mock/mockgen \
   github.com/tools/godep \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
