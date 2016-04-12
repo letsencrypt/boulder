@@ -215,29 +215,6 @@ func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, 
 	}, nil
 }
 
-// NewKeyAuthorizationFromString parses the string and composes a key authorization struct
-func NewKeyAuthorizationFromString(input string) (ka KeyAuthorization, err error) {
-	parts := strings.Split(input, ".")
-	if len(parts) != 2 {
-		err = fmt.Errorf("Invalid key authorization: does not look like a key authorization (found %d periods)", len(parts)-1)
-		return
-	} else if !LooksLikeAToken(parts[0]) {
-		err = fmt.Errorf("Invalid key authorization: malformed token")
-		return
-	} else if !LooksLikeAToken(parts[1]) {
-		// Thumbprints have the same syntax as tokens in boulder
-		// Both are base64-encoded and 32 octets
-		err = fmt.Errorf("Invalid key authorization: malformed key thumbprint")
-		return
-	}
-
-	ka = KeyAuthorization{
-		Token:      parts[0],
-		Thumbprint: parts[1],
-	}
-	return
-}
-
 // String produces the string representation of a key authorization
 func (ka KeyAuthorization) String() string {
 	return ka.Token + "." + ka.Thumbprint
@@ -274,12 +251,19 @@ func (ka *KeyAuthorization) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	parsed, err := NewKeyAuthorizationFromString(str)
-	if err != nil {
-		return err
+	parts := strings.Split(str, ".")
+	if len(parts) != 2 {
+		return fmt.Errorf("Invalid key authorization: does not look like a key authorization")
+	} else if !LooksLikeAToken(parts[0]) {
+		return fmt.Errorf("Invalid key authorization: malformed token")
+	} else if !LooksLikeAToken(parts[1]) {
+		// Thumbprints have the same syntax as tokens in boulder
+		// Both are base64-encoded and 32 octets
+		return fmt.Errorf("Invalid key authorization: malformed key thumbprint")
 	}
 
-	*ka = parsed
+	ka.Token = parts[0]
+	ka.Thumbprint = parts[1]
 	return
 }
 
