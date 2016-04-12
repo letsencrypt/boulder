@@ -12,14 +12,15 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"math/big"
+	mrand "math/rand"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/mocks"
 
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -178,7 +179,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc := clock.NewFake()
 
 	checker := newChecker(saDbMap, paDbMap, fc, false, nil, expectedValidityPeriod)
-	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc, mocks.UseMockLog())
+	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetSATestDatabase(t)
 	paCleanUp := test.ResetPolicyTestDatabase(t)
@@ -201,13 +202,14 @@ func TestGetAndProcessCerts(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	test.AssertNotError(t, err, "Couldn't create registration")
 	for i := int64(0); i < 5; i++ {
-		rawCert.SerialNumber = big.NewInt(i)
+		rawCert.SerialNumber = big.NewInt(mrand.Int63())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
 		_, err = sa.AddCertificate(certDER, reg.ID)
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 
+	batchSize = 2
 	err = checker.getCerts(false)
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 	test.AssertEquals(t, len(checker.certs), 5)

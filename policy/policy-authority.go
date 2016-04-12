@@ -26,7 +26,7 @@ import (
 
 // AuthorityImpl enforces CA policy decisions.
 type AuthorityImpl struct {
-	log *blog.AuditLogger
+	log blog.Logger
 	DB  *AuthorityDatabaseImpl
 
 	blacklist   map[string]bool
@@ -40,8 +40,7 @@ type AuthorityImpl struct {
 // TODO(https://github.com/letsencrypt/boulder/issues/1616): Remove the _ bool
 // argument (used to be enforceWhitelist). Update all callers.
 func New(dbMap *gorp.DbMap, _ bool, challengeTypes map[string]bool) (*AuthorityImpl, error) {
-	logger := blog.GetAuditLogger()
-	logger.Notice("Policy Authority Starting")
+	logger := blog.Get()
 
 	var padb *AuthorityDatabaseImpl
 	if dbMap != nil {

@@ -7,11 +7,11 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 
-	"github.com/letsencrypt/boulder/mocks"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 type mockSA struct {
 	certificate core.Certificate

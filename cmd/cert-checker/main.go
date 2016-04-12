@@ -37,9 +37,9 @@ const (
 	filenameLayout = "20060102"
 
 	expectedValidityPeriod = time.Hour * 24 * 90
-
-	batchSize = 1000
 )
+
+var batchSize = 1000
 
 type report struct {
 	begin     time.Time
@@ -121,9 +121,6 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	args["lastSerial"] = ""
 	for offset := 0; offset < count; {
 		var certs []core.Certificate
-		if offset > 0 {
-			args["lastSerial"] = certs[len(certs)-1].Serial
-		}
 		_, err = c.dbMap.Select(
 			&certs,
 			getCertsQuery,
@@ -135,6 +132,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		for _, cert := range certs {
 			c.certs <- cert
 		}
+		args["lastSerial"] = certs[len(certs)-1].Serial
 		offset += len(certs)
 	}
 
@@ -281,9 +279,9 @@ func main() {
 		cmd.FailOnError(err, "Failed to create StatsD client")
 		syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 		cmd.FailOnError(err, "Failed to dial syslog")
-		logger, err := blog.NewAuditLogger(syslogger, stats, 0)
+		logger, err := blog.New(syslogger, 0)
 		cmd.FailOnError(err, "Failed to construct logger")
-		err = blog.SetAuditLogger(logger)
+		err = blog.Set(logger)
 		cmd.FailOnError(err, "Failed to set audit logger")
 
 		if connect := c.GlobalString("db-connect"); connect != "" {

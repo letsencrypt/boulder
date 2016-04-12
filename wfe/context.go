@@ -1,6 +1,7 @@
 package wfe
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -43,7 +44,7 @@ type wfeHandler interface {
 
 type topHandler struct {
 	wfe wfeHandler
-	log *blog.AuditLogger
+	log blog.Logger
 	clk clock.Clock
 }
 
@@ -73,7 +74,12 @@ func (th *topHandler) logEvent(logEvent *requestEvent) {
 	} else {
 		msg = "Successful request"
 	}
-	th.log.InfoObject(msg, logEvent)
+	jsonEvent, err := json.Marshal(logEvent)
+	if err != nil {
+		th.log.Err(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
+		return
+	}
+	th.log.Info(fmt.Sprintf("%s JSON=%s", msg, jsonEvent))
 }
 
 // Comma-separated list of HTTP clients involved in making this

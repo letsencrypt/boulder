@@ -23,6 +23,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
@@ -133,7 +134,7 @@ var (
 	// * DNSNames = [none]
 	LongCNCSR = mustRead("./testdata/long_cn.der.csr")
 
-	log = mocks.UseMockLog()
+	log = blog.UseMock()
 )
 
 // CFSSL config

@@ -63,12 +63,13 @@ fi
 # The excluding `-d` command makes the instance interactive, so you can kill
 # the boulder container with Ctrl-C.
 docker run --rm -it \
-	-e MYSQL_CONTAINER=yes \
 	"${fake_dns_args[@]}" \
 	-p 4000:4000 \
 	-p 4002:4002 \
 	-p 4003:4003 \
+	-p 8053:8053 \
+	-p 8055:8055 \
 		--name boulder \
 		--link=boulder-mysql:boulder-mysql \
 		--link=boulder-rabbitmq:boulder-rabbitmq \
-	letsencrypt/boulder
+	letsencrypt/boulder "$@"

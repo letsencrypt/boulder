@@ -28,11 +28,12 @@ const (
 
 // A Name contains the SubjectInfo fields.
 type Name struct {
-	C  string // Country
-	ST string // State
-	L  string // Locality
-	O  string // OrganisationName
-	OU string // OrganisationalUnitName
+	C            string // Country
+	ST           string // State
+	L            string // Locality
+	O            string // OrganisationName
+	OU           string // OrganisationalUnitName
+	SerialNumber string
 }
 
 // A KeyRequest is a generic request for a new key.
@@ -128,18 +129,20 @@ func (kr *BasicKeyRequest) SigAlgo() x509.SignatureAlgorithm {
 
 // CAConfig is a section used in the requests initialising a new CA.
 type CAConfig struct {
-	PathLength int    `json:"pathlen"`
-	Expiry     string `json:"expiry"`
+	PathLength  int    `json:"pathlen"`
+	PathLenZero bool   `json:"pathlenzero"`
+	Expiry      string `json:"expiry"`
 }
 
 // A CertificateRequest encapsulates the API interface to the
 // certificate request functionality.
 type CertificateRequest struct {
-	CN         string
-	Names      []Name     `json:"names"`
-	Hosts      []string   `json:"hosts"`
-	KeyRequest KeyRequest `json:"key,omitempty"`
-	CA         *CAConfig  `json:"ca,omitempty"`
+	CN           string
+	Names        []Name     `json:"names"`
+	Hosts        []string   `json:"hosts"`
+	KeyRequest   KeyRequest `json:"key,omitempty"`
+	CA           *CAConfig  `json:"ca,omitempty"`
+	SerialNumber string     `json:"serialnumber,omitempty"`
 }
 
 // New returns a new, empty CertificateRequest with a
@@ -169,6 +172,7 @@ func (cr *CertificateRequest) Name() pkix.Name {
 		appendIf(n.O, &name.Organization)
 		appendIf(n.OU, &name.OrganizationalUnit)
 	}
+	name.SerialNumber = cr.SerialNumber
 	return name
 }
 
@@ -254,6 +258,7 @@ func ExtractCertificateRequest(cert *x509.Certificate) *CertificateRequest {
 	req.CN = cert.Subject.CommonName
 	req.Names = getNames(cert.Subject)
 	req.Hosts = getHosts(cert)
+	req.SerialNumber = cert.Subject.SerialNumber
 
 	if cert.IsCA {
 		req.CA = new(CAConfig)
@@ -261,6 +266,7 @@ func ExtractCertificateRequest(cert *x509.Certificate) *CertificateRequest {
 		// issue date and expiry date.
 		req.CA.Expiry = cert.NotAfter.Sub(cert.NotBefore).String()
 		req.CA.PathLength = cert.MaxPathLen
+		req.CA.PathLenZero = cert.MaxPathLenZero
 	}
 
 	return req

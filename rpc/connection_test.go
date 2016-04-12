@@ -9,7 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/mocks"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // mockChannelMaker always returns the given amqpChannel
@@ -87,7 +87,7 @@ func TestReconnect(t *testing.T) {
 	mockChannel.EXPECT().Consume("fooqueue", consumerName, AmqpAutoAck, AmqpExclusive, AmqpNoLocal, AmqpNoWait, nil).Return(make(<-chan amqp.Delivery), nil)
 	mockChannel.EXPECT().NotifyClose(gomock.Any()).Return(make(chan *amqp.Error))
 
-	log = mocks.UseMockLog()
+	log = blog.UseMock()
 
 	ac.reconnect(&cmd.AMQPConfig{}, log)
 	if ac.channel != mockChannel {
