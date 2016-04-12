@@ -191,6 +191,15 @@ if [[ "$RUN" =~ "lint" ]] ; then
 fi
 
 #
+# Run errcheck, to ensure that error returns are always used
+#
+if [[ "$RUN" =~ "errcheck" ]] ; then
+  start_context "errcheck"
+  run_and_comment errcheck -ignore 'io:Write,Close,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*' -ignorepkg 'github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd' $(go list -f '{{.ImportPath}}' ./... | grep -v test | grep -v Godeps | grep -v scripts)
+  end_context #errcheck
+fi
+
+#
 # Ensure all files are formatted per the `go fmt` tool
 #
 if [[ "$RUN" =~ "fmt" ]] ; then
@@ -299,12 +308,6 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
     run_and_comment git diff --exit-code Godeps/_workspace/
   fi
   end_context #godep-restore
-fi
-
-if [[ "$RUN" =~ "errcheck" ]] ; then
-  start_context "errcheck"
-  run_and_comment errcheck -ignore 'io:Write,Close,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*' -ignorepkg 'github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd' $(go list -f '{{.ImportPath}}' ./... | grep -v test | grep -v Godeps | grep -v scripts)
-  end_context #errcheck
 fi
 
 exit ${FAILURE}
