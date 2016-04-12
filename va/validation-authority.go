@@ -260,7 +260,19 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 			Detail: fmt.Sprintf("Could not connect to %s", url),
 		}
 	}
-	defer httpResponse.Body.Close()
+
+	body, err := ioutil.ReadAll(httpResponse.Body)
+	closeErr := httpResponse.Body.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		va.log.Info(fmt.Sprintf("Error reading HTTP response body from %s. err=[%#v] errStr=[%s]", url.String(), err, err))
+		return nil, validationRecords, &probs.ProblemDetails{
+			Type:   probs.UnauthorizedProblem,
+			Detail: fmt.Sprintf("Error reading HTTP response body: %v", err),
+		}
+	}
 
 	if httpResponse.StatusCode != 200 {
 		va.log.Info(fmt.Sprintf("Non-200 status code from HTTP: %s returned %d", url.String(), httpResponse.StatusCode))
@@ -271,14 +283,6 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		}
 	}
 
-	body, err := ioutil.ReadAll(httpResponse.Body)
-	if err != nil {
-		va.log.Info(fmt.Sprintf("Error reading HTTP response body from %s. err=[%#v] errStr=[%s]", url.String(), err, err))
-		return nil, validationRecords, &probs.ProblemDetails{
-			Type:   probs.UnauthorizedProblem,
-			Detail: fmt.Sprintf("Error reading HTTP response body: %v", err),
-		}
-	}
 	return body, validationRecords, nil
 }
 
@@ -312,7 +316,10 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 			Detail: "Failed to connect to host for DVSNI challenge",
 		}
 	}
-	defer conn.Close()
+	// close errors are not important here
+	defer func() {
+		_ = conn.Close()
+	}()
 
 	// Check that zName is a dNSName SAN in the server's certificate
 	certs := conn.ConnectionState().PeerCertificates
@@ -511,7 +518,10 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 
 	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
 
-	va.RA.OnValidationUpdate(authz)
+	err := va.RA.OnValidationUpdate(authz)
+	if err != nil {
+		va.log.Err(fmt.Sprintf("va: unable to communicate updated authz [%d] to RA: %q authz=[%#v]", authz.RegistrationID, err, authz))
+	}
 }
 
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {

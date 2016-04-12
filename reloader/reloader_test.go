@@ -36,8 +36,11 @@ func TestNoStat(t *testing.T) {
 func TestNoRead(t *testing.T) {
 	f, _ := ioutil.TempFile("", "test-no-read.txt")
 	defer os.Remove(f.Name())
-	f.Chmod(0) // no read permissions
-	_, err := New(f.Name(), noop, testErrCb(t))
+	err := f.Chmod(0)
+	if err != nil {
+		t.Fatalf("failed to chmod file: %s", err)
+	}
+	_, err = New(f.Name(), noop, testErrCb(t))
 	if err == nil {
 		t.Fatalf("Expected New to return error when permission denied.")
 	}
@@ -89,8 +92,8 @@ func TestReload(t *testing.T) {
 	filename := f.Name()
 	defer os.Remove(filename)
 
-	f.Write([]byte("first body"))
-	f.Close()
+	_, _ = f.Write([]byte("first body"))
+	_ = f.Close()
 
 	var bodies []string
 	reloads := make(chan []byte, 1)
@@ -116,7 +119,10 @@ func TestReload(t *testing.T) {
 	// Write to the file, expect a reload. Sleep a few milliseconds first so the
 	// timestamps actually differ.
 	time.Sleep(15 * time.Millisecond)
-	ioutil.WriteFile(filename, []byte("second body"), 0644)
+	err = ioutil.WriteFile(filename, []byte("second body"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fakeTick <- time.Now()
 	<-reloads
 	expected = []string{"first body", "second body"}
@@ -141,11 +147,11 @@ func TestReloadFailure(t *testing.T) {
 	filename := f.Name()
 	defer func() {
 		restoreMakeTicker()
-		os.Remove(filename)
+		_ = os.Remove(filename)
 	}()
 
-	f.Write([]byte("first body"))
-	f.Close()
+	_, _ = f.Write([]byte("first body"))
+	_ = f.Close()
 
 	type res struct {
 		b   []byte
@@ -171,12 +177,15 @@ func TestReloadFailure(t *testing.T) {
 			t.Errorf("Expected error trying to read missing file.")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatalf("timed out waiting for reload")
+		t.Errorf("timed out waiting for reload")
 	}
 
 	time.Sleep(15 * time.Millisecond)
 	// Create a file with no permissions
-	ioutil.WriteFile(filename, []byte("second body"), 0)
+	err = ioutil.WriteFile(filename, []byte("second body"), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fakeTick <- time.Now()
 	select {
 	case r := <-reloads:

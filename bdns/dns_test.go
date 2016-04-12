@@ -130,7 +130,10 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
-	w.WriteMsg(m)
+	err := w.WriteMsg(m)
+	if err != nil {
+		panic(err) // running tests, so panic is OK
+	}
 	return
 }
 

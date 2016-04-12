@@ -74,7 +74,7 @@ func initialize() {
 		panic(err)
 	}
 
-	Set(logger)
+	_ = Set(logger)
 }
 
 // Set configures the singleton Logger. This method

@@ -46,7 +46,10 @@ func TestJsonWebKey(t *testing.T) {
 	tc := BoulderTypeConverter{}
 
 	var jwk, out jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk)
+	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	marshaledI, err := tc.ToDb(jwk)
 	test.AssertNotError(t, err, "Could not ToDb")
