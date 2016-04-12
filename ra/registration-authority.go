@@ -750,7 +750,6 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 
-	// Copy information over that the client is allowed to supply
 	authz = base
 	if challengeIndex >= len(authz.Challenges) {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid challenge index: %d", challengeIndex))
@@ -759,7 +758,13 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 
 	ch := &authz.Challenges[challengeIndex]
 
-	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthoriation
+	// Copy information over that the client is allowed to supply
+	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
+
+	if response.Type != "" && ch.Type != response.Type {
+		err = core.MalformedRequestError(fmt.Sprintf("Invalid update to challenge - provided type was %s but actual type is %s", response.Type, ch.Type))
+		return
+	}
 
 	// Recompute the key authorization field provided by the client and
 	// check it against the value provided
@@ -810,14 +815,13 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	} else {
 		go func() {
-			// TODO(riking): this needs to pass back the ProvidedKeyAuthorization as well
 			records, err := ra.VA.PerformValidation(authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
 			var prob *probs.ProblemDetails
 			if p, ok := err.(*probs.ProblemDetails); ok {
 				prob = p
 			} else if err != nil {
-				prob = probs.ServerInternal("Could not communicate with RA")
-				ra.log.Err(fmt.Sprintf("Could not communicate with RA: %s", err))
+				prob = probs.ServerInternal("Could not communicate with VA")
+				ra.log.Err(fmt.Sprintf("Could not communicate with VA: %s", err))
 			}
 
 			// Save the updated records

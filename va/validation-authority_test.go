@@ -759,6 +759,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	}
 
 	chalDNS := core.DNSChallenge01(accountKey)
+	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
@@ -803,6 +804,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	for i := 0; i < len(authz.Challenges); i++ {
 		va.validate(context.Background(), authz, i)
 		test.AssertEquals(t, authz.Challenges[i].Status, core.StatusInvalid)
+		t.Log(authz.Challenges[i].Error)
 		test.AssertEquals(t, authz.Challenges[i].Error.Type, probs.MalformedProblem)
 	}
 }
