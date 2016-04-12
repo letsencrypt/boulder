@@ -83,21 +83,18 @@ function run_and_comment() {
 
   # Fail if result_file is nonempty.
   if [ -s ${result_file} ]; then
+    echo "[!] FAILURE: $@"
     FAILURE=1
     update_status --state failure
-    echo "[!] FAILURE: $@"
-  else
-    update_status --state success
-  fi
-
-  # If this is a travis PR run, post a comment
-  if [ "x${TRAVIS}" != "x" ] && [ "${TRAVIS_PULL_REQUEST}" != "false" ] && [ -f "${GITHUB_SECRET_FILE}" ] ; then
-    # If the output is non-empty, post a comment and mark this as a failure
-    if [ -n "${result}" ] ; then
+    # If this is a travis PR run, post a comment
+    if [ "x${TRAVIS}" != "x" ] && [ "${TRAVIS_PULL_REQUEST}" != "false" ] && [ -f "${GITHUB_SECRET_FILE}" ] ; then
       (echo '```' ; cat ${result_file} ; echo -e '\n```') | github-pr-status --authfile $GITHUB_SECRET_FILE \
         --owner "letsencrypt" --repo "boulder" \
         comment --pr "${TRAVIS_PULL_REQUEST}" -b -
     fi
+  else
+    update_status --state success
+  fi
   fi
 }
 
