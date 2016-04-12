@@ -153,7 +153,7 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 
 func tlssniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 	h := sha256.New()
-	h.Write([]byte(chall.KeyAuthorization.String()))
+	h.Write([]byte(chall.ProvidedKeyAuthorization))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.acme.invalid", Z[:32], Z[32:])
 
@@ -464,8 +464,7 @@ func TestTLSSNI(t *testing.T) {
 
 	// Need to create a new authorized keys object to get an unknown SNI (from the signature value)
 	chall.Token = core.NewToken()
-	keyAuthorization, _ := core.NewKeyAuthorization(chall.Token, accountKey)
-	chall.KeyAuthorization = &keyAuthorization
+	chall.ProvidedKeyAuthorization, _ = chall.ExpectedKeyAuthorization()
 
 	log.Clear()
 	started := time.Now()
@@ -554,8 +553,7 @@ func createChallenge(challengeType string) core.Challenge {
 		AccountKey:       accountKey,
 	}
 
-	keyAuthorization, _ := core.NewKeyAuthorization(chall.Token, accountKey)
-	chall.KeyAuthorization = &keyAuthorization
+	chall.ProvidedKeyAuthorization, _ = chall.ExpectedKeyAuthorization()
 
 	return chall
 }
@@ -565,13 +563,12 @@ func createChallenge(challengeType string) core.Challenge {
 func setChallengeToken(ch *core.Challenge, token string) (err error) {
 	ch.Token = token
 
-	keyAuthorization, err := core.NewKeyAuthorization(token, ch.AccountKey)
+	ch.ProvidedKeyAuthorization, err = ch.ExpectedKeyAuthorization()
 	if err != nil {
-		return
+		return err
 	}
 
-	ch.KeyAuthorization = &keyAuthorization
-	return
+	return nil
 }
 
 func TestValidateTLSSNI01(t *testing.T) {
@@ -870,8 +867,7 @@ func TestDNSValidationOK(t *testing.T) {
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
 
-	keyAuthorization, _ := core.NewKeyAuthorization(chalDNS.Token, accountKey)
-	chalDNS.KeyAuthorization = &keyAuthorization
+	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
 
 	goodIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
@@ -901,8 +897,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
 
-	keyAuthorization, _ := core.NewKeyAuthorization(chalDNS.Token, accountKey)
-	chalDNS.KeyAuthorization = &keyAuthorization
+	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
 
 	goodIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,

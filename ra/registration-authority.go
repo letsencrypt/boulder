@@ -757,7 +757,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 
-	authz.Challenges[challengeIndex].KeyAuthorization = response.KeyAuthorization
+	authz.Challenges[challengeIndex].ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
 
 	// At this point, the challenge should be sane as a complete challenge
 	if !authz.Challenges[challengeIndex].IsSane(true) {
@@ -796,6 +796,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	} else {
 		go func() {
+			// TODO(riking): this needs to pass back the ProvidedKeyAuthorization as well
 			records, err := ra.VA.PerformValidation(authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
 			var prob *probs.ProblemDetails
 			if p, ok := err.(*probs.ProblemDetails); ok {

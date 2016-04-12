@@ -357,19 +357,19 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 
 	// Check that the key authorization matches
-	expectedKeyAuth, err := core.NewKeyAuthorization(challenge.Token, challenge.AccountKey)
+	expectedKeyAuth, err := challenge.ExpectedKeyAuthorization()
 	if err != nil {
 		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
-		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
+		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
 		return validationRecords, &probs.ProblemDetails{
 			Type:   probs.MalformedProblem,
 			Detail: errString,
 		}
 	}
 
-	if expectedKeyAuth.String() != payload {
+	if expectedKeyAuth != payload {
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
-			expectedKeyAuth.String(), string(body))
+			expectedKeyAuth, string(body))
 		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
 		return validationRecords, &probs.ProblemDetails{
 			Type:   probs.UnauthorizedProblem,
@@ -391,7 +391,16 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 
 	// Compute the digest that will appear in the certificate
 	h := sha256.New()
-	h.Write([]byte(challenge.KeyAuthorization.String()))
+	ka, err := challenge.ExpectedKeyAuthorization()
+	if err != nil {
+		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
+		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
+		return validationRecords, &probs.ProblemDetails{
+			Type:   probs.MalformedProblem,
+			Detail: errString,
+		}
+	}
+	h.Write([]byte(ka))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
@@ -431,7 +440,16 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 
 	// Compute the digest of the key authorization file
 	h := sha256.New()
-	h.Write([]byte(challenge.KeyAuthorization.String()))
+	ka, err := challenge.ExpectedKeyAuthorization()
+	if err != nil {
+		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
+		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
+		return validationRecords, &probs.ProblemDetails{
+			Type:   probs.MalformedProblem,
+			Detail: errString,
+		}
+	}
+	h.Write([]byte(ka))
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	// Look for the required record in the DNS

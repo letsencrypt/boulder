@@ -310,8 +310,10 @@ type Challenge struct {
 	// Used by http-01, tls-sni-01, and dns-01 challenges
 	Token string `json:"token,omitempty"` // Used by http-00, tls-sni-00, and dns-00 challenges
 
+	// The KeyAuthorization presented by the client.
+	//
 	// Used by http-01, tls-sni-01, and dns-01 challenges
-	KeyAuthorization string `json:"keyAuthorization,omitempty"`
+	ProvidedKeyAuthorization string `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
@@ -326,6 +328,16 @@ type Challenge struct {
 	// unauthorized key. See:
 	//   https://mailarchive.ietf.org/arch/msg/acme/F71iz6qq1o_QPVhJCV4dqWf-4Yc
 	AccountKey *jose.JsonWebKey `json:"accountKey,omitempty"`
+}
+
+// ExpectedKeyAuthorization computes the expected KeyAuthorization value for
+// the challenge.
+func (ch Challenge) ExpectedKeyAuthorization() (string, error) {
+	expectedKA, err := NewKeyAuthorization(ch.Token, ch.AccountKey)
+	if err != nil {
+		return "", err
+	}
+	return expectedKA.String(), nil
 }
 
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
@@ -369,6 +381,22 @@ func (ch Challenge) RecordsSane() bool {
 	return true
 }
 
+// IsSanePreCompletion checks the fields of a challenge object before it is
+// issued to the client.
+//
+// This function is an alias of Challenge.IsSane(false).
+func (ch Challenge) IsSanePreCompletion() bool {
+	return ch.IsSane(false)
+}
+
+// IsSanePostCompletion checks the fields of a challenge object after a client
+// has completed the challenge.
+//
+// This function is an alias of Challenge.IsSane(false).
+func (ch Challenge) IsSanePostCompletion() bool {
+	return ch.IsSane(true)
+}
+
 // IsSane checks the sanity of a challenge object before issued to the client
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
@@ -382,22 +410,22 @@ func (ch Challenge) IsSane(completed bool) bool {
 	}
 
 	// Before completion, the key authorization field should be empty
-	if !completed && ch.KeyAuthorization != "" {
+	if !completed && ch.ProvidedKeyAuthorization != "" {
 		return false
 	}
 
 	// If the challenge is completed, then there should be a key authorization,
 	// and it should match the challenge.
 	if completed {
-		if ch.KeyAuthorization == "" {
+		if ch.ProvidedKeyAuthorization == "" {
 			return false
 		}
 
-		expectedKA, err := NewKeyAuthorization(ch.Token, ch.AccountKey)
+		expectedKA, err := ch.ExpectedKeyAuthorization()
 		if err != nil {
 			return false
 		}
-		if ch.KeyAuthorization != expectedKA.String() {
+		if ch.ProvidedKeyAuthorization != expectedKA {
 			return false
 		}
 	}
