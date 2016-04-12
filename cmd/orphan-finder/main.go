@@ -72,7 +72,7 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 		if err == errAlreadyExists {
 			logFunc = logger.Info
 		}
-		_ = logFunc(fmt.Sprintf("%s, [%s]", err, line))
+		logFunc(fmt.Sprintf("%s, [%s]", err, line))
 		return true, false
 	}
 	// extract the regID
