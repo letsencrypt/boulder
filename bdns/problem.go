@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 )
 
+// DNSError wraps a DNS error with various relevant information
 type DNSError struct {
 	recordType uint16
 	hostname   string
