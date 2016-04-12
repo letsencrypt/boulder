@@ -1489,7 +1489,10 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	if err != nil {
 		test.AssertNotEquals(t, err, "readall error")
 	}
-	defer resp.Body.Close()
+	err = resp.Body.Close()
+	if err != nil {
+		test.AssertNotEquals(t, err, "readall error")
+	}
 	test.AssertEquals(t, resp.StatusCode, 200)
 	test.AssertEquals(t, strconv.Itoa(len(certBlock.Bytes)), resp.Header.Get("Content-Length"))
 	test.AssertEquals(t, 0, len(body))
