@@ -46,8 +46,10 @@ func TestChecking(t *testing.T) {
 	ccs := &caaCheckerServer{&bdns.MockDNSResolver{}, stats}
 	issuerDomain := "letsencrypt.org"
 
+	ctx := context.Background()
+
 	for _, caaTest := range tests {
-		result, err := ccs.ValidForIssuance(context.Background(), &pb.Check{Name: &caaTest.Domain, IssuerDomain: &issuerDomain})
+		result, err := ccs.ValidForIssuance(ctx, &pb.Check{Name: &caaTest.Domain, IssuerDomain: &issuerDomain})
 		if err != nil {
 			t.Errorf("CheckCAARecords error for %s: %s", caaTest.Domain, err)
 		}
@@ -61,11 +63,11 @@ func TestChecking(t *testing.T) {
 
 	servfail := "servfail.com"
 	servfailPresent := "servfail.present.com"
-	result, err := ccs.ValidForIssuance(context.Background(), &pb.Check{Name: &servfail, IssuerDomain: &issuerDomain})
+	result, err := ccs.ValidForIssuance(ctx, &pb.Check{Name: &servfail, IssuerDomain: &issuerDomain})
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, result == nil, "result should be nil")
 
-	result, err = ccs.ValidForIssuance(context.Background(), &pb.Check{Name: &servfailPresent, IssuerDomain: &issuerDomain})
+	result, err = ccs.ValidForIssuance(ctx, &pb.Check{Name: &servfailPresent, IssuerDomain: &issuerDomain})
 	test.AssertError(t, err, "servfail.present.com")
 	test.Assert(t, result == nil, "result should be nil")
 }
