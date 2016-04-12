@@ -16,12 +16,15 @@ func (b BCode) GRPCCode() codes.Code {
 	return codes.Code(b)
 }
 
+// gRPC error codes used by Boulder. While the gRPC codes
+// end at 16 we start at 100 to provide a little leeway
+// in case they ever decide to add more
 const (
 	// DNSQueryTimeout is used when DNS queries timeout
-	DNSQueryTimeout BCode = 16
+	DNSQueryTimeout BCode = 100
 
 	// DNSError is used when DNS queries fail for some reason
-	DNSError BCode = 17
+	DNSError BCode = 101
 )
 
 // CodeToProblem takes a gRPC error code and translates it to
