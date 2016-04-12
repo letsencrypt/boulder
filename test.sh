@@ -1,6 +1,7 @@
 #!/bin/bash
 # Run all tests and coverage checks. Called from Travis automatically, also
 # suitable to run manually. See list of prerequisite packages in .travis.yml
+set -o xtrace
 if type realpath >/dev/null 2>&1 ; then
   cd $(realpath $(dirname $0))
 fi
