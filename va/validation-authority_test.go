@@ -794,18 +794,26 @@ func TestDNSValidationNotSane(t *testing.T) {
 	chal1 := core.DNSChallenge01(accountKey)
 	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
 
+	chal2 := core.DNSChallenge01(accountKey)
+	chal2.ProvidedKeyAuthorization = ""
+
+	chal3 := core.DNSChallenge01(accountKey)
+	chal3.ProvidedKeyAuthorization = "a.a"
+
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{chal0, chal1},
+		Challenges:     []core.Challenge{chal0, chal1, chal2, chal3},
 	}
 
 	for i := 0; i < len(authz.Challenges); i++ {
 		va.validate(context.Background(), authz, i)
 		test.AssertEquals(t, authz.Challenges[i].Status, core.StatusInvalid)
-		t.Log(authz.Challenges[i].Error)
 		test.AssertEquals(t, authz.Challenges[i].Error.Type, probs.MalformedProblem)
+		if !strings.Contains(authz.Challenges[i].Error.Error(), "Challenge failed sanity check.") {
+			t.Errorf("Got wrong error: %s", authz.Challenges[i].Error)
+		}
 	}
 }
 

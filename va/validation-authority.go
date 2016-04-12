@@ -511,14 +511,7 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 
 	vStart := va.clk.Now()
 
-	if !challenge.IsSaneForValidation() {
-		prob = &probs.ProblemDetails{
-			Type:   probs.ServerInternalProblem,
-			Detail: "Incomplete challenge received for validation",
-		}
-	} else {
-		validationRecords, prob = va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
-	}
+	validationRecords, prob = va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
 
 	challenge.ValidationRecord = validationRecords
 	if prob != nil {
@@ -565,7 +558,7 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, 
 }
 
 func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if !challenge.IsSane(true) {
+	if !challenge.IsSaneForValidation() {
 		return nil, &probs.ProblemDetails{
 			Type:   probs.MalformedProblem,
 			Detail: fmt.Sprintf("Challenge failed sanity check."),
@@ -607,13 +600,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(domain string, challenge co
 		Challenge:   challenge,
 	}
 	vStart := va.clk.Now()
-
-	if !challenge.IsSaneForValidation() {
-		return nil, &probs.ProblemDetails{
-			Type:   probs.ServerInternalProblem,
-			Detail: "Incomplete challenge received for validation",
-		}
-	}
 
 	records, prob := va.validateChallengeAndCAA(context.TODO(), core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
 
