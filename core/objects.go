@@ -310,7 +310,10 @@ type Challenge struct {
 	// Used by http-01, tls-sni-01, and dns-01 challenges
 	Token string `json:"token,omitempty"` // Used by http-00, tls-sni-00, and dns-00 challenges
 
-	// The KeyAuthorization presented by the client.
+	// The KeyAuthorization provided by the client to start validation of
+	// the challenge. Set during
+	//
+	//   POST /acme/authz/:authzid/:challid
 	//
 	// Used by http-01, tls-sni-01, and dns-01 challenges
 	ProvidedKeyAuthorization string `json:"keyAuthorization,omitempty"`
@@ -381,19 +384,19 @@ func (ch Challenge) RecordsSane() bool {
 	return true
 }
 
-// IsSanePreCompletion checks the fields of a challenge object before it is
-// issued to the client.
+// IsSaneForClientOffer checks the fields of a challenge object before it is
+// given to the client.
 //
 // This function is an alias of Challenge.IsSane(false).
-func (ch Challenge) IsSanePreCompletion() bool {
+func (ch Challenge) IsSaneForClientOffer() bool {
 	return ch.IsSane(false)
 }
 
-// IsSanePostCompletion checks the fields of a challenge object after a client
-// has completed the challenge.
+// IsSaneForValidation checks the fields of a challenge object before it is
+// given to the VA.
 //
 // This function is an alias of Challenge.IsSane(false).
-func (ch Challenge) IsSanePostCompletion() bool {
+func (ch Challenge) IsSaneForValidation() bool {
 	return ch.IsSane(true)
 }
 

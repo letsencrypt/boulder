@@ -89,19 +89,19 @@ func TestChallengeSanityCheck(t *testing.T) {
 			Status:     StatusInvalid,
 			AccountKey: accountKey,
 		}
-		test.Assert(t, !chall.IsSanePreCompletion(), "IsSane should be false")
+		test.Assert(t, !chall.IsSaneForClientOffer(), "IsSane should be false")
 
 		chall.Status = StatusPending
-		test.Assert(t, !chall.IsSanePreCompletion(), "IsSane should be false")
+		test.Assert(t, !chall.IsSaneForClientOffer(), "IsSane should be false")
 
 		chall.Token = ka.Token
-		test.Assert(t, chall.IsSanePreCompletion(), "IsSane should be true")
+		test.Assert(t, chall.IsSaneForClientOffer(), "IsSane should be true")
 
 		chall.ProvidedKeyAuthorization = ka.String()
-		test.Assert(t, chall.IsSanePostCompletion(), "IsSane should be true")
+		test.Assert(t, chall.IsSaneForValidation(), "IsSane should be true")
 
 		chall.ProvidedKeyAuthorization = badKeyAuthorization
-		test.Assert(t, !chall.IsSanePostCompletion(), "IsSane should be false")
+		test.Assert(t, !chall.IsSaneForValidation(), "IsSane should be false")
 	}
 
 	chall := Challenge{Type: "bogus", Status: StatusPending}

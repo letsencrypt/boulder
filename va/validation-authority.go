@@ -395,7 +395,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	if err != nil {
 		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
 		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
-		return validationRecords, &probs.ProblemDetails{
+		return nil, &probs.ProblemDetails{
 			Type:   probs.MalformedProblem,
 			Detail: errString,
 		}
@@ -444,7 +444,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	if err != nil {
 		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
 		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
-		return validationRecords, &probs.ProblemDetails{
+		return nil, &probs.ProblemDetails{
 			Type:   probs.MalformedProblem,
 			Detail: errString,
 		}
@@ -497,7 +497,8 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 }
 
 // Overall validation process
-
+//
+// TODO(#1167): remove, functionality moved to RA
 func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Authorization, challengeIndex int) {
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
@@ -505,8 +506,20 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 		RequestTime: va.clk.Now(),
 	}
 	challenge := &authz.Challenges[challengeIndex]
+
+	var validationRecords []core.ValidationRecord
+	var prob *probs.ProblemDetails
+
 	vStart := va.clk.Now()
-	validationRecords, prob := va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
+
+	if !challenge.IsSaneForValidation() {
+		prob = &probs.ProblemDetails{
+			Type:   probs.ServerInternalProblem,
+			Detail: "Incomplete challenge received for validation",
+		}
+	} else {
+		validationRecords, prob = va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
+	}
 
 	challenge.ValidationRecord = validationRecords
 	if prob != nil {
@@ -595,6 +608,13 @@ func (va *ValidationAuthorityImpl) PerformValidation(domain string, challenge co
 		Challenge:   challenge,
 	}
 	vStart := va.clk.Now()
+
+	if !challenge.IsSaneForValidation() {
+		return nil, &probs.ProblemDetails{
+			Type:   probs.ServerInternalProblem,
+			Detail: "Incomplete challenge received for validation",
+		}
+	}
 
 	records, prob := va.validateChallengeAndCAA(context.TODO(), core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
 
