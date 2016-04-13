@@ -42,7 +42,10 @@ func TestSendEarliestCertInfo(t *testing.T) {
 		1337,
 	)
 
-	ctx.m.sendNags([]*core.AcmeURL{email1, email2}, []*x509.Certificate{rawCertA, rawCertB})
+	err := ctx.m.sendNags([]*core.AcmeURL{email1, email2}, []*x509.Certificate{rawCertA, rawCertB})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(ctx.mc.Messages) != 2 {
 		t.Errorf("num of messages, want %d, got %d", 2, len(ctx.mc.Messages))
 	}

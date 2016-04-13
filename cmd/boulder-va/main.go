@@ -67,7 +67,8 @@ func main() {
 
 		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create VA RPC server")
-		rpc.NewValidationAuthorityServer(vas, vai)
+		err = rpc.NewValidationAuthorityServer(vas, vai)
+		cmd.FailOnError(err, "Unable to setup VA RPC server")
 
 		err = vas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run VA RPC server")

@@ -13,6 +13,7 @@ go get \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
   github.com/jcjones/github-pr-status \
+  github.com/kisielk/errcheck \
   github.com/jsha/listenbuddy &
 
 (wget https://github.com/jsha/boulder-tools/raw/master/goose.gz &&

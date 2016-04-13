@@ -10,7 +10,8 @@ fi
 # Order doesn't matter. Note: godep-restore is specifically left out of the
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH).
-RUN=${RUN:-vet lint fmt migrations unit integration}
+RUN=${RUN:-vet lint fmt migrations unit integration errcheck}
+# RUN=$RUN godep-restore errcheck
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.  By defuault, we only hard-fail for gofmt,
@@ -187,6 +188,15 @@ if [[ "$RUN" =~ "lint" ]] ; then
   start_context "lint"
   run_and_comment golint -min_confidence=0.81 ./...
   end_context #lint
+fi
+
+#
+# Run errcheck, to ensure that error returns are always used
+#
+if [[ "$RUN" =~ "errcheck" ]] ; then
+  start_context "errcheck"
+  run_and_comment errcheck -ignore 'io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*' -ignorepkg 'github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd' $(go list -f '{{.ImportPath}}' ./... | grep -v test | grep -v Godeps | grep -v scripts)
+  end_context #errcheck
 fi
 
 #
