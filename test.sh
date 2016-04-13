@@ -10,8 +10,7 @@ fi
 # Order doesn't matter. Note: godep-restore is specifically left out of the
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH).
-RUN=${RUN:-vet lint fmt migrations unit integration errcheck}
-# RUN=$RUN godep-restore errcheck
+RUN=${RUN:-vet fmt migrations unit integration errcheck}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.  By defuault, we only hard-fail for gofmt,
@@ -179,15 +178,6 @@ if [[ "$RUN" =~ "vet" ]] ; then
   start_context "vet"
   run_and_comment go vet ./...
   end_context #vet
-fi
-
-#
-# Run Go Lint, a style-focused static analysis tool
-#
-if [[ "$RUN" =~ "lint" ]] ; then
-  start_context "lint"
-  run_and_comment golint -min_confidence=0.81 ./...
-  end_context #lint
 fi
 
 #

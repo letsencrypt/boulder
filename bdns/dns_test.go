@@ -278,14 +278,14 @@ func TestDNSNXDOMAIN(t *testing.T) {
 
 	hostname := "nxdomain.letsencrypt.org"
 	_, err := obj.LookupHost(context.Background(), hostname)
-	expected := dnsError{dns.TypeA, hostname, nil, dns.RcodeNameError}
-	if err, ok := err.(*dnsError); !ok || *err != expected {
+	expected := DNSError{dns.TypeA, hostname, nil, dns.RcodeNameError}
+	if err, ok := err.(*DNSError); !ok || *err != expected {
 		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expected)
 	}
 
 	_, _, err = obj.LookupTXT(context.Background(), hostname)
 	expected.recordType = dns.TypeTXT
-	if err, ok := err.(*dnsError); !ok || *err != expected {
+	if err, ok := err.(*DNSError); !ok || *err != expected {
 		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expected)
 	}
 }
