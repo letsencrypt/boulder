@@ -25,11 +25,16 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
+
+	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 )
 
 const maxRedirect = 10
@@ -50,18 +55,11 @@ type ValidationAuthorityImpl struct {
 	UserAgent    string
 	stats        statsd.Statter
 	clk          clock.Clock
-}
-
-// PortConfig specifies what ports the VA should call to on the remote
-// host when performing its checks.
-type PortConfig struct {
-	HTTPPort  int
-	HTTPSPort int
-	TLSPort   int
+	caaClient    caaPB.CAACheckerClient
 }
 
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *PortConfig, sbc SafeBrowsing, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
 	logger := blog.Get()
 	return &ValidationAuthorityImpl{
 		SafeBrowsing: sbc,
@@ -71,6 +69,7 @@ func NewValidationAuthorityImpl(pc *PortConfig, sbc SafeBrowsing, stats statsd.S
 		tlsPort:      pc.TLSPort,
 		stats:        stats,
 		clk:          clk,
+		caaClient:    caaClient,
 	}
 }
 
@@ -484,6 +483,41 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 	return nil
 }
 
+func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
+	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: &ident.Value, IssuerDomain: &va.IssuerDomain})
+	if err != nil {
+		va.log.Warning(fmt.Sprintf("grpc: error calling ValidForIssuance: %s", err))
+		prob := &probs.ProblemDetails{Type: bgrpc.CodeToProblem(grpc.Code(err))}
+		if prob.Type == probs.ServerInternalProblem {
+			prob.Detail = "Internal communication failure"
+		} else {
+			prob.Detail = err.Error()
+		}
+		return prob
+	}
+	if r.Present == nil || r.Valid == nil {
+		va.log.Err("gRPC: communication failure: response is missing fields")
+		return &probs.ProblemDetails{
+			Type:   probs.ServerInternalProblem,
+			Detail: "Internal communication failure",
+		}
+	}
+	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
+	va.log.AuditInfo(fmt.Sprintf(
+		"Checked CAA records for %s, [Present: %t, Valid for issuance: %t]",
+		ident.Value,
+		*r.Present,
+		*r.Valid,
+	))
+	if !*r.Valid {
+		return &probs.ProblemDetails{
+			Type:   probs.ConnectionProblem,
+			Detail: fmt.Sprintf("CAA record for %s prevents issuance", ident.Value),
+		}
+	}
+	return nil
+}
+
 // Overall validation process
 
 func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Authorization, challengeIndex int) {
@@ -527,7 +561,11 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
-		ch <- va.checkCAA(ctx, identifier)
+		if va.caaClient == nil {
+			ch <- va.checkCAA(ctx, identifier)
+			return
+		}
+		ch <- va.checkCAAService(ctx, identifier)
 	}()
 
 	// TODO(#1292): send into another goroutine
