@@ -152,7 +152,7 @@ func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 func (ts *testSrv) serveTestResolver() {
 	dns.HandleFunc(".", ts.dnsHandler)
 	dnsServer := &dns.Server{
-		Addr:         "127.0.0.1:8053",
+		Addr:         "0.0.0.0:8053",
 		Net:          "tcp",
 		ReadTimeout:  time.Millisecond,
 		WriteTimeout: time.Millisecond,
@@ -165,7 +165,7 @@ func (ts *testSrv) serveTestResolver() {
 		}
 	}()
 	webServer := &http.Server{
-		Addr:    "localhost:8055",
+		Addr:    "0.0.0.0:8055",
 		Handler: http.HandlerFunc(ts.setTXT),
 	}
 	go func() {

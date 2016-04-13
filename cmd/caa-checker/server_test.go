@@ -54,10 +54,10 @@ func TestChecking(t *testing.T) {
 			t.Errorf("CheckCAARecords error for %s: %s", caaTest.Domain, err)
 		}
 		if *result.Present != caaTest.Present {
-			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, result.Present, caaTest.Present)
+			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, *result.Present, caaTest.Present)
 		}
 		if *result.Valid != caaTest.Valid {
-			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, result.Valid, caaTest.Valid)
+			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, *result.Valid, caaTest.Valid)
 		}
 	}
 

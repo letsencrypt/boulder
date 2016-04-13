@@ -199,8 +199,7 @@ func tlssniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 
 func TestHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
-	err := setChallengeToken(&chall, expectedToken)
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, expectedToken)
 
 	// NOTE: We do not attempt to shut down the server. The problem is that the
 	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
@@ -307,8 +306,7 @@ func TestHTTP(t *testing.T) {
 
 func TestHTTPRedirectLookup(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
-	err := setChallengeToken(&chall, expectedToken)
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, expectedToken)
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
@@ -365,8 +363,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 func TestHTTPRedirectLoop(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
-	err := setChallengeToken(&chall, "looper")
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, "looper")
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
@@ -385,8 +382,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 
 func TestHTTPRedirectUserAgent(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
-	err := setChallengeToken(&chall, expectedToken)
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, expectedToken)
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
@@ -519,8 +515,7 @@ func TestTLSError(t *testing.T) {
 
 func TestValidateHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
-	err := setChallengeToken(&chall, core.NewToken())
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, chall.Token)
 	port, err := getPort(hs)
@@ -562,12 +557,12 @@ func createChallenge(challengeType string) core.Challenge {
 
 // setChallengeToken sets the token value both in the Token field and
 // in the serialized KeyAuthorization object.
-func setChallengeToken(ch *core.Challenge, token string) (err error) {
+func setChallengeToken(ch *core.Challenge, token string) {
 	ch.Token = token
 
 	keyAuthorization, err := core.NewKeyAuthorization(token, ch.AccountKey)
 	if err != nil {
-		return
+		panic(err)
 	}
 
 	ch.KeyAuthorization = &keyAuthorization
@@ -630,8 +625,7 @@ func TestUpdateValidations(t *testing.T) {
 
 	chall := core.HTTPChallenge01(accountKey)
 	chall.ValidationRecord = []core.ValidationRecord{}
-	err := setChallengeToken(&chall, core.NewToken())
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, core.NewToken())
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
@@ -641,7 +635,10 @@ func TestUpdateValidations(t *testing.T) {
 	}
 
 	started := time.Now()
-	va.UpdateValidations(authz, 0)
+	err := va.UpdateValidations(authz, 0)
+	if err != nil {
+		test.AssertNotError(t, err, "UpdateValidations failed")
+	}
 	took := time.Since(started)
 
 	// Check that the call to va.UpdateValidations didn't block for 3 seconds
