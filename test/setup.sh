@@ -8,6 +8,7 @@ set -ev
 
 go get \
   golang.org/x/tools/cover \
+  golang.org/x/tools/cmd/stringer \
   github.com/golang/lint/golint \
   github.com/golang/mock/mockgen \
   github.com/tools/godep \
