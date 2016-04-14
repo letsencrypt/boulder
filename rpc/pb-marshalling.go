@@ -99,16 +99,19 @@ func unmarshalVAChallenge(in *vapb.VAChallenge) (challenge core.Challenge, err e
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	jwk, err := unmarshalJWK(in.AccountKey)
+	if in.AccountKey == nil || in.Id == nil || in.Type == nil || in.Token == nil || in.KeyAuthorization == nil {
+		return core.Challenge{}, ErrMissingParameters
+	}
+	jwk, err := unmarshalJWK(*in.AccountKey)
 	if err != nil {
 		return
 	}
 	return core.Challenge{
-		ID:                       in.Id,
-		Type:                     in.Type,
-		Token:                    in.Token,
+		ID:                       *in.Id,
+		Type:                     *in.Type,
+		Token:                    *in.Token,
 		AccountKey:               jwk,
-		ProvidedKeyAuthorization: in.KeyAuthorization,
+		ProvidedKeyAuthorization: *in.KeyAuthorization,
 	}, nil
 }
 
@@ -137,12 +140,12 @@ func marshalValidationRecord(record core.ValidationRecord) (*vapb.ValidationReco
 		return nil, err
 	}
 	return &vapb.ValidationRecord{
-		Hostname:          record.Hostname,
-		Port:              record.Port,
-		AddressesResolved: addrs,
-		AddressUsed:       addrUsed,
-		Authorities:       record.Authorities,
-		Url:               record.URL,
+		Hostname:          &record.Hostname,
+		Port:              &record.Port,
+		AddressesResolved: &addrs,
+		AddressUsed:       &addrUsed,
+		Authorities:       &record.Authorities,
+		Url:               &record.URL,
 	}, nil
 }
 
