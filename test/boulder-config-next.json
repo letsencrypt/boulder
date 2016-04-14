@@ -136,16 +136,20 @@
       }
     },
     "maxConcurrentRPCServerRequests": 16,
+    "publisher": {
+      "serverAddress": "127.0.0.1:9091",
+      "serverHostname": "localhost",
+      "serverIssuerPath": "test/grpc-creds/ca.pem",
+      "clientCertificatePath": "test/grpc-creds/client.pem",
+      "clientKeyPath": "test/grpc-creds/key.pem",
+      "timeout": "10s"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "CA.server",
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "15s"
-      },
-      "Publisher": {
-        "server": "Publisher.server",
         "rpcTimeout": "15s"
       }
     }
@@ -216,7 +220,7 @@
       "clientKeyPath": "test/grpc-creds/key.pem"
     },
     "amqp": {
-      "serverURLFile": "test/secrets/amqp_url",
+    "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "VA.server",
       "RA": {
@@ -267,6 +271,14 @@
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
     "debugAddr": "localhost:8006",
+    "publisher": {
+      "serverAddress": "127.0.0.1:9091",
+      "serverHostname": "localhost",
+      "serverIssuerPath": "test/grpc-creds/ca.pem",
+      "clientCertificatePath": "test/grpc-creds/client.pem",
+      "clientKeyPath": "test/grpc-creds/key.pem",
+      "timeout": "10s"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -276,10 +288,6 @@
       },
       "CA": {
         "server": "CA.server",
-        "rpcTimeout": "15s"
-      },
-      "Publisher": {
-        "server": "Publisher.server",
         "rpcTimeout": "15s"
       }
     }
@@ -311,10 +319,16 @@
     "maxConcurrentRPCServerRequests": 16,
     "submissionTimeout": "5s",
     "debugAddr": "localhost:8009",
+    "grpc": {
+      "Address": "127.0.0.1:9091",
+      "serverHostname": "localhost",
+      "clientIssuerPath": "test/grpc-creds/ca.pem",
+      "serverCertificatePath": "test/grpc-creds/server.pem",
+      "serverKeyPath": "test/grpc-creds/key.pem"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
-      "serviceQueue": "Publisher.server",
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "15s"

@@ -31,10 +31,12 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/pkcs11"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 )
 
 // This map is used to detect algorithms in crypto/x509 that
@@ -133,6 +135,8 @@ type CertificateAuthorityImpl struct {
 	SA               certificateStorage
 	PA               core.PolicyAuthority
 	Publisher        core.Publisher
+	GRPCPublisher    pubPB.PublisherClient
+	GRPCTimeout      time.Duration
 	keyPolicy        core.KeyPolicy
 	clk              clock.Clock
 	log              blog.Logger
@@ -599,9 +603,16 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Submit the certificate to any configured CT logs
-	go func() {
-		_ = ca.Publisher.SubmitToCT(certDER)
-	}()
+	if ca.GRPCPublisher != nil {
+		ctx, _ := context.WithTimeout(context.Background(), ca.GRPCTimeout)
+		go func() {
+			_, _ = ca.GRPCPublisher.SubmitToCT(ctx, &pubPB.Request{Der: certDER})
+		}()
+	} else {
+		go func() {
+			_ = ca.Publisher.SubmitToCT(certDER)
+		}()
+	}
 
 	// Do not return an err at this point; caller must know that the Certificate
 	// was issued. (Also, it should be impossible for err to be non-nil here)
