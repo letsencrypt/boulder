@@ -98,6 +98,19 @@ func main() {
 		err = rpc.NewValidationAuthorityServer(vas, vai)
 		cmd.FailOnError(err, "Unable to setup VA RPC server")
 
+		if c.VA.GRPC.Address != "" {
+			s, l, err := bgrpc.NewServer(&c.VA.GRPC)
+			cmd.FailOnError(err, "Unable to setup VA gRPC server")
+			gvas := vapb.Service(vai)
+			vapb.RegisterService(s, gvas)
+			go func() {
+				err := s.Serve(l)
+				cmd.FailOnError(err, "VA gRPC service failed")
+			}()
+		} else {
+			fmt.Println("Skipping VA gRPC server")
+		}
+
 		err = vas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run VA RPC server")
 	}
