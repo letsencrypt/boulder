@@ -9,16 +9,16 @@ set -ev
 go get \
   github.com/golang/lint/golint \
   github.com/golang/mock/mockgen \
-  github.com/golang/protobuf/proto
+  github.com/golang/protobuf/proto \
   github.com/golang/protobuf/protoc-gen-go \
   github.com/jcjones/github-pr-status \
-  github.com/jsha/listenbuddy &
+  github.com/jsha/listenbuddy \
   github.com/kisielk/errcheck \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
   github.com/tools/godep \
   golang.org/x/tools/cmd/stringer \
-  golang.org/x/tools/cover \
+  golang.org/x/tools/cover &
 
 (wget https://github.com/jsha/boulder-tools/raw/master/goose.gz &&
  mkdir -p $GOPATH/bin &&
