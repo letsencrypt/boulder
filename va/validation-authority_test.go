@@ -558,10 +558,11 @@ func createChallenge(challengeType string) core.Challenge {
 func setChallengeToken(ch *core.Challenge, token string) {
 	ch.Token = token
 
-	ch.ProvidedKeyAuthorization, err = ch.ExpectedKeyAuthorization()
+	ka, err := ch.ExpectedKeyAuthorization()
 	if err != nil {
 		panic(err)
 	}
+	ch.ProvidedKeyAuthorization = ka
 
 	return nil
 }
