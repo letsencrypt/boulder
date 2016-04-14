@@ -30,4 +30,6 @@ go get \
 go run cmd/rabbitmq-setup/main.go -server amqp://boulder-rabbitmq &
 
 # Wait for all the background commands to finish.
-wait
+for pid in $(jobs -p); do
+  wait $pid || exit 1
+done
