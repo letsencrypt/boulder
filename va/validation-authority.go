@@ -469,7 +469,6 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 	// Check CAA records for the requested identifier
 	present, valid, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {
-		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
 		return bdns.ProblemDetailsFromDNSError(err)
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
