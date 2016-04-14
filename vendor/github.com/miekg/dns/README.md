@@ -33,6 +33,7 @@ A not-so-up-to-date-list-that-may-be-actually-current:
 * https://github.com/fcambus/rrda
 * https://github.com/kenshinx/godns
 * https://github.com/skynetservices/skydns
+* https://github.com/hashicorp/consul
 * https://github.com/DevelopersPL/godnsagent
 * https://github.com/duedil-ltd/discodns
 * https://github.com/StalkR/dns-reverse-proxy
@@ -42,10 +43,11 @@ A not-so-up-to-date-list-that-may-be-actually-current:
 * https://play.google.com/store/apps/details?id=com.turbobytes.dig
 * https://github.com/fcambus/statzone
 * https://github.com/benschw/dns-clb-go
-* https://github.com/corny/dnscheck for http://public-dns.tk/
+* https://github.com/corny/dnscheck for http://public-dns.info/
 * https://namesmith.io
 * https://github.com/miekg/unbound
 * https://github.com/miekg/exdns
+* https://dnslookup.org
 
 Send pull request if you want to be listed here.
 
@@ -62,6 +64,7 @@ Send pull request if you want to be listed here.
 * EDNS0, NSID;
 * AXFR/IXFR;
 * TSIG, SIG(0);
+* DNS over TLS: optional encrypted connection between client and server;
 * DNS name compression;
 * Depends only on the standard library.
 
@@ -136,6 +139,7 @@ Example programs can be found in the `github.com/miekg/exdns` repository.
 * 7314 - DNS (EDNS) EXPIRE Option
 * 7553 - URI record
 * xxxx - EDNS0 DNS Update Lease (draft)
+* yyyy - DNS over TLS: Initiation and Performance Considerations (draft)
 
 ## Loosely based upon
 

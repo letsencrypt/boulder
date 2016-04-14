@@ -257,7 +257,7 @@ func packDomainName(s string, msg []byte, off int, compression map[string]int, c
 				roBs = string(bs)
 				bsFresh = true
 			}
-			// Dont try to compress '.'
+			// Don't try to compress '.'
 			if compress && roBs[begin:] != "." {
 				if p, ok := compression[roBs[begin:]]; !ok {
 					// Only offsets smaller than this can be used.
@@ -1894,6 +1894,11 @@ func id() uint16 {
 func Copy(r RR) RR {
 	r1 := r.copy()
 	return r1
+}
+
+// Len returns the length (in octets) of the uncompressed RR in wire format.
+func Len(r RR) int {
+	return r.len()
 }
 
 // Copy returns a new *Msg which is a deep-copy of dns.
