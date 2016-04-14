@@ -137,8 +137,7 @@
     },
     "maxConcurrentRPCServerRequests": 16,
     "publisher": {
-      "serverAddress": "127.0.0.1:9091",
-      "serverHostname": "localhost",
+      "serverAddress": "boulder:9091",
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
@@ -272,8 +271,7 @@
     "signFailureBackoffMax": "30m",
     "debugAddr": "localhost:8006",
     "publisher": {
-      "serverAddress": "127.0.0.1:9091",
-      "serverHostname": "localhost",
+      "serverAddress": "boulder:9091",
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
@@ -320,8 +318,7 @@
     "submissionTimeout": "5s",
     "debugAddr": "localhost:8009",
     "grpc": {
-      "Address": "127.0.0.1:9091",
-      "serverHostname": "localhost",
+      "address": "127.0.0.1:9091",
       "clientIssuerPath": "test/grpc-creds/ca.pem",
       "serverCertificatePath": "test/grpc-creds/server.pem",
       "serverKeyPath": "test/grpc-creds/key.pem"
