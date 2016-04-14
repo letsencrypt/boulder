@@ -142,15 +142,18 @@ func marshalValidationRecord(record core.ValidationRecord) (*vapb.ValidationReco
 	return &vapb.ValidationRecord{
 		Hostname:          &record.Hostname,
 		Port:              &record.Port,
-		AddressesResolved: &addrs,
+		AddressesResolved: addrs,
 		AddressUsed:       &addrUsed,
-		Authorities:       &record.Authorities,
+		Authorities:       record.Authorities,
 		Url:               &record.URL,
 	}, nil
 }
 
 func unmarshalValidationRecord(in *vapb.ValidationRecord) (record core.ValidationRecord, err error) {
 	if in == nil {
+		return core.ValidationRecord{}, ErrMissingParameters
+	}
+	if in.AddressUsed == nil || in.Hostname == nil || in.Port == nil || in.Url == nil {
 		return core.ValidationRecord{}, ErrMissingParameters
 	}
 	addrs := make([]net.IP, len(in.AddressesResolved))
@@ -160,17 +163,17 @@ func unmarshalValidationRecord(in *vapb.ValidationRecord) (record core.Validatio
 			return
 		}
 	}
-	addrUsed, err := unmarshalIPAddr(in.AddressUsed)
+	addrUsed, err := unmarshalIPAddr(*in.AddressUsed)
 	if err != nil {
 		return
 	}
 	return core.ValidationRecord{
-		Hostname:          in.Hostname,
-		Port:              in.Port,
+		Hostname:          *in.Hostname,
+		Port:              *in.Port,
 		AddressesResolved: addrs,
 		AddressUsed:       addrUsed,
 		Authorities:       in.Authorities,
-		URL:               in.Url,
+		URL:               *in.Url,
 	}, nil
 }
 
@@ -187,7 +190,10 @@ func marshalValidationRecords(records []core.ValidationRecord, prob *probs.Probl
 	if err != nil {
 		return nil, err
 	}
-	return &vapb.ValidationRecords{recordAry, marshalledProbs}, nil
+	return &vapb.ValidationRecords{
+		Records:  recordAry,
+		Problems: marshalledProbs,
+	}, nil
 }
 
 func unmarshalValidationRecords(in *vapb.ValidationRecords) ([]core.ValidationRecord, *probs.ProblemDetails, error) {

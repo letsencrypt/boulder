@@ -16,11 +16,15 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/cactus/go-statsd-client/statsd"
+	jose "github.com/square/go-jose"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
-	jose "github.com/square/go-jose"
+	vaPB "github.com/letsencrypt/boulder/rpc/pb/va"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -554,6 +558,108 @@ func (rac RegistrationAuthorityClient) OnValidationUpdate(ctx context.Context, a
 
 	_, err = rac.rpc.DispatchSync(MethodOnValidationUpdate, data)
 	return
+}
+
+type ValidationAuthorityGRPCServer struct {
+	impl core.ValidationAuthority
+}
+
+func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, in *vaPB.PerformValidationRequest) (*vaPB.ValidationRecords, error) {
+	if in == nil {
+		return nil, ErrMissingParameters
+	}
+	if in.Domain == nil {
+		return nil, ErrMissingParameters
+	}
+	challenge, err := unmarshalVAChallenge(in.Challenge)
+	if err != nil {
+		return nil, err
+	}
+	authz, err := unmarshalAuthzMeta(in.Authz)
+	if err != nil {
+		return nil, err
+	}
+
+	records, err := s.impl.PerformValidation(*in.Domain, challenge, authz)
+	prob, ok := err.(*probs.ProblemDetails)
+	if !ok {
+		return nil, err
+	}
+	return marshalValidationRecords(records, prob)
+}
+
+func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *vaPB.Domain) (*vaPB.Valid, error) {
+	if in == nil {
+		return nil, ErrMissingParameters
+	}
+	if in.Domain == nil {
+		return nil, ErrMissingParameters
+	}
+
+	resp, err := s.impl.IsSafeDomain(&core.IsSafeDomainRequest{*in.Domain})
+	if err != nil {
+		return nil, err
+	}
+	return &vaPB.Valid{Valid: &resp.IsSafe}, nil
+}
+
+func RegisterValidationAuthorityGRPCServer(s *grpc.Server, impl core.ValidationAuthority) {
+	rpcSrv := &ValidationAuthorityGRPCServer{impl}
+	vaPB.RegisterVAServer(s, rpcSrv)
+}
+
+type ValidationAuthorityGRPCClient struct {
+	gc vaPB.VAClient
+}
+
+func NewValidationAuthorityGRPCClient(cc *grpc.ClientConn) core.ValidationAuthority {
+	return &ValidationAuthorityGRPCClient{vaPB.NewVAClient(cc)}
+}
+
+func (vac ValidationAuthorityGRPCClient) UpdateValidations(authz core.Authorization, index int) error {
+	panic("UpdateValidations should not be called on VA GRPC client")
+}
+
+// PerformValidation has the VA revalidate the specified challenge and returns
+// the updated Challenge object.
+func (vac ValidationAuthorityGRPCClient) PerformValidation(domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+	ctx := context.TODO()
+	authzMeta, err := marshalAuthzMeta(authz)
+	if err != nil {
+		return nil, err
+	}
+	vaChallenge, err := marshalVAChallenge(challenge)
+	if err != nil {
+		return nil, err
+	}
+	gRecords, err := vac.gc.PerformValidation(ctx, &vaPB.PerformValidationRequest{
+		Domain:    &domain,
+		Authz:     authzMeta,
+		Challenge: vaChallenge,
+	})
+	if err != nil {
+		return nil, err
+	}
+	records, prob, err := unmarshalValidationRecords(gRecords)
+	if err != nil {
+		return nil, err
+	}
+
+	return records, prob
+}
+
+// IsSafeDomain returns true if the domain given is determined to be safe by an
+// third-party safe browsing API.
+func (vac ValidationAuthorityGRPCClient) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+	ctx := context.TODO()
+	valid, err := vac.gc.IsSafeDomain(ctx, &vaPB.Domain{Domain: &req.Domain})
+	if err != nil {
+		return nil, err
+	}
+	if valid == nil || (*valid).Valid == nil {
+		return nil, ErrMissingParameters
+	}
+	return &core.IsSafeDomainResponse{*(*valid).Valid}, nil
 }
 
 // NewValidationAuthorityServer constructs an RPC server
