@@ -318,7 +318,7 @@
     "submissionTimeout": "5s",
     "debugAddr": "localhost:8009",
     "grpc": {
-      "address": "127.0.0.1:9091",
+      "address": "boulder:9091",
       "clientIssuerPath": "test/grpc-creds/ca.pem",
       "serverCertificatePath": "test/grpc-creds/server.pem",
       "serverKeyPath": "test/grpc-creds/key.pem"

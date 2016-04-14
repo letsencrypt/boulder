@@ -20,7 +20,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	pb "github.com/letsencrypt/boulder/publisher/proto"
+	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 )
 
 // Log contains the CT client and signature verifier for a particular CT log
@@ -91,11 +91,11 @@ func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration, log
 
 // SubmitToCT is a wrapper used by gRPC until we remove the old
 // RPC code. Context has to be ignored to preserve old RPC API.
-func (pub GRPCWrapper) SubmitToCT(ctx context.Context, request *pb.Request) (*pb.Empty, error) {
+func (pub GRPCWrapper) SubmitToCT(ctx context.Context, request *pubPB.Request) (*pubPB.Empty, error) {
 	if request == nil || request.Der == nil {
 		return nil, errors.New("incomplete SubmitToCT gRPC message")
 	}
-	return nil, pub.Inner.submitToCT(ctx, request.Der)
+	return &pubPB.Empty{}, pub.Inner.submitToCT(ctx, request.Der)
 }
 
 // SubmitToCT will submit the certificate represented by certDER to any CT
