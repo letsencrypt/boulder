@@ -603,9 +603,10 @@ func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *va
 	return &vaPB.Valid{Valid: &resp.IsSafe}, nil
 }
 
-func RegisterValidationAuthorityGRPCServer(s *grpc.Server, impl core.ValidationAuthority) {
+func RegisterValidationAuthorityGRPCServer(s *grpc.Server, impl core.ValidationAuthority) error {
 	rpcSrv := &ValidationAuthorityGRPCServer{impl}
 	vaPB.RegisterVAServer(s, rpcSrv)
+	return nil
 }
 
 type ValidationAuthorityGRPCClient struct {
