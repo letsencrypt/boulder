@@ -1,0 +1,9 @@
+syntax = "proto2";
+
+package core;
+
+message ProblemDetails {
+	optional string problemType = 1;
+	optional string detail = 2;
+	optional int32 httpStatus = 3;
+}
