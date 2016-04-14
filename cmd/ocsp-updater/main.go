@@ -17,13 +17,16 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/akamai"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -39,6 +42,9 @@ type OCSPUpdater struct {
 	cac  core.CertificateAuthority
 	pubc core.Publisher
 	sac  core.StorageAuthority
+
+	GRPCPub     pubPB.PublisherClient
+	GRPCTimeout time.Duration
 
 	// Used  to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
@@ -478,10 +484,12 @@ func (updater *OCSPUpdater) missingReceiptsTick(batchSize int) error {
 			updater.log.AuditErr(fmt.Errorf("Failed to get certificate: %s", err))
 			continue
 		}
-		err = updater.pubc.SubmitToCT(cert.DER)
-		if err != nil {
-			updater.log.AuditErr(fmt.Errorf("Failed to submit certificate to CT log: %s", err))
-			continue
+		if updater.GRPCPub != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), updater.GRPCTimeout)
+			_, _ = updater.GRPCPub.SubmitToCT(ctx, &pubPB.Request{Der: cert.DER})
+			cancel() // since we are in a for loop do this now instead of collecting a bunch
+		} else {
+			_ = updater.pubc.SubmitToCT(cert.DER)
 		}
 	}
 	return nil
@@ -542,19 +550,29 @@ const clientName = "OCSP"
 func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
 	core.CertificateAuthority,
 	core.Publisher,
+	pubPB.PublisherClient,
+	time.Duration,
 	core.StorageAuthority,
 ) {
 	amqpConf := c.AMQP
 	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	pubc, err := rpc.NewPublisherClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create Publisher client")
-
+	var pubc core.Publisher
+	var grpcPubc pubPB.PublisherClient
+	var grpcTimeout time.Duration
+	if c.Publisher != nil {
+		conn, err := bgrpc.ClientSetup(c.Publisher)
+		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
+		grpcPubc = pubPB.NewPublisherClient(conn)
+		grpcTimeout = c.Publisher.Timeout.Duration
+	} else {
+		pubc, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create Publisher client")
+	}
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
-
-	return cac, pubc, sac
+	return cac, pubc, grpcPubc, grpcTimeout, sac
 }
 
 func main() {
@@ -571,7 +589,7 @@ func main() {
 		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		cac, pubc, sac := setupClients(conf, stats)
+		cac, pubc, grpcPubc, grpcTimeout, sac := setupClients(conf, stats)
 
 		updater, err := newUpdater(
 			stats,
@@ -585,6 +603,11 @@ func main() {
 			len(c.Common.CT.Logs),
 			c.Common.IssuerCert,
 		)
+
+		if grpcPubc != nil {
+			updater.GRPCPub = grpcPubc
+			updater.GRPCTimeout = grpcTimeout
+		}
 
 		cmd.FailOnError(err, "Failed to create updater")
 

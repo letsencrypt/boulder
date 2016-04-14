@@ -55,7 +55,7 @@ func main() {
 		if c.Publisher.GRPC != nil {
 			s, l, err := bgrpc.NewServer(c.Publisher.GRPC)
 			cmd.FailOnError(err, "Failed to setup gRPC server")
-			gw := publisher.GRPCWrapper{pubi}
+			gw := publisher.GRPCWrapper{Inner: pubi}
 			pubPB.RegisterPublisherServer(s, gw)
 			err = s.Serve(l)
 			cmd.FailOnError(err, "gRPC service failed")
