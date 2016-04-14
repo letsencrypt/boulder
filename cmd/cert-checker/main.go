@@ -350,5 +350,6 @@ func main() {
 		cmd.FailOnError(err, "Failed to dump results: %s\n")
 	}
 
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	cmd.FailOnError(err, "Failed to run application")
 }

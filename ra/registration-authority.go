@@ -811,7 +811,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 
 	if !ra.useNewVARPC {
 		// TODO(#1167): remove
-		ra.VA.UpdateValidations(authz, challengeIndex)
+		_ = ra.VA.UpdateValidations(authz, challengeIndex)
 		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	} else {
 		go func() {
@@ -838,7 +838,10 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 			}
 			authz.Challenges[challengeIndex] = *challenge
 
-			ra.OnValidationUpdate(authz)
+			err = ra.OnValidationUpdate(authz)
+			if err != nil {
+				ra.log.Err(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
+			}
 		}()
 		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	}

@@ -599,7 +599,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Submit the certificate to any configured CT logs
-	go ca.Publisher.SubmitToCT(certDER)
+	go func() {
+		_ = ca.Publisher.SubmitToCT(certDER)
+	}()
 
 	// Do not return an err at this point; caller must know that the Certificate
 	// was issued. (Also, it should be impossible for err to be non-nil here)

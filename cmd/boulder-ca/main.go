@@ -152,7 +152,8 @@ func main() {
 
 		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
-		rpc.NewCertificateAuthorityServer(cas, cai)
+		err = rpc.NewCertificateAuthorityServer(cas, cai)
+		cmd.FailOnError(err, "Unable to setup CA RPC server")
 
 		err = cas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run CA RPC server")
