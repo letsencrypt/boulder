@@ -13,12 +13,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
+	jose "github.com/square/go-jose"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,

@@ -19,7 +19,7 @@ HARDFAIL=${HARDFAIL:-fmt}
 
 FAILURE=0
 
-TESTPATHS=$(go list -f '{{ .ImportPath }}' ./...)
+TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | grep -v /vendor/)
 
 # We need to know, for github-pr-status, what the triggering commit is.
 # Assume first it's the travis commit (for builds of master), unless we're
@@ -163,7 +163,7 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    run go test -p 1 $GOTESTFLAGS ./...
+    run go test -p 1 $GOTESTFLAGS $TESTPATHS
   fi
 }
 
@@ -176,17 +176,8 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 #
 if [[ "$RUN" =~ "vet" ]] ; then
   start_context "vet"
-  run_and_comment go vet ./...
+  run_and_comment go vet $TESTPATHS
   end_context #vet
-fi
-
-#
-# Run errcheck, to ensure that error returns are always used
-#
-if [[ "$RUN" =~ "errcheck" ]] ; then
-  start_context "errcheck"
-  run_and_comment errcheck -ignore 'io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*' -ignorepkg 'github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd' $(go list -f '{{.ImportPath}}' ./... | grep -v test | grep -v Godeps | grep -v scripts)
-  end_context #errcheck
 fi
 
 #
@@ -195,7 +186,7 @@ fi
 if [[ "$RUN" =~ "fmt" ]] ; then
   start_context "fmt"
   check_gofmt() {
-    unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1 gofmt -l)
+    unformatted=$(find . -name "*.go" -not -path "./vendor/*" -print | xargs -n1 gofmt -l)
     if [ "x${unformatted}" == "x" ] ; then
       return 0
     else
@@ -298,6 +289,21 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
     run_and_comment git diff --exit-code Godeps/_workspace/
   fi
   end_context #godep-restore
+fi
+
+#
+# Run errcheck, to ensure that error returns are always used.
+# Note: errcheck seemingly doesn't understand ./vendor/ yet, and so will fail
+# if imports are not available in $GOPATH. So, in Travis, it always needs to
+# run after `godep restore`. Locally it can run anytime, assuming you have the
+# packages present in #GOPATH.
+#
+if [[ "$RUN" =~ "errcheck" ]] ; then
+  start_context "errcheck"
+  run_and_comment errcheck \
+    -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
+    $(echo $TESTPATHS | tr ' ' '\n' | grep -v test)
+  end_context #errcheck
 fi
 
 exit ${FAILURE}
