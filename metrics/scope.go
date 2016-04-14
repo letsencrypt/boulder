@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/cactus/go-statsd-client/statsd"
 )
 
 // Scope is a stats collector that will prefix the name the stats it

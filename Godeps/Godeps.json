@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.6",
 	"GodepVersion": "v60",
 	"Packages": [
 		"./..."
@@ -123,8 +123,8 @@
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/go-safe-browsing-api",
-			"Comment": "2.0.0-9-gf1b4fa4",
-			"Rev": "f1b4fa409d9efcee2ceee9047549413861603033"
+			"Comment": "2.0.0-10-ga109a23",
+			"Rev": "a109a231e10a089285a0aac0fd03c8a083975758"
 		},
 		{
 			"ImportPath": "github.com/letsencrypt/net/publicsuffix",

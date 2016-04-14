@@ -38,10 +38,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 
-	cfsslLog "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
+	cfsslLog "github.com/cloudflare/cfssl/log"
+	"github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"

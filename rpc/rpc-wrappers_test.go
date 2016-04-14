@@ -9,10 +9,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
+	jose "github.com/square/go-jose"
 )
 
 var log = blog.UseMock()

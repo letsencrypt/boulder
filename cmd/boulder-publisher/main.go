@@ -8,7 +8,7 @@ package main
 import (
 	"os"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
+	ct "github.com/google/certificate-transparency/go"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
