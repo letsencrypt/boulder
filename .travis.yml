@@ -55,6 +55,7 @@ install:
 env:
   global:
     - LETSENCRYPT_PATH=$HOME/letsencrypt
+    - GO15VENDOREXPERIMENT=1
   matrix:
     - RUN="integration vet lint fmt errcheck migrations"
     # Config changes that have landed in master but not yet been applied to
