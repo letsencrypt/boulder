@@ -563,8 +563,6 @@ func setChallengeToken(ch *core.Challenge, token string) {
 		panic(err)
 	}
 	ch.ProvidedKeyAuthorization = ka
-
-	return nil
 }
 
 func TestValidateTLSSNI01(t *testing.T) {
