@@ -36,7 +36,8 @@ func newGoogleSafeBrowsing(gsb *cmd.GoogleSafeBrowsingConfig) va.SafeBrowsing {
 		}
 		cmd.FailOnError(err, "unable to open Google Safe Browsing data directory")
 	}
-	f.Close()
+	err = f.Close()
+	cmd.FailOnError(err, "unable to access Google Safe Browsing data directory")
 	sbc, err := safebrowsing.NewSafeBrowsing(gsb.APIKey, gsb.DataDir)
 	if err != nil {
 		cmd.FailOnError(err, "unable to create new safe browsing client")

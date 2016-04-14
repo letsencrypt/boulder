@@ -77,7 +77,10 @@ const JWK2JSON = `{
 func TestKeyDigest(t *testing.T) {
 	// Test with JWK (value, reference, and direct)
 	var jwk jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk)
+	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
+	if err != nil {
+		t.Fatal(err)
+	}
 	digest, err := KeyDigest(jwk)
 	test.Assert(t, err == nil && digest == JWK1Digest, "Failed to digest JWK by value")
 	digest, err = KeyDigest(&jwk)
@@ -92,8 +95,14 @@ func TestKeyDigest(t *testing.T) {
 
 func TestKeyDigestEquals(t *testing.T) {
 	var jwk1, jwk2 jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk1)
-	json.Unmarshal([]byte(JWK2JSON), &jwk2)
+	err := json.Unmarshal([]byte(JWK1JSON), &jwk1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = json.Unmarshal([]byte(JWK2JSON), &jwk2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	test.Assert(t, KeyDigestEquals(jwk1, jwk1), "Key digests for same key should match")
 	test.Assert(t, !KeyDigestEquals(jwk1, jwk2), "Key digests for different keys should not match")
