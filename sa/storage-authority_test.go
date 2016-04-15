@@ -24,16 +24,16 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/mocks"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 // initSA constructs a SQLStorageAuthority and a clean up function
 // that should be defer'ed to the end of the test.
@@ -42,12 +42,11 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	dbMap.TraceOn("SQL: ", &SQLLogger{log})
 
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	sa, err := NewSQLStorageAuthority(dbMap, fc)
+	sa, err := NewSQLStorageAuthority(dbMap, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -471,8 +470,7 @@ func TestAddSCTReceipt(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add SCT receipt")
 	// Append only and unique on signature and across LogID and CertificateSerial
 	err = sa.AddSCTReceipt(sct)
-	test.AssertError(t, err, "Incorrectly added duplicate SCT receipt")
-	fmt.Println(err)
+	test.AssertNotError(t, err, "Incorrectly returned error on duplicate SCT receipt")
 }
 
 func TestGetSCTReceipt(t *testing.T) {
@@ -760,7 +758,7 @@ func (e *execRecorder) Exec(query string, args ...interface{}) (sql.Result, erro
 
 func TestAddIssuedNames(t *testing.T) {
 	var e execRecorder
-	addIssuedNames(&e, &x509.Certificate{
+	err := addIssuedNames(&e, &x509.Certificate{
 		DNSNames: []string{
 			"example.co.uk",
 			"example.xyz",
@@ -768,6 +766,9 @@ func TestAddIssuedNames(t *testing.T) {
 		SerialNumber: big.NewInt(1),
 		NotBefore:    time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	expected := "INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?, ?, ?), (?, ?, ?);"
 	if e.query != expected {
 		t.Errorf("Wrong query: got %q, expected %q", e.query, expected)

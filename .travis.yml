@@ -6,6 +6,9 @@ go:
 addons:
   hosts:
     - le.wtf
+    - boulder
+    - boulder-mysql
+    - boulder-rabbitmq
   apt:
     packages:
       - lsb-release
@@ -53,7 +56,10 @@ env:
   global:
     - LETSENCRYPT_PATH=$HOME/letsencrypt
   matrix:
-    - RUN="integration vet lint fmt migrations"
+    - RUN="integration vet lint fmt errcheck migrations"
+    # Config changes that have landed in master but not yet been applied to
+    # production can be made in boulder-config-next.json.
+    - RUN="integration" BOULDER_CONFIG="test/boulder-config-next.json"
     - RUN="unit"
     - RUN="godep-restore"
 

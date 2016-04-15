@@ -26,6 +26,9 @@ import (
 // MaxPathLen is the default path length for a new CA certificate.
 var MaxPathLen = 2
 
+// MaxPathLenZero indicates whether a new CA certificate has pathlen=0
+var MaxPathLenZero = false
+
 // Subject contains the information that should be used to override the
 // subject information when signing a certificate.
 type Subject struct {
@@ -222,6 +225,7 @@ func FillTemplate(template *x509.Certificate, defaultProfile, profile *config.Si
 		notBefore       time.Time
 		notAfter        time.Time
 		crlURL, ocspURL string
+		issuerURL       = profile.IssuerURL
 	)
 
 	// The third value returned from Usages is a list of unknown key usages.
@@ -229,7 +233,7 @@ func FillTemplate(template *x509.Certificate, defaultProfile, profile *config.Si
 	// here.
 	ku, eku, _ = profile.Usages()
 	if profile.IssuerURL == nil {
-		profile.IssuerURL = defaultProfile.IssuerURL
+		issuerURL = defaultProfile.IssuerURL
 	}
 
 	if ku == 0 && len(eku) == 0 {
@@ -279,8 +283,8 @@ func FillTemplate(template *x509.Certificate, defaultProfile, profile *config.Si
 		template.CRLDistributionPoints = []string{crlURL}
 	}
 
-	if len(profile.IssuerURL) != 0 {
-		template.IssuingCertificateURL = profile.IssuerURL
+	if len(issuerURL) != 0 {
+		template.IssuingCertificateURL = issuerURL
 	}
 	if len(profile.Policies) != 0 {
 		err = addPolicies(template, profile.Policies)

@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
@@ -32,7 +32,7 @@ const getChallengesQuery = "SELECT * FROM challenges WHERE authorizationID = :au
 type SQLStorageAuthority struct {
 	dbMap *gorp.DbMap
 	clk   clock.Clock
-	log   *blog.AuditLogger
+	log   blog.Logger
 }
 
 func digest256(data []byte) []byte {
@@ -54,10 +54,8 @@ type authzModel struct {
 
 // NewSQLStorageAuthority provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
-func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock) (*SQLStorageAuthority, error) {
-	logger := blog.GetAuditLogger()
-
-	logger.Notice("Storage Authority Starting")
+func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock, logger blog.Logger) (*SQLStorageAuthority, error) {
+	SetSQLDebug(dbMap, logger)
 
 	ssa := &SQLStorageAuthority{
 		dbMap: dbMap,
@@ -66,11 +64,6 @@ func NewSQLStorageAuthority(dbMap *gorp.DbMap, clk clock.Clock) (*SQLStorageAuth
 	}
 
 	return ssa, nil
-}
-
-// SetSQLDebug enables/disables GORP SQL-level Debugging
-func (ssa *SQLStorageAuthority) SetSQLDebug(state bool) {
-	SetSQLDebug(ssa.dbMap, state)
 }
 
 func statusIsPending(status core.AcmeStatus) bool {
@@ -168,7 +161,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 
 	authObj, err := tx.Get(pendingauthzModel{}, id)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 	if authObj != nil {
@@ -177,12 +170,12 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 	} else {
 		authObj, err = tx.Get(authzModel{}, id)
 		if err != nil {
-			tx.Rollback()
+			err = Rollback(tx, err)
 			return
 		}
 		if authObj == nil {
 			err = fmt.Errorf("No pendingAuthorization or authz with ID %s", id)
-			tx.Rollback()
+			err = Rollback(tx, err)
 			return
 		}
 		authD := authObj.(*authzModel)
@@ -196,14 +189,14 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 		map[string]interface{}{"authID": authz.ID},
 	)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 	var challs []core.Challenge
 	for _, c := range challObjs {
 		chall, err := modelToChallenge(&c)
 		if err != nil {
-			tx.Rollback()
+			err = Rollback(tx, err)
 			return core.Authorization{}, err
 		}
 		challs = append(challs, chall)
@@ -508,12 +501,12 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, reasonCode
 
 	statusObj, err := tx.Get(core.CertificateStatus{}, serial)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 	if statusObj == nil {
 		err = fmt.Errorf("No certificate with serial %s", serial)
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 	now := ssa.clk.Now()
@@ -524,11 +517,11 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, reasonCode
 
 	n, err := tx.Update(status)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 	if n == 0 {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		err = errors.New("No certificate updated. Maybe the lock column was off?")
 		return
 	}
@@ -588,14 +581,14 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 	pendingAuthz := pendingauthzModel{Authorization: authz}
 	err = tx.Insert(&pendingAuthz)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
 	for i, c := range authz.Challenges {
 		challModel, err := challengeToModel(&c, pendingAuthz.ID)
 		if err != nil {
-			tx.Rollback()
+			err = Rollback(tx, err)
 			return core.Authorization{}, err
 		}
 		// Magic happens here: Gorp will modify challModel, setting challModel.ID
@@ -605,12 +598,12 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 		// See https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
 		err = tx.Insert(challModel)
 		if err != nil {
-			tx.Rollback()
+			err = Rollback(tx, err)
 			return core.Authorization{}, err
 		}
 		challenge, err := modelToChallenge(challModel)
 		if err != nil {
-			tx.Rollback()
+			err = Rollback(tx, err)
 			return core.Authorization{}, err
 		}
 		authz.Challenges[i] = challenge
@@ -631,38 +624,38 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 
 	if !statusIsPending(authz.Status) {
 		err = errors.New("Use FinalizeAuthorization() to update to a final status")
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
 	if existingFinal(tx, authz.ID) {
 		err = errors.New("Cannot update a final authorization")
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
 	if !existingPending(tx, authz.ID) {
 		err = errors.New("Requested authorization not found " + authz.ID)
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
 	authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 	auth := authObj.(*pendingauthzModel)
 	auth.Authorization = authz
 	_, err = tx.Update(auth)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
@@ -680,38 +673,38 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 	// Check that a pending authz exists
 	if !existingPending(tx, authz.ID) {
 		err = errors.New("Cannot finalize an authorization that is not pending")
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 	if statusIsPending(authz.Status) {
 		err = errors.New("Cannot finalize to a non-final status")
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
 	auth := &authzModel{authz}
 	authObj, err := tx.Get(pendingauthzModel{}, authz.ID)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 	oldAuth := authObj.(*pendingauthzModel)
 
 	err = tx.Insert(auth)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
 	_, err = tx.Delete(oldAuth)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
 	err = updateChallenges(authz.ID, authz.Challenges, tx)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
@@ -792,19 +785,19 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 	// TODO Verify that the serial number doesn't yet exist
 	err = tx.Insert(cert)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
 	err = tx.Insert(certStatus)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
 	err = addIssuedNames(tx, parsedCertificate)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
@@ -816,7 +809,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 		parsedCertificate.NotAfter,
 	)
 	if err != nil {
-		tx.Rollback()
+		err = Rollback(tx, err)
 		return
 	}
 
@@ -901,18 +894,15 @@ func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (rece
 	return
 }
 
-// ErrDuplicateReceipt is an error type for duplicate SCT receipts
-type ErrDuplicateReceipt string
-
-func (e ErrDuplicateReceipt) Error() string {
-	return string(e)
-}
-
 // AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table
 func (ssa *SQLStorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) error {
 	err := ssa.dbMap.Insert(&sct)
+	// For AddSCTReceipt, duplicates are explicitly OK, so don't return errors
+	// based on duplicates, especially because we currently retry all submissions
+	// for a certificate if even one of them fails. Once https://github.com/letsencrypt/boulder/issues/891
+	// is fixed, we may want to start returning this as an error, or logging it.
 	if err != nil && strings.HasPrefix(err.Error(), "Error 1062: Duplicate entry") {
-		err = ErrDuplicateReceipt(err.Error())
+		return nil
 	}
 	return err
 }

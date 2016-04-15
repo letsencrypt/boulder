@@ -26,9 +26,9 @@ import (
 	"time"
 
 	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
-	ctClient "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go/client"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -116,7 +116,7 @@ OY8B7wwvZTLzU6WWs781TJXx2CE04PneeeArLpVLkiGIWjk=
 
 const issuerPath = "../test/test-ca.pem"
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 func getPort(hs *httptest.Server) (int, error) {
 	url, err := url.Parse(hs.URL)
@@ -257,7 +257,7 @@ func badLogSrv() *httptest.Server {
 func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
-	pub := New(nil, nil, 0)
+	pub := New(nil, nil, 0, log)
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert(intermediatePEM.Bytes))
 	pub.SA = mocks.NewStorageAuthority(clock.NewFake())
 
@@ -272,13 +272,12 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 }
 
 func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
-	verifier, err := ct.NewSignatureVerifier(pubKey)
-	test.AssertNotError(t, err, "Couldn't create signature verifier")
-
-	pub.ctLogs = append(pub.ctLogs, &Log{
-		client:   ctClient.New(fmt.Sprintf("http://localhost:%d", port)),
-		verifier: verifier,
-	})
+	uri := fmt.Sprintf("http://localhost:%d", port)
+	der, err := x509.MarshalPKIXPublicKey(pubKey)
+	test.AssertNotError(t, err, "Failed to marshal key")
+	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der))
+	test.AssertNotError(t, err, "Couldn't create log")
+	pub.ctLogs = append(pub.ctLogs, newLog)
 }
 
 func TestBasicSuccessful(t *testing.T) {
@@ -330,6 +329,7 @@ func TestUnexpectedError(t *testing.T) {
 	log.Clear()
 	err = pub.SubmitToCT(leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
+	test.AssertEquals(t, len(log.GetAllMatching("Failed .*http://localhost:"+strconv.Itoa(port))), 1)
 }
 
 func TestRetryAfter(t *testing.T) {
@@ -362,9 +362,10 @@ func TestRetryAfterContext(t *testing.T) {
 
 	pub.submissionTimeout = time.Second
 	s := time.Now()
-	pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(leaf.Raw)
+	test.AssertNotError(t, err, "Failed to submit to CT")
 	took := time.Since(s)
-	test.Assert(t, len(log.GetAllMatching(".*Failed to submit certificate to CT log: context deadline exceeded.*")) == 1, "Submission didn't timeout")
+	test.Assert(t, len(log.GetAllMatching(".*Failed to submit certificate to CT log at .*: context deadline exceeded.*")) == 1, "Submission didn't timeout")
 	test.Assert(t, took >= time.Second, fmt.Sprintf("Submission took too long to timeout: %s", took))
 }
 

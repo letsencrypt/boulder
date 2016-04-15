@@ -9,17 +9,17 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/mocks"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 var enabledChallenges = map[string]bool{
 	core.ChallengeTypeHTTP01:   true,
@@ -212,101 +212,4 @@ func TestChallengesFor(t *testing.T) {
 	}
 	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
 	test.AssertDeepEquals(t, expectedCombos, combinations)
-}
-
-func TestWillingToIssueWithWhitelist(t *testing.T) {
-	dbMap, cleanUp := paDBMap(t)
-	defer cleanUp()
-	pa, err := New(dbMap, true, nil)
-	test.AssertNotError(t, err, "Couldn't create policy implementation")
-	googID := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
-		Value: "www.google.com",
-	}
-	zomboID := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
-		Value: "www.zombo.com",
-	}
-
-	type listTestCase struct {
-		regID int64
-		id    core.AcmeIdentifier
-		err   error
-	}
-	pa.DB.LoadRules(RuleSet{
-		Whitelist: []WhitelistRule{
-			{Host: "www.zombo.com"},
-		},
-	})
-
-	// Note that www.google.com is not in the blacklist for this test. We no
-	// longer have a hardcoded blacklist.
-	testCases := []listTestCase{
-		{100, googID, errNotWhitelisted},
-		{whitelistedPartnerRegID, googID, nil},
-		{100, zomboID, nil},
-		{whitelistedPartnerRegID, zomboID, nil},
-	}
-	for _, tc := range testCases {
-		err := pa.WillingToIssue(tc.id, tc.regID)
-		if err != tc.err {
-			t.Errorf("%#v, %d: want %#v, got %#v", tc.id.Value, tc.regID, tc.err, err)
-		}
-	}
-
-	pa.DB.LoadRules(RuleSet{
-		Blacklist: []BlacklistRule{
-			{Host: "www.google.com"},
-		},
-		Whitelist: []WhitelistRule{
-			{Host: "www.zombo.com"},
-		},
-	})
-
-	exampleID := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
-		Value: "www.example.com",
-	}
-
-	testCases = []listTestCase{
-		// This errNotWhitelisted is surprising and accidental from the ordering
-		// of the whitelist and blacklist check. The whitelist will be gone soon
-		// enough.
-		{100, googID, errNotWhitelisted},
-		{whitelistedPartnerRegID, googID, errBlacklisted},
-		{100, zomboID, nil},
-		{whitelistedPartnerRegID, zomboID, nil},
-		{100, exampleID, errNotWhitelisted},
-		{whitelistedPartnerRegID, exampleID, nil},
-	}
-	for _, tc := range testCases {
-		err := pa.WillingToIssue(tc.id, tc.regID)
-		if err != tc.err {
-			t.Errorf("%#v, %d: want %#v, got %#v", tc.id.Value, tc.regID, tc.err, err)
-		}
-	}
-
-	pa.DB.LoadRules(RuleSet{
-		Blacklist: []BlacklistRule{
-			{Host: "www.google.com"},
-		},
-		Whitelist: []WhitelistRule{
-			{Host: "www.zombo.com"},
-			{Host: "www.google.com"},
-		},
-	})
-	testCases = []listTestCase{
-		{100, googID, errBlacklisted},
-		{whitelistedPartnerRegID, googID, errBlacklisted},
-		{100, zomboID, nil},
-		{whitelistedPartnerRegID, zomboID, nil},
-		{100, exampleID, errNotWhitelisted},
-		{whitelistedPartnerRegID, exampleID, nil},
-	}
-	for _, tc := range testCases {
-		err := pa.WillingToIssue(tc.id, tc.regID)
-		if err != tc.err {
-			t.Errorf("%#v, %d: want %#v, got %#v", tc.id.Value, tc.regID, tc.err, err)
-		}
-	}
 }

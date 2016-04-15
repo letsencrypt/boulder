@@ -12,7 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/mocks"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
@@ -51,17 +51,17 @@ func (p *mockPub) SubmitToCT(_ []byte) error {
 	return p.sa.AddSCTReceipt(sct)
 }
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Failed to create dbMap")
-	sa.SetSQLDebug(dbMap, true)
+	sa.SetSQLDebug(dbMap, log)
 
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
-	sa, err := sa.NewSQLStorageAuthority(dbMap, fc)
+	sa, err := sa.NewSQLStorageAuthority(dbMap, fc, log)
 	test.AssertNotError(t, err, "Failed to create SA")
 
 	cleanUp := test.ResetSATestDatabase(t)
@@ -137,7 +137,8 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't find stale responses")
 	test.AssertEquals(t, len(certs), 2)
 
-	updater.generateOCSPResponses(certs)
+	err = updater.generateOCSPResponses(certs)
+	test.AssertNotError(t, err, "Couldn't generate OCSP responses")
 
 	certs, err = updater.findStaleOCSPResponses(earliest, 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
@@ -220,7 +221,8 @@ func TestNewCertificateTick(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	prev := fc.Now().Add(-time.Hour)
-	updater.newCertificateTick(10)
+	err = updater.newCertificateTick(10)
+	test.AssertNotError(t, err, "Couldn't run newCertificateTick")
 
 	certs, err := updater.findStaleOCSPResponses(prev, 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
@@ -238,7 +240,8 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	updater.ocspMinTimeToExpiry = 1 * time.Hour
-	updater.oldOCSPResponsesTick(10)
+	err = updater.oldOCSPResponsesTick(10)
+	test.AssertNotError(t, err, "Couldn't run oldOCSPResponsesTick")
 
 	certs, err := updater.findStaleOCSPResponses(fc.Now().Add(-updater.ocspMinTimeToExpiry), 10)
 	test.AssertNotError(t, err, "Failed to find stale responses")
@@ -263,7 +266,8 @@ func TestMissingReceiptsTick(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to retrieve serials")
 	test.AssertEquals(t, len(serials), 1)
 
-	updater.missingReceiptsTick(5)
+	err = updater.missingReceiptsTick(5)
+	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
 
 	count, err := updater.getNumberOfReceipts("00")
 	test.AssertNotError(t, err, "Couldn't get number of receipts")
@@ -272,7 +276,8 @@ func TestMissingReceiptsTick(t *testing.T) {
 	// make sure we don't spin forever after reducing the
 	// number of logs we submit to
 	updater.numLogs = 1
-	updater.missingReceiptsTick(10)
+	err = updater.missingReceiptsTick(10)
+	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
 }
 
 func TestRevokedCertificatesTick(t *testing.T) {
@@ -292,7 +297,8 @@ func TestRevokedCertificatesTick(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to find revoked certificates")
 	test.AssertEquals(t, len(statuses), 1)
 
-	updater.revokedCertificatesTick(10)
+	err = updater.revokedCertificatesTick(10)
+	test.AssertNotError(t, err, "Failed to run revokedCertificatesTick")
 
 	status, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")

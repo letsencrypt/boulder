@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -30,7 +31,7 @@ import (
 // OCSPUpdater contains the useful objects for the Updater
 type OCSPUpdater struct {
 	stats statsd.Statter
-	log   *blog.AuditLogger
+	log   blog.Logger
 	clk   clock.Clock
 
 	dbMap *gorp.DbMap
@@ -76,7 +77,7 @@ func newUpdater(
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
 
-	log := blog.GetAuditLogger()
+	log := blog.Get()
 
 	updater := OCSPUpdater{
 		stats:               stats,
@@ -538,7 +539,7 @@ func (l *looper) loop() error {
 
 const clientName = "OCSP"
 
-func setupClients(c cmd.OCSPUpdaterConfig, stats statsd.Statter) (
+func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
 	core.CertificateAuthority,
 	core.Publisher,
 	core.StorageAuthority,
@@ -559,7 +560,7 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats statsd.Statter) (
 func main() {
 	app := cmd.NewAppShell("ocsp-updater", "Generates and updates OCSP responses")
 
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger blog.Logger) {
 		conf := c.OCSPUpdater
 		go cmd.DebugServer(conf.DebugAddr)
 		go cmd.ProfileCmd("OCSP-Updater", stats)

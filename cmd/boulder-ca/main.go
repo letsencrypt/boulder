@@ -7,18 +7,21 @@ package main
 
 import (
 	"crypto"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
@@ -26,19 +29,62 @@ import (
 
 const clientName = "CA"
 
-func loadPrivateKey(keyConfig cmd.KeyConfig) (crypto.Signer, error) {
-	if keyConfig.File != "" {
-		keyBytes, err := ioutil.ReadFile(keyConfig.File)
+func loadIssuers(c cmd.Config) ([]ca.Issuer, error) {
+	if c.CA.Key != nil {
+		issuerConfig := *c.CA.Key
+		issuerConfig.CertFile = c.Common.IssuerCert
+		priv, cert, err := loadIssuer(issuerConfig)
+		return []ca.Issuer{{
+			Signer: priv,
+			Cert:   cert,
+		}}, err
+	}
+	var issuers []ca.Issuer
+	for _, issuerConfig := range c.CA.Issuers {
+		priv, cert, err := loadIssuer(issuerConfig)
+		cmd.FailOnError(err, "Couldn't load private key")
+		issuers = append(issuers, ca.Issuer{
+			Signer: priv,
+			Cert:   cert,
+		})
+	}
+	return issuers, nil
+}
+
+func loadIssuer(issuerConfig cmd.IssuerConfig) (crypto.Signer, *x509.Certificate, error) {
+	cert, err := core.LoadCert(issuerConfig.CertFile)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	signer, err := loadSigner(issuerConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if !core.KeyDigestEquals(signer.Public(), cert.PublicKey) {
+		return nil, nil, fmt.Errorf("Issuer key did not match issuer cert %s", issuerConfig.CertFile)
+	}
+	return signer, cert, err
+}
+
+func loadSigner(issuerConfig cmd.IssuerConfig) (crypto.Signer, error) {
+	if issuerConfig.File != "" {
+		keyBytes, err := ioutil.ReadFile(issuerConfig.File)
 		if err != nil {
-			return nil, fmt.Errorf("Could not read key file %s", keyConfig.File)
+			return nil, fmt.Errorf("Could not read key file %s", issuerConfig.File)
 		}
 
-		return helpers.ParsePrivateKeyPEM(keyBytes)
+		signer, err := helpers.ParsePrivateKeyPEM(keyBytes)
+		if err != nil {
+			return nil, err
+		}
+		return signer, nil
 	}
 
 	var pkcs11Config *pkcs11key.Config
-	if keyConfig.ConfigFile != "" {
-		contents, err := ioutil.ReadFile(keyConfig.ConfigFile)
+	if issuerConfig.ConfigFile != "" {
+		contents, err := ioutil.ReadFile(issuerConfig.ConfigFile)
 		if err != nil {
 			return nil, err
 		}
@@ -48,7 +94,7 @@ func loadPrivateKey(keyConfig cmd.KeyConfig) (crypto.Signer, error) {
 			return nil, err
 		}
 	} else {
-		pkcs11Config = keyConfig.PKCS11
+		pkcs11Config = issuerConfig.PKCS11
 	}
 	if pkcs11Config.Module == "" ||
 		pkcs11Config.TokenLabel == "" ||
@@ -62,36 +108,35 @@ func loadPrivateKey(keyConfig cmd.KeyConfig) (crypto.Signer, error) {
 
 func main() {
 	app := cmd.NewAppShell("boulder-ca", "Handles issuance operations")
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		// Validate PA config and set defaults if needed
 		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
-
-		blog.SetAuditLogger(auditlogger)
-
 		go cmd.DebugServer(c.CA.DebugAddr)
 
-		dbURL, err := c.PA.DBConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
-		paDbMap, err := sa.NewDbMap(dbURL)
-		cmd.FailOnError(err, "Couldn't connect to policy database")
+		var paDbMap *gorp.DbMap
+		if c.CA.HostnamePolicyFile == "" {
+			dbURL, err := c.PA.DBConfig.URL()
+			cmd.FailOnError(err, "Couldn't load DB URL")
+			paDbMap, err = sa.NewDbMap(dbURL)
+			cmd.FailOnError(err, "Couldn't connect to policy database")
+		}
 		pa, err := policy.New(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		priv, err := loadPrivateKey(c.CA.Key)
-		cmd.FailOnError(err, "Couldn't load private key")
+		if c.CA.HostnamePolicyFile != "" {
+			err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
+			cmd.FailOnError(err, "Couldn't load hostname policy file")
+		}
 
-		issuer, err := core.LoadCert(c.Common.IssuerCert)
-		cmd.FailOnError(err, "Couldn't load issuer cert")
+		issuers, err := loadIssuers(c)
+		cmd.FailOnError(err, "Couldn't load issuers")
 
 		cai, err := ca.NewCertificateAuthorityImpl(
 			c.CA,
 			clock.Default(),
 			stats,
-			issuer,
-			priv,
+			issuers,
 			c.KeyPolicy())
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.PA = pa
@@ -107,7 +152,8 @@ func main() {
 
 		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
-		rpc.NewCertificateAuthorityServer(cas, cai)
+		err = rpc.NewCertificateAuthorityServer(cas, cai)
+		cmd.FailOnError(err, "Unable to setup CA RPC server")
 
 		err = cas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run CA RPC server")

@@ -174,7 +174,8 @@ func main() {
 		if len(outFile) == 0 {
 			cmd.FailOnError(fmt.Errorf(""), "No output file provided")
 		}
-		ioutil.WriteFile(outFile, responseBytes, 0666)
+		err = ioutil.WriteFile(outFile, responseBytes, 0666)
+		cmd.FailOnError(err, "Failed to write output file")
 	}
 
 	err := app.Run(os.Args)

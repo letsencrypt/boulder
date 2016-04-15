@@ -14,10 +14,11 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -46,6 +47,7 @@ const (
 	MethodAdministrativelyRevokeCertificate = "AdministrativelyRevokeCertificate" // RA
 	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
 	MethodUpdateValidations                 = "UpdateValidations"                 // VA
+	MethodPerformValidation                 = "PerformValidation"                 // VA
 	MethodIsSafeDomain                      = "IsSafeDomain"                      // VA
 	MethodIssueCertificate                  = "IssueCertificate"                  // CA
 	MethodGenerateOCSP                      = "GenerateOCSP"                      // CA
@@ -144,6 +146,18 @@ type validationRequest struct {
 	Index int
 }
 
+type performValidationRequest struct {
+	Domain    string
+	Challenge core.Challenge
+	// TODO(#1626): remove
+	Authz core.Authorization
+}
+
+type performValidationResponse struct {
+	Records []core.ValidationRecord
+	Problem *probs.ProblemDetails
+}
+
 type alreadyDeniedCSRReq struct {
 	Names []string
 }
@@ -208,17 +222,17 @@ type fqdnSetExistsResponse struct {
 }
 
 func improperMessage(method string, err error, obj interface{}) {
-	log := blog.GetAuditLogger()
+	log := blog.Get()
 	log.AuditErr(fmt.Errorf("Improper message. method: %s err: %s data: %+v", method, err, obj))
 }
 func errorCondition(method string, err error, obj interface{}) {
-	log := blog.GetAuditLogger()
+	log := blog.Get()
 	log.AuditErr(fmt.Errorf("Error condition. method: %s err: %s data: %+v", method, err, obj))
 }
 
 // NewRegistrationAuthorityServer constructs an RPC server
 func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority) error {
-	log := blog.GetAuditLogger()
+	log := blog.Get()
 
 	rpc.Handle(MethodNewRegistration, func(req []byte) (response []byte, err error) {
 		var rr registrationRequest
@@ -554,8 +568,29 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 			return
 		}
 
-		err = impl.UpdateValidations(vaReq.Authz, vaReq.Index)
-		return
+		return nil, impl.UpdateValidations(vaReq.Authz, vaReq.Index)
+	})
+
+	rpc.Handle(MethodPerformValidation, func(req []byte) (response []byte, err error) {
+		var vaReq performValidationRequest
+		if err = json.Unmarshal(req, &vaReq); err != nil {
+			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
+			improperMessage(MethodPerformValidation, err, req)
+			return nil, err
+		}
+
+		records, err := impl.PerformValidation(vaReq.Domain, vaReq.Challenge, vaReq.Authz)
+		// If the type of error was a ProblemDetails, we need to return
+		// both that and the records to the caller (so it can update
+		// the challenge / authz in the SA with the failing records).
+		// The least error-prone way of doing this is to send a struct
+		// as the RPC response and return a nil error on the RPC layer,
+		// then unpack that into (records, error) to the caller.
+		probs, ok := err.(*probs.ProblemDetails)
+		if !ok && err != nil {
+			return nil, err
+		}
+		return json.Marshal(performValidationResponse{records, probs})
 	})
 
 	rpc.Handle(MethodIsSafeDomain, func(req []byte) ([]byte, error) {
@@ -569,11 +604,7 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 		if err != nil {
 			return nil, err
 		}
-		jsonResp, err := json.Marshal(resp)
-		if err != nil {
-			return nil, err
-		}
-		return jsonResp, nil
+		return json.Marshal(resp)
 	})
 
 	return nil
@@ -602,7 +633,31 @@ func (vac ValidationAuthorityClient) UpdateValidations(authz core.Authorization,
 	}
 
 	_, err = vac.rpc.DispatchSync(MethodUpdateValidations, data)
-	return nil
+	return err
+}
+
+// PerformValidation has the VA revalidate the specified challenge and returns
+// the updated Challenge object.
+func (vac ValidationAuthorityClient) PerformValidation(domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+	vaReq := performValidationRequest{
+		Domain:    domain,
+		Challenge: challenge,
+		Authz:     authz,
+	}
+	data, err := json.Marshal(vaReq)
+	if err != nil {
+		return nil, err
+	}
+	jsonResp, err := vac.rpc.DispatchSync(MethodPerformValidation, data)
+	if err != nil {
+		return nil, err
+	}
+	var resp performValidationResponse
+	err = json.Unmarshal(jsonResp, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Records, resp.Problem
 }
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
@@ -1145,14 +1200,7 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 			return
 		}
 
-		err = impl.AddSCTReceipt(core.SignedCertificateTimestamp(sct))
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodAddSCTReceipt, err, req)
-			return
-		}
-
-		return nil, nil
+		return nil, impl.AddSCTReceipt(core.SignedCertificateTimestamp(sct))
 	})
 
 	rpc.Handle(MethodCountFQDNSets, func(req []byte) (response []byte, err error) {

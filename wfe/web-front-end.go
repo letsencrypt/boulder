@@ -20,7 +20,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
@@ -50,7 +50,7 @@ type WebFrontEndImpl struct {
 	RA    core.RegistrationAuthority
 	SA    core.StorageGetter
 	stats statsd.Statter
-	log   *blog.AuditLogger
+	log   blog.Logger
 	clk   clock.Clock
 
 	// URL configuration parameters
@@ -94,8 +94,7 @@ type WebFrontEndImpl struct {
 
 // NewWebFrontEndImpl constructs a web service for Boulder
 func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock, keyPolicy core.KeyPolicy) (WebFrontEndImpl, error) {
-	logger := blog.GetAuditLogger()
-	logger.Notice("Web Front End Starting")
+	logger := blog.Get()
 
 	nonceService, err := core.NewNonceService()
 	if err != nil {
@@ -248,7 +247,7 @@ func (wfe *WebFrontEndImpl) Index(logEvent *requestEvent, response http.Response
 	response.Header().Set("Content-Type", "text/html")
 	response.Write([]byte(fmt.Sprintf(`<html>
 		<body>
-			This is an <a href="https://github.com/letsencrypt/acme-spec/">ACME</a>
+			This is an <a href="https://github.com/ietf-wg-acme/acme/">ACME</a>
 			Certificate Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>.
 			JSON directory is available at <a href="%s">%s</a>.
 		</body>

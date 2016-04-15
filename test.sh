@@ -10,7 +10,7 @@ fi
 # Order doesn't matter. Note: godep-restore is specifically left out of the
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH).
-RUN=${RUN:-vet lint fmt migrations unit integration}
+RUN=${RUN:-vet fmt migrations unit integration errcheck}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.  By defuault, we only hard-fail for gofmt,
@@ -66,7 +66,6 @@ function run() {
 
   if [ ${status} -eq 0 ]; then
     update_status --state success
-    echo "Success: $@"
   else
     FAILURE=1
     update_status --state failure
@@ -83,7 +82,6 @@ function run_and_comment() {
 
   if [ "x${result}" == "x" ]; then
     update_status --state success
-    echo "Success: $@"
   else
     FAILURE=1
     update_status --state failure
@@ -142,12 +140,12 @@ function run_unit_tests() {
     all_shared_imports=$(go list -f '{{ join .Imports "\n" }}' $TESTPATHS | sort | uniq)
     deps=$(go list -f '{{ if not .Standard }}{{ .ImportPath }}{{ end }}' ${all_shared_imports})
     echo "go installing race detector enabled dependencies"
-    go install -v -race $deps
+    go install -race $deps
 
     # Run each test by itself for Travis, so we can get coverage
     for path in ${TESTPATHS}; do
       dir=$(basename $path)
-      run go test -race -cover -coverprofile=${dir}.coverprofile ${path}
+      go test -race -cover -coverprofile=${dir}.coverprofile ${path} || FAILURE=1
     done
 
     # Gather all the coverprofiles
@@ -183,12 +181,12 @@ if [[ "$RUN" =~ "vet" ]] ; then
 fi
 
 #
-# Run Go Lint, a style-focused static analysis tool
+# Run errcheck, to ensure that error returns are always used
 #
-if [[ "$RUN" =~ "lint" ]] ; then
-  start_context "lint"
-  run_and_comment golint -min_confidence=0.81 ./...
-  end_context #lint
+if [[ "$RUN" =~ "errcheck" ]] ; then
+  start_context "errcheck"
+  run_and_comment errcheck -ignore 'io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*' -ignorepkg 'github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd' $(go list -f '{{.ImportPath}}' ./... | grep -v test | grep -v Godeps | grep -v scripts)
+  end_context #errcheck
 fi
 
 #
@@ -297,7 +295,7 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   # do this for all builds.
   if [[ "${TRAVIS_REPO_SLUG}" == "letsencrypt/boulder" ]] ; then
     run_and_comment godep save -r ./...
-    run_and_comment git diff --exit-code
+    run_and_comment git diff --exit-code Godeps/_workspace/
   fi
   end_context #godep-restore
 fi

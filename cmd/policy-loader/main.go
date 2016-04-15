@@ -99,7 +99,8 @@ func main() {
 		},
 	}...)
 
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	cmd.FailOnError(err, "Couldn't run application")
 }
 
 func setupFromContext(context *cli.Context) (*policy.AuthorityDatabaseImpl, string) {

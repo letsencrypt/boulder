@@ -27,14 +27,15 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-
-	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -65,7 +66,7 @@ var accountKey = &jose.JsonWebKey{Key: TheKey.Public()}
 
 var ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 // All paths that get assigned to tokens MUST be valid tokens
 const expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
@@ -139,9 +140,9 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 			t.Logf("HTTPSRV: Path = %s\n", r.URL.Path)
 
 			keyAuthz, _ := core.NewKeyAuthorization(currentToken, accountKey)
-			t.Logf("HTTPSRV: Key Authz = '%s%s'\n", keyAuthz.String(), "\\n \\t")
+			t.Logf("HTTPSRV: Key Authz = '%s%s'\n", keyAuthz.String(), "\\n\\r \\t")
 
-			fmt.Fprint(w, keyAuthz.String(), "\n \t")
+			fmt.Fprint(w, keyAuthz.String(), "\n\r \t")
 			currentToken = defaultToken
 		}
 	})
@@ -198,8 +199,7 @@ func tlssniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 
 func TestHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
-	err := setChallengeToken(&chall, expectedToken)
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, expectedToken)
 
 	// NOTE: We do not attempt to shut down the server. The problem is that the
 	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
@@ -221,7 +221,7 @@ func TestHTTP(t *testing.T) {
 		badPort = goodPort - 1
 	}
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: badPort}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{HTTPPort: badPort}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	_, prob := va.validateHTTP01(context.Background(), ident, chall)
@@ -230,7 +230,7 @@ func TestHTTP(t *testing.T) {
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 
-	va = NewValidationAuthorityImpl(&PortConfig{HTTPPort: goodPort}, nil, stats, clock.Default())
+	va = NewValidationAuthorityImpl(&cmd.PortConfig{HTTPPort: goodPort}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	log.Clear()
@@ -239,7 +239,7 @@ func TestHTTP(t *testing.T) {
 	if prob != nil {
 		t.Errorf("Unexpected failure in HTTP validation: %s", prob)
 	}
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, path404)
@@ -248,7 +248,7 @@ func TestHTTP(t *testing.T) {
 		t.Fatalf("Should have found a 404 for the challenge.")
 	}
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathWrongToken)
@@ -259,7 +259,7 @@ func TestHTTP(t *testing.T) {
 		t.Fatalf("Should have found the wrong token value.")
 	}
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, len(log.GetAllMatching(`^\[AUDIT\] `)), 1)
+	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathMoved)
@@ -306,15 +306,14 @@ func TestHTTP(t *testing.T) {
 
 func TestHTTPRedirectLookup(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
-	err := setChallengeToken(&chall, expectedToken)
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, expectedToken)
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{HTTPPort: port}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	log.Clear()
@@ -364,15 +363,14 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 func TestHTTPRedirectLoop(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
-	err := setChallengeToken(&chall, "looper")
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, "looper")
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{HTTPPort: port}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	log.Clear()
@@ -384,15 +382,14 @@ func TestHTTPRedirectLoop(t *testing.T) {
 
 func TestHTTPRedirectUserAgent(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
-	err := setChallengeToken(&chall, expectedToken)
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, expectedToken)
 
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{HTTPPort: port}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.UserAgent = rejectUserAgent
 
@@ -433,7 +430,7 @@ func TestTLSSNI(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{TLSPort: port}, nil, nil, stats, clock.Default())
 
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
@@ -506,7 +503,7 @@ func TestTLSError(t *testing.T) {
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{TLSPort: port}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	_, prob := va.validateTLSSNI01(context.Background(), ident, chall)
@@ -518,14 +515,13 @@ func TestTLSError(t *testing.T) {
 
 func TestValidateHTTP(t *testing.T) {
 	chall := core.HTTPChallenge01(accountKey)
-	err := setChallengeToken(&chall, core.NewToken())
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, chall.Token)
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{HTTPPort: port}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{HTTPPort: port}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -561,12 +557,12 @@ func createChallenge(challengeType string) core.Challenge {
 
 // setChallengeToken sets the token value both in the Token field and
 // in the serialized KeyAuthorization object.
-func setChallengeToken(ch *core.Challenge, token string) (err error) {
+func setChallengeToken(ch *core.Challenge, token string) {
 	ch.Token = token
 
 	keyAuthorization, err := core.NewKeyAuthorization(token, ch.AccountKey)
 	if err != nil {
-		return
+		panic(err)
 	}
 
 	ch.KeyAuthorization = &keyAuthorization
@@ -582,7 +578,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{TLSPort: port}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -600,7 +596,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 
 func TestValidateTLSSNINotSane(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default()) // no calls made
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default()) // no calls made
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -622,15 +618,14 @@ func TestValidateTLSSNINotSane(t *testing.T) {
 
 func TestUpdateValidations(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
 	chall := core.HTTPChallenge01(accountKey)
 	chall.ValidationRecord = []core.ValidationRecord{}
-	err := setChallengeToken(&chall, core.NewToken())
-	test.AssertNotError(t, err, "Failed to complete HTTP challenge")
+	setChallengeToken(&chall, core.NewToken())
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
@@ -640,7 +635,10 @@ func TestUpdateValidations(t *testing.T) {
 	}
 
 	started := time.Now()
-	va.UpdateValidations(authz, 0)
+	err := va.UpdateValidations(authz, 0)
+	if err != nil {
+		test.AssertNotError(t, err, "UpdateValidations failed")
+	}
 	took := time.Since(started)
 
 	// Check that the call to va.UpdateValidations didn't block for 3 seconds
@@ -649,10 +647,10 @@ func TestUpdateValidations(t *testing.T) {
 
 func TestCAATimeout(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
-	err := va.checkCAA(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"}, 101)
+	err := va.checkCAA(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
 	}
@@ -694,7 +692,7 @@ func TestCAAChecking(t *testing.T) {
 	}
 
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
 	for _, caaTest := range tests {
@@ -733,7 +731,7 @@ func TestCAAChecking(t *testing.T) {
 
 func TestDNSValidationFailure(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -770,7 +768,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	}
 
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -784,7 +782,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 
 func TestDNSValidationNotSane(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -811,7 +809,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 
 func TestDNSValidationServFail(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -838,7 +836,7 @@ func TestDNSValidationServFail(t *testing.T) {
 func TestDNSValidationNoServer(t *testing.T) {
 	c, _ := statsd.NewNoopClient()
 	stats := metrics.NewNoopScope()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, c, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, c, clock.Default())
 	va.DNSResolver = bdns.NewTestDNSResolverImpl(time.Second*5, []string{}, stats, clock.Default(), 1)
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -860,7 +858,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 
 func TestDNSValidationOK(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -891,7 +889,7 @@ func TestDNSValidationOK(t *testing.T) {
 
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -925,7 +923,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 // it asserts nothing; it is intended for coverage.
 func TestDNSValidationLive(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
@@ -984,7 +982,7 @@ func TestCAAFailure(t *testing.T) {
 	test.AssertNotError(t, err, "failed to get test server port")
 
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&PortConfig{TLSPort: port}, nil, stats, clock.Default())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{TLSPort: port}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA

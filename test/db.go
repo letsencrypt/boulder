@@ -30,22 +30,21 @@ type CleanUpDB interface {
 // configuration only like goose_db_version (for migrations) or
 // the ones describing the internal configuration of the server. To be
 // used only in test code.
-func ResetSATestDatabase(t *testing.T) func() {
+func ResetSATestDatabase(t testing.TB) func() {
 	return resetTestDatabase(t, "sa")
 }
 
 // ResetPolicyTestDatabase deletes all rows in all tables in the Policy DB. It
 // acts the same as ResetSATestDatabase.
-func ResetPolicyTestDatabase(t *testing.T) func() {
+func ResetPolicyTestDatabase(t testing.TB) func() {
 	return resetTestDatabase(t, "policy")
 }
 
-func resetTestDatabase(t *testing.T, dbType string) func() {
-	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(localhost:3306)/boulder_%s_test", dbType))
+func resetTestDatabase(t testing.TB, dbType string) func() {
+	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(boulder-mysql:3306)/boulder_%s_test", dbType))
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}
-	fmt.Printf("db %#v\n", db)
 	if err := deleteEverythingInAllTables(db); err != nil {
 		t.Fatalf("Failed to delete everything: %s", err)
 	}
@@ -53,7 +52,7 @@ func resetTestDatabase(t *testing.T, dbType string) func() {
 		if err := deleteEverythingInAllTables(db); err != nil {
 			t.Fatalf("Failed to truncate tables after the test: %s", err)
 		}
-		db.Close()
+		_ = db.Close()
 	}
 }
 
