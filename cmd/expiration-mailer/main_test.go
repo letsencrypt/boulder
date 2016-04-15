@@ -23,6 +23,7 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
@@ -49,7 +50,7 @@ type fakeRegStore struct {
 	RegByID map[int64]core.Registration
 }
 
-func (f fakeRegStore) GetRegistration(id int64) (core.Registration, error) {
+func (f fakeRegStore) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	r, ok := f.RegByID[id]
 	if !ok {
 		msg := fmt.Sprintf("no such registration %d", id)
@@ -91,8 +92,9 @@ var (
   "n":"z8bp-jPtHt4lKBqepeKF28g_QAEOuEsCIou6sZ9ndsQsEjxEOQxQ0xNOQezsKa63eogw8YS3vzjUcPP5BJuVzfPfGd5NVUdT-vSSwxk3wvk_jtNqhrpcoG0elRPQfMVsQWmxCAXCVRz3xbcFI8GTe-syynG3l-g1IzYIIZVNI6jdljCZML1HOMTTW4f7uJJ8mM-08oQCeHbr5ejK7O2yMSSYxW03zY-Tj1iVEebROeMv6IEEJNFSS4yM-hLpNAqVuQxFGetwtwjDMC1Drs1dTWrPuUAAjKGrP151z1_dE74M5evpAhZUmpKv1hY-x85DC6N0hFPgowsanmTNNiV75w",
   "e":"AAEAAQ"
 }`)
-	log  = blog.UseMock()
-	tmpl = template.Must(template.New("expiry-email").Parse(testTmpl))
+	log    = blog.UseMock()
+	tmpl   = template.Must(template.New("expiry-email").Parse(testTmpl))
+	contxt = context.Background()
 )
 
 func TestSendNags(t *testing.T) {
@@ -199,11 +201,11 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Key:       keyB,
 		InitialIP: net.ParseIP("2.3.2.3"),
 	}
-	regA, err = ctx.ssa.NewRegistration(regA)
+	regA, err = ctx.ssa.NewRegistration(contxt, regA)
 	if err != nil {
 		t.Fatalf("Couldn't store regA: %s", err)
 	}
-	regB, err = ctx.ssa.NewRegistration(regB)
+	regB, err = ctx.ssa.NewRegistration(contxt, regB)
 	if err != nil {
 		t.Fatalf("Couldn't store regB: %s", err)
 	}
@@ -460,7 +462,7 @@ func TestLifetimeOfACert(t *testing.T) {
 		Key:       keyA,
 		InitialIP: net.ParseIP("1.2.2.1"),
 	}
-	regA, err = ctx.ssa.NewRegistration(regA)
+	regA, err = ctx.ssa.NewRegistration(contxt, regA)
 	if err != nil {
 		t.Fatalf("Couldn't store regA: %s", err)
 	}
@@ -565,7 +567,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 		Key:       keyA,
 		InitialIP: net.ParseIP("6.5.5.6"),
 	}
-	regA, err = ctx.ssa.NewRegistration(regA)
+	regA, err = ctx.ssa.NewRegistration(contxt, regA)
 	if err != nil {
 		t.Fatalf("Couldn't store regA: %s", err)
 	}
@@ -621,7 +623,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Key:       keyA,
 		InitialIP: net.ParseIP("6.5.5.6"),
 	}
-	regA, err = ctx.ssa.NewRegistration(regA)
+	regA, err = ctx.ssa.NewRegistration(contxt, regA)
 	if err != nil {
 		t.Fatalf("Couldn't store regA: %s", err)
 	}
