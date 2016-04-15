@@ -45,6 +45,7 @@ branches:
 
 before_install:
   - travis_retry test/travis-before-install.sh
+  - cd $GOPATH/letsencrypt/boulder
 
 # Override default Travis install command to prevent it from adding
 # Godeps/_workspace to GOPATH. When that happens, it hides failures that should
