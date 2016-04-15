@@ -125,7 +125,7 @@ function build_letsencrypt() {
   run virtualenv --no-site-packages -p $PY ./venv
   run ./venv/bin/pip install -U setuptools
   run ./venv/bin/pip install -U pip
-  run ./venv/bin/pip install -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
+  run ./venv/bin/pip install -e acme -e . -e certbot-apache -e certbot-nginx
 
   cd -
 }
