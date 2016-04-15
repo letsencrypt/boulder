@@ -12,6 +12,7 @@ import (
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
@@ -27,101 +28,101 @@ import (
 // * One path for certificates -> Cert
 type WebFrontEnd interface {
 	// Set the base URL for authorizations
-	SetAuthzBase(path string)
+	SetAuthzBase(ctx context.Context, path string)
 
 	// Set the base URL for certificates
-	SetCertBase(path string)
+	SetCertBase(ctx context.Context, path string)
 
 	// This method represents the ACME new-registration resource
-	NewRegistration(response http.ResponseWriter, request *http.Request)
+	NewRegistration(ctx context.Context, response http.ResponseWriter, request *http.Request)
 
 	// This method represents the ACME new-authorization resource
-	NewAuthz(response http.ResponseWriter, request *http.Request)
+	NewAuthz(ctx context.Context, response http.ResponseWriter, request *http.Request)
 
 	// This method represents the ACME new-certificate resource
-	NewCert(response http.ResponseWriter, request *http.Request)
+	NewCert(ctx context.Context, response http.ResponseWriter, request *http.Request)
 
 	// Provide access to requests for registration resources
-	Registration(response http.ResponseWriter, request *http.Request)
+	Registration(ctx context.Context, response http.ResponseWriter, request *http.Request)
 
 	// Provide access to requests for authorization resources
-	Authz(response http.ResponseWriter, request *http.Request)
+	Authz(ctx context.Context, response http.ResponseWriter, request *http.Request)
 
 	// Provide access to requests for authorization resources
-	Cert(response http.ResponseWriter, request *http.Request)
+	Cert(ctx context.Context, response http.ResponseWriter, request *http.Request)
 }
 
 // RegistrationAuthority defines the public interface for the Boulder RA
 type RegistrationAuthority interface {
 	// [WebFrontEnd]
-	NewRegistration(Registration) (Registration, error)
+	NewRegistration(context.Context, Registration) (Registration, error)
 
 	// [WebFrontEnd]
-	NewAuthorization(Authorization, int64) (Authorization, error)
+	NewAuthorization(context.Context, Authorization, int64) (Authorization, error)
 
 	// [WebFrontEnd]
-	NewCertificate(CertificateRequest, int64) (Certificate, error)
+	NewCertificate(context.Context, CertificateRequest, int64) (Certificate, error)
 
 	// [WebFrontEnd]
-	UpdateRegistration(Registration, Registration) (Registration, error)
+	UpdateRegistration(context.Context, Registration, Registration) (Registration, error)
 
 	// [WebFrontEnd]
-	UpdateAuthorization(Authorization, int, Challenge) (Authorization, error)
+	UpdateAuthorization(context.Context, Authorization, int, Challenge) (Authorization, error)
 
 	// [WebFrontEnd]
-	RevokeCertificateWithReg(x509.Certificate, RevocationCode, int64) error
+	RevokeCertificateWithReg(context.Context, x509.Certificate, RevocationCode, int64) error
 
 	// [AdminRevoker]
-	AdministrativelyRevokeCertificate(x509.Certificate, RevocationCode, string) error
+	AdministrativelyRevokeCertificate(context.Context, x509.Certificate, RevocationCode, string) error
 
 	// [ValidationAuthority]
-	OnValidationUpdate(Authorization) error
+	OnValidationUpdate(context.Context, Authorization) error
 }
 
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(x509.CertificateRequest, int64) (Certificate, error)
-	GenerateOCSP(OCSPSigningRequest) ([]byte, error)
+	IssueCertificate(context.Context, x509.CertificateRequest, int64) (Certificate, error)
+	GenerateOCSP(context.Context, OCSPSigningRequest) ([]byte, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
-	WillingToIssue(id AcmeIdentifier, regID int64) error
-	ChallengesFor(AcmeIdentifier, *jose.JsonWebKey) ([]Challenge, [][]int)
+	WillingToIssue(ctx context.Context, id AcmeIdentifier, regID int64) error
+	ChallengesFor(context.Context, AcmeIdentifier, *jose.JsonWebKey) ([]Challenge, [][]int)
 }
 
 // StorageGetter are the Boulder SA's read-only methods
 type StorageGetter interface {
-	GetRegistration(int64) (Registration, error)
-	GetRegistrationByKey(jose.JsonWebKey) (Registration, error)
-	GetAuthorization(string) (Authorization, error)
-	GetLatestValidAuthorization(int64, AcmeIdentifier) (Authorization, error)
-	GetValidAuthorizations(int64, []string, time.Time) (map[string]*Authorization, error)
-	GetCertificate(string) (Certificate, error)
-	GetCertificateStatus(string) (CertificateStatus, error)
-	AlreadyDeniedCSR([]string) (bool, error)
-	CountCertificatesRange(time.Time, time.Time) (int64, error)
-	CountCertificatesByNames([]string, time.Time, time.Time) (map[string]int, error)
-	CountRegistrationsByIP(net.IP, time.Time, time.Time) (int, error)
-	CountPendingAuthorizations(regID int64) (int, error)
-	GetSCTReceipt(string, string) (SignedCertificateTimestamp, error)
-	CountFQDNSets(time.Duration, []string) (int64, error)
-	FQDNSetExists([]string) (bool, error)
+	GetRegistration(context.Context, int64) (Registration, error)
+	GetRegistrationByKey(context.Context, jose.JsonWebKey) (Registration, error)
+	GetAuthorization(context.Context, string) (Authorization, error)
+	GetLatestValidAuthorization(context.Context, int64, AcmeIdentifier) (Authorization, error)
+	GetValidAuthorizations(context.Context, int64, []string, time.Time) (map[string]*Authorization, error)
+	GetCertificate(context.Context, string) (Certificate, error)
+	GetCertificateStatus(context.Context, string) (CertificateStatus, error)
+	AlreadyDeniedCSR(context.Context, []string) (bool, error)
+	CountCertificatesRange(context.Context, time.Time, time.Time) (int64, error)
+	CountCertificatesByNames(context.Context, []string, time.Time, time.Time) (map[string]int, error)
+	CountRegistrationsByIP(context.Context, net.IP, time.Time, time.Time) (int, error)
+	CountPendingAuthorizations(ctx context.Context, regID int64) (int, error)
+	GetSCTReceipt(context.Context, string, string) (SignedCertificateTimestamp, error)
+	CountFQDNSets(context.Context, time.Duration, []string) (int64, error)
+	FQDNSetExists(context.Context, []string) (bool, error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods
 type StorageAdder interface {
-	NewRegistration(Registration) (Registration, error)
-	UpdateRegistration(Registration) error
-	NewPendingAuthorization(Authorization) (Authorization, error)
-	UpdatePendingAuthorization(Authorization) error
-	FinalizeAuthorization(Authorization) error
-	MarkCertificateRevoked(serial string, reasonCode RevocationCode) error
-	UpdateOCSP(serial string, ocspResponse []byte) error
-	AddCertificate([]byte, int64) (string, error)
-	AddSCTReceipt(SignedCertificateTimestamp) error
-	RevokeAuthorizationsByDomain(AcmeIdentifier) (int64, int64, error)
+	NewRegistration(context.Context, Registration) (Registration, error)
+	UpdateRegistration(context.Context, Registration) error
+	NewPendingAuthorization(context.Context, Authorization) (Authorization, error)
+	UpdatePendingAuthorization(context.Context, Authorization) error
+	FinalizeAuthorization(context.Context, Authorization) error
+	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode RevocationCode) error
+	UpdateOCSP(ctx context.Context, serial string, ocspResponse []byte) error
+	AddCertificate(context.Context, []byte, int64) (string, error)
+	AddSCTReceipt(context.Context, SignedCertificateTimestamp) error
+	RevokeAuthorizationsByDomain(context.Context, AcmeIdentifier) (int64, int64, error)
 }
 
 // StorageAuthority interface represents a simple key/value
@@ -134,5 +135,5 @@ type StorageAuthority interface {
 
 // Publisher defines the public interface for the Boulder Publisher
 type Publisher interface {
-	SubmitToCT([]byte) error
+	SubmitToCT(context.Context, []byte) error
 }

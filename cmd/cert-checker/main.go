@@ -20,6 +20,7 @@ import (
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -141,9 +142,9 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool) {
+func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool) {
 	for cert := range c.certs {
-		problems := c.checkCert(cert)
+		problems := c.checkCert(ctx, cert)
 		valid := len(problems) == 0
 		c.rMu.Lock()
 		if !badResultsOnly || (badResultsOnly && !valid) {
@@ -162,7 +163,7 @@ func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool) {
 	wg.Done()
 }
 
-func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
+func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate) (problems []string) {
 	// Check digests match
 	if cert.Digest != core.Fingerprint256(cert.DER) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
@@ -213,7 +214,7 @@ func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
-			if err = c.pa.WillingToIssue(id, cert.RegistrationID); err != nil {
+			if err = c.pa.WillingToIssue(ctx, id, cert.RegistrationID); err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			}
 		}
@@ -264,6 +265,7 @@ func main() {
 	}
 
 	app.Action = func(c *cli.Context) {
+		ctx := context.Background()
 		configPath := c.GlobalString("config")
 		if configPath == "" {
 			fmt.Fprintln(os.Stderr, "--config is required")
@@ -334,7 +336,7 @@ func main() {
 			wg.Add(1)
 			go func() {
 				s := checker.clock.Now()
-				checker.processCerts(wg, config.CertChecker.BadResultsOnly)
+				checker.processCerts(ctx, wg, config.CertChecker.BadResultsOnly)
 				stats.TimingDuration("certChecker.processingLatency", time.Since(s), 1.0)
 			}()
 		}

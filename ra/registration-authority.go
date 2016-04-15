@@ -165,24 +165,25 @@ func (ra *RegistrationAuthorityImpl) issuanceCountInvalid(now time.Time) bool {
 	return ra.lastIssuedCount == nil || ra.lastIssuedCount.Add(issuanceCountCacheLife).Before(now)
 }
 
-func (ra *RegistrationAuthorityImpl) getIssuanceCount() (int, error) {
+func (ra *RegistrationAuthorityImpl) getIssuanceCount(ctx context.Context) (int, error) {
 	ra.tiMu.RLock()
 	if ra.issuanceCountInvalid(ra.clk.Now()) {
 		ra.tiMu.RUnlock()
-		return ra.setIssuanceCount()
+		return ra.setIssuanceCount(ctx)
 	}
 	count := ra.totalIssuedCache
 	ra.tiMu.RUnlock()
 	return count, nil
 }
 
-func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int, error) {
+func (ra *RegistrationAuthorityImpl) setIssuanceCount(ctx context.Context) (int, error) {
 	ra.tiMu.Lock()
 	defer ra.tiMu.Unlock()
 
 	now := ra.clk.Now()
 	if ra.issuanceCountInvalid(now) {
 		count, err := ra.SA.CountCertificatesRange(
+			ctx,
 			now.Add(-ra.rlPolicies.TotalCertificates.Window.Duration),
 			now,
 		)
@@ -199,11 +200,11 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount() (int, error) {
 // registration-based overrides are necessary.
 const noRegistrationID = -1
 
-func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
+func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ctx context.Context, ip net.IP) error {
 	limit := ra.rlPolicies.RegistrationsPerIP
 	if limit.Enabled() {
 		now := ra.clk.Now()
-		count, err := ra.SA.CountRegistrationsByIP(ip, limit.WindowBegin(now), now)
+		count, err := ra.SA.CountRegistrationsByIP(ctx, ip, limit.WindowBegin(now), now)
 		if err != nil {
 			return err
 		}
@@ -218,11 +219,11 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ip net.IP) error {
 }
 
 // NewRegistration constructs a new Registration from a request.
-func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (reg core.Registration, err error) {
+func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init core.Registration) (reg core.Registration, err error) {
 	if err = ra.keyPolicy.GoodKey(init.Key.Key); err != nil {
 		return core.Registration{}, core.MalformedRequestError(fmt.Sprintf("Invalid public key: %s", err.Error()))
 	}
-	if err = ra.checkRegistrationLimit(init.InitialIP); err != nil {
+	if err = ra.checkRegistrationLimit(ctx, init.InitialIP); err != nil {
 		return core.Registration{}, err
 	}
 
@@ -235,14 +236,13 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	// MergeUpdate. But we need to fill it in for new registrations.
 	reg.InitialIP = init.InitialIP
 
-	// TODO(#1292): add a proper deadline here
-	err = ra.validateContacts(context.TODO(), reg.Contact)
+	err = ra.validateContacts(ctx, reg.Contact)
 	if err != nil {
 		return
 	}
 
 	// Store the authorization object, then return it
-	reg, err = ra.SA.NewRegistration(reg)
+	reg, err = ra.SA.NewRegistration(ctx, reg)
 	if err != nil {
 		// InternalServerError since the user-data was validated before being
 		// passed to the SA.
@@ -283,10 +283,10 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
 	limit := ra.rlPolicies.PendingAuthorizationsPerAccount
 	if limit.Enabled() {
-		count, err := ra.SA.CountPendingAuthorizations(regID)
+		count, err := ra.SA.CountPendingAuthorizations(ctx, regID)
 		if err != nil {
 			return err
 		}
@@ -305,8 +305,8 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(regID int64)
 
 // NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
-func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization, regID int64) (authz core.Authorization, err error) {
-	reg, err := ra.SA.GetRegistration(regID)
+func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, request core.Authorization, regID int64) (authz core.Authorization, err error) {
+	reg, err := ra.SA.GetRegistration(ctx, regID)
 	if err != nil {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid registration ID: %d", regID))
 		return authz, err
@@ -316,16 +316,16 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	identifier.Value = strings.ToLower(identifier.Value)
 
 	// Check that the identifier is present and appropriate
-	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
+	if err = ra.PA.WillingToIssue(ctx, identifier, regID); err != nil {
 		return authz, err
 	}
 
-	if err = ra.checkPendingAuthorizationLimit(regID); err != nil {
+	if err = ra.checkPendingAuthorizationLimit(ctx, regID); err != nil {
 		return authz, err
 	}
 
 	if identifier.Type == core.IdentifierDNS {
-		isSafe, err := ra.dc.IsSafe(identifier.Value)
+		isSafe, err := ra.dc.IsSafe(ctx, identifier.Value)
 		if err != nil {
 			outErr := core.InternalServerError("unable to determine if domain was safe")
 			ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), err))
@@ -337,7 +337,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Create validations. The WFE will  update them with URIs before sending them out.
-	challenges, combinations := ra.PA.ChallengesFor(identifier, &reg.Key)
+	challenges, combinations := ra.PA.ChallengesFor(ctx, identifier, &reg.Key)
 
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 
@@ -352,7 +352,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 	}
 
 	// Get a pending Auth first so we can get our ID back, then update with challenges
-	authz, err = ra.SA.NewPendingAuthorization(authz)
+	authz, err = ra.SA.NewPendingAuthorization(ctx, authz)
 	if err != nil {
 		// InternalServerError since the user-data was validated before being
 		// passed to the SA.
@@ -451,13 +451,13 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 
 // checkAuthorizations checks that each requested name has a valid authorization
 // that won't expire before the certificate expires. Returns an error otherwise.
-func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registration *core.Registration) error {
+func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, registration *core.Registration) error {
 	now := ra.clk.Now()
 	var badNames []string
 	for i := range names {
 		names[i] = strings.ToLower(names[i])
 	}
-	auths, err := ra.SA.GetValidAuthorizations(registration.ID, names, now)
+	auths, err := ra.SA.GetValidAuthorizations(ctx, registration.ID, names, now)
 	if err != nil {
 		return err
 	}
@@ -481,7 +481,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(names []string, registr
 }
 
 // NewCertificate requests the issuance of a certificate.
-func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
+func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (cert core.Certificate, err error) {
 	emptyCert := core.Certificate{}
 	var logEventResult string
 
@@ -507,7 +507,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	registration, err := ra.SA.GetRegistration(regID)
+	registration, err := ra.SA.GetRegistration(ctx, regID)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
@@ -537,7 +537,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 		return emptyCert, err
 	}
 
-	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(names)
+	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(ctx, names)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
@@ -556,13 +556,13 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	// Check rate limits before checking authorizations. If someone is unable to
 	// issue a cert due to rate limiting, we don't want to tell them to go get the
 	// necessary authorizations, only to later fail the rate limit check.
-	err = ra.checkLimits(names, registration.ID)
+	err = ra.checkLimits(ctx, names, registration.ID)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
 
-	err = ra.checkAuthorizations(names, &registration)
+	err = ra.checkAuthorizations(ctx, names, &registration)
 	if err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
@@ -572,7 +572,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(req core.CertificateRequest,
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	// Create the certificate and log the result
-	if cert, err = ra.CA.IssueCertificate(*csr, regID); err != nil {
+	if cert, err = ra.CA.IssueCertificate(ctx, *csr, regID); err != nil {
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
@@ -629,14 +629,14 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	return domains, nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []string, limit cmd.RateLimitPolicy, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit cmd.RateLimitPolicy, regID int64) error {
 	names, err := domainsForRateLimiting(names)
 	if err != nil {
 		return err
 	}
 	now := ra.clk.Now()
 	windowBegin := limit.WindowBegin(now)
-	counts, err := ra.SA.CountCertificatesByNames(names, windowBegin, now)
+	counts, err := ra.SA.CountCertificatesByNames(ctx, names, windowBegin, now)
 	if err != nil {
 		return err
 	}
@@ -655,7 +655,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 		// check if there is already a existing certificate for
 		// the exact name set we are issuing for. If so bypass the
 		// the certificatesPerName limit.
-		exists, err := ra.SA.FQDNSetExists(names)
+		exists, err := ra.SA.FQDNSetExists(ctx, names)
 		if err != nil {
 			return err
 		}
@@ -675,8 +675,8 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(names []strin
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(names []string, limit cmd.RateLimitPolicy, regID int64) error {
-	count, err := ra.SA.CountFQDNSets(limit.Window.Duration, names)
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit cmd.RateLimitPolicy, regID int64) error {
+	count, err := ra.SA.CountFQDNSets(ctx, limit.Window.Duration, names)
 	if err != nil {
 		return err
 	}
@@ -690,10 +690,10 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(names []st
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
 	limits := ra.rlPolicies
 	if limits.TotalCertificates.Enabled() {
-		totalIssued, err := ra.getIssuanceCount()
+		totalIssued, err := ra.getIssuanceCount(ctx)
 		if err != nil {
 			return err
 		}
@@ -706,13 +706,13 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) er
 		ra.totalCertsStats.Inc("Pass", 1)
 	}
 	if limits.CertificatesPerName.Enabled() {
-		err := ra.checkCertificatesPerNameLimit(names, limits.CertificatesPerName, regID)
+		err := ra.checkCertificatesPerNameLimit(ctx, names, limits.CertificatesPerName, regID)
 		if err != nil {
 			return err
 		}
 	}
 	if limits.CertificatesPerFQDNSet.Enabled() {
-		err := ra.checkCertificatesPerFQDNSetLimit(names, limits.CertificatesPerFQDNSet, regID)
+		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, limits.CertificatesPerFQDNSet, regID)
 		if err != nil {
 			return err
 		}
@@ -721,17 +721,16 @@ func (ra *RegistrationAuthorityImpl) checkLimits(names []string, regID int64) er
 }
 
 // UpdateRegistration updates an existing Registration with new values.
-func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, update core.Registration) (reg core.Registration, err error) {
+func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, base core.Registration, update core.Registration) (reg core.Registration, err error) {
 	base.MergeUpdate(update)
 
-	// TODO(#1292): add a proper deadline here
-	err = ra.validateContacts(context.TODO(), base.Contact)
+	err = ra.validateContacts(ctx, base.Contact)
 	if err != nil {
 		return
 	}
 
 	reg = base
-	err = ra.SA.UpdateRegistration(base)
+	err = ra.SA.UpdateRegistration(ctx, base)
 	if err != nil {
 		// InternalServerError since the user-data was validated before being
 		// passed to the SA.
@@ -743,7 +742,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(base core.Registration, 
 }
 
 // UpdateAuthorization updates an authorization with new values.
-func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization, challengeIndex int, response core.Challenge) (authz core.Authorization, err error) {
+func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, base core.Authorization, challengeIndex int, response core.Challenge) (authz core.Authorization, err error) {
 	// Refuse to update expired authorizations
 	if base.Expires == nil || base.Expires.Before(ra.clk.Now()) {
 		err = core.NotFoundError("Expired authorization")
@@ -766,7 +765,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	}
 
 	// Store the updated version
-	if err = ra.SA.UpdatePendingAuthorization(authz); err != nil {
+	if err = ra.SA.UpdatePendingAuthorization(ctx, authz); err != nil {
 		// This can pretty much only happen when the client corrupts the Challenge
 		// data.
 		err = core.MalformedRequestError("Challenge data was corrupted")
@@ -775,7 +774,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	ra.stats.Inc("RA.NewPendingAuthorizations", 1, 1.0)
 
 	// Look up the account key for this authorization
-	reg, err := ra.SA.GetRegistration(authz.RegistrationID)
+	reg, err := ra.SA.GetRegistration(ctx, authz.RegistrationID)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		return
@@ -790,13 +789,14 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 
 	// Dispatch to the VA for service
 
+	vaCtx := context.Background()
 	if !ra.useNewVARPC {
 		// TODO(#1167): remove
-		_ = ra.VA.UpdateValidations(authz, challengeIndex)
+		_ = ra.VA.UpdateValidations(vaCtx, authz, challengeIndex)
 		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	} else {
 		go func() {
-			records, err := ra.VA.PerformValidation(authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
+			records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
 			var prob *probs.ProblemDetails
 			if p, ok := err.(*probs.ProblemDetails); ok {
 				prob = p
@@ -819,7 +819,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 			}
 			authz.Challenges[challengeIndex] = *challenge
 
-			err = ra.OnValidationUpdate(authz)
+			err = ra.OnValidationUpdate(vaCtx, authz)
 			if err != nil {
 				ra.log.Err(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
 			}
@@ -842,9 +842,9 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode core.R
 }
 
 // RevokeCertificateWithReg terminates trust in the certificate provided.
-func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(cert x509.Certificate, revocationCode core.RevocationCode, regID int64) (err error) {
+func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, revocationCode core.RevocationCode, regID int64) (err error) {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err = ra.SA.MarkCertificateRevoked(serialString, revocationCode)
+	err = ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 
 	state := "Failure"
 	defer func() {
@@ -875,9 +875,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(cert x509.Certific
 // AdministrativelyRevokeCertificate terminates trust in the certificate provided and
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
-func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(cert x509.Certificate, revocationCode core.RevocationCode, user string) error {
+func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, revocationCode core.RevocationCode, user string) error {
 	serialString := core.SerialToString(cert.SerialNumber)
-	err := ra.SA.MarkCertificateRevoked(serialString, revocationCode)
+	err := ra.SA.MarkCertificateRevoked(ctx, serialString, revocationCode)
 
 	state := "Failure"
 	defer func() {
@@ -907,7 +907,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(cert x509
 }
 
 // OnValidationUpdate is called when a given Authorization is updated by the VA.
-func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization) error {
+func (ra *RegistrationAuthorityImpl) OnValidationUpdate(ctx context.Context, authz core.Authorization) error {
 	// Consider validation successful if any of the combinations
 	// specified in the authorization has been fulfilled
 	validated := map[int]bool{}
@@ -939,7 +939,7 @@ func (ra *RegistrationAuthorityImpl) OnValidationUpdate(authz core.Authorization
 	}
 
 	// Finalize the authorization
-	err := ra.SA.FinalizeAuthorization(authz)
+	err := ra.SA.FinalizeAuthorization(ctx, authz)
 	if err != nil {
 		return err
 	}

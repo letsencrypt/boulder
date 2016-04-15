@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -32,10 +33,11 @@ func (e *requestEvent) AddError(msg string, args ...interface{}) {
 	e.Errors = append(e.Errors, fmt.Sprintf(msg, args...))
 }
 
-type wfeHandlerFunc func(*requestEvent, http.ResponseWriter, *http.Request)
+type wfeHandlerFunc func(context.Context, *requestEvent, http.ResponseWriter, *http.Request)
 
 func (f wfeHandlerFunc) ServeHTTP(e *requestEvent, w http.ResponseWriter, r *http.Request) {
-	f(e, w, r)
+	ctx := context.TODO()
+	f(ctx, e, w, r)
 }
 
 type wfeHandler interface {
