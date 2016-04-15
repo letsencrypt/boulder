@@ -58,22 +58,22 @@ type RegistrationAuthority interface {
 	NewRegistration(context.Context, Registration) (Registration, error)
 
 	// [WebFrontEnd]
-	NewAuthorization(context.Context, Authorization, int64) (Authorization, error)
+	NewAuthorization(ctx context.Context, authz Authorization, regID int64) (Authorization, error)
 
 	// [WebFrontEnd]
-	NewCertificate(context.Context, CertificateRequest, int64) (Certificate, error)
+	NewCertificate(ctx context.Context, csr CertificateRequest, regID int64) (Certificate, error)
 
 	// [WebFrontEnd]
-	UpdateRegistration(context.Context, Registration, Registration) (Registration, error)
+	UpdateRegistration(ctx context.Context, base, updates Registration) (Registration, error)
 
 	// [WebFrontEnd]
-	UpdateAuthorization(context.Context, Authorization, int, Challenge) (Authorization, error)
+	UpdateAuthorization(ctx context.Context, authz Authorization, challengeIndex int, response Challenge) (Authorization, error)
 
 	// [WebFrontEnd]
-	RevokeCertificateWithReg(context.Context, x509.Certificate, RevocationCode, int64) error
+	RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, code RevocationCode, regID int64) error
 
 	// [AdminRevoker]
-	AdministrativelyRevokeCertificate(context.Context, x509.Certificate, RevocationCode, string) error
+	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code RevocationCode, adminName string) error
 
 	// [ValidationAuthority]
 	OnValidationUpdate(context.Context, Authorization) error
@@ -82,47 +82,47 @@ type RegistrationAuthority interface {
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
-	IssueCertificate(context.Context, x509.CertificateRequest, int64) (Certificate, error)
+	IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (Certificate, error)
 	GenerateOCSP(context.Context, OCSPSigningRequest) ([]byte, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
 	WillingToIssue(ctx context.Context, id AcmeIdentifier, regID int64) error
-	ChallengesFor(context.Context, AcmeIdentifier, *jose.JsonWebKey) ([]Challenge, [][]int)
+	ChallengesFor(context.Context, AcmeIdentifier, *jose.JsonWebKey) (challenges []Challenge, validCombinations [][]int)
 }
 
 // StorageGetter are the Boulder SA's read-only methods
 type StorageGetter interface {
-	GetRegistration(context.Context, int64) (Registration, error)
+	GetRegistration(ctx context.Context, regID int64) (Registration, error)
 	GetRegistrationByKey(context.Context, jose.JsonWebKey) (Registration, error)
-	GetAuthorization(context.Context, string) (Authorization, error)
-	GetLatestValidAuthorization(context.Context, int64, AcmeIdentifier) (Authorization, error)
-	GetValidAuthorizations(context.Context, int64, []string, time.Time) (map[string]*Authorization, error)
-	GetCertificate(context.Context, string) (Certificate, error)
-	GetCertificateStatus(context.Context, string) (CertificateStatus, error)
-	AlreadyDeniedCSR(context.Context, []string) (bool, error)
-	CountCertificatesRange(context.Context, time.Time, time.Time) (int64, error)
-	CountCertificatesByNames(context.Context, []string, time.Time, time.Time) (map[string]int, error)
+	GetAuthorization(ctx context.Context, authzID string) (Authorization, error)
+	GetLatestValidAuthorization(ctx context.Context, regID int64, domain AcmeIdentifier) (Authorization, error)
+	GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*Authorization, error)
+	GetCertificate(ctx context.Context, serial string) (Certificate, error)
+	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
+	AlreadyDeniedCSR(ctx context.Context, names []string) (wasDenied bool, err error)
+	CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error)
+	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain map[string]int, err error)
 	CountRegistrationsByIP(context.Context, net.IP, time.Time, time.Time) (int, error)
 	CountPendingAuthorizations(ctx context.Context, regID int64) (int, error)
-	GetSCTReceipt(context.Context, string, string) (SignedCertificateTimestamp, error)
-	CountFQDNSets(context.Context, time.Duration, []string) (int64, error)
-	FQDNSetExists(context.Context, []string) (bool, error)
+	GetSCTReceipt(ctx context.Context, serial, logID string) (SignedCertificateTimestamp, error)
+	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
+	FQDNSetExists(ctx context.Context, domains []string) (exists bool, err error)
 }
 
 // StorageAdder are the Boulder SA's write/update methods
 type StorageAdder interface {
-	NewRegistration(context.Context, Registration) (Registration, error)
+	NewRegistration(ctx context.Context, params Registration) (created Registration, err error)
 	UpdateRegistration(context.Context, Registration) error
 	NewPendingAuthorization(context.Context, Authorization) (Authorization, error)
 	UpdatePendingAuthorization(context.Context, Authorization) error
 	FinalizeAuthorization(context.Context, Authorization) error
 	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode RevocationCode) error
 	UpdateOCSP(ctx context.Context, serial string, ocspResponse []byte) error
-	AddCertificate(context.Context, []byte, int64) (string, error)
+	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
 	AddSCTReceipt(context.Context, SignedCertificateTimestamp) error
-	RevokeAuthorizationsByDomain(context.Context, AcmeIdentifier) (int64, int64, error)
+	RevokeAuthorizationsByDomain(context.Context, AcmeIdentifier) (finalized, pending int64, err error)
 }
 
 // StorageAuthority interface represents a simple key/value
@@ -135,5 +135,5 @@ type StorageAuthority interface {
 
 // Publisher defines the public interface for the Boulder Publisher
 type Publisher interface {
-	SubmitToCT(context.Context, []byte) error
+	SubmitToCT(ctx context.Context, der []byte) error
 }
