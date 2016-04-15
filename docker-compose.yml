@@ -10,6 +10,8 @@ boulder:
     links:
       - bmysql:boulder-mysql
       - brabbitmq:boulder-rabbitmq
+    extra_hosts:
+      - boulder:127.0.0.1
 bmysql:
     container_name: boulder-mysql
     image: mariadb:10.0
