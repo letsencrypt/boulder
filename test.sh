@@ -187,9 +187,7 @@ if [[ "$RUN" =~ "errcheck" ]] ; then
   if go version | grep -q go1.6 ; then
     start_context "errcheck"
     run_and_comment errcheck \
-      -ignore 'io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*' \
-      -ignorepkg 'github.com/cactus/go-statsd-client/statsd:.*' \
-      -ignorepkg 'github.com/letsencrypt/boulder/vendor/github.com/cactus/go-statsd-client/statsd:.*' \
+      -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
       $(echo $TESTPATHS | tr ' ' '\n' | grep -v test)
     end_context #errcheck
   else
