@@ -19,7 +19,7 @@ HARDFAIL=${HARDFAIL:-fmt}
 
 FAILURE=0
 
-TESTPATHS=$(go list -f '{{ .ImportPath }}' ./...)
+TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | grep -v /vendor/)
 
 # We need to know, for github-pr-status, what the triggering commit is.
 # Assume first it's the travis commit (for builds of master), unless we're
@@ -163,7 +163,7 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    run go test -p 1 $GOTESTFLAGS ./...
+    run go test -p 1 $GOTESTFLAGS $TESTPATHS
   fi
 }
 
@@ -176,7 +176,7 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 #
 if [[ "$RUN" =~ "vet" ]] ; then
   start_context "vet"
-  run_and_comment go vet ./...
+  run_and_comment go vet $TESTPATHS
   end_context #vet
 fi
 
@@ -185,7 +185,7 @@ fi
 #
 if [[ "$RUN" =~ "errcheck" ]] ; then
   start_context "errcheck"
-  run_and_comment errcheck -ignore 'io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*' -ignorepkg 'github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd' $(go list -f '{{.ImportPath}}' ./... | grep -v test | grep -v Godeps | grep -v scripts)
+  run_and_comment errcheck -ignore 'io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*' -ignorepkg 'github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd' $TESTPATHS
   end_context #errcheck
 fi
 
