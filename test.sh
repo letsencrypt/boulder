@@ -195,7 +195,7 @@ fi
 if [[ "$RUN" =~ "fmt" ]] ; then
   start_context "fmt"
   check_gofmt() {
-    unformatted=$(find . -name "*.go" -not -path "./vendor/" -print | xargs -n1 gofmt -l)
+    unformatted=$(find . -name "*.go" -not -path "./vendor/*" -print | xargs -n1 gofmt -l)
     if [ "x${unformatted}" == "x" ] ; then
       return 0
     else
