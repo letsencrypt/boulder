@@ -262,6 +262,8 @@ def main():
                         help="run the letsencrypt's (the python client's) integration tests")
     parser.add_argument('--node', dest="run_node", action="store_true",
                         help="run the node client's integration tests")
+    # allow any ACME client to run custom command for integration
+    # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
     parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
     args = parser.parse_args()
