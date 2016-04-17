@@ -299,15 +299,11 @@ fi
 # packages present in #GOPATH.
 #
 if [[ "$RUN" =~ "errcheck" ]] ; then
-  if go version | grep -q go1.6 ; then
-    start_context "errcheck"
-    run_and_comment errcheck \
-      -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
-      $(echo $TESTPATHS | tr ' ' '\n' | grep -v test)
-    end_context #errcheck
-  else
-    echo "Skipping errcheck. It only works on go1.6 with native vendor support."
-  fi
+  start_context "errcheck"
+  run_and_comment errcheck \
+    -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
+    $(echo $TESTPATHS | tr ' ' '\n' | grep -v test)
+  end_context #errcheck
 fi
 
 exit ${FAILURE}
