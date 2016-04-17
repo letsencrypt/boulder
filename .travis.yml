@@ -59,12 +59,11 @@ env:
     - LETSENCRYPT_PATH=$HOME/letsencrypt
     - GO15VENDOREXPERIMENT=1
   matrix:
-    - RUN="integration vet lint fmt errcheck migrations"
+    - RUN="vet fmt migrations integration godep-restore errcheck"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG="test/boulder-config-next.json"
     - RUN="unit"
-    - RUN="godep-restore"
 
 script:
   - bash test.sh
