@@ -181,21 +181,6 @@ if [[ "$RUN" =~ "vet" ]] ; then
 fi
 
 #
-# Run errcheck, to ensure that error returns are always used
-#
-if [[ "$RUN" =~ "errcheck" ]] ; then
-  if go version | grep -q go1.6 ; then
-    start_context "errcheck"
-    run_and_comment errcheck \
-      -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
-      $(echo $TESTPATHS | tr ' ' '\n' | grep -v test)
-    end_context #errcheck
-  else
-    echo "Skipping errcheck. It only works on go1.6 with native vendor support."
-  fi
-fi
-
-#
 # Ensure all files are formatted per the `go fmt` tool
 #
 if [[ "$RUN" =~ "fmt" ]] ; then
@@ -304,6 +289,25 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
     run_and_comment git diff --exit-code Godeps/_workspace/
   fi
   end_context #godep-restore
+fi
+
+#
+# Run errcheck, to ensure that error returns are always used.
+# Note: errcheck seemingly doesn't understand ./vendor/ yet, and so will fail
+# if imports are not available in $GOPATH. So, in Travis, it always needs to
+# run after `godep restore`. Locally it can run anytime, assuming you have the
+# packages present in #GOPATH.
+#
+if [[ "$RUN" =~ "errcheck" ]] ; then
+  if go version | grep -q go1.6 ; then
+    start_context "errcheck"
+    run_and_comment errcheck \
+      -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
+      $(echo $TESTPATHS | tr ' ' '\n' | grep -v test)
+    end_context #errcheck
+  else
+    echo "Skipping errcheck. It only works on go1.6 with native vendor support."
+  fi
 fi
 
 exit ${FAILURE}
