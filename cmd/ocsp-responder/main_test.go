@@ -9,11 +9,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
+	"github.com/cactus/go-statsd-client/statsd"
+	cfocsp "github.com/cloudflare/cfssl/ocsp"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
+	"golang.org/x/crypto/ocsp"
 )
 
 var (
