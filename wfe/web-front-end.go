@@ -89,6 +89,9 @@ type WebFrontEndImpl struct {
 	// CORS settings
 	AllowOrigins []string
 
+	// Maximum duration of a request
+	RequestTimeout time.Duration
+
 	// Graceful shutdown settings
 	ShutdownStopTimeout time.Duration
 	ShutdownKillTimeout time.Duration
@@ -171,11 +174,16 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 
 			wfe.setCORSHeaders(response, request, "")
 
-			// TODO(riking) make this configurable
-			ctx, _ = context.WithTimeout(ctx, 30*time.Minute)
+			timeout := wfe.RequestTimeout
+			if timeout == 0 {
+				timeout = 5 * time.Minute
+			}
+			ctx, cancel := context.WithTimeout(ctx, timeout)
+			// TODO(riking): add request context using WithValue
 
 			// Call the wrapped handler.
 			h(ctx, logEvent, response, request)
+			cancel()
 		}),
 	})
 }
