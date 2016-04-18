@@ -9,14 +9,14 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/square/go-jose"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"gopkg.in/gorp.v1"
 )
 
 var log = blog.UseMock()

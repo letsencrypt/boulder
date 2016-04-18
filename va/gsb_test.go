@@ -9,10 +9,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/golang/mock/gomock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	safebrowsing "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-safe-browsing-api"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/golang/mock/gomock"
+	"github.com/jmhodges/clock"
+	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"

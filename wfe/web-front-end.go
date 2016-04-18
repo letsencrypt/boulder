@@ -18,12 +18,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
+	jose "github.com/square/go-jose"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods

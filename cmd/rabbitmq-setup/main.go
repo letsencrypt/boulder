@@ -11,7 +11,7 @@ package main
 import (
 	"flag"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
 )

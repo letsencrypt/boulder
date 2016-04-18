@@ -8,8 +8,8 @@ import (
 	"io/ioutil"
 	"net"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/credentials"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/letsencrypt/boulder/cmd"
 )

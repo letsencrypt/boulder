@@ -12,8 +12,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
+	"github.com/codegangsta/cli"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/sa"
 
 	"github.com/letsencrypt/boulder/cmd"

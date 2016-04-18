@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"os"
 
-	safebrowsing "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-safe-browsing-api"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/va"
+	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 )
 
 // newGoogleSafeBrowsing returns nil if the GoogleSafeBrowsing struct given is

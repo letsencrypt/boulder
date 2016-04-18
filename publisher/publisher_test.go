@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	ct "github.com/google/certificate-transparency/go"
+	"github.com/jmhodges/clock"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
+	jose "github.com/square/go-jose"
 )
 
 var theKey = `{
