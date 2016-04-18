@@ -762,8 +762,10 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
 
 	if response.Type != "" && ch.Type != response.Type {
-		err = core.MalformedRequestError(fmt.Sprintf("Invalid update to challenge - provided type was %s but actual type is %s", response.Type, ch.Type))
-		return
+		// TODO(riking): Check the rate on this, uncomment error return if negligible
+		ra.stats.Inc("RA.StartChallengeWrongType", 1, 1.0)
+		// err = core.MalformedRequestError(fmt.Sprintf("Invalid update to challenge - provided type was %s but actual type is %s", response.Type, ch.Type))
+		// return
 	}
 
 	// Recompute the key authorization field provided by the client and
