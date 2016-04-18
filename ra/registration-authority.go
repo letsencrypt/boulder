@@ -278,21 +278,19 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		if contact == nil {
 			return core.MalformedRequestError("Invalid contact")
 		}
-		switch contact.Scheme {
-		case "mailto":
-			start := ra.clk.Now()
-			ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
-			problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
-			ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
-			if problem != nil {
-				ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
-				return problem
-			}
-			ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
-			// continue for
-		default:
+		if contact.Scheme != "mailto" {
 			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
 		}
+
+		start := ra.clk.Now()
+		ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
+		problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
+		ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
+		if problem != nil {
+			ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
+			return problem
+		}
+		ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
 	}
 
 	return nil
