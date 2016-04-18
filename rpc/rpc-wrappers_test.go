@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"

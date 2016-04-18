@@ -12,7 +12,6 @@ import (
 	"time"
 
 	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into

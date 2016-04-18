@@ -6,7 +6,6 @@
 package ra
 
 import (
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/core"
 )
 

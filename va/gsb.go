@@ -11,7 +11,6 @@ package va
 
 import (
 	safebrowsing "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-safe-browsing-api"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 )

@@ -6,7 +6,6 @@
 package core
 
 import (
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 )
 
 // ValidationAuthority defines the public interface for the Boulder VA

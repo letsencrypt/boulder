@@ -25,7 +25,6 @@ import (
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/cmd"

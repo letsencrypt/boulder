@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
