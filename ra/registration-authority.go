@@ -316,7 +316,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	identifier.Value = strings.ToLower(identifier.Value)
 
 	// Check that the identifier is present and appropriate
-	if err = ra.PA.WillingToIssue(ctx, identifier, regID); err != nil {
+	if err = ra.PA.WillingToIssue(identifier, regID); err != nil {
 		return authz, err
 	}
 
@@ -337,7 +337,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	// Create validations. The WFE will  update them with URIs before sending them out.
-	challenges, combinations := ra.PA.ChallengesFor(ctx, identifier, &reg.Key)
+	challenges, combinations := ra.PA.ChallengesFor(identifier, &reg.Key)
 
 	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
 

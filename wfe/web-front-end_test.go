@@ -180,11 +180,11 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, aut
 
 type MockPA struct{}
 
-func (pa *MockPA) ChallengesFor(ctx context.Context, identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
+func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
 	return
 }
 
-func (pa *MockPA) WillingToIssue(ctx context.Context, id core.AcmeIdentifier, regID int64) error {
+func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	return nil
 }
 

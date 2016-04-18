@@ -16,8 +16,6 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/net/context"
-
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
@@ -178,7 +176,7 @@ var (
 //    where comparison is case-independent (normalized to lower case)
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError.
-func (pa *AuthorityImpl) WillingToIssue(ctx context.Context, id core.AcmeIdentifier, regID int64) error {
+func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	if id.Type != core.IdentifierDNS {
 		return errInvalidIdentifier
 	}
@@ -273,7 +271,7 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
-func (pa *AuthorityImpl) ChallengesFor(ctx context.Context, identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int) {
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int) {
 	challenges := []core.Challenge{}
 
 	if pa.enabledChallenges[core.ChallengeTypeHTTP01] {

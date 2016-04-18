@@ -9,8 +9,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"golang.org/x/net/context"
-
 	"github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
@@ -22,7 +20,6 @@ import (
 )
 
 var log = blog.UseMock()
-var ctx = context.Background()
 
 var enabledChallenges = map[string]bool{
 	core.ChallengeTypeHTTP01:   true,
@@ -142,7 +139,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	// Test for invalid identifier type
 	identifier := core.AcmeIdentifier{Type: "ip", Value: "example.com"}
-	err = pa.WillingToIssue(ctx, identifier, 100)
+	err = pa.WillingToIssue(identifier, 100)
 	if err != errInvalidIdentifier {
 		t.Error("Identifier was not correctly forbidden: ", identifier)
 	}
@@ -150,7 +147,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test syntax errors
 	for _, tc := range testCases {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: tc.domain}
-		err := pa.WillingToIssue(ctx, identifier, 100)
+		err := pa.WillingToIssue(identifier, 100)
 		if err != tc.err {
 			t.Errorf("WillingToIssue(%q) = %q, expected %q", tc.domain, err, tc.err)
 		}
@@ -159,7 +156,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test domains that are equal to public suffixes
 	for _, domain := range shouldBeTLDError {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(ctx, identifier, 100)
+		err := pa.WillingToIssue(identifier, 100)
 		if err != errICANNTLD {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
@@ -168,7 +165,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test blacklisting
 	for _, domain := range shouldBeBlacklisted {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		err := pa.WillingToIssue(ctx, identifier, 100)
+		err := pa.WillingToIssue(identifier, 100)
 		if err != errBlacklisted {
 			t.Error("Identifier was not correctly forbidden: ", identifier, err)
 		}
@@ -177,7 +174,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test acceptance of good names
 	for _, domain := range shouldBeAccepted {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
-		if err := pa.WillingToIssue(ctx, identifier, 100); err != nil {
+		if err := pa.WillingToIssue(identifier, 100); err != nil {
 			t.Error("Identifier was incorrectly forbidden: ", identifier, err)
 		}
 	}
@@ -199,7 +196,7 @@ func TestChallengesFor(t *testing.T) {
 		t.Errorf("Error unmarshaling JWK: %v", err)
 	}
 
-	challenges, combinations := pa.ChallengesFor(ctx, core.AcmeIdentifier{}, accountKey)
+	challenges, combinations := pa.ChallengesFor(core.AcmeIdentifier{}, accountKey)
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 	test.Assert(t, len(combinations) == len(enabledChallenges), "Wrong number of combinations returned")

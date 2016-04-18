@@ -215,7 +215,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate) (pro
 		// Check that the PA is still willing to issue for each name in DNSNames + CommonName
 		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
 			id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
-			if err = c.pa.WillingToIssue(ctx, id, cert.RegistrationID); err != nil {
+			if err = c.pa.WillingToIssue(id, cert.RegistrationID); err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			}
 		}

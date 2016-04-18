@@ -463,7 +463,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	var badNames []string
 	for _, name := range hostNames {
 		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
-		if err := ca.PA.WillingToIssue(ctx, identifier, regID); err != nil {
+		if err := ca.PA.WillingToIssue(identifier, regID); err != nil {
 			ca.log.AuditErr(err)
 			badNames = append(badNames, name)
 		}
