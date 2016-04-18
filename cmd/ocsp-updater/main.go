@@ -479,7 +479,7 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 			updater.log.AuditErr(fmt.Errorf("Failed to get certificate: %s", err))
 			continue
 		}
-		// TODO only submit to the logs we don't have a SCT for
+		// TODO(#1679) only submit to the logs we don't have a SCT for
 		err = updater.pubc.SubmitToCT(ctx, cert.DER)
 		if err != nil {
 			updater.log.AuditErr(fmt.Errorf("Failed to submit certificate to CT log: %s", err))
