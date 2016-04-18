@@ -423,6 +423,9 @@ type OCSPUpdaterConfig struct {
 
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    ConfigDuration
+
+	// Array of LogIDs to include in OCSP Extension
+	SCTsToIncludeInExtension []string
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the

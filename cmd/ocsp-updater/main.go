@@ -6,15 +6,19 @@
 package main
 
 import (
+	"bytes"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"database/sql"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"net/url"
 	"path"
 	"time"
 
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
 	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
@@ -46,6 +50,8 @@ type OCSPUpdater struct {
 	oldestIssuedSCT time.Duration
 	// Number of CT logs we expect to have receipts from
 	numLogs int
+	// SCT LogIDs to include in OCSP Response
+	logsIncludedInSCT []string
 
 	loops []*looper
 
@@ -88,6 +94,7 @@ func newUpdater(
 		sac:                 sac,
 		pubc:                pub,
 		numLogs:             numLogs,
+		logsIncludedInSCT:   config.SCTsToIncludeInExtension,
 		ocspMinTimeToExpiry: config.OCSPMinTimeToExpiry.Duration,
 		oldestIssuedSCT:     config.OldestIssuedSCT.Duration,
 	}
@@ -255,11 +262,18 @@ func (updater *OCSPUpdater) generateResponse(status core.CertificateStatus) (*co
 		return nil, err
 	}
 
+	var extensions []pkix.Extension
+	SCTExtension, err := updater.generateOCSPSCTExtension(status.Serial)
+	if err == nil {
+		extensions = append(extensions, SCTExtension)
+	}
+
 	signRequest := core.OCSPSigningRequest{
-		CertDER:   cert.DER,
-		Reason:    status.RevokedReason,
-		Status:    string(status.Status),
-		RevokedAt: status.RevokedDate,
+		CertDER:    cert.DER,
+		Reason:     status.RevokedReason,
+		Status:     string(status.Status),
+		RevokedAt:  status.RevokedDate,
+		Extensions: extensions,
 	}
 
 	ocspResponse, err := updater.cac.GenerateOCSP(signRequest)
@@ -380,6 +394,64 @@ func (updater *OCSPUpdater) revokedCertificatesTick(batchSize int) error {
 		}
 	}
 	return nil
+}
+
+func internalsctToCT(reciept core.SignedCertificateTimestamp) (ct.SignedCertificateTimestamp, error) {
+	sig, err := ct.UnmarshalDigitallySigned(bytes.NewReader(reciept.Signature))
+	if err != nil {
+		return ct.SignedCertificateTimestamp{}, err
+	}
+	out := ct.SignedCertificateTimestamp{
+		SCTVersion: ct.Version(reciept.SCTVersion),
+		Timestamp:  reciept.Timestamp,
+		Extensions: reciept.Extensions,
+		Signature:  *sig,
+	}
+
+	err = out.LogID.FromBase64String(reciept.LogID)
+	if err != nil {
+		return ct.SignedCertificateTimestamp{}, err
+	}
+
+	return out, nil
+}
+
+func (updater *OCSPUpdater) generateOCSPSCTExtension(serial string) (pkix.Extension, error) {
+	output := make([]byte, 2)
+	for _, logID := range updater.logsIncludedInSCT {
+		receipt, err := updater.sac.GetSCTReceipt(serial, logID)
+		if err != nil {
+			continue
+		}
+
+		ctsct, err := internalsctToCT(receipt)
+		if err != nil {
+			continue
+		}
+
+		SCT, err := ct.SerializeSCT(ctsct)
+		if err != nil || len(SCT) == 0 || len(SCT) > 0xFFFF {
+			continue
+		}
+
+		binary.BigEndian.PutUint16(output, uint16(len(SCT)))
+		output = append(output, output[0], output[1])
+		output = append(output, SCT...)
+	}
+
+	if len(output) == 2 {
+		return pkix.Extension{}, fmt.Errorf("No SCTs Found")
+	}
+
+	if len(output) > 0xFFFF {
+		return pkix.Extension{}, fmt.Errorf("SCTList Too Large")
+	}
+
+	binary.BigEndian.PutUint16(output, uint16(len(output)-2))
+	return pkix.Extension{
+		Id:    []int{1, 3, 6, 1, 4, 1, 11129, 2, 4, 5},
+		Value: output,
+	}, nil
 }
 
 func (updater *OCSPUpdater) generateOCSPResponses(statuses []core.CertificateStatus) error {
