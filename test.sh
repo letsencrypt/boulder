@@ -107,26 +107,11 @@ function die() {
 }
 
 function build_letsencrypt() {
-  # Test for python 2 installs with the usual names.
-  if hash python2 2>/dev/null; then
-    PY=python2
-  elif hash python2.7 2>/dev/null; then
-    PY=python2.7
-  else
-    die "unable to find a python2 or python2.7 binary in \$PATH"
-  fi
-
   run git clone \
     https://www.github.com/letsencrypt/letsencrypt.git \
     $LETSENCRYPT_PATH || exit 1
-
   cd $LETSENCRYPT_PATH
-
-  run virtualenv --no-site-packages -p $PY ./venv
-  run ./venv/bin/pip install -U setuptools
-  run ./venv/bin/pip install -U pip
-  run ./venv/bin/pip install -e acme -e . -e certbot-apache -e certbot-nginx
-
+  run ./tools/venv.sh
   cd -
 }
 
