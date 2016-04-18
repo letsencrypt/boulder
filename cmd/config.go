@@ -13,10 +13,9 @@ import (
 	"strings"
 	"time"
 
-	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
+	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/va"
+	"github.com/letsencrypt/pkcs11key"
 )
 
 // Config stores configuration parameters that applications
@@ -83,11 +82,13 @@ type Config struct {
 
 		IssuerDomain string
 
-		PortConfig va.PortConfig
+		PortConfig PortConfig
 
 		MaxConcurrentRPCServerRequests int64
 
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
+
+		CAAService *GRPCClientConfig
 
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
@@ -497,4 +498,29 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 type LogDescription struct {
 	URI string
 	Key string
+}
+
+// GRPCClientConfig contains the information needed to talk to the gRPC service
+type GRPCClientConfig struct {
+	ServerAddress         string
+	ServerIssuerPath      string
+	ClientCertificatePath string
+	ClientKeyPath         string
+	Timeout               ConfigDuration
+}
+
+// GRPCServerConfig contains the information needed to run a gRPC service
+type GRPCServerConfig struct {
+	Address               string `json:"address" yaml:"address"`
+	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
+	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
+	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
+}
+
+// PortConfig specifies what ports the VA should call to on the remote
+// host when performing its checks.
+type PortConfig struct {
+	HTTPPort  int
+	HTTPSPort int
+	TLSPort   int
 }

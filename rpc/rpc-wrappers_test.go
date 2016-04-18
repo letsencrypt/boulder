@@ -9,10 +9,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
+	jose "github.com/square/go-jose"
 )
 
 var log = blog.UseMock()
@@ -62,14 +62,15 @@ func TestRANewRegistration(t *testing.T) {
 	client := RegistrationAuthorityClient{mock}
 
 	var jwk jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk)
+	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
+	test.AssertNotError(t, err, "jwk unmarshal error")
 
 	reg := core.Registration{
 		ID:  1,
 		Key: jwk,
 	}
 
-	_, err := client.NewRegistration(reg)
+	_, err = client.NewRegistration(reg)
 	test.AssertNotError(t, err, "Updated Registration")
 	test.Assert(t, len(mock.LastBody) > 0, "Didn't send Registration")
 	test.AssertEquals(t, "NewRegistration", mock.LastMethod)

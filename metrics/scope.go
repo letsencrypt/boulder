@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-//go:generate sh -c "mockgen -package metrics github.com/cactus/go-statsd-client/statsd Statter > ./mock_statsd_test.go && sed -i '' -e 's:github.com/golang/mock/gomock:github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/golang/mock/gomock:' ./mock_statsd_test.go"
+//go:generate mockgen -package metrics -destination ./mock_statsd_test.go github.com/cactus/go-statsd-client/statsd Statter
 
 package metrics
 
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
+	"github.com/cactus/go-statsd-client/statsd"
 )
 
 // Scope is a stats collector that will prefix the name the stats it

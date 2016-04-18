@@ -16,10 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -30,6 +28,8 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	jose "github.com/square/go-jose"
+	"golang.org/x/net/context"
 )
 
 type DummyValidationAuthority struct {
@@ -564,13 +564,15 @@ func TestOnValidationUpdateSuccess(t *testing.T) {
 
 	expires := fclk.Now().Add(300 * 24 * time.Hour)
 	authzUpdated.Expires = &expires
-	sa.UpdatePendingAuthorization(authzUpdated)
+	err = sa.UpdatePendingAuthorization(authzUpdated)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Simulate a successful simpleHTTP challenge
 	authzFromVA := authzUpdated
 	authzFromVA.Challenges[0].Status = core.StatusValid
 
-	ra.OnValidationUpdate(authzFromVA)
+	err = ra.OnValidationUpdate(authzFromVA)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Verify that the Authz in the DB is the same except for Status->StatusValid
 	authzFromVA.Status = core.StatusValid
@@ -588,10 +590,11 @@ func TestOnValidationUpdateFailure(t *testing.T) {
 	authzFromVA, _ := sa.NewPendingAuthorization(AuthzInitial)
 	expires := fclk.Now().Add(300 * 24 * time.Hour)
 	authzFromVA.Expires = &expires
-	sa.UpdatePendingAuthorization(authzFromVA)
+	err := sa.UpdatePendingAuthorization(authzFromVA)
+	test.AssertNotError(t, err, "Could not store test data")
 	authzFromVA.Challenges[0].Status = core.StatusInvalid
 
-	err := ra.OnValidationUpdate(authzFromVA)
+	err = ra.OnValidationUpdate(authzFromVA)
 	test.AssertNotError(t, err, "unable to update validation")
 
 	authzFromVA.Status = core.StatusInvalid
@@ -603,8 +606,9 @@ func TestOnValidationUpdateFailure(t *testing.T) {
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	authz := core.Authorization{}
-	authz, _ = sa.NewPendingAuthorization(authz)
+	authz := core.Authorization{RegistrationID: 1}
+	authz, err := sa.NewPendingAuthorization(authz)
+	test.AssertNotError(t, err, "Could not store test data")
 	authz.Identifier = core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: "www.example.com",
@@ -618,8 +622,8 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign CSR")
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	test.AssertNotError(t, err, "Failed to parse CSR")
-	sa.UpdatePendingAuthorization(authz)
-	sa.FinalizeAuthorization(authz)
+	err = sa.FinalizeAuthorization(authz)
+	test.AssertNotError(t, err, "Could not store test data")
 	certRequest := core.CertificateRequest{
 		CSR: parsedCSR,
 	}
@@ -636,9 +640,10 @@ func TestAuthorizationRequired(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	AuthzFinal.RegistrationID = 1
-	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
-	sa.UpdatePendingAuthorization(AuthzFinal)
-	sa.FinalizeAuthorization(AuthzFinal)
+	AuthzFinal, err := sa.NewPendingAuthorization(AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// ExampleCSR requests not-example.com and www.not-example.com,
 	// but the authorization only covers not-example.com
@@ -646,7 +651,7 @@ func TestAuthorizationRequired(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err := ra.NewCertificate(certRequest, 1)
+	_, err = ra.NewCertificate(certRequest, 1)
 	test.Assert(t, err != nil, "Issued certificate with insufficient authorization")
 
 	t.Log("DONE TestAuthorizationRequired")
@@ -656,15 +661,18 @@ func TestNewCertificate(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
-	sa.UpdatePendingAuthorization(AuthzFinal)
-	sa.FinalizeAuthorization(AuthzFinal)
+	AuthzFinal, err := sa.NewPendingAuthorization(AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Inject another final authorization to cover www.not-example.com
 	authzFinalWWW := AuthzFinal
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
-	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
-	sa.FinalizeAuthorization(authzFinalWWW)
+	authzFinalWWW, err = sa.NewPendingAuthorization(authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Check that we fail if the CSR signature is invalid
 	ExampleCSR.Signature[0]++
@@ -672,7 +680,7 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err := ra.NewCertificate(certRequest, Registration.ID)
+	_, err = ra.NewCertificate(certRequest, Registration.ID)
 	ExampleCSR.Signature[0]--
 	test.AssertError(t, err, "Failed to check CSR signature")
 
@@ -702,15 +710,17 @@ func TestTotalCertRateLimit(t *testing.T) {
 	fc.Add(24 * 90 * time.Hour)
 
 	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
-	sa.UpdatePendingAuthorization(AuthzFinal)
-	sa.FinalizeAuthorization(AuthzFinal)
+	AuthzFinal, err := sa.NewPendingAuthorization(AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(AuthzFinal)
 
 	// Inject another final authorization to cover www.not-example.com
 	authzFinalWWW := AuthzFinal
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
-	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
-	sa.FinalizeAuthorization(authzFinalWWW)
+	authzFinalWWW, err = sa.NewPendingAuthorization(authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
 	certRequest := core.CertificateRequest{
@@ -754,7 +764,8 @@ func TestAuthzRateLimiting(t *testing.T) {
 	test.AssertError(t, err, "Pending Authorization rate limit failed.")
 
 	// Finalize pending authz
-	ra.OnValidationUpdate(authz)
+	err = ra.OnValidationUpdate(authz)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Try to create a new authzRequest, should be fine now.
 	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)

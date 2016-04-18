@@ -18,9 +18,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/codegangsta/cli"
+	"github.com/jmhodges/clock"
+	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -350,5 +350,6 @@ func main() {
 		cmd.FailOnError(err, "Failed to dump results: %s\n")
 	}
 
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	cmd.FailOnError(err, "Failed to run application")
 }

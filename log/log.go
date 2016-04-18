@@ -16,7 +16,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 )
 
 // A Logger logs messages with explicit priority levels. It is
@@ -74,7 +74,7 @@ func initialize() {
 		panic(err)
 	}
 
-	Set(logger)
+	_ = Set(logger)
 }
 
 // Set configures the singleton Logger. This method

@@ -10,7 +10,7 @@ fi
 # Order doesn't matter. Note: godep-restore is specifically left out of the
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH).
-RUN=${RUN:-vet lint fmt migrations unit integration}
+RUN=${RUN:-vet fmt migrations unit integration errcheck}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
 # the unit tests before failing.  By defuault, we only hard-fail for gofmt,
@@ -19,7 +19,7 @@ HARDFAIL=${HARDFAIL:-fmt}
 
 FAILURE=0
 
-TESTPATHS=$(go list -f '{{ .ImportPath }}' ./...)
+TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | grep -v /vendor/)
 
 # We need to know, for github-pr-status, what the triggering commit is.
 # Assume first it's the travis commit (for builds of master), unless we're
@@ -125,7 +125,7 @@ function build_letsencrypt() {
   run virtualenv --no-site-packages -p $PY ./venv
   run ./venv/bin/pip install -U setuptools
   run ./venv/bin/pip install -U pip
-  run ./venv/bin/pip install -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
+  run ./venv/bin/pip install -e acme -e . -e certbot-apache -e certbot-nginx
 
   cd -
 }
@@ -163,7 +163,7 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    run go test -p 1 $GOTESTFLAGS ./...
+    run go test -p 1 $GOTESTFLAGS $TESTPATHS
   fi
 }
 
@@ -176,17 +176,8 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 #
 if [[ "$RUN" =~ "vet" ]] ; then
   start_context "vet"
-  run_and_comment go vet ./...
+  run_and_comment go vet $TESTPATHS
   end_context #vet
-fi
-
-#
-# Run Go Lint, a style-focused static analysis tool
-#
-if [[ "$RUN" =~ "lint" ]] ; then
-  start_context "lint"
-  run_and_comment golint -min_confidence=0.81 ./...
-  end_context #lint
 fi
 
 #
@@ -195,7 +186,7 @@ fi
 if [[ "$RUN" =~ "fmt" ]] ; then
   start_context "fmt"
   check_gofmt() {
-    unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1 gofmt -l)
+    unformatted=$(find . -name "*.go" -not -path "./vendor/*" -print | xargs -n1 gofmt -l)
     if [ "x${unformatted}" == "x" ] ; then
       return 0
     else
@@ -294,10 +285,25 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   # Once we switch to Go 1.6's imports and don't need rewriting anymore, we can
   # do this for all builds.
   if [[ "${TRAVIS_REPO_SLUG}" == "letsencrypt/boulder" ]] ; then
-    run_and_comment godep save -r ./...
-    run_and_comment git diff --exit-code Godeps/_workspace/
+    run_and_comment godep save ./...
+    run_and_comment git diff --exit-code
   fi
   end_context #godep-restore
+fi
+
+#
+# Run errcheck, to ensure that error returns are always used.
+# Note: errcheck seemingly doesn't understand ./vendor/ yet, and so will fail
+# if imports are not available in $GOPATH. So, in Travis, it always needs to
+# run after `godep restore`. Locally it can run anytime, assuming you have the
+# packages present in #GOPATH.
+#
+if [[ "$RUN" =~ "errcheck" ]] ; then
+  start_context "errcheck"
+  run_and_comment errcheck \
+    -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
+    $(echo $TESTPATHS | tr ' ' '\n' | grep -v test)
+  end_context #errcheck
 fi
 
 exit ${FAILURE}

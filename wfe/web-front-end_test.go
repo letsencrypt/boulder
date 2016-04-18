@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -1430,7 +1430,10 @@ type mockSADifferentStoredKey struct {
 func (sa mockSADifferentStoredKey) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
 	keyJSON := []byte(test2KeyPublicJSON)
 	var parsedKey jose.JsonWebKey
-	parsedKey.UnmarshalJSON(keyJSON)
+	err := parsedKey.UnmarshalJSON(keyJSON)
+	if err != nil {
+		panic(err)
+	}
 
 	return core.Registration{
 		Key: parsedKey,
@@ -1486,7 +1489,10 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	if err != nil {
 		test.AssertNotEquals(t, err, "readall error")
 	}
-	defer resp.Body.Close()
+	err = resp.Body.Close()
+	if err != nil {
+		test.AssertNotEquals(t, err, "readall error")
+	}
 	test.AssertEquals(t, resp.StatusCode, 200)
 	test.AssertEquals(t, strconv.Itoa(len(certBlock.Bytes)), resp.Header.Get("Content-Length"))
 	test.AssertEquals(t, 0, len(body))

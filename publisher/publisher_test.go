@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	ct "github.com/google/certificate-transparency/go"
+	"github.com/jmhodges/clock"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
@@ -362,7 +362,8 @@ func TestRetryAfterContext(t *testing.T) {
 
 	pub.submissionTimeout = time.Second
 	s := time.Now()
-	pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(leaf.Raw)
+	test.AssertNotError(t, err, "Failed to submit to CT")
 	took := time.Since(s)
 	test.Assert(t, len(log.GetAllMatching(".*Failed to submit certificate to CT log at .*: context deadline exceeded.*")) == 1, "Submission didn't timeout")
 	test.Assert(t, took >= time.Second, fmt.Sprintf("Submission took too long to timeout: %s", took))

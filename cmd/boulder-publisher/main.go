@@ -8,7 +8,7 @@ package main
 import (
 	"os"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
+	ct "github.com/google/certificate-transparency/go"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -52,7 +52,8 @@ func main() {
 
 		pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create Publisher RPC server")
-		rpc.NewPublisherServer(pubs, pubi)
+		err = rpc.NewPublisherServer(pubs, pubi)
+		cmd.FailOnError(err, "Unable to setup Publisher RPC server")
 
 		err = pubs.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run Publisher RPC server")

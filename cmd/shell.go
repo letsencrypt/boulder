@@ -38,10 +38,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 
-	cfsslLog "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
+	cfsslLog "github.com/cloudflare/cfssl/log"
+	"github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -200,9 +200,9 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	logger, err := blog.New(syslogger, level)
 	FailOnError(err, "Could not connect to Syslog")
 
-	blog.Set(logger)
+	_ = blog.Set(logger)
 	cfsslLog.SetLogger(cfsslLogger{logger})
-	mysql.SetLogger(mysqlLogger{logger})
+	_ = mysql.SetLogger(mysqlLogger{logger})
 
 	return stats, logger
 }
@@ -302,5 +302,8 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server on %#v", addr)
 	}
-	http.Serve(ln, nil)
+	err = http.Serve(ln, nil)
+	if err != nil {
+		log.Fatalf("unable to boot debug server: %v", err)
+	}
 }

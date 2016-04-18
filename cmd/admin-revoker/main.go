@@ -16,9 +16,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/codegangsta/cli"
+	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -164,15 +164,13 @@ func main() {
 
 				tx, err := dbMap.Begin()
 				if err != nil {
-					tx.Rollback()
+					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't begin transaction")
 				}
-				cmd.FailOnError(err, "Couldn't begin transaction")
 
 				err = revokeBySerial(serial, core.RevocationCode(reasonCode), deny, cac, logger, tx)
 				if err != nil {
-					tx.Rollback()
+					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
 				}
-				cmd.FailOnError(err, "Couldn't revoke certificate")
 
 				err = tx.Commit()
 				cmd.FailOnError(err, "Couldn't cleanly close transaction")
@@ -195,9 +193,8 @@ func main() {
 
 				tx, err := dbMap.Begin()
 				if err != nil {
-					tx.Rollback()
+					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't begin transaction")
 				}
-				cmd.FailOnError(err, "Couldn't begin transaction")
 
 				_, err = sac.GetRegistration(regID)
 				if err != nil {
@@ -206,9 +203,8 @@ func main() {
 
 				err = revokeByReg(regID, core.RevocationCode(reasonCode), deny, cac, logger, tx)
 				if err != nil {
-					tx.Rollback()
+					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
 				}
-				cmd.FailOnError(err, "Couldn't revoke certificate")
 
 				err = tx.Commit()
 				cmd.FailOnError(err, "Couldn't cleanly close transaction")

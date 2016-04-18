@@ -13,10 +13,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/square/go-jose"
 )
 
 // StorageAuthority is a mock
@@ -73,7 +73,10 @@ func (sa *StorageAuthority) GetRegistration(id int64) (core.Registration, error)
 
 	keyJSON := []byte(test1KeyPublicJSON)
 	var parsedKey jose.JsonWebKey
-	parsedKey.UnmarshalJSON(keyJSON)
+	err := parsedKey.UnmarshalJSON(keyJSON)
+	if err != nil {
+		return core.Registration{}, err
+	}
 
 	return core.Registration{
 		ID:        id,
@@ -90,10 +93,23 @@ func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Regi
 	var test2KeyPublic jose.JsonWebKey
 	var testE1KeyPublic jose.JsonWebKey
 	var testE2KeyPublic jose.JsonWebKey
-	test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
-	test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
-	testE1KeyPublic.UnmarshalJSON([]byte(testE1KeyPublicJSON))
-	testE2KeyPublic.UnmarshalJSON([]byte(testE2KeyPublicJSON))
+	var err error
+	err = test1KeyPublic.UnmarshalJSON([]byte(test1KeyPublicJSON))
+	if err != nil {
+		return core.Registration{}, err
+	}
+	err = test2KeyPublic.UnmarshalJSON([]byte(test2KeyPublicJSON))
+	if err != nil {
+		return core.Registration{}, err
+	}
+	err = testE1KeyPublic.UnmarshalJSON([]byte(testE1KeyPublicJSON))
+	if err != nil {
+		panic(err)
+	}
+	err = testE2KeyPublic.UnmarshalJSON([]byte(testE2KeyPublicJSON))
+	if err != nil {
+		panic(err)
+	}
 
 	if core.KeyDigestEquals(jwk, test1KeyPublic) {
 		return core.Registration{ID: 1, Key: jwk, Agreement: agreementURL}, nil

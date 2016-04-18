@@ -18,10 +18,10 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/codegangsta/cli"
+	"github.com/jmhodges/clock"
+	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -116,15 +116,15 @@ func (m *mailer) updateCertStatus(serial string) error {
 	// Update CertificateStatus object
 	tx, err := m.dbMap.Begin()
 	if err != nil {
+		err = sa.Rollback(tx, err)
 		m.log.Err(fmt.Sprintf("Error opening transaction for certificate %s: %s", serial, err))
-		tx.Rollback()
 		return err
 	}
 
 	csObj, err := tx.Get(&core.CertificateStatus{}, serial)
 	if err != nil {
+		err = sa.Rollback(tx, err)
 		m.log.Err(fmt.Sprintf("Error fetching status for certificate %s: %s", serial, err))
-		tx.Rollback()
 		return err
 	}
 	certStatus := csObj.(*core.CertificateStatus)
@@ -132,15 +132,15 @@ func (m *mailer) updateCertStatus(serial string) error {
 
 	_, err = tx.Update(certStatus)
 	if err != nil {
+		err = sa.Rollback(tx, err)
 		m.log.Err(fmt.Sprintf("Error updating status for certificate %s: %s", serial, err))
-		tx.Rollback()
 		return err
 	}
 
 	err = tx.Commit()
 	if err != nil {
+		err = sa.Rollback(tx, err)
 		m.log.Err(fmt.Sprintf("Error committing transaction for certificate %s: %s", serial, err))
-		tx.Rollback()
 		return err
 	}
 
@@ -327,7 +327,9 @@ func main() {
 		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, c.Mailer.From)
 		err = mailClient.Connect()
 		cmd.FailOnError(err, "Couldn't connect to mail server.")
-		defer mailClient.Close()
+		defer func() {
+			_ = mailClient.Close()
+		}()
 
 		nagCheckInterval := defaultNagCheckInterval
 		if s := c.Mailer.NagCheckInterval; s != "" {

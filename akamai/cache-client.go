@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -188,8 +188,12 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	if resp.Body == nil {
 		return fmt.Errorf("No response body")
 	}
-	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		_ = resp.Body.Close()
+		return err
+	}
+	err = resp.Body.Close()
 	if err != nil {
 		return err
 	}

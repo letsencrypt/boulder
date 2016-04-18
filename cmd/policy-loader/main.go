@@ -12,8 +12,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	_ "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
+	"github.com/codegangsta/cli"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/sa"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -99,7 +99,8 @@ func main() {
 		},
 	}...)
 
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	cmd.FailOnError(err, "Couldn't run application")
 }
 
 func setupFromContext(context *cli.Context) (*policy.AuthorityDatabaseImpl, string) {

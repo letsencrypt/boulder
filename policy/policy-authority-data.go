@@ -10,10 +10,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/letsencrypt/boulder/sa"
+	gorp "gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 )
 
 var errDBFailure = core.InternalServerError("Error checking policy DB.")
@@ -78,25 +79,28 @@ func NewAuthorityDatabaseImpl(dbMap gorpDbMap) (padb *AuthorityDatabaseImpl, err
 func (padb *AuthorityDatabaseImpl) LoadRules(rs RuleSet) error {
 	tx, err := padb.dbMap.Begin()
 	if err != nil {
-		tx.Rollback()
-		return err
+		return sa.Rollback(tx, err)
 	}
 	_, err = tx.Exec("DELETE FROM blacklist")
 	if err != nil {
-		tx.Rollback()
-		return err
+		return sa.Rollback(tx, err)
 	}
 	for _, r := range rs.Blacklist {
 		r.Host = core.ReverseName(r.Host)
-		tx.Insert(&r)
+		err = tx.Insert(&r)
+		if err != nil {
+			return sa.Rollback(tx, err)
+		}
 	}
 	_, err = tx.Exec("DELETE FROM whitelist")
 	if err != nil {
-		tx.Rollback()
-		return err
+		return sa.Rollback(tx, err)
 	}
 	for _, r := range rs.Whitelist {
-		tx.Insert(&r)
+		err = tx.Insert(&r)
+		if err != nil {
+			return sa.Rollback(tx, err)
+		}
 	}
 
 	err = tx.Commit()

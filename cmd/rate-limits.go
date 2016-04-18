@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"time"
 )

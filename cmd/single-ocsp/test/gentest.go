@@ -12,7 +12,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
+	"github.com/letsencrypt/pkcs11key"
 )
 
 const pkcs11FileName = "pkcs11.json"
@@ -102,10 +102,16 @@ func main() {
 	ocspCert := makeCert(template, caCert, p11key.Public(), caKey)
 
 	// Write out all the certs in DER and PEM
-	ioutil.WriteFile(caCertFileName, caCert.Raw, 0666)
-	ioutil.WriteFile(eeCertFileName, eeCert.Raw, 0666)
-	ioutil.WriteFile(ocspCertFileName, ocspCert.Raw, 0666)
-	ioutil.WriteFile(caCertFileNamePEM, toPEM(caCert), 0666)
-	ioutil.WriteFile(eeCertFileNamePEM, toPEM(eeCert), 0666)
-	ioutil.WriteFile(ocspCertFileNamePEM, toPEM(ocspCert), 0666)
+	err = ioutil.WriteFile(caCertFileName, caCert.Raw, 0666)
+	panicOnError(err)
+	err = ioutil.WriteFile(eeCertFileName, eeCert.Raw, 0666)
+	panicOnError(err)
+	err = ioutil.WriteFile(ocspCertFileName, ocspCert.Raw, 0666)
+	panicOnError(err)
+	err = ioutil.WriteFile(caCertFileNamePEM, toPEM(caCert), 0666)
+	panicOnError(err)
+	err = ioutil.WriteFile(eeCertFileNamePEM, toPEM(eeCert), 0666)
+	panicOnError(err)
+	err = ioutil.WriteFile(ocspCertFileNamePEM, toPEM(ocspCert), 0666)
+	panicOnError(err)
 }

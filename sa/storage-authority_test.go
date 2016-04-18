@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/jmhodges/clock"
+	jose "github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -758,7 +758,7 @@ func (e *execRecorder) Exec(query string, args ...interface{}) (sql.Result, erro
 
 func TestAddIssuedNames(t *testing.T) {
 	var e execRecorder
-	addIssuedNames(&e, &x509.Certificate{
+	err := addIssuedNames(&e, &x509.Certificate{
 		DNSNames: []string{
 			"example.co.uk",
 			"example.xyz",
@@ -766,6 +766,9 @@ func TestAddIssuedNames(t *testing.T) {
 		SerialNumber: big.NewInt(1),
 		NotBefore:    time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	expected := "INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?, ?, ?), (?, ?, ?);"
 	if e.query != expected {
 		t.Errorf("Wrong query: got %q, expected %q", e.query, expected)

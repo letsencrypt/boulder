@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/cloudflare/cfssl/helpers"
+	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/pkcs11key"
+	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
@@ -152,7 +152,8 @@ func main() {
 
 		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
-		rpc.NewCertificateAuthorityServer(cas, cai)
+		err = rpc.NewCertificateAuthorityServer(cas, cai)
+		cmd.FailOnError(err, "Unable to setup CA RPC server")
 
 		err = cas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run CA RPC server")

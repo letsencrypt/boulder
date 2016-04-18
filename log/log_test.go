@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -168,7 +168,10 @@ func TestTransmission(t *testing.T) {
 
 	l, err := newUDPListener("127.0.0.1:0")
 	test.AssertNotError(t, err, "Failed to open log server")
-	defer l.Close()
+	defer func() {
+		err = l.Close()
+		test.AssertNotError(t, err, "listener.Close returned error")
+	}()
 
 	fmt.Printf("Going to %s\n", l.LocalAddr().String())
 	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
@@ -209,8 +212,17 @@ func newUDPListener(addr string) (*net.UDPConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	l.SetDeadline(time.Now().Add(100 * time.Millisecond))
-	l.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-	l.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+	err = l.SetDeadline(time.Now().Add(100 * time.Millisecond))
+	if err != nil {
+		return nil, err
+	}
+	err = l.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	if err != nil {
+		return nil, err
+	}
+	err = l.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+	if err != nil {
+		return nil, err
+	}
 	return l.(*net.UDPConn), nil
 }

@@ -8,12 +8,12 @@ package main
 import (
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
+	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -89,7 +89,8 @@ func main() {
 
 		ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create RA RPC server")
-		rpc.NewRegistrationAuthorityServer(ras, rai)
+		err = rpc.NewRegistrationAuthorityServer(ras, rai)
+		cmd.FailOnError(err, "Unable to setup RA RPC server")
 
 		err = ras.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run RA RPC server")

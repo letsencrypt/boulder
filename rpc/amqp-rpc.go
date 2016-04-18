@@ -22,10 +22,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -362,13 +362,16 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 		return
 	}
 	rpc.log.Debug(fmt.Sprintf(" [s>][%s][%s] replying %s: %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, response.debugString(), msg.CorrelationId))
-	rpc.connection.publish(
+	err = rpc.connection.publish(
 		msg.ReplyTo,
 		msg.CorrelationId,
 		"30000",
 		"",
 		msg.Type,
 		jsonResponse)
+	if err != nil {
+		rpc.log.AuditErr(fmt.Errorf(" [s>][%s][%s] Error condition replying to RPC %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
+	}
 }
 
 func (rpc *AmqpRPCServer) replyTooManyRequests(msg amqp.Delivery) error {
@@ -410,7 +413,7 @@ func (rpc *AmqpRPCServer) Start(c *cmd.AMQPConfig) error {
 			if ok {
 				rpc.stats.TimingDuration(fmt.Sprintf("RPC.MessageLag.%s", rpc.serverQueue), rpc.clk.Now().Sub(msg.Timestamp), 1.0)
 				if rpc.maxConcurrentRPCServerRequests > 0 && atomic.LoadInt64(&rpc.currentGoroutines) >= rpc.maxConcurrentRPCServerRequests {
-					rpc.replyTooManyRequests(msg)
+					_ = rpc.replyTooManyRequests(msg)
 					rpc.stats.Inc(fmt.Sprintf("RPC.CallsDropped.%s", rpc.serverQueue), 1, 1.0)
 					break // this breaks the select, not the for
 				}
@@ -592,7 +595,7 @@ func NewAmqpRPCClient(
 // dispatch sends a body to the destination, and returns the id for the request
 // that can be used to correlate it with responses, and a response channel that
 // can be used to monitor for responses, or discarded for one-shot actions.
-func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) (string, chan []byte) {
+func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) (string, chan []byte, error) {
 	// Create a channel on which to direct the response
 	// At least in some cases, it's important that this channel
 	// be buffered to avoid deadlock
@@ -609,7 +612,7 @@ func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) (string, chan []b
 
 	// Send the request
 	rpc.log.Debug(fmt.Sprintf(" [c>][%s] requesting %s(%s) [%s]", rpc.clientQueue, method, safeDER(body), corrID))
-	rpc.connection.publish(
+	err = rpc.connection.publish(
 		rpc.serverQueue,
 		corrID,
 		"30000",
@@ -617,30 +620,37 @@ func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) (string, chan []b
 		method,
 		body)
 
-	return corrID, responseChan
+	if err != nil {
+		return "", nil, err
+	}
+
+	return corrID, responseChan, nil
 }
 
 // DispatchSync sends a body to the destination, and blocks waiting on a response.
 func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []byte, err error) {
 	rpc.stats.Inc(fmt.Sprintf("RPC.Traffic.Tx.%s", rpc.serverQueue), int64(len(body)), 1.0)
 	callStarted := time.Now()
-	corrID, responseChan := rpc.dispatch(method, body)
+	corrID, responseChan, err := rpc.dispatch(method, body)
+	if err != nil {
+		return nil, err
+	}
 	select {
 	case jsonResponse := <-responseChan:
 		var rpcResponse rpcResponse
 		err = json.Unmarshal(jsonResponse, &rpcResponse)
 		rpc.log.Debug(fmt.Sprintf(" [c<][%s] response %s: %s [%s]", rpc.clientQueue, method, rpcResponse.debugString(), corrID))
 		if err != nil {
-			return
+			return nil, err
 		}
 		err = unwrapError(rpcResponse.Error)
 		if err != nil {
 			rpc.stats.Inc(fmt.Sprintf("RPC.ClientCallLatency.%s.Error", method), 1, 1.0)
-			return
+			return nil, err
 		}
 		rpc.stats.TimingDuration(fmt.Sprintf("RPC.ClientCallLatency.%s.Success", method), time.Since(callStarted), 1.0)
 		response = rpcResponse.ReturnVal
-		return
+		return response, nil
 	case <-time.After(rpc.timeout):
 		rpc.stats.TimingDuration(fmt.Sprintf("RPC.ClientCallLatency.%s.Timeout", method), time.Since(callStarted), 1.0)
 		rpc.log.Warning(fmt.Sprintf(" [c!][%s] AMQP-RPC timeout [%s]", rpc.clientQueue, method))
@@ -648,6 +658,6 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 		delete(rpc.pending, corrID)
 		rpc.mu.Unlock()
 		err = errors.New("AMQP-RPC timeout")
-		return
+		return nil, err
 	}
 }
