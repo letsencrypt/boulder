@@ -203,7 +203,8 @@ func (dnsResolver *DNSResolverImpl) exchangeOne(ctx context.Context, hostname st
 	start := dnsResolver.clk.Now()
 	msgStats.Inc("Calls", 1)
 	defer func() {
-		msgStats.TimingDuration("Latency", time.Since(start))
+
+		msgStats.TimingDuration("Latency", dnsResolver.clk.Now().Sub(start))
 	}()
 	for {
 		msgStats.Inc("Tries", 1)
