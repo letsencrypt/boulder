@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"

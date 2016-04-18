@@ -20,6 +20,7 @@ import (
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/jmhodges/clock"
 	"golang.org/x/crypto/ocsp"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"

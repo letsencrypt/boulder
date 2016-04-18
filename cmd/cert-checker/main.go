@@ -18,6 +18,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/codegangsta/cli"
 	"github.com/jmhodges/clock"
 	gorp "gopkg.in/gorp.v1"

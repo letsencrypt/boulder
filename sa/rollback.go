@@ -7,6 +7,7 @@ package sa
 
 import (
 	"fmt"
+
 	gorp "gopkg.in/gorp.v1"
 )
 

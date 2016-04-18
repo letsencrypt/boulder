@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"

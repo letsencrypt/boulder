@@ -17,6 +17,7 @@ import (
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"golang.org/x/crypto/ocsp"
+	"golang.org/x/net/context"
 	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/akamai"

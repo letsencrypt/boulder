@@ -3,8 +3,9 @@ package probs
 import (
 	"testing"
 
-	"github.com/letsencrypt/boulder/test"
 	"net/http"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestProblemDetails(t *testing.T) {

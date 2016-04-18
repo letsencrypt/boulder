@@ -12,6 +12,7 @@ package va
 import (
 	"github.com/letsencrypt/boulder/core"
 	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
+	"golang.org/x/net/context"
 )
 
 // SafeBrowsing is an interface for an third-party safe browing API client.

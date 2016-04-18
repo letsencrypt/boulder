@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/core"
 	jose "github.com/square/go-jose"
 )

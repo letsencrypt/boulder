@@ -7,6 +7,7 @@ package ra
 
 import (
 	"github.com/letsencrypt/boulder/core"
+	"golang.org/x/net/context"
 )
 
 // TODO(jmhodges): remove once VA is deployed and stable with IsSafeDomain

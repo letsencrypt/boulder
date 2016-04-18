@@ -25,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	ct "github.com/google/certificate-transparency/go"
 	"github.com/jmhodges/clock"
 

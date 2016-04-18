@@ -5,6 +5,7 @@ import (
 	"encoding/pem"
 	"fmt"
 
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 )

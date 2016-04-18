@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"time"
 
+	"golang.org/x/net/context"
+
 	jose "github.com/square/go-jose"
 )
 

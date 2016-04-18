@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/jmhodges/clock"
 	jose "github.com/square/go-jose"
 
