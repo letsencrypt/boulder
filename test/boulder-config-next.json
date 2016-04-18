@@ -200,7 +200,6 @@
 
   "va": {
     "userAgent": "boulder",
-    "issuerDomain": "happy-hacker-ca.invalid",
     "debugAddr": "localhost:8004",
     "portConfig": {
       "httpPort": 5002,
@@ -209,6 +208,13 @@
     },
     "maxConcurrentRPCServerRequests": 16,
     "dnsTries": 3,
+    "issuerDomain": "happy-hacker-ca.invalid",
+    "caaService": {
+      "serverAddress": "boulder:9090",
+      "serverIssuerPath": "test/grpc-creds/ca.pem",
+      "clientCertificatePath": "test/grpc-creds/client.pem",
+      "clientKeyPath": "test/grpc-creds/key.pem"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -337,7 +343,7 @@
     "dbConnectFile": "test/secrets/cert_checker_dburl"
   },
 
-  "subscriberAgreementURL": "http://boulder:4001/terms/v1",
+  "subscriberAgreementURL": "http://boulder:4000/terms/v1",
 
   "allowedSigningAlgos": {
     "rsa": true,

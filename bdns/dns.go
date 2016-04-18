@@ -250,10 +250,10 @@ func (dnsResolver *DNSResolverImpl) LookupTXT(ctx context.Context, hostname stri
 	dnsType := dns.TypeTXT
 	r, err := dnsResolver.exchangeOne(ctx, hostname, dnsType, dnsResolver.txtStats)
 	if err != nil {
-		return nil, nil, &dnsError{dnsType, hostname, err, -1}
+		return nil, nil, &DNSError{dnsType, hostname, err, -1}
 	}
 	if r.Rcode != dns.RcodeSuccess {
-		return nil, nil, &dnsError{dnsType, hostname, nil, r.Rcode}
+		return nil, nil, &DNSError{dnsType, hostname, nil, r.Rcode}
 	}
 
 	for _, answer := range r.Answer {
@@ -291,10 +291,10 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 	dnsType := dns.TypeA
 	r, err := dnsResolver.exchangeOne(ctx, hostname, dnsType, dnsResolver.aStats)
 	if err != nil {
-		return addrs, &dnsError{dnsType, hostname, err, -1}
+		return addrs, &DNSError{dnsType, hostname, err, -1}
 	}
 	if r.Rcode != dns.RcodeSuccess {
-		return nil, &dnsError{dnsType, hostname, nil, r.Rcode}
+		return nil, &DNSError{dnsType, hostname, nil, r.Rcode}
 	}
 
 	for _, answer := range r.Answer {
@@ -315,7 +315,7 @@ func (dnsResolver *DNSResolverImpl) LookupCAA(ctx context.Context, hostname stri
 	dnsType := dns.TypeCAA
 	r, err := dnsResolver.exchangeOne(ctx, hostname, dnsType, dnsResolver.caaStats)
 	if err != nil {
-		return nil, &dnsError{dnsType, hostname, err, -1}
+		return nil, &DNSError{dnsType, hostname, err, -1}
 	}
 
 	// On resolver validation failure, or other server failures, return empty an
@@ -341,10 +341,10 @@ func (dnsResolver *DNSResolverImpl) LookupMX(ctx context.Context, hostname strin
 	dnsType := dns.TypeMX
 	r, err := dnsResolver.exchangeOne(ctx, hostname, dnsType, dnsResolver.mxStats)
 	if err != nil {
-		return nil, &dnsError{dnsType, hostname, err, -1}
+		return nil, &DNSError{dnsType, hostname, err, -1}
 	}
 	if r.Rcode != dns.RcodeSuccess {
-		return nil, &dnsError{dnsType, hostname, nil, r.Rcode}
+		return nil, &DNSError{dnsType, hostname, nil, r.Rcode}
 	}
 
 	var results []string

@@ -76,6 +76,12 @@ def start(race_detection):
     except Exception as e:
         print(e)
         return False
+    # And the separate CAA checking service.
+    try:
+        processes.append(run('caa-checker', race_detection, 'cmd/caa-checker/test-config.yml'))
+    except Exception as e:
+        print(e)
+        return False
 
     # Wait until all servers are up before returning to caller. This means
     # checking each server's debug port until it's available.

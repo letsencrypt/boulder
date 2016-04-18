@@ -336,7 +336,7 @@
     "dbConnectFile": "test/secrets/cert_checker_dburl"
   },
 
-  "subscriberAgreementURL": "http://boulder:4001/terms/v1",
+  "subscriberAgreementURL": "http://boulder:4000/terms/v1",
 
   "allowedSigningAlgos": {
     "rsa": true,
