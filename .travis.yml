@@ -45,6 +45,7 @@ branches:
 
 before_install:
   - travis_retry test/travis-before-install.sh
+  - cd $GOPATH/src/github.com/letsencrypt/boulder
 
 # Override default Travis install command to prevent it from adding
 # Godeps/_workspace to GOPATH. When that happens, it hides failures that should
@@ -55,13 +56,13 @@ install:
 env:
   global:
     - LETSENCRYPT_PATH=$HOME/letsencrypt
+    - GO15VENDOREXPERIMENT=1
   matrix:
-    - RUN="integration vet lint fmt errcheck migrations"
+    - RUN="vet fmt migrations integration godep-restore errcheck"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG="test/boulder-config-next.json"
     - RUN="unit"
-    - RUN="godep-restore"
 
 script:
   - bash test.sh

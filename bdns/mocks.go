@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/miekg/dns"
+	"golang.org/x/net/context"
 )
 
 // MockDNSResolver is a mock

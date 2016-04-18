@@ -4,8 +4,8 @@
 package rpc
 
 import (
-	gomock "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/golang/mock/gomock"
-	amqp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	gomock "github.com/golang/mock/gomock"
+	amqp "github.com/streadway/amqp"
 )
 
 // Mock of amqpChannel interface
