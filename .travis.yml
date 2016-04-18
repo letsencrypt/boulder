@@ -49,8 +49,8 @@ before_install:
   - cd $GOPATH/src/github.com/letsencrypt/boulder
 
 # Override default Travis install command to prevent it from adding
-# Godeps/_workspace to GOPATH. When that happens, it hides failures that should
-# arise from importing non-vendorized paths.
+# Godeps/_workspace or vendor/ to GOPATH. When that happens, it hides failures that should
+# arise from importing non-vendored paths.
 install:
   - true
 
