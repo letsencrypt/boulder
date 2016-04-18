@@ -2,7 +2,7 @@
 
 package cmd
 
-import "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+import "github.com/jmhodges/clock"
 
 // Clock functions similarly to clock.Default(), but the returned value can be
 // changed using the FAKECLOCK environment variable if the 'integration' build

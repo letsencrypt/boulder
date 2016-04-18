@@ -13,10 +13,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/square/go-jose"
 )
 
 // StorageAuthority is a mock

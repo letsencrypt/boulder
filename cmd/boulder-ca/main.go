@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/cloudflare/cfssl/helpers"
+	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/pkcs11key"
+	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"

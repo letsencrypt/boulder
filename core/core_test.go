@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/square/go-jose"
 )
 
 // challenges.go

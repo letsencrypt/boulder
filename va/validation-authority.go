@@ -21,11 +21,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
+	"github.com/miekg/dns"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
@@ -469,7 +469,6 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 	// Check CAA records for the requested identifier
 	present, valid, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {
-		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
 		return bdns.ProblemDetailsFromDNSError(err)
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
