@@ -143,7 +143,7 @@ func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
 		return
 	}
 
-	out = core.Challenge{KeyAuthorization: &keyAuthorization}
+	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization.String()}
 	return
 }
 

@@ -121,23 +121,38 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	var resultMX []string
 	var resultA []net.IP
-	resultMX, err = resolver.LookupMX(ctx, domain)
-	if err == nil && len(resultMX) == 0 {
-		resultA, err = resolver.LookupHost(ctx, domain)
-		if err == nil && len(resultA) == 0 {
-			return &probs.ProblemDetails{
-				Type:   probs.InvalidEmailProblem,
-				Detail: emptyDNSResponseDetail,
-			}
-		}
-	}
-	if err != nil {
-		prob := bdns.ProblemDetailsFromDNSError(err)
+	var errMX, errA error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		resultMX, errMX = resolver.LookupMX(ctx, domain)
+		wg.Done()
+	}()
+	go func() {
+		resultA, errA = resolver.LookupHost(ctx, domain)
+		wg.Done()
+	}()
+	wg.Wait()
+
+	if errMX != nil {
+		prob := bdns.ProblemDetailsFromDNSError(errMX)
 		prob.Type = probs.InvalidEmailProblem
 		return prob
+	} else if len(resultMX) > 0 {
+		return nil
+	}
+	if errA != nil {
+		prob := bdns.ProblemDetailsFromDNSError(errA)
+		prob.Type = probs.InvalidEmailProblem
+		return prob
+	} else if len(resultA) > 0 {
+		return nil
 	}
 
-	return nil
+	return &probs.ProblemDetails{
+		Type:   probs.InvalidEmailProblem,
+		Detail: emptyDNSResponseDetail,
+	}
 }
 
 type certificateRequestEvent struct {
@@ -253,7 +268,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, init c
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []*core.AcmeURL) (err error) {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []*core.AcmeURL) error {
 	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
 		return core.MalformedRequestError(fmt.Sprintf("Too many contacts provided: %d > %d",
 			len(contacts), ra.maxContactsPerReg))
@@ -263,24 +278,22 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		if contact == nil {
 			return core.MalformedRequestError("Invalid contact")
 		}
-		switch contact.Scheme {
-		case "mailto":
-			start := ra.clk.Now()
-			ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
-			problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
-			ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
-			if problem != nil {
-				ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
-				return problem
-			}
-			ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
-		default:
-			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
-			return
+		if contact.Scheme != "mailto" {
+			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
 		}
+
+		start := ra.clk.Now()
+		ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
+		problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
+		ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
+		if problem != nil {
+			ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
+			return problem
+		}
+		ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
 	}
 
-	return
+	return nil
 }
 
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
@@ -362,7 +375,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 
 	// Check each challenge for sanity.
 	for _, challenge := range authz.Challenges {
-		if !challenge.IsSane(false) {
+		if !challenge.IsSaneForClientOffer() {
 			// InternalServerError because we generated these challenges, they should
 			// be OK.
 			err = core.InternalServerError(fmt.Sprintf("Challenge didn't pass sanity check: %+v", challenge))
@@ -749,17 +762,38 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		return
 	}
 
-	// Copy information over that the client is allowed to supply
 	authz = base
 	if challengeIndex >= len(authz.Challenges) {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid challenge index: %d", challengeIndex))
 		return
 	}
 
-	authz.Challenges[challengeIndex].KeyAuthorization = response.KeyAuthorization
+	ch := &authz.Challenges[challengeIndex]
 
-	// At this point, the challenge should be sane as a complete challenge
-	if !authz.Challenges[challengeIndex].IsSane(true) {
+	// Copy information over that the client is allowed to supply
+	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
+
+	if response.Type != "" && ch.Type != response.Type {
+		// TODO(riking): Check the rate on this, uncomment error return if negligible
+		ra.stats.Inc("RA.StartChallengeWrongType", 1, 1.0)
+		// err = core.MalformedRequestError(fmt.Sprintf("Invalid update to challenge - provided type was %s but actual type is %s", response.Type, ch.Type))
+		// return
+	}
+
+	// Recompute the key authorization field provided by the client and
+	// check it against the value provided
+	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization()
+	if err != nil {
+		err = core.InternalServerError("Could not compute expected key authorization value")
+		return
+	}
+	if expectedKeyAuthorization != ch.ProvidedKeyAuthorization {
+		err = core.MalformedRequestError("Response does not complete challenge")
+		return
+	}
+
+	// Double check before sending to VA
+	if !ch.IsSaneForValidation() {
 		err = core.MalformedRequestError("Response does not complete challenge")
 		return
 	}
@@ -782,7 +816,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	// Reject the update if the challenge in question was created
 	// with a different account key
-	if !core.KeyDigestEquals(reg.Key, authz.Challenges[challengeIndex].AccountKey) {
+	if !core.KeyDigestEquals(reg.Key, ch.AccountKey) {
 		err = core.UnauthorizedError("Challenge cannot be updated with a different key")
 		return
 	}
@@ -801,8 +835,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 			if p, ok := err.(*probs.ProblemDetails); ok {
 				prob = p
 			} else if err != nil {
-				prob = probs.ServerInternal("Could not communicate with RA")
-				ra.log.Err(fmt.Sprintf("Could not communicate with RA: %s", err))
+				prob = probs.ServerInternal("Could not communicate with VA")
+				ra.log.Err(fmt.Sprintf("Could not communicate with VA: %s", err))
 			}
 
 			// Save the updated records
