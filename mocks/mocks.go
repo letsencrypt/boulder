@@ -327,6 +327,11 @@ func (sa *StorageAuthority) CountPendingAuthorizations(_ int64) (int, error) {
 	return 0, nil
 }
 
+// GetAuthorizationsByRegID is a mock
+func (sa *StorageAuthority) GetAuthorizationsByRegID(_ int64, _ time.Time, _ int64) ([]string, error) {
+	return nil, nil
+}
+
 // Publisher is a mock
 type Publisher struct {
 	// empty

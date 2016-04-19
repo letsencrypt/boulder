@@ -42,6 +42,8 @@ type Config struct {
 
 		ShutdownStopTimeout string
 		ShutdownKillTimeout string
+
+		UseAuthList bool
 	}
 
 	CA CAConfig

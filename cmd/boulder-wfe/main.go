@@ -74,11 +74,12 @@ func main() {
 		cmd.FailOnError(err, "Couldn't parse shutdown stop timeout")
 		wfe.ShutdownKillTimeout, err = time.ParseDuration(c.WFE.ShutdownKillTimeout)
 		cmd.FailOnError(err, "Couldn't parse shutdown kill timeout")
-
 		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
 		logger.Info(fmt.Sprintf("WFE using key policy: %#v", c.KeyPolicy()))
+
+		wfe.UseAuthList = c.WFE.UseAuthList
 
 		go cmd.ProfileCmd("WFE", stats)
 

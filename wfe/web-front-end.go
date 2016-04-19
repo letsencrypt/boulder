@@ -40,6 +40,7 @@ const (
 	TermsPath      = "/terms"
 	IssuerPath     = "/acme/issuer-cert"
 	BuildIDPath    = "/build"
+	AuthListPath   = "/acme/auth-list/"
 )
 
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
@@ -62,6 +63,7 @@ type WebFrontEndImpl struct {
 	ChallengeBase string
 	NewCert       string
 	CertBase      string
+	AuthListBase  string
 
 	// JSON encoded endpoint directory
 	DirectoryJSON []byte
@@ -90,6 +92,9 @@ type WebFrontEndImpl struct {
 	// Graceful shutdown settings
 	ShutdownStopTimeout time.Duration
 	ShutdownKillTimeout time.Duration
+
+	// RPC Config gating
+	UseAuthList bool
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -185,6 +190,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.ChallengeBase = wfe.BaseURL + ChallengePath
 	wfe.NewCert = wfe.BaseURL + NewCertPath
 	wfe.CertBase = wfe.BaseURL + CertPath
+	wfe.AuthListBase = wfe.BaseURL + AuthListPath
 
 	// Only generate directory once
 	directory := map[string]string{
@@ -212,6 +218,9 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.HandleFunc(m, TermsPath, wfe.Terms, "GET")
 	wfe.HandleFunc(m, IssuerPath, wfe.Issuer, "GET")
 	wfe.HandleFunc(m, BuildIDPath, wfe.BuildID, "GET")
+	if wfe.UseAuthList {
+		wfe.HandleFunc(m, AuthListPath, wfe.AuthList, "GET")
+	}
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
@@ -524,7 +533,10 @@ func (wfe *WebFrontEndImpl) NewRegistration(logEvent *requestEvent, response htt
 	}
 	logEvent.Requester = reg.ID
 	logEvent.Contacts = reg.Contact
-
+	if wfe.UseAuthList {
+		// Add URL for Auth-list to Registration object
+		reg.Authorizations = fmt.Sprintf("%s%d", wfe.AuthListBase, reg.ID)
+	}
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
 	regURL := fmt.Sprintf("%s%d", wfe.RegBase, reg.ID)
@@ -1018,6 +1030,11 @@ func (wfe *WebFrontEndImpl) Registration(logEvent *requestEvent, response http.R
 		return
 	}
 
+	// Add URL for Auth-list to Registration object
+	if wfe.UseAuthList {
+		updatedReg.Authorizations = wfe.AuthListBase + idStr
+	}
+
 	jsonReply, err := json.Marshal(updatedReg)
 	if err != nil {
 		// ServerInternal because we just generated the reg, it should be OK
@@ -1211,4 +1228,85 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	}
 	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
 	response.Header().Set("Access-Control-Max-Age", "86400")
+}
+
+// AuthList is used by Clients to retrieve a list of
+func (wfe *WebFrontEndImpl) AuthList(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+	var expiry time.Time
+	var limit int64 = 100
+	// Request Format /acme/auth-list/regID/expiresAfter with expiresAfter being
+	// optional and defaulting to now
+	slug := strings.Split(request.URL.Path[len(AuthListPath):], "/")
+	if len(slug) < 1 || len(slug) > 2 {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid request Format"), nil)
+		return
+	}
+	// Parse regID
+	id, err := strconv.ParseInt(slug[0], 10, 64)
+	if err != nil {
+		logEvent.AddError("registration ID must be an integer, was %#v", slug[0])
+		wfe.sendError(response, logEvent, probs.Malformed("Registration ID must be an integer"), err)
+		return
+	} else if id <= 0 {
+		msg := fmt.Sprintf("Registration ID must be a positive non-zero integer, was %d", id)
+		logEvent.AddError(msg)
+		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
+		return
+	}
+	// Parse expiresAfter if present
+	if len(slug) == 2 {
+		exp, err := strconv.ParseInt(slug[1], 10, 64)
+		if err != nil {
+			logEvent.AddError("expiry must be an integer, was %#v", slug[1])
+			wfe.sendError(response, logEvent, probs.Malformed("Registration ID must be an integer"), err)
+			return
+		} else if exp <= 0 {
+			msg := fmt.Sprintf("expiry must be a positive non-zero integer, was %d", id)
+			logEvent.AddError(msg)
+			wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
+			return
+		}
+		expiry = time.Unix(exp, 0)
+	}
+	// Get list of AuthIDs
+	authIDs, err := wfe.SA.GetAuthorizationsByRegID(id, expiry, limit)
+	if err != nil {
+		logEvent.AddError("No such authorizations at id %s", id)
+		wfe.sendError(response, logEvent, probs.ServerInternal("unable to find Authorizations"), err)
+		return
+	}
+	// Set link rel next to url with expiresAfter being the expiry of the last
+	// authorization if limit is reached
+	if int64(len(authIDs)) == limit {
+		auth, err := wfe.SA.GetAuthorization(authIDs[limit-1])
+		if err != nil {
+			logEvent.AddError("Unable to get authorization: %s", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("unable to get Authorization"), err)
+			return
+		}
+		if auth.Expires != nil {
+			response.Header().Add("Link", link(fmt.Sprintf("%s%d/%d", wfe.AuthListBase, id, auth.Expires.Unix()), "next"))
+		}
+	}
+
+	var authlist struct {
+		Authorizations []string `json:"authorizations"`
+	}
+	authlist.Authorizations = make([]string, len(authIDs))
+	for i, authID := range authIDs {
+		authlist.Authorizations[i] = wfe.AuthzBase + authID
+	}
+
+	jsonReply, err := json.Marshal(authlist)
+	if err != nil {
+		logEvent.AddError("Failed to JSON marshal auth-list: %s", err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to JSON marshal auth-list"), err)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json")
+	response.WriteHeader(http.StatusOK)
+	if _, err = response.Write(jsonReply); err != nil {
+		logEvent.AddError(err.Error())
+		wfe.log.Warning(fmt.Sprintf("Could not write response: %s", err))
+	}
 }

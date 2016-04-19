@@ -156,6 +156,9 @@ type Registration struct {
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty"`
 
+	// URL for list of all authorizations
+	Authorizations string `json:"authorizations,omitempty"`
+
 	// InitialIP is the IP address from which the registration was created
 	InitialIP net.IP `json:"initialIp"`
 

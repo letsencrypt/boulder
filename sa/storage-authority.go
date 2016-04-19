@@ -969,3 +969,38 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(names []string) (bool, error) {
 	)
 	return count > 0, err
 }
+
+// GetAuthorizationsByRegID returns the authorization IDs matching the regID given.
+// The number of IDs returned is dependent on the limit variable. If exiresAfter is
+// before now it willl return the list as if now was given
+func (ssa *SQLStorageAuthority) GetAuthorizationsByRegID(regID int64, expiresAfter time.Time, limit int64) ([]string, error) {
+
+	expiryTime := ssa.clk.Now()
+	if expiresAfter.After(expiryTime) {
+		expiryTime = expiresAfter
+	}
+
+	registrationMap := map[string]interface{}{"regID": regID, "time": expiryTime, "max": limit}
+
+	var ids []struct {
+		ID      string
+		Expires time.Time
+	}
+	_, err := ssa.dbMap.Select(&ids,
+		`(SELECT id, expires FROM authz WHERE registrationID = :regID AND status = 'valid' AND expires > :time LIMIT :max)
+		UNION
+		(SELECT id, expires FROM pendingAuthorizations WHERE registrationID = :regID AND expires > :time LIMIT :max)
+		ORDER BY expires ASC LIMIT :max`,
+		registrationMap)
+
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]string, len(ids))
+	for n, id := range ids {
+		ret[n] = id.ID
+	}
+
+	return ret, nil
+}
