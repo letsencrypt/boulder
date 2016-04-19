@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/miekg/dns"
+	"golang.org/x/net/context"
 )
 
 var (

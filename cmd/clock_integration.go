@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 	blog "github.com/letsencrypt/boulder/log"
 )
 

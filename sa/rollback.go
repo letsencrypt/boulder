@@ -7,7 +7,7 @@ package sa
 
 import (
 	"fmt"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	gorp "gopkg.in/gorp.v1"
 )
 
 // RollbackError is a combination of a database error and the error, if any,

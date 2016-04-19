@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/cactus/go-statsd-client/statsd"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
 	pb "github.com/letsencrypt/boulder/cmd/caa-checker/proto"

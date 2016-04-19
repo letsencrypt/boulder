@@ -16,11 +16,11 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
+	"github.com/cactus/go-statsd-client/statsd"
+	cfocsp "github.com/cloudflare/cfssl/ocsp"
+	"github.com/facebookgo/httpdown"
+	"github.com/jmhodges/clock"
+	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
