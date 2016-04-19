@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
-	ctClient "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go/client"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	ct "github.com/google/certificate-transparency/go"
+	ctClient "github.com/google/certificate-transparency/go/client"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -95,18 +95,12 @@ func (pub GRPCWrapper) SubmitToCT(ctx context.Context, request *pubPB.Request) (
 	if request == nil || request.Der == nil {
 		return nil, errors.New("incomplete SubmitToCT gRPC message")
 	}
-	return &pubPB.Empty{}, pub.Inner.submitToCT(ctx, request.Der)
+	return &pubPB.Empty{}, pub.Inner.SubmitToCT(ctx, request.Der)
 }
 
 // SubmitToCT will submit the certificate represented by certDER to any CT
 // logs configured in pub.CT.Logs (AMQP RPC method).
-func (pub *Impl) SubmitToCT(der []byte) error {
-	ctx, cancel := context.WithTimeout(context.Background(), pub.submissionTimeout)
-	defer cancel()
-	return pub.submitToCT(ctx, der)
-}
-
-func (pub *Impl) submitToCT(ctx context.Context, der []byte) error {
+func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
 		pub.log.Err(fmt.Sprintf("Failed to parse certificate: %s", err))
@@ -144,7 +138,7 @@ func (pub *Impl) submitToCT(ctx context.Context, der []byte) error {
 			continue
 		}
 
-		err = pub.SA.AddSCTReceipt(internalSCT)
+		err = pub.SA.AddSCTReceipt(ctx, internalSCT)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.Err(fmt.Sprintf("Failed to store SCT receipt in database: %s", err))

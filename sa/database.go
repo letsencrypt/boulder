@@ -11,10 +11,10 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	gorp "gopkg.in/gorp.v1"
 )
 
 // NewDbMap creates the root gorp mapping object. Create one of these for each

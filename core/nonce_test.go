@@ -7,8 +7,9 @@ package core
 
 import (
 	"fmt"
-	"github.com/letsencrypt/boulder/test"
 	"testing"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestValidNonce(t *testing.T) {

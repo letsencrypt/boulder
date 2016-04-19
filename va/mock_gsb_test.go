@@ -4,7 +4,7 @@
 package va
 
 import (
-	gomock "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/golang/mock/gomock"
+	gomock "github.com/golang/mock/gomock"
 )
 
 // Mock of SafeBrowsing interface

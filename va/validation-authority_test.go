@@ -25,10 +25,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
+	"github.com/square/go-jose"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
@@ -67,6 +67,8 @@ var accountKey = &jose.JsonWebKey{Key: TheKey.Public()}
 var ident = core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "localhost"}
 
 var log = blog.UseMock()
+
+var ctx = context.Background()
 
 // All paths that get assigned to tokens MUST be valid tokens
 const expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
@@ -153,7 +155,7 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 
 func tlssniSrv(t *testing.T, chall core.Challenge) *httptest.Server {
 	h := sha256.New()
-	h.Write([]byte(chall.KeyAuthorization.String()))
+	h.Write([]byte(chall.ProvidedKeyAuthorization))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.acme.invalid", Z[:32], Z[32:])
 
@@ -224,7 +226,7 @@ func TestHTTP(t *testing.T) {
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{HTTPPort: badPort}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
-	_, prob := va.validateHTTP01(context.Background(), ident, chall)
+	_, prob := va.validateHTTP01(ctx, ident, chall)
 	if prob == nil {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
@@ -235,7 +237,7 @@ func TestHTTP(t *testing.T) {
 
 	log.Clear()
 	t.Logf("Trying to validate: %+v\n", chall)
-	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	_, prob = va.validateHTTP01(ctx, ident, chall)
 	if prob != nil {
 		t.Errorf("Unexpected failure in HTTP validation: %s", prob)
 	}
@@ -243,7 +245,7 @@ func TestHTTP(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, path404)
-	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	_, prob = va.validateHTTP01(ctx, ident, chall)
 	if prob == nil {
 		t.Fatalf("Should have found a 404 for the challenge.")
 	}
@@ -254,7 +256,7 @@ func TestHTTP(t *testing.T) {
 	setChallengeToken(&chall, pathWrongToken)
 	// The "wrong token" will actually be the expectedToken.  It's wrong
 	// because it doesn't match pathWrongToken.
-	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	_, prob = va.validateHTTP01(ctx, ident, chall)
 	if prob == nil {
 		t.Fatalf("Should have found the wrong token value.")
 	}
@@ -263,7 +265,7 @@ func TestHTTP(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathMoved)
-	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	_, prob = va.validateHTTP01(ctx, ident, chall)
 	if prob != nil {
 		t.Fatalf("Failed to follow 301 redirect")
 	}
@@ -271,7 +273,7 @@ func TestHTTP(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
-	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	_, prob = va.validateHTTP01(ctx, ident, chall)
 	if prob != nil {
 		t.Fatalf("Failed to follow 302 redirect")
 	}
@@ -279,13 +281,13 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/`+pathMoved+`" to ".*/`+pathValid+`"`)), 1)
 
 	ipIdentifier := core.AcmeIdentifier{Type: core.IdentifierType("ip"), Value: "127.0.0.1"}
-	_, prob = va.validateHTTP01(context.Background(), ipIdentifier, chall)
+	_, prob = va.validateHTTP01(ctx, ipIdentifier, chall)
 	if prob == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 
-	_, prob = va.validateHTTP01(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	_, prob = va.validateHTTP01(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
 	if prob == nil {
 		t.Fatalf("Domain name is invalid.")
 	}
@@ -293,7 +295,7 @@ func TestHTTP(t *testing.T) {
 
 	setChallengeToken(&chall, pathWaitLong)
 	started := time.Now()
-	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	_, prob = va.validateHTTP01(ctx, ident, chall)
 	took := time.Since(started)
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
@@ -318,7 +320,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathMoved)
-	_, prob := va.validateHTTP01(context.Background(), ident, chall)
+	_, prob := va.validateHTTP01(ctx, ident, chall)
 	if prob != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, prob)
 	}
@@ -327,7 +329,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
-	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	_, prob = va.validateHTTP01(ctx, ident, chall)
 	if prob != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, prob)
 	}
@@ -337,14 +339,14 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookupInvalid)
-	_, err = va.validateHTTP01(context.Background(), ident, chall)
+	_, err = va.validateHTTP01(ctx, ident, chall)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`No IPv4 addresses found for invalid.invalid`)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookup)
-	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	_, prob = va.validateHTTP01(ctx, ident, chall)
 	if prob != nil {
 		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, prob)
 	}
@@ -354,7 +356,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathRedirectPort)
-	_, err = va.validateHTTP01(context.Background(), ident, chall)
+	_, err = va.validateHTTP01(ctx, ident, chall)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`redirect from ".*/port-redirect" to ".*other.valid:8080/path"`)), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
@@ -374,7 +376,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	log.Clear()
-	_, prob := va.validateHTTP01(context.Background(), ident, chall)
+	_, prob := va.validateHTTP01(ctx, ident, chall)
 	if prob == nil {
 		t.Fatalf("Challenge should have failed for %s", chall.Token)
 	}
@@ -394,13 +396,13 @@ func TestHTTPRedirectUserAgent(t *testing.T) {
 	va.UserAgent = rejectUserAgent
 
 	setChallengeToken(&chall, pathMoved)
-	_, prob := va.validateHTTP01(context.Background(), ident, chall)
+	_, prob := va.validateHTTP01(ctx, ident, chall)
 	if prob == nil {
 		t.Fatalf("Challenge with rejectUserAgent should have failed (%s).", pathMoved)
 	}
 
 	setChallengeToken(&chall, pathFound)
-	_, prob = va.validateHTTP01(context.Background(), ident, chall)
+	_, prob = va.validateHTTP01(ctx, ident, chall)
 	if prob == nil {
 		t.Fatalf("Challenge with rejectUserAgent should have failed (%s).", pathFound)
 	}
@@ -435,14 +437,14 @@ func TestTLSSNI(t *testing.T) {
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
 	log.Clear()
-	_, prob := va.validateTLSSNI01(context.Background(), ident, chall)
+	_, prob := va.validateTLSSNI01(ctx, ident, chall)
 	if prob != nil {
 		t.Fatalf("Unexpected failre in validateTLSSNI01: %s", prob)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost \[using 127.0.0.1\]: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
-	_, prob = va.validateTLSSNI01(context.Background(), core.AcmeIdentifier{
+	_, prob = va.validateTLSSNI01(ctx, core.AcmeIdentifier{
 		Type:  core.IdentifierType("ip"),
 		Value: net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", port)),
 	}, chall)
@@ -452,7 +454,7 @@ func TestTLSSNI(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 
 	log.Clear()
-	_, prob = va.validateTLSSNI01(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
+	_, prob = va.validateTLSSNI01(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "always.invalid"}, chall)
 	if prob == nil {
 		t.Fatalf("Domain name was supposed to be invalid.")
 	}
@@ -460,12 +462,11 @@ func TestTLSSNI(t *testing.T) {
 
 	// Need to create a new authorized keys object to get an unknown SNI (from the signature value)
 	chall.Token = core.NewToken()
-	keyAuthorization, _ := core.NewKeyAuthorization(chall.Token, accountKey)
-	chall.KeyAuthorization = &keyAuthorization
+	chall.ProvidedKeyAuthorization, _ = chall.ExpectedKeyAuthorization()
 
 	log.Clear()
 	started := time.Now()
-	_, prob = va.validateTLSSNI01(context.Background(), ident, chall)
+	_, prob = va.validateTLSSNI01(ctx, ident, chall)
 	took := time.Since(started)
 	// Check that the HTTP connection times out after 5 seconds and doesn't block for 10 seconds
 	test.Assert(t, (took > (time.Second * 5)), "HTTP timed out before 5 seconds")
@@ -478,7 +479,7 @@ func TestTLSSNI(t *testing.T) {
 
 	// Take down validation server and check that validation fails.
 	hs.Close()
-	_, err = va.validateTLSSNI01(context.Background(), ident, chall)
+	_, err = va.validateTLSSNI01(ctx, ident, chall)
 	if err == nil {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
@@ -506,7 +507,7 @@ func TestTLSError(t *testing.T) {
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{TLSPort: port}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
-	_, prob := va.validateTLSSNI01(context.Background(), ident, chall)
+	_, prob := va.validateTLSSNI01(ctx, ident, chall)
 	if prob == nil {
 		t.Fatalf("TLS validation should have failed: What cert was used?")
 	}
@@ -534,7 +535,7 @@ func TestValidateHTTP(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(ctx, authz, 0)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -549,8 +550,7 @@ func createChallenge(challengeType string) core.Challenge {
 		AccountKey:       accountKey,
 	}
 
-	keyAuthorization, _ := core.NewKeyAuthorization(chall.Token, accountKey)
-	chall.KeyAuthorization = &keyAuthorization
+	chall.ProvidedKeyAuthorization, _ = chall.ExpectedKeyAuthorization()
 
 	return chall
 }
@@ -560,13 +560,11 @@ func createChallenge(challengeType string) core.Challenge {
 func setChallengeToken(ch *core.Challenge, token string) {
 	ch.Token = token
 
-	keyAuthorization, err := core.NewKeyAuthorization(token, ch.AccountKey)
+	ka, err := ch.ExpectedKeyAuthorization()
 	if err != nil {
 		panic(err)
 	}
-
-	ch.KeyAuthorization = &keyAuthorization
-	return
+	ch.ProvidedKeyAuthorization = ka
 }
 
 func TestValidateTLSSNI01(t *testing.T) {
@@ -589,7 +587,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(ctx, authz, 0)
 
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -611,7 +609,7 @@ func TestValidateTLSSNINotSane(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(ctx, authz, 0)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -635,7 +633,7 @@ func TestUpdateValidations(t *testing.T) {
 	}
 
 	started := time.Now()
-	err := va.UpdateValidations(authz, 0)
+	err := va.UpdateValidations(ctx, authz, 0)
 	if err != nil {
 		test.AssertNotError(t, err, "UpdateValidations failed")
 	}
@@ -650,7 +648,7 @@ func TestCAATimeout(t *testing.T) {
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
-	err := va.checkCAA(context.Background(), core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
+	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
 	}
@@ -696,7 +694,7 @@ func TestCAAChecking(t *testing.T) {
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	va.IssuerDomain = "letsencrypt.org"
 	for _, caaTest := range tests {
-		present, valid, err := va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
+		present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		if err != nil {
 			t.Errorf("CheckCAARecords error for %s: %s", caaTest.Domain, err)
 		}
@@ -708,22 +706,22 @@ func TestCAAChecking(t *testing.T) {
 		}
 	}
 
-	present, valid, err := va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	test.AssertError(t, err, "servfail.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
+	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.com"})
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.com")
 	}
 
-	present, valid, err = va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
+	present, valid, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
 	test.AssertError(t, err, "servfail.present.com")
 	test.Assert(t, !present, "Present should be false")
 	test.Assert(t, !valid, "Valid should be false")
 
-	_, _, err = va.checkCAARecords(context.Background(), core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
+	_, _, err = va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: "servfail.present.com"})
 	if err == nil {
 		t.Errorf("Should have returned error on CAA lookup, but did not: %s", "servfail.present.com")
 	}
@@ -744,7 +742,7 @@ func TestDNSValidationFailure(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(ctx, authz, 0)
 
 	t.Logf("Resulting Authz: %+v", authz)
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
@@ -759,6 +757,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	}
 
 	chalDNS := core.DNSChallenge01(accountKey)
+	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
 
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
@@ -773,7 +772,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	mockRA := &MockRegistrationAuthority{}
 	va.RA = mockRA
 
-	va.validate(context.Background(), authz, 0)
+	va.validate(ctx, authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -793,17 +792,26 @@ func TestDNSValidationNotSane(t *testing.T) {
 	chal1 := core.DNSChallenge01(accountKey)
 	chal1.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
 
+	chal2 := core.DNSChallenge01(accountKey)
+	chal2.ProvidedKeyAuthorization = ""
+
+	chal3 := core.DNSChallenge01(accountKey)
+	chal3.ProvidedKeyAuthorization = "a.a"
+
 	var authz = core.Authorization{
 		ID:             core.NewToken(),
 		RegistrationID: 1,
 		Identifier:     ident,
-		Challenges:     []core.Challenge{chal0, chal1},
+		Challenges:     []core.Challenge{chal0, chal1, chal2, chal3},
 	}
 
 	for i := 0; i < len(authz.Challenges); i++ {
-		va.validate(context.Background(), authz, i)
+		va.validate(ctx, authz, i)
 		test.AssertEquals(t, authz.Challenges[i].Status, core.StatusInvalid)
 		test.AssertEquals(t, authz.Challenges[i].Error.Type, probs.MalformedProblem)
+		if !strings.Contains(authz.Challenges[i].Error.Error(), "Challenge failed sanity check.") {
+			t.Errorf("Got wrong error: %s", authz.Challenges[i].Error)
+		}
 	}
 }
 
@@ -826,7 +834,7 @@ func TestDNSValidationServFail(t *testing.T) {
 		Identifier:     badIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(ctx, authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -849,7 +857,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(ctx, authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
@@ -867,8 +875,7 @@ func TestDNSValidationOK(t *testing.T) {
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
 
-	keyAuthorization, _ := core.NewKeyAuthorization(chalDNS.Token, accountKey)
-	chalDNS.KeyAuthorization = &keyAuthorization
+	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
 
 	goodIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
@@ -881,7 +888,7 @@ func TestDNSValidationOK(t *testing.T) {
 		Identifier:     goodIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(ctx, authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
@@ -898,8 +905,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
 
-	keyAuthorization, _ := core.NewKeyAuthorization(chalDNS.Token, accountKey)
-	chalDNS.KeyAuthorization = &keyAuthorization
+	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
 
 	goodIdent := core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
@@ -912,7 +918,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 		Identifier:     goodIdent,
 		Challenges:     []core.Challenge{chalDNS},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(ctx, authz, 0)
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
@@ -950,7 +956,7 @@ func TestDNSValidationLive(t *testing.T) {
 		Challenges:     []core.Challenge{goodChalDNS},
 	}
 
-	va.validate(context.Background(), authzGood, 0)
+	va.validate(ctx, authzGood, 0)
 
 	if authzGood.Challenges[0].Status != core.StatusValid {
 		t.Logf("TestDNSValidationLive on Good did not succeed.")
@@ -967,7 +973,7 @@ func TestDNSValidationLive(t *testing.T) {
 		Challenges:     []core.Challenge{badChalDNS},
 	}
 
-	va.validate(context.Background(), authzBad, 0)
+	va.validate(ctx, authzBad, 0)
 	if authzBad.Challenges[0].Status != core.StatusInvalid {
 		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
 	}
@@ -994,7 +1000,7 @@ func TestCAAFailure(t *testing.T) {
 		Identifier:     ident,
 		Challenges:     []core.Challenge{chall},
 	}
-	va.validate(context.Background(), authz, 0)
+	va.validate(ctx, authz, 0)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
@@ -1003,35 +1009,35 @@ type MockRegistrationAuthority struct {
 	lastAuthz *core.Authorization
 }
 
-func (ra *MockRegistrationAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
+func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
 	return reg, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(authz core.Authorization, regID int64) (core.Authorization, error) {
+func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, authz core.Authorization, regID int64) (core.Authorization, error) {
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(req core.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req core.CertificateRequest, regID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 
-func (ra *MockRegistrationAuthority) UpdateRegistration(reg core.Registration, updated core.Registration) (core.Registration, error) {
+func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, reg core.Registration, updated core.Registration) (core.Registration, error) {
 	return reg, nil
 }
 
-func (ra *MockRegistrationAuthority) UpdateAuthorization(authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
+func (ra *MockRegistrationAuthority) UpdateAuthorization(ctx context.Context, authz core.Authorization, foo int, challenge core.Challenge) (core.Authorization, error) {
 	return authz, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(cert x509.Certificate, reason core.RevocationCode, reg int64) error {
+func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, reg int64) error {
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(cert x509.Certificate, reason core.RevocationCode, user string) error {
+func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, reason core.RevocationCode, user string) error {
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) OnValidationUpdate(authz core.Authorization) error {
+func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, authz core.Authorization) error {
 	ra.lastAuthz = &authz
 	return nil
 }

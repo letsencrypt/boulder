@@ -21,11 +21,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
+	"github.com/miekg/dns"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
@@ -354,27 +354,27 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	body, validationRecords, err := va.fetchHTTP(ctx, identifier, path, false, challenge)
-	if err != nil {
-		return validationRecords, err
+	body, validationRecords, prob := va.fetchHTTP(ctx, identifier, path, false, challenge)
+	if prob != nil {
+		return validationRecords, prob
 	}
 
 	payload := strings.TrimRight(string(body), whitespaceCutset)
 
-	// Parse body as a key authorization object
-	serverKeyAuthorization, authErr := core.NewKeyAuthorizationFromString(payload)
-	if authErr != nil {
-		va.log.Info(fmt.Sprintf("Couldn't parse KeyAuthorization from response from %s. err=[%#v] errStr=[%s]", identifier, authErr, authErr))
+	// Check that the key authorization matches
+	expectedKeyAuth, err := challenge.ExpectedKeyAuthorization()
+	if err != nil {
+		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
+		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
 		return validationRecords, &probs.ProblemDetails{
-			Type:   probs.UnauthorizedProblem,
-			Detail: fmt.Sprintf("Error parsing key authorization file: %s", authErr.Error()),
+			Type:   probs.ServerInternalProblem,
+			Detail: errString,
 		}
 	}
 
-	// Check that the account key for this challenge is authorized by this object
-	if !serverKeyAuthorization.Match(challenge.Token, challenge.AccountKey) {
+	if expectedKeyAuth != payload {
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
-			challenge.KeyAuthorization.String(), string(body))
+			expectedKeyAuth, string(body))
 		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
 		return validationRecords, &probs.ProblemDetails{
 			Type:   probs.UnauthorizedProblem,
@@ -396,7 +396,16 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 
 	// Compute the digest that will appear in the certificate
 	h := sha256.New()
-	h.Write([]byte(challenge.KeyAuthorization.String()))
+	ka, err := challenge.ExpectedKeyAuthorization()
+	if err != nil {
+		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
+		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
+		return nil, &probs.ProblemDetails{
+			Type:   probs.MalformedProblem,
+			Detail: errString,
+		}
+	}
+	h.Write([]byte(ka))
 	Z := hex.EncodeToString(h.Sum(nil))
 	ZName := fmt.Sprintf("%s.%s.%s", Z[:32], Z[32:], core.TLSSNISuffix)
 
@@ -436,7 +445,16 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 
 	// Compute the digest of the key authorization file
 	h := sha256.New()
-	h.Write([]byte(challenge.KeyAuthorization.String()))
+	ka, err := challenge.ExpectedKeyAuthorization()
+	if err != nil {
+		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
+		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
+		return nil, &probs.ProblemDetails{
+			Type:   probs.MalformedProblem,
+			Detail: errString,
+		}
+	}
+	h.Write([]byte(ka))
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	// Look for the required record in the DNS
@@ -469,7 +487,6 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 	// Check CAA records for the requested identifier
 	present, valid, err := va.checkCAARecords(ctx, identifier)
 	if err != nil {
-		va.log.Warning(fmt.Sprintf("Problem checking CAA: %s", err))
 		return bdns.ProblemDetailsFromDNSError(err)
 	}
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
@@ -519,7 +536,8 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 }
 
 // Overall validation process
-
+//
+// TODO(#1167): remove, functionality moved to RA
 func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Authorization, challengeIndex int) {
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
@@ -527,8 +545,13 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 		RequestTime: va.clk.Now(),
 	}
 	challenge := &authz.Challenges[challengeIndex]
+
+	var validationRecords []core.ValidationRecord
+	var prob *probs.ProblemDetails
+
 	vStart := va.clk.Now()
-	validationRecords, prob := va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
+
+	validationRecords, prob = va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
 
 	challenge.ValidationRecord = validationRecords
 	if prob != nil {
@@ -552,7 +575,7 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 
 	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
 
-	err := va.RA.OnValidationUpdate(authz)
+	err := va.RA.OnValidationUpdate(ctx, authz)
 	if err != nil {
 		va.log.Err(fmt.Sprintf("va: unable to communicate updated authz [%d] to RA: %q authz=[%#v]", authz.RegistrationID, err, authz))
 	}
@@ -582,7 +605,7 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, 
 }
 
 func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if !challenge.IsSane(true) {
+	if !challenge.IsSaneForValidation() {
 		return nil, &probs.ProblemDetails{
 			Type:   probs.MalformedProblem,
 			Detail: fmt.Sprintf("Challenge failed sanity check."),
@@ -606,9 +629,9 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 // goroutines.
 //
 // TODO(#1167): remove this method
-func (va *ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
+func (va *ValidationAuthorityImpl) UpdateValidations(ctx context.Context, authz core.Authorization, challengeIndex int) error {
 	// TODO(#1292): add a proper deadline here
-	go va.validate(context.TODO(), authz, challengeIndex)
+	go va.validate(ctx, authz, challengeIndex)
 	return nil
 }
 
@@ -616,7 +639,7 @@ func (va *ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, c
 // updated Challenge.
 //
 // TODO(#1626): remove authz parameter
-func (va *ValidationAuthorityImpl) PerformValidation(domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
@@ -625,7 +648,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(domain string, challenge co
 	}
 	vStart := va.clk.Now()
 
-	records, prob := va.validateChallengeAndCAA(context.TODO(), core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
+	records, prob := va.validateChallengeAndCAA(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
 
 	logEvent.ValidationRecords = records
 	resultStatus := core.StatusInvalid
