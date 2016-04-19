@@ -80,7 +80,6 @@ type Config struct {
 
 	VA struct {
 		ServiceConfig
-		GRPC GRPCServerConfig
 
 		UserAgent string
 
@@ -253,6 +252,7 @@ type ServiceConfig struct {
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
 	AMQP      *AMQPConfig
+	GRPC      *GRPCServerConfig
 }
 
 // DBConfig defines how to connect to a database. The connect string may be

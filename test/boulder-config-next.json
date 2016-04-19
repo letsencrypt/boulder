@@ -167,6 +167,16 @@
     "useNewVARPC": true,
     "debugAddr": "localhost:8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
+    "vaService": {
+      "serverAddress": "boulder:9092",
+      "serverIssuerPath": "test/grpc-creds/ca.pem",
+      "clientCertificatePath": "test/grpc-creds/client.pem",
+      "clientKeyPath": "test/grpc-creds/key.pem",
+      "timeout": "90s"
+    },
+    "_grpc": {
+      "address": "boulder:9093"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -221,6 +231,12 @@
         "keepalive": "30s",
         "maxFailures": 1,
         "proxies": []
+    },
+    "grpc": {
+      "address": "boulder:9092",
+      "serverCertificatePath": "test/grpc-creds/server.pem",
+      "serverKeyPath": "test/grpc-creds/key.pem",
+      "clientIssuerPath": "test/grpc-creds/ca.pem"
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",

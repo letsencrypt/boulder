@@ -100,8 +100,8 @@ func main() {
 		err = rpc.NewValidationAuthorityServer(vas, vai)
 		cmd.FailOnError(err, "Unable to setup VA RPC server")
 
-		if c.VA.GRPC.Address != "" {
-			s, l, err := bgrpc.NewServer(&c.VA.GRPC)
+		if c.VA.GRPC != nil {
+			s, l, err := bgrpc.NewServer(c.VA.GRPC)
 			cmd.FailOnError(err, "Unable to setup VA gRPC server")
 			err = rpc.RegisterValidationAuthorityGRPCServer(s, vai)
 			cmd.FailOnError(err, "Unable to register VA gRPC server")
