@@ -215,29 +215,6 @@ func NewKeyAuthorization(token string, key *jose.JsonWebKey) (KeyAuthorization, 
 	}, nil
 }
 
-// NewKeyAuthorizationFromString parses the string and composes a key authorization struct
-func NewKeyAuthorizationFromString(input string) (ka KeyAuthorization, err error) {
-	parts := strings.Split(input, ".")
-	if len(parts) != 2 {
-		err = fmt.Errorf("Invalid key authorization: %d parts", len(parts))
-		return
-	} else if !LooksLikeAToken(parts[0]) {
-		err = fmt.Errorf("Invalid key authorization: malformed token")
-		return
-	} else if !LooksLikeAToken(parts[1]) {
-		// Thumbprints have the same syntax as tokens in boulder
-		// Both are base64-encoded and 32 octets
-		err = fmt.Errorf("Invalid key authorization: malformed key thumbprint")
-		return
-	}
-
-	ka = KeyAuthorization{
-		Token:      parts[0],
-		Thumbprint: parts[1],
-	}
-	return
-}
-
 // String produces the string representation of a key authorization
 func (ka KeyAuthorization) String() string {
 	return ka.Token + "." + ka.Thumbprint
@@ -274,12 +251,19 @@ func (ka *KeyAuthorization) UnmarshalJSON(data []byte) (err error) {
 		return err
 	}
 
-	parsed, err := NewKeyAuthorizationFromString(str)
-	if err != nil {
-		return err
+	parts := strings.Split(str, ".")
+	if len(parts) != 2 {
+		return fmt.Errorf("Invalid key authorization: does not look like a key authorization")
+	} else if !LooksLikeAToken(parts[0]) {
+		return fmt.Errorf("Invalid key authorization: malformed token")
+	} else if !LooksLikeAToken(parts[1]) {
+		// Thumbprints have the same syntax as tokens in boulder
+		// Both are base64-encoded and 32 octets
+		return fmt.Errorf("Invalid key authorization: malformed key thumbprint")
 	}
 
-	*ka = parsed
+	ka.Token = parts[0]
+	ka.Thumbprint = parts[1]
 	return
 }
 
@@ -310,8 +294,13 @@ type Challenge struct {
 	// Used by http-01, tls-sni-01, and dns-01 challenges
 	Token string `json:"token,omitempty"` // Used by http-00, tls-sni-00, and dns-00 challenges
 
+	// The KeyAuthorization provided by the client to start validation of
+	// the challenge. Set during
+	//
+	//   POST /acme/authz/:authzid/:challid
+	//
 	// Used by http-01, tls-sni-01, and dns-01 challenges
-	KeyAuthorization *KeyAuthorization `json:"keyAuthorization,omitempty"`
+	ProvidedKeyAuthorization string `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
@@ -326,6 +315,16 @@ type Challenge struct {
 	// unauthorized key. See:
 	//   https://mailarchive.ietf.org/arch/msg/acme/F71iz6qq1o_QPVhJCV4dqWf-4Yc
 	AccountKey *jose.JsonWebKey `json:"accountKey,omitempty"`
+}
+
+// ExpectedKeyAuthorization computes the expected KeyAuthorization value for
+// the challenge.
+func (ch Challenge) ExpectedKeyAuthorization() (string, error) {
+	expectedKA, err := NewKeyAuthorization(ch.Token, ch.AccountKey)
+	if err != nil {
+		return "", err
+	}
+	return expectedKA.String(), nil
 }
 
 // RecordsSane checks the sanity of a ValidationRecord object before sending it
@@ -369,6 +368,22 @@ func (ch Challenge) RecordsSane() bool {
 	return true
 }
 
+// IsSaneForClientOffer checks the fields of a challenge object before it is
+// given to the client.
+//
+// This function is an alias of Challenge.IsSane(false).
+func (ch Challenge) IsSaneForClientOffer() bool {
+	return ch.IsSane(false)
+}
+
+// IsSaneForValidation checks the fields of a challenge object before it is
+// given to the VA.
+//
+// This function is an alias of Challenge.IsSane(false).
+func (ch Challenge) IsSaneForValidation() bool {
+	return ch.IsSane(true)
+}
+
 // IsSane checks the sanity of a challenge object before issued to the client
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
@@ -382,18 +397,22 @@ func (ch Challenge) IsSane(completed bool) bool {
 	}
 
 	// Before completion, the key authorization field should be empty
-	if !completed && ch.KeyAuthorization != nil {
+	if !completed && ch.ProvidedKeyAuthorization != "" {
 		return false
 	}
 
 	// If the challenge is completed, then there should be a key authorization,
 	// and it should match the challenge.
 	if completed {
-		if ch.KeyAuthorization == nil {
+		if ch.ProvidedKeyAuthorization == "" {
 			return false
 		}
 
-		if !ch.KeyAuthorization.Match(ch.Token, ch.AccountKey) {
+		expectedKA, err := ch.ExpectedKeyAuthorization()
+		if err != nil {
+			return false
+		}
+		if ch.ProvidedKeyAuthorization != expectedKA {
 			return false
 		}
 	}

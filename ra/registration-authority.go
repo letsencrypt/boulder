@@ -362,7 +362,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(request core.Authorization
 
 	// Check each challenge for sanity.
 	for _, challenge := range authz.Challenges {
-		if !challenge.IsSane(false) {
+		if !challenge.IsSaneForClientOffer() {
 			// InternalServerError because we generated these challenges, they should
 			// be OK.
 			err = core.InternalServerError(fmt.Sprintf("Challenge didn't pass sanity check: %+v", challenge))
@@ -750,17 +750,38 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 		return
 	}
 
-	// Copy information over that the client is allowed to supply
 	authz = base
 	if challengeIndex >= len(authz.Challenges) {
 		err = core.MalformedRequestError(fmt.Sprintf("Invalid challenge index: %d", challengeIndex))
 		return
 	}
 
-	authz.Challenges[challengeIndex].KeyAuthorization = response.KeyAuthorization
+	ch := &authz.Challenges[challengeIndex]
 
-	// At this point, the challenge should be sane as a complete challenge
-	if !authz.Challenges[challengeIndex].IsSane(true) {
+	// Copy information over that the client is allowed to supply
+	ch.ProvidedKeyAuthorization = response.ProvidedKeyAuthorization
+
+	if response.Type != "" && ch.Type != response.Type {
+		// TODO(riking): Check the rate on this, uncomment error return if negligible
+		ra.stats.Inc("RA.StartChallengeWrongType", 1, 1.0)
+		// err = core.MalformedRequestError(fmt.Sprintf("Invalid update to challenge - provided type was %s but actual type is %s", response.Type, ch.Type))
+		// return
+	}
+
+	// Recompute the key authorization field provided by the client and
+	// check it against the value provided
+	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization()
+	if err != nil {
+		err = core.InternalServerError("Could not compute expected key authorization value")
+		return
+	}
+	if expectedKeyAuthorization != ch.ProvidedKeyAuthorization {
+		err = core.MalformedRequestError("Response does not complete challenge")
+		return
+	}
+
+	// Double check before sending to VA
+	if !ch.IsSaneForValidation() {
 		err = core.MalformedRequestError("Response does not complete challenge")
 		return
 	}
@@ -783,7 +804,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 
 	// Reject the update if the challenge in question was created
 	// with a different account key
-	if !core.KeyDigestEquals(reg.Key, authz.Challenges[challengeIndex].AccountKey) {
+	if !core.KeyDigestEquals(reg.Key, ch.AccountKey) {
 		err = core.UnauthorizedError("Challenge cannot be updated with a different key")
 		return
 	}
@@ -801,8 +822,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 			if p, ok := err.(*probs.ProblemDetails); ok {
 				prob = p
 			} else if err != nil {
-				prob = probs.ServerInternal("Could not communicate with RA")
-				ra.log.Err(fmt.Sprintf("Could not communicate with RA: %s", err))
+				prob = probs.ServerInternal("Could not communicate with VA")
+				ra.log.Err(fmt.Sprintf("Could not communicate with VA: %s", err))
 			}
 
 			// Save the updated records
