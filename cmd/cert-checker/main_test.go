@@ -17,9 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/jmhodges/clock"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -28,8 +27,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
-
-var ctx = context.Background()
 
 func BenchmarkCheckCert(b *testing.B) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
@@ -69,7 +66,7 @@ func BenchmarkCheckCert(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		checker.checkCert(ctx, cert)
+		checker.checkCert(cert)
 	}
 }
 
@@ -122,7 +119,7 @@ func TestCheckCert(t *testing.T) {
 		Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match
 	}
 
-	problems := checker.checkCert(ctx, cert)
+	problems := checker.checkCert(cert)
 
 	problemsMap := map[string]int{
 		"Stored digest doesn't match certificate digest":                            1,
@@ -148,7 +145,7 @@ func TestCheckCert(t *testing.T) {
 
 	// Same settings as above, but the stored serial number in the DB is invalid.
 	cert.Serial = "not valid"
-	problems = checker.checkCert(ctx, cert)
+	problems = checker.checkCert(cert)
 	foundInvalidSerialProblem := false
 	for _, p := range problems {
 		if p == "Stored serial is invalid" {
@@ -171,7 +168,7 @@ func TestCheckCert(t *testing.T) {
 	cert.DER = goodCertDer
 	cert.Expires = parsed.NotAfter
 	cert.Issued = parsed.NotBefore
-	problems = checker.checkCert(ctx, cert)
+	problems = checker.checkCert(cert)
 	test.AssertEquals(t, len(problems), 0)
 }
 
@@ -209,7 +206,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		rawCert.SerialNumber = big.NewInt(mrand.Int63())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
-		_, err = sa.AddCertificate(ctx, certDER, reg.ID)
+		_, err = sa.AddCertificate(context.Background(), certDER, reg.ID)
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 
@@ -219,7 +216,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	test.AssertEquals(t, len(checker.certs), 5)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	checker.processCerts(ctx, wg, false)
+	checker.processCerts(wg, false)
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
 	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
 }

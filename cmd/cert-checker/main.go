@@ -18,8 +18,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/codegangsta/cli"
 	"github.com/jmhodges/clock"
 	gorp "gopkg.in/gorp.v1"
@@ -143,9 +141,9 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool) {
+func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool) {
 	for cert := range c.certs {
-		problems := c.checkCert(ctx, cert)
+		problems := c.checkCert(cert)
 		valid := len(problems) == 0
 		c.rMu.Lock()
 		if !badResultsOnly || (badResultsOnly && !valid) {
@@ -164,7 +162,7 @@ func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badR
 	wg.Done()
 }
 
-func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate) (problems []string) {
+func (c *certChecker) checkCert(cert core.Certificate) (problems []string) {
 	// Check digests match
 	if cert.Digest != core.Fingerprint256(cert.DER) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
@@ -266,7 +264,6 @@ func main() {
 	}
 
 	app.Action = func(c *cli.Context) {
-		ctx := context.Background()
 		configPath := c.GlobalString("config")
 		if configPath == "" {
 			fmt.Fprintln(os.Stderr, "--config is required")
@@ -337,7 +334,7 @@ func main() {
 			wg.Add(1)
 			go func() {
 				s := checker.clock.Now()
-				checker.processCerts(ctx, wg, config.CertChecker.BadResultsOnly)
+				checker.processCerts(wg, config.CertChecker.BadResultsOnly)
 				stats.TimingDuration("certChecker.processingLatency", time.Since(s), 1.0)
 			}()
 		}
