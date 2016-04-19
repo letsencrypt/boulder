@@ -8,8 +8,8 @@ package rpc
 import (
 	"net"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/codes"
+	"github.com/square/go-jose"
+	"google.golang.org/grpc/codes"
 
 	"github.com/letsencrypt/boulder/core"
 	bgrpc "github.com/letsencrypt/boulder/grpc"

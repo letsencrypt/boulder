@@ -13,8 +13,6 @@ import (
 	"net"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/cactus/go-statsd-client/statsd"
 	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
@@ -580,7 +578,7 @@ func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, i
 		return nil, err
 	}
 
-	records, err := s.impl.PerformValidation(*in.Domain, challenge, authz)
+	records, err := s.impl.PerformValidation(ctx, *in.Domain, challenge, authz)
 	prob, ok := err.(*probs.ProblemDetails)
 	if !ok {
 		return nil, err
@@ -596,7 +594,7 @@ func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *va
 		return nil, ErrMissingParameters
 	}
 
-	resp, err := s.impl.IsSafeDomain(&core.IsSafeDomainRequest{*in.Domain})
+	resp, err := s.impl.IsSafeDomain(ctx, &core.IsSafeDomainRequest{*in.Domain})
 	if err != nil {
 		return nil, err
 	}
@@ -617,14 +615,13 @@ func NewValidationAuthorityGRPCClient(cc *grpc.ClientConn) core.ValidationAuthor
 	return &ValidationAuthorityGRPCClient{vaPB.NewVAClient(cc)}
 }
 
-func (vac ValidationAuthorityGRPCClient) UpdateValidations(authz core.Authorization, index int) error {
+func (vac ValidationAuthorityGRPCClient) UpdateValidations(ctx context.Context, authz core.Authorization, index int) error {
 	panic("UpdateValidations should not be called on VA GRPC client")
 }
 
 // PerformValidation has the VA revalidate the specified challenge and returns
 // the updated Challenge object.
-func (vac ValidationAuthorityGRPCClient) PerformValidation(domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
-	ctx := context.TODO()
+func (vac ValidationAuthorityGRPCClient) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	authzMeta, err := marshalAuthzMeta(authz)
 	if err != nil {
 		return nil, err
@@ -651,8 +648,7 @@ func (vac ValidationAuthorityGRPCClient) PerformValidation(domain string, challe
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
 // third-party safe browsing API.
-func (vac ValidationAuthorityGRPCClient) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
-	ctx := context.TODO()
+func (vac ValidationAuthorityGRPCClient) IsSafeDomain(ctx context.Context, req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
 	valid, err := vac.gc.IsSafeDomain(ctx, &vaPB.Domain{Domain: &req.Domain})
 	if err != nil {
 		return nil, err
