@@ -121,23 +121,38 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	var resultMX []string
 	var resultA []net.IP
-	resultMX, err = resolver.LookupMX(ctx, domain)
-	if err == nil && len(resultMX) == 0 {
-		resultA, err = resolver.LookupHost(ctx, domain)
-		if err == nil && len(resultA) == 0 {
-			return &probs.ProblemDetails{
-				Type:   probs.InvalidEmailProblem,
-				Detail: emptyDNSResponseDetail,
-			}
-		}
-	}
-	if err != nil {
-		prob := bdns.ProblemDetailsFromDNSError(err)
+	var errMX, errA error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		resultMX, errMX = resolver.LookupMX(ctx, domain)
+		wg.Done()
+	}()
+	go func() {
+		resultA, errA = resolver.LookupHost(ctx, domain)
+		wg.Done()
+	}()
+	wg.Wait()
+
+	if errMX != nil {
+		prob := bdns.ProblemDetailsFromDNSError(errMX)
 		prob.Type = probs.InvalidEmailProblem
 		return prob
+	} else if len(resultMX) > 0 {
+		return nil
+	}
+	if errA != nil {
+		prob := bdns.ProblemDetailsFromDNSError(errA)
+		prob.Type = probs.InvalidEmailProblem
+		return prob
+	} else if len(resultA) > 0 {
+		return nil
 	}
 
-	return nil
+	return &probs.ProblemDetails{
+		Type:   probs.InvalidEmailProblem,
+		Detail: emptyDNSResponseDetail,
+	}
 }
 
 type certificateRequestEvent struct {
@@ -253,7 +268,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(init core.Registration) (re
 	return
 }
 
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []*core.AcmeURL) (err error) {
+func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []*core.AcmeURL) error {
 	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
 		return core.MalformedRequestError(fmt.Sprintf("Too many contacts provided: %d > %d",
 			len(contacts), ra.maxContactsPerReg))
@@ -263,24 +278,22 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		if contact == nil {
 			return core.MalformedRequestError("Invalid contact")
 		}
-		switch contact.Scheme {
-		case "mailto":
-			start := ra.clk.Now()
-			ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
-			problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
-			ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
-			if problem != nil {
-				ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
-				return problem
-			}
-			ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
-		default:
-			err = core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
-			return
+		if contact.Scheme != "mailto" {
+			return core.MalformedRequestError(fmt.Sprintf("Contact method %s is not supported", contact.Scheme))
 		}
+
+		start := ra.clk.Now()
+		ra.stats.Inc("RA.ValidateEmail.Calls", 1, 1.0)
+		problem := validateEmail(ctx, contact.Opaque, ra.DNSResolver)
+		ra.stats.TimingDuration("RA.ValidateEmail.Latency", ra.clk.Now().Sub(start), 1.0)
+		if problem != nil {
+			ra.stats.Inc("RA.ValidateEmail.Errors", 1, 1.0)
+			return problem
+		}
+		ra.stats.Inc("RA.ValidateEmail.Successes", 1, 1.0)
 	}
 
-	return
+	return nil
 }
 
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(regID int64) error {
