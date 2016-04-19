@@ -197,13 +197,6 @@ if [[ "$RUN" =~ "migrations" ]] ; then
   end_context #"migrations"
 fi
 
-if [[ "$RUN" =~ "generate" ]] ; then
-  start_context "generate"
-  run_and_comment go generate $TESTPATHS
-  run_and_comment git diff --exit-code .
-  end_context #"generate"
-fi
-
 #
 # Unit Tests.
 #
@@ -294,6 +287,18 @@ if [[ "$RUN" =~ "errcheck" ]] ; then
     -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
     $(echo $TESTPATHS | tr ' ' '\n' | grep -v test)
   end_context #errcheck
+fi
+
+# Run generate to make sure all our generated code can be re-generated with
+# current tools.
+# Note: Some of the tools we use seemingly don't understand ./vendor yest, and
+# so will fail if imports are not available in $GOPATH. So, in travis, this
+# always needs to run after `godep restore`.
+if [[ "$RUN" =~ "generate" ]] ; then
+  start_context "generate"
+  run_and_comment go generate $TESTPATHS
+  run_and_comment git diff --exit-code .
+  end_context #"generate"
 fi
 
 exit ${FAILURE}
