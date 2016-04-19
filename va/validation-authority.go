@@ -575,7 +575,7 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 
 	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
 
-	err := va.RA.OnValidationUpdate(authz)
+	err := va.RA.OnValidationUpdate(ctx, authz)
 	if err != nil {
 		va.log.Err(fmt.Sprintf("va: unable to communicate updated authz [%d] to RA: %q authz=[%#v]", authz.RegistrationID, err, authz))
 	}
@@ -629,9 +629,9 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 // goroutines.
 //
 // TODO(#1167): remove this method
-func (va *ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, challengeIndex int) error {
+func (va *ValidationAuthorityImpl) UpdateValidations(ctx context.Context, authz core.Authorization, challengeIndex int) error {
 	// TODO(#1292): add a proper deadline here
-	go va.validate(context.TODO(), authz, challengeIndex)
+	go va.validate(ctx, authz, challengeIndex)
 	return nil
 }
 
@@ -639,7 +639,7 @@ func (va *ValidationAuthorityImpl) UpdateValidations(authz core.Authorization, c
 // updated Challenge.
 //
 // TODO(#1626): remove authz parameter
-func (va *ValidationAuthorityImpl) PerformValidation(domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	logEvent := verificationRequestEvent{
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
@@ -648,7 +648,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(domain string, challenge co
 	}
 	vStart := va.clk.Now()
 
-	records, prob := va.validateChallengeAndCAA(context.TODO(), core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
+	records, prob := va.validateChallengeAndCAA(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
 
 	logEvent.ValidationRecords = records
 	resultStatus := core.StatusInvalid

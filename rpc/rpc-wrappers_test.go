@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
@@ -16,6 +18,7 @@ import (
 )
 
 var log = blog.UseMock()
+var ctx = context.Background()
 
 const JWK1JSON = `{
   "kty": "RSA",
@@ -70,7 +73,7 @@ func TestRANewRegistration(t *testing.T) {
 		Key: jwk,
 	}
 
-	_, err = client.NewRegistration(reg)
+	_, err = client.NewRegistration(ctx, reg)
 	test.AssertNotError(t, err, "Updated Registration")
 	test.Assert(t, len(mock.LastBody) > 0, "Didn't send Registration")
 	test.AssertEquals(t, "NewRegistration", mock.LastMethod)
@@ -89,6 +92,6 @@ func TestGenerateOCSP(t *testing.T) {
 	}
 
 	mock.NextResp = []byte{}
-	_, err := client.GenerateOCSP(req)
+	_, err := client.GenerateOCSP(ctx, req)
 	test.AssertError(t, err, "Should have failed at signer")
 }

@@ -5,7 +5,10 @@
 
 package ra
 
-import "github.com/letsencrypt/boulder/core"
+import (
+	"github.com/letsencrypt/boulder/core"
+	"golang.org/x/net/context"
+)
 
 // TODO(jmhodges): remove once VA is deployed and stable with IsSafeDomain
 // replace with just a call to ra.VA.IsSafeDomain
@@ -19,13 +22,13 @@ type DomainCheck struct {
 
 // IsSafe returns true if the VA's IsSafeDomain RPC says the domain is safe or
 // if DomainCheck is nil.
-func (d *DomainCheck) IsSafe(domain string) (bool, error) {
+func (d *DomainCheck) IsSafe(ctx context.Context, domain string) (bool, error) {
 	// This nil check allows us to not actually call
 	if d == nil {
 		return true, nil
 	}
 
-	resp, err := d.VA.IsSafeDomain(&core.IsSafeDomainRequest{Domain: domain})
+	resp, err := d.VA.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: domain})
 	if err != nil {
 		return false, err
 	}

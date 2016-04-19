@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"gopkg.in/gorp.v1"
@@ -19,13 +21,15 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
+var ctx = context.Background()
+
 type mockCA struct{}
 
-func (ca *mockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *mockCA) IssueCertificate(_ context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	return core.Certificate{}, nil
 }
 
-func (ca *mockCA) GenerateOCSP(xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
+func (ca *mockCA) GenerateOCSP(_ context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
 	ocsp = []byte{1, 2, 3}
 	return
 }
@@ -34,7 +38,7 @@ type mockPub struct {
 	sa core.StorageAuthority
 }
 
-func (p *mockPub) SubmitToCT(_ []byte) error {
+func (p *mockPub) SubmitToCT(_ context.Context, _ []byte) error {
 	sct := core.SignedCertificateTimestamp{
 		SCTVersion:        0,
 		LogID:             "id",
@@ -43,12 +47,12 @@ func (p *mockPub) SubmitToCT(_ []byte) error {
 		Signature:         []byte{0},
 		CertificateSerial: "00",
 	}
-	err := p.sa.AddSCTReceipt(sct)
+	err := p.sa.AddSCTReceipt(ctx, sct)
 	if err != nil {
 		return err
 	}
 	sct.LogID = "another-id"
-	return p.sa.AddSCTReceipt(sct)
+	return p.sa.AddSCTReceipt(ctx, sct)
 }
 
 var log = blog.UseMock()
@@ -97,23 +101,23 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
-	status, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Couldn't get the core.CertificateStatus from the database")
 
-	meta, err := updater.generateResponse(status)
+	meta, err := updater.generateResponse(ctx, status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
 	err = updater.storeResponse(meta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
 
-	secondMeta, err := updater.generateRevokedResponse(status)
+	secondMeta, err := updater.generateRevokedResponse(ctx, status)
 	test.AssertNotError(t, err, "Couldn't generate revoked OCSP response")
 	err = updater.storeResponse(secondMeta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
 
-	newStatus, err := sa.GetCertificateStatus(status.Serial)
+	newStatus, err := sa.GetCertificateStatus(ctx, status.Serial)
 	test.AssertNotError(t, err, "Couldn't retrieve certificate status")
 	test.AssertByteEquals(t, meta.OCSPResponse, newStatus.OCSPResponse)
 }
@@ -125,11 +129,11 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 	parsedCert, err = core.LoadCert("test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert-b.pem")
 
 	earliest := fc.Now().Add(-time.Hour)
@@ -137,7 +141,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't find stale responses")
 	test.AssertEquals(t, len(certs), 2)
 
-	err = updater.generateOCSPResponses(certs)
+	err = updater.generateOCSPResponses(ctx, certs)
 	test.AssertNotError(t, err, "Couldn't generate OCSP responses")
 
 	certs, err = updater.findStaleOCSPResponses(earliest, 10)
@@ -152,7 +156,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	earliest := fc.Now().Add(-time.Hour)
@@ -160,10 +164,10 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't find certificate")
 	test.AssertEquals(t, len(certs), 1)
 
-	status, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Couldn't get the core.Certificate from the database")
 
-	meta, err := updater.generateResponse(status)
+	meta, err := updater.generateResponse(ctx, status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
 	err = updater.storeResponse(meta)
 	test.AssertNotError(t, err, "Couldn't store OCSP response")
@@ -180,7 +184,7 @@ func TestGetCertificatesWithMissingResponses(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	cert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(cert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, cert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	statuses, err := updater.getCertificatesWithMissingResponses(10)
@@ -195,14 +199,14 @@ func TestFindRevokedCertificatesToUpdate(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	cert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(cert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, cert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	statuses, err := updater.findRevokedCertificatesToUpdate(10)
 	test.AssertNotError(t, err, "Failed to find revoked certificates")
 	test.AssertEquals(t, len(statuses), 0)
 
-	err = sa.MarkCertificateRevoked(core.SerialToString(cert.SerialNumber), core.RevocationCode(1))
+	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(cert.SerialNumber), core.RevocationCode(1))
 	test.AssertNotError(t, err, "Failed to revoke certificate")
 
 	statuses, err = updater.findRevokedCertificatesToUpdate(10)
@@ -217,11 +221,11 @@ func TestNewCertificateTick(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	prev := fc.Now().Add(-time.Hour)
-	err = updater.newCertificateTick(10)
+	err = updater.newCertificateTick(ctx, 10)
 	test.AssertNotError(t, err, "Couldn't run newCertificateTick")
 
 	certs, err := updater.findStaleOCSPResponses(prev, 10)
@@ -236,11 +240,11 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	updater.ocspMinTimeToExpiry = 1 * time.Hour
-	err = updater.oldOCSPResponsesTick(10)
+	err = updater.oldOCSPResponsesTick(ctx, 10)
 	test.AssertNotError(t, err, "Couldn't run oldOCSPResponsesTick")
 
 	certs, err := updater.findStaleOCSPResponses(fc.Now().Add(-updater.ocspMinTimeToExpiry), 10)
@@ -256,7 +260,7 @@ func TestMissingReceiptsTick(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	fc.Set(parsedCert.NotBefore.Add(time.Minute))
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	updater.numLogs = 1
@@ -266,7 +270,7 @@ func TestMissingReceiptsTick(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to retrieve serials")
 	test.AssertEquals(t, len(serials), 1)
 
-	err = updater.missingReceiptsTick(5)
+	err = updater.missingReceiptsTick(ctx, 5)
 	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
 
 	count, err := updater.getNumberOfReceipts("00")
@@ -276,7 +280,7 @@ func TestMissingReceiptsTick(t *testing.T) {
 	// make sure we don't spin forever after reducing the
 	// number of logs we submit to
 	updater.numLogs = 1
-	err = updater.missingReceiptsTick(10)
+	err = updater.missingReceiptsTick(ctx, 10)
 	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
 }
 
@@ -287,20 +291,20 @@ func TestRevokedCertificatesTick(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
-	err = sa.MarkCertificateRevoked(core.SerialToString(parsedCert.SerialNumber), core.RevocationCode(1))
+	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(parsedCert.SerialNumber), core.RevocationCode(1))
 	test.AssertNotError(t, err, "Failed to revoke certificate")
 
 	statuses, err := updater.findRevokedCertificatesToUpdate(10)
 	test.AssertNotError(t, err, "Failed to find revoked certificates")
 	test.AssertEquals(t, len(statuses), 1)
 
-	err = updater.revokedCertificatesTick(10)
+	err = updater.revokedCertificatesTick(ctx, 10)
 	test.AssertNotError(t, err, "Failed to run revokedCertificatesTick")
 
-	status, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
 	test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
 	test.Assert(t, len(status.OCSPResponse) != 0, "Certificate status doesn't contain OCSP response")
@@ -313,13 +317,13 @@ func TestStoreResponseGuard(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddCertificate(parsedCert.Raw, reg.ID)
+	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
-	status, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
 
-	err = sa.MarkCertificateRevoked(core.SerialToString(parsedCert.SerialNumber), 0)
+	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(parsedCert.SerialNumber), 0)
 	test.AssertNotError(t, err, "Failed to revoked certificate")
 
 	// Attempt to update OCSP response where status.Status is good but stored status
@@ -329,7 +333,7 @@ func TestStoreResponseGuard(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to update certificate status")
 
 	// Make sure the OCSP response hasn't actually changed
-	unchangedStatus, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	unchangedStatus, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
 	test.AssertEquals(t, len(unchangedStatus.OCSPResponse), 0)
 
@@ -339,7 +343,7 @@ func TestStoreResponseGuard(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to updated certificate status")
 
 	// Make sure the OCSP response has been updated
-	changedStatus, err := sa.GetCertificateStatus(core.SerialToString(parsedCert.SerialNumber))
+	changedStatus, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
 	test.AssertEquals(t, len(changedStatus.OCSPResponse), 3)
 }
@@ -353,7 +357,7 @@ func TestLoopTickBackoff(t *testing.T) {
 		failureBackoffFactor: 1.5,
 		failureBackoffMax:    10 * time.Minute,
 		tickDur:              time.Minute,
-		tickFunc:             func(_ int) error { return errors.New("baddie") },
+		tickFunc:             func(context.Context, int) error { return errors.New("baddie") },
 	}
 
 	start := l.clk.Now()
@@ -378,7 +382,7 @@ func TestLoopTickBackoff(t *testing.T) {
 	maxJittered = backoff * 1.2
 	test.AssertBetween(t, l.clk.Now().Sub(start).Nanoseconds(), int64(backoff), int64(maxJittered))
 
-	l.tickFunc = func(_ int) error { return nil }
+	l.tickFunc = func(context.Context, int) error { return nil }
 	start = l.clk.Now()
 	l.tick()
 	test.AssertEquals(t, l.failures, 0)

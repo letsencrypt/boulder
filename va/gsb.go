@@ -12,6 +12,7 @@ package va
 import (
 	"github.com/letsencrypt/boulder/core"
 	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
+	"golang.org/x/net/context"
 )
 
 // SafeBrowsing is an interface for an third-party safe browing API client.
@@ -25,7 +26,7 @@ type SafeBrowsing interface {
 // third-party safe browsing API. It's meant be called by the RA before pending
 // authorization creation. If no third-party client was provided, it fails open
 // and increments a Skips metric.
-func (va *ValidationAuthorityImpl) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+func (va *ValidationAuthorityImpl) IsSafeDomain(ctx context.Context, req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
 	va.stats.Inc("VA.IsSafeDomain.Requests", 1, 1.0)
 	if va.SafeBrowsing == nil {
 		va.stats.Inc("VA.IsSafeDomain.Skips", 1, 1.0)

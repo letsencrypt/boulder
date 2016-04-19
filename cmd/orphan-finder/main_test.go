@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 
@@ -17,12 +19,12 @@ type mockSA struct {
 	certificate core.Certificate
 }
 
-func (m *mockSA) AddCertificate(der []byte, _ int64) (string, error) {
+func (m *mockSA) AddCertificate(ctx context.Context, der []byte, _ int64) (string, error) {
 	m.certificate.DER = der
 	return "", nil
 }
 
-func (m *mockSA) GetCertificate(string) (core.Certificate, error) {
+func (m *mockSA) GetCertificate(ctx context.Context, s string) (core.Certificate, error) {
 	if m.certificate.DER != nil {
 		return m.certificate, nil
 	}

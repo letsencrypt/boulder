@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	cferr "github.com/cloudflare/cfssl/errors"
@@ -118,7 +120,7 @@ const (
 )
 
 type certificateStorage interface {
-	AddCertificate([]byte, int64) (string, error)
+	AddCertificate(context.Context, []byte, int64) (string, error)
 }
 
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
@@ -357,7 +359,7 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 }
 
 // GenerateOCSP produces a new OCSP response and returns it
-func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) ([]byte, error) {
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -394,7 +396,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 // enforcing all policies. Names (domains) in the CertificateRequest will be
 // lowercased before storage.
 // Currently it will always sign with the defaultIssuer.
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
 	key, ok := csr.PublicKey.(crypto.PublicKey)
@@ -584,7 +586,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Store the cert with the certificate authority, if provided
-	_, err = ca.SA.AddCertificate(certDER, regID)
+	_, err = ca.SA.AddCertificate(ctx, certDER, regID)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -600,7 +602,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 
 	// Submit the certificate to any configured CT logs
 	go func() {
-		_ = ca.Publisher.SubmitToCT(certDER)
+		ctx := context.Background()
+		_ = ca.Publisher.SubmitToCT(ctx, certDER)
 	}()
 
 	// Do not return an err at this point; caller must know that the Certificate

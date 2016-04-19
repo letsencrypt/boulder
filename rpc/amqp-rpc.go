@@ -22,6 +22,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/probs"
@@ -103,7 +105,7 @@ func amqpSubscribe(ch amqpChannel, name, routingKey string) (<-chan amqp.Deliver
 
 // DeliveryHandler is a function that will process an amqp.DeliveryHandler
 type DeliveryHandler func(amqp.Delivery)
-type messageHandler func([]byte) ([]byte, error)
+type messageHandler func(context.Context, []byte) ([]byte, error)
 
 // AmqpRPCServer listens on a specified queue within an AMQP channel.
 // When messages arrive on that queue, it dispatches them based on type,
@@ -343,6 +345,8 @@ func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 }
 
 func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
+	ctx := context.TODO()
+
 	// XXX-JWS: jws.Verify(body)
 	cb, present := rpc.dispatchTable[msg.Type]
 	rpc.log.Debug(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
@@ -353,7 +357,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	}
 	var response rpcResponse
 	var err error
-	response.ReturnVal, err = cb(msg.Body)
+	response.ReturnVal, err = cb(ctx, msg.Body)
 	response.Error = wrapError(err)
 	jsonResponse, err := json.Marshal(response)
 	if err != nil {

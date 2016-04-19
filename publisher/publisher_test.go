@@ -25,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	ct "github.com/google/certificate-transparency/go"
 	"github.com/jmhodges/clock"
 
@@ -117,6 +119,7 @@ OY8B7wwvZTLzU6WWs781TJXx2CE04PneeeArLpVLkiGIWjk=
 const issuerPath = "../test/test-ca.pem"
 
 var log = blog.UseMock()
+var ctx = context.Background()
 
 func getPort(hs *httptest.Server) (int, error) {
 	url, err := url.Parse(hs.URL)
@@ -290,14 +293,14 @@ func TestBasicSuccessful(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 
 	// No Intermediate
 	pub.issuerBundle = []ct.ASN1Cert{}
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
@@ -312,7 +315,7 @@ func TestGoodRetry(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
@@ -327,7 +330,7 @@ func TestUnexpectedError(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed .*http://localhost:"+strconv.Itoa(port))), 1)
 }
@@ -344,7 +347,7 @@ func TestRetryAfter(t *testing.T) {
 
 	log.Clear()
 	startedWaiting := time.Now()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 	test.Assert(t, time.Since(startedWaiting) > time.Duration(retryAfter*2)*time.Second, fmt.Sprintf("Submitter retried submission too fast: %s", time.Since(startedWaiting)))
@@ -362,7 +365,7 @@ func TestRetryAfterContext(t *testing.T) {
 
 	pub.submissionTimeout = time.Second
 	s := time.Now()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Failed to submit to CT")
 	took := time.Since(s)
 	test.Assert(t, len(log.GetAllMatching(".*Failed to submit certificate to CT log at .*: context deadline exceeded.*")) == 1, "Submission didn't timeout")
@@ -384,7 +387,7 @@ func TestMultiLog(t *testing.T) {
 	addLog(t, pub, portB, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
@@ -399,7 +402,7 @@ func TestBadServer(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to verify SCT receipt")), 1)
 }
