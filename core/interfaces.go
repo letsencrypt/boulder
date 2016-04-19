@@ -56,7 +56,7 @@ type WebFrontEnd interface {
 // RegistrationAuthority defines the public interface for the Boulder RA
 type RegistrationAuthority interface {
 	// [WebFrontEnd]
-	NewRegistration(context.Context, Registration) (Registration, error)
+	NewRegistration(ctx context.Context, reg Registration) (Registration, error)
 
 	// [WebFrontEnd]
 	NewAuthorization(ctx context.Context, authz Authorization, regID int64) (Authorization, error)
@@ -77,26 +77,26 @@ type RegistrationAuthority interface {
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code RevocationCode, adminName string) error
 
 	// [ValidationAuthority]
-	OnValidationUpdate(context.Context, Authorization) error
+	OnValidationUpdate(ctx context.Context, authz Authorization) error
 }
 
 // CertificateAuthority defines the public interface for the Boulder CA
 type CertificateAuthority interface {
 	// [RegistrationAuthority]
 	IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (Certificate, error)
-	GenerateOCSP(context.Context, OCSPSigningRequest) ([]byte, error)
+	GenerateOCSP(ctx context.Context, ocspReq OCSPSigningRequest) ([]byte, error)
 }
 
 // PolicyAuthority defines the public interface for the Boulder PA
 type PolicyAuthority interface {
-	WillingToIssue(id AcmeIdentifier, regID int64) error
-	ChallengesFor(AcmeIdentifier, *jose.JsonWebKey) (challenges []Challenge, validCombinations [][]int)
+	WillingToIssue(domain AcmeIdentifier, regID int64) error
+	ChallengesFor(domain AcmeIdentifier, jwk *jose.JsonWebKey) (challenges []Challenge, validCombinations [][]int)
 }
 
 // StorageGetter are the Boulder SA's read-only methods
 type StorageGetter interface {
 	GetRegistration(ctx context.Context, regID int64) (Registration, error)
-	GetRegistrationByKey(context.Context, jose.JsonWebKey) (Registration, error)
+	GetRegistrationByKey(ctx context.Context, jwk jose.JsonWebKey) (Registration, error)
 	GetAuthorization(ctx context.Context, authzID string) (Authorization, error)
 	GetLatestValidAuthorization(ctx context.Context, regID int64, domain AcmeIdentifier) (Authorization, error)
 	GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*Authorization, error)
@@ -105,7 +105,7 @@ type StorageGetter interface {
 	AlreadyDeniedCSR(ctx context.Context, names []string) (wasDenied bool, err error)
 	CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error)
 	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain map[string]int, err error)
-	CountRegistrationsByIP(context.Context, net.IP, time.Time, time.Time) (int, error)
+	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
 	CountPendingAuthorizations(ctx context.Context, regID int64) (int, error)
 	GetSCTReceipt(ctx context.Context, serial, logID string) (SignedCertificateTimestamp, error)
 	CountFQDNSets(ctx context.Context, window time.Duration, domains []string) (count int64, err error)
@@ -114,16 +114,16 @@ type StorageGetter interface {
 
 // StorageAdder are the Boulder SA's write/update methods
 type StorageAdder interface {
-	NewRegistration(ctx context.Context, params Registration) (created Registration, err error)
-	UpdateRegistration(context.Context, Registration) error
-	NewPendingAuthorization(context.Context, Authorization) (Authorization, error)
-	UpdatePendingAuthorization(context.Context, Authorization) error
-	FinalizeAuthorization(context.Context, Authorization) error
+	NewRegistration(ctx context.Context, reg Registration) (created Registration, err error)
+	UpdateRegistration(ctx context.Context, reg Registration) error
+	NewPendingAuthorization(ctx context.Context, authz Authorization) (Authorization, error)
+	UpdatePendingAuthorization(ctx context.Context, authz Authorization) error
+	FinalizeAuthorization(ctx context.Context, authz Authorization) error
 	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode RevocationCode) error
 	UpdateOCSP(ctx context.Context, serial string, ocspResponse []byte) error
 	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
-	AddSCTReceipt(context.Context, SignedCertificateTimestamp) error
-	RevokeAuthorizationsByDomain(context.Context, AcmeIdentifier) (finalized, pending int64, err error)
+	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
+	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)
 }
 
 // StorageAuthority interface represents a simple key/value
