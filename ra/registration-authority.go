@@ -821,8 +821,9 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		return
 	}
 
-	// Dispatch to the VA for service
+	authz.Challenges[challengeIndex] = *ch
 
+	// Dispatch to the VA for service
 	vaCtx := context.Background()
 	if !ra.useNewVARPC {
 		// TODO(#1167): remove
@@ -830,7 +831,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	} else {
 		go func() {
-			records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
+			records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, *ch, authz)
 			var prob *probs.ProblemDetails
 			if p, ok := err.(*probs.ProblemDetails); ok {
 				prob = p

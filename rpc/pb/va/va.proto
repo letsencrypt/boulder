@@ -27,6 +27,7 @@ message PerformValidationRequest {
 message VAChallenge {
 	optional int64 id = 1;
 	optional string type = 2;
+	optional string status = 6;
 	optional string token = 3;
 	optional string accountKey = 4; // jose.JsonWebKey.MarshalJSON()
 	optional string keyAuthorization = 5;

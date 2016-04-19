@@ -55,6 +55,10 @@ func unmarshalJWK(in string) (*jose.JsonWebKey, error) {
 }
 
 func marshalProblemDetails(prob *probs.ProblemDetails) (*corepb.ProblemDetails, error) {
+	if prob == nil {
+		// nil problemDetails is valid
+		return nil, nil
+	}
 	pt := string(prob.Type)
 	st := int32(prob.HTTPStatus)
 	return &corepb.ProblemDetails{
@@ -66,7 +70,8 @@ func marshalProblemDetails(prob *probs.ProblemDetails) (*corepb.ProblemDetails, 
 
 func unmarshalProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error) {
 	if in == nil {
-		return nil, nil // !!! nil problemDetails is valid
+		// nil problemDetails is valid
+		return nil, nil
 	}
 	if in.ProblemType == nil || in.Detail == nil {
 		return nil, ErrMissingParameters
@@ -86,9 +91,11 @@ func marshalVAChallenge(challenge core.Challenge) (*vapb.VAChallenge, error) {
 	if err != nil {
 		return nil, err
 	}
+	st := string(challenge.Status)
 	return &vapb.VAChallenge{
 		Id:               &challenge.ID,
 		Type:             &challenge.Type,
+		Status:           &st,
 		Token:            &challenge.Token,
 		AccountKey:       &accountKey,
 		KeyAuthorization: &challenge.ProvidedKeyAuthorization,
@@ -99,7 +106,7 @@ func unmarshalVAChallenge(in *vapb.VAChallenge) (challenge core.Challenge, err e
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	if in.AccountKey == nil || in.Id == nil || in.Type == nil || in.Token == nil || in.KeyAuthorization == nil {
+	if in.AccountKey == nil || in.Id == nil || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
 	jwk, err := unmarshalJWK(*in.AccountKey)
@@ -109,6 +116,7 @@ func unmarshalVAChallenge(in *vapb.VAChallenge) (challenge core.Challenge, err e
 	return core.Challenge{
 		ID:                       *in.Id,
 		Type:                     *in.Type,
+		Status:                   core.AcmeStatus(*in.Status),
 		Token:                    *in.Token,
 		AccountKey:               jwk,
 		ProvidedKeyAuthorization: *in.KeyAuthorization,
