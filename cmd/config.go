@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
+	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/pkcs11key"
 )
 
 // Config stores configuration parameters that applications

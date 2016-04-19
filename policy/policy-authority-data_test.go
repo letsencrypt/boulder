@@ -13,7 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	gorp "gopkg.in/gorp.v1"
 )
 
 func padbImpl(t *testing.T) (*AuthorityDatabaseImpl, func()) {

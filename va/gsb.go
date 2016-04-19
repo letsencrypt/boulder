@@ -10,8 +10,8 @@
 package va
 
 import (
-	safebrowsing "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-safe-browsing-api"
 	"github.com/letsencrypt/boulder/core"
+	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 )
 
 // SafeBrowsing is an interface for an third-party safe browing API client.

@@ -4,7 +4,7 @@
 package metrics
 
 import (
-	gomock "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/golang/mock/gomock"
+	gomock "github.com/golang/mock/gomock"
 	time "time"
 )
 

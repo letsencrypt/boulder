@@ -6,7 +6,7 @@ import (
 	"crypto/rsa"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/square/go-jose"
 )
 
 func TestRejectsNone(t *testing.T) {

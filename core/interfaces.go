@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	jose "github.com/square/go-jose"
 )
 
 // A WebFrontEnd object supplies methods that can be hooked into
