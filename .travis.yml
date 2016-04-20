@@ -22,7 +22,7 @@ addons:
       - rsyslog
   mariadb: "10.0"
 
-sudo: true
+sudo: false
 
 services:
   - rabbitmq
@@ -56,7 +56,11 @@ env:
     - LETSENCRYPT_PATH=$HOME/letsencrypt
     - GO15VENDOREXPERIMENT=1
   matrix:
-    - RUN="godep-restore generate"
+    - RUN="vet fmt migrations integration godep-restore errcheck generate"
+    # Config changes that have landed in master but not yet been applied to
+    # production can be made in boulder-config-next.json.
+    - RUN="integration" BOULDER_CONFIG="test/boulder-config-next.json"
+    - RUN="unit"
 
 script:
   - bash test.sh
