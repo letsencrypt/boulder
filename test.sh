@@ -291,12 +291,21 @@ fi
 
 # Run generate to make sure all our generated code can be re-generated with
 # current tools.
-# Note: Some of the tools we use seemingly don't understand ./vendor yest, and
+# Note: Some of the tools we use seemingly don't understand ./vendor yet, and
 # so will fail if imports are not available in $GOPATH. So, in travis, this
 # always needs to run after `godep restore`.
 if [[ "$RUN" =~ "generate" ]] ; then
   start_context "generate"
-  find $GOPATH
+  # We need to run go install before go generate because the stringer command
+  # (using in ./grpc/) checks imports, and depends on the presence of a built
+  # .a file to determine an import really exists. See
+  # https://golang.org/src/go/internal/gcimporter/gcimporter.go#L30
+  # Without this, we get error messages like:
+  #   stringer: checking package: grpc/bcodes.go:6:2: could not import
+  #     github.com/letsencrypt/boulder/probs (can't find import:
+  #     github.com/letsencrypt/boulder/probs)
+  go install ./probs
+  go install ./vendor/google.golang.org/grpc/codes
   run_and_comment go generate $TESTPATHS
   run_and_comment git diff --exit-code .
   end_context #"generate"
