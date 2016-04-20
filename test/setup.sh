@@ -6,6 +6,8 @@
 
 set -ev
 
+protoc --version
+
 go get \
   github.com/golang/lint/golint \
   github.com/golang/mock/mockgen \
