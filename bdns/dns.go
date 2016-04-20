@@ -296,26 +296,28 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 
 	wg.Add(2)
 	go func() {
+		defer wg.Done()
 		var err error
 		respA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeA, dnsResolver.aStats)
 		if err != nil {
 			errCh <- &DNSError{dns.TypeA, hostname, err, -1}
+			return
 		}
 		if respA.Rcode != dns.RcodeSuccess {
 			errCh <- &DNSError{dns.TypeA, hostname, nil, respA.Rcode}
 		}
-		wg.Done()
 	}()
 	go func() {
+		defer wg.Done()
 		var err error
 		respAAAA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aStats)
 		if err != nil {
 			errCh <- &DNSError{dns.TypeAAAA, hostname, err, -1}
+			return
 		}
 		if respAAAA.Rcode != dns.RcodeSuccess {
 			errCh <- &DNSError{dns.TypeAAAA, hostname, nil, respAAAA.Rcode}
 		}
-		wg.Done()
 	}()
 
 	wg.Wait()
