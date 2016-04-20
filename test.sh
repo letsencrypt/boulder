@@ -255,28 +255,6 @@ if [[ "$RUN" =~ "integration" ]] ; then
   end_context #integration
 fi
 
-# Run generate to make sure all our generated code can be re-generated with
-# current tools.
-# Note: Some of the tools we use seemingly don't understand ./vendor yet, and
-# so will fail if imports are not available in $GOPATH. So, in travis, this
-# always needs to run after `godep restore`.
-if [[ "$RUN" =~ "generate" ]] ; then
-  start_context "generate"
-  # We need to run go install before go generate because the stringer command
-  # (using in ./grpc/) checks imports, and depends on the presence of a built
-  # .a file to determine an import really exists. See
-  # https://golang.org/src/go/internal/gcimporter/gcimporter.go#L30
-  # Without this, we get error messages like:
-  #   stringer: checking package: grpc/bcodes.go:6:2: could not import
-  #     github.com/letsencrypt/boulder/probs (can't find import:
-  #     github.com/letsencrypt/boulder/probs)
-  go install ./probs
-  go install google.golang.org/grpc/codes
-  run_and_comment go generate $TESTPATHS
-  run_and_comment git diff --exit-code .
-  end_context #"generate"
-fi
-
 # Run godep-restore (happens only in Travis) to check that the hashes in
 # Godeps.json really exist in the remote repo and match what we have.
 if [[ "$RUN" =~ "godep-restore" ]] ; then
@@ -309,6 +287,28 @@ if [[ "$RUN" =~ "errcheck" ]] ; then
     -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
     $(echo $TESTPATHS | tr ' ' '\n' | grep -v test)
   end_context #errcheck
+fi
+
+# Run generate to make sure all our generated code can be re-generated with
+# current tools.
+# Note: Some of the tools we use seemingly don't understand ./vendor yet, and
+# so will fail if imports are not available in $GOPATH. So, in travis, this
+# always needs to run after `godep restore`.
+if [[ "$RUN" =~ "generate" ]] ; then
+  start_context "generate"
+  # Additionally, we need to run go install before go generate because the stringer command
+  # (using in ./grpc/) checks imports, and depends on the presence of a built .a
+  # file to determine an import really exists. See
+  # https://golang.org/src/go/internal/gcimporter/gcimporter.go#L30
+  # Without this, we get error messages like:
+  #   stringer: checking package: grpc/bcodes.go:6:2: could not import
+  #     github.com/letsencrypt/boulder/probs (can't find import:
+  #     github.com/letsencrypt/boulder/probs)
+  go install ./probs
+  go install google.golang.org/grpc/codes
+  run_and_comment go generate $TESTPATHS
+  run_and_comment git diff --exit-code .
+  end_context #"generate"
 fi
 
 exit ${FAILURE}
