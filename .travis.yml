@@ -59,7 +59,7 @@ env:
     - LETSENCRYPT_PATH=$HOME/letsencrypt
     - GO15VENDOREXPERIMENT=1
   matrix:
-    - RUN="generate"
+    - RUN="godep-restore generate"
 
 script:
   - bash test.sh

@@ -6,7 +6,7 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 )
 
-//go:generate cd ../; stringer -type=BCode grpc/bcodes.go
+//go:generate stringer -type=BCode grpc/bcodes.go
 
 // BCode is an alias so we can use a stringer
 type BCode codes.Code
