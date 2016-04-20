@@ -305,7 +305,6 @@ if [[ "$RUN" =~ "generate" ]] ; then
   #     github.com/letsencrypt/boulder/probs (can't find import:
   #     github.com/letsencrypt/boulder/probs)
   go install ./probs
-  go install ./vendor/google.golang.org/grpc/codes
   go install google.golang.org/grpc/codes
   run_and_comment go generate $TESTPATHS
   run_and_comment git diff --exit-code .
