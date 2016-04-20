@@ -296,6 +296,7 @@ fi
 # always needs to run after `godep restore`.
 if [[ "$RUN" =~ "generate" ]] ; then
   start_context "generate"
+  find $GOPATH
   run_and_comment go generate $TESTPATHS
   run_and_comment git diff --exit-code .
   end_context #"generate"
