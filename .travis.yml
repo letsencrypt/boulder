@@ -20,7 +20,6 @@ addons:
       - libffi-dev
       - ca-certificates
       - rsyslog
-      - protobuf-compiler
   mariadb: "10.0"
 
 sudo: true
@@ -53,6 +52,7 @@ install:
 
 env:
   global:
+    - PATH=$HOME/bin:$PATH # protoc gets installed here
     - LETSENCRYPT_PATH=$HOME/letsencrypt
     - GO15VENDOREXPERIMENT=1
   matrix:
