@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
@@ -87,6 +89,9 @@ type WebFrontEndImpl struct {
 	// CORS settings
 	AllowOrigins []string
 
+	// Maximum duration of a request
+	RequestTimeout time.Duration
+
 	// Graceful shutdown settings
 	ShutdownStopTimeout time.Duration
 	ShutdownKillTimeout time.Duration
@@ -140,7 +145,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 	mux.Handle(pattern, &topHandler{
 		log: wfe.log,
 		clk: clock.Default(),
-		wfe: wfeHandlerFunc(func(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+		wfe: wfeHandlerFunc(func(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 			// We do not propagate errors here, because (1) they should be
 			// transient, and (2) they fail closed.
 			nonce, err := wfe.nonceService.Nonce()
@@ -169,8 +174,16 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 
 			wfe.setCORSHeaders(response, request, "")
 
+			timeout := wfe.RequestTimeout
+			if timeout == 0 {
+				timeout = 5 * time.Minute
+			}
+			ctx, cancel := context.WithTimeout(ctx, timeout)
+			// TODO(riking): add request context using WithValue
+
 			// Call the wrapped handler.
-			h(logEvent, response, request)
+			h(ctx, logEvent, response, request)
+			cancel()
 		}),
 	})
 }
@@ -226,7 +239,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 // Method implementations
 
 // Index serves a simple identification page. It is not part of the ACME spec.
-func (wfe *WebFrontEndImpl) Index(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Index(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	// http://golang.org/pkg/net/http/#example_ServeMux_Handle
 	// The "/" pattern matches everything, so we need to check
 	// that we're at the root here.
@@ -266,7 +279,7 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 
 // Directory is an HTTP request handler that simply provides the directory
 // object stored in the WFE's DirectoryJSON member.
-func (wfe *WebFrontEndImpl) Directory(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json")
 	response.Write(wfe.DirectoryJSON)
 }
@@ -293,7 +306,7 @@ const (
 // the key itself.  verifyPOST also appends its errors to requestEvent.Errors so
 // code calling it does not need to if they immediately return a response to the
 // user.
-func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, *probs.ProblemDetails) {
+func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEvent, request *http.Request, regCheck bool, resource core.AcmeResource) ([]byte, *jose.JsonWebKey, core.Registration, *probs.ProblemDetails) {
 	// TODO: We should return a pointer to a registration, which can be nil,
 	// rather the a registration value with a sentinel value.
 	// https://github.com/letsencrypt/boulder/issues/877
@@ -353,7 +366,7 @@ func (wfe *WebFrontEndImpl) verifyPOST(logEvent *requestEvent, request *http.Req
 	}
 
 	var key *jose.JsonWebKey
-	reg, err = wfe.SA.GetRegistrationByKey(*submittedKey)
+	reg, err = wfe.SA.GetRegistrationByKey(ctx, *submittedKey)
 	// Special case: If no registration was found, but regCheck is false, use an
 	// empty registration and the submitted key. The caller is expected to do some
 	// validation on the returned key.
@@ -476,16 +489,16 @@ func link(url, relation string) string {
 }
 
 // NewRegistration is used by clients to submit a new registration/account
-func (wfe *WebFrontEndImpl) NewRegistration(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 
-	body, key, _, prob := wfe.verifyPOST(logEvent, request, false, core.ResourceNewReg)
+	body, key, _, prob := wfe.verifyPOST(ctx, logEvent, request, false, core.ResourceNewReg)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
 		return
 	}
 
-	if existingReg, err := wfe.SA.GetRegistrationByKey(*key); err == nil {
+	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, *key); err == nil {
 		response.Header().Set("Location", fmt.Sprintf("%s%d", wfe.RegBase, existingReg.ID))
 		// TODO(#595): check for missing registration err
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
@@ -516,7 +529,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(logEvent *requestEvent, response htt
 		}
 	}
 
-	reg, err := wfe.RA.NewRegistration(init)
+	reg, err := wfe.RA.NewRegistration(ctx, init)
 	if err != nil {
 		logEvent.AddError("unable to create new registration: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error creating new registration"), err)
@@ -549,8 +562,8 @@ func (wfe *WebFrontEndImpl) NewRegistration(logEvent *requestEvent, response htt
 }
 
 // NewAuthorization is used by clients to submit a new ID Authorization
-func (wfe *WebFrontEndImpl) NewAuthorization(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	body, _, currReg, prob := wfe.verifyPOST(logEvent, request, true, core.ResourceNewAuthz)
+func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+	body, _, currReg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceNewAuthz)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -573,7 +586,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(logEvent *requestEvent, response ht
 	logEvent.Extra["Identifier"] = init.Identifier
 
 	// Create new authz and return
-	authz, err := wfe.RA.NewAuthorization(init, currReg.ID)
+	authz, err := wfe.RA.NewAuthorization(ctx, init, currReg.ID)
 	if err != nil {
 		logEvent.AddError("unable to create new authz: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error creating new authz"), err)
@@ -602,11 +615,11 @@ func (wfe *WebFrontEndImpl) NewAuthorization(logEvent *requestEvent, response ht
 }
 
 // RevokeCertificate is used by clients to request the revocation of a cert.
-func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 
 	// We don't ask verifyPOST to verify there is a corresponding registration,
 	// because anyone with the right private key can revoke a certificate.
-	body, requestKey, registration, prob := wfe.verifyPOST(logEvent, request, false, core.ResourceRevokeCert)
+	body, requestKey, registration, prob := wfe.verifyPOST(ctx, logEvent, request, false, core.ResourceRevokeCert)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -631,7 +644,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response h
 
 	serial := core.SerialToString(providedCert.SerialNumber)
 	logEvent.Extra["ProvidedCertificateSerial"] = serial
-	cert, err := wfe.SA.GetCertificate(serial)
+	cert, err := wfe.SA.GetCertificate(ctx, serial)
 	// TODO(#991): handle db errors better
 	if err != nil || !bytes.Equal(cert.DER, revokeRequest.CertificateDER) {
 		wfe.sendError(response, logEvent, probs.NotFound("No such certificate"), err)
@@ -648,7 +661,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response h
 	logEvent.Extra["RetrievedCertificateEmailAddresses"] = parsedCertificate.EmailAddresses
 	logEvent.Extra["RetrievedCertificateIPAddresses"] = parsedCertificate.IPAddresses
 
-	certStatus, err := wfe.SA.GetCertificateStatus(serial)
+	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
 	if err != nil {
 		logEvent.AddError("unable to get certificate status: %s", err)
 		// TODO(#991): handle db errors
@@ -673,7 +686,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(logEvent *requestEvent, response h
 	}
 
 	// Use revocation code 0, meaning "unspecified"
-	err = wfe.RA.RevokeCertificateWithReg(*parsedCertificate, 0, registration.ID)
+	err = wfe.RA.RevokeCertificateWithReg(ctx, *parsedCertificate, 0, registration.ID)
 	if err != nil {
 		logEvent.AddError("failed to revoke certificate: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Failed to revoke certificate"), err)
@@ -698,8 +711,8 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 
 // NewCertificate is used by clients to request the issuance of a cert for an
 // authorized identifier.
-func (wfe *WebFrontEndImpl) NewCertificate(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-	body, _, reg, prob := wfe.verifyPOST(logEvent, request, true, core.ResourceNewCert)
+func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+	body, _, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceNewCert)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -741,7 +754,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(logEvent *requestEvent, response http
 	// authorized for target site, they could cause issuance for that site by
 	// lying to the RA. We should probably pass a copy of the whole rquest to the
 	// RA for secondary validation.
-	cert, err := wfe.RA.NewCertificate(certificateRequest, reg.ID)
+	cert, err := wfe.RA.NewCertificate(ctx, certificateRequest, reg.ID)
 	if err != nil {
 		logEvent.AddError("unable to create new cert: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Error creating new cert"), err)
@@ -775,6 +788,7 @@ func (wfe *WebFrontEndImpl) NewCertificate(logEvent *requestEvent, response http
 // Challenge handles POST requests to challenge URLs.  Such requests are clients'
 // responses to the server's challenges.
 func (wfe *WebFrontEndImpl) Challenge(
+	ctx context.Context,
 	logEvent *requestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
@@ -800,7 +814,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	logEvent.Extra["AuthorizationID"] = authorizationID
 	logEvent.Extra["ChallengeID"] = challengeID
 
-	authz, err := wfe.SA.GetAuthorization(authorizationID)
+	authz, err := wfe.SA.GetAuthorization(ctx, authorizationID)
 	if err != nil {
 		// TODO(#1198): handle db errors etc
 		notFound()
@@ -830,10 +844,10 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	switch request.Method {
 	case "GET", "HEAD":
-		wfe.getChallenge(response, request, authz, &challenge, logEvent)
+		wfe.getChallenge(ctx, response, request, authz, &challenge, logEvent)
 
 	case "POST":
-		wfe.postChallenge(response, request, authz, challengeIndex, logEvent)
+		wfe.postChallenge(ctx, response, request, authz, challengeIndex, logEvent)
 	}
 }
 
@@ -861,6 +875,7 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(authz *core.Authorizatio
 }
 
 func (wfe *WebFrontEndImpl) getChallenge(
+	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request,
 	authz core.Authorization,
@@ -891,12 +906,13 @@ func (wfe *WebFrontEndImpl) getChallenge(
 }
 
 func (wfe *WebFrontEndImpl) postChallenge(
+	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request,
 	authz core.Authorization,
 	challengeIndex int,
 	logEvent *requestEvent) {
-	body, _, currReg, prob := wfe.verifyPOST(logEvent, request, true, core.ResourceChallenge)
+	body, _, currReg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceChallenge)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -930,7 +946,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	}
 
 	// Ask the RA to update this authorization
-	updatedAuthorization, err := wfe.RA.UpdateAuthorization(authz, challengeIndex, challengeUpdate)
+	updatedAuthorization, err := wfe.RA.UpdateAuthorization(ctx, authz, challengeIndex, challengeUpdate)
 	if err != nil {
 		logEvent.AddError("unable to update challenge: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update challenge"), err)
@@ -961,9 +977,9 @@ func (wfe *WebFrontEndImpl) postChallenge(
 }
 
 // Registration is used by a client to submit an update to their registration.
-func (wfe *WebFrontEndImpl) Registration(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 
-	body, _, currReg, prob := wfe.verifyPOST(logEvent, request, true, core.ResourceRegistration)
+	body, _, currReg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceRegistration)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -1011,7 +1027,7 @@ func (wfe *WebFrontEndImpl) Registration(logEvent *requestEvent, response http.R
 	update.Key = currReg.Key
 
 	// Ask the RA to update this authorization.
-	updatedReg, err := wfe.RA.UpdateRegistration(currReg, update)
+	updatedReg, err := wfe.RA.UpdateRegistration(ctx, currReg, update)
 	if err != nil {
 		logEvent.AddError("unable to update registration: %s", err)
 		wfe.sendError(response, logEvent, core.ProblemDetailsForError(err, "Unable to update registration"), err)
@@ -1036,10 +1052,10 @@ func (wfe *WebFrontEndImpl) Registration(logEvent *requestEvent, response http.R
 
 // Authorization is used by clients to submit an update to one of their
 // authorizations.
-func (wfe *WebFrontEndImpl) Authorization(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	// Requests to this handler should have a path that leads to a known authz
 	id := parseIDFromPath(request.URL.Path)
-	authz, err := wfe.SA.GetAuthorization(id)
+	authz, err := wfe.SA.GetAuthorization(ctx, id)
 	if err != nil {
 		logEvent.AddError("No such authorization at id %s", id)
 		// TODO(#1199): handle db errors
@@ -1082,7 +1098,7 @@ var allHex = regexp.MustCompile("^[0-9a-f]+$")
 
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
-func (wfe *WebFrontEndImpl) Certificate(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 
 	path := request.URL.Path
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
@@ -1102,7 +1118,7 @@ func (wfe *WebFrontEndImpl) Certificate(logEvent *requestEvent, response http.Re
 	}
 	logEvent.Extra["RequestedSerial"] = serial
 
-	cert, err := wfe.SA.GetCertificate(serial)
+	cert, err := wfe.SA.GetCertificate(ctx, serial)
 	// TODO(#991): handle db errors
 	if err != nil {
 		logEvent.AddError("unable to get certificate by serial id %#v: %s", serial, err)
@@ -1130,12 +1146,12 @@ func (wfe *WebFrontEndImpl) Certificate(logEvent *requestEvent, response http.Re
 
 // Terms is used by the client to obtain the current Terms of Service /
 // Subscriber Agreement to which the subscriber must agree.
-func (wfe *WebFrontEndImpl) Terms(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Terms(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	http.Redirect(response, request, wfe.SubscriberAgreementURL, http.StatusFound)
 }
 
 // Issuer obtains the issuer certificate used by this instance of Boulder.
-func (wfe *WebFrontEndImpl) Issuer(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	addCacheHeader(response, wfe.IssuerCacheDuration.Seconds())
 
 	// TODO Content negotiation
@@ -1148,7 +1164,7 @@ func (wfe *WebFrontEndImpl) Issuer(logEvent *requestEvent, response http.Respons
 }
 
 // BuildID tells the requestor what build we're running.
-func (wfe *WebFrontEndImpl) BuildID(logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "text/plain")
 	response.WriteHeader(http.StatusOK)
 	detailsString := fmt.Sprintf("Boulder=(%s %s)", core.GetBuildID(), core.GetBuildTime())

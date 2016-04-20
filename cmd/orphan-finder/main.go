@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/net/context"
+
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/codegangsta/cli"
 
@@ -27,8 +29,8 @@ type config struct {
 }
 
 type certificateStorage interface {
-	AddCertificate([]byte, int64) (string, error)
-	GetCertificate(string) (core.Certificate, error)
+	AddCertificate(context.Context, []byte, int64) (string, error)
+	GetCertificate(ctx context.Context, serial string) (core.Certificate, error)
 }
 
 var (
@@ -38,11 +40,12 @@ var (
 )
 
 func checkDER(sai certificateStorage, der []byte) error {
+	ctx := context.Background()
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
 		return fmt.Errorf("Failed to parse DER: %s", err)
 	}
-	_, err = sai.GetCertificate(core.SerialToString(cert.SerialNumber))
+	_, err = sai.GetCertificate(ctx, core.SerialToString(cert.SerialNumber))
 	if err == nil {
 		return errAlreadyExists
 	}
@@ -53,6 +56,7 @@ func checkDER(sai certificateStorage, der []byte) error {
 }
 
 func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found bool, added bool) {
+	ctx := context.Background()
 	if !strings.Contains(line, "b64der=") || !strings.Contains(line, "orphaning certificate") {
 		return false, false
 	}
@@ -86,7 +90,7 @@ func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found
 		logger.Err(fmt.Sprintf("Couldn't parse regID: %s, [%s]", err, line))
 		return true, false
 	}
-	_, err = sa.AddCertificate(der, int64(regID))
+	_, err = sa.AddCertificate(ctx, der, int64(regID))
 	if err != nil {
 		logger.Err(fmt.Sprintf("Failed to store certificate: %s, [%s]", err, line))
 		return true, false
@@ -175,6 +179,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) {
+				ctx := context.Background()
 				_, _, sa := setup(c)
 				derPath := c.String("der-file")
 				if derPath == "" {
@@ -190,7 +195,7 @@ func main() {
 				cmd.FailOnError(err, "Failed to read DER file")
 				err = checkDER(sa, der)
 				cmd.FailOnError(err, "Pre-AddCertificate checks failed")
-				_, err = sa.AddCertificate(der, int64(regID))
+				_, err = sa.AddCertificate(ctx, der, int64(regID))
 				cmd.FailOnError(err, "Failed to add certificate to database")
 			},
 		},

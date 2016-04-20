@@ -18,6 +18,8 @@ import (
 	"text/template"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/codegangsta/cli"
 	"github.com/jmhodges/clock"
@@ -41,7 +43,7 @@ type emailContent struct {
 }
 
 type regStore interface {
-	GetRegistration(int64) (core.Registration, error)
+	GetRegistration(context.Context, int64) (core.Registration, error)
 }
 
 type mailer struct {
@@ -162,6 +164,7 @@ func (m *mailer) certIsRenewed(serial string) (renewed bool, err error) {
 }
 
 func (m *mailer) processCerts(allCerts []core.Certificate) {
+	ctx := context.Background()
 	m.log.Info(fmt.Sprintf("expiration-mailer: Found %d certificates, starting sending messages", len(allCerts)))
 
 	regIDToCerts := make(map[int64][]core.Certificate)
@@ -173,7 +176,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 	}
 
 	for regID, certs := range regIDToCerts {
-		reg, err := m.rs.GetRegistration(regID)
+		reg, err := m.rs.GetRegistration(ctx, regID)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error fetching registration %d: %s", regID, err))
 			m.stats.Inc("Mailer.Expiration.Errors.GetRegistration", 1, 1.0)

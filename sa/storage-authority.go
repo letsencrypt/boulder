@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/jmhodges/clock"
 	jose "github.com/square/go-jose"
 	gorp "gopkg.in/gorp.v1"
@@ -116,7 +118,7 @@ func updateChallenges(authID string, challenges []core.Challenge, tx *gorp.Trans
 }
 
 // GetRegistration obtains a Registration by ID
-func (ssa *SQLStorageAuthority) GetRegistration(id int64) (core.Registration, error) {
+func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, id int64) (core.Registration, error) {
 	regObj, err := ssa.dbMap.Get(regModel{}, id)
 	if err != nil {
 		return core.Registration{}, err
@@ -133,7 +135,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(id int64) (core.Registration, er
 }
 
 // GetRegistrationByKey obtains a Registration by JWK
-func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (core.Registration, error) {
+func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, key jose.JsonWebKey) (core.Registration, error) {
 	reg := &regModel{}
 	sha, err := core.KeyDigest(key.Key)
 	if err != nil {
@@ -153,7 +155,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(key jose.JsonWebKey) (core.
 }
 
 // GetAuthorization obtains an Authorization by ID
-func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string) (authz core.Authorization, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
@@ -208,7 +210,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization(id string) (authz core.Authoriz
 }
 
 // GetLatestValidAuthorization gets the valid authorization with biggest expire date for a given domain and registrationId
-func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(ctx context.Context, registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	ident, err := json.Marshal(identifier)
 	if err != nil {
 		return
@@ -222,12 +224,12 @@ func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(registrationID int64
 		return
 	}
 
-	return ssa.GetAuthorization(auth.ID)
+	return ssa.GetAuthorization(ctx, auth.ID)
 }
 
 // GetValidAuthorizations returns the latest authorization object for all
 // domain names from the parameters that the account has authorizations for.
-func (ssa *SQLStorageAuthority) GetValidAuthorizations(registrationID int64, names []string, now time.Time) (latest map[string]*core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (latest map[string]*core.Authorization, err error) {
 	if len(names) == 0 {
 		return nil, errors.New("GetValidAuthorizations: no names received")
 	}
@@ -320,7 +322,7 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 // time range in an IP range. For IPv4 addresses, that range is limited to the
 // single IP. For IPv6 addresses, that range is a /48, since it's not uncommon
 // for one person to have a /48 to themselves.
-func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ip net.IP, earliest time.Time, latest time.Time) (int, error) {
+func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest time.Time, latest time.Time) (int, error) {
 	var count int64
 	beginIP, endIP := ipRange(ip)
 	err := ssa.dbMap.SelectOne(
@@ -359,7 +361,7 @@ func (t TooManyCertificatesError) Error() string {
 // The highest count this function can return is 10,000. If there are more
 // certificates than that matching one of the provided domain names, it will return
 // TooManyCertificatesError.
-func (ssa *SQLStorageAuthority) CountCertificatesByNames(domains []string, earliest, latest time.Time) (map[string]int, error) {
+func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (map[string]int, error) {
 	ret := make(map[string]int, len(domains))
 	for _, domain := range domains {
 		currentCount, err := ssa.countCertificatesByName(domain, earliest, latest)
@@ -413,7 +415,7 @@ func (ssa *SQLStorageAuthority) countCertificatesByName(domain string, earliest,
 
 // GetCertificate takes a serial number and returns the corresponding
 // certificate, or error if it does not exist.
-func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate, error) {
+func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, serial string) (core.Certificate, error) {
 	if !core.ValidSerial(serial) {
 		err := fmt.Errorf("Invalid certificate serial %s", serial)
 		return core.Certificate{}, err
@@ -439,7 +441,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(serial string) (core.Certificate,
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
 // number of a certificate and returns data about that certificate's current
 // validity.
-func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core.CertificateStatus, err error) {
+func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, serial string) (status core.CertificateStatus, err error) {
 	if !core.ValidSerial(serial) {
 		err := fmt.Errorf("Invalid certificate serial %s", serial)
 		return core.CertificateStatus{}, err
@@ -454,7 +456,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(serial string) (status core
 }
 
 // NewRegistration stores a new Registration
-func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (core.Registration, error) {
+func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Registration) (core.Registration, error) {
 	rm, err := registrationToModel(&reg)
 	if err != nil {
 		return reg, err
@@ -468,8 +470,8 @@ func (ssa *SQLStorageAuthority) NewRegistration(reg core.Registration) (core.Reg
 }
 
 // UpdateOCSP stores an updated OCSP response.
-func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (err error) {
-	status, err := ssa.GetCertificateStatus(serial)
+func (ssa *SQLStorageAuthority) UpdateOCSP(ctx context.Context, serial string, ocspResponse []byte) (err error) {
+	status, err := ssa.GetCertificateStatus(ctx, serial)
 	if err != nil {
 		return fmt.Errorf(
 			"Unable to update OCSP for certificate %s: cert status not found.", serial)
@@ -483,13 +485,13 @@ func (ssa *SQLStorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (
 
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
 // with a timestamp and a reason.
-func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, reasonCode core.RevocationCode) (err error) {
-	if _, err = ssa.GetCertificate(serial); err != nil {
+func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode core.RevocationCode) (err error) {
+	if _, err = ssa.GetCertificate(ctx, serial); err != nil {
 		return fmt.Errorf(
 			"Unable to mark certificate %s revoked: cert not found.", serial)
 	}
 
-	if _, err = ssa.GetCertificateStatus(serial); err != nil {
+	if _, err = ssa.GetCertificateStatus(ctx, serial); err != nil {
 		return fmt.Errorf(
 			"Unable to mark certificate %s revoked: cert status not found.", serial)
 	}
@@ -531,7 +533,7 @@ func (ssa *SQLStorageAuthority) MarkCertificateRevoked(serial string, reasonCode
 }
 
 // UpdateRegistration stores an updated Registration
-func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) error {
+func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, reg core.Registration) error {
 	lookupResult, err := ssa.dbMap.Get(regModel{}, reg.ID)
 	if err != nil {
 		return err
@@ -565,7 +567,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(reg core.Registration) error 
 }
 
 // NewPendingAuthorization stores a new Pending Authorization
-func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
+func (ssa *SQLStorageAuthority) NewPendingAuthorization(ctx context.Context, authz core.Authorization) (output core.Authorization, err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
@@ -616,7 +618,7 @@ func (ssa *SQLStorageAuthority) NewPendingAuthorization(authz core.Authorization
 }
 
 // UpdatePendingAuthorization updates a Pending Authorization
-func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorization) (err error) {
+func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(ctx context.Context, authz core.Authorization) (err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
@@ -664,7 +666,7 @@ func (ssa *SQLStorageAuthority) UpdatePendingAuthorization(authz core.Authorizat
 }
 
 // FinalizeAuthorization converts a Pending Authorization to a final one
-func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) (err error) {
+func (ssa *SQLStorageAuthority) FinalizeAuthorization(ctx context.Context, authz core.Authorization) (err error) {
 	tx, err := ssa.dbMap.Begin()
 	if err != nil {
 		return
@@ -714,7 +716,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization(authz core.Authorization) 
 
 // RevokeAuthorizationsByDomain invalidates all pending or finalized authorizations
 // for a specific domain
-func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
+func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ctx context.Context, ident core.AcmeIdentifier) (int64, int64, error) {
 	identifierJSON, err := json.Marshal(ident)
 	if err != nil {
 		return 0, 0, err
@@ -749,7 +751,7 @@ func (ssa *SQLStorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIden
 }
 
 // AddCertificate stores an issued certificate.
-func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
+func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []byte, regID int64) (digest string, err error) {
 	var parsedCertificate *x509.Certificate
 	parsedCertificate, err = x509.ParseCertificate(certDER)
 	if err != nil {
@@ -818,7 +820,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(certDER []byte, regID int64) (dig
 }
 
 // AlreadyDeniedCSR queries to find if the name list has already been denied.
-func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, err error) {
+func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(ctx context.Context, names []string) (already bool, err error) {
 	sort.Strings(names)
 
 	var denied int64
@@ -839,7 +841,7 @@ func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(names []string) (already bool, 
 
 // CountCertificatesRange returns the number of certificates issued in a specific
 // date range
-func (ssa *SQLStorageAuthority) CountCertificatesRange(start, end time.Time) (count int64, err error) {
+func (ssa *SQLStorageAuthority) CountCertificatesRange(ctx context.Context, start, end time.Time) (count int64, err error) {
 	err = ssa.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(1) FROM certificates
@@ -855,7 +857,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesRange(start, end time.Time) (co
 
 // CountPendingAuthorizations returns the number of pending, unexpired
 // authorizations for the give registration.
-func (ssa *SQLStorageAuthority) CountPendingAuthorizations(regID int64) (count int, err error) {
+func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, regID int64) (count int, err error) {
 	err = ssa.dbMap.SelectOne(&count,
 		`SELECT count(1) FROM pendingAuthorizations
 		 WHERE registrationID = :regID AND
@@ -876,7 +878,7 @@ func (e ErrNoReceipt) Error() string {
 
 // GetSCTReceipt gets a specific SCT receipt for a given certificate serial and
 // CT log ID
-func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
+func (ssa *SQLStorageAuthority) GetSCTReceipt(ctx context.Context, serial string, logID string) (receipt core.SignedCertificateTimestamp, err error) {
 	err = ssa.dbMap.SelectOne(
 		&receipt,
 		"SELECT * FROM sctReceipts WHERE certificateSerial = :serial AND logID = :logID",
@@ -895,7 +897,7 @@ func (ssa *SQLStorageAuthority) GetSCTReceipt(serial string, logID string) (rece
 }
 
 // AddSCTReceipt adds a new SCT receipt to the (append-only) sctReceipts table
-func (ssa *SQLStorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) error {
+func (ssa *SQLStorageAuthority) AddSCTReceipt(ctx context.Context, sct core.SignedCertificateTimestamp) error {
 	err := ssa.dbMap.Insert(&sct)
 	// For AddSCTReceipt, duplicates are explicitly OK, so don't return errors
 	// based on duplicates, especially because we currently retry all submissions
@@ -943,7 +945,7 @@ func addIssuedNames(tx execable, cert *x509.Certificate) error {
 
 // CountFQDNSets returns the number of sets with hash |setHash| within the window
 // |window|
-func (ssa *SQLStorageAuthority) CountFQDNSets(window time.Duration, names []string) (int64, error) {
+func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, window time.Duration, names []string) (int64, error) {
 	var count int64
 	err := ssa.dbMap.SelectOne(
 		&count,
@@ -958,7 +960,7 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(window time.Duration, names []stri
 
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
-func (ssa *SQLStorageAuthority) FQDNSetExists(names []string) (bool, error) {
+func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, names []string) (bool, error) {
 	var count int64
 	err := ssa.dbMap.SelectOne(
 		&count,

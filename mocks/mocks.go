@@ -13,6 +13,8 @@ import (
 	"net"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
@@ -61,7 +63,7 @@ const (
 )
 
 // GetRegistration is a mock
-func (sa *StorageAuthority) GetRegistration(id int64) (core.Registration, error) {
+func (sa *StorageAuthority) GetRegistration(_ context.Context, id int64) (core.Registration, error) {
 	if id == 100 {
 		// Tag meaning "Missing"
 		return core.Registration{}, errors.New("missing")
@@ -88,7 +90,7 @@ func (sa *StorageAuthority) GetRegistration(id int64) (core.Registration, error)
 }
 
 // GetRegistrationByKey is a mock
-func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Registration, error) {
+func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, jwk jose.JsonWebKey) (core.Registration, error) {
 	var test1KeyPublic jose.JsonWebKey
 	var test2KeyPublic jose.JsonWebKey
 	var testE1KeyPublic jose.JsonWebKey
@@ -133,7 +135,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(jwk jose.JsonWebKey) (core.Regi
 }
 
 // GetAuthorization is a mock
-func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, error) {
+func (sa *StorageAuthority) GetAuthorization(_ context.Context, id string) (core.Authorization, error) {
 	authz := core.Authorization{
 		ID:             "valid",
 		Status:         core.StatusValid,
@@ -163,12 +165,12 @@ func (sa *StorageAuthority) GetAuthorization(id string) (core.Authorization, err
 }
 
 // RevokeAuthorizationsByDomain is a mock
-func (sa *StorageAuthority) RevokeAuthorizationsByDomain(ident core.AcmeIdentifier) (int64, int64, error) {
+func (sa *StorageAuthority) RevokeAuthorizationsByDomain(_ context.Context, ident core.AcmeIdentifier) (int64, int64, error) {
 	return 0, 0, nil
 }
 
 // GetCertificate is a mock
-func (sa *StorageAuthority) GetCertificate(serial string) (core.Certificate, error) {
+func (sa *StorageAuthority) GetCertificate(_ context.Context, serial string) (core.Certificate, error) {
 	// Serial ee == 238.crt
 	if serial == "0000000000000000000000000000000000ee" {
 		certPemBytes, _ := ioutil.ReadFile("test/238.crt")
@@ -190,7 +192,7 @@ func (sa *StorageAuthority) GetCertificate(serial string) (core.Certificate, err
 }
 
 // GetCertificateStatus is a mock
-func (sa *StorageAuthority) GetCertificateStatus(serial string) (core.CertificateStatus, error) {
+func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, serial string) (core.CertificateStatus, error) {
 	// Serial ee == 238.crt
 	if serial == "0000000000000000000000000000000000ee" {
 		return core.CertificateStatus{
@@ -206,57 +208,57 @@ func (sa *StorageAuthority) GetCertificateStatus(serial string) (core.Certificat
 }
 
 // AlreadyDeniedCSR is a mock
-func (sa *StorageAuthority) AlreadyDeniedCSR([]string) (bool, error) {
+func (sa *StorageAuthority) AlreadyDeniedCSR(_ context.Context, domains []string) (bool, error) {
 	return false, nil
 }
 
 // AddCertificate is a mock
-func (sa *StorageAuthority) AddCertificate(certDER []byte, regID int64) (digest string, err error) {
+func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64) (digest string, err error) {
 	return
 }
 
 // FinalizeAuthorization is a mock
-func (sa *StorageAuthority) FinalizeAuthorization(authz core.Authorization) (err error) {
+func (sa *StorageAuthority) FinalizeAuthorization(_ context.Context, authz core.Authorization) (err error) {
 	return
 }
 
 // MarkCertificateRevoked is a mock
-func (sa *StorageAuthority) MarkCertificateRevoked(serial string, reasonCode core.RevocationCode) (err error) {
+func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial string, reasonCode core.RevocationCode) (err error) {
 	return
 }
 
 // UpdateOCSP is a mock
-func (sa *StorageAuthority) UpdateOCSP(serial string, ocspResponse []byte) (err error) {
+func (sa *StorageAuthority) UpdateOCSP(_ context.Context, serial string, ocspResponse []byte) (err error) {
 	return
 }
 
 // NewPendingAuthorization is a mock
-func (sa *StorageAuthority) NewPendingAuthorization(authz core.Authorization) (output core.Authorization, err error) {
+func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (output core.Authorization, err error) {
 	return
 }
 
 // NewRegistration is a mock
-func (sa *StorageAuthority) NewRegistration(reg core.Registration) (regR core.Registration, err error) {
+func (sa *StorageAuthority) NewRegistration(_ context.Context, reg core.Registration) (regR core.Registration, err error) {
 	return
 }
 
 // UpdatePendingAuthorization is a mock
-func (sa *StorageAuthority) UpdatePendingAuthorization(authz core.Authorization) (err error) {
+func (sa *StorageAuthority) UpdatePendingAuthorization(_ context.Context, authz core.Authorization) (err error) {
 	return
 }
 
 // UpdateRegistration is a mock
-func (sa *StorageAuthority) UpdateRegistration(reg core.Registration) (err error) {
+func (sa *StorageAuthority) UpdateRegistration(_ context.Context, reg core.Registration) (err error) {
 	return
 }
 
 // GetSCTReceipt  is a mock
-func (sa *StorageAuthority) GetSCTReceipt(serial string, logID string) (sct core.SignedCertificateTimestamp, err error) {
+func (sa *StorageAuthority) GetSCTReceipt(_ context.Context, serial string, logID string) (sct core.SignedCertificateTimestamp, err error) {
 	return
 }
 
 // AddSCTReceipt is a mock
-func (sa *StorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) (err error) {
+func (sa *StorageAuthority) AddSCTReceipt(_ context.Context, sct core.SignedCertificateTimestamp) (err error) {
 	if sct.Signature == nil {
 		err = fmt.Errorf("Bad times")
 	}
@@ -264,17 +266,17 @@ func (sa *StorageAuthority) AddSCTReceipt(sct core.SignedCertificateTimestamp) (
 }
 
 // CountFQDNSets is a mock
-func (sa *StorageAuthority) CountFQDNSets(since time.Duration, names []string) (int64, error) {
+func (sa *StorageAuthority) CountFQDNSets(_ context.Context, since time.Duration, names []string) (int64, error) {
 	return 0, nil
 }
 
 // FQDNSetExists is a mock
-func (sa *StorageAuthority) FQDNSetExists(names []string) (bool, error) {
+func (sa *StorageAuthority) FQDNSetExists(_ context.Context, names []string) (bool, error) {
 	return false, nil
 }
 
 // GetLatestValidAuthorization is a mock
-func (sa *StorageAuthority) GetLatestValidAuthorization(registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
+func (sa *StorageAuthority) GetLatestValidAuthorization(_ context.Context, registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
 	if registrationID == 1 && identifier.Type == "dns" {
 		if sa.authorizedDomains[identifier.Value] || identifier.Value == "not-an-example.com" {
 			exp := sa.clk.Now().AddDate(100, 0, 0)
@@ -285,7 +287,7 @@ func (sa *StorageAuthority) GetLatestValidAuthorization(registrationID int64, id
 }
 
 // GetValidAuthorizations is a mock
-func (sa *StorageAuthority) GetValidAuthorizations(regID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
+func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
 	if regID == 1 {
 		auths := make(map[string]*core.Authorization)
 		for _, name := range names {
@@ -308,22 +310,22 @@ func (sa *StorageAuthority) GetValidAuthorizations(regID int64, names []string, 
 }
 
 // CountCertificatesRange is a mock
-func (sa *StorageAuthority) CountCertificatesRange(_, _ time.Time) (int64, error) {
+func (sa *StorageAuthority) CountCertificatesRange(_ context.Context, _, _ time.Time) (int64, error) {
 	return 0, nil
 }
 
 // CountCertificatesByNames is a mock
-func (sa *StorageAuthority) CountCertificatesByNames(_ []string, _, _ time.Time) (ret map[string]int, err error) {
+func (sa *StorageAuthority) CountCertificatesByNames(_ context.Context, _ []string, _, _ time.Time) (ret map[string]int, err error) {
 	return
 }
 
 // CountRegistrationsByIP is a mock
-func (sa *StorageAuthority) CountRegistrationsByIP(_ net.IP, _, _ time.Time) (int, error) {
+func (sa *StorageAuthority) CountRegistrationsByIP(_ context.Context, _ net.IP, _, _ time.Time) (int, error) {
 	return 0, nil
 }
 
 // CountPendingAuthorizations is a mock
-func (sa *StorageAuthority) CountPendingAuthorizations(_ int64) (int, error) {
+func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int64) (int, error) {
 	return 0, nil
 }
 
@@ -333,7 +335,7 @@ type Publisher struct {
 }
 
 // SubmitToCT is a mock
-func (*Publisher) SubmitToCT([]byte) error {
+func (*Publisher) SubmitToCT(_ context.Context, der []byte) error {
 	return nil
 }
 

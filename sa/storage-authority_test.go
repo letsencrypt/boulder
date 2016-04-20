@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/jmhodges/clock"
 	jose "github.com/square/go-jose"
 
@@ -34,6 +36,7 @@ import (
 )
 
 var log = blog.UseMock()
+var ctx = context.Background()
 
 // initSA constructs a SQLStorageAuthority and a clean up function
 // that should be defer'ed to the end of the test.
@@ -74,7 +77,7 @@ func TestAddRegistration(t *testing.T) {
 		t.Fatalf("unable to parse contact link: %s", err)
 	}
 	contacts := []*core.AcmeURL{contact}
-	reg, err := sa.NewRegistration(core.Registration{
+	reg, err := sa.NewRegistration(ctx, core.Registration{
 		Key:       jwk,
 		Contact:   contacts,
 		InitialIP: net.ParseIP("43.34.43.34"),
@@ -85,10 +88,10 @@ func TestAddRegistration(t *testing.T) {
 	test.Assert(t, reg.ID != 0, "ID shouldn't be 0")
 	test.AssertDeepEquals(t, reg.Contact, contacts)
 
-	_, err = sa.GetRegistration(0)
+	_, err = sa.GetRegistration(ctx, 0)
 	test.AssertError(t, err, "Registration object for ID 0 was returned")
 
-	dbReg, err := sa.GetRegistration(reg.ID)
+	dbReg, err := sa.GetRegistration(ctx, reg.ID)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
 
 	expectedReg := core.Registration{
@@ -109,9 +112,9 @@ func TestAddRegistration(t *testing.T) {
 		InitialIP: net.ParseIP("72.72.72.72"),
 		Agreement: "yes",
 	}
-	err = sa.UpdateRegistration(newReg)
+	err = sa.UpdateRegistration(ctx, newReg)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.ID))
-	dbReg, err = sa.GetRegistrationByKey(jwk)
+	dbReg, err = sa.GetRegistrationByKey(ctx, jwk)
 	test.AssertNotError(t, err, "Couldn't get registration by key")
 
 	test.AssertEquals(t, dbReg.ID, newReg.ID)
@@ -120,7 +123,7 @@ func TestAddRegistration(t *testing.T) {
 	var anotherJWK jose.JsonWebKey
 	err = json.Unmarshal([]byte(anotherKey), &anotherJWK)
 	test.AssertNotError(t, err, "couldn't unmarshal anotherJWK")
-	_, err = sa.GetRegistrationByKey(anotherJWK)
+	_, err = sa.GetRegistrationByKey(ctx, anotherJWK)
 	test.AssertError(t, err, "Registration object for invalid key was returned")
 }
 
@@ -128,18 +131,18 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	_, err := sa.GetRegistration(100)
+	_, err := sa.GetRegistration(ctx, 100)
 	if _, ok := err.(core.NoSuchRegistrationError); !ok {
 		t.Errorf("GetRegistration: expected NoSuchRegistrationError, got %T type error (%s)", err, err)
 	}
 
 	jwk := satest.GoodJWK()
-	_, err = sa.GetRegistrationByKey(jwk)
+	_, err = sa.GetRegistrationByKey(ctx, jwk)
 	if _, ok := err.(core.NoSuchRegistrationError); !ok {
 		t.Errorf("GetRegistrationByKey: expected a NoSuchRegistrationError, got %T type error (%s)", err, err)
 	}
 
-	err = sa.UpdateRegistration(core.Registration{ID: 100, Key: jwk})
+	err = sa.UpdateRegistration(ctx, core.Registration{ID: 100, Key: jwk})
 	if _, ok := err.(core.NoSuchRegistrationError); !ok {
 		t.Errorf("UpdateRegistration: expected a NoSuchRegistrationError, got %T type error (%v)", err, err)
 	}
@@ -156,14 +159,14 @@ func TestCountPendingAuthorizations(t *testing.T) {
 		Expires:        &expires,
 	}
 
-	pendingAuthz, err := sa.NewPendingAuthorization(pendingAuthz)
+	pendingAuthz, err := sa.NewPendingAuthorization(ctx, pendingAuthz)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
-	count, err := sa.CountPendingAuthorizations(reg.ID)
+	count, err := sa.CountPendingAuthorizations(ctx, reg.ID)
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
 	test.AssertEquals(t, count, 1)
 
 	fc.Add(2 * time.Hour)
-	count, err = sa.CountPendingAuthorizations(reg.ID)
+	count, err = sa.CountPendingAuthorizations(ctx, reg.ID)
 	test.AssertNotError(t, err, "Couldn't count pending authorizations")
 	test.AssertEquals(t, count, 0)
 }
@@ -175,11 +178,11 @@ func TestAddAuthorization(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	PA := core.Authorization{RegistrationID: reg.ID}
 
-	PA, err := sa.NewPendingAuthorization(PA)
+	PA, err := sa.NewPendingAuthorization(ctx, PA)
 	test.AssertNotError(t, err, "Couldn't create new pending authorization")
 	test.Assert(t, PA.ID != "", "ID shouldn't be blank")
 
-	dbPa, err := sa.GetAuthorization(PA.ID)
+	dbPa, err := sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get pending authorization with ID "+PA.ID)
 	test.AssertMarshaledEquals(t, PA, dbPa)
 
@@ -192,14 +195,14 @@ func TestAddAuthorization(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 1)
 	identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "wut.com"}
 	newPa := core.Authorization{ID: PA.ID, Identifier: identifier, RegistrationID: reg.ID, Status: core.StatusPending, Expires: &exp, Combinations: combos}
-	err = sa.UpdatePendingAuthorization(newPa)
+	err = sa.UpdatePendingAuthorization(ctx, newPa)
 	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+PA.ID)
 
 	newPa.Status = core.StatusValid
-	err = sa.FinalizeAuthorization(newPa)
+	err = sa.FinalizeAuthorization(ctx, newPa)
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+PA.ID)
 
-	dbPa, err = sa.GetAuthorization(PA.ID)
+	dbPa, err = sa.GetAuthorization(ctx, PA.ID)
 	test.AssertNotError(t, err, "Couldn't get authorization with ID "+PA.ID)
 }
 
@@ -210,7 +213,7 @@ func CreateDomainAuth(t *testing.T, domainName string, sa *SQLStorageAuthority) 
 func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAuthority, regID int64) (authz core.Authorization) {
 
 	// create pending auth
-	authz, err := sa.NewPendingAuthorization(core.Authorization{RegistrationID: regID, Challenges: []core.Challenge{{}}})
+	authz, err := sa.NewPendingAuthorization(ctx, core.Authorization{RegistrationID: regID, Challenges: []core.Challenge{{}}})
 	if err != nil {
 		t.Fatalf("Couldn't create new pending authorization: %s", err)
 	}
@@ -230,7 +233,7 @@ func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAu
 	authz.Combinations = combos
 
 	// save updated auth
-	err = sa.UpdatePendingAuthorization(authz)
+	err = sa.UpdatePendingAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't update pending authorization with ID "+authz.ID)
 
 	return
@@ -242,7 +245,7 @@ func TestGetLatestValidAuthorizationBasic(t *testing.T) {
 	defer cleanUp()
 
 	// attempt to get unauthorized domain
-	authz, err := sa.GetLatestValidAuthorization(0, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
+	authz, err := sa.GetLatestValidAuthorization(ctx, 0, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
 	test.AssertError(t, err, "Should not have found a valid auth for example.org")
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -252,15 +255,15 @@ func TestGetLatestValidAuthorizationBasic(t *testing.T) {
 
 	// finalize auth
 	authz.Status = core.StatusValid
-	err = sa.FinalizeAuthorization(authz)
+	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
 
 	// attempt to get authorized domain with wrong RegID
-	authz, err = sa.GetLatestValidAuthorization(0, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
+	authz, err = sa.GetLatestValidAuthorization(ctx, 0, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
 	test.AssertError(t, err, "Should not have found a valid auth for example.org and regID 0")
 
 	// get authorized domain
-	authz, err = sa.GetLatestValidAuthorization(reg.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
+	authz, err = sa.GetLatestValidAuthorization(ctx, reg.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
 	test.AssertNotError(t, err, "Should have found a valid auth for example.org and regID 42")
 	test.AssertEquals(t, authz.Status, core.StatusValid)
 	test.AssertEquals(t, authz.Identifier.Type, core.IdentifierDNS)
@@ -283,11 +286,11 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 10) // expire in 10 day
 	authz.Expires = &exp
 	authz.Status = core.StatusInvalid
-	err = sa.FinalizeAuthorization(authz)
+	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
 
 	// should not get the auth
-	authz, err = sa.GetLatestValidAuthorization(reg.ID, ident)
+	authz, err = sa.GetLatestValidAuthorization(ctx, reg.ID, ident)
 	test.AssertError(t, err, "Should not have found a valid auth for "+domain)
 
 	// create valid auth
@@ -295,11 +298,11 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 	exp = time.Now().AddDate(0, 0, 1) // expire in 1 day
 	authz.Expires = &exp
 	authz.Status = core.StatusValid
-	err = sa.FinalizeAuthorization(authz)
+	err = sa.FinalizeAuthorization(ctx, authz)
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
 
 	// should get the valid auth even if it's expire date is lower than the invalid one
-	authz, err = sa.GetLatestValidAuthorization(reg.ID, ident)
+	authz, err = sa.GetLatestValidAuthorization(ctx, reg.ID, ident)
 	test.AssertNotError(t, err, "Should have found a valid auth for "+domain)
 	test.AssertEquals(t, authz.Status, core.StatusValid)
 	test.AssertEquals(t, authz.Identifier.Type, ident.Type)
@@ -311,10 +314,10 @@ func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
 	exp = time.Now().AddDate(0, 0, 2) // expire in 2 day
 	newAuthz.Expires = &exp
 	newAuthz.Status = core.StatusValid
-	err = sa.FinalizeAuthorization(newAuthz)
+	err = sa.FinalizeAuthorization(ctx, newAuthz)
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+newAuthz.ID)
 
-	authz, err = sa.GetLatestValidAuthorization(reg.ID, ident)
+	authz, err = sa.GetLatestValidAuthorization(ctx, reg.ID, ident)
 	test.AssertNotError(t, err, "Should have found a valid auth for "+domain)
 	test.AssertEquals(t, authz.Status, core.StatusValid)
 	test.AssertEquals(t, authz.Identifier.Type, ident.Type)
@@ -334,15 +337,15 @@ func TestAddCertificate(t *testing.T) {
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
-	digest, err := sa.AddCertificate(certDER, reg.ID)
+	digest, err := sa.AddCertificate(ctx, certDER, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	test.AssertEquals(t, digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
-	retrievedCert, err := sa.GetCertificate("000000000000000000000000000000021bd4")
+	retrievedCert, err := sa.GetCertificate(ctx, "000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
 	test.AssertByteEquals(t, certDER, retrievedCert.DER)
 
-	certificateStatus, err := sa.GetCertificateStatus("000000000000000000000000000000021bd4")
+	certificateStatus, err := sa.GetCertificateStatus(ctx, "000000000000000000000000000000021bd4")
 	test.AssertNotError(t, err, "Couldn't get status for www.eff.org.der")
 	test.Assert(t, !certificateStatus.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus.Status == core.OCSPStatusGood, "OCSP Status should be good")
@@ -354,15 +357,15 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	serial := "ffdd9b8a82126d96f61d378d5ba99a0474f0"
 
-	digest2, err := sa.AddCertificate(certDER2, reg.ID)
+	digest2, err := sa.AddCertificate(ctx, certDER2, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 	test.AssertEquals(t, digest2, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
 
-	retrievedCert2, err := sa.GetCertificate(serial)
+	retrievedCert2, err := sa.GetCertificate(ctx, serial)
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")
 	test.AssertByteEquals(t, certDER2, retrievedCert2.DER)
 
-	certificateStatus2, err := sa.GetCertificateStatus(serial)
+	certificateStatus2, err := sa.GetCertificateStatus(ctx, serial)
 	test.AssertNotError(t, err, "Couldn't get status for test-cert.der")
 	test.Assert(t, !certificateStatus2.SubscriberApproved, "SubscriberApproved should be false")
 	test.Assert(t, certificateStatus2.Status == core.OCSPStatusGood, "OCSP Status should be good")
@@ -388,30 +391,30 @@ func TestCountCertificatesByNames(t *testing.T) {
 	tomorrow := clk.Now().Add(24 * time.Hour)
 
 	// Count for a name that doesn't have any certs
-	counts, err := sa.CountCertificatesByNames([]string{"example.com"}, yesterday, now)
+	counts, err := sa.CountCertificatesByNames(ctx, []string{"example.com"}, yesterday, now)
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, len(counts), 1)
 	test.AssertEquals(t, counts["example.com"], 0)
 
 	// Add the test cert and query for its names.
 	reg := satest.CreateWorkingRegistration(t, sa)
-	_, err = sa.AddCertificate(certDER, reg.ID)
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
 	// Time range including now should find the cert
-	counts, err = sa.CountCertificatesByNames([]string{"example.com"}, yesterday, now)
+	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, yesterday, now)
 	test.AssertEquals(t, len(counts), 1)
 	test.AssertEquals(t, counts["example.com"], 1)
 
 	// Time range between two days ago and yesterday should not.
-	counts, err = sa.CountCertificatesByNames([]string{"example.com"}, twoDaysAgo, yesterday)
+	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, twoDaysAgo, yesterday)
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, len(counts), 1)
 	test.AssertEquals(t, counts["example.com"], 0)
 
 	// Time range between now and tomorrow also should not (time ranges are
 	// inclusive at the tail end, but not the beginning end).
-	counts, err = sa.CountCertificatesByNames([]string{"example.com"}, now, tomorrow)
+	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com"}, now, tomorrow)
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, len(counts), 1)
 	test.AssertEquals(t, counts["example.com"], 0)
@@ -419,9 +422,9 @@ func TestCountCertificatesByNames(t *testing.T) {
 	// Add a second test cert (for example.co.bn) and query for multiple names.
 	certDER2, err := ioutil.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
-	_, err = sa.AddCertificate(certDER2, reg.ID)
+	_, err = sa.AddCertificate(ctx, certDER2, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
-	counts, err = sa.CountCertificatesByNames([]string{"example.com", "foo.com", "example.co.bn"}, yesterday, now.Add(10000*time.Hour))
+	counts, err = sa.CountCertificatesByNames(ctx, []string{"example.com", "foo.com", "example.co.bn"}, yesterday, now.Add(10000*time.Hour))
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, len(counts), 3)
 	test.AssertEquals(t, counts["foo.com"], 0)
@@ -441,7 +444,7 @@ func TestDeniedCSR(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	exists, err := sa.AlreadyDeniedCSR(append(csr.DNSNames, csr.Subject.CommonName))
+	exists, err := sa.AlreadyDeniedCSR(ctx, append(csr.DNSNames, csr.Subject.CommonName))
 	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
 	test.Assert(t, !exists, "Found non-existent CSR")
 }
@@ -466,10 +469,10 @@ func TestAddSCTReceipt(t *testing.T) {
 	}
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
-	err = sa.AddSCTReceipt(sct)
+	err = sa.AddSCTReceipt(ctx, sct)
 	test.AssertNotError(t, err, "Failed to add SCT receipt")
 	// Append only and unique on signature and across LogID and CertificateSerial
-	err = sa.AddSCTReceipt(sct)
+	err = sa.AddSCTReceipt(ctx, sct)
 	test.AssertNotError(t, err, "Incorrectly returned error on duplicate SCT receipt")
 }
 
@@ -485,10 +488,10 @@ func TestGetSCTReceipt(t *testing.T) {
 	}
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
-	err = sa.AddSCTReceipt(sct)
+	err = sa.AddSCTReceipt(ctx, sct)
 	test.AssertNotError(t, err, "Failed to add SCT receipt")
 
-	sqlSCT, err := sa.GetSCTReceipt(sctCertSerial, sctLogID)
+	sqlSCT, err := sa.GetSCTReceipt(ctx, sctCertSerial, sctLogID)
 	test.AssertNotError(t, err, "Failed to get existing SCT receipt")
 	test.Assert(t, sqlSCT.SCTVersion == sct.SCTVersion, "Invalid SCT version")
 	test.Assert(t, sqlSCT.LogID == sct.LogID, "Invalid log ID")
@@ -505,7 +508,7 @@ func TestUpdateOCSP(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(certDER, reg.ID)
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	serial := "000000000000000000000000000000021bd4"
@@ -519,7 +522,7 @@ func TestUpdateOCSP(t *testing.T) {
 
 	fc.Add(1 * time.Hour)
 
-	err = sa.UpdateOCSP(serial, []byte(ocspResponse))
+	err = sa.UpdateOCSP(ctx, serial, []byte(ocspResponse))
 	test.AssertNotError(t, err, "UpdateOCSP failed")
 
 	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
@@ -539,7 +542,7 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(certDER, reg.ID)
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	serial := "000000000000000000000000000000021bd4"
@@ -552,7 +555,7 @@ func TestMarkCertificateRevoked(t *testing.T) {
 	fc.Add(1 * time.Hour)
 
 	code := core.RevocationCode(1)
-	err = sa.MarkCertificateRevoked(serial, code)
+	err = sa.MarkCertificateRevoked(ctx, serial, code)
 	test.AssertNotError(t, err, "MarkCertificateRevoked failed")
 
 	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
@@ -572,7 +575,7 @@ func TestCountCertificates(t *testing.T) {
 	defer cleanUp()
 	fc.Add(time.Hour * 24)
 	now := fc.Now()
-	count, err := sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
+	count, err := sa.CountCertificatesRange(ctx, now.Add(-24*time.Hour), now)
 	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
 	test.AssertEquals(t, count, int64(0))
 
@@ -580,18 +583,18 @@ func TestCountCertificates(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := ioutil.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(certDER, reg.ID)
+	_, err = sa.AddCertificate(ctx, certDER, reg.ID)
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
 	fc.Add(2 * time.Hour)
 	now = fc.Now()
-	count, err = sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
+	count, err = sa.CountCertificatesRange(ctx, now.Add(-24*time.Hour), now)
 	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
 	test.AssertEquals(t, count, int64(1))
 
 	fc.Add(24 * time.Hour)
 	now = fc.Now()
-	count, err = sa.CountCertificatesRange(now.Add(-24*time.Hour), now)
+	count, err = sa.CountCertificatesRange(ctx, now.Add(-24*time.Hour), now)
 	test.AssertNotError(t, err, "Couldn't get certificate count for the last 24hrs")
 	test.AssertEquals(t, count, int64(0))
 }
@@ -605,19 +608,19 @@ func TestCountRegistrationsByIP(t *testing.T) {
 		Opaque: "foo@example.com",
 	})
 
-	_, err := sa.NewRegistration(core.Registration{
+	_, err := sa.NewRegistration(ctx, core.Registration{
 		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}},
 		Contact:   []*core.AcmeURL{&contact},
 		InitialIP: net.ParseIP("43.34.43.34"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
-	_, err = sa.NewRegistration(core.Registration{
+	_, err = sa.NewRegistration(ctx, core.Registration{
 		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}},
 		Contact:   []*core.AcmeURL{&contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"),
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
-	_, err = sa.NewRegistration(core.Registration{
+	_, err = sa.NewRegistration(ctx, core.Registration{
 		Key:       jose.JsonWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}},
 		Contact:   []*core.AcmeURL{&contact},
 		InitialIP: net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653"),
@@ -627,16 +630,16 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	earliest := fc.Now().Add(-time.Hour * 24)
 	latest := fc.Now()
 
-	count, err := sa.CountRegistrationsByIP(net.ParseIP("1.1.1.1"), earliest, latest)
+	count, err := sa.CountRegistrationsByIP(ctx, net.ParseIP("1.1.1.1"), earliest, latest)
 	test.AssertNotError(t, err, "Failed to count registrations")
 	test.AssertEquals(t, count, 0)
-	count, err = sa.CountRegistrationsByIP(net.ParseIP("43.34.43.34"), earliest, latest)
+	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("43.34.43.34"), earliest, latest)
 	test.AssertNotError(t, err, "Failed to count registrations")
 	test.AssertEquals(t, count, 1)
-	count, err = sa.CountRegistrationsByIP(net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"), earliest, latest)
+	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652"), earliest, latest)
 	test.AssertNotError(t, err, "Failed to count registrations")
 	test.AssertEquals(t, count, 2)
-	count, err = sa.CountRegistrationsByIP(net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000"), earliest, latest)
+	count, err = sa.CountRegistrationsByIP(ctx, net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000"), earliest, latest)
 	test.AssertNotError(t, err, "Failed to count registrations")
 	test.AssertEquals(t, count, 2)
 }
@@ -650,18 +653,18 @@ func TestRevokeAuthorizationsByDomain(t *testing.T) {
 	PA2 := CreateDomainAuthWithRegID(t, "a.com", sa, reg.ID)
 
 	PA2.Status = core.StatusValid
-	err := sa.FinalizeAuthorization(PA2)
+	err := sa.FinalizeAuthorization(ctx, PA2)
 	test.AssertNotError(t, err, "Failed to finalize authorization")
 
 	ident := core.AcmeIdentifier{Value: "a.com", Type: core.IdentifierDNS}
-	ar, par, err := sa.RevokeAuthorizationsByDomain(ident)
+	ar, par, err := sa.RevokeAuthorizationsByDomain(ctx, ident)
 	test.AssertNotError(t, err, "Failed to revoke authorizations for a.com")
 	test.AssertEquals(t, ar, int64(1))
 	test.AssertEquals(t, par, int64(1))
 
-	PA, err := sa.GetAuthorization(PA1.ID)
+	PA, err := sa.GetAuthorization(ctx, PA1.ID)
 	test.AssertNotError(t, err, "Failed to retrieve pending authorization")
-	FA, err := sa.GetAuthorization(PA2.ID)
+	FA, err := sa.GetAuthorization(ctx, PA2.ID)
 	test.AssertNotError(t, err, "Failed to retrieve finalized authorization")
 
 	test.AssertEquals(t, PA.Status, core.StatusRevoked)
@@ -683,12 +686,12 @@ func TestFQDNSets(t *testing.T) {
 
 	// only one valid
 	threeHours := time.Hour * 3
-	count, err := sa.CountFQDNSets(threeHours, names)
+	count, err := sa.CountFQDNSets(ctx, threeHours, names)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, count, int64(1))
 
 	// check hash isn't affected by changing name order/casing
-	count, err = sa.CountFQDNSets(threeHours, []string{"b.example.com", "A.example.COM"})
+	count, err = sa.CountFQDNSets(ctx, threeHours, []string{"b.example.com", "A.example.COM"})
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, count, int64(1))
 
@@ -700,7 +703,7 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// only two valid
-	count, err = sa.CountFQDNSets(threeHours, names)
+	count, err = sa.CountFQDNSets(ctx, threeHours, names)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, count, int64(2))
 
@@ -718,7 +721,7 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// only two valid
-	count, err = sa.CountFQDNSets(threeHours, names)
+	count, err = sa.CountFQDNSets(ctx, threeHours, names)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, count, int64(2))
 }
@@ -728,7 +731,7 @@ func TestFQDNSetsExists(t *testing.T) {
 	defer cleanUp()
 
 	names := []string{"a.example.com", "B.example.com"}
-	exists, err := sa.FQDNSetExists(names)
+	exists, err := sa.FQDNSetExists(ctx, names)
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
 	test.Assert(t, !exists, "FQDN set shouldn't exist")
 
@@ -740,7 +743,7 @@ func TestFQDNSetsExists(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add name set")
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
-	exists, err = sa.FQDNSetExists(names)
+	exists, err = sa.FQDNSetExists(ctx, names)
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
 	test.Assert(t, exists, "FQDN set does exist")
 }
