@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
+	"sync"
 )
 
 var (
@@ -287,22 +288,56 @@ func isPrivateV4(ip net.IP) bool {
 // provided hostname. This method assumes that the external resolver will chase
 // CNAME/DNAME aliases and return relevant A records.  It will retry requests in
 // the case of temporary network errors. It can return net package,
-// context.Canceled, and context.DeadlineExceeded errors.
+// context.Canceled, and context.DeadlineExceeded errors, all wrapped in the DNSError type.
 func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
-	var addrs []net.IP
-	dnsType := dns.TypeA
-	r, err := dnsResolver.exchangeOne(ctx, hostname, dnsType, dnsResolver.aStats)
-	if err != nil {
-		return addrs, &DNSError{dnsType, hostname, err, -1}
-	}
-	if r.Rcode != dns.RcodeSuccess {
-		return nil, &DNSError{dnsType, hostname, nil, r.Rcode}
+	errCh := make(chan error, 2)
+	var respA, respAAAA *dns.Msg
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+	go func() {
+		var err error
+		respA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeA, dnsResolver.aStats)
+		if err != nil {
+			errCh <- &DNSError{dns.TypeA, hostname, err, -1}
+		}
+		if respA.Rcode != dns.RcodeSuccess {
+			errCh <- &DNSError{dns.TypeA, hostname, nil, respA.Rcode}
+		}
+		wg.Done()
+	}()
+	go func() {
+		var err error
+		respAAAA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aStats)
+		if err != nil {
+			errCh <- &DNSError{dns.TypeAAAA, hostname, err, -1}
+		}
+		if respAAAA.Rcode != dns.RcodeSuccess {
+			errCh <- &DNSError{dns.TypeAAAA, hostname, nil, respAAAA.Rcode}
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
 	}
 
-	for _, answer := range r.Answer {
-		if answer.Header().Rrtype == dnsType {
+	var addrs []net.IP
+
+	for _, answer := range respA.Answer {
+		if answer.Header().Rrtype == dns.TypeA {
 			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && (!isPrivateV4(a.A) || dnsResolver.allowRestrictedAddresses) {
 				addrs = append(addrs, a.A)
+			}
+		}
+	}
+	for _, answer := range respAAAA.Answer {
+		if answer.Header().Rrtype == dns.TypeAAAA {
+			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) || dnsResolver.allowRestrictedAddresses) {
+				addrs = append(addrs, aaaa.AAAA)
 			}
 		}
 	}
