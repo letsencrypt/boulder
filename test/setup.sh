@@ -26,6 +26,10 @@ go get \
  chmod +x $GOPATH/bin/goose &&
  ./test/create_db.sh) &
 
+(curl https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz | \
+ tar -xzv &&
+ cd protobuf-2.6.1 && ./configure --prefix=$HOME && make && make install) &
+
 # Set up rabbitmq exchange
 go run cmd/rabbitmq-setup/main.go -server amqp://boulder-rabbitmq &
 
