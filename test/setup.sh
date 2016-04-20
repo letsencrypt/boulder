@@ -10,7 +10,7 @@ go get \
   github.com/golang/lint/golint \
   github.com/golang/mock/mockgen \
   github.com/golang/protobuf/proto \
-  github.com/google/protobuf/protoc-gen-go \
+  github.com/golang/protobuf/protoc-gen-go \
   github.com/jcjones/github-pr-status \
   github.com/jsha/listenbuddy \
   github.com/kisielk/errcheck \
