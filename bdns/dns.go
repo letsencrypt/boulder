@@ -115,6 +115,67 @@ var (
 			Mask: []byte{255, 192, 0, 0},
 		},
 	}
+	privateV6Networks = []net.IPNet{
+		// RFC 4193: Unique-Local
+		// fc00::/7
+		{
+			IP:   []byte{252, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			Mask: []byte{254, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		},
+		// RFC 4291: Unspecified Address
+		// ::/128
+		{
+			IP:   []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
+		},
+		// RFC 4291: Loopback Address
+		// ::1/128
+		{
+			IP:   []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+			Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
+		},
+		// RFC 4291: Section 2.5.6 Link-Scoped Unicast
+		// fe80::/10
+		{
+			IP:   []byte{254, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			Mask: []byte{255, 192, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		},
+		// RFC 4291 Section 2.5.7 Site-Local Unicast (Deprecated)
+		// fec0::/10
+		// {
+		// 	IP:   []byte{254, 192, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		// 	Mask: []byte{255, 192, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		// },
+		// RFC 4291: Section 2.7
+		// ff00::/8
+		{
+			IP:   []byte{255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			Mask: []byte{255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		},
+		// RFC 2928: Protocol Assignments
+		// 2001::/16
+		{
+			IP:   []byte{32, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			Mask: []byte{255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		},
+		// RFC 3056: 6to4
+		// 2002::/16
+		// {
+		// 	IP:   []byte{32, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		// 	Mask: []byte{255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		// },
+		// RFC 4291: IPv4-mapped Address
+		// ::ffff:0000:0000/
+		{
+			IP:   []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0},
+			Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0},
+		},
+		// RFC 6052: IPv4-IPv6 Translation
+		// {
+		// 	IP:   []byte{0, 100, 255, 155, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		// 	Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0},
+		// },
+	}
 )
 
 // DNSResolver queries for DNS records
@@ -284,47 +345,56 @@ func isPrivateV4(ip net.IP) bool {
 	return false
 }
 
-// LookupHost sends a DNS query to find all A records associated with the
-// provided hostname. This method assumes that the external resolver will chase
-// CNAME/DNAME aliases and return relevant A records.  It will retry requests in
-// the case of temporary network errors. It can return net package,
-// context.Canceled, and context.DeadlineExceeded errors, all wrapped in the DNSError type.
+func isPrivateV6(ip net.IP) bool {
+	for _, net := range privateV6Networks {
+		if net.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// LookupHost sends a DNS query to find all A and AAAA records associated with
+// the provided hostname. This method assumes that the external resolver will
+// chase CNAME/DNAME aliases and return relevant records.  It will retry
+// requests in the case of temporary network errors. It can return net package,
+// context.Canceled, and context.DeadlineExceeded errors, all wrapped in the
+// DNSError type.
 func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
-	errCh := make(chan error, 2)
 	var respA, respAAAA *dns.Msg
+	var errA, errAAAA error
 	var wg sync.WaitGroup
 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		var err error
-		respA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeA, dnsResolver.aStats)
+		respA, err = dnsResolver.exchangeOne(ctx, hostname, dns.TypeA, dnsResolver.aStats)
 		if err != nil {
-			errCh <- &DNSError{dns.TypeA, hostname, err, -1}
+			errA = &DNSError{dns.TypeA, hostname, err, -1}
 			return
 		}
 		if respA.Rcode != dns.RcodeSuccess {
-			errCh <- &DNSError{dns.TypeA, hostname, nil, respA.Rcode}
+			errA = &DNSError{dns.TypeA, hostname, nil, respA.Rcode}
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		var err error
-		respAAAA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aStats)
+		respAAAA, err = dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aStats)
 		if err != nil {
-			errCh <- &DNSError{dns.TypeAAAA, hostname, err, -1}
+			errAAAA = &DNSError{dns.TypeAAAA, hostname, err, -1}
 			return
 		}
 		if respAAAA.Rcode != dns.RcodeSuccess {
-			errCh <- &DNSError{dns.TypeAAAA, hostname, nil, respAAAA.Rcode}
+			errAAAA = &DNSError{dns.TypeAAAA, hostname, nil, respAAAA.Rcode}
 		}
 	}()
 
 	wg.Wait()
-	select {
-	case err := <-errCh:
-		return nil, err
-	default:
+
+	if errA != nil && errAAAA != nil {
+		return nil, errA
 	}
 
 	var addrs []net.IP
