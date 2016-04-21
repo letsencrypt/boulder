@@ -58,12 +58,12 @@ func parseAnswer(as []answer) ([]dns.RR, error) {
 	return dnsAs, nil
 }
 
-func createClient(timeout, keepalive time.Duration, itfAddr net.Addr) *http.Client {
+func createClient(timeout, keepAlive time.Duration, itfAddr net.Addr) *http.Client {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		Dial: (&net.Dialer{
 			Timeout:   timeout,
-			KeepAlive: keepalive,
+			KeepAlive: keepAlive,
 			LocalAddr: itfAddr,
 		}).Dial,
 		TLSHandshakeTimeout: 10 * time.Second,
@@ -80,7 +80,7 @@ type caaPublicResolver struct {
 	maxFailures      int
 }
 
-func newCAAPublicResolver(stats statsd.Statter, maxFailures int, interfaces map[string]struct{}) (*caaPublicResolver, error) {
+func newCAAPublicResolver(stats statsd.Statter, timeout, keepAlive time.Duration, maxFailures int, interfaces map[string]struct{}) (*caaPublicResolver, error) {
 	cpr := &caaPublicResolver{stats: stats, maxFailures: maxFailures}
 	allInterfaces, err := net.Interfaces()
 	if err != nil {
@@ -90,12 +90,13 @@ func newCAAPublicResolver(stats statsd.Statter, maxFailures int, interfaces map[
 		if _, ok := interfaces[itf.Name]; !ok {
 			continue
 		}
+		// perhaps should just use the first address? not really sure here...
 		allITFAddrs, err := itf.Addrs()
 		if err != nil {
 			return nil, err
 		}
 		for _, itfAddr := range allITFAddrs {
-			cpr.interfaceClients[itfAddr.String()] = createClient(0, 0, itfAddr) // fix
+			cpr.interfaceClients[itfAddr.String()] = createClient(timeout, keepAlive, itfAddr) // fix
 		}
 	}
 	return cpr, nil
