@@ -1,12 +1,15 @@
 package va
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"time"
 
 	"github.com/miekg/dns"
@@ -16,7 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 )
 
-// We have made multiple issues resolving CAA records when the queries
+// We have had multiple issues resolving CAA records when the queries
 // cross certain network paths. We have been unable to find a network
 // solution to this so we are required to implement a multi-path
 // resolution technique. This is a real hack and to be honest probably
@@ -69,16 +72,22 @@ type response struct {
 	Comment          string     `json:"Comment"`
 }
 
-func parseAnswer(as []answer) ([]dns.RR, error) {
-	dnsAs := []dns.RR{}
+func parseAnswer(as []answer) ([]*dns.CAA, error) {
+	rrs := []*dns.CAA{}
+	// only bother parsing out CAA records
 	for _, a := range as {
+		if a.Type != 257 {
+			continue
+		}
 		rr, err := dns.NewRR(fmt.Sprintf("%s %d IN %s %s", a.Name, a.TTL, dns.TypeToString[a.Type], a.Data))
 		if err != nil {
 			return nil, err
 		}
-		dnsAs = append(dnsAs, rr)
+		if caaRR, ok := rr.(*dns.CAA); ok {
+			rrs = append(rrs, caaRR)
+		}
 	}
-	return dnsAs, nil
+	return rrs, nil
 }
 
 func createClient(timeout, keepAlive time.Duration, itfAddr net.Addr) *http.Client {
@@ -125,7 +134,7 @@ func NewCAAPublicResolver(scope metrics.Scope, timeout, keepAlive time.Duration,
 	return cpr, nil
 }
 
-func (cpr *CAAPublicResolver) queryCAA(ctx context.Context, req *http.Request, ic *http.Client) ([]dns.RR, error) {
+func (cpr *CAAPublicResolver) queryCAA(ctx context.Context, req *http.Request, ic *http.Client) ([]*dns.CAA, error) {
 	apiResp, err := ctxhttp.Do(ctx, ic, req)
 	if err != nil {
 		return nil, err
@@ -151,8 +160,27 @@ func (cpr *CAAPublicResolver) queryCAA(ctx context.Context, req *http.Request, i
 }
 
 type queryResult struct {
-	records []dns.RR
+	records []*dns.CAA
 	err     error
+}
+
+type caaSet []*dns.CAA
+
+func (cs caaSet) Len() int           { return len(cs) }
+func (cs caaSet) Less(i, j int) bool { return cs[i].Value < cs[j].Value } // sort by value...?
+func (cs caaSet) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
+
+func hashCAASet(set []*dns.CAA) [32]byte {
+	tbh := []byte{}
+	sortedSet := caaSet(set)
+	sort.Sort(sortedSet)
+	for _, rr := range sortedSet {
+		ttl := rr.Hdr.Ttl
+		rr.Hdr.Ttl = 0 // only variable that should change
+		dns.PackRR(rr, tbh, len(tbh), nil, false)
+		rr.Hdr.Ttl = ttl
+	}
+	return sha256.Sum256(tbh)
 }
 
 func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
@@ -176,7 +204,8 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 	}
 	// collect everything
 	failed := 0
-	CAAs := []*dns.CAA{}
+	var CAAs []*dns.CAA
+	var setHash [32]byte
 	for r := range results {
 		if err != nil {
 			failed++
@@ -185,15 +214,12 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 			}
 		}
 		if CAAs != nil {
-			for _, rr := range r.records {
-				if rr.Header().Rrtype == dns.TypeCAA {
-					if caaR, ok := rr.(*dns.CAA); ok {
-						CAAs = append(CAAs, caaR)
-					}
-				}
-			}
+			CAAs = r.records
+			setHash = hashCAASet(CAAs)
 		} else {
-			// check equality... not sure how
+			if len(r.records) != len(CAAs) || hashCAASet(r.records) != setHash {
+				return nil, errors.New("mismatching CAA sets were returned")
+			}
 		}
 	}
 	return CAAs, nil
