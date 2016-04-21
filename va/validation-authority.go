@@ -56,11 +56,11 @@ type ValidationAuthorityImpl struct {
 	stats        statsd.Statter
 	clk          clock.Clock
 	caaClient    caaPB.CAACheckerClient
-	caaPR        *caaPublicResolver
+	caaPR        *CAAPublicResolver
 }
 
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient, cprClient *CAAPublicResolver, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
 	logger := blog.Get()
 	return &ValidationAuthorityImpl{
 		SafeBrowsing: sbc,
@@ -71,6 +71,7 @@ func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient 
 		stats:        stats,
 		clk:          clk,
 		caaClient:    caaClient,
+		caaPR:        cprClient,
 	}
 }
 

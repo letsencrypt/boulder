@@ -50,12 +50,26 @@ func main() {
 			cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 			caaClient = caaPB.NewCAACheckerClient(conn)
 		}
-		clk := clock.Default()
+		scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
 		sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
-		vai := va.NewValidationAuthorityImpl(pc, sbc, caaClient, stats, clk)
+		var cprClient *va.CAAPublicResolver
+		interfaces := make(map[string]struct{}, len(c.VA.CAAPublicResolver.Interfaces))
+		for _, itf := range c.VA.CAAPublicResolver.Interfaces {
+			interfaces[itf] = struct{}{}
+		}
+		if c.VA.CAAPublicResolver != nil {
+			cprClient = va.NewCAAPublicResolver(
+				scoped,
+				c.VA.CAAPublicResolver.Timeout,
+				c.VA.CAAPublicResolver.KeepAlive,
+				c.VA.CAAPublicResolver.MaxFailures,
+				interfaces,
+			)
+		}
+		clk := clock.Default()
+		vai := va.NewValidationAuthorityImpl(pc, sbc, caaClient, cprClient, stats, clk)
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
-		scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
 		dnsTries := c.VA.DNSTries
 		if dnsTries < 1 {
 			dnsTries = 1

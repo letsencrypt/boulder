@@ -9,11 +9,34 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
+
+	"github.com/letsencrypt/boulder/metrics"
 )
+
+// We have made multiple issues resolving CAA records when the queries
+// cross certain network paths. We have been unable to find a network
+// solution to this so we are required to implement a multi-path
+// resolution technique. This is a real hack and to be honest probably
+// not the best solution to this problem. Ideally we would control our
+// own distributed multi-path resolver but there are no publicly available
+// ones.
+//
+// This implementation will talks to the Google Public DNS resolver over
+// multiple paths using VPN interfaces (or any other method implementing
+// hardware interfaces) with geographically distributed endpoints. In case
+// the Google resolver encounters the same issues we do multiple queries
+// for the same name in parallel and we require a M of N quorum of responses
+// to return the SUCCESS return code. In order to prevent the case where a
+// attacker may be able to exploit the Google resolver in some way we also
+// require that the records returned from all requests are the same (as far
+// as I can tell the Google DNS implementation doesn't share cache state
+// between the distributed nodes so this should be safe).
+//
+// Since DNS isn't a super secure protocol and Google has recently introduced
+// a public HTTPS API for their DNS resolver so instead we use that.
 
 // API reference:
 //   https://developers.google.com/speed/public-dns/docs/dns-over-https#api_specification
@@ -74,14 +97,14 @@ func createClient(timeout, keepAlive time.Duration, itfAddr net.Addr) *http.Clie
 	}
 }
 
-type caaPublicResolver struct {
+type CAAPublicResolver struct {
 	interfaceClients map[string]*http.Client
-	stats            statsd.Statter
+	stats            metrics.Scope
 	maxFailures      int
 }
 
-func newCAAPublicResolver(stats statsd.Statter, timeout, keepAlive time.Duration, maxFailures int, interfaces map[string]struct{}) (*caaPublicResolver, error) {
-	cpr := &caaPublicResolver{stats: stats, maxFailures: maxFailures}
+func NewCAAPublicResolver(scope metrics.Scope, timeout, keepAlive time.Duration, maxFailures int, interfaces map[string]struct{}) (*CAAPublicResolver, error) {
+	cpr := &CAAPublicResolver{stats: scope, maxFailures: maxFailures}
 	allInterfaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
@@ -102,7 +125,7 @@ func newCAAPublicResolver(stats statsd.Statter, timeout, keepAlive time.Duration
 	return cpr, nil
 }
 
-func (cpr *caaPublicResolver) queryCAA(ctx context.Context, req *http.Request, ic *http.Client) ([]dns.RR, error) {
+func (cpr *CAAPublicResolver) queryCAA(ctx context.Context, req *http.Request, ic *http.Client) ([]dns.RR, error) {
 	apiResp, err := ctxhttp.Do(ctx, ic, req)
 	if err != nil {
 		return nil, err
@@ -132,14 +155,14 @@ type queryResult struct {
 	err     error
 }
 
-func (cpr *caaPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
+func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
 	req, err := http.NewRequest("GET", apiURI, nil)
 	if err != nil {
 		return nil, err
 	}
 	query := make(url.Values)
 	query.Add("name", domain)
-	query.Add("type", "257")
+	query.Add("type", "257") // CAA
 	req.URL.RawQuery = query.Encode()
 
 	results := make(chan queryResult, len(cpr.interfaceClients))
@@ -147,7 +170,7 @@ func (cpr *caaPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 		go func(ic *http.Client, ia string) {
 			started := time.Now()
 			records, err := cpr.queryCAA(ctx, req, ic)
-			cpr.stats.TimingDuration(fmt.Sprintf("GPDNS.CAA.Latency.%s", ia), time.Since(started), 1.0)
+			cpr.stats.TimingDuration(fmt.Sprintf("GPDNS.CAA.Latency.%s", ia), time.Since(started))
 			results <- queryResult{records, err}
 		}(interfaceClient, addr)
 	}
@@ -161,12 +184,16 @@ func (cpr *caaPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 				return nil, fmt.Errorf("%d out of %d CAA queries failed", len(cpr.interfaceClients), failed)
 			}
 		}
-		for _, rr := range r.records {
-			if rr.Header().Rrtype == dns.TypeCAA {
-				if caaR, ok := rr.(*dns.CAA); ok {
-					CAAs = append(CAAs, caaR)
+		if CAAs != nil {
+			for _, rr := range r.records {
+				if rr.Header().Rrtype == dns.TypeCAA {
+					if caaR, ok := rr.(*dns.CAA); ok {
+						CAAs = append(CAAs, caaR)
+					}
 				}
 			}
+		} else {
+			// check equality... not sure how
 		}
 	}
 	return CAAs, nil
