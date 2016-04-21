@@ -176,8 +176,8 @@ func hashCAASet(set []*dns.CAA) [32]byte {
 	sort.Sort(sortedSet)
 	for _, rr := range sortedSet {
 		ttl := rr.Hdr.Ttl
-		rr.Hdr.Ttl = 0 // only variable that should change
-		dns.PackRR(rr, tbh, len(tbh), nil, false)
+		rr.Hdr.Ttl = 0                            // only variable that should jitter
+		dns.PackRR(rr, tbh, len(tbh), nil, false) // don't compress RR
 		rr.Hdr.Ttl = ttl
 	}
 	return sha256.Sum256(tbh)
