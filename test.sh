@@ -120,7 +120,7 @@ function run_unit_tests() {
     # are not stdlib packages. We can then install them with the race
     # detector enabled to prevent our individual `go test` calls from
     # building them multiple times.
-    all_shared_imports=$(go list -f '{{ join .Imports "\n" }}' $TESTPATHS | sort | uniq)
+    all_shared_imports=$(go list -f '{{ join .Imports "\n" }}' ${TESTPATHS} | sort | uniq)
     deps=$(go list -f '{{ if not .Standard }}{{ .ImportPath }}{{ end }}' ${all_shared_imports})
     echo "go installing race detector enabled dependencies"
     go install -race $deps
@@ -146,7 +146,7 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    run go test -p 1 $GOTESTFLAGS $TESTPATHS
+    run go test -p 1 $GOTESTFLAGS ${TESTPATHS}
   fi
 }
 
@@ -159,7 +159,7 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 #
 if [[ "$RUN" =~ "vet" ]] ; then
   start_context "vet"
-  run_and_comment go vet $TESTPATHS
+  run_and_comment go vet ${TESTPATHS}
   end_context #vet
 fi
 
@@ -285,7 +285,7 @@ if [[ "$RUN" =~ "errcheck" ]] ; then
   start_context "errcheck"
   run_and_comment errcheck \
     -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
-    $(echo $TESTPATHS | tr ' ' '\n' | grep -v test)
+    $(echo ${TESTPATHS} | tr ' ' '\n' | grep -v test)}
   end_context #errcheck
 fi
 
@@ -306,7 +306,7 @@ if [[ "$RUN" =~ "generate" ]] ; then
   #     github.com/letsencrypt/boulder/probs)
   go install ./probs
   go install google.golang.org/grpc/codes
-  run_and_comment go generate $TESTPATHS
+  run_and_comment go generate ${TESTPATHS}
   run_and_comment git diff --exit-code .
   end_context #"generate"
 fi
