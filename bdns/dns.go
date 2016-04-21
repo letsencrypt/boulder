@@ -10,13 +10,13 @@ import (
 	"math/rand"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
-	"sync"
 )
 
 var (
