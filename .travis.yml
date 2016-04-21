@@ -1,7 +1,7 @@
 language: go
 
 go:
-  - 1.5.3
+  - 1.6
 
 addons:
   hosts:
@@ -20,6 +20,7 @@ addons:
       - libffi-dev
       - ca-certificates
       - rsyslog
+      - protobuf-compiler
   mariadb: "10.0"
 
 sudo: false
@@ -48,8 +49,8 @@ before_install:
   - cd $GOPATH/src/github.com/letsencrypt/boulder
 
 # Override default Travis install command to prevent it from adding
-# Godeps/_workspace to GOPATH. When that happens, it hides failures that should
-# arise from importing non-vendorized paths.
+# Godeps/_workspace or vendor/ to GOPATH. When that happens, it hides failures that should
+# arise from importing non-vendored paths.
 install:
   - true
 
@@ -58,7 +59,7 @@ env:
     - LETSENCRYPT_PATH=$HOME/letsencrypt
     - GO15VENDOREXPERIMENT=1
   matrix:
-    - RUN="vet fmt migrations integration godep-restore errcheck"
+    - RUN="vet fmt migrations generate integration godep-restore errcheck"
     # Config changes that have landed in master but not yet been applied to
     # production can be made in boulder-config-next.json.
     - RUN="integration" BOULDER_CONFIG="test/boulder-config-next.json"

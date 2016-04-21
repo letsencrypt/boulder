@@ -7,14 +7,18 @@
 set -ev
 
 go get \
-  golang.org/x/tools/cover \
   github.com/golang/lint/golint \
-  github.com/tools/godep \
+  github.com/golang/mock/mockgen \
+  github.com/golang/protobuf/proto \
+  github.com/golang/protobuf/protoc-gen-go \
+  github.com/jcjones/github-pr-status \
+  github.com/jsha/listenbuddy \
+  github.com/kisielk/errcheck \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
-  github.com/jcjones/github-pr-status \
-  github.com/kisielk/errcheck \
-  github.com/jsha/listenbuddy &
+  github.com/tools/godep \
+  golang.org/x/tools/cmd/stringer \
+  golang.org/x/tools/cover &
 
 (wget https://github.com/jsha/boulder-tools/raw/master/goose.gz &&
  mkdir -p $GOPATH/bin &&
@@ -26,4 +30,6 @@ go get \
 go run cmd/rabbitmq-setup/main.go -server amqp://boulder-rabbitmq &
 
 # Wait for all the background commands to finish.
-wait
+for pid in $(jobs -p); do
+  wait $pid || exit 1
+done
