@@ -557,10 +557,7 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 
 	// Check for malformed ValidationRecords
 	if !challenge.RecordsSane() && prob == nil {
-		prob = &probs.ProblemDetails{
-			Type:   probs.ServerInternalProblem,
-			Detail: "Records for validation failed sanity check",
-		}
+		prob = probs.ServerInternal("Records for validation failed sanity check")
 	}
 
 	if prob != nil {
@@ -576,6 +573,8 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
+
+	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
 
 	err := va.RA.OnValidationUpdate(ctx, authz)
 	if err != nil {
@@ -656,10 +655,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	// Check for malformed ValidationRecords
 	if !challenge.RecordsSane() && prob == nil {
-		prob = &probs.ProblemDetails{
-			Type:   probs.ServerInternalProblem,
-			Detail: "Records for validation failed sanity check",
-		}
+		prob = probs.ServerInternal("Records for validation failed sanity check")
 	}
 
 	if prob != nil {
@@ -676,6 +672,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
+	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
 	return records, prob
 }
 
