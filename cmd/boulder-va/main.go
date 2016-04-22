@@ -17,6 +17,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
+	"github.com/letsencrypt/boulder/rpc/pb/wrappers"
 	"github.com/letsencrypt/boulder/va"
 
 	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
@@ -102,7 +103,7 @@ func main() {
 		if c.VA.GRPC != nil {
 			s, l, err := bgrpc.NewServer(c.VA.GRPC)
 			cmd.FailOnError(err, "Unable to setup VA gRPC server")
-			err = rpc.RegisterValidationAuthorityGRPCServer(s, vai)
+			err = wrappers.RegisterValidationAuthorityGRPCServer(s, vai)
 			cmd.FailOnError(err, "Unable to register VA gRPC server")
 			go func() {
 				err := s.Serve(l)

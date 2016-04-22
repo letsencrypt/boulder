@@ -51,7 +51,7 @@ func main() {
 		if c.RA.VAService != nil {
 			conn, err := bgrpc.ClientSetup(c.RA.VAService)
 			cmd.FailOnError(err, "Unable to create VA client")
-			vac = rpc.NewValidationAuthorityGRPCClient(conn)
+			vac = bgrpc.NewValidationAuthorityGRPCClient(conn)
 		} else {
 			vac, err = rpc.NewValidationAuthorityClient(clientName, amqpConf, stats)
 			cmd.FailOnError(err, "Unable to create VA client")
