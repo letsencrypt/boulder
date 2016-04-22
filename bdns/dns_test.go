@@ -65,8 +65,20 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.AAAA = net.ParseIP("::1")
 				appendAnswer(record)
 			}
+			if q.Name == "v4error.letsencrypt.org." {
+				record := new(dns.AAAA)
+				record.Hdr = dns.RR_Header{Name: "v4error.letsencrypt.org.", Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
+				record.AAAA = net.ParseIP("::1")
+				appendAnswer(record)
+			}
+			if q.Name == "v6error.letsencrypt.org." {
+				m.SetRcode(r, dns.RcodeNotImplemented)
+			}
 			if q.Name == "nxdomain.letsencrypt.org." {
 				m.SetRcode(r, dns.RcodeNameError)
+			}
+			if q.Name == "dualstackerror.letsencrypt.org." {
+				m.SetRcode(r, dns.RcodeNotImplemented)
 			}
 		case dns.TypeA:
 			if q.Name == "cps.letsencrypt.org." {
@@ -81,8 +93,20 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.A = net.ParseIP("127.0.0.1")
 				appendAnswer(record)
 			}
+			if q.Name == "v6error.letsencrypt.org." {
+				record := new(dns.A)
+				record.Hdr = dns.RR_Header{Name: "dualstack.letsencrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
+				record.A = net.ParseIP("127.0.0.1")
+				appendAnswer(record)
+			}
+			if q.Name == "v4error.letsencrypt.org." {
+				m.SetRcode(r, dns.RcodeNotImplemented)
+			}
 			if q.Name == "nxdomain.letsencrypt.org." {
 				m.SetRcode(r, dns.RcodeNameError)
+			}
+			if q.Name == "dualstackerror.letsencrypt.org." {
+				m.SetRcode(r, dns.RcodeRefused)
 			}
 		case dns.TypeCNAME:
 			if q.Name == "cname.letsencrypt.org." {
@@ -292,8 +316,37 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("dualstack.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 2, "Should have 2 IPs")
-	test.Assert(t, ip[0].To4() != nil, "first IP should be ipv4")
-	test.Assert(t, ip[1].To16() != nil, "second IP should be ipv6")
+	expected := net.ParseIP("127.0.0.1")
+	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
+	expected = net.ParseIP("::1")
+	test.Assert(t, ip[1].To16().Equal(expected), "wrong ipv6 address")
+
+	// IPv6 error, IPv4 success
+	ip, err = obj.LookupHost(context.Background(), "v6error.letsencrypt.org")
+	t.Logf("v6error.letsencrypt.org - IP: %s, Err: %s", ip, err)
+	test.AssertNotError(t, err, "Not an error to exist")
+	test.Assert(t, len(ip) == 1, "Should have 1 IP")
+	expected = net.ParseIP("127.0.0.1")
+	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
+
+	// IPv6 success, IPv4 error
+	ip, err = obj.LookupHost(context.Background(), "v4error.letsencrypt.org")
+	t.Logf("v4error.letsencrypt.org - IP: %s, Err: %s", ip, err)
+	test.AssertNotError(t, err, "Not an error to exist")
+	test.Assert(t, len(ip) == 1, "Should have 1 IP")
+	expected = net.ParseIP("::1")
+	test.Assert(t, ip[0].To16().Equal(expected), "wrong ipv6 address")
+
+	// IPv6 error, IPv4 error
+	// Should return the IPv4 error (Refused) and not IPv6 error (NotImplemented)
+	hostname := "dualstackerror.letsencrypt.org"
+	ip, err = obj.LookupHost(context.Background(), hostname)
+	t.Logf("%s - IP: %s, Err: %s", hostname, ip, err)
+	test.AssertError(t, err, "Should be an error")
+	expectedErr := DNSError{dns.TypeA, hostname, nil, dns.RcodeRefused}
+	if err, ok := err.(*DNSError); !ok || *err != expectedErr {
+		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expectedErr)
+	}
 }
 
 func TestDNSNXDOMAIN(t *testing.T) {
