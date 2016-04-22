@@ -11,7 +11,7 @@ import "golang.org/x/net/context"
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
 	// TODO(#1167): remove
-	UpdateValidations(context.Context, Authorization, int) error
+	UpdateValidations(ctx context.Context, authz Authorization, challengeIndex int) error
 	// PerformValidation checks the challenge with the given index in the
 	// given Authorization and returns the updated ValidationRecords.
 	//
@@ -19,8 +19,8 @@ type ValidationAuthority interface {
 	// *probs.ProblemDetails.
 	//
 	// TODO(#1626): remove authz parameter
-	PerformValidation(context.Context, string, Challenge, Authorization) ([]ValidationRecord, error)
-	IsSafeDomain(context.Context, *IsSafeDomainRequest) (*IsSafeDomainResponse, error)
+	PerformValidation(ctx context.Context, domain string, challenge Challenge, authz Authorization) ([]ValidationRecord, error)
+	IsSafeDomain(ctx context.Context, domain string) (isSafe bool, err error)
 }
 
 // IsSafeDomainRequest is the request struct for the IsSafeDomain call. The Domain field

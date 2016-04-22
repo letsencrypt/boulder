@@ -575,7 +575,7 @@ func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, i
 	return validationResultToPB(records, prob)
 }
 
-func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *vaPB.Domain) (*vaPB.Valid, error) {
+func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
 	if in == nil {
 		return nil, ErrMissingParameters
 	}
@@ -583,11 +583,11 @@ func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *va
 		return nil, ErrMissingParameters
 	}
 
-	resp, err := s.impl.IsSafeDomain(ctx, &core.IsSafeDomainRequest{*in.Domain})
+	resp, err := s.impl.IsSafeDomain(ctx, *in.Domain)
 	if err != nil {
 		return nil, err
 	}
-	return &vaPB.Valid{Valid: &resp.IsSafe}, nil
+	return &vaPB.IsDomainSafe{Valid: &resp}, nil
 }
 
 func RegisterValidationAuthorityGRPCServer(s *grpc.Server, impl core.ValidationAuthority) error {
@@ -629,15 +629,15 @@ func (vac ValidationAuthorityGRPCClient) PerformValidation(ctx context.Context, 
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
 // third-party safe browsing API.
-func (vac ValidationAuthorityGRPCClient) IsSafeDomain(ctx context.Context, req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
-	valid, err := vac.gc.IsSafeDomain(ctx, &vaPB.Domain{Domain: &req.Domain})
+func (vac ValidationAuthorityGRPCClient) IsSafeDomain(ctx context.Context, domain string) (isSafe bool, err error) {
+	valid, err := vac.gc.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	if valid == nil || (*valid).Valid == nil {
-		return nil, ErrMissingParameters
+		return false, ErrMissingParameters
 	}
-	return &core.IsSafeDomainResponse{*(*valid).Valid}, nil
+	return *(*valid).Valid, nil
 }
 
 // NewValidationAuthorityServer constructs an RPC server
@@ -685,11 +685,11 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 			improperMessage(MethodIsSafeDomain, err, req)
 			return nil, err
 		}
-		resp, err := impl.IsSafeDomain(ctx, r)
+		resp, err := impl.IsSafeDomain(ctx, r.Domain)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(resp)
+		return json.Marshal(&core.IsSafeDomainResponse{IsSafe: resp})
 	})
 
 	return nil
@@ -747,21 +747,21 @@ func (vac ValidationAuthorityClient) PerformValidation(ctx context.Context, doma
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
 // third-party safe browsing API.
-func (vac ValidationAuthorityClient) IsSafeDomain(ctx context.Context, req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
-	data, err := json.Marshal(req)
+func (vac ValidationAuthorityClient) IsSafeDomain(ctx context.Context, domain string) (isSafe bool, err error) {
+	data, err := json.Marshal(&core.IsSafeDomainRequest{Domain: domain})
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	jsonResp, err := vac.rpc.DispatchSync(MethodIsSafeDomain, data)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	resp := &core.IsSafeDomainResponse{}
 	err = json.Unmarshal(jsonResp, resp)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	return resp, nil
+	return resp.IsSafe, nil
 }
 
 // NewPublisherServer creates a new server that wraps a CT publisher

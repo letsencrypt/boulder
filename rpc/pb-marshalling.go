@@ -86,13 +86,13 @@ func pbToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error
 	return prob, nil
 }
 
-func vaChallengeToPB(challenge core.Challenge) (*vapb.VAChallenge, error) {
+func vaChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 	accountKey, err := jwkToString(challenge.AccountKey)
 	if err != nil {
 		return nil, err
 	}
 	st := string(challenge.Status)
-	return &vapb.VAChallenge{
+	return &corepb.Challenge{
 		Id:               &challenge.ID,
 		Type:             &challenge.Type,
 		Status:           &st,
@@ -102,7 +102,7 @@ func vaChallengeToPB(challenge core.Challenge) (*vapb.VAChallenge, error) {
 	}, nil
 }
 
-func pbToVAChallenge(in *vapb.VAChallenge) (challenge core.Challenge, err error) {
+func pbToVAChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
@@ -134,7 +134,7 @@ func stringToIPAddr(in string) (net.IP, error) {
 	return ip, err
 }
 
-func validationRecordToPB(record core.ValidationRecord) (*vapb.ValidationRecord, error) {
+func validationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecord, error) {
 	addrs := make([]string, len(record.AddressesResolved))
 	var err error
 	for i, v := range record.AddressesResolved {
@@ -147,7 +147,7 @@ func validationRecordToPB(record core.ValidationRecord) (*vapb.ValidationRecord,
 	if err != nil {
 		return nil, err
 	}
-	return &vapb.ValidationRecord{
+	return &corepb.ValidationRecord{
 		Hostname:          &record.Hostname,
 		Port:              &record.Port,
 		AddressesResolved: addrs,
@@ -157,7 +157,7 @@ func validationRecordToPB(record core.ValidationRecord) (*vapb.ValidationRecord,
 	}, nil
 }
 
-func pbToValidationRecord(in *vapb.ValidationRecord) (record core.ValidationRecord, err error) {
+func pbToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRecord, err error) {
 	if in == nil {
 		return core.ValidationRecord{}, ErrMissingParameters
 	}
@@ -186,7 +186,7 @@ func pbToValidationRecord(in *vapb.ValidationRecord) (record core.ValidationReco
 }
 
 func validationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDetails) (*vapb.ValidationResult, error) {
-	recordAry := make([]*vapb.ValidationRecord, len(records))
+	recordAry := make([]*corepb.ValidationRecord, len(records))
 	var err error
 	for i, v := range records {
 		recordAry[i], err = validationRecordToPB(v)

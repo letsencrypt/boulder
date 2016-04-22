@@ -28,9 +28,9 @@ func (d *DomainCheck) IsSafe(ctx context.Context, domain string) (bool, error) {
 		return true, nil
 	}
 
-	resp, err := d.VA.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: domain})
+	resp, err := d.VA.IsSafeDomain(ctx, domain)
 	if err != nil {
 		return false, err
 	}
-	return resp.IsSafe, nil
+	return resp, nil
 }
