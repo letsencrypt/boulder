@@ -53,18 +53,20 @@ func main() {
 		scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
 		sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 		var cprClient *va.CAAPublicResolver
-		interfaces := make(map[string]struct{}, len(c.VA.CAAPublicResolver.Interfaces))
-		for _, itf := range c.VA.CAAPublicResolver.Interfaces {
-			interfaces[itf] = struct{}{}
-		}
 		if c.VA.CAAPublicResolver != nil {
-			cprClient = va.NewCAAPublicResolver(
+			interfaces := make(map[string]struct{}, len(c.VA.CAAPublicResolver.Interfaces))
+			for _, itf := range c.VA.CAAPublicResolver.Interfaces {
+				interfaces[itf] = struct{}{}
+			}
+			var err error
+			cprClient, err = va.NewCAAPublicResolver(
 				scoped,
-				c.VA.CAAPublicResolver.Timeout,
-				c.VA.CAAPublicResolver.KeepAlive,
+				c.VA.CAAPublicResolver.Timeout.Duration,
+				c.VA.CAAPublicResolver.KeepAlive.Duration,
 				c.VA.CAAPublicResolver.MaxFailures,
 				interfaces,
 			)
+			cmd.FailOnError(err, "Failed to create CAAPublicResolver")
 		}
 		clk := clock.Default()
 		vai := va.NewValidationAuthorityImpl(pc, sbc, caaClient, cprClient, stats, clk)

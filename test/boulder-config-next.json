@@ -215,6 +215,12 @@
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem"
     },
+    "caaPublicResolver": {
+        "timeout": "",
+        "keepalive": "",
+        "maxFailures": 1,
+        "interfaces": []
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
