@@ -53,11 +53,11 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, doma
 	return dva.RecordsReturn, dva.ProblemReturn
 }
 
-func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, domain string) (bool, error) {
 	if dva.IsSafeDomainErr != nil {
-		return nil, dva.IsSafeDomainErr
+		return false, dva.IsSafeDomainErr
 	}
-	return &core.IsSafeDomainResponse{IsSafe: !dva.IsNotSafe}, nil
+	return !dva.IsNotSafe, nil
 }
 
 var (

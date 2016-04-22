@@ -15,7 +15,6 @@ import (
 	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 )
 
 func TestIsSafeDomain(t *testing.T) {
@@ -36,29 +35,29 @@ func TestIsSafeDomain(t *testing.T) {
 	sbc.EXPECT().IsListed("outofdate.com").Return("", safebrowsing.ErrOutOfDateHashes)
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, sbc, nil, nil, stats, clock.NewFake())
 
-	resp, err := va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "good.com"})
+	isSafe, err := va.IsSafeDomain(ctx, "good.com")
 	if err != nil {
 		t.Errorf("good.com: want no error, got '%s'", err)
 	}
-	if !resp.IsSafe {
-		t.Errorf("good.com: want true, got %t", resp.IsSafe)
+	if !isSafe {
+		t.Errorf("good.com: want true, got %t", isSafe)
 	}
-	resp, err = va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "bad.com"})
+	isSafe, err = va.IsSafeDomain(ctx, "bad.com")
 	if err != nil {
 		t.Errorf("bad.com: want no error, got '%s'", err)
 	}
-	if resp.IsSafe {
-		t.Errorf("bad.com: want false, got %t", resp.IsSafe)
+	if isSafe {
+		t.Errorf("bad.com: want false, got %t", isSafe)
 	}
-	_, err = va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "errorful.com"})
+	_, err = va.IsSafeDomain(ctx, "errorful.com")
 	if err == nil {
 		t.Errorf("errorful.com: want error, got none")
 	}
-	resp, err = va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "outofdate.com"})
+	isSafe, err = va.IsSafeDomain(ctx, "outofdate.com")
 	if err != nil {
 		t.Errorf("outofdate.com: want no error, got '%s'", err)
 	}
-	if !resp.IsSafe {
+	if !isSafe {
 		t.Errorf("outofdate.com: IsSafeDomain should fail open on out of date hashes")
 	}
 }
@@ -69,10 +68,10 @@ func TestAllowNilInIsSafeDomain(t *testing.T) {
 
 	// Be cool with a nil SafeBrowsing. This will happen in prod when we have
 	// flag mismatch between the VA and RA.
-	resp, err := va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "example.com"})
+	isSafe, err := va.IsSafeDomain(ctx, "example.com")
 	if err != nil {
 		t.Errorf("nil SafeBrowsing, unexpected error: %s", err)
-	} else if !resp.IsSafe {
+	} else if !isSafe {
 		t.Errorf("nil Safebrowsing, should fail open but failed closed")
 	}
 }
