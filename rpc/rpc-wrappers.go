@@ -562,28 +562,17 @@ type ValidationAuthorityGRPCServer struct {
 	impl core.ValidationAuthority
 }
 
-func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, in *vaPB.PerformValidationRequest) (*vaPB.ValidationRecords, error) {
-	if in == nil {
-		return nil, ErrMissingParameters
-	}
-	if in.Domain == nil {
-		return nil, ErrMissingParameters
-	}
-	challenge, err := unmarshalVAChallenge(in.Challenge)
+func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, in *vaPB.PerformValidationRequest) (*vaPB.ValidationResult, error) {
+	domain, challenge, authz, err := performValidationReqToArgs(in)
 	if err != nil {
 		return nil, err
 	}
-	authz, err := unmarshalAuthzMeta(in.Authz)
-	if err != nil {
-		return nil, err
-	}
-
-	records, err := s.impl.PerformValidation(ctx, *in.Domain, challenge, authz)
+	records, err := s.impl.PerformValidation(ctx, domain, challenge, authz)
 	prob, ok := err.(*probs.ProblemDetails)
 	if !ok {
 		return nil, err
 	}
-	return marshalValidationRecords(records, prob)
+	return validationResultToPB(records, prob)
 }
 
 func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *vaPB.Domain) (*vaPB.Valid, error) {
@@ -622,23 +611,15 @@ func (vac ValidationAuthorityGRPCClient) UpdateValidations(ctx context.Context, 
 // PerformValidation has the VA revalidate the specified challenge and returns
 // the updated Challenge object.
 func (vac ValidationAuthorityGRPCClient) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
-	authzMeta, err := marshalAuthzMeta(authz)
+	req, err := argsToPerformValidationRequest(domain, challenge, authz)
 	if err != nil {
 		return nil, err
 	}
-	vaChallenge, err := marshalVAChallenge(challenge)
+	gRecords, err := vac.gc.PerformValidation(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	gRecords, err := vac.gc.PerformValidation(ctx, &vaPB.PerformValidationRequest{
-		Domain:    &domain,
-		Authz:     authzMeta,
-		Challenge: vaChallenge,
-	})
-	if err != nil {
-		return nil, err
-	}
-	records, prob, err := unmarshalValidationRecords(gRecords)
+	records, prob, err := pbToValidationResult(gRecords)
 	if err != nil {
 		return nil, err
 	}

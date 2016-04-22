@@ -6,7 +6,6 @@
 package main
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -109,8 +108,6 @@ func main() {
 				err := s.Serve(l)
 				cmd.FailOnError(err, "VA gRPC service failed")
 			}()
-		} else {
-			fmt.Println("Skipping VA gRPC server")
 		}
 
 		err = vas.Start(amqpConf)

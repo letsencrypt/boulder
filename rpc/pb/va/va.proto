@@ -6,7 +6,7 @@ import "core/core.proto";
 
 service VA {
 	rpc IsSafeDomain(Domain) returns (Valid) {}
-	rpc PerformValidation(PerformValidationRequest) returns (ValidationRecords) {}
+	rpc PerformValidation(PerformValidationRequest) returns (ValidationResult) {}
 }
 
 message Domain {
@@ -38,7 +38,7 @@ message AuthzMeta {
 	optional int64 regID = 2;
 }
 
-message ValidationRecords {
+message ValidationResult {
 	repeated ValidationRecord records = 1;
 	optional core.ProblemDetails problems = 2;
 }

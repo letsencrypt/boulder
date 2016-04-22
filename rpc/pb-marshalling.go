@@ -23,14 +23,14 @@ var ErrMissingParameters = bgrpc.CodedError(codes.FailedPrecondition, "required 
 // This file defines functions to translate between the protobuf types and the
 // code types.
 
-func marshalAuthzMeta(authz core.Authorization) (*vapb.AuthzMeta, error) {
+func authzMetaToPB(authz core.Authorization) (*vapb.AuthzMeta, error) {
 	return &vapb.AuthzMeta{
 		Id:    &authz.ID,
 		RegID: &authz.RegistrationID,
 	}, nil
 }
 
-func unmarshalAuthzMeta(in *vapb.AuthzMeta) (core.Authorization, error) {
+func pbToAuthzMeta(in *vapb.AuthzMeta) (core.Authorization, error) {
 	if in == nil || in.Id == nil || in.RegID == nil {
 		return core.Authorization{}, ErrMissingParameters
 	}
@@ -40,12 +40,12 @@ func unmarshalAuthzMeta(in *vapb.AuthzMeta) (core.Authorization, error) {
 	}, nil
 }
 
-func marshalJWK(jwk *jose.JsonWebKey) (string, error) {
+func jwkToString(jwk *jose.JsonWebKey) (string, error) {
 	bytes, err := jwk.MarshalJSON()
 	return string(bytes), err
 }
 
-func unmarshalJWK(in string) (*jose.JsonWebKey, error) {
+func stringToJWK(in string) (*jose.JsonWebKey, error) {
 	var jwk = new(jose.JsonWebKey)
 	err := jwk.UnmarshalJSON([]byte(in))
 	if err != nil {
@@ -54,7 +54,7 @@ func unmarshalJWK(in string) (*jose.JsonWebKey, error) {
 	return jwk, nil
 }
 
-func marshalProblemDetails(prob *probs.ProblemDetails) (*corepb.ProblemDetails, error) {
+func problemDetailsToPB(prob *probs.ProblemDetails) (*corepb.ProblemDetails, error) {
 	if prob == nil {
 		// nil problemDetails is valid
 		return nil, nil
@@ -68,7 +68,7 @@ func marshalProblemDetails(prob *probs.ProblemDetails) (*corepb.ProblemDetails, 
 	}, nil
 }
 
-func unmarshalProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error) {
+func pbToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error) {
 	if in == nil {
 		// nil problemDetails is valid
 		return nil, nil
@@ -86,8 +86,8 @@ func unmarshalProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, 
 	return prob, nil
 }
 
-func marshalVAChallenge(challenge core.Challenge) (*vapb.VAChallenge, error) {
-	accountKey, err := marshalJWK(challenge.AccountKey)
+func vaChallengeToPB(challenge core.Challenge) (*vapb.VAChallenge, error) {
+	accountKey, err := jwkToString(challenge.AccountKey)
 	if err != nil {
 		return nil, err
 	}
@@ -102,14 +102,14 @@ func marshalVAChallenge(challenge core.Challenge) (*vapb.VAChallenge, error) {
 	}, nil
 }
 
-func unmarshalVAChallenge(in *vapb.VAChallenge) (challenge core.Challenge, err error) {
+func pbToVAChallenge(in *vapb.VAChallenge) (challenge core.Challenge, err error) {
 	if in == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
 	if in.AccountKey == nil || in.Id == nil || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	jwk, err := unmarshalJWK(*in.AccountKey)
+	jwk, err := stringToJWK(*in.AccountKey)
 	if err != nil {
 		return
 	}
@@ -123,27 +123,27 @@ func unmarshalVAChallenge(in *vapb.VAChallenge) (challenge core.Challenge, err e
 	}, nil
 }
 
-func marshalIPAddr(ip net.IP) (string, error) {
+func ipAddrToString(ip net.IP) (string, error) {
 	bytes, err := ip.MarshalText()
 	return string(bytes), err
 }
 
-func unmarshalIPAddr(in string) (net.IP, error) {
+func stringToIPAddr(in string) (net.IP, error) {
 	var ip net.IP
 	err := ip.UnmarshalText([]byte(in))
 	return ip, err
 }
 
-func marshalValidationRecord(record core.ValidationRecord) (*vapb.ValidationRecord, error) {
+func validationRecordToPB(record core.ValidationRecord) (*vapb.ValidationRecord, error) {
 	addrs := make([]string, len(record.AddressesResolved))
 	var err error
 	for i, v := range record.AddressesResolved {
-		addrs[i], err = marshalIPAddr(v)
+		addrs[i], err = ipAddrToString(v)
 		if err != nil {
 			return nil, err
 		}
 	}
-	addrUsed, err := marshalIPAddr(record.AddressUsed)
+	addrUsed, err := ipAddrToString(record.AddressUsed)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func marshalValidationRecord(record core.ValidationRecord) (*vapb.ValidationReco
 	}, nil
 }
 
-func unmarshalValidationRecord(in *vapb.ValidationRecord) (record core.ValidationRecord, err error) {
+func pbToValidationRecord(in *vapb.ValidationRecord) (record core.ValidationRecord, err error) {
 	if in == nil {
 		return core.ValidationRecord{}, ErrMissingParameters
 	}
@@ -166,12 +166,12 @@ func unmarshalValidationRecord(in *vapb.ValidationRecord) (record core.Validatio
 	}
 	addrs := make([]net.IP, len(in.AddressesResolved))
 	for i, v := range in.AddressesResolved {
-		addrs[i], err = unmarshalIPAddr(v)
+		addrs[i], err = stringToIPAddr(v)
 		if err != nil {
 			return
 		}
 	}
-	addrUsed, err := unmarshalIPAddr(*in.AddressUsed)
+	addrUsed, err := stringToIPAddr(*in.AddressUsed)
 	if err != nil {
 		return
 	}
@@ -185,40 +185,79 @@ func unmarshalValidationRecord(in *vapb.ValidationRecord) (record core.Validatio
 	}, nil
 }
 
-func marshalValidationRecords(records []core.ValidationRecord, prob *probs.ProblemDetails) (*vapb.ValidationRecords, error) {
+func validationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDetails) (*vapb.ValidationResult, error) {
 	recordAry := make([]*vapb.ValidationRecord, len(records))
 	var err error
 	for i, v := range records {
-		recordAry[i], err = marshalValidationRecord(v)
+		recordAry[i], err = validationRecordToPB(v)
 		if err != nil {
 			return nil, err
 		}
 	}
-	marshalledProbs, err := marshalProblemDetails(prob)
+	marshalledProbs, err := problemDetailsToPB(prob)
 	if err != nil {
 		return nil, err
 	}
-	return &vapb.ValidationRecords{
+	return &vapb.ValidationResult{
 		Records:  recordAry,
 		Problems: marshalledProbs,
 	}, nil
 }
 
-func unmarshalValidationRecords(in *vapb.ValidationRecords) ([]core.ValidationRecord, *probs.ProblemDetails, error) {
+func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *probs.ProblemDetails, error) {
 	if in == nil {
 		return nil, nil, ErrMissingParameters
 	}
 	recordAry := make([]core.ValidationRecord, len(in.Records))
 	var err error
 	for i, v := range in.Records {
-		recordAry[i], err = unmarshalValidationRecord(v)
+		recordAry[i], err = pbToValidationRecord(v)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
-	prob, err := unmarshalProblemDetails(in.Problems)
+	prob, err := pbToProblemDetails(in.Problems)
 	if err != nil {
 		return nil, nil, err
 	}
 	return recordAry, prob, nil
+}
+
+func performValidationReqToArgs(in *vapb.PerformValidationRequest) (domain string, challenge core.Challenge, authz core.Authorization, err error) {
+	if in == nil {
+		err = ErrMissingParameters
+		return
+	}
+	if in.Domain == nil {
+		err = ErrMissingParameters
+		return
+	}
+	domain = *in.Domain
+	challenge, err = pbToVAChallenge(in.Challenge)
+	if err != nil {
+		return
+	}
+	authz, err = pbToAuthzMeta(in.Authz)
+	if err != nil {
+		return
+	}
+
+	return domain, challenge, authz, nil
+}
+
+func argsToPerformValidationRequest(domain string, challenge core.Challenge, authz core.Authorization) (*vapb.PerformValidationRequest, error) {
+	pbChall, err := vaChallengeToPB(challenge)
+	if err != nil {
+		return nil, err
+	}
+	authzMeta, err := authzMetaToPB(authz)
+	if err != nil {
+		return nil, err
+	}
+	return &vapb.PerformValidationRequest{
+		Domain:    &domain,
+		Challenge: pbChall,
+		Authz:     authzMeta,
+	}, nil
+
 }

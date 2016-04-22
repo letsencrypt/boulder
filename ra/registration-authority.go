@@ -821,9 +821,8 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		return
 	}
 
-	authz.Challenges[challengeIndex] = *ch
-
 	// Dispatch to the VA for service
+
 	vaCtx := context.Background()
 	if !ra.useNewVARPC {
 		// TODO(#1167): remove
