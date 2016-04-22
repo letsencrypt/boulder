@@ -202,6 +202,7 @@ type DNSResolverImpl struct {
 	stats                    metrics.Scope
 	txtStats                 metrics.Scope
 	aStats                   metrics.Scope
+	aaaaStats                metrics.Scope
 	caaStats                 metrics.Scope
 	mxStats                  metrics.Scope
 }
@@ -231,6 +232,7 @@ func NewDNSResolverImpl(readTimeout time.Duration, servers []string, stats metri
 		stats:                    stats,
 		txtStats:                 stats.NewScope("TXT"),
 		aStats:                   stats.NewScope("A"),
+		aaaaStats:                stats.NewScope("AAAA"),
 		caaStats:                 stats.NewScope("CAA"),
 		mxStats:                  stats.NewScope("MX"),
 	}
@@ -366,7 +368,7 @@ func isPrivateV6(ip net.IP) bool {
 // requests in the case of temporary network errors. It can return net package,
 // context.Canceled, and context.DeadlineExceeded errors, all wrapped in the
 // DNSError type.
-func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
+func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname string) (allIPs []net.IP, err error) {
 	var respA, respAAAA *dns.Msg
 	var errA, errAAAA error
 	var wg sync.WaitGroup
@@ -374,10 +376,9 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		var err error
-		respA, err = dnsResolver.exchangeOne(ctx, hostname, dns.TypeA, dnsResolver.aStats)
-		if err != nil {
-			errA = &DNSError{dns.TypeA, hostname, err, -1}
+		respA, errA = dnsResolver.exchangeOne(ctx, hostname, dns.TypeA, dnsResolver.aStats)
+		if errA != nil {
+			errA = &DNSError{dns.TypeA, hostname, errA, -1}
 			return
 		}
 		if respA.Rcode != dns.RcodeSuccess {
@@ -386,10 +387,9 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 	}()
 	go func() {
 		defer wg.Done()
-		var err error
-		respAAAA, err = dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aStats)
-		if err != nil {
-			errAAAA = &DNSError{dns.TypeAAAA, hostname, err, -1}
+		respAAAA, errAAAA = dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aaaaStats)
+		if errAAAA != nil {
+			errAAAA = &DNSError{dns.TypeAAAA, hostname, errAAAA, -1}
 			return
 		}
 		if respAAAA.Rcode != dns.RcodeSuccess {
