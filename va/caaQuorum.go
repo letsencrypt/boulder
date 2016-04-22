@@ -106,12 +106,14 @@ func createClient(timeout, keepAlive time.Duration, itfAddr net.Addr) *http.Clie
 	}
 }
 
+// CAAPublicResolver holds state needed to talk to GPDNS
 type CAAPublicResolver struct {
 	interfaceClients map[string]*http.Client
 	stats            metrics.Scope
 	maxFailures      int
 }
 
+// NewCAAPublicResolver returns a initialized CAAPublicResolver
 func NewCAAPublicResolver(scope metrics.Scope, timeout, keepAlive time.Duration, maxFailures int, interfaces map[string]struct{}) (*CAAPublicResolver, error) {
 	cpr := &CAAPublicResolver{stats: scope, maxFailures: maxFailures}
 	allInterfaces, err := net.Interfaces()
@@ -183,6 +185,7 @@ func hashCAASet(set []*dns.CAA) [32]byte {
 	return sha256.Sum256(tbh)
 }
 
+// LookupCAA performs a multipath CAA DNS lookup using GPDNS
 func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
 	req, err := http.NewRequest("GET", apiURI, nil)
 	if err != nil {
@@ -203,6 +206,7 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 		}(interfaceClient, addr)
 	}
 	// collect everything
+	i := 0
 	failed := 0
 	var CAAs []*dns.CAA
 	var setHash [32]byte
@@ -213,13 +217,17 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 				return nil, fmt.Errorf("%d out of %d CAA queries failed", len(cpr.interfaceClients), failed)
 			}
 		}
-		if CAAs != nil {
+		if CAAs == nil {
 			CAAs = r.records
 			setHash = hashCAASet(CAAs)
 		} else {
 			if len(r.records) != len(CAAs) || hashCAASet(r.records) != setHash {
-				return nil, errors.New("mismatching CAA sets were returned")
+				return nil, errors.New("mismatching CAA record sets were returned")
 			}
+		}
+		i++
+		if i == len(cpr.interfaceClients) {
+			close(results) // break loop
 		}
 	}
 	return CAAs, nil
