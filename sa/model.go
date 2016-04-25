@@ -12,9 +12,9 @@ import (
 	"net"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/probs"
+	jose "github.com/square/go-jose"
 )
 
 var mediumBlobSize = int(math.Pow(2, 24))
@@ -110,19 +110,13 @@ func modelToRegistration(rm *regModel) (core.Registration, error) {
 
 func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 	cm := challModel{
-		ID:              c.ID,
-		AuthorizationID: authID,
-		Type:            c.Type,
-		Status:          c.Status,
-		Validated:       c.Validated,
-		Token:           c.Token,
-	}
-	if c.KeyAuthorization != nil {
-		kaString := c.KeyAuthorization.String()
-		if len(kaString) > 255 {
-			return nil, fmt.Errorf("Key authorization is too large to store in the database")
-		}
-		cm.KeyAuthorization = kaString
+		ID:               c.ID,
+		AuthorizationID:  authID,
+		Type:             c.Type,
+		Status:           c.Status,
+		Validated:        c.Validated,
+		Token:            c.Token,
+		KeyAuthorization: c.ProvidedKeyAuthorization,
 	}
 	if c.Error != nil {
 		errJSON, err := json.Marshal(c.Error)
@@ -164,13 +158,7 @@ func modelToChallenge(cm *challModel) (core.Challenge, error) {
 		Status:    cm.Status,
 		Validated: cm.Validated,
 		Token:     cm.Token,
-	}
-	if len(cm.KeyAuthorization) > 0 {
-		ka, err := core.NewKeyAuthorizationFromString(cm.KeyAuthorization)
-		if err != nil {
-			return core.Challenge{}, err
-		}
-		c.KeyAuthorization = &ka
+		ProvidedKeyAuthorization: cm.KeyAuthorization,
 	}
 	if len(cm.Error) > 0 {
 		var problem probs.ProblemDetails

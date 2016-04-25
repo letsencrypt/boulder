@@ -17,7 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -205,7 +206,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		rawCert.SerialNumber = big.NewInt(mrand.Int63())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
-		_, err = sa.AddCertificate(certDER, reg.ID)
+		_, err = sa.AddCertificate(context.Background(), certDER, reg.ID)
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 

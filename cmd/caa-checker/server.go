@@ -7,12 +7,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
-	grpcCodes "github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/codes"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/yaml.v2"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
+	"github.com/miekg/dns"
+	"golang.org/x/net/context"
+	grpcCodes "google.golang.org/grpc/codes"
+	"gopkg.in/yaml.v2"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"

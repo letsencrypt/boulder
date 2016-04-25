@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/codegangsta/cli"
+	"github.com/facebookgo/httpdown"
+	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"

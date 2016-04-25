@@ -28,9 +28,9 @@ import (
 	"strings"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
+	jose "github.com/square/go-jose"
 )
 
 // Package Variables Variables

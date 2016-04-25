@@ -1,7 +1,7 @@
 package grpc
 
 import (
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/google.golang.org/grpc/codes"
+	"google.golang.org/grpc/codes"
 
 	"github.com/letsencrypt/boulder/probs"
 )

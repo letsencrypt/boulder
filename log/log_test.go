@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/test"
 )
 

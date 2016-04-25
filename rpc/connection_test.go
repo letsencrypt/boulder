@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/golang/mock/gomock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/golang/mock/gomock"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/streadway/amqp"
 )
 
 // mockChannelMaker always returns the given amqpChannel
