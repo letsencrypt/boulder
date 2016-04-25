@@ -380,7 +380,7 @@ var errSkippedV6 = errors.New("skipped lookup of AAAA")
 // requests in the case of temporary network errors. It can return net package,
 // context.Canceled, and context.DeadlineExceeded errors, all wrapped in the
 // DNSError type.
-func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname string) (allIPs []net.IP, err error) {
+func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
 	var respA, respAAAA *dns.Msg
 	var errA, errAAAA error
 	var wg sync.WaitGroup
