@@ -54,17 +54,13 @@ func main() {
 		sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
 		var cprClient *va.CAAPublicResolver
 		if c.VA.CAAPublicResolver != nil {
-			interfaces := make(map[string]struct{}, len(c.VA.CAAPublicResolver.Interfaces))
-			for _, itf := range c.VA.CAAPublicResolver.Interfaces {
-				interfaces[itf] = struct{}{}
-			}
 			var err error
 			cprClient, err = va.NewCAAPublicResolver(
 				scoped,
 				c.VA.CAAPublicResolver.Timeout.Duration,
 				c.VA.CAAPublicResolver.KeepAlive.Duration,
 				c.VA.CAAPublicResolver.MaxFailures,
-				interfaces,
+				c.VA.CAAPublicResolver.Proxies,
 			)
 			cmd.FailOnError(err, "Failed to create CAAPublicResolver")
 		}

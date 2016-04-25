@@ -76,7 +76,7 @@ func TestLookupCAA(t *testing.T) {
 
 	apiURI = testServ.URL
 	cpr := CAAPublicResolver{
-		interfaceClients: map[string]*http.Client{
+		clients: map[string]*http.Client{
 			"1.1.1.1": new(http.Client),
 			"2.2.2.2": new(http.Client),
 			"3.3.3.3": new(http.Client),

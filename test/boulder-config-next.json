@@ -219,7 +219,7 @@
         "timeout": "",
         "keepalive": "",
         "maxFailures": 1,
-        "interfaces": []
+        "proxies": []
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",

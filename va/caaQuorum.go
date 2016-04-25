@@ -19,28 +19,28 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 )
 
-// We have had multiple issues resolving CAA records when the queries
-// cross certain network paths. We have been unable to find a network
-// solution to this so we are required to implement a multi-path
-// resolution technique. This is a real hack and to be honest probably
-// not the best solution to this problem. Ideally we would control our
-// own distributed multi-path resolver but there are no publicly available
-// ones.
+// We have found a number of network operators which block or drop CAA
+// queries that pass through their network which leads to consistent
+// timeout failures from certain network perspectives. We have been
+// unable to find a network solution to this so we are required to
+// implement a multi-path resolution technique. This is a real hack and
+// to be honest probably not the best solution to this problem. Ideally
+// we would control our own distributed multi-path resolver but there
+// are no publicly available ones.
 //
-// This implementation will talks to the Google Public DNS resolver over
-// multiple paths using VPN interfaces (or any other method implementing
-// hardware interfaces) with geographically distributed endpoints. In case
-// the Google resolver encounters the same issues we do multiple queries
-// for the same name in parallel and we require a M of N quorum of responses
-// to return the SUCCESS return code. In order to prevent the case where a
-// attacker may be able to exploit the Google resolver in some way we also
-// require that the records returned from all requests are the same (as far
-// as I can tell the Google DNS implementation doesn't share cache state
-// between the distributed nodes so this should be safe).
+// This implementation talks to the Google Public DNS resolver over
+// multiple paths using HTTP proxies with geographically distributed
+// endpoints. In case the Google resolver encounters the same issues we do
+// multiple queries for the same name in parallel and we require a M of N
+// quorum of responses to return the SUCCESS return code. In order to prevent
+// the case where an attacker may be able to exploit the Google resolver in
+// some way we also require that the records returned from all requests are
+// the same (as far as I can tell the Google DNS implementation doesn't share
+// cache state between the distributed nodes so this should be safe).
 //
 // Since DNS isn't a super secure protocol and Google has recently introduced
 // a public HTTPS API for their DNS resolver so instead we use that.
-
+//
 // API reference:
 //   https://developers.google.com/speed/public-dns/docs/dns-over-https#api_specification
 
@@ -59,17 +59,18 @@ type answer struct {
 }
 
 type response struct {
-	Status           int        `json:"Status"`
-	TC               bool       `json:"TC"`
-	RD               bool       `json:"RD"`
-	RA               bool       `json:"RA"`
-	AD               bool       `json:"AD"`
-	CD               bool       `json:"CD"`
-	Question         []question `json:"Question"`
-	Answer           []answer   `json:"Answer"`
-	Additional       []answer   `json:"Additional"`
-	EDNSClientSubnet string     `json:"edns_client_subnet"`
-	Comment          string     `json:"Comment"`
+	// Ignored fields
+	//   tc
+	//   rd
+	//   ra
+	//   ad
+	//   cd
+	//   question
+	//   additional
+	//   edns_client_subnet
+	Status  int      `json:"Status"`
+	Answer  []answer `json:"Answer"`
+	Comment string   `json:"Comment"`
 }
 
 func parseAnswer(as []answer) ([]*dns.CAA, error) {
@@ -90,48 +91,41 @@ func parseAnswer(as []answer) ([]*dns.CAA, error) {
 	return rrs, nil
 }
 
-func createClient(timeout, keepAlive time.Duration, itfAddr net.Addr) *http.Client {
+func createClient(timeout, keepAlive time.Duration, proxy string) (*http.Client, string, error) {
+	u, err := url.Parse(proxy)
+	if err != nil {
+		return nil, "", err
+	}
 	transport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		Proxy: http.ProxyURL(u),
 		Dial: (&net.Dialer{
 			Timeout:   timeout,
 			KeepAlive: keepAlive,
-			LocalAddr: itfAddr,
 		}).Dial,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
-
 	return &http.Client{
 		Transport: transport,
-	}
+		Timeout:   timeout,
+	}, u.Host, nil
 }
 
 // CAAPublicResolver holds state needed to talk to GPDNS
 type CAAPublicResolver struct {
-	interfaceClients map[string]*http.Client
-	stats            metrics.Scope
-	maxFailures      int
+	clients     map[string]*http.Client
+	stats       metrics.Scope
+	maxFailures int
 }
 
 // NewCAAPublicResolver returns a initialized CAAPublicResolver
-func NewCAAPublicResolver(scope metrics.Scope, timeout, keepAlive time.Duration, maxFailures int, interfaces map[string]struct{}) (*CAAPublicResolver, error) {
+func NewCAAPublicResolver(scope metrics.Scope, timeout, keepAlive time.Duration, maxFailures int, proxies []string) (*CAAPublicResolver, error) {
 	cpr := &CAAPublicResolver{stats: scope, maxFailures: maxFailures}
-	allInterfaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-	for _, itf := range allInterfaces {
-		if _, ok := interfaces[itf.Name]; !ok {
-			continue
-		}
-		// perhaps should just use the first address? not really sure here...
-		allITFAddrs, err := itf.Addrs()
+	for _, p := range proxies {
+		c, h, err := createClient(timeout, keepAlive, p)
 		if err != nil {
 			return nil, err
 		}
-		for _, itfAddr := range allITFAddrs {
-			cpr.interfaceClients[itfAddr.String()] = createClient(timeout, keepAlive, itfAddr) // fix
-		}
+		cpr.clients[h] = c
 	}
 	return cpr, nil
 }
@@ -196,8 +190,8 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 	query.Add("type", "257") // CAA
 	req.URL.RawQuery = query.Encode()
 
-	results := make(chan queryResult, len(cpr.interfaceClients))
-	for addr, interfaceClient := range cpr.interfaceClients {
+	results := make(chan queryResult, len(cpr.clients))
+	for addr, interfaceClient := range cpr.clients {
 		go func(ic *http.Client, ia string) {
 			started := time.Now()
 			records, err := cpr.queryCAA(ctx, req, ic)
@@ -214,7 +208,7 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 		if err != nil {
 			failed++
 			if failed > cpr.maxFailures {
-				return nil, fmt.Errorf("%d out of %d CAA queries failed", len(cpr.interfaceClients), failed)
+				return nil, fmt.Errorf("%d out of %d CAA queries failed", len(cpr.clients), failed)
 			}
 		}
 		if CAAs == nil {
@@ -226,7 +220,7 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 			}
 		}
 		i++
-		if i == len(cpr.interfaceClients) {
+		if i == len(cpr.clients) {
 			close(results) // break loop
 		}
 	}

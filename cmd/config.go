@@ -534,5 +534,5 @@ type CAAPublicResolverConfig struct {
 	Timeout     ConfigDuration
 	KeepAlive   ConfigDuration
 	MaxFailures int
-	Interfaces  []string
+	Proxies     []string
 }
