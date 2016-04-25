@@ -206,6 +206,7 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
+    "lookupIPV6": true,
     "maxConcurrentRPCServerRequests": 16,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",

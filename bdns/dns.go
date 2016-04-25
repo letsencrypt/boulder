@@ -6,6 +6,7 @@
 package bdns
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -198,13 +199,17 @@ type DNSResolverImpl struct {
 	servers                  []string
 	allowRestrictedAddresses bool
 	maxTries                 int
-	clk                      clock.Clock
-	stats                    metrics.Scope
-	txtStats                 metrics.Scope
-	aStats                   metrics.Scope
-	aaaaStats                metrics.Scope
-	caaStats                 metrics.Scope
-	mxStats                  metrics.Scope
+	// LookupIPV6 controls whether the LookupHost function resolves AAAA
+	// records. This is exported to allow changing this setting after the
+	// constructor.
+	LookupIPV6 bool
+	clk        clock.Clock
+	stats      metrics.Scope
+	txtStats   metrics.Scope
+	aStats     metrics.Scope
+	aaaaStats  metrics.Scope
+	caaStats   metrics.Scope
+	mxStats    metrics.Scope
 }
 
 var _ DNSResolver = &DNSResolverImpl{}
@@ -362,6 +367,8 @@ func isPrivateV6(ip net.IP) bool {
 	return false
 }
 
+var errSkippedV6 = errors.New("skipped lookup of AAAA")
+
 // LookupHost sends a DNS query to find all A and AAAA records associated with
 // the provided hostname. This method assumes that the external resolver will
 // chase CNAME/DNAME aliases and return relevant records.  It will retry
@@ -387,6 +394,11 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 	}()
 	go func() {
 		defer wg.Done()
+		if !dnsResolver.LookupIPV6 {
+			respAAAA = new(dns.Msg)
+			errAAAA = errSkippedV6
+			return
+		}
 		respAAAA, errAAAA = dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aaaaStats)
 		if errAAAA != nil {
 			errAAAA = &DNSError{dns.TypeAAAA, hostname, errAAAA, -1}
