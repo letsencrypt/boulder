@@ -29,8 +29,9 @@ type AuthorityImpl struct {
 	log blog.Logger
 	DB  *AuthorityDatabaseImpl
 
-	blacklist   map[string]bool
-	blacklistMu sync.RWMutex
+	blacklist      map[string]bool
+	exactBlacklist map[string]bool
+	blacklistMu    sync.RWMutex
 
 	enabledChallenges map[string]bool
 	pseudoRNG         *rand.Rand
@@ -64,7 +65,8 @@ func New(dbMap *gorp.DbMap, _ bool, challengeTypes map[string]bool) (*AuthorityI
 }
 
 type blacklistJSON struct {
-	Blacklist []string
+	Blacklist      []string
+	ExactBlacklist []string
 }
 
 // SetHostnamePolicyFile will load the given policy file, returning error if it
@@ -94,8 +96,13 @@ func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 	for _, v := range bl.Blacklist {
 		nameMap[v] = true
 	}
+	exactNameMap := make(map[string]bool)
+	for _, v := range bl.ExactBlacklist {
+		exactNameMap[v] = true
+	}
 	pa.blacklistMu.Lock()
 	pa.blacklist = nameMap
+	pa.exactBlacklist = exactNameMap
 	pa.blacklistMu.Unlock()
 	return nil
 }
@@ -263,6 +270,10 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 		if pa.blacklist[joined] {
 			return errBlacklisted
 		}
+	}
+
+	if pa.exactBlacklist[joined] {
+		return errBlacklisted
 	}
 	return nil
 }
