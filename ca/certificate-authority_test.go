@@ -190,6 +190,8 @@ func setup(t *testing.T) *testCtx {
 
 	pa, err := policy.New(nil)
 	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	// Create a CA
 	caConfig := cmd.CAConfig{

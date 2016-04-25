@@ -42,7 +42,7 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pa.SetHostnamePolicyFile("../../test/hostname-policy.json")
+	err = pa.SetHostnamePolicyFile("../../test/hostname-policy.json")
 	if err != nil {
 		log.Fatal(err)
 	}
