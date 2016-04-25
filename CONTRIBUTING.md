@@ -14,7 +14,7 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 * New commits pushed to a branch invalidate previous reviews. In other words, two reviewers must give positive reviews of a branch after its most recent pushed commit.
 * You cannot review your own code.
 * If a branch contains commits from multiple authors, it needs two reviewers who are not authors of commits on that branch.
-* If a branch contains updates to files in the Godeps/ directory, the author is responsible for running tests in all updated dependencies, and commenting in the review thread that they have done so. Reviewers must not approve reviews that have changes in Godeps/ but lack a comment about tests.
+* If a branch contains updates to files in the vendor/ directory, the author is responsible for running tests in all updated dependencies, and commenting in the review thread that they have done so. Reviewers must not approve reviews that have changes in vendor/ but lack a comment about tests.
 * Review changes to or addition of tests just as rigorously as you review code changes. Consider: Do tests actually test what they mean to test? Is this the best way to test the functionality in question? Do the tests cover all the functionality in the patch, including error cases?
 * Are there new RPCs or config fields? Make sure the patch meets the Deployability rules below.
 
