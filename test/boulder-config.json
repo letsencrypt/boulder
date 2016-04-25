@@ -166,7 +166,6 @@
     "dnsTries": 3,
     "debugAddr": "localhost:8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
-    "useNewVARPC": false,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -202,7 +201,6 @@
     "userAgent": "boulder",
     "issuerDomain": "happy-hacker-ca.invalid",
     "debugAddr": "localhost:8004",
-    "lookupIPV6": false,
     "portConfig": {
       "httpPort": 5002,
       "httpsPort": 5001,
