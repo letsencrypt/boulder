@@ -216,8 +216,8 @@
       "clientKeyPath": "test/grpc-creds/key.pem"
     },
     "caaPublicResolver": {
-        "timeout": "",
-        "keepalive": "",
+        "timeout": "10s",
+        "keepalive": "30s",
         "maxFailures": 1,
         "proxies": []
     },
