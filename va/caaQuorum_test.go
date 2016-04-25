@@ -2,6 +2,7 @@ package va
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -100,10 +101,17 @@ func TestHashCAASet(t *testing.T) {
 	a.Value, b.Value = "a", "b"
 	setA := []*dns.CAA{a, b}
 	setB := []*dns.CAA{b, a}
-	test.AssertEquals(t, hashCAASet(setA), hashCAASet(setB))
+	hashA, err := hashCAASet(setA)
+	test.AssertNotError(t, err, "hashCAASet failed")
+	hashB, err := hashCAASet(setB)
+	test.AssertNotError(t, err, "hashCAASet failed")
+	test.AssertEquals(t, hashA, hashB)
 	cRR := dns.Copy(b)
 	c := cRR.(*dns.CAA)
+	c.Value = "c"
 	c.Hdr.Ttl = 100
-	test.AssertEquals(t, hashCAASet(setA), hashCAASet([]*dns.CAA{c, a}))
+	hashC, err := hashCAASet([]*dns.CAA{c, a})
+	test.AssertNotError(t, err, "hashCAASet failed")
 	test.AssertEquals(t, c.Hdr.Ttl, uint32(100))
+	test.Assert(t, hashC != hashB, fmt.Sprintf("Mismatching sets had same hash: %x == %x", hashC, hashB))
 }

@@ -135,7 +135,9 @@ func (cpr *CAAPublicResolver) queryCAA(ctx context.Context, req *http.Request, i
 	if err != nil {
 		return nil, err
 	}
-	defer apiResp.Body.Close()
+	defer func() {
+		_ = apiResp.Body.Close()
+	}()
 	body, err := ioutil.ReadAll(apiResp.Body)
 	if err != nil {
 		return nil, err
@@ -166,17 +168,25 @@ func (cs caaSet) Len() int           { return len(cs) }
 func (cs caaSet) Less(i, j int) bool { return cs[i].Value < cs[j].Value } // sort by value...?
 func (cs caaSet) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
 
-func hashCAASet(set []*dns.CAA) [32]byte {
-	tbh := []byte{}
+func hashCAASet(set []*dns.CAA) ([32]byte, error) {
+	var err error
+	offset, size := 0, 0
 	sortedSet := caaSet(set)
 	sort.Sort(sortedSet)
 	for _, rr := range sortedSet {
+		size += dns.Len(rr)
+	}
+	tbh := make([]byte, size)
+	for _, rr := range sortedSet {
 		ttl := rr.Hdr.Ttl
-		rr.Hdr.Ttl = 0                            // only variable that should jitter
-		dns.PackRR(rr, tbh, len(tbh), nil, false) // don't compress RR
+		rr.Hdr.Ttl = 0 // only variable that should jitter
+		offset, err = dns.PackRR(rr, tbh, offset, nil, false)
+		if err != nil {
+			return [32]byte{}, err
+		}
 		rr.Hdr.Ttl = ttl
 	}
-	return sha256.Sum256(tbh)
+	return sha256.Sum256(tbh), nil
 }
 
 // LookupCAA performs a multipath CAA DNS lookup using GPDNS
@@ -213,9 +223,16 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 		}
 		if CAAs == nil {
 			CAAs = r.records
-			setHash = hashCAASet(CAAs)
+			setHash, err = hashCAASet(CAAs)
+			if err != nil {
+				return nil, err
+			}
 		} else {
-			if len(r.records) != len(CAAs) || hashCAASet(r.records) != setHash {
+			hashedSet, err := hashCAASet(r.records)
+			if err != nil {
+				return nil, err
+			}
+			if len(r.records) != len(CAAs) || hashedSet != setHash {
 				return nil, errors.New("mismatching CAA record sets were returned")
 			}
 		}
