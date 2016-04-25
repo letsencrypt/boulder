@@ -39,18 +39,14 @@ for dbenv in $DBENVS; do
   # 'username'@'localhost' to mean only users for UNIX
   # socket connections.
   USERS_SQL=test/sa_db_users.sql
-  if [[ -f $USERS_SQL ]]; then
-    if [[ $MYSQL_CONTAINER ]]; then
-      if [[ $MYSQL_CONTAINER ]]; then
-        sed -e "s/'localhost'/'%'/g" < $USERS_SQL | \
-          mysql $dbconn -D $db || die "unable to add users to ${db}"
-      else
-        sed -e "s/'localhost'/'127.%'/g" < $USERS_SQL | \
-          mysql $dbconn -D $db < $USERS_SQL || die "unable to add users to ${db}"
-      fi
-      echo "added users to ${db}"
-    fi
+  if [[ ${MYSQL_CONTAINER} ]]; then
+    sed -e "s/'localhost'/'%'/g" < ${USERS_SQL} | \
+      mysql $dbconn -D $db || die "unable to add users to ${db}"
+  else
+    sed -e "s/'localhost'/'127.%'/g" < $USERS_SQL | \
+      mysql $dbconn -D $db < $USERS_SQL || die "unable to add users to ${db}"
   fi
+  echo "added users to ${db}"
   ) &
 done
 wait
