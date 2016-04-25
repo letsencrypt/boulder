@@ -13,9 +13,8 @@ fi
 RUN=${RUN:-vet fmt migrations unit integration errcheck}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
-# the unit tests before failing.  By defuault, we only hard-fail for gofmt,
-# since its errors are common and easy to fix.
-HARDFAIL=${HARDFAIL:-fmt}
+# the unit tests before failing.
+HARDFAIL=${HARDFAIL:-fmt godep-restore}
 
 FAILURE=0
 
