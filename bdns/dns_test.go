@@ -285,7 +285,7 @@ func TestDNSLookupTXT(t *testing.T) {
 func TestDNSLookupHost(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
-	obj.LookupIPV6 = true
+	obj.lookupIPV6 = true
 
 	ip, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
@@ -350,7 +350,7 @@ func TestDNSLookupHost(t *testing.T) {
 		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expectedErr)
 	}
 
-	obj.LookupIPV6 = false
+	obj.lookupIPV6 = false
 
 	// Single IPv6 address
 	ip, err = obj.LookupHost(context.Background(), "v6.letsencrypt.org")

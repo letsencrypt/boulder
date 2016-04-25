@@ -199,17 +199,14 @@ type DNSResolverImpl struct {
 	servers                  []string
 	allowRestrictedAddresses bool
 	maxTries                 int
-	// LookupIPV6 controls whether the LookupHost function resolves AAAA
-	// records. This is exported to allow changing this setting after the
-	// constructor.
-	LookupIPV6 bool
-	clk        clock.Clock
-	stats      metrics.Scope
-	txtStats   metrics.Scope
-	aStats     metrics.Scope
-	aaaaStats  metrics.Scope
-	caaStats   metrics.Scope
-	mxStats    metrics.Scope
+	lookupIPV6               bool
+	clk                      clock.Clock
+	stats                    metrics.Scope
+	txtStats                 metrics.Scope
+	aStats                   metrics.Scope
+	aaaaStats                metrics.Scope
+	caaStats                 metrics.Scope
+	mxStats                  metrics.Scope
 }
 
 var _ DNSResolver = &DNSResolverImpl{}
@@ -250,6 +247,14 @@ func NewTestDNSResolverImpl(readTimeout time.Duration, servers []string, stats m
 	resolver := NewDNSResolverImpl(readTimeout, servers, stats, clk, maxTries)
 	resolver.allowRestrictedAddresses = true
 	return resolver
+}
+
+// LookupIPV6 controls whether the LookupHost function resolves AAAA records.
+// This method is not thread-safe, and it should only be used in a builder
+// pattern (i.e. immediately after calling NewDNSResolverImpl).
+func (dnsResolver *DNSResolverImpl) SetLookupIPV6(enabled bool) *DNSResolverImpl {
+	dnsResolver.lookupIPV6 = enabled
+	return dnsResolver
 }
 
 // exchangeOne performs a single DNS exchange with a randomly chosen server
@@ -394,7 +399,7 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 	}()
 	go func() {
 		defer wg.Done()
-		if !dnsResolver.LookupIPV6 {
+		if !dnsResolver.lookupIPV6 {
 			respAAAA = new(dns.Msg)
 			errAAAA = errSkippedV6
 			return
