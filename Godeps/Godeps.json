@@ -179,6 +179,10 @@
 			"Rev": "4876518f9e71663000c348837735820161a42df7"
 		},
 		{
+			"ImportPath": "golang.org/x/net/context/ctxhttp",
+			"Rev": "4876518f9e71663000c348837735820161a42df7"
+		},
+		{
 			"ImportPath": "golang.org/x/net/http2",
 			"Rev": "4876518f9e71663000c348837735820161a42df7"
 		},
