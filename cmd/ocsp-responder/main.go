@@ -93,6 +93,10 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
+	if len(response) == 0 {
+		src.log.Debug(fmt.Sprintf("OCSP Response not sent (len=0) for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
+		return nil, false
+	}
 
 	return response, true
 }
