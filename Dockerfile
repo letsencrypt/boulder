@@ -30,7 +30,5 @@ ENTRYPOINT [ "./test/entrypoint.sh" ]
 
 # Copy in the Boulder sources
 COPY . /go/src/github.com/letsencrypt/boulder
-RUN go install  ./...
-
 
 RUN GOBIN=/go/src/github.com/letsencrypt/boulder/bin go install  ./...
