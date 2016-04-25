@@ -174,9 +174,6 @@
       "clientKeyPath": "test/grpc-creds/key.pem",
       "timeout": "90s"
     },
-    "_grpc": {
-      "address": "boulder:9093"
-    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
