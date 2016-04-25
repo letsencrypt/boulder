@@ -305,7 +305,8 @@ func main() {
 
 		pa, err := policy.New(config.PA.Challenges)
 		cmd.FailOnError(err, "Failed to create PA")
-		pa.SetHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
+		err = pa.SetHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
+		cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
 
 		checker := newChecker(
 			saDbMap,
