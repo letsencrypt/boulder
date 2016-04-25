@@ -13,10 +13,9 @@ import (
 	"strings"
 	"time"
 
-	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
+	cfsslConfig "github.com/cloudflare/cfssl/config"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/va"
+	"github.com/letsencrypt/pkcs11key"
 )
 
 // Config stores configuration parameters that applications
@@ -25,10 +24,6 @@ import (
 //
 // Note: NO DEFAULTS are provided.
 type Config struct {
-	ActivityMonitor struct {
-		ServiceConfig
-	}
-
 	// Default AMQPConfig for services that don't specify one.
 	// TODO(jsha): Delete this after a deploy.
 	AMQP *AMQPConfig
@@ -64,6 +59,9 @@ type Config struct {
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
 
+		// UseNewVARPC determines whether to call VA.PerformValidation
+		UseNewVARPC bool
+
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
@@ -84,20 +82,18 @@ type Config struct {
 
 		IssuerDomain string
 
-		PortConfig va.PortConfig
+		PortConfig PortConfig
 
 		MaxConcurrentRPCServerRequests int64
 
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
 
+		CAAService *GRPCClientConfig
+
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
-	}
-
-	SQL struct {
-		SQLDebug bool
 	}
 
 	Statsd StatsdConfig
@@ -186,9 +182,13 @@ type Config struct {
 
 	CertChecker struct {
 		DBConfig
+		HostnamePolicyConfig
 
 		Workers             int
 		ReportDirectoryPath string
+		UnexpiredOnly       bool
+		BadResultsOnly      bool
+		CheckPeriod         ConfigDuration
 	}
 	AllowedSigningAlgos *AllowedSigningAlgos
 
@@ -311,15 +311,18 @@ type CAConfig struct {
 	DBConfig
 	HostnamePolicyConfig
 
-	Profile      string
 	RSAProfile   string
 	ECDSAProfile string
 	TestMode     bool
 	SerialPrefix int
-	Key          KeyConfig
+	// TODO(jsha): Remove Key field once we've migrated to Issuers
+	Key *IssuerConfig
+	// Issuers contains configuration information for each issuer cert and key
+	// this CA knows about. The first in the list is used as the default.
+	Issuers []IssuerConfig
 	// LifespanOCSP is how long OCSP responses are valid for; It should be longer
 	// than the minTimeToExpiry field for the OCSP Updater.
-	LifespanOCSP string
+	LifespanOCSP ConfigDuration
 	// How long issued certificates are valid for, should match expiry field
 	// in cfssl config.
 	Expiry string
@@ -368,13 +371,15 @@ func (pc PAConfig) CheckChallenges() error {
 	return nil
 }
 
-// KeyConfig should contain either a File path to a PEM-format private key,
+// IssuerConfig contains info about an issuer: private key and issuer cert.
+// It should contain either a File path to a PEM-format private key,
 // or a PKCS11Config defining how to load a module for an HSM.
-type KeyConfig struct {
+type IssuerConfig struct {
 	// A file from which a pkcs11key.Config will be read and parsed, if present
 	ConfigFile string
 	File       string
 	PKCS11     *pkcs11key.Config
+	CertFile   string
 }
 
 // TLSConfig reprents certificates and a key for authenticated TLS.
@@ -494,4 +499,29 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 type LogDescription struct {
 	URI string
 	Key string
+}
+
+// GRPCClientConfig contains the information needed to talk to the gRPC service
+type GRPCClientConfig struct {
+	ServerAddress         string
+	ServerIssuerPath      string
+	ClientCertificatePath string
+	ClientKeyPath         string
+	Timeout               ConfigDuration
+}
+
+// GRPCServerConfig contains the information needed to run a gRPC service
+type GRPCServerConfig struct {
+	Address               string `json:"address" yaml:"address"`
+	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
+	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
+	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
+}
+
+// PortConfig specifies what ports the VA should call to on the remote
+// host when performing its checks.
+type PortConfig struct {
+	HTTPPort  int
+	HTTPSPort int
+	TLSPort   int
 }

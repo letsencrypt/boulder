@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/square/go-jose"
 )
 
 // challenges.go
@@ -98,7 +98,6 @@ func TestErrors(t *testing.T) {
 		UnauthorizedError(testMessage),
 		NotFoundError(testMessage),
 		SignatureValidationError(testMessage),
-		CertificateIssuanceError(testMessage),
 	}
 
 	for i, err := range errors {

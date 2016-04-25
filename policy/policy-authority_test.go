@@ -11,14 +11,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/mocks"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 var enabledChallenges = map[string]bool{
 	core.ChallengeTypeHTTP01:   true,

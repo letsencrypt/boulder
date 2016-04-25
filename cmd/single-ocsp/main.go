@@ -14,9 +14,9 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
+	"github.com/codegangsta/cli"
+	"github.com/letsencrypt/pkcs11key"
+	"golang.org/x/crypto/ocsp"
 )
 
 // PKCS11Config defines how to load a module for an HSM.
@@ -174,7 +174,8 @@ func main() {
 		if len(outFile) == 0 {
 			cmd.FailOnError(fmt.Errorf(""), "No output file provided")
 		}
-		ioutil.WriteFile(outFile, responseBytes, 0666)
+		err = ioutil.WriteFile(outFile, responseBytes, 0666)
+		cmd.FailOnError(err, "Failed to write output file")
 	}
 
 	err := app.Run(os.Args)

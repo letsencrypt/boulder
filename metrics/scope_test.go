@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/golang/mock/gomock"
+	"github.com/golang/mock/gomock"
 )
 
 func TestScopedStatsStatsd(t *testing.T) {

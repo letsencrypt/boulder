@@ -16,9 +16,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"golang.org/x/net/context"
+
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/codegangsta/cli"
+	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -40,11 +42,11 @@ func loadConfig(c *cli.Context) (config cmd.Config, err error) {
 
 const clientName = "AdminRevoker"
 
-func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.AuditLogger, *gorp.DbMap, rpc.StorageAuthorityClient, statsd.Statter) {
+func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, blog.Logger, *gorp.DbMap, rpc.StorageAuthorityClient, statsd.Statter) {
 	c, err := loadConfig(context)
 	cmd.FailOnError(err, "Failed to load Boulder configuration")
 
-	stats, auditlogger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
+	stats, logger := cmd.StatsAndLogging(c.Statsd, c.Syslog)
 
 	amqpConf := c.Revoker.AMQP
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
@@ -58,7 +60,7 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, *blog.
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Failed to create SA client")
 
-	return *rac, auditlogger, dbMap, *sac, stats
+	return *rac, logger, dbMap, *sac, stats
 }
 
 func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
@@ -69,7 +71,7 @@ func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
 	return
 }
 
-func revokeBySerial(serial string, reasonCode core.RevocationCode, deny bool, rac rpc.RegistrationAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
+func revokeBySerial(ctx context.Context, serial string, reasonCode core.RevocationCode, deny bool, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
@@ -96,16 +98,16 @@ func revokeBySerial(serial string, reasonCode core.RevocationCode, deny bool, ra
 	}
 
 	u, err := user.Current()
-	err = rac.AdministrativelyRevokeCertificate(*cert, reasonCode, u.Username)
+	err = rac.AdministrativelyRevokeCertificate(ctx, *cert, reasonCode, u.Username)
 	if err != nil {
 		return
 	}
 
-	auditlogger.Info(fmt.Sprintf("Revoked certificate %s with reason '%s'", serial, core.RevocationReasons[reasonCode]))
+	logger.Info(fmt.Sprintf("Revoked certificate %s with reason '%s'", serial, core.RevocationReasons[reasonCode]))
 	return
 }
 
-func revokeByReg(regID int64, reasonCode core.RevocationCode, deny bool, rac rpc.RegistrationAuthorityClient, auditlogger *blog.AuditLogger, tx *gorp.Transaction) (err error) {
+func revokeByReg(ctx context.Context, regID int64, reasonCode core.RevocationCode, deny bool, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
 	var certs []core.Certificate
 	_, err = tx.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
@@ -113,7 +115,7 @@ func revokeByReg(regID int64, reasonCode core.RevocationCode, deny bool, rac rpc
 	}
 
 	for _, cert := range certs {
-		err = revokeBySerial(cert.Serial, reasonCode, deny, rac, auditlogger, tx)
+		err = revokeBySerial(ctx, cert.Serial, reasonCode, deny, rac, logger, tx)
 		if err != nil {
 			return
 		}
@@ -130,6 +132,7 @@ func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
 func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
 func main() {
+	ctx := context.Background()
 	app := cli.NewApp()
 	app.Name = "admin-revoker"
 	app.Usage = "Revokes issued certificates"
@@ -160,19 +163,17 @@ func main() {
 				cmd.FailOnError(err, "Reason code argument must be an integer")
 				deny := c.GlobalBool("deny")
 
-				cac, auditlogger, dbMap, _, _ := setupContext(c)
+				cac, logger, dbMap, _, _ := setupContext(c)
 
 				tx, err := dbMap.Begin()
 				if err != nil {
-					tx.Rollback()
+					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't begin transaction")
 				}
-				cmd.FailOnError(err, "Couldn't begin transaction")
 
-				err = revokeBySerial(serial, core.RevocationCode(reasonCode), deny, cac, auditlogger, tx)
+				err = revokeBySerial(ctx, serial, core.RevocationCode(reasonCode), deny, cac, logger, tx)
 				if err != nil {
-					tx.Rollback()
+					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
 				}
-				cmd.FailOnError(err, "Couldn't revoke certificate")
 
 				err = tx.Commit()
 				cmd.FailOnError(err, "Couldn't cleanly close transaction")
@@ -189,26 +190,24 @@ func main() {
 				cmd.FailOnError(err, "Reason code argument must be an integer")
 				deny := c.GlobalBool("deny")
 
-				cac, auditlogger, dbMap, sac, _ := setupContext(c)
+				cac, logger, dbMap, sac, _ := setupContext(c)
 				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-				defer auditlogger.AuditPanic()
+				defer logger.AuditPanic()
 
 				tx, err := dbMap.Begin()
 				if err != nil {
-					tx.Rollback()
+					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't begin transaction")
 				}
-				cmd.FailOnError(err, "Couldn't begin transaction")
 
-				_, err = sac.GetRegistration(regID)
+				_, err = sac.GetRegistration(ctx, regID)
 				if err != nil {
 					cmd.FailOnError(err, "Couldn't fetch registration")
 				}
 
-				err = revokeByReg(regID, core.RevocationCode(reasonCode), deny, cac, auditlogger, tx)
+				err = revokeByReg(ctx, regID, core.RevocationCode(reasonCode), deny, cac, logger, tx)
 				if err != nil {
-					tx.Rollback()
+					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
 				}
-				cmd.FailOnError(err, "Couldn't revoke certificate")
 
 				err = tx.Commit()
 				cmd.FailOnError(err, "Couldn't cleanly close transaction")
@@ -236,7 +235,7 @@ func main() {
 				domain := c.Args().First()
 				_, logger, _, sac, stats := setupContext(c)
 				ident := core.AcmeIdentifier{Value: domain, Type: core.IdentifierDNS}
-				authsRevoked, pendingAuthsRevoked, err := sac.RevokeAuthorizationsByDomain(ident)
+				authsRevoked, pendingAuthsRevoked, err := sac.RevokeAuthorizationsByDomain(ctx, ident)
 				cmd.FailOnError(err, fmt.Sprintf("Failed to revoke authorizations for %s", ident.Value))
 				logger.Info(fmt.Sprintf(
 					"Revoked %d pending authorizations and %d final authorizations\n",

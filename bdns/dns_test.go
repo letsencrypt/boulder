@@ -15,13 +15,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"golang.org/x/net/context"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/miekg/dns"
 )
 
 const dnsLoopbackAddr = "127.0.0.1:4053"
@@ -130,7 +130,10 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 		}
 	}
 
-	w.WriteMsg(m)
+	err := w.WriteMsg(m)
+	if err != nil {
+		panic(err) // running tests, so panic is OK
+	}
 	return
 }
 
@@ -275,14 +278,14 @@ func TestDNSNXDOMAIN(t *testing.T) {
 
 	hostname := "nxdomain.letsencrypt.org"
 	_, err := obj.LookupHost(context.Background(), hostname)
-	expected := dnsError{dns.TypeA, hostname, nil, dns.RcodeNameError}
-	if err, ok := err.(*dnsError); !ok || *err != expected {
+	expected := DNSError{dns.TypeA, hostname, nil, dns.RcodeNameError}
+	if err, ok := err.(*DNSError); !ok || *err != expected {
 		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expected)
 	}
 
 	_, _, err = obj.LookupTXT(context.Background(), hostname)
 	expected.recordType = dns.TypeTXT
-	if err, ok := err.(*dnsError); !ok || *err != expected {
+	if err, ok := err.(*DNSError); !ok || *err != expected {
 		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expected)
 	}
 }

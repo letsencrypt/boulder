@@ -2,6 +2,7 @@
 import argparse
 import atexit
 import base64
+import datetime
 import json
 import os
 import re
@@ -18,6 +19,7 @@ import startservers
 
 ISSUANCE_FAILED = 1
 REVOCATION_FAILED = 2
+MAILER_FAILED = 3
 
 class ExitStatus:
     OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs = range(7)
@@ -147,6 +149,17 @@ def wait_for_ocsp_good(cert_file, issuer_file, url):
 def wait_for_ocsp_revoked(cert_file, issuer_file, url):
     fetch_until(cert_file, issuer_file, url, ": good", ": revoked")
 
+def get_expiry_time(cert_file):
+    try:
+        output = subprocess.check_output(["openssl", "x509", "-enddate", "-noout", "-in", cert_file])
+    except subprocess.CalledProcessError as e:
+        output = e.output
+        print output
+        print "subprocess returned non-zero: %s" % e
+        die(ExitStatus.NodeFailure)
+
+    return datetime.datetime.strptime(output.split('\n')[0].split('=')[1], '%b %d %H:%M:%S %Y %Z')
+
 def verify_ct_submission(expectedSubmissions, url):
     resp = urllib2.urlopen(url)
     submissionStr = resp.read()
@@ -156,16 +169,17 @@ def verify_ct_submission(expectedSubmissions, url):
     return 0
 
 def run_node_test(domain, chall_type, expected_ct_submissions):
+    email_addr = "js.integration.test@letsencrypt.org"
     cert_file = os.path.join(tempdir, "cert.der")
     cert_file_pem = os.path.join(tempdir, "cert.pem")
     key_file = os.path.join(tempdir, "key.pem")
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
     if subprocess.Popen('''
-        node test.js --email foo@letsencrypt.org --agree true \
+        node test.js --email %s --agree true \
           --domains %s --new-reg http://localhost:4000/acme/new-reg \
           --certKey %s --cert %s --challType %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
-        ''' % (domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
+        ''' % (email_addr, domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
         shell=True).wait() != 0:
         print("\nIssuing failed")
         return ISSUANCE_FAILED
@@ -183,6 +197,29 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
 
     verify_ct_submission(expected_ct_submissions, "http://localhost:4500/submissions")
 
+    # Check that the expiration mailer sends a reminder
+    expiry = get_expiry_time(cert_file_pem)
+    no_reminder = expiry + datetime.timedelta(days=-31)
+    first_reminder = expiry + datetime.timedelta(days=-13)
+    last_reminder = expiry + datetime.timedelta(days=-2)
+    try:
+        urllib2.urlopen("http://localhost:9381/clear", data='')
+        if subprocess.Popen(
+                (('FAKECLOCK=`date -d "%s"` ./bin/expiration-mailer --config test/boulder-config.json && ' * 3) + 'true') %
+                (no_reminder.isoformat(), first_reminder.isoformat(), last_reminder.isoformat()),
+                cwd='../..', shell=True).wait() != 0:
+            print("\nExpiry mailer failed")
+            return MAILER_FAILED
+        resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
+        mailcount = int(resp.read())
+        if mailcount != 2:
+            print("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
+            return MAILER_FAILED
+    except Exception as e:
+        print("\nExpiry mailer failed:")
+        print(e)
+        return MAILER_FAILED
+
     if subprocess.Popen('''
         node revoke.js %s %s http://localhost:4000/acme/revoke-cert
         ''' % (cert_file, key_file), shell=True).wait() != 0:
@@ -192,14 +229,17 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
     wait_for_ocsp_revoked(cert_file_pem, "../test-ca.pem", ee_ocsp_url)
     return 0
 
+def run_custom(cmd, cwd=None):
+    if subprocess.Popen(cmd, shell=True, cwd=cwd, executable='/bin/bash').wait() != 0:
+        die(ExitStatus.PythonFailure)
+
 def run_client_tests():
     root = os.environ.get("LETSENCRYPT_PATH")
     assert root is not None, (
         "Please set LETSENCRYPT_PATH env variable to point at "
         "initialized (virtualenv) client repo root")
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
-    if subprocess.Popen(cmd, shell=True, cwd=root, executable='/bin/bash').wait() != 0:
-        die(ExitStatus.PythonFailure)
+    run_custom(cmd, cwd=root)
 
 @atexit.register
 def cleanup():
@@ -222,11 +262,14 @@ def main():
                         help="run the letsencrypt's (the python client's) integration tests")
     parser.add_argument('--node', dest="run_node", action="store_true",
                         help="run the node client's integration tests")
+    # allow any ACME client to run custom command for integration
+    # testing (without having to implement its own busy-wait loop)
+    parser.add_argument('--custom', metavar="CMD", help="run custom command")
     parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
     args = parser.parse_args()
 
-    if not (args.run_all or args.run_letsencrypt or args.run_node):
-        print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, or --node"
+    if not (args.run_all or args.run_letsencrypt or args.run_node or args.custom is not None):
+        print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, --node, or --custom"
         die(ExitStatus.IncorrectCommandLineArgs)
 
     if not startservers.start(race_detection=True):
@@ -264,6 +307,9 @@ def main():
 
     if args.run_all or args.run_letsencrypt:
         run_client_tests()
+
+    if args.custom:
+        run_custom(args.custom)
 
     if not startservers.check():
         die(ExitStatus.Error)

@@ -5,34 +5,32 @@ MAINTAINER William Budington "bill@eff.org"
 
 # Install dependencies packages
 RUN apt-get update && apt-get install -y \
-    libltdl-dev \
+	libltdl-dev \
 	mariadb-client-core-10.0 \
-    nodejs \
+	nodejs \
 	rsyslog \
+	softhsm \
 	--no-install-recommends \
-  	&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+	&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Install port forwarder, database migration tool and go lint
+RUN go get -v \
+	github.com/jsha/listenbuddy \
+	bitbucket.org/liamstask/goose/cmd/goose \
+	github.com/golang/lint/golint
 
 # Boulder exposes its web application at port TCP 4000
-EXPOSE 4000
+EXPOSE 4000 4002 4003 8053 8055
 
-# Install port forwarder
-RUN go get github.com/jsha/listenbuddy
-# get database migration tool
-RUN go get bitbucket.org/liamstask/goose/cmd/goose
-# install go lint
-RUN go get -v github.com/golang/lint/golint
-
-# Assume the configuration is in /etc/boulder
-ENV BOULDER_CONFIG /go/src/github.com/letsencrypt/boulder/test/boulder-config.json
-ENV GOPATH /go/src/github.com/letsencrypt/boulder/Godeps/_workspace:$GOPATH
-ENV GOBIN=/go/src/github.com/letsencrypt/boulder/bin
+ENV GO15VENDOREXPERIMENT 1
 
 WORKDIR /go/src/github.com/letsencrypt/boulder
+
+ENTRYPOINT [ "./test/entrypoint.sh" ]
 
 # Copy in the Boulder sources
 COPY . /go/src/github.com/letsencrypt/boulder
 RUN go install  ./...
 
 
-ENTRYPOINT [ "./test/entrypoint.sh" ]
-CMD [ "./start.py" ]
+RUN GOBIN=/go/src/github.com/letsencrypt/boulder/bin go install  ./...

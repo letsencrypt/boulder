@@ -3,15 +3,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// This mockgen call requires the import_prefix flag that is only present in the
-// letsencrypt fork of mockgen.
-// go:generate mockgen -source ./gsb.go -destination mock_gsb_test.go -package va -import_prefix github.com/letsencrypt/boulder/Godeps/_workspace/src
+// go:generate mockgen -source ./gsb.go -destination mock_gsb_test.go -package va
 
 package va
 
 import (
-	safebrowsing "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-safe-browsing-api"
 	"github.com/letsencrypt/boulder/core"
+	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
+	"golang.org/x/net/context"
 )
 
 // SafeBrowsing is an interface for an third-party safe browing API client.
@@ -25,7 +24,7 @@ type SafeBrowsing interface {
 // third-party safe browsing API. It's meant be called by the RA before pending
 // authorization creation. If no third-party client was provided, it fails open
 // and increments a Skips metric.
-func (va *ValidationAuthorityImpl) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+func (va *ValidationAuthorityImpl) IsSafeDomain(ctx context.Context, req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
 	va.stats.Inc("VA.IsSafeDomain.Requests", 1, 1.0)
 	if va.SafeBrowsing == nil {
 		va.stats.Inc("VA.IsSafeDomain.Skips", 1, 1.0)

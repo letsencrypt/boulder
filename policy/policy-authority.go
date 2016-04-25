@@ -16,16 +16,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
+	"github.com/letsencrypt/net/publicsuffix"
+	"github.com/square/go-jose"
 )
 
 // AuthorityImpl enforces CA policy decisions.
 type AuthorityImpl struct {
-	log *blog.AuditLogger
+	log blog.Logger
 
 	blacklist   map[string]bool
 	blacklistMu sync.RWMutex
@@ -38,11 +38,9 @@ type AuthorityImpl struct {
 // TODO(https://github.com/letsencrypt/boulder/issues/1616): Remove the _ bool
 // argument (used to be enforceWhitelist). Update all callers.
 func New(challengeTypes map[string]bool) (*AuthorityImpl, error) {
-	logger := blog.GetAuditLogger()
-	logger.Notice("Policy Authority Starting")
 
 	pa := AuthorityImpl{
-		log:               logger,
+		log:               blog.Get(),
 		enabledChallenges: challengeTypes,
 		// We don't need real randomness for this.
 		pseudoRNG: rand.New(rand.NewSource(99)),
@@ -58,20 +56,20 @@ type blacklistJSON struct {
 // SetHostnamePolicyFile will load the given policy file, returning error if it
 // fails. It will also start a reloader in case the file changes.
 func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
-	_, err := reloader.New(f, pa.loadHostnamePolicy)
+	_, err := reloader.New(f, pa.loadHostnamePolicy, pa.hostnamePolicyLoadError)
 	return err
 }
 
-func (pa *AuthorityImpl) loadHostnamePolicy(b []byte, err error) error {
-	if err != nil {
-		pa.log.Err(fmt.Sprintf("loading hostname policy: %s", err))
-		return err
-	}
+func (pa *AuthorityImpl) hostnamePolicyLoadError(err error) {
+	pa.log.Err(fmt.Sprintf("error loading hostname policy: %s", err))
+}
+
+func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 	hash := sha256.Sum256(b)
 	pa.log.Info(fmt.Sprintf("loading hostname policy, sha256: %s",
 		hex.EncodeToString(hash[:])))
 	var bl blacklistJSON
-	err = json.Unmarshal(b, &bl)
+	err := json.Unmarshal(b, &bl)
 	if err != nil {
 		return err
 	}

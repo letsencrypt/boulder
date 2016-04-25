@@ -10,24 +10,43 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"log"
 	"math/big"
-	"os"
-	"path"
+	mrand "math/rand"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
+
+var pa *policy.AuthorityImpl
+
+func init() {
+	var err error
+	pa, err = policy.New(map[string]bool{
+		"dns-01":     true,
+		"http-01":    true,
+		"tls-sni-01": true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	pa.SetHostnamePolicyFile("../../test/hostname-policy.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+}
 
 func BenchmarkCheckCert(b *testing.B) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
@@ -35,19 +54,11 @@ func BenchmarkCheckCert(b *testing.B) {
 		fmt.Println("Couldn't connect to database")
 		return
 	}
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	if err != nil {
-		fmt.Println("Couldn't connect to database")
-		return
-	}
 	defer func() {
-		err = saDbMap.TruncateTables()
-		fmt.Printf("Failed to truncate tables: %s\n", err)
-		err = paDbMap.TruncateTables()
-		fmt.Printf("Failed to truncate tables: %s\n", err)
+		test.ResetSATestDatabase(b)()
 	}()
 
-	checker := newChecker(saDbMap, paDbMap, clock.Default(), false, nil)
+	checker := newChecker(saDbMap, clock.Default(), pa, expectedValidityPeriod)
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
@@ -77,22 +88,18 @@ func TestCheckCert(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetSATestDatabase(t)
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	test.AssertNotError(t, err, "Couldn't connect to policy database")
-	paCleanup := test.ResetPolicyTestDatabase(t)
 	defer func() {
 		saCleanup()
-		paCleanup()
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	fc := clock.NewFake()
 	fc.Add(time.Hour * 24 * 90)
 
-	checker := newChecker(saDbMap, paDbMap, fc, false, nil)
+	checker := newChecker(saDbMap, fc, pa, expectedValidityPeriod)
 
 	issued := checker.clock.Now().Add(-time.Hour * 24 * 45)
-	goodExpiry := issued.Add(checkPeriod)
+	goodExpiry := issued.Add(expectedValidityPeriod)
 	serial := big.NewInt(1337)
 	// Problems
 	//   Expiry period is too long
@@ -100,7 +107,7 @@ func TestCheckCert(t *testing.T) {
 	//   Wrong key usage (none)
 	rawCert := x509.Certificate{
 		Subject: pkix.Name{
-			CommonName: "example.com",
+			CommonName: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com",
 		},
 		NotBefore:             issued,
 		NotAfter:              goodExpiry.AddDate(0, 0, 1), // Period too long
@@ -132,18 +139,19 @@ func TestCheckCert(t *testing.T) {
 		"Certificate has a validity period longer than 2160h0m0s":                   1,
 		"Stored issuance date is outside of 6 hour window of certificate NotBefore": 1,
 		"Certificate has incorrect key usage extensions":                            1,
+		"Certificate has common name >64 characters long (65)":                      1,
 	}
-	test.AssertEquals(t, len(problems), 7)
 	for _, p := range problems {
 		_, ok := problemsMap[p]
 		if !ok {
-			t.Errorf("Expected problem '%s' but didn't find it.", p)
+			t.Errorf("Found unexpected problem '%s'.", p)
 		}
 		delete(problemsMap, p)
 	}
 	for k := range problemsMap {
-		t.Errorf("Found unexpected problem '%s'.", k)
+		t.Errorf("Expected problem but didn't find it: '%s'.", k)
 	}
+	test.AssertEquals(t, len(problems), 8)
 
 	// Same settings as above, but the stored serial number in the DB is invalid.
 	cert.Serial = "not valid"
@@ -177,18 +185,14 @@ func TestCheckCert(t *testing.T) {
 func TestGetAndProcessCerts(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	test.AssertNotError(t, err, "Couldn't connect to policy database")
 	fc := clock.NewFake()
 
-	checker := newChecker(saDbMap, paDbMap, fc, false, nil)
-	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc)
+	checker := newChecker(saDbMap, fc, pa, expectedValidityPeriod)
+	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetSATestDatabase(t)
-	paCleanUp := test.ResetPolicyTestDatabase(t)
 	defer func() {
 		saCleanUp()
-		paCleanUp()
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
@@ -205,19 +209,20 @@ func TestGetAndProcessCerts(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, sa)
 	test.AssertNotError(t, err, "Couldn't create registration")
 	for i := int64(0); i < 5; i++ {
-		rawCert.SerialNumber = big.NewInt(i)
+		rawCert.SerialNumber = big.NewInt(mrand.Int63())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
-		_, err = sa.AddCertificate(certDER, reg.ID)
+		_, err = sa.AddCertificate(context.Background(), certDER, reg.ID)
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 
-	err = checker.getCerts()
+	batchSize = 2
+	err = checker.getCerts(false)
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 	test.AssertEquals(t, len(checker.certs), 5)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	checker.processCerts(wg)
+	checker.processCerts(wg, false)
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
 	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
 }
@@ -242,14 +247,6 @@ func TestSaveReport(t *testing.T) {
 		},
 	}
 
-	tmpDir, err := ioutil.TempDir("", "cert-checker")
-	test.AssertNotError(t, err, "Couldn't create temporary directory")
-	defer os.RemoveAll(tmpDir)
-	err = r.save(tmpDir)
-	test.AssertNotError(t, err, "Couldn't save report")
-	reportContent, err := ioutil.ReadFile(path.Join(tmpDir, "00010101-00010101-report.json"))
-	test.AssertNotError(t, err, "Couldn't read report file")
-	expectedContent, err := json.Marshal(r)
-	test.AssertNotError(t, err, "Couldn't unmarshal report file")
-	test.AssertByteEquals(t, expectedContent, reportContent)
+	err := r.dump()
+	test.AssertNotError(t, err, "Failed to dump results")
 }

@@ -16,16 +16,16 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
-	"github.com/letsencrypt/boulder/metrics"
+	"github.com/cactus/go-statsd-client/statsd"
+	cfocsp "github.com/cloudflare/cfssl/ocsp"
+	"github.com/facebookgo/httpdown"
+	"github.com/jmhodges/clock"
+	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -47,7 +47,7 @@ serialNumber field, since we will always query on it.
 type DBSource struct {
 	dbMap     dbSelector
 	caKeyHash []byte
-	log       *blog.AuditLogger
+	log       blog.Logger
 }
 
 // Since the only thing we use from gorp is the SelectOne method on the
@@ -60,7 +60,7 @@ type dbSelector interface {
 
 // NewSourceFromDatabase produces a DBSource representing the binding of a
 // given DB schema to a CA key.
-func NewSourceFromDatabase(dbMap dbSelector, caKeyHash []byte, log *blog.AuditLogger) (src *DBSource, err error) {
+func NewSourceFromDatabase(dbMap dbSelector, caKeyHash []byte, log blog.Logger) (src *DBSource, err error) {
 	src = &DBSource{dbMap: dbMap, caKeyHash: caKeyHash, log: log}
 	return
 }
@@ -79,7 +79,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	var response []byte
 	defer func() {
 		if len(response) != 0 {
-			src.log.Info(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
+			src.log.Debug(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 		}
 	}()
 	err := src.dbMap.SelectOne(
@@ -97,7 +97,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	return response, true
 }
 
-func makeDBSource(dbMap dbSelector, issuerCert string, log *blog.AuditLogger) (*DBSource, error) {
+func makeDBSource(dbMap dbSelector, issuerCert string, log blog.Logger) (*DBSource, error) {
 	// Load the CA's key so we can store its SubjectKey in the DB
 	caCertDER, err := cmd.LoadCert(issuerCert)
 	if err != nil {
@@ -117,7 +117,7 @@ func makeDBSource(dbMap dbSelector, issuerCert string, log *blog.AuditLogger) (*
 
 func main() {
 	app := cmd.NewAppShell("boulder-ocsp-responder", "Handles OCSP requests")
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		go cmd.DebugServer(c.OCSPResponder.DebugAddr)
 
 		go cmd.ProfileCmd("OCSP", stats)
@@ -135,13 +135,11 @@ func main() {
 		cmd.FailOnError(err, fmt.Sprintf("Source was not a URL: %s", config.Source))
 
 		if url.Scheme == "mysql+tcp" {
-			auditlogger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
+			logger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
 			dbMap, err := sa.NewDbMap(config.Source)
 			cmd.FailOnError(err, "Could not connect to database")
-			if c.SQL.SQLDebug {
-				sa.SetSQLDebug(dbMap, true)
-			}
-			source, err = makeDBSource(dbMap, c.Common.IssuerCert, auditlogger)
+			sa.SetSQLDebug(dbMap, logger)
+			source, err = makeDBSource(dbMap, c.Common.IssuerCert, logger)
 			cmd.FailOnError(err, "Couldn't load OCSP DB")
 		} else if url.Scheme == "file" {
 			filename := url.Path

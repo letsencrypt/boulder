@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/core"
+	jose "github.com/square/go-jose"
 )
 
 var theKey = `{
@@ -43,7 +45,7 @@ func CreateWorkingRegistration(t *testing.T, sa core.StorageAdder) core.Registra
 		t.Fatalf("unable to parse contact link: %s", err)
 	}
 	contacts := []*core.AcmeURL{contact}
-	reg, err := sa.NewRegistration(core.Registration{
+	reg, err := sa.NewRegistration(context.Background(), core.Registration{
 		Key:       GoodJWK(),
 		Contact:   contacts,
 		InitialIP: net.ParseIP("88.77.66.11"),
