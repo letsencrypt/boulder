@@ -38,7 +38,7 @@ for dbenv in $DBENVS; do
   # use 127.0.0.1, not localhost, as MySQL may interpret
   # 'username'@'localhost' to mean only users for UNIX
   # socket connections.
-  USERS_SQL=test/${svc}_db_users.sql
+  USERS_SQL=test/sa_db_users.sql
   if [[ -f $USERS_SQL ]]; then
     if [[ $MYSQL_CONTAINER ]]; then
       if [[ $MYSQL_CONTAINER ]]; then
