@@ -158,7 +158,7 @@ type testCtx struct {
 	issuers   []Issuer
 	keyPolicy core.KeyPolicy
 	fc        clock.FakeClock
-	stats     *mocks.Statter
+	stats     *mocks.MockStatter
 	cleanUp   func()
 }
 
@@ -282,7 +282,7 @@ func setup(t *testing.T) *testCtx {
 		issuers,
 		keyPolicy,
 		fc,
-		&stats,
+		stats,
 		cleanUp,
 	}
 }
