@@ -205,6 +205,11 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			parsedCerts = append(parsedCerts, parsedCert)
 		}
 
+		if len(parsedCerts) == 0 {
+			// all certificates are renewed
+			continue
+		}
+
 		err = m.sendNags(reg.Contact, parsedCerts)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error sending nag emails: %s", err))
