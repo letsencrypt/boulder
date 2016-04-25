@@ -347,6 +347,9 @@ type MockStatter struct {
 	LastTimingDuration LastStatsdCommand
 }
 
+// LastStatsdCommand represents a statsd call as a struct.
+//
+// Certain fields are not used by all methods, and should be blank if not used.
 type LastStatsdCommand struct {
 	Method    string
 	Metric    string
@@ -368,6 +371,8 @@ func (s *MockStatter) Inc(metric string, value int64, rate float32) error {
 	return nil
 }
 
+// TimingDuration stores the parameters in the LastTimingDuration field of the
+// MockStatter.
 func (s *MockStatter) TimingDuration(metric string, delta time.Duration, rate float32) error {
 	s.LastTimingDuration = LastStatsdCommand{
 		Method:    "TimingDuration",
