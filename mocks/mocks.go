@@ -339,9 +339,9 @@ func (*Publisher) SubmitToCT(_ context.Context, der []byte) error {
 	return nil
 }
 
-// MockStatter is a stat counter that is a no-op except for locally handling
-// Inc calls (which are most of what we use).
-type MockStatter struct {
+// Statter is a stat counter that is a no-op except for locally handling Inc
+// calls (which are most of what we use).
+type Statter struct {
 	statsd.NoopClient
 	Counters           map[string]int64
 	LastTimingDuration LastStatsdCommand
@@ -360,20 +360,14 @@ type LastStatsdCommand struct {
 
 // Inc increments the indicated metric by the indicated value, in the Counters
 // map maintained by the statter
-func (s *MockStatter) Inc(metric string, value int64, rate float32) error {
+func (s *Statter) Inc(metric string, value int64, rate float32) error {
 	s.Counters[metric] += value
-	// s.LastCommand = LastStatsdCommand{
-	// 	Method: "Inc",
-	// 	Metric: metric,
-	// 	Value:  value,
-	// 	Rate:   rate,
-	// }
 	return nil
 }
 
 // TimingDuration stores the parameters in the LastTimingDuration field of the
 // MockStatter.
-func (s *MockStatter) TimingDuration(metric string, delta time.Duration, rate float32) error {
+func (s *Statter) TimingDuration(metric string, delta time.Duration, rate float32) error {
 	s.LastTimingDuration = LastStatsdCommand{
 		Method:    "TimingDuration",
 		Metric:    metric,
@@ -384,8 +378,8 @@ func (s *MockStatter) TimingDuration(metric string, delta time.Duration, rate fl
 }
 
 // NewStatter returns an empty statter with all counters zero
-func NewStatter() *MockStatter {
-	return &MockStatter{statsd.NoopClient{}, map[string]int64{}, LastStatsdCommand{}}
+func NewStatter() *Statter {
+	return &Statter{statsd.NoopClient{}, map[string]int64{}, LastStatsdCommand{}}
 }
 
 // Mailer is a mock
