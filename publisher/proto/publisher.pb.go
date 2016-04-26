@@ -69,7 +69,7 @@ var _ grpc.ClientConn
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
-const _ = grpc.SupportPackageIsVersion1
+const _ = grpc.SupportPackageIsVersion2
 
 // Client API for Publisher service
 
@@ -104,16 +104,22 @@ func RegisterPublisherServer(s *grpc.Server, srv PublisherServer) {
 	s.RegisterService(&_Publisher_serviceDesc, srv)
 }
 
-func _Publisher_SubmitToCT_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Publisher_SubmitToCT_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Request)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	out, err := srv.(PublisherServer).SubmitToCT(ctx, in)
-	if err != nil {
-		return nil, err
+	if interceptor == nil {
+		return srv.(PublisherServer).SubmitToCT(ctx, in)
 	}
-	return out, nil
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Publisher/SubmitToCT",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PublisherServer).SubmitToCT(ctx, req.(*Request))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 var _Publisher_serviceDesc = grpc.ServiceDesc{
