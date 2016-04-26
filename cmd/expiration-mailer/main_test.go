@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"strconv"
 	"testing"
 	"text/template"
 	"time"
@@ -165,6 +164,18 @@ var d = bigIntFromB64("bWUC9B-EFRIo8kpGfh0ZuyGPvMNKvYWNtB_ikiH9k20eT-O1q_I78eiZk
 var p = bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 var q = bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 
+var serial1 = big.NewInt(1336)
+var serial1String = core.SerialToString(serial1)
+var serial2 = big.NewInt(1337)
+var serial2String = core.SerialToString(serial2)
+var serial3 = big.NewInt(1338)
+var serial3String = core.SerialToString(serial3)
+var serial4 = big.NewInt(1339)
+var serial4String = core.SerialToString(serial4)
+var serial5 = big.NewInt(1340)
+var serial6 = big.NewInt(1341)
+var serial7 = big.NewInt(1342)
+
 var testKey = rsa.PrivateKey{
 	PublicKey: rsa.PublicKey{N: n, E: e},
 	D:         d,
@@ -218,17 +229,17 @@ func TestFindExpiringCertificates(t *testing.T) {
 		},
 		NotAfter:     testCtx.fc.Now().Add(23 * time.Hour),
 		DNSNames:     []string{"example-a.com"},
-		SerialNumber: big.NewInt(1337),
+		SerialNumber: serial1,
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
 		RegistrationID: regA.ID,
-		Serial:         "001",
+		Serial:         serial1String,
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
 	certStatusA := &core.CertificateStatus{
-		Serial:                "001",
+		Serial:                serial1String,
 		LastExpirationNagSent: testCtx.fc.Now().AddDate(0, 0, -3),
 		Status:                core.OCSPStatusGood,
 	}
@@ -240,17 +251,17 @@ func TestFindExpiringCertificates(t *testing.T) {
 		},
 		NotAfter:     testCtx.fc.Now().AddDate(0, 0, 3),
 		DNSNames:     []string{"example-b.com"},
-		SerialNumber: big.NewInt(1337),
+		SerialNumber: serial2,
 	}
 	certDerB, _ := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, &testKey)
 	certB := &core.Certificate{
 		RegistrationID: regA.ID,
-		Serial:         "002",
+		Serial:         serial2String,
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
 	certStatusB := &core.CertificateStatus{
-		Serial:                "002",
+		Serial:                serial2String,
 		LastExpirationNagSent: testCtx.fc.Now().Add(-36 * time.Hour),
 		Status:                core.OCSPStatusGood,
 	}
@@ -262,17 +273,17 @@ func TestFindExpiringCertificates(t *testing.T) {
 		},
 		NotAfter:     testCtx.fc.Now().Add((7*24 + 1) * time.Hour),
 		DNSNames:     []string{"example-c.com"},
-		SerialNumber: big.NewInt(1337),
+		SerialNumber: serial3,
 	}
 	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
 	certC := &core.Certificate{
 		RegistrationID: regB.ID,
-		Serial:         "003",
+		Serial:         serial3String,
 		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
 	}
 	certStatusC := &core.CertificateStatus{
-		Serial: "003",
+		Serial: serial3String,
 		Status: core.OCSPStatusGood,
 	}
 
@@ -321,7 +332,7 @@ func TestCertIsRenewed(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, testCtx.ssa)
 
 	testCerts := []*struct {
-		Serial       int
+		Serial       *big.Int
 		stringSerial string
 		FQDNHash     []byte
 		DNS          string
@@ -331,7 +342,7 @@ func TestCertIsRenewed(t *testing.T) {
 		IsRenewed bool
 	}{
 		{
-			Serial:    1001,
+			Serial:    serial1,
 			FQDNHash:  []byte("hash of A"),
 			DNS:       "a.example.com",
 			NotBefore: testCtx.fc.Now().Add((-1 * 24) * time.Hour),
@@ -339,7 +350,7 @@ func TestCertIsRenewed(t *testing.T) {
 			IsRenewed: true,
 		},
 		{
-			Serial:    1002,
+			Serial:    serial2,
 			FQDNHash:  []byte("hash of A"),
 			DNS:       "a.example.com",
 			NotBefore: testCtx.fc.Now().Add((0 * 24) * time.Hour),
@@ -347,7 +358,7 @@ func TestCertIsRenewed(t *testing.T) {
 			IsRenewed: false,
 		},
 		{
-			Serial:    1003,
+			Serial:    serial3,
 			FQDNHash:  []byte("hash of B"),
 			DNS:       "b.example.net",
 			NotBefore: testCtx.fc.Now().Add((0 * 24) * time.Hour),
@@ -355,7 +366,7 @@ func TestCertIsRenewed(t *testing.T) {
 			IsRenewed: false,
 		},
 		{
-			Serial:    1004,
+			Serial:    serial4,
 			FQDNHash:  []byte("hash of C"),
 			DNS:       "c.example.org",
 			NotBefore: testCtx.fc.Now().Add((-100 * 24) * time.Hour),
@@ -363,7 +374,7 @@ func TestCertIsRenewed(t *testing.T) {
 			IsRenewed: true,
 		},
 		{
-			Serial:    1005,
+			Serial:    serial5,
 			FQDNHash:  []byte("hash of C"),
 			DNS:       "c.example.org",
 			NotBefore: testCtx.fc.Now().Add((-80 * 24) * time.Hour),
@@ -371,7 +382,7 @@ func TestCertIsRenewed(t *testing.T) {
 			IsRenewed: true,
 		},
 		{
-			Serial:    1006,
+			Serial:    serial6,
 			FQDNHash:  []byte("hash of C"),
 			DNS:       "c.example.org",
 			NotBefore: testCtx.fc.Now().Add((-75 * 24) * time.Hour),
@@ -379,7 +390,7 @@ func TestCertIsRenewed(t *testing.T) {
 			IsRenewed: true,
 		},
 		{
-			Serial:    1007,
+			Serial:    serial7,
 			FQDNHash:  []byte("hash of C"),
 			DNS:       "c.example.org",
 			NotBefore: testCtx.fc.Now().Add((-1 * 24) * time.Hour),
@@ -394,7 +405,7 @@ func TestCertIsRenewed(t *testing.T) {
 	}
 
 	for _, testData := range testCerts {
-		testData.stringSerial = strconv.Itoa(testData.Serial)
+		testData.stringSerial = core.SerialToString(testData.Serial)
 
 		rawCert := x509.Certificate{
 			Subject: pkix.Name{
@@ -403,7 +414,7 @@ func TestCertIsRenewed(t *testing.T) {
 			NotBefore:    testData.NotBefore,
 			NotAfter:     testData.NotAfter,
 			DNSNames:     []string{testData.DNS},
-			SerialNumber: big.NewInt(int64(testData.Serial)),
+			SerialNumber: testData.Serial,
 		}
 		certDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, &testKey)
 		if err != nil {
@@ -474,18 +485,18 @@ func TestLifetimeOfACert(t *testing.T) {
 
 		NotAfter:     testCtx.fc.Now(),
 		DNSNames:     []string{"example-a.com"},
-		SerialNumber: big.NewInt(1337),
+		SerialNumber: serial1,
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
 		RegistrationID: regA.ID,
-		Serial:         "001",
+		Serial:         serial1String,
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
 
 	certStatusA := &core.CertificateStatus{
-		Serial: "001",
+		Serial: serial1String,
 		Status: core.OCSPStatusGood,
 	}
 
@@ -579,18 +590,18 @@ func TestDontFindRevokedCert(t *testing.T) {
 
 		NotAfter:     testCtx.fc.Now().Add(expiresIn),
 		DNSNames:     []string{"example-a.com"},
-		SerialNumber: big.NewInt(1337),
+		SerialNumber: serial1,
 	}
 	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
 		RegistrationID: regA.ID,
-		Serial:         "001",
+		Serial:         serial1String,
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
 
 	certStatusA := &core.CertificateStatus{
-		Serial: "001",
+		Serial: serial1String,
 		Status: core.OCSPStatusRevoked,
 	}
 
@@ -631,18 +642,18 @@ func TestDedupOnRegistration(t *testing.T) {
 	rawCertA := newX509Cert("happy A",
 		testCtx.fc.Now().Add(72*time.Hour),
 		[]string{"example-a.com", "shared-example.com"},
-		1338,
+		serial1,
 	)
 
 	certDerA, _ := x509.CreateCertificate(rand.Reader, rawCertA, rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
 		RegistrationID: regA.ID,
-		Serial:         "001",
+		Serial:         serial1String,
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
 	certStatusA := &core.CertificateStatus{
-		Serial:                "001",
+		Serial:                serial1String,
 		LastExpirationNagSent: time.Unix(0, 0),
 		Status:                core.OCSPStatusGood,
 	}
@@ -650,17 +661,17 @@ func TestDedupOnRegistration(t *testing.T) {
 	rawCertB := newX509Cert("happy B",
 		testCtx.fc.Now().Add(48*time.Hour),
 		[]string{"example-b.com", "shared-example.com"},
-		1337,
+		serial2,
 	)
 	certDerB, _ := x509.CreateCertificate(rand.Reader, rawCertB, rawCertB, &testKey.PublicKey, &testKey)
 	certB := &core.Certificate{
 		RegistrationID: regA.ID,
-		Serial:         "002",
+		Serial:         serial2String,
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
 	certStatusB := &core.CertificateStatus{
-		Serial:                "002",
+		Serial:                serial2String,
 		LastExpirationNagSent: time.Unix(0, 0),
 		Status:                core.OCSPStatusGood,
 	}
