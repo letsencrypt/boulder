@@ -69,7 +69,6 @@ type Impl struct {
 	SA core.StorageAuthority
 }
 
-// GRPCWrapper is used to wrap Publisher so it can be used
 // as a gRPC server without changing its AMQP public API.
 type GRPCWrapper struct {
 	Inner *Impl

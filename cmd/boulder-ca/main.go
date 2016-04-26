@@ -152,7 +152,7 @@ func main() {
 		if c.CA.Publisher != nil {
 			conn, err := bgrpc.ClientSetup(c.CA.Publisher)
 			cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-			cai.GRPCPublisher = pubPB.NewPublisherClient(conn)
+			cai.Publisher = &bgrpc.PublisherClientWrapper{pubPB.NewPublisherClient(conn)}
 			cai.GRPCTimeout = c.CA.Publisher.Timeout.Duration
 		} else {
 			cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)

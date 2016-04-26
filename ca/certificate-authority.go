@@ -36,7 +36,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 )
 
 // This map is used to detect algorithms in crypto/x509 that
@@ -135,7 +134,6 @@ type CertificateAuthorityImpl struct {
 	SA               certificateStorage
 	PA               core.PolicyAuthority
 	Publisher        core.Publisher
-	GRPCPublisher    pubPB.PublisherClient
 	GRPCTimeout      time.Duration
 	keyPolicy        core.KeyPolicy
 	clk              clock.Clock
@@ -603,17 +601,13 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	}
 
 	// Submit the certificate to any configured CT logs
-	if ca.GRPCPublisher != nil {
-		pubCtx, _ := context.WithTimeout(context.Background(), ca.GRPCTimeout)
-		go func() {
-			_, _ = ca.GRPCPublisher.SubmitToCT(pubCtx, &pubPB.Request{Der: certDER})
-		}()
-	} else {
-		pubCtx := context.Background()
-		go func() {
-			_ = ca.Publisher.SubmitToCT(pubCtx, certDER)
-		}()
-	}
+	go func() {
+		pubCtx, cancel := context.WithTimeout(context.Background(), ca.GRPCTimeout)
+		_ = ca.Publisher.SubmitToCT(pubCtx, certDER)
+		if cancel != nil {
+			cancel()
+		}
+	}()
 
 	// Do not return an err at this point; caller must know that the Certificate
 	// was issued. (Also, it should be impossible for err to be non-nil here)
