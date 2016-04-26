@@ -191,17 +191,17 @@ func hashCAASet(set []*dns.CAA) ([32]byte, error) {
 
 // LookupCAA performs a multipath CAA DNS lookup using GPDNS
 func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
-	req, err := http.NewRequest("GET", apiURI, nil)
-	if err != nil {
-		return nil, err
-	}
 	query := make(url.Values)
 	query.Add("name", domain)
 	query.Add("type", "257") // CAA
-	req.URL.RawQuery = query.Encode()
 
 	results := make(chan queryResult, len(cpr.clients))
 	for addr, interfaceClient := range cpr.clients {
+		req, err := http.NewRequest("GET", apiURI, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.URL.RawQuery = query.Encode()
 		go func(ic *http.Client, ia string) {
 			started := time.Now()
 			records, err := cpr.queryCAA(ctx, req, ic)
@@ -214,8 +214,9 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 	failed := 0
 	var CAAs []*dns.CAA
 	var setHash [32]byte
+	var err error
 	for r := range results {
-		if err != nil {
+		if r.err != nil {
 			failed++
 			if failed > cpr.maxFailures {
 				return nil, fmt.Errorf("%d out of %d CAA queries failed", len(cpr.clients), failed)
