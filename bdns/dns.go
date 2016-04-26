@@ -20,6 +20,14 @@ import (
 	"golang.org/x/net/context"
 )
 
+func parseCidr(network string, comment string) net.IPNet {
+	_, net, err := net.ParseCIDR(network)
+	if err != nil {
+		panic(fmt.Sprintf("error parsing %s (%s): %s", network, comment, err))
+	}
+	return *net
+}
+
 var (
 	// Private CIDRs to ignore
 	privateNetworks = []net.IPNet{
@@ -116,72 +124,20 @@ var (
 			Mask: []byte{255, 192, 0, 0},
 		},
 	}
+	// Sourced from https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
+	// where Global, Source, or Destination is False
 	privateV6Networks = []net.IPNet{
-		// RFC 4193: Unique-Local
-		// fc00::/7
-		{
-			IP:   []byte{252, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			Mask: []byte{254, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		},
-		// RFC 4291: Unspecified Address
-		// ::/128
-		{
-			IP:   []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
-		},
-		// RFC 4291: Loopback Address
-		// ::1/128
-		{
-			IP:   []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-			Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255},
-		},
-		// RFC 4291: Section 2.5.6 Link-Scoped Unicast
-		// fe80::/10
-		{
-			IP:   []byte{254, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			Mask: []byte{255, 192, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		},
-		// RFC 4291 Section 2.5.7 Site-Local Unicast (Deprecated)
-		// fec0::/10
-		// {
-		// 	IP:   []byte{254, 192, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		// 	Mask: []byte{255, 192, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		// },
-		// RFC 4291: Section 2.7
-		// ff00::/8
-		{
-			IP:   []byte{255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			Mask: []byte{255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		},
-		// RFC 2928: Protocol Assignments
-		// 2001::/16
-		{
-			IP:   []byte{32, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			Mask: []byte{255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		},
-		// RFC 3056: 6to4
-		// 2002::/16
-		// {
-		// 	IP:   []byte{32, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		// 	Mask: []byte{255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		// },
-		// RFC 4291: IPv4-mapped Address
-		// ::ffff:0000:0000/
-		{
-			IP:   []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0},
-			Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0},
-		},
-		// RFC 6052: IPv4-IPv6 Translation
-		// {
-		// 	IP:   []byte{0, 100, 255, 155, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		// 	Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0},
-		// },
-		// RFC 6666: Discard Address Block
-		// 100::/64
-		{
-			IP:   []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			Mask: []byte{255, 255, 255, 255, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0},
-		},
+		parseCidr("::/128", "RFC 4291: Unspecified Address"),
+		parseCidr("1::/128", "RFC 4291: Loopback Address"),
+		parseCidr("::ffff:0:0/96", "RFC 4291: IPv4-mapped Address"),
+		parseCidr("100::/64", "RFC 6666: Discard Address Block"),
+		parseCidr("2001::/23", "RFC 2928: IETF Protocol Assignments"),
+		parseCidr("2001:2::/48", "RFC 5180: Benchmarking"),
+		parseCidr("2001:db8::/32", "RFC 3849: Documentation"),
+		parseCidr("2001::/32", "RFC 4380: TEREDO"),
+		parseCidr("fc00::/7", "RFC 4193: Unique-Local"),
+		parseCidr("fe80::/10", "RFC 4291: Section 2.5.6 Link-Scoped Unicast"),
+		parseCidr("ff00::/8", "RFC 4291: Section 2.7"),
 	}
 )
 
