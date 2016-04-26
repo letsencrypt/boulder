@@ -749,7 +749,7 @@ func TestDNSValidationFailure(t *testing.T) {
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
 	test.AssertEquals(t, authz.Challenges[0].Error.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, stats.LastTimingDuration.Metric, "VA.Validations.dns-01.invalid")
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 
 func TestDNSValidationInvalid(t *testing.T) {
@@ -894,7 +894,7 @@ func TestDNSValidationOK(t *testing.T) {
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
-	test.AssertEquals(t, stats.LastTimingDuration.Metric, "VA.Validations.dns-01.valid")
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.valid")
 }
 
 func TestDNSValidationNoAuthorityOK(t *testing.T) {

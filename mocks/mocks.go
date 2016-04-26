@@ -343,19 +343,15 @@ func (*Publisher) SubmitToCT(_ context.Context, der []byte) error {
 // calls (which are most of what we use).
 type Statter struct {
 	statsd.NoopClient
-	Counters           map[string]int64
-	LastTimingDuration LastStatsdCommand
+	Counters            map[string]int64
+	TimingDurationCalls []TimingDuration
 }
 
-// LastStatsdCommand represents a statsd call as a struct.
-//
-// Certain fields are not used by all methods, and should be blank if not used.
-type LastStatsdCommand struct {
-	Method    string
-	Metric    string
-	Value     int64
-	TimeValue time.Duration
-	Rate      float32
+// TimingDuration records a statsd call to TimingDuration.
+type TimingDuration struct {
+	Metric   string
+	Duration time.Duration
+	Rate     float32
 }
 
 // Inc increments the indicated metric by the indicated value, in the Counters
@@ -368,18 +364,17 @@ func (s *Statter) Inc(metric string, value int64, rate float32) error {
 // TimingDuration stores the parameters in the LastTimingDuration field of the
 // MockStatter.
 func (s *Statter) TimingDuration(metric string, delta time.Duration, rate float32) error {
-	s.LastTimingDuration = LastStatsdCommand{
-		Method:    "TimingDuration",
-		Metric:    metric,
-		TimeValue: delta,
-		Rate:      rate,
-	}
+	s.TimingDurationCalls = append(s.TimingDurationCalls, TimingDuration{
+		Metric:   metric,
+		Duration: delta,
+		Rate:     rate,
+	})
 	return nil
 }
 
 // NewStatter returns an empty statter with all counters zero
 func NewStatter() *Statter {
-	return &Statter{statsd.NoopClient{}, map[string]int64{}, LastStatsdCommand{}}
+	return &Statter{statsd.NoopClient{}, map[string]int64{}, nil}
 }
 
 // Mailer is a mock
