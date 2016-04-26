@@ -285,7 +285,7 @@ func TestDNSLookupTXT(t *testing.T) {
 func TestDNSLookupHost(t *testing.T) {
 	obj := NewTestDNSResolverImpl(time.Second*10, []string{dnsLoopbackAddr}, testStats, clock.NewFake(), 1)
 
-	obj.lookupIPV6 = true
+	obj.lookupIPv6 = true
 
 	ip, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
@@ -350,7 +350,7 @@ func TestDNSLookupHost(t *testing.T) {
 		t.Errorf("Looking up %s, got %#v, expected %#v", hostname, err, expectedErr)
 	}
 
-	obj.lookupIPV6 = false
+	obj.lookupIPv6 = false
 
 	// Single IPv6 address
 	ip, err = obj.LookupHost(context.Background(), "v6.letsencrypt.org")
@@ -445,8 +445,6 @@ func TestIsPrivateIP(t *testing.T) {
 	test.Assert(t, isPrivateV6(net.ParseIP("ff10::1")), "should be private")
 	test.Assert(t, isPrivateV6(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")), "should be private")
 
-	test.Assert(t, isPrivateV6(net.ParseIP("2001::")), "should be private")
-	test.Assert(t, isPrivateV6(net.ParseIP("2001:ffff:ffff:ffff:ffff:ffff:ffff:ffff")), "should be private")
 	test.Assert(t, !isPrivateV6(net.ParseIP("2002::")), "should not be private")
 	test.Assert(t, !isPrivateV6(net.ParseIP("2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff")), "should not be private")
 	test.Assert(t, isPrivateV6(net.ParseIP("0100::")), "should be private")

@@ -61,10 +61,10 @@ func main() {
 			dnsTries = 1
 		}
 		if !c.Common.DNSAllowLoopbackAddresses {
-			vai.DNSResolver = bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries).SetLookupIPV6(c.VA.LookupIPV6)
+			vai.DNSResolver = bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries).SetLookupIPv6(c.VA.LookupIPV6)
 
 		} else {
-			vai.DNSResolver = bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries).SetLookupIPV6(c.VA.LookupIPV6)
+			vai.DNSResolver = bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries).SetLookupIPv6(c.VA.LookupIPV6)
 		}
 		vai.UserAgent = c.VA.UserAgent
 

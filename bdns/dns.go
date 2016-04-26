@@ -6,7 +6,6 @@
 package bdns
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -128,7 +127,7 @@ var (
 	// where Global, Source, or Destination is False
 	privateV6Networks = []net.IPNet{
 		parseCidr("::/128", "RFC 4291: Unspecified Address"),
-		parseCidr("1::/128", "RFC 4291: Loopback Address"),
+		parseCidr("::1/128", "RFC 4291: Loopback Address"),
 		parseCidr("::ffff:0:0/96", "RFC 4291: IPv4-mapped Address"),
 		parseCidr("100::/64", "RFC 6666: Discard Address Block"),
 		parseCidr("2001::/23", "RFC 2928: IETF Protocol Assignments"),
@@ -155,7 +154,7 @@ type DNSResolverImpl struct {
 	servers                  []string
 	allowRestrictedAddresses bool
 	maxTries                 int
-	lookupIPV6               bool
+	lookupIPv6               bool
 	clk                      clock.Clock
 	stats                    metrics.Scope
 	txtStats                 metrics.Scope
@@ -208,8 +207,11 @@ func NewTestDNSResolverImpl(readTimeout time.Duration, servers []string, stats m
 // LookupIPV6 controls whether the LookupHost function resolves AAAA records.
 // This method is not thread-safe, and it should only be used in a builder
 // pattern (i.e. immediately after calling NewDNSResolverImpl).
-func (dnsResolver *DNSResolverImpl) SetLookupIPV6(enabled bool) *DNSResolverImpl {
-	dnsResolver.lookupIPV6 = enabled
+//
+// This method will be removed soon and the resolver will default to true. This
+// method should not be relied upon for new code.
+func (dnsResolver *DNSResolverImpl) SetLookupIPv6(enabled bool) *DNSResolverImpl {
+	dnsResolver.lookupIPv6 = enabled
 	return dnsResolver
 }
 
@@ -328,8 +330,6 @@ func isPrivateV6(ip net.IP) bool {
 	return false
 }
 
-var errSkippedV6 = errors.New("skipped lookup of AAAA")
-
 // LookupHost sends a DNS query to find all A and AAAA records associated with
 // the provided hostname. This method assumes that the external resolver will
 // chase CNAME/DNAME aliases and return relevant records.  It will retry
@@ -337,55 +337,57 @@ var errSkippedV6 = errors.New("skipped lookup of AAAA")
 // context.Canceled, and context.DeadlineExceeded errors, all wrapped in the
 // DNSError type.
 func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
-	var respA, respAAAA *dns.Msg
+	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
 	var wg sync.WaitGroup
 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		respA, errA = dnsResolver.exchangeOne(ctx, hostname, dns.TypeA, dnsResolver.aStats)
-		if errA != nil {
-			errA = &DNSError{dns.TypeA, hostname, errA, -1}
+		respA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeA, dnsResolver.aStats)
+		if err != nil {
+			errA = &DNSError{dns.TypeA, hostname, err, -1}
 			return
 		}
 		if respA.Rcode != dns.RcodeSuccess {
 			errA = &DNSError{dns.TypeA, hostname, nil, respA.Rcode}
+			return
 		}
+		recordsA = respA.Answer
 	}()
 	go func() {
 		defer wg.Done()
-		if !dnsResolver.lookupIPV6 {
-			respAAAA = new(dns.Msg)
-			errAAAA = errSkippedV6
+		if !dnsResolver.lookupIPv6 {
 			return
 		}
-		respAAAA, errAAAA = dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aaaaStats)
-		if errAAAA != nil {
-			errAAAA = &DNSError{dns.TypeAAAA, hostname, errAAAA, -1}
+		respAAAA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aaaaStats)
+		if err != nil {
+			errAAAA = &DNSError{dns.TypeAAAA, hostname, err, -1}
 			return
 		}
 		if respAAAA.Rcode != dns.RcodeSuccess {
 			errAAAA = &DNSError{dns.TypeAAAA, hostname, nil, respAAAA.Rcode}
+			return
 		}
+		recordsAAAA = respAAAA.Answer
 	}()
 
 	wg.Wait()
 
-	if errA != nil && errAAAA != nil {
+	if errA != nil && (errAAAA != nil || !dnsResolver.lookupIPv6) {
 		return nil, errA
 	}
 
 	var addrs []net.IP
 
-	for _, answer := range respA.Answer {
+	for _, answer := range recordsA {
 		if answer.Header().Rrtype == dns.TypeA {
 			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && (!isPrivateV4(a.A) || dnsResolver.allowRestrictedAddresses) {
 				addrs = append(addrs, a.A)
 			}
 		}
 	}
-	for _, answer := range respAAAA.Answer {
+	for _, answer := range recordsAAAA {
 		if answer.Header().Rrtype == dns.TypeAAAA {
 			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) || dnsResolver.allowRestrictedAddresses) {
 				addrs = append(addrs, aaaa.AAAA)
