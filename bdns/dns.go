@@ -154,7 +154,7 @@ type DNSResolverImpl struct {
 	servers                  []string
 	allowRestrictedAddresses bool
 	maxTries                 int
-	lookupIPv6               bool
+	LookupIPv6               bool
 	clk                      clock.Clock
 	stats                    metrics.Scope
 	txtStats                 metrics.Scope
@@ -211,7 +211,7 @@ func NewTestDNSResolverImpl(readTimeout time.Duration, servers []string, stats m
 // This method will be removed soon and the resolver will default to true. This
 // method should not be relied upon for new code.
 func (dnsResolver *DNSResolverImpl) SetLookupIPv6(enabled bool) *DNSResolverImpl {
-	dnsResolver.lookupIPv6 = enabled
+	dnsResolver.LookupIPv6 = enabled
 	return dnsResolver
 }
 
@@ -357,7 +357,7 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 	}()
 	go func() {
 		defer wg.Done()
-		if !dnsResolver.lookupIPv6 {
+		if !dnsResolver.LookupIPv6 {
 			return
 		}
 		respAAAA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aaaaStats)
@@ -374,7 +374,7 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 
 	wg.Wait()
 
-	if errA != nil && (errAAAA != nil || !dnsResolver.lookupIPv6) {
+	if errA != nil && (errAAAA != nil || !dnsResolver.LookupIPv6) {
 		return nil, errA
 	}
 
