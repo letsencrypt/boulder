@@ -47,12 +47,14 @@ import (
 	"google.golang.org/grpc/transport"
 )
 
-type streamHandler func(srv interface{}, stream ServerStream) error
+// StreamHandler defines the handler called by gRPC server to complete the
+// execution of a streaming RPC.
+type StreamHandler func(srv interface{}, stream ServerStream) error
 
 // StreamDesc represents a streaming RPC service's method specification.
 type StreamDesc struct {
 	StreamName string
-	Handler    streamHandler
+	Handler    StreamHandler
 
 	// At least one of these is true.
 	ServerStreams bool
@@ -67,7 +69,8 @@ type Stream interface {
 	// breaks.
 	// On error, it aborts the stream and returns an RPC status on client
 	// side. On server side, it simply returns the error to the caller.
-	// SendMsg is called by generated code.
+	// SendMsg is called by generated code. Also Users can call SendMsg
+	// directly when it is really needed in their use cases.
 	SendMsg(m interface{}) error
 	// RecvMsg blocks until it receives a message or the stream is
 	// done. On client side, it returns io.EOF when the stream is done. On

@@ -3,9 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-// This mockgen call requires the import_prefix flag that is only present in the
-// letsencrypt fork of mockgen.
-// go:generate mockgen -source ./gsb.go -destination mock_gsb_test.go -package va -import_prefix github.com/letsencrypt/boulder/Godeps/_workspace/src
+// go:generate mockgen -source ./gsb.go -destination mock_gsb_test.go -package va
 
 package va
 
