@@ -37,6 +37,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -730,7 +731,7 @@ func TestCAAChecking(t *testing.T) {
 }
 
 func TestDNSValidationFailure(t *testing.T) {
-	stats, _ := statsd.NewNoopClient()
+	stats := mocks.NewStatter()
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
@@ -750,6 +751,7 @@ func TestDNSValidationFailure(t *testing.T) {
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
 	test.AssertEquals(t, authz.Challenges[0].Error.Type, probs.UnauthorizedProblem)
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 
 func TestDNSValidationInvalid(t *testing.T) {
@@ -867,7 +869,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 }
 
 func TestDNSValidationOK(t *testing.T) {
-	stats, _ := statsd.NewNoopClient()
+	stats := mocks.NewStatter()
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
@@ -894,6 +896,7 @@ func TestDNSValidationOK(t *testing.T) {
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.valid")
 }
 
 func TestDNSValidationNoAuthorityOK(t *testing.T) {

@@ -842,12 +842,14 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 			// Save the updated records
 			challenge := &authz.Challenges[challengeIndex]
 			challenge.ValidationRecord = records
+
+			if !challenge.RecordsSane() && prob == nil {
+				prob = probs.ServerInternal("Records for validation failed sanity check")
+			}
+
 			if prob != nil {
 				challenge.Status = core.StatusInvalid
 				challenge.Error = prob
-			} else if !challenge.RecordsSane() {
-				challenge.Status = core.StatusInvalid
-				challenge.Error = probs.ServerInternal("Records for validation failed sanity check")
 			} else {
 				challenge.Status = core.StatusValid
 			}

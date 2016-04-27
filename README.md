@@ -123,8 +123,8 @@ The full details of how the various ACME operations happen in Boulder are laid o
 Dependencies
 ------------
 
-All Go dependencies are vendored under the Godeps directory,
-to [make dependency management easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8).
+All Go dependencies are vendored under the vendor directory,
+to [make dependency management easier](https://golang.org/cmd/go/#hdr-Vendor_Directories).
 
 Local development also requires a RabbitMQ installation and MariaDB
 10 installation (see above). MariaDB should be run on port 3306 for the
@@ -145,7 +145,7 @@ go get -u github.com/cloudflare/cfssl/...
 godep update github.com/cloudflare/cfssl/...
 # Save the dependencies, rewriting any internal or external dependencies that
 # may have been added.
-godep save -r ./...
-git add Godeps
+godep save ./...
+git add Godeps vendor
 git commit
 ```
