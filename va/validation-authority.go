@@ -554,15 +554,16 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 	validationRecords, prob = va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
 
 	challenge.ValidationRecord = validationRecords
+
+	// Check for malformed ValidationRecords
+	if !challenge.RecordsSane() && prob == nil {
+		prob = probs.ServerInternal("Records for validation failed sanity check")
+	}
+
 	if prob != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
-	} else if !authz.Challenges[challengeIndex].RecordsSane() {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &probs.ProblemDetails{Type: probs.ServerInternalProblem,
-			Detail: "Records for validation failed sanity check"}
-		logEvent.Error = challenge.Error.Error()
 	} else {
 		challenge.Status = core.StatusValid
 	}
@@ -644,29 +645,34 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
 		RequestTime: va.clk.Now(),
-		Challenge:   challenge,
 	}
 	vStart := va.clk.Now()
 
 	records, prob := va.validateChallengeAndCAA(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
 
 	logEvent.ValidationRecords = records
-	resultStatus := core.StatusInvalid
-	if prob != nil {
-		logEvent.Error = prob.Error()
-	} else if !challenge.RecordsSane() {
-		logEvent.Error = (&probs.ProblemDetails{
-			Type:   probs.ServerInternalProblem,
-			Detail: "Records for validation failed sanity check",
-		}).Error()
-	} else {
-		resultStatus = core.StatusValid
+	challenge.ValidationRecord = records
+
+	// Check for malformed ValidationRecords
+	if !challenge.RecordsSane() && prob == nil {
+		prob = probs.ServerInternal("Records for validation failed sanity check")
 	}
 
-	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, resultStatus), time.Since(vStart), 1.0)
+	if prob != nil {
+		challenge.Status = core.StatusInvalid
+		challenge.Error = prob
+		logEvent.Error = prob.Error()
+	} else {
+		challenge.Status = core.StatusValid
+	}
+
+	logEvent.Challenge = challenge
+
+	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart), 1.0)
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
+	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
 	return records, prob
 }
 
