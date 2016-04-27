@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -56,11 +57,11 @@ type ValidationAuthorityImpl struct {
 	stats        statsd.Statter
 	clk          clock.Clock
 	caaClient    caaPB.CAACheckerClient
-	caaPR        *CAAPublicResolver
+	caaDR        *cdr.CAADistributedResolver
 }
 
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient, cprClient *CAAPublicResolver, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient, cdrClient *cdr.CAADistributedResolver, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
 	logger := blog.Get()
 	return &ValidationAuthorityImpl{
 		SafeBrowsing: sbc,
@@ -71,7 +72,7 @@ func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient 
 		stats:        stats,
 		clk:          clk,
 		caaClient:    caaClient,
-		caaPR:        cprClient,
+		caaDR:        cdrClient,
 	}
 }
 
@@ -701,9 +702,6 @@ func (caaSet CAASet) criticalUnknown() bool {
 
 // Filter CAA records by property
 func newCAASet(CAAs []*dns.CAA) *CAASet {
-	if len(CAAs) == 0 {
-		return nil
-	}
 	var filtered CAASet
 
 	for _, caaRecord := range CAAs {
@@ -769,19 +767,23 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	// the RPC call.
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
-
 	results := va.parallelCAALookup(ctx, hostname, va.DNSResolver.LookupCAA)
 	set, err := parseResults(results)
 	if err == nil {
 		return set, nil
 	}
-	if va.caaPR == nil {
+	if va.caaDR == nil {
 		return nil, err
 	}
-	// we have a caaPublicResolver and one of the local lookups failed
-	// so we talk to the Google Public DNS service over various VPN
-	// interfaces instead
-	results = va.parallelCAALookup(ctx, hostname, va.caaPR.LookupCAA)
+	// we have a CAADistributedResolver and one of the local lookups failed
+	// so we talk to the Google Public DNS service over various proxies
+	// instead if the initial error was a timeout
+	if dnsErr, ok := err.(*bdns.DNSError); ok {
+		if !dnsErr.Timeout() {
+			return nil, err
+		}
+	}
+	results = va.parallelCAALookup(ctx, hostname, va.caaDR.LookupCAA)
 	return parseResults(results)
 }
 

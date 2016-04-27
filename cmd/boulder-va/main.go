@@ -11,6 +11,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
@@ -52,20 +53,19 @@ func main() {
 		}
 		scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
 		sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
-		var cprClient *va.CAAPublicResolver
-		if c.VA.CAAPublicResolver != nil {
+		var cdrClient *cdr.CAADistributedResolver
+		if c.VA.CAADistributedResolver != nil {
 			var err error
-			cprClient, err = va.NewCAAPublicResolver(
+			cdrClient, err = cdr.New(
 				scoped,
-				c.VA.CAAPublicResolver.Timeout.Duration,
-				c.VA.CAAPublicResolver.KeepAlive.Duration,
-				c.VA.CAAPublicResolver.MaxFailures,
-				c.VA.CAAPublicResolver.Proxies,
+				c.VA.CAADistributedResolver.Timeout.Duration,
+				c.VA.CAADistributedResolver.MaxFailures,
+				c.VA.CAADistributedResolver.Proxies,
 			)
-			cmd.FailOnError(err, "Failed to create CAAPublicResolver")
+			cmd.FailOnError(err, "Failed to create CAADistributedResolver")
 		}
 		clk := clock.Default()
-		vai := va.NewValidationAuthorityImpl(pc, sbc, caaClient, cprClient, stats, clk)
+		vai := va.NewValidationAuthorityImpl(pc, sbc, caaClient, cdrClient, stats, clk)
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		dnsTries := c.VA.DNSTries

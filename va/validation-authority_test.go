@@ -14,6 +14,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -27,6 +28,7 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	"github.com/miekg/dns"
 	"github.com/square/go-jose"
 	"golang.org/x/net/context"
 
@@ -696,10 +698,10 @@ func TestCAAChecking(t *testing.T) {
 	for _, caaTest := range tests {
 		present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		if err != nil {
-			t.Errorf("CheckCAARecords error for %s: %s", caaTest.Domain, err)
+			t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 		}
 		if present != caaTest.Present {
-			t.Errorf("CheckCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
+			t.Errorf("checkCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
 		}
 		if valid != caaTest.Valid {
 			t.Errorf("CheckCAARecords validity mismatch for %s: got %t expected %t", caaTest.Domain, valid, caaTest.Valid)
@@ -1003,6 +1005,24 @@ func TestCAAFailure(t *testing.T) {
 	va.validate(ctx, authz, 0)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
+}
+
+func TestParseResults(t *testing.T) {
+	r := []caaResult{}
+	s, err := parseResults(r)
+	test.Assert(t, s == nil, "set is not nil")
+	test.Assert(t, err == nil, "error is not nil")
+	test.AssertNotError(t, err, "no error should be returned")
+	r = []caaResult{{nil, errors.New("")}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	s, err = parseResults(r)
+	test.Assert(t, s == nil, "set is not nil")
+	test.AssertEquals(t, err.Error(), "")
+	expected := dns.CAA{Value: "other-test"}
+	r = []caaResult{{[]*dns.CAA{&expected}, nil}, {[]*dns.CAA{&dns.CAA{Value: "test"}}, nil}}
+	s, err = parseResults(r)
+	test.AssertEquals(t, len(s.Unknown), 1)
+	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
+	test.AssertNotError(t, err, "no error should be returned")
 }
 
 type MockRegistrationAuthority struct {

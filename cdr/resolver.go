@@ -1,4 +1,4 @@
-package va
+package cdr
 
 import (
 	"crypto/sha256"
@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -16,6 +15,7 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
 
@@ -77,10 +77,10 @@ func parseAnswer(as []answer) ([]*dns.CAA, error) {
 	rrs := []*dns.CAA{}
 	// only bother parsing out CAA records
 	for _, a := range as {
-		if a.Type != 257 {
+		if a.Type != dns.TypeCAA {
 			continue
 		}
-		rr, err := dns.NewRR(fmt.Sprintf("%s %d IN %s %s", a.Name, a.TTL, dns.TypeToString[a.Type], a.Data))
+		rr, err := dns.NewRR(fmt.Sprintf("%s %d IN CAA %s", a.Name, a.TTL, a.Data))
 		if err != nil {
 			return nil, err
 		}
@@ -91,46 +91,43 @@ func parseAnswer(as []answer) ([]*dns.CAA, error) {
 	return rrs, nil
 }
 
-func createClient(timeout, keepAlive time.Duration, proxy string) (*http.Client, string, error) {
+func createClient(proxy string) (*http.Client, string, error) {
 	u, err := url.Parse(proxy)
 	if err != nil {
 		return nil, "", err
 	}
 	transport := &http.Transport{
-		Proxy: http.ProxyURL(u),
-		Dial: (&net.Dialer{
-			Timeout:   timeout,
-			KeepAlive: keepAlive,
-		}).Dial,
-		TLSHandshakeTimeout: 10 * time.Second,
+		Proxy:               http.ProxyURL(u),
+		TLSHandshakeTimeout: 10 * time.Second, // default, doesn't override context
 	}
 	return &http.Client{
 		Transport: transport,
-		Timeout:   timeout,
 	}, u.Host, nil
 }
 
-// CAAPublicResolver holds state needed to talk to GPDNS
-type CAAPublicResolver struct {
+// CAADistributedResolver holds state needed to talk to GPDNS
+type CAADistributedResolver struct {
 	clients     map[string]*http.Client
 	stats       metrics.Scope
 	maxFailures int
+	timeout     time.Duration
+	logger      blog.Logger
 }
 
-// NewCAAPublicResolver returns a initialized CAAPublicResolver
-func NewCAAPublicResolver(scope metrics.Scope, timeout, keepAlive time.Duration, maxFailures int, proxies []string) (*CAAPublicResolver, error) {
-	cpr := &CAAPublicResolver{stats: scope, maxFailures: maxFailures}
+// New returns a initialized CAADistributedResolver
+func New(scope metrics.Scope, timeout time.Duration, maxFailures int, proxies []string) (*CAADistributedResolver, error) {
+	cdr := &CAADistributedResolver{stats: scope, maxFailures: maxFailures, timeout: timeout}
 	for _, p := range proxies {
-		c, h, err := createClient(timeout, keepAlive, p)
+		c, h, err := createClient(p)
 		if err != nil {
 			return nil, err
 		}
-		cpr.clients[h] = c
+		cdr.clients[h] = c
 	}
-	return cpr, nil
+	return cdr, nil
 }
 
-func (cpr *CAAPublicResolver) queryCAA(ctx context.Context, req *http.Request, ic *http.Client) ([]*dns.CAA, error) {
+func (cdr *CAADistributedResolver) queryCAA(ctx context.Context, req *http.Request, ic *http.Client) ([]*dns.CAA, error) {
 	apiResp, err := ctxhttp.Do(ctx, ic, req)
 	if err != nil {
 		return nil, err
@@ -190,13 +187,16 @@ func hashCAASet(set []*dns.CAA) ([32]byte, error) {
 }
 
 // LookupCAA performs a multipath CAA DNS lookup using GPDNS
-func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
+func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
 	query := make(url.Values)
 	query.Add("name", domain)
 	query.Add("type", "257") // CAA
 
-	results := make(chan queryResult, len(cpr.clients))
-	for addr, interfaceClient := range cpr.clients {
+	// min of ctx deadline and time.Now().Add(cdr.timeout)
+	caaCtx, cancel := context.WithTimeout(ctx, cdr.timeout)
+	results := make(chan queryResult, len(cdr.clients))
+	defer cancel()
+	for addr, interfaceClient := range cdr.clients {
 		req, err := http.NewRequest("GET", apiURI, nil)
 		if err != nil {
 			return nil, err
@@ -204,22 +204,28 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 		req.URL.RawQuery = query.Encode()
 		go func(ic *http.Client, ia string) {
 			started := time.Now()
-			records, err := cpr.queryCAA(ctx, req, ic)
-			cpr.stats.TimingDuration(fmt.Sprintf("GPDNS.CAA.Latency.%s", ia), time.Since(started))
+			records, err := cdr.queryCAA(caaCtx, req, ic)
+			cdr.stats.TimingDuration(fmt.Sprintf("CDR.GPDNS.Latency.%s", ia), time.Since(started))
+			if err != nil {
+				cdr.stats.Inc(fmt.Sprintf("CDR.GPDNS.Failures.%s", ia), 1)
+				cdr.logger.Err(fmt.Sprintf("queryCAA failed [via %s]: %s", ia, err))
+			}
 			results <- queryResult{records, err}
 		}(interfaceClient, addr)
 	}
 	// collect everything
-	i := 0
 	failed := 0
 	var CAAs []*dns.CAA
 	var setHash [32]byte
 	var err error
-	for r := range results {
+	for i := 0; i < len(cdr.clients); i++ {
+		r := <-results
 		if r.err != nil {
 			failed++
-			if failed > cpr.maxFailures {
-				return nil, fmt.Errorf("%d out of %d CAA queries failed", len(cpr.clients), failed)
+			if failed > cdr.maxFailures {
+				cdr.stats.Inc("CDR.QuorumFailed", 1)
+				cdr.logger.Err(fmt.Sprintf("%d out of %d CAA queries failed", len(cdr.clients), failed))
+				return nil, r.err
 			}
 		}
 		if CAAs == nil {
@@ -234,13 +240,11 @@ func (cpr *CAAPublicResolver) LookupCAA(ctx context.Context, domain string) ([]*
 				return nil, err
 			}
 			if len(r.records) != len(CAAs) || hashedSet != setHash {
+				cdr.stats.Inc("CDR.MismatchedSet", 1)
 				return nil, errors.New("mismatching CAA record sets were returned")
 			}
 		}
-		i++
-		if i == len(cpr.clients) {
-			close(results) // break loop
-		}
 	}
+	cdr.stats.Inc("CDR.Quorum", 1)
 	return CAAs, nil
 }

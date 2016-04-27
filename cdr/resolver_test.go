@@ -1,4 +1,4 @@
-package va
+package cdr
 
 import (
 	"encoding/json"
@@ -7,13 +7,17 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
 
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
+
+var log = blog.UseMock()
 
 func testHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Query().Get("name") {
@@ -60,7 +64,7 @@ func TestQueryCAA(t *testing.T) {
 	req.URL.RawQuery = query.Encode()
 
 	client := new(http.Client)
-	cpr := CAAPublicResolver{}
+	cpr := CAADistributedResolver{logger: log}
 	set, err := cpr.queryCAA(context.Background(), req, client)
 	test.AssertNotError(t, err, "queryCAA failed")
 	test.AssertEquals(t, len(set), 1)
@@ -76,7 +80,8 @@ func TestLookupCAA(t *testing.T) {
 	defer testServ.Close()
 
 	apiURI = testServ.URL
-	cpr := CAAPublicResolver{
+	cpr := CAADistributedResolver{
+		logger: log,
 		clients: map[string]*http.Client{
 			"1.1.1.1": new(http.Client),
 			"2.2.2.2": new(http.Client),
@@ -84,6 +89,7 @@ func TestLookupCAA(t *testing.T) {
 		},
 		stats:       metrics.NewNoopScope(),
 		maxFailures: 1,
+		timeout:     time.Second,
 	}
 
 	set, err := cpr.LookupCAA(context.Background(), "test-domain")

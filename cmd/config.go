@@ -91,7 +91,7 @@ type Config struct {
 
 		CAAService *GRPCClientConfig
 
-		CAAPublicResolver *CAAPublicResolverConfig
+		CAADistributedResolver *CAADistributedResolverConfig
 
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
@@ -528,11 +528,10 @@ type PortConfig struct {
 	TLSPort   int
 }
 
-// CAAPublicResolverConfig specifies the HTTP client setup and interfaces
+// CAADistributedResolverConfig specifies the HTTP client setup and interfaces
 // needed to resolve CAA addresses over multiple paths
-type CAAPublicResolverConfig struct {
+type CAADistributedResolverConfig struct {
 	Timeout     ConfigDuration
-	KeepAlive   ConfigDuration
 	MaxFailures int
 	Proxies     []string
 }
