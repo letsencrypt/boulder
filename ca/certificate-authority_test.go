@@ -274,7 +274,7 @@ func setup(t *testing.T) *testCtx {
 		issuers,
 		keyPolicy,
 		fc,
-		&stats,
+		stats,
 	}
 }
 
