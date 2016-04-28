@@ -1,7 +1,7 @@
 package cdr
 
 import (
-	"crypto/sha256"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/miekg/dns"
@@ -98,7 +99,7 @@ func createClient(proxy string) (*http.Client, string, error) {
 	}
 	transport := &http.Transport{
 		Proxy:               http.ProxyURL(u),
-		TLSHandshakeTimeout: 10 * time.Second, // default, doesn't override context
+		TLSHandshakeTimeout: 10 * time.Second, // Same as http.DefaultTransport, doesn't override context
 	}
 	return &http.Client{
 		Transport: transport,
@@ -114,7 +115,8 @@ type CAADistributedResolver struct {
 	logger      blog.Logger
 }
 
-// New returns a initialized CAADistributedResolver
+// New returns an initialized CAADistributedResolver which requires a M of N
+// quorum to succeed where M = |maxFailures| and N = len(|proxies|)
 func New(scope metrics.Scope, timeout time.Duration, maxFailures int, proxies []string) (*CAADistributedResolver, error) {
 	cdr := &CAADistributedResolver{stats: scope, maxFailures: maxFailures, timeout: timeout}
 	for _, p := range proxies {
@@ -127,6 +129,12 @@ func New(scope metrics.Scope, timeout time.Duration, maxFailures int, proxies []
 	return cdr, nil
 }
 
+// queryCAA sends the query request to the GPD API. If the return code is
+// dns.RcodeSuccess the 'Answer' section is parsed for CAA records, otherwise
+// a error is returned. Unlike bdns.DNSResolver.LookupCAA it will not repeat
+// failed queries if the context has not expired as we expect to be running
+// multiple queries in parallel and only need a M of N quorum (we also expect
+// GPD to have quite good availability)
 func (cdr *CAADistributedResolver) queryCAA(ctx context.Context, req *http.Request, ic *http.Client) ([]*dns.CAA, error) {
 	apiResp, err := ctxhttp.Do(ctx, ic, req)
 	if err != nil {
@@ -138,6 +146,12 @@ func (cdr *CAADistributedResolver) queryCAA(ctx context.Context, req *http.Reque
 	body, err := ioutil.ReadAll(apiResp.Body)
 	if err != nil {
 		return nil, err
+	}
+	if apiResp.StatusCode != http.StatusOK {
+		if string(body) != "" {
+			return nil, fmt.Errorf("Unexpected HTTP status code %d, body: %s", apiResp.StatusCode, body)
+		}
+		return nil, fmt.Errorf("Unexpected HTTP status code %d", apiResp.StatusCode)
 	}
 	var respObj response
 	err = json.Unmarshal(body, &respObj)
@@ -165,7 +179,7 @@ func (cs caaSet) Len() int           { return len(cs) }
 func (cs caaSet) Less(i, j int) bool { return cs[i].Value < cs[j].Value } // sort by value...?
 func (cs caaSet) Swap(i, j int)      { cs[i], cs[j] = cs[j], cs[i] }
 
-func hashCAASet(set []*dns.CAA) ([32]byte, error) {
+func marshalCanonicalCAASet(set []*dns.CAA) ([]byte, error) {
 	var err error
 	offset, size := 0, 0
 	sortedSet := caaSet(set)
@@ -179,29 +193,30 @@ func hashCAASet(set []*dns.CAA) ([32]byte, error) {
 		rr.Hdr.Ttl = 0 // only variable that should jitter
 		offset, err = dns.PackRR(rr, tbh, offset, nil, false)
 		if err != nil {
-			return [32]byte{}, err
+			return nil, err
 		}
 		rr.Hdr.Ttl = ttl
 	}
-	return sha256.Sum256(tbh), nil
+	return tbh, nil
 }
 
 // LookupCAA performs a multipath CAA DNS lookup using GPDNS
 func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
 	query := make(url.Values)
 	query.Add("name", domain)
-	query.Add("type", "257") // CAA
+	query.Add("type", strconv.Itoa(int(dns.TypeCAA))) // CAA
+	rawQuery := query.Encode()
 
 	// min of ctx deadline and time.Now().Add(cdr.timeout)
 	caaCtx, cancel := context.WithTimeout(ctx, cdr.timeout)
-	results := make(chan queryResult, len(cdr.clients))
 	defer cancel()
+	results := make(chan queryResult, len(cdr.clients))
 	for addr, interfaceClient := range cdr.clients {
 		req, err := http.NewRequest("GET", apiURI, nil)
 		if err != nil {
 			return nil, err
 		}
-		req.URL.RawQuery = query.Encode()
+		req.URL.RawQuery = rawQuery
 		go func(ic *http.Client, ia string) {
 			started := time.Now()
 			records, err := cdr.queryCAA(caaCtx, req, ic)
@@ -216,7 +231,7 @@ func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string)
 	// collect everything
 	failed := 0
 	var CAAs []*dns.CAA
-	var setHash [32]byte
+	var canonicalSet []byte
 	var err error
 	for i := 0; i < len(cdr.clients); i++ {
 		r := <-results
@@ -230,16 +245,16 @@ func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string)
 		}
 		if CAAs == nil {
 			CAAs = r.records
-			setHash, err = hashCAASet(CAAs)
+			canonicalSet, err = marshalCanonicalCAASet(CAAs)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			hashedSet, err := hashCAASet(r.records)
+			thisSet, err := marshalCanonicalCAASet(r.records)
 			if err != nil {
 				return nil, err
 			}
-			if len(r.records) != len(CAAs) || hashedSet != setHash {
+			if len(r.records) != len(CAAs) || !bytes.Equal(thisSet, canonicalSet) {
 				cdr.stats.Inc("CDR.MismatchedSet", 1)
 				return nil, errors.New("mismatching CAA record sets were returned")
 			}
