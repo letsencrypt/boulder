@@ -20,12 +20,11 @@ addons:
       - libffi-dev
       - ca-certificates
       - rsyslog
-  mariadb: "10.1"
 
-sudo: false
+sudo: required
 
 services:
-  - rabbitmq
+  - docker
 
 matrix:
   fast_finish: true
