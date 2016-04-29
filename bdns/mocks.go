@@ -129,6 +129,8 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 		record.Tag = "issue"
 		record.Value = ";"
 		results = append(results, &record)
+	case "bad-local-resolver.com":
+		return nil, DNSError{underlying: MockTimeoutError()}
 	}
 	return results, nil
 }

@@ -2,7 +2,6 @@ package cdr
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,40 +12,17 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
 
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
 
 var log = blog.UseMock()
 
-func testHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Query().Get("name") {
-	case "test-domain":
-		resp := response{
-			Status: dns.RcodeSuccess,
-			Answer: []answer{
-				{"test-domain", 257, 10, "0 issue \"symantec.com\""},
-			},
-		}
-		data, err := json.Marshal(resp)
-		if err != nil {
-			return
-		}
-		w.Write(data)
-	case "break":
-		w.WriteHeader(400)
-	case "break-rcode":
-		data, err := json.Marshal(response{Status: dns.RcodeServerFailure})
-		if err != nil {
-			return
-		}
-		w.Write(data)
-	}
-}
-
 func TestParseAnswer(t *testing.T) {
-	as := []answer{
+	as := []core.GPDNSAnswer{
 		{"a", 257, 10, "0 issue \"symantec.com\""},
 		{"b", 1, 10, "1.1.1.1"},
 	}
@@ -62,7 +38,7 @@ func TestParseAnswer(t *testing.T) {
 }
 
 func TestQueryCAA(t *testing.T) {
-	testServ := httptest.NewServer(http.HandlerFunc(testHandler))
+	testServ := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
 	defer testServ.Close()
 
 	req, err := http.NewRequest("GET", testServ.URL, nil)
@@ -85,13 +61,12 @@ func TestQueryCAA(t *testing.T) {
 }
 
 func TestLookupCAA(t *testing.T) {
-	testServ := httptest.NewServer(http.HandlerFunc(testHandler))
-	defer testServ.Close()
+	testSrv := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
+	defer testSrv.Close()
 
-	apiURI = testServ.URL
 	cpr := CAADistributedResolver{
 		logger: log,
-		clients: map[string]*http.Client{
+		Clients: map[string]*http.Client{
 			"1.1.1.1": new(http.Client),
 			"2.2.2.2": new(http.Client),
 			"3.3.3.3": new(http.Client),
@@ -99,6 +74,7 @@ func TestLookupCAA(t *testing.T) {
 		stats:       metrics.NewNoopScope(),
 		maxFailures: 1,
 		timeout:     time.Second,
+		URI:         testSrv.URL,
 	}
 
 	set, err := cpr.LookupCAA(context.Background(), "test-domain")

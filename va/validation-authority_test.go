@@ -33,6 +33,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -1008,6 +1009,23 @@ func TestCAAFailure(t *testing.T) {
 	va.validate(ctx, authz, 0)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
+}
+
+func TestGetCAASetFallback(t *testing.T) {
+	testSrv := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
+	defer testSrv.Close()
+
+	stats, _ := statsd.NewNoopClient()
+	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, []string{}, log)
+	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")
+	caaDR.URI = testSrv.URL
+	caaDR.Clients["1.1.1.1"] = new(http.Client)
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, caaDR, stats, clock.Default())
+	va.DNSResolver = &bdns.MockDNSResolver{}
+
+	set, err := va.getCAASet(ctx, "bad-local-resolver.com")
+	test.AssertNotError(t, err, "getCAASet failed to fail back to cdr on timeout")
+	test.AssertEquals(t, len(set.Issue), 1)
 }
 
 func TestParseResults(t *testing.T) {

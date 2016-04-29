@@ -61,6 +61,7 @@ func main() {
 				c.VA.CAADistributedResolver.Timeout.Duration,
 				c.VA.CAADistributedResolver.MaxFailures,
 				c.VA.CAADistributedResolver.Proxies,
+				logger,
 			)
 			cmd.FailOnError(err, "Failed to create CAADistributedResolver")
 		}

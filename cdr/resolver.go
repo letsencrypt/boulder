@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -47,34 +48,7 @@ import (
 
 var apiURI = "https://dns.google.com/resolve"
 
-type question struct {
-	Name string `json:"name"`
-	Type uint16 `json:"type"`
-}
-
-type answer struct {
-	Name string `json:"name"`
-	Type uint16 `json:"type"`
-	TTL  int    `json:"TTL"`
-	Data string `json:"data"`
-}
-
-type response struct {
-	// Ignored fields
-	//   tc
-	//   rd
-	//   ra
-	//   ad
-	//   cd
-	//   question
-	//   additional
-	//   edns_client_subnet
-	Status  int      `json:"Status"`
-	Answer  []answer `json:"Answer"`
-	Comment string   `json:"Comment"`
-}
-
-func parseAnswer(as []answer) ([]*dns.CAA, error) {
+func parseAnswer(as []core.GPDNSAnswer) ([]*dns.CAA, error) {
 	rrs := []*dns.CAA{}
 	// only bother parsing out CAA records
 	for _, a := range as {
@@ -108,7 +82,8 @@ func createClient(proxy string) (*http.Client, string, error) {
 
 // CAADistributedResolver holds state needed to talk to GPDNS
 type CAADistributedResolver struct {
-	clients     map[string]*http.Client
+	URI         string
+	Clients     map[string]*http.Client
 	stats       metrics.Scope
 	maxFailures int
 	timeout     time.Duration
@@ -116,15 +91,22 @@ type CAADistributedResolver struct {
 }
 
 // New returns an initialized CAADistributedResolver which requires a M of N
-// quorum to succeed where M = |maxFailures| and N = len(|proxies|)
-func New(scope metrics.Scope, timeout time.Duration, maxFailures int, proxies []string) (*CAADistributedResolver, error) {
-	cdr := &CAADistributedResolver{stats: scope, maxFailures: maxFailures, timeout: timeout}
+// quorum to succeed where N = len(proxies) and M = N - maxFailures
+func New(scope metrics.Scope, timeout time.Duration, maxFailures int, proxies []string, logger blog.Logger) (*CAADistributedResolver, error) {
+	cdr := &CAADistributedResolver{
+		Clients:     make(map[string]*http.Client, len(proxies)),
+		URI:         apiURI,
+		stats:       scope,
+		maxFailures: maxFailures,
+		timeout:     timeout,
+		logger:      logger,
+	}
 	for _, p := range proxies {
 		c, h, err := createClient(p)
 		if err != nil {
 			return nil, err
 		}
-		cdr.clients[h] = c
+		cdr.Clients[h] = c
 	}
 	return cdr, nil
 }
@@ -153,7 +135,7 @@ func (cdr *CAADistributedResolver) queryCAA(ctx context.Context, req *http.Reque
 		}
 		return nil, fmt.Errorf("Unexpected HTTP status code %d", apiResp.StatusCode)
 	}
-	var respObj response
+	var respObj core.GPDNSResponse
 	err = json.Unmarshal(body, &respObj)
 	if err != nil {
 		return nil, err
@@ -210,9 +192,9 @@ func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string)
 	// min of ctx deadline and time.Now().Add(cdr.timeout)
 	caaCtx, cancel := context.WithTimeout(ctx, cdr.timeout)
 	defer cancel()
-	results := make(chan queryResult, len(cdr.clients))
-	for addr, interfaceClient := range cdr.clients {
-		req, err := http.NewRequest("GET", apiURI, nil)
+	results := make(chan queryResult, len(cdr.Clients))
+	for addr, interfaceClient := range cdr.Clients {
+		req, err := http.NewRequest("GET", cdr.URI, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -233,13 +215,13 @@ func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string)
 	var CAAs []*dns.CAA
 	var canonicalSet []byte
 	var err error
-	for i := 0; i < len(cdr.clients); i++ {
+	for i := 0; i < len(cdr.Clients); i++ {
 		r := <-results
 		if r.err != nil {
 			failed++
 			if failed > cdr.maxFailures {
 				cdr.stats.Inc("CDR.QuorumFailed", 1)
-				cdr.logger.Err(fmt.Sprintf("%d out of %d CAA queries failed", len(cdr.clients), failed))
+				cdr.logger.Err(fmt.Sprintf("%d out of %d CAA queries failed", len(cdr.Clients), failed))
 				return nil, r.err
 			}
 		}
