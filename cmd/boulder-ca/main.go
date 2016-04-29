@@ -15,7 +15,6 @@ import (
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/pkcs11key"
-	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
@@ -24,7 +23,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/rpc"
-	"github.com/letsencrypt/boulder/sa"
 )
 
 const clientName = "CA"
@@ -114,20 +112,14 @@ func main() {
 
 		go cmd.DebugServer(c.CA.DebugAddr)
 
-		var paDbMap *gorp.DbMap
-		if c.CA.HostnamePolicyFile == "" {
-			dbURL, err := c.PA.DBConfig.URL()
-			cmd.FailOnError(err, "Couldn't load DB URL")
-			paDbMap, err = sa.NewDbMap(dbURL)
-			cmd.FailOnError(err, "Couldn't connect to policy database")
-		}
-		pa, err := policy.New(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
+		pa, err := policy.New(c.PA.Challenges)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		if c.CA.HostnamePolicyFile != "" {
-			err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
-			cmd.FailOnError(err, "Couldn't load hostname policy file")
+		if c.RA.HostnamePolicyFile == "" {
+			cmd.FailOnError(nil, "HostnamePolicyFile was empty.")
 		}
+		err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
+		cmd.FailOnError(err, "Couldn't load hostname policy file")
 
 		issuers, err := loadIssuers(c)
 		cmd.FailOnError(err, "Couldn't load issuers")
