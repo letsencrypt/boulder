@@ -182,6 +182,7 @@ type Config struct {
 
 	CertChecker struct {
 		DBConfig
+		HostnamePolicyConfig
 
 		Workers             int
 		ReportDirectoryPath string

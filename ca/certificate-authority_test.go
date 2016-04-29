@@ -27,9 +27,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
-	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/letsencrypt/boulder/test/vars"
 )
 
 var (
@@ -159,7 +157,6 @@ type testCtx struct {
 	keyPolicy core.KeyPolicy
 	fc        clock.FakeClock
 	stats     *mocks.Statter
-	cleanUp   func()
 }
 
 type mockSA struct {
@@ -191,15 +188,10 @@ func setup(t *testing.T) *testCtx {
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	test.AssertNotError(t, err, "Could not construct dbMap")
-	pa, err := policy.New(paDbMap, false, nil)
-	test.AssertNotError(t, err, "Couldn't create PADB")
-	paDBCleanUp := test.ResetPolicyTestDatabase(t)
-
-	cleanUp := func() {
-		paDBCleanUp()
-	}
+	pa, err := policy.New(nil)
+	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	// Create a CA
 	caConfig := cmd.CAConfig{
@@ -283,13 +275,11 @@ func setup(t *testing.T) *testCtx {
 		keyPolicy,
 		fc,
 		stats,
-		cleanUp,
 	}
 }
 
 func TestFailNoSerial(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 
 	testCtx.caConfig.SerialPrefix = 0
 	_, err := NewCertificateAuthorityImpl(
@@ -303,7 +293,6 @@ func TestFailNoSerial(t *testing.T) {
 
 func TestIssueCertificate(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -368,7 +357,6 @@ func TestIssueCertificate(t *testing.T) {
 // Test issuing when multiple issuers are present.
 func TestIssueCertificateMultipleIssuers(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	// Load multiple issuers, and ensure the first one in the list is used.
 	newIssuerCert, err := core.LoadCert("../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Failed to load new cert")
@@ -406,7 +394,6 @@ func TestIssueCertificateMultipleIssuers(t *testing.T) {
 
 func TestOCSP(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -501,7 +488,6 @@ func TestOCSP(t *testing.T) {
 
 func TestNoHostnames(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -522,7 +508,6 @@ func TestNoHostnames(t *testing.T) {
 
 func TestRejectTooManyNames(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -544,7 +529,6 @@ func TestRejectTooManyNames(t *testing.T) {
 
 func TestDeduplication(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -572,7 +556,6 @@ func TestDeduplication(t *testing.T) {
 
 func TestRejectValidityTooLong(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -599,7 +582,6 @@ func TestRejectValidityTooLong(t *testing.T) {
 
 func TestShortKey(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -620,7 +602,6 @@ func TestShortKey(t *testing.T) {
 
 func TestAllowNoCN(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -661,7 +642,6 @@ func TestAllowNoCN(t *testing.T) {
 
 func TestLongCommonName(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -681,7 +661,6 @@ func TestLongCommonName(t *testing.T) {
 
 func TestRejectBadAlgorithm(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
 		testCtx.fc,
@@ -702,7 +681,6 @@ func TestRejectBadAlgorithm(t *testing.T) {
 
 func TestCapitalizedLetters(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	testCtx.caConfig.MaxNames = 3
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
@@ -729,7 +707,6 @@ func TestCapitalizedLetters(t *testing.T) {
 
 func TestWrongSignature(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	testCtx.caConfig.MaxNames = 3
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
@@ -752,7 +729,6 @@ func TestWrongSignature(t *testing.T) {
 
 func TestProfileSelection(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	testCtx.caConfig.MaxNames = 3
 	ca, _ := NewCertificateAuthorityImpl(
 		testCtx.caConfig,
@@ -802,7 +778,6 @@ func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
 
 func TestExtensions(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
 	testCtx.caConfig.MaxNames = 3
 	ca, err := NewCertificateAuthorityImpl(
 		testCtx.caConfig,

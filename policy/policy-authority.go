@@ -21,13 +21,11 @@ import (
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/net/publicsuffix"
 	"github.com/square/go-jose"
-	"gopkg.in/gorp.v1"
 )
 
 // AuthorityImpl enforces CA policy decisions.
 type AuthorityImpl struct {
 	log blog.Logger
-	DB  *AuthorityDatabaseImpl
 
 	blacklist   map[string]bool
 	blacklistMu sync.RWMutex
@@ -39,22 +37,10 @@ type AuthorityImpl struct {
 // New constructs a Policy Authority.
 // TODO(https://github.com/letsencrypt/boulder/issues/1616): Remove the _ bool
 // argument (used to be enforceWhitelist). Update all callers.
-func New(dbMap *gorp.DbMap, _ bool, challengeTypes map[string]bool) (*AuthorityImpl, error) {
-	logger := blog.Get()
-
-	var padb *AuthorityDatabaseImpl
-	if dbMap != nil {
-		// Setup policy db
-		var err error
-		padb, err = NewAuthorityDatabaseImpl(dbMap)
-		if err != nil {
-			return nil, err
-		}
-	}
+func New(challengeTypes map[string]bool) (*AuthorityImpl, error) {
 
 	pa := AuthorityImpl{
-		log:               logger,
-		DB:                padb,
+		log:               blog.Get(),
 		enabledChallenges: challengeTypes,
 		// We don't need real randomness for this.
 		pseudoRNG: rand.New(rand.NewSource(99)),
@@ -246,10 +232,6 @@ func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) err
 }
 
 func (pa *AuthorityImpl) checkHostLists(domain string) error {
-	if pa.DB != nil {
-		return pa.DB.CheckHostLists(domain, false)
-	}
-
 	pa.blacklistMu.RLock()
 	defer pa.blacklistMu.RUnlock()
 

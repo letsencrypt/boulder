@@ -74,9 +74,7 @@ type certChecker struct {
 	stats        metrics.Statter
 }
 
-func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool, period time.Duration) certChecker {
-	pa, err := policy.New(paDbMap, enforceWhitelist, challengeTypes)
-	cmd.FailOnError(err, "Failed to create PA")
+func newChecker(saDbMap *gorp.DbMap, clk clock.Clock, pa core.PolicyAuthority, period time.Duration) certChecker {
 	c := certChecker{
 		pa:          pa,
 		dbMap:       saDbMap,
@@ -305,17 +303,15 @@ func main() {
 		saDbMap, err := sa.NewDbMap(saDbURL)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		paDbURL, err := config.PA.DBConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
-		paDbMap, err := sa.NewDbMap(paDbURL)
-		cmd.FailOnError(err, "Could not connect to policy database")
+		pa, err := policy.New(config.PA.Challenges)
+		cmd.FailOnError(err, "Failed to create PA")
+		err = pa.SetHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
+		cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
 
 		checker := newChecker(
 			saDbMap,
-			paDbMap,
 			clock.Default(),
-			config.PA.EnforcePolicyWhitelist,
-			config.PA.Challenges,
+			pa,
 			config.CertChecker.CheckPeriod.Duration,
 		)
 		fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
