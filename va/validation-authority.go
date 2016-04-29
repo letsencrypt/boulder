@@ -373,12 +373,9 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	}
 
 	if expectedKeyAuth != payload {
-		truncBody, wasOversize := truncateBody(body)
-		if wasOversize {
-			truncBody = fmt.Sprintf("%s…", truncBody)
-		}
+		truncBody := truncateBody(payload)
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
-			expectedKeyAuth, string(truncBody))
+			expectedKeyAuth, truncBody)
 		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
 		return validationRecords, &probs.ProblemDetails{
 			Type:   probs.UnauthorizedProblem,
@@ -389,18 +386,17 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	return validationRecords, nil
 }
 
-// truncateBody will cut off a byte slice at 45 UTF-8 characters.
-func truncateBody(body []byte) (truncated string, didTruncate bool) {
+// truncateBody will cut off a string at 45 UTF-8 characters.
+func truncateBody(str string) string {
 	count := 0
 	const max = 45
-	str := string(body)
 	for index, _ := range str {
 		count++
 		if count > max {
-			return str[:index], true
+			return fmt.Sprintf("%s…", str[:index])
 		}
 	}
-	return str, false
+	return str
 }
 
 func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
