@@ -1038,6 +1038,27 @@ func TestCAAFailure(t *testing.T) {
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
+func TestTruncateBody(t *testing.T) {
+	testCases := []struct {
+		Case     string
+		Expected string
+	}{
+		{"", ""},
+		{"a", "a"},
+		{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…"},
+		{"ááááááááááááááááááááááááááááááááááááááááááááá", "ááááááááááááááááááááááááááááááááááááááááááááá"},
+		{"áááááááááááááááááááááááááááááááááááááááááááááá", "ááááááááááááááááááááááááááááááááááááááááááááá…"},
+	}
+
+	for _, v := range testCases {
+		result := truncateBody(v.Case)
+		if result != v.Expected {
+			t.Errorf("got %q, expected %q", result, v.Expected)
+		}
+	}
+}
+
 type MockRegistrationAuthority struct {
 	lastAuthz *core.Authorization
 }
