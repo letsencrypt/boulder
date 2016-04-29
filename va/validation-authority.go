@@ -373,7 +373,10 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	}
 
 	if expectedKeyAuth != payload {
-		truncBody := body[:40]
+		truncBody := body
+		if len(body) > 40 {
+			truncBody = body[:40]
+		}
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
 			expectedKeyAuth, string(truncBody))
 		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
