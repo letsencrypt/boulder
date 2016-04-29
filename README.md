@@ -27,7 +27,7 @@ setting](https://groups.google.com/forum/#!topic/binary-transparency/f-BI4o8HZW0
 for better integrity guarantees when getting updates.
 
 Boulder requires an installation of RabbitMQ, libtool-ltdl, goose, and
-MariaDB 10 to work correctly. On Ubuntu and CentOS, you may have to
+MariaDB 10.1 to work correctly. On Ubuntu and CentOS, you may have to
 install RabbitMQ from https://rabbitmq.com/download.html to get a
 recent version.
 
