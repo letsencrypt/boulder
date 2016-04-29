@@ -34,11 +34,7 @@ var pa *policy.AuthorityImpl
 
 func init() {
 	var err error
-	pa, err = policy.New(map[string]bool{
-		"dns-01":     true,
-		"http-01":    true,
-		"tls-sni-01": true,
-	})
+	pa, err = policy.New(map[string]bool{})
 	if err != nil {
 		log.Fatal(err)
 	}
