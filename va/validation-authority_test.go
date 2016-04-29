@@ -566,6 +566,7 @@ func TestValidateHTTPResponseDocument(t *testing.T) {
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 	test.Assert(t, len(log.GetAllMatching("StartOfLine")) > 1, "Beginning of response body not logged")
+	test.Assert(t, len(log.GetAllMatching("…")) > 1, "Ellipsis not logged")
 	test.AssertEquals(t, len(log.GetAllMatching("PastTruncationPoint")), 0) // End of response body was logged
 
 }

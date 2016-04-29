@@ -373,9 +373,9 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	}
 
 	if expectedKeyAuth != payload {
-		truncBody := body
-		if len(body) > 40 {
-			truncBody = body[:40]
+		truncBody, wasOversize := truncateBody(body)
+		if wasOversize {
+			truncBody = fmt.Sprintf("%s…", truncBody)
 		}
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
 			expectedKeyAuth, string(truncBody))
@@ -387,6 +387,20 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	}
 
 	return validationRecords, nil
+}
+
+// truncateBody will cut off a byte slice at 45 UTF-8 characters.
+func truncateBody(body []byte) (truncated string, didTruncate bool) {
+	count := 0
+	const max = 45
+	str := string(body)
+	for index, _ := range str {
+		count++
+		if count > max {
+			return str[:index], true
+		}
+	}
+	return str, false
 }
 
 func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
