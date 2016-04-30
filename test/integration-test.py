@@ -3,6 +3,7 @@ import argparse
 import atexit
 import base64
 import datetime
+import errno
 import json
 import os
 import re
@@ -267,6 +268,23 @@ def main():
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
     parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
     args = parser.parse_args()
+
+    # Wait until all servers are up. This means checking each server's debug
+    # port until it's available.
+    while True:
+        try:
+            ports = range(8000, 8005) + [4000]
+            for debug_port in ports:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.connect(('localhost', debug_port))
+                s.close()
+            break
+        except socket.error as e:
+            if e.errno == errno.ECONNREFUSED:
+                print "Waiting for debug port %d" % debug_port
+            else:
+                raise
+        time.sleep(1)
 
     if not (args.run_all or args.run_letsencrypt or args.run_node or args.custom is not None):
         print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, --node, or --custom"
