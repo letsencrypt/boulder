@@ -24,9 +24,11 @@ EXPOSE 4000 4002 4003 8053 8055
 
 ENV GO15VENDOREXPERIMENT 1
 
-VOLUME /go/src/github.com/letsencrypt/boulder
 WORKDIR /go/src/github.com/letsencrypt/boulder
 
-RUN GOBIN=/go/src/github.com/letsencrypt/boulder/bin go install  ./...
-
 ENTRYPOINT [ "./test/entrypoint.sh" ]
+
+# Copy in the Boulder sources
+COPY . /go/src/github.com/letsencrypt/boulder
+
+RUN GOBIN=/go/src/github.com/letsencrypt/boulder/bin go install  ./...
