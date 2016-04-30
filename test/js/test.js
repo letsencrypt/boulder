@@ -467,7 +467,8 @@ function ensureValidation(err, resp, body) {
       });
     }
   } else if (authz.status == "invalid") {
-    console.log("The CA was unable to validate the file you provisioned:"  + body);
+    console.log("The CA was unable to validate the file you provisioned:");
+    console.log(JSON.stringify(authz.challenges, null, "  "));
     process.exit(1);
   } else {
     console.log("The CA returned an authorization in an unexpected state");
