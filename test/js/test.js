@@ -366,9 +366,12 @@ function validateDns01(challenge) {
   var recordName = "_acme-challenge." + state.domain + ".";
 
   function txtCallback(err, resp, body) {
-    if (Math.floor(resp.statusCode / 100) != 2) {
+    if (err) {
+      console.log("Updating dns-test-srv failed:", err);
+      process.exit(1);
+    } else if (Math.floor(resp.statusCode / 100) != 2) {
       // Non-2XX response
-      console.log("Updating dns-test-srv failed with code " + resp.statusCode);
+      console.log("Updating dns-test-srv failed with code", resp.statusCode);
       process.exit(1);
     }
     post(state.responseURL, {

@@ -9,11 +9,6 @@ if [[ $MYSQL_CONTAINER ]]; then
 	dbconn="-u root -h boulder-mysql --port 3306"
 fi
 
-if mysql $dbconn -e 'show databases;' | grep boulder_sa_integration > /dev/null; then
-  echo "Databases already created."
-  exit 0
-fi
-
 # MariaDB sets the default binlog_format to STATEMENT,
 # which causes warnings that fail tests. Instead set it
 # to the format we use in production, MIXED.
