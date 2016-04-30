@@ -7,16 +7,15 @@ package policy
 
 import (
 	"encoding/json"
+	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/letsencrypt/boulder/test/vars"
-	"gopkg.in/gorp.v1"
 )
 
 var log = blog.UseMock()
@@ -27,21 +26,12 @@ var enabledChallenges = map[string]bool{
 	core.ChallengeTypeDNS01:    true,
 }
 
-func paImpl(t *testing.T) (*AuthorityImpl, func()) {
-	dbMap, cleanUp := paDBMap(t)
-	pa, err := New(dbMap, false, enabledChallenges)
+func paImpl(t *testing.T) *AuthorityImpl {
+	pa, err := New(enabledChallenges)
 	if err != nil {
-		cleanUp()
 		t.Fatalf("Couldn't create policy implementation: %s", err)
 	}
-	return pa, cleanUp
-}
-
-func paDBMap(t *testing.T) (*gorp.DbMap, func()) {
-	dbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	test.AssertNotError(t, err, "Could not construct dbMap")
-	cleanUp := test.ResetPolicyTestDatabase(t)
-	return dbMap, cleanUp
+	return pa
 }
 
 func TestWillingToIssue(t *testing.T) {
@@ -127,14 +117,17 @@ func TestWillingToIssue(t *testing.T) {
 		"www.zom-bo.com",
 	}
 
-	pa, cleanup := paImpl(t)
-	defer cleanup()
+	pa := paImpl(t)
 
-	rules := RuleSet{}
-	for _, b := range shouldBeBlacklisted {
-		rules.Blacklist = append(rules.Blacklist, BlacklistRule{Host: b})
-	}
-	err := pa.DB.LoadRules(rules)
+	blacklistBytes, err := json.Marshal(blacklistJSON{
+		Blacklist: shouldBeBlacklisted,
+	})
+	test.AssertNotError(t, err, "Couldn't serialize blacklist")
+	f, _ := ioutil.TempFile("", "test-blacklist.txt")
+	defer os.Remove(f.Name())
+	err = ioutil.WriteFile(f.Name(), blacklistBytes, 0640)
+	test.AssertNotError(t, err, "Couldn't write blacklist")
+	err = pa.SetHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Test for invalid identifier type
@@ -187,8 +180,7 @@ var accountKeyJSON = `{
 }`
 
 func TestChallengesFor(t *testing.T) {
-	pa, cleanup := paImpl(t)
-	defer cleanup()
+	pa := paImpl(t)
 
 	var accountKey *jose.JsonWebKey
 	err := json.Unmarshal([]byte(accountKeyJSON), &accountKey)
