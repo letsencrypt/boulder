@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"log"
 	"math/big"
 	mrand "math/rand"
 	"sync"
@@ -22,11 +23,26 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
+
+var pa *policy.AuthorityImpl
+
+func init() {
+	var err error
+	pa, err = policy.New(map[string]bool{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = pa.SetHostnamePolicyFile("../../test/hostname-policy.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+}
 
 func BenchmarkCheckCert(b *testing.B) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
@@ -34,17 +50,11 @@ func BenchmarkCheckCert(b *testing.B) {
 		fmt.Println("Couldn't connect to database")
 		return
 	}
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	if err != nil {
-		fmt.Println("Couldn't connect to database")
-		return
-	}
 	defer func() {
 		test.ResetSATestDatabase(b)()
-		test.ResetPolicyTestDatabase(b)()
 	}()
 
-	checker := newChecker(saDbMap, paDbMap, clock.Default(), false, nil, expectedValidityPeriod)
+	checker := newChecker(saDbMap, clock.Default(), pa, expectedValidityPeriod)
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
@@ -74,19 +84,15 @@ func TestCheckCert(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetSATestDatabase(t)
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	test.AssertNotError(t, err, "Couldn't connect to policy database")
-	paCleanup := test.ResetPolicyTestDatabase(t)
 	defer func() {
 		saCleanup()
-		paCleanup()
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	fc := clock.NewFake()
 	fc.Add(time.Hour * 24 * 90)
 
-	checker := newChecker(saDbMap, paDbMap, fc, false, nil, expectedValidityPeriod)
+	checker := newChecker(saDbMap, fc, pa, expectedValidityPeriod)
 
 	issued := checker.clock.Now().Add(-time.Hour * 24 * 45)
 	goodExpiry := issued.Add(expectedValidityPeriod)
@@ -131,17 +137,17 @@ func TestCheckCert(t *testing.T) {
 		"Certificate has incorrect key usage extensions":                            1,
 		"Certificate has common name >64 characters long (65)":                      1,
 	}
-	test.AssertEquals(t, len(problems), 8)
 	for _, p := range problems {
 		_, ok := problemsMap[p]
 		if !ok {
-			t.Errorf("Expected problem '%s' but didn't find it.", p)
+			t.Errorf("Found unexpected problem '%s'.", p)
 		}
 		delete(problemsMap, p)
 	}
 	for k := range problemsMap {
-		t.Errorf("Found unexpected problem '%s'.", k)
+		t.Errorf("Expected problem but didn't find it: '%s'.", k)
 	}
+	test.AssertEquals(t, len(problems), 8)
 
 	// Same settings as above, but the stored serial number in the DB is invalid.
 	cert.Serial = "not valid"
@@ -175,18 +181,14 @@ func TestCheckCert(t *testing.T) {
 func TestGetAndProcessCerts(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	test.AssertNotError(t, err, "Couldn't connect to policy database")
 	fc := clock.NewFake()
 
-	checker := newChecker(saDbMap, paDbMap, fc, false, nil, expectedValidityPeriod)
+	checker := newChecker(saDbMap, fc, pa, expectedValidityPeriod)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, fc, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetSATestDatabase(t)
-	paCleanUp := test.ResetPolicyTestDatabase(t)
 	defer func() {
 		saCleanUp()
-		paCleanUp()
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)

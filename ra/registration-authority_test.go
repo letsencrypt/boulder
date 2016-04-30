@@ -184,13 +184,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	va := &DummyValidationAuthority{}
 
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	if err != nil {
-		t.Fatalf("Failed to create dbMap: %s", err)
-	}
-	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
-	pa, err := policy.New(paDbMap, false, SupportedChallenges)
+	pa, err := policy.New(SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	stats, _ := statsd.NewNoopClient()
 
@@ -199,7 +196,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	}
 	cleanUp := func() {
 		saDBCleanUp()
-		policyDBCleanUp()
 	}
 
 	block, _ := pem.Decode(CSRPEM)
