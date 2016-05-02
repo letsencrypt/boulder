@@ -207,7 +207,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 
 		if len(parsedCerts) == 0 {
 			// all certificates are renewed
-			// continue
+			continue
 		}
 
 		err = m.sendNags(reg.Contact, parsedCerts)
