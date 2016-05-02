@@ -34,12 +34,12 @@ func TestSendEarliestCertInfo(t *testing.T) {
 	rawCertA := newX509Cert("happy A",
 		ctx.fc.Now().AddDate(0, 0, 5),
 		[]string{"example-A.com", "SHARED-example.com"},
-		1337,
+		serial1,
 	)
 	rawCertB := newX509Cert("happy B",
 		ctx.fc.Now().AddDate(0, 0, 2),
 		[]string{"shared-example.com", "example-b.com"},
-		1337,
+		serial2,
 	)
 
 	err := ctx.m.sendNags([]*core.AcmeURL{email1, email2}, []*x509.Certificate{rawCertA, rawCertB})
@@ -65,14 +65,14 @@ func TestSendEarliestCertInfo(t *testing.T) {
 	test.AssertEquals(t, expected, ctx.mc.Messages[1])
 }
 
-func newX509Cert(commonName string, notAfter time.Time, dnsNames []string, serial int64) *x509.Certificate {
+func newX509Cert(commonName string, notAfter time.Time, dnsNames []string, serial *big.Int) *x509.Certificate {
 	return &x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: commonName,
 		},
 		NotAfter:     notAfter,
 		DNSNames:     dnsNames,
-		SerialNumber: big.NewInt(serial),
+		SerialNumber: serial,
 	}
 
 }
