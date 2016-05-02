@@ -35,6 +35,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -540,6 +541,36 @@ func TestValidateHTTP(t *testing.T) {
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
+func TestValidateHTTPResponseDocument(t *testing.T) {
+	chall := core.HTTPChallenge01(accountKey)
+	setChallengeToken(&chall, core.NewToken())
+
+	hs := httpSrv(t, `a.StartOfLine.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.PastTruncationPoint.aaaaaaaaaaaaaaaaaaaa`)
+	port, err := getPort(hs)
+	test.AssertNotError(t, err, "failed to get test server port")
+	stats, _ := statsd.NewNoopClient()
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{HTTPPort: port}, nil, nil, stats, clock.Default())
+	va.DNSResolver = &bdns.MockDNSResolver{}
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	defer hs.Close()
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     ident,
+		Challenges:     []core.Challenge{chall},
+	}
+	va.validate(ctx, authz, 0)
+
+	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
+	test.Assert(t, len(log.GetAllMatching("StartOfLine")) > 1, "Beginning of response body not logged")
+	test.Assert(t, len(log.GetAllMatching("…")) > 1, "Ellipsis not logged")
+	test.AssertEquals(t, len(log.GetAllMatching("PastTruncationPoint")), 0) // End of response body was logged
+
+}
+
 // challengeType == "tls-sni-00" or "dns-00", since they're the same
 func createChallenge(challengeType string) core.Challenge {
 	chall := core.Challenge{
@@ -728,7 +759,7 @@ func TestCAAChecking(t *testing.T) {
 }
 
 func TestDNSValidationFailure(t *testing.T) {
-	stats, _ := statsd.NewNoopClient()
+	stats := mocks.NewStatter()
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
@@ -748,6 +779,7 @@ func TestDNSValidationFailure(t *testing.T) {
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusInvalid, "Should be invalid.")
 	test.AssertEquals(t, authz.Challenges[0].Error.Type, probs.UnauthorizedProblem)
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 
 func TestDNSValidationInvalid(t *testing.T) {
@@ -865,7 +897,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 }
 
 func TestDNSValidationOK(t *testing.T) {
-	stats, _ := statsd.NewNoopClient()
+	stats := mocks.NewStatter()
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	mockRA := &MockRegistrationAuthority{}
@@ -892,6 +924,7 @@ func TestDNSValidationOK(t *testing.T) {
 
 	test.AssertNotNil(t, mockRA.lastAuthz, "Should have gotten an authorization")
 	test.Assert(t, authz.Challenges[0].Status == core.StatusValid, "Should be valid.")
+	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.valid")
 }
 
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
@@ -1003,6 +1036,27 @@ func TestCAAFailure(t *testing.T) {
 	va.validate(ctx, authz, 0)
 
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
+}
+
+func TestTruncateBody(t *testing.T) {
+	testCases := []struct {
+		Case     string
+		Expected string
+	}{
+		{"", ""},
+		{"a", "a"},
+		{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…"},
+		{"ááááááááááááááááááááááááááááááááááááááááááááá", "ááááááááááááááááááááááááááááááááááááááááááááá"},
+		{"áááááááááááááááááááááááááááááááááááááááááááááá", "ááááááááááááááááááááááááááááááááááááááááááááá…"},
+	}
+
+	for _, v := range testCases {
+		result := truncateBody(v.Case)
+		if result != v.Expected {
+			t.Errorf("got %q, expected %q", result, v.Expected)
+		}
+	}
 }
 
 type MockRegistrationAuthority struct {

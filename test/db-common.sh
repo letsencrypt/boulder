@@ -6,7 +6,5 @@ function die() {
   exit 1
 }
 
-SERVICES="sa
-policy"
 DBENVS="test
 integration"

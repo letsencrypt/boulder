@@ -63,6 +63,7 @@ Edit /etc/hosts to add this line:
 
 Resolve Go-dependencies, set up a database and RabbitMQ:
 
+    export GO15VENDOREXPERIMENT=1
     ./test/setup.sh
 
 **Note**: `setup.sh` calls `create_db.sh`, which uses the root MariaDB

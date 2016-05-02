@@ -373,8 +373,9 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	}
 
 	if expectedKeyAuth != payload {
+		truncBody := truncateBody(payload)
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
-			expectedKeyAuth, string(body))
+			expectedKeyAuth, truncBody)
 		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
 		return validationRecords, &probs.ProblemDetails{
 			Type:   probs.UnauthorizedProblem,
@@ -383,6 +384,19 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	}
 
 	return validationRecords, nil
+}
+
+// truncateBody will cut off a string at 45 UTF-8 characters.
+func truncateBody(str string) string {
+	count := 0
+	const max = 45
+	for index, _ := range str {
+		count++
+		if count > max {
+			return fmt.Sprintf("%s…", str[:index])
+		}
+	}
+	return str
 }
 
 func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -554,15 +568,16 @@ func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Auth
 	validationRecords, prob = va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
 
 	challenge.ValidationRecord = validationRecords
+
+	// Check for malformed ValidationRecords
+	if !challenge.RecordsSane() && prob == nil {
+		prob = probs.ServerInternal("Records for validation failed sanity check")
+	}
+
 	if prob != nil {
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
-	} else if !authz.Challenges[challengeIndex].RecordsSane() {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = &probs.ProblemDetails{Type: probs.ServerInternalProblem,
-			Detail: "Records for validation failed sanity check"}
-		logEvent.Error = challenge.Error.Error()
 	} else {
 		challenge.Status = core.StatusValid
 	}
@@ -644,29 +659,34 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 		ID:          authz.ID,
 		Requester:   authz.RegistrationID,
 		RequestTime: va.clk.Now(),
-		Challenge:   challenge,
 	}
 	vStart := va.clk.Now()
 
 	records, prob := va.validateChallengeAndCAA(ctx, core.AcmeIdentifier{Type: "dns", Value: domain}, challenge)
 
 	logEvent.ValidationRecords = records
-	resultStatus := core.StatusInvalid
-	if prob != nil {
-		logEvent.Error = prob.Error()
-	} else if !challenge.RecordsSane() {
-		logEvent.Error = (&probs.ProblemDetails{
-			Type:   probs.ServerInternalProblem,
-			Detail: "Records for validation failed sanity check",
-		}).Error()
-	} else {
-		resultStatus = core.StatusValid
+	challenge.ValidationRecord = records
+
+	// Check for malformed ValidationRecords
+	if !challenge.RecordsSane() && prob == nil {
+		prob = probs.ServerInternal("Records for validation failed sanity check")
 	}
 
-	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, resultStatus), time.Since(vStart), 1.0)
+	if prob != nil {
+		challenge.Status = core.StatusInvalid
+		challenge.Error = prob
+		logEvent.Error = prob.Error()
+	} else {
+		challenge.Status = core.StatusValid
+	}
+
+	logEvent.Challenge = challenge
+
+	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart), 1.0)
 
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
+	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
 	return records, prob
 }
 
