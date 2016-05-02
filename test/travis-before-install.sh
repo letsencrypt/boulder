@@ -33,7 +33,12 @@ docker run -d \
   --name boulder-rabbitmq \
   rabbitmq:3
 
-which docker-compose
+docker-compose up -d bmysql
+while ! exec 6<>/dev/tcp/localhost/3306; do
+  echo "$(date) - still trying to connect to localhost:3306"
+  sleep 1
+done
+exec 6>&-
 
 ./test/setup.sh
 
