@@ -34,7 +34,7 @@ docker run -d \
   rabbitmq:3
 
 docker-compose up -d bmysql
-while ! exec 6<>/dev/tcp/localhost/3306; do
+while ! exec 6<>/dev/tcp/127.0.0.1/3306; do
   echo "$(date) - still trying to connect to localhost:3306"
   sleep 1
 done
