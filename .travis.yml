@@ -49,6 +49,11 @@ install:
   - travis_retry test/travis-before-install.sh
   - cd $GOPATH/src/github.com/letsencrypt/boulder
   - docker-compose up -d bmysql
+  - while ! exec 6<>/dev/tcp/localhost/3306; do
+  -   echo "$(date) - still trying to connect to localhost:3306"
+  -   sleep 1
+  - done
+  - exec 6>&-
 
 env:
   global:
