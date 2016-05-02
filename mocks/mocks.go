@@ -11,8 +11,10 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	mrand "math/rand"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
@@ -433,6 +435,18 @@ func GPDNSHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(400)
 	case "break-rcode":
 		data, err := json.Marshal(core.GPDNSResponse{Status: dns.RcodeServerFailure})
+		if err != nil {
+			return
+		}
+		w.Write(data)
+	case "break-dns-quorum":
+		resp := core.GPDNSResponse{
+			Status: dns.RcodeSuccess,
+			Answer: []core.GPDNSAnswer{
+				{r.URL.Query().Get("name"), 257, 10, strconv.Itoa(mrand.Int())},
+			},
+		}
+		data, err := json.Marshal(resp)
 		if err != nil {
 			return
 		}
