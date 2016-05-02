@@ -48,6 +48,7 @@ branches:
 install:
   - travis_retry test/travis-before-install.sh
   - cd $GOPATH/src/github.com/letsencrypt/boulder
+  - docker-compose up -d bmysql
 
 env:
   global:
