@@ -62,5 +62,4 @@ env:
     - RUN="unit"
 
 script:
-  - docker-compose run -e RUN="${RUN}" boulder bash test.sh
-
+  - docker-compose run -e RUN="${RUN}" boulder ./test.sh
