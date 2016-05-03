@@ -22,13 +22,21 @@ RUN go get -v \
 # Boulder exposes its web application at port TCP 4000
 EXPOSE 4000 4002 4003 8053 8055
 
+COPY ./test/docker-environment /etc/environment
+ENV BASH_ENV /etc/environment
 ENV GO15VENDOREXPERIMENT 1
+ENV GOBIN /go/src/github.com/letsencrypt/boulder/bin
+
+RUN adduser --disabled-password --gecos "" -q buser
+RUN chown -R buser /go/
 
 WORKDIR /go/src/github.com/letsencrypt/boulder
 
-ENTRYPOINT [ "./test/entrypoint.sh" ]
-
 # Copy in the Boulder sources
-COPY . /go/src/github.com/letsencrypt/boulder
+COPY . .
+RUN mkdir bin
+RUN go install ./...
 
-RUN GOBIN=/go/src/github.com/letsencrypt/boulder/bin go install  ./...
+RUN chown -R buser /go/
+
+ENTRYPOINT [ "./test/entrypoint.sh" ]

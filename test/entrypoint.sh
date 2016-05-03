@@ -25,13 +25,13 @@ wait_tcp_port boulder-mysql 3306
 wait_tcp_port boulder-rabbitmq 5672
 
 # create the database
-MYSQL_CONTAINER=1 bash -x $DIR/create_db.sh
+MYSQL_CONTAINER=1 bash $DIR/create_db.sh
 
 # Set up rabbitmq exchange
-go run cmd/rabbitmq-setup/main.go -server amqp://boulder-rabbitmq
+rabbitmq-setup -server amqp://boulder-rabbitmq
 
 if [[ $# -eq 0 ]]; then
-    exec ./start.py
+    exec su buser -c ./start.py
 fi
 
-exec $@
+exec su buser -c "$@"
