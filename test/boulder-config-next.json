@@ -136,7 +136,7 @@
       }
     },
     "maxConcurrentRPCServerRequests": 16,
-    "publisher": {
+    "publisherService": {
       "serverAddress": "boulder:9091",
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
