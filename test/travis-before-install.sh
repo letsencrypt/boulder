@@ -23,16 +23,6 @@ if [ -n "$encrypted_53b2630f0fb4_key" ]; then
     -in test/github-secret.json.enc -out /tmp/github-secret.json -d
 fi
 
-docker run -d \
-  -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
-  --name boulder-mysql \
-  mariadb:10.1 mysqld --bind-address=0.0.0.0
-
-docker run -d \
-  -e RABBITMQ_NODE_IP_ADDRESS=0.0.0.0 \
-  --name boulder-rabbitmq \
-  rabbitmq:3
-
 docker-compose up -d bmysql
 while ! exec 6<>/dev/tcp/127.0.0.1/3306; do
   echo "$(date) - still trying to connect to localhost:3306"
