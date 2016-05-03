@@ -487,7 +487,9 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), updater.grpcTimeout)
 		_ = updater.pubc.SubmitToCT(ctx, cert.DER)
-		cancel() // since we are in a for loop do this now instead of collecting a bunch
+		// cancel now instead of deferring because we are in a loop
+		// and no early exits can happen between initialization and now
+		cancel()
 	}
 	return nil
 }

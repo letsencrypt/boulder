@@ -603,10 +603,8 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	// Submit the certificate to any configured CT logs
 	go func() {
 		pubCtx, cancel := context.WithTimeout(context.Background(), ca.GRPCTimeout)
+		defer cancel()
 		_ = ca.Publisher.SubmitToCT(pubCtx, certDER)
-		if cancel != nil {
-			cancel()
-		}
 	}()
 
 	// Do not return an err at this point; caller must know that the Certificate

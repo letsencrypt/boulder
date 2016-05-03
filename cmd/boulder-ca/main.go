@@ -149,11 +149,11 @@ func main() {
 		cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create SA client")
 
-		if c.CA.Publisher != nil {
-			conn, err := bgrpc.ClientSetup(c.CA.Publisher)
+		if c.CA.PublisherService != nil {
+			conn, err := bgrpc.ClientSetup(c.CA.PublisherService)
 			cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 			cai.Publisher = &bgrpc.PublisherClientWrapper{pubPB.NewPublisherClient(conn)}
-			cai.GRPCTimeout = c.CA.Publisher.Timeout.Duration
+			cai.GRPCTimeout = c.CA.PublisherService.Timeout.Duration
 		} else {
 			cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
 			cmd.FailOnError(err, "Failed to create Publisher client")

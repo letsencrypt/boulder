@@ -89,7 +89,7 @@ func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration, log
 }
 
 // SubmitToCT is a wrapper used by gRPC until we remove the old
-// RPC code. Context has to be ignored to preserve old RPC API.
+// RPC code.y
 func (pub GRPCWrapper) SubmitToCT(ctx context.Context, request *pubPB.Request) (*pubPB.Empty, error) {
 	if request == nil || request.Der == nil {
 		return nil, errors.New("incomplete SubmitToCT gRPC message")
@@ -108,7 +108,10 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 	for _, ctLog := range pub.ctLogs {
-		sct, err := ctLog.client.AddChainWithContext(ctx, chain)
+		localCtx, cancel := context.WithTimeout(ctx, pub.submissionTimeout)
+		// since there are possible error cases defer instead of explicitly cancelling
+		defer cancel()
+		sct, err := ctLog.client.AddChainWithContext(localCtx, chain)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.Err(fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))

@@ -341,7 +341,7 @@ type CAConfig struct {
 	// triggers issuance of certificates with Must Staple.
 	EnableMustStaple bool
 
-	Publisher *GRPCClientConfig
+	PublisherService *GRPCClientConfig
 }
 
 // PAConfig specifies how a policy authority should connect to its
