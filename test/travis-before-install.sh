@@ -23,14 +23,6 @@ if [ -n "$encrypted_53b2630f0fb4_key" ]; then
     -in test/github-secret.json.enc -out /tmp/github-secret.json -d
 fi
 
-ifconfig
-docker-compose up -d bmysql
-while ! exec 6<>/dev/tcp/127.0.0.1/3306; do
-  echo "$(date) - still trying to connect to localhost:3306"
-  sleep 1
-done
-exec 6>&-
-
 ./test/setup.sh
 
 set +o xtrace
