@@ -1505,3 +1505,12 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 func newRequestEvent() *requestEvent {
 	return &requestEvent{Extra: make(map[string]interface{})}
 }
+
+func TestVerifyPOSTInvalidJWK(t *testing.T) {
+	badJWS := `{"signatures":[{"header":{"jwk":{"kty":"RSA","n":"","e":""}}}],"payload":""}`
+	wfe, _ := setupWFE(t)
+	_, _, _, prob := wfe.verifyPOST(ctx, newRequestEvent(), makePostRequest(badJWS), false, "resource")
+	test.Assert(t, prob != nil, "No error returned for request body with invalid JWS key.")
+	test.AssertEquals(t, probs.MalformedProblem, prob.Type)
+	test.AssertEquals(t, http.StatusBadRequest, prob.HTTPStatus)
+}
