@@ -246,7 +246,8 @@ func TestGetValidAuthorizationsBasic(t *testing.T) {
 
 	// Attempt to get unauthorized domain.
 	authzMap, err := sa.GetValidAuthorizations(ctx, 0, []string{"example.org"}, clk.Now())
-	// Should get not results, but not error.
+	// Should get no results, but not error.
+	test.AssertNotError(t, err, "Error getting valid authorizations")
 	test.AssertEquals(t, len(authzMap), 0)
 
 	reg := satest.CreateWorkingRegistration(t, sa)
@@ -261,6 +262,7 @@ func TestGetValidAuthorizationsBasic(t *testing.T) {
 
 	// attempt to get authorized domain with wrong RegID
 	authzMap, err = sa.GetValidAuthorizations(ctx, 0, []string{"example.org"}, clk.Now())
+	test.AssertNotError(t, err, "Error getting valid authorizations")
 	test.AssertEquals(t, len(authzMap), 0)
 
 	// get authorized domain
