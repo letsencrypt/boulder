@@ -209,24 +209,6 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 	return
 }
 
-// GetLatestValidAuthorization gets the valid authorization with biggest expire date for a given domain and registrationId
-func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(ctx context.Context, registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
-	ident, err := json.Marshal(identifier)
-	if err != nil {
-		return
-	}
-	var auth core.Authorization
-	err = ssa.dbMap.SelectOne(&auth, "SELECT id FROM authz "+
-		"WHERE identifier = :identifier AND registrationID = :registrationID AND status = 'valid' "+
-		"ORDER BY expires DESC LIMIT 1",
-		map[string]interface{}{"identifier": string(ident), "registrationID": registrationID})
-	if err != nil {
-		return
-	}
-
-	return ssa.GetAuthorization(ctx, auth.ID)
-}
-
 // GetValidAuthorizations returns the latest authorization object for all
 // domain names from the parameters that the account has authorizations for.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (latest map[string]*core.Authorization, err error) {
