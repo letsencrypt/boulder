@@ -41,8 +41,8 @@ RUN go get \
 RUN curl -sL https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz | \
  tar -xz && cd protobuf-2.6.1 && ./configure && make install > /dev/null && \
  cd .. && rm -rf protobuf-2.6.1
-i
-RUN apt-get install -y ruby-dev
+
+RUN apt-get update && apt-get install -y ruby-dev && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 RUN gem install fpm
 
 # Boulder exposes its web application at port TCP 4000
