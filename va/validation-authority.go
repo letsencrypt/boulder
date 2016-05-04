@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -260,7 +261,9 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		}
 	}
 
-	body, err := ioutil.ReadAll(httpResponse.Body)
+	// payload should be ~87 bytes, give a little leeway
+	// (32 byte b64 encoded token + . + 32 byte b64 encoded key fingerprint)
+	body, err := ioutil.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: 174})
 	closeErr := httpResponse.Body.Close()
 	if err == nil {
 		err = closeErr
