@@ -260,16 +260,9 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   start_context "godep-restore"
   run_and_comment godep restore
   # Run godep save and do a diff, to ensure that the version we got from
-  # `godep restore` matched what was in the remote repo. We only do this on
-  # builds of the main fork (not PRs from external contributors), because godep
-  # rewrites import paths to the path of the fork we're building from, which
-  # creates spurious diffs if we're not building from the main fork.
-  # Once we switch to Go 1.6's imports and don't need rewriting anymore, we can
-  # do this for all builds.
-  if [[ "${TRAVIS_REPO_SLUG}" == "letsencrypt/boulder" ]] ; then
-    run_and_comment godep save ./...
-    run_and_comment git diff --exit-code
-  fi
+  # `godep restore` matched what was in the remote repo.
+  run_and_comment godep save ./...
+  run_and_comment git diff --exit-code
   end_context #godep-restore
 fi
 
