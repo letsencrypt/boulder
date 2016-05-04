@@ -329,6 +329,46 @@ func TestGetValidAuthorizationsDuplicate(t *testing.T) {
 	test.AssertEquals(t, result2.ID, newAuthz.ID)
 }
 
+// Fetch multiple authzs at once. Check that
+func TestGetValidAuthorizationsMultiple(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+	var err error
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	makeAuthz := func(daysToExpiry int, status core.AcmeStatus, domain string) core.Authorization {
+		authz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
+		exp := clk.Now().AddDate(0, 0, daysToExpiry)
+		authz.Expires = &exp
+		authz.Status = status
+		err = sa.FinalizeAuthorization(ctx, authz)
+		test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+		return authz
+	}
+	makeAuthz(1, core.StatusValid, "blog.example.com")
+	makeAuthz(2, core.StatusInvalid, "blog.example.com")
+	makeAuthz(5, core.StatusValid, "www.example.com")
+	wwwAuthz := makeAuthz(6, core.StatusValid, "www.example.com")
+
+	authzMap, err := sa.GetValidAuthorizations(ctx, reg.ID,
+		[]string{"blog.example.com", "www.example.com", "absent.example.com"}, clk.Now())
+	test.AssertNotError(t, err, "Couldn't get authorizations")
+	test.AssertEquals(t, len(authzMap), 2)
+	blogResult := authzMap["blog.example.com"]
+	if blogResult == nil {
+		t.Errorf("Didn't find blog.example.com in result")
+	}
+	if blogResult.Status == core.StatusInvalid {
+		t.Errorf("Got invalid blogResult")
+	}
+	wwwResult := authzMap["www.example.com"]
+	if wwwResult == nil {
+		t.Errorf("Didn't find www.example.com in result")
+	}
+	test.AssertEquals(t, wwwResult.ID, wwwAuthz.ID)
+}
+
 func TestAddCertificate(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
