@@ -205,15 +205,21 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			parsedCerts = append(parsedCerts, parsedCert)
 		}
 
+		if len(parsedCerts) == 0 {
+			// all certificates are renewed
+			continue
+		}
+
 		err = m.sendNags(reg.Contact, parsedCerts)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error sending nag emails: %s", err))
 			continue
 		}
-		for _, cert := range certs {
-			err = m.updateCertStatus(cert.Serial)
+		for _, cert := range parsedCerts {
+			serial := core.SerialToString(cert.SerialNumber)
+			err = m.updateCertStatus(serial)
 			if err != nil {
-				m.log.Err(fmt.Sprintf("Error updating certificate status for %s: %s", cert.Serial, err))
+				m.log.Err(fmt.Sprintf("Error updating certificate status for %s: %s", serial, err))
 				m.stats.Inc("Mailer.Expiration.Errors.UpdateCertificateStatus", 1, 1.0)
 				continue
 			}
