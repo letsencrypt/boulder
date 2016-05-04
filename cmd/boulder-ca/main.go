@@ -115,10 +115,10 @@ func main() {
 		pa, err := policy.New(c.PA.Challenges)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		if c.RA.HostnamePolicyFile == "" {
-			cmd.FailOnError(nil, "HostnamePolicyFile was empty.")
+		if c.CA.HostnamePolicyFile == "" {
+			cmd.FailOnError(fmt.Errorf("HostnamePolicyFile was empty."), "")
 		}
-		err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
+		err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
 		cmd.FailOnError(err, "Couldn't load hostname policy file")
 
 		issuers, err := loadIssuers(c)

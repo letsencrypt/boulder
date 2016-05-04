@@ -6,6 +6,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -33,7 +34,7 @@ func main() {
 		cmd.FailOnError(err, "Couldn't create PA")
 
 		if c.RA.HostnamePolicyFile == "" {
-			cmd.FailOnError(nil, "HostnamePolicyFile must be provided.")
+			cmd.FailOnError(fmt.Errorf("HostnamePolicyFile must be provided."), "")
 		}
 		err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 		cmd.FailOnError(err, "Couldn't load hostname policy file")
