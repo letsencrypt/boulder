@@ -541,36 +541,6 @@ func TestValidateHTTP(t *testing.T) {
 	test.AssertEquals(t, core.StatusValid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
-func TestValidateHTTPResponseDocument(t *testing.T) {
-	chall := core.HTTPChallenge01(accountKey)
-	setChallengeToken(&chall, core.NewToken())
-
-	hs := httpSrv(t, `a.StartOfLine.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.PastTruncationPoint.aaaaaaaaaaaaaaaaaaaa`)
-	port, err := getPort(hs)
-	test.AssertNotError(t, err, "failed to get test server port")
-	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&cmd.PortConfig{HTTPPort: port}, nil, nil, stats, clock.Default())
-	va.DNSResolver = &bdns.MockDNSResolver{}
-	mockRA := &MockRegistrationAuthority{}
-	va.RA = mockRA
-
-	defer hs.Close()
-
-	var authz = core.Authorization{
-		ID:             core.NewToken(),
-		RegistrationID: 1,
-		Identifier:     ident,
-		Challenges:     []core.Challenge{chall},
-	}
-	va.validate(ctx, authz, 0)
-
-	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
-	test.Assert(t, len(log.GetAllMatching("StartOfLine")) > 1, "Beginning of response body not logged")
-	test.Assert(t, len(log.GetAllMatching("…")) > 1, "Ellipsis not logged")
-	test.AssertEquals(t, len(log.GetAllMatching("PastTruncationPoint")), 0) // End of response body was logged
-
-}
-
 // challengeType == "tls-sni-00" or "dns-00", since they're the same
 func createChallenge(challengeType string) core.Challenge {
 	chall := core.Challenge{
@@ -1038,25 +1008,34 @@ func TestCAAFailure(t *testing.T) {
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 }
 
-func TestTruncateBody(t *testing.T) {
-	testCases := []struct {
-		Case     string
-		Expected string
-	}{
-		{"", ""},
-		{"a", "a"},
-		{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-		{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…"},
-		{"ááááááááááááááááááááááááááááááááááááááááááááá", "ááááááááááááááááááááááááááááááááááááááááááááá"},
-		{"áááááááááááááááááááááááááááááááááááááááááááááá", "ááááááááááááááááááááááááááááááááááááááááááááá…"},
-	}
+func TestLimitedReader(t *testing.T) {
+	chall := core.HTTPChallenge01(accountKey)
+	setChallengeToken(&chall, core.NewToken())
 
-	for _, v := range testCases {
-		result := truncateBody(v.Case)
-		if result != v.Expected {
-			t.Errorf("got %q, expected %q", result, v.Expected)
-		}
+	ident.Value = "localhost"
+	hs := httpSrv(t, "01234567890123456789012345678901234567890123456789012345678901234567890123456789")
+	port, err := getPort(hs)
+	test.AssertNotError(t, err, "failed to get test server port")
+	stats, _ := statsd.NewNoopClient()
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{HTTPPort: port}, nil, nil, stats, clock.Default())
+	va.DNSResolver = &bdns.MockDNSResolver{}
+	mockRA := &MockRegistrationAuthority{}
+	va.RA = mockRA
+
+	defer hs.Close()
+
+	var authz = core.Authorization{
+		ID:             core.NewToken(),
+		RegistrationID: 1,
+		Identifier:     ident,
+		Challenges:     []core.Challenge{chall},
 	}
+	va.validate(ctx, authz, 0)
+
+	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
+	test.Assert(t, mockRA.lastAuthz.Challenges[0].Error != nil, "fetchHTTP didn't fail on oversized body")
+	test.AssertEquals(t, mockRA.lastAuthz.Challenges[0].Error.Type, probs.UnauthorizedProblem)
+	test.AssertEquals(t, len(log.GetAllMatching(">= 128 bytes")), 1)
 }
 
 type MockRegistrationAuthority struct {

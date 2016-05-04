@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -189,7 +188,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	if resp.Body == nil {
 		return fmt.Errorf("No response body")
 	}
-	body, err := ioutil.ReadAll(&io.LimitedReader{R: resp.Body, N: 1024})
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		_ = resp.Body.Close()
 		return err
