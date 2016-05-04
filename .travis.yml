@@ -62,4 +62,4 @@ env:
     - RUN="unit"
 
 script:
-  - docker-compose run -e RUN="${RUN}" boulder ./test.sh
+  - docker-compose run -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" boulder ./test.sh
