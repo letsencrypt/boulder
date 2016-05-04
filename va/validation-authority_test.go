@@ -736,7 +736,7 @@ func TestCAAChecking(t *testing.T) {
 			t.Errorf("checkCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
 		}
 		if valid != caaTest.Valid {
-			t.Errorf("CheckCAARecords validity mismatch for %s: got %t expected %t", caaTest.Domain, valid, caaTest.Valid)
+			t.Errorf("checkCAARecords validity mismatch for %s: got %t expected %t", caaTest.Domain, valid, caaTest.Valid)
 		}
 	}
 

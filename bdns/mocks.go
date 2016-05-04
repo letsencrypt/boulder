@@ -82,12 +82,12 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 		return nil, &DNSError{dns.TypeCAA, "always.timeout", MockTimeoutError(), -1}
 	case "reserved.com":
 		record.Tag = "issue"
-		record.Value = "symantec.com"
+		record.Value = "ca.com"
 		results = append(results, &record)
 	case "critical.com":
 		record.Flag = 1
 		record.Tag = "issue"
-		record.Value = "symantec.com"
+		record.Value = "ca.com"
 		results = append(results, &record)
 	case "present.com", "present.servfail.com":
 		record.Tag = "issue"
@@ -101,7 +101,7 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 	case "multi-crit-present.com":
 		record.Flag = 1
 		record.Tag = "issue"
-		record.Value = "symantec.com"
+		record.Value = "ca.com"
 		results = append(results, &record)
 		secondRecord := record
 		secondRecord.Value = "letsencrypt.org"

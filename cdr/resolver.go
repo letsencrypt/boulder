@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -113,7 +114,7 @@ func New(scope metrics.Scope, timeout time.Duration, maxFailures int, proxies []
 
 // queryCAA sends the query request to the GPD API. If the return code is
 // dns.RcodeSuccess the 'Answer' section is parsed for CAA records, otherwise
-// a error is returned. Unlike bdns.DNSResolver.LookupCAA it will not repeat
+// an error is returned. Unlike bdns.DNSResolver.LookupCAA it will not repeat
 // failed queries if the context has not expired as we expect to be running
 // multiple queries in parallel and only need a M of N quorum (we also expect
 // GPD to have quite good availability)
@@ -125,7 +126,7 @@ func (cdr *CAADistributedResolver) queryCAA(ctx context.Context, req *http.Reque
 	defer func() {
 		_ = apiResp.Body.Close()
 	}()
-	body, err := ioutil.ReadAll(apiResp.Body)
+	body, err := ioutil.ReadAll(&io.LimitedReader{R: apiResp.Body, N: 1024})
 	if err != nil {
 		return nil, err
 	}
