@@ -283,25 +283,26 @@ func TestGetValidAuthorizationsDuplicate(t *testing.T) {
 	var err error
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+
+	makeAuthz := func(daysToExpiry int, status core.AcmeStatus) core.Authorization {
+		authz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
+		exp := clk.Now().AddDate(0, 0, daysToExpiry)
+		authz.Expires = &exp
+		authz.Status = status
+		err = sa.FinalizeAuthorization(ctx, authz)
+		test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+		return authz
+	}
+
 	// create invalid authz
-	authz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
-	exp := clk.Now().AddDate(0, 0, 10) // expire in 10 day
-	authz.Expires = &exp
-	authz.Status = core.StatusInvalid
-	err = sa.FinalizeAuthorization(ctx, authz)
-	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+	makeAuthz(10, core.StatusInvalid)
 
 	// should not get the auth
 	authzMap, err := sa.GetValidAuthorizations(ctx, reg.ID, []string{domain}, clk.Now())
 	test.AssertEquals(t, len(authzMap), 0)
 
 	// create valid auth
-	authz = CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
-	exp = clk.Now().AddDate(0, 0, 1) // expire in 1 day
-	authz.Expires = &exp
-	authz.Status = core.StatusValid
-	err = sa.FinalizeAuthorization(ctx, authz)
-	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+	makeAuthz(1, core.StatusValid)
 
 	// should get the valid auth even if it's expire date is lower than the invalid one
 	authzMap, err = sa.GetValidAuthorizations(ctx, reg.ID, []string{domain}, clk.Now())
@@ -314,12 +315,7 @@ func TestGetValidAuthorizationsDuplicate(t *testing.T) {
 	test.AssertEquals(t, result1.RegistrationID, reg.ID)
 
 	// create a newer auth
-	newAuthz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
-	exp = clk.Now().AddDate(0, 0, 2) // expire in 2 day
-	newAuthz.Expires = &exp
-	newAuthz.Status = core.StatusValid
-	err = sa.FinalizeAuthorization(ctx, newAuthz)
-	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+newAuthz.ID)
+	newAuthz := makeAuthz(2, core.StatusValid)
 
 	authzMap, err = sa.GetValidAuthorizations(ctx, reg.ID, []string{domain}, clk.Now())
 	test.AssertNotError(t, err, "Should have found a valid auth for "+domain)
