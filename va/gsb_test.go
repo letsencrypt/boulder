@@ -34,7 +34,7 @@ func TestIsSafeDomain(t *testing.T) {
 	sbc.EXPECT().IsListed("bad.com").Return("bad", nil)
 	sbc.EXPECT().IsListed("errorful.com").Return("", errors.New("welp"))
 	sbc.EXPECT().IsListed("outofdate.com").Return("", safebrowsing.ErrOutOfDateHashes)
-	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, sbc, nil, stats, clock.NewFake())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, sbc, nil, nil, stats, clock.NewFake())
 
 	resp, err := va.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: "good.com"})
 	if err != nil {
@@ -65,7 +65,7 @@ func TestIsSafeDomain(t *testing.T) {
 
 func TestAllowNilInIsSafeDomain(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, stats, clock.NewFake())
+	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, nil, stats, clock.NewFake())
 
 	// Be cool with a nil SafeBrowsing. This will happen in prod when we have
 	// flag mismatch between the VA and RA.
