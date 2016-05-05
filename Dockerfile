@@ -8,8 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libltdl-dev \
   mariadb-client-core-10.0 \
   nodejs \
+  rpm \
+  ruby \
+  ruby-dev \
   rsyslog \
   softhsm && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+RUN gem install fpm
 
 # Client deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install port forwarder, database migration tool, and testing tools.
-RUN go get \
+RUN GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
   github.com/jsha/listenbuddy \
   bitbucket.org/liamstask/goose/cmd/goose \
   github.com/golang/lint/golint \
@@ -35,15 +40,12 @@ RUN go get \
   github.com/modocache/gover \
   github.com/tools/godep \
   golang.org/x/tools/cmd/stringer \
-  golang.org/x/tools/cover
+  golang.org/x/tools/cover && rm -rf /tmp/gopath
 
 # Install protoc (used for testing that generated code is up-to-date)
 RUN curl -sL https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz | \
  tar -xz && cd protobuf-2.6.1 && ./configure && make install > /dev/null && \
- cd .. && rm -rf protobuf-2.6.1
-
-RUN apt-get update && apt-get install -y ruby-dev && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-RUN gem install fpm
+ cd .. && rm  -rf protobuf-2.6.1{,.tar.gz}
 
 # Boulder exposes its web application at port TCP 4000
 EXPOSE 4000 4002 4003 8053 8055

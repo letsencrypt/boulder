@@ -1,6 +1,8 @@
 boulder:
     build: .
     dockerfile: Dockerfile
+    volumes:
+      - /tmp:/tmp
     net: bridge
     ports:
       - 4000:4000 # ACME

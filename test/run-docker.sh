@@ -73,5 +73,4 @@ docker run --rm -it \
 		--link=boulder-mysql:boulder-mysql \
 		--link=boulder-rabbitmq:boulder-rabbitmq \
 		--add-host=boulder:127.0.0.1 \
-		--volume=$PWD:/go/src/github.com/letsencrypt/boulder \
 	letsencrypt/boulder "$@"

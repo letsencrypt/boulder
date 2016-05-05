@@ -241,6 +241,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
     docker-compose stop
   else
     update_status --state failure --description "Integration test failed."
+    docker-compose stop
     FAILURE=1
   fi
 
