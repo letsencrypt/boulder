@@ -134,7 +134,6 @@ type CertificateAuthorityImpl struct {
 	SA               certificateStorage
 	PA               core.PolicyAuthority
 	Publisher        core.Publisher
-	GRPCTimeout      time.Duration
 	keyPolicy        core.KeyPolicy
 	clk              clock.Clock
 	log              blog.Logger
@@ -602,9 +601,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 
 	// Submit the certificate to any configured CT logs
 	go func() {
-		pubCtx, cancel := context.WithTimeout(context.Background(), ca.GRPCTimeout)
-		defer cancel()
-		_ = ca.Publisher.SubmitToCT(pubCtx, certDER)
+		_ = ca.Publisher.SubmitToCT(ctx, certDER)
 	}()
 
 	// Do not return an err at this point; caller must know that the Certificate

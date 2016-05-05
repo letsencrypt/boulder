@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"errors"
+	"time"
 
 	"golang.org/x/net/context"
 
@@ -12,17 +13,20 @@ import (
 // PublisherClientWrapper is a wrapper needed to satisfy the interfaces
 // in core/interfaces.go
 type PublisherClientWrapper struct {
-	inner pubPB.PublisherClient
+	inner   pubPB.PublisherClient
+	timeout time.Duration
 }
 
 // NewPublisherClientWrapper returns an initialized PublisherClientWrapper
-func NewPublisherClientWrapper(inner pubPB.PublisherClient) *PublisherClientWrapper {
-	return &PublisherClientWrapper{inner}
+func NewPublisherClientWrapper(inner pubPB.PublisherClient, timeout time.Duration) *PublisherClientWrapper {
+	return &PublisherClientWrapper{inner, timeout}
 }
 
 // SubmitToCT makes a call to the gRPC version of the publisher
 func (pc *PublisherClientWrapper) SubmitToCT(ctx context.Context, der []byte) error {
-	_, err := pc.inner.SubmitToCT(ctx, &pubPB.Request{Der: der})
+	localCtx, cancel := context.WithTimeout(ctx, pc.timeout)
+	defer cancel()
+	_, err := pc.inner.SubmitToCT(localCtx, &pubPB.Request{Der: der})
 	return err
 }
 

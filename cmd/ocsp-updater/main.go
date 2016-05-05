@@ -43,8 +43,6 @@ type OCSPUpdater struct {
 	pubc core.Publisher
 	sac  core.StorageAuthority
 
-	grpcTimeout time.Duration
-
 	// Used  to calculate how far back stale OCSP responses should be looked for
 	ocspMinTimeToExpiry time.Duration
 	// Used to calculate how far back missing SCT receipts should be looked for
@@ -67,7 +65,6 @@ func newUpdater(
 	ca core.CertificateAuthority,
 	pub core.Publisher,
 	sac core.StorageAuthority,
-	grpcTimeout time.Duration,
 	config cmd.OCSPUpdaterConfig,
 	numLogs int,
 	issuerPath string,
@@ -93,7 +90,6 @@ func newUpdater(
 		log:                 log,
 		sac:                 sac,
 		pubc:                pub,
-		grpcTimeout:         grpcTimeout,
 		numLogs:             numLogs,
 		ocspMinTimeToExpiry: config.OCSPMinTimeToExpiry.Duration,
 		oldestIssuedSCT:     config.OldestIssuedSCT.Duration,
@@ -485,11 +481,7 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 			updater.log.AuditErr(fmt.Errorf("Failed to get certificate: %s", err))
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), updater.grpcTimeout)
 		_ = updater.pubc.SubmitToCT(ctx, cert.DER)
-		// cancel now instead of deferring because we are in a loop
-		// and no early exits can happen between initialization and now
-		cancel()
 	}
 	return nil
 }
@@ -550,7 +542,6 @@ const clientName = "OCSP"
 func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
 	core.CertificateAuthority,
 	core.Publisher,
-	time.Duration,
 	core.StorageAuthority,
 ) {
 	amqpConf := c.AMQP
@@ -558,19 +549,17 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
 	cmd.FailOnError(err, "Unable to create CA client")
 
 	var pubc core.Publisher
-	var grpcTimeout time.Duration
 	if c.Publisher != nil {
 		conn, err := bgrpc.ClientSetup(c.Publisher)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
-		grpcTimeout = c.Publisher.Timeout.Duration
+		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
 	} else {
 		pubc, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create Publisher client")
 	}
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
-	return cac, pubc, grpcTimeout, sac
+	return cac, pubc, sac
 }
 
 func main() {
@@ -587,7 +576,7 @@ func main() {
 		dbMap, err := sa.NewDbMap(dbURL)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		cac, pubc, grpcTimeout, sac := setupClients(conf, stats)
+		cac, pubc, sac := setupClients(conf, stats)
 
 		updater, err := newUpdater(
 			stats,
@@ -596,7 +585,6 @@ func main() {
 			cac,
 			pubc,
 			sac,
-			grpcTimeout,
 			// Necessary evil for now
 			conf,
 			len(c.Common.CT.Logs),
