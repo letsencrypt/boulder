@@ -41,7 +41,7 @@ import (
 const (
 	maxRedirect      = 10
 	whitespaceCutset = "\n\r\t "
-	// Payload should be ~87 bytes, since it may be padded by whitespace which we previously
+	// Payload should be ~87 bytes. Since it may be padded by whitespace which we previously
 	// allowed accept up to 128 bytes before rejecting a response
 	// (32 byte b64 encoded token + . + 32 byte b64 encoded key fingerprint)
 	maxResponseSize = 128
@@ -283,14 +283,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
 		return nil, validationRecords, &probs.ProblemDetails{
-			Type: probs.UnauthorizedProblem,
-			Detail: fmt.Sprintf(
-				"Invalid response from %s [%s]: response was >= %d bytes), body=\"%s\"",
-				url.String(),
-				dialer.record.AddressUsed,
-				maxResponseSize,
-				body,
-			),
+			Type:   probs.UnauthorizedProblem,
+			Detail: fmt.Sprintf("Invalid response from %s: response too large, \"%s\"", url.String(), body),
 		}
 	}
 
