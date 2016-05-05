@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -38,8 +39,14 @@ import (
 	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 )
 
-const maxRedirect = 10
-const whitespaceCutset = "\n\r\t "
+const (
+	maxRedirect      = 10
+	whitespaceCutset = "\n\r\t "
+	// Payload should be ~87 bytes. Since it may be padded by whitespace which we previously
+	// allowed accept up to 128 bytes before rejecting a response
+	// (32 byte b64 encoded token + . + 32 byte b64 encoded key fingerprint)
+	maxResponseSize = 128
+)
 
 var validationTimeout = time.Second * 5
 
@@ -264,7 +271,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		}
 	}
 
-	body, err := ioutil.ReadAll(httpResponse.Body)
+	body, err := ioutil.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
 	closeErr := httpResponse.Body.Close()
 	if err == nil {
 		err = closeErr
@@ -274,6 +281,14 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		return nil, validationRecords, &probs.ProblemDetails{
 			Type:   probs.UnauthorizedProblem,
 			Detail: fmt.Sprintf("Error reading HTTP response body: %v", err),
+		}
+	}
+	// io.LimitedReader will silently truncate a Reader so if the
+	// resulting payload is the same size as maxResponseSize fail
+	if len(body) >= maxResponseSize {
+		return nil, validationRecords, &probs.ProblemDetails{
+			Type:   probs.UnauthorizedProblem,
+			Detail: fmt.Sprintf("Invalid response from %s: \"%s\"", url.String(), body),
 		}
 	}
 
@@ -377,9 +392,8 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	}
 
 	if expectedKeyAuth != payload {
-		truncBody := truncateBody(payload)
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
-			expectedKeyAuth, truncBody)
+			expectedKeyAuth, payload)
 		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
 		return validationRecords, &probs.ProblemDetails{
 			Type:   probs.UnauthorizedProblem,
@@ -388,19 +402,6 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	}
 
 	return validationRecords, nil
-}
-
-// truncateBody will cut off a string at 45 UTF-8 characters.
-func truncateBody(str string) string {
-	count := 0
-	const max = 45
-	for index, _ := range str {
-		count++
-		if count > max {
-			return fmt.Sprintf("%s…", str[:index])
-		}
-	}
-	return str
 }
 
 func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
