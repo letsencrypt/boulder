@@ -601,6 +601,7 @@ func (d *decodeState) object(v reflect.Value) {
 	}
 
 	var mapElem reflect.Value
+	keys := map[string]bool{}
 
 	for {
 		// Read opening " of string key or closing }.
@@ -617,9 +618,17 @@ func (d *decodeState) object(v reflect.Value) {
 		start := d.off - 1
 		op = d.scanWhile(scanContinue)
 		item := d.data[start : d.off-1]
-		key, ok := unquoteBytes(item)
+		key, ok := unquote(item)
 		if !ok {
 			d.error(errPhase)
+		}
+
+		// Check for duplicate keys.
+		_, ok = keys[key]
+		if !ok {
+			keys[key] = true
+		} else {
+			d.error(fmt.Errorf("json: duplicate key '%s' in object", key))
 		}
 
 		// Figure out field corresponding to key.
@@ -639,12 +648,9 @@ func (d *decodeState) object(v reflect.Value) {
 			fields := cachedTypeFields(v.Type())
 			for i := range fields {
 				ff := &fields[i]
-				if bytes.Equal(ff.nameBytes, key) {
+				if bytes.Equal(ff.nameBytes, []byte(key)) {
 					f = ff
 					break
-				}
-				if f == nil && ff.equalFold(ff.nameBytes, key) {
-					f = ff
 				}
 			}
 			if f != nil {
@@ -951,6 +957,8 @@ func (d *decodeState) arrayInterface() []interface{} {
 // objectInterface is like object but returns map[string]interface{}.
 func (d *decodeState) objectInterface() map[string]interface{} {
 	m := make(map[string]interface{})
+	keys := map[string]bool{}
+
 	for {
 		// Read opening " of string key or closing }.
 		op := d.scanWhile(scanSkipSpace)
@@ -969,6 +977,14 @@ func (d *decodeState) objectInterface() map[string]interface{} {
 		key, ok := unquote(item)
 		if !ok {
 			d.error(errPhase)
+		}
+
+		// Check for duplicate keys.
+		_, ok = keys[key]
+		if !ok {
+			keys[key] = true
+		} else {
+			d.error(fmt.Errorf("json: duplicate key '%s' in object", key))
 		}
 
 		// Read : before value.

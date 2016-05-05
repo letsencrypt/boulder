@@ -365,6 +365,12 @@ func (wfe *WebFrontEndImpl) verifyPOST(ctx context.Context, logEvent *requestEve
 		return nil, nil, reg, probs.Malformed("No JWK in JWS header")
 	}
 
+	if !submittedKey.Valid() {
+		wfe.stats.Inc("WFE.Errors.InvalidJWK", 1, 1.0)
+		logEvent.AddError("invalid JWK in JWS signature header in POST body")
+		return nil, nil, reg, probs.Malformed("Invalid JWK in JWS header")
+	}
+
 	var key *jose.JsonWebKey
 	reg, err = wfe.SA.GetRegistrationByKey(ctx, *submittedKey)
 	// Special case: If no registration was found, but regCheck is false, use an
