@@ -676,7 +676,7 @@ func TestIssueCertificate(t *testing.T) {
 		"/acme/cert/0000ff0000000000000e4b4f67d86e818c46")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		`</acme/issuer-cert>;rel="up"`)
+		`<https://localhost:4000/acme/issuer-cert>;rel="up"`)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Content-Type"),
 		"application/pkix-cert")

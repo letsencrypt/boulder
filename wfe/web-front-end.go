@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -782,7 +783,11 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
-	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
+	if err = wfe.addIssuerCertificateURLs(response, parsedCertificate); err != nil {
+		logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("unable to parse IssuingCertificateURL"), err)
+		return
+	}
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {
@@ -1136,12 +1141,21 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEv
 		}
 		return
 	}
-
+	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	if err != nil {
+		logEvent.AddError("unable to parse certificate: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("Unable to parse certificate"), err)
+		return
+	}
+	if err = wfe.addIssuerCertificateURLs(response, parsedCertificate); err != nil {
+		logEvent.AddError("unable to parse IssuingCertificateURL: %s", err)
+		wfe.sendError(response, logEvent, probs.Malformed("unable to parse IssuingCertificateURL"), err)
+		return
+	}
 	addCacheHeader(response, wfe.CertCacheDuration.Seconds())
 
 	// TODO Content negotiation
 	response.Header().Set("Content-Type", "application/pkix-cert")
-	response.Header().Add("Link", link(IssuerPath, "up"))
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(cert.DER); err != nil {
 		logEvent.AddError(err.Error())
@@ -1233,4 +1247,19 @@ func (wfe *WebFrontEndImpl) setCORSHeaders(response http.ResponseWriter, request
 	}
 	response.Header().Set("Access-Control-Expose-Headers", "Link, Replay-Nonce")
 	response.Header().Set("Access-Control-Max-Age", "86400")
+}
+
+// addIssuerCertificateURLs() adds Issuing Certificate URLs (AIA) from a
+// X.509 certificate to the HTTP response. If the IssuingCertificateURL
+// in a certificate is not https://, it will be upgraded to https://
+func (wfe *WebFrontEndImpl) addIssuerCertificateURLs(response http.ResponseWriter, cert *x509.Certificate) error {
+	for _, rawURL := range cert.IssuingCertificateURL {
+		parsedURI, err := url.ParseRequestURI(rawURL)
+		if err != nil {
+			return err
+		}
+		parsedURI.Scheme = "https"
+		response.Header().Add("Link", link(parsedURI.String(), "up"))
+	}
+	return nil
 }
