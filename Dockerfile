@@ -18,13 +18,18 @@ RUN gem install fpm
 
 # Client deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  python-dev \
-  python-virtualenv \
+  apache2 \
+  ca-certificates \
   gcc \
   libaugeas0 \
-  libssl-dev \
   libffi-dev \
-  ca-certificates && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+  libssl-dev \
+  nginx-light \
+  openssl \
+  python-dev \
+  python-virtualenv \
+  virtualenv \
+  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install port forwarder, database migration tool, and testing tools.
 RUN GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
