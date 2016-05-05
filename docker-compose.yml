@@ -6,6 +6,7 @@ boulder:
       - 4000:4000
       - 4002:4002
       - 4003:4003
+      - 4430:4430
     links:
       - bmysql:boulder-mysql
       - brabbitmq:boulder-rabbitmq
