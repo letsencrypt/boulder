@@ -6,19 +6,24 @@
 package mocks
 
 import (
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	mrand "math/rand"
 	"net"
+	"net/http"
+	"strconv"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/core"
+	"github.com/miekg/dns"
 	"github.com/square/go-jose"
+	"golang.org/x/net/context"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // StorageAuthority is a mock
@@ -409,4 +414,42 @@ func (m *Mailer) SendMail(to []string, subject, msg string) error {
 // Close is a mock
 func (m *Mailer) Close() error {
 	return nil
+}
+
+// GPDNSHandler mocks the Google Public DNS API
+func GPDNSHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Query().Get("name") {
+	case "test-domain", "bad-local-resolver.com":
+		resp := core.GPDNSResponse{
+			Status: dns.RcodeSuccess,
+			Answer: []core.GPDNSAnswer{
+				{r.URL.Query().Get("name"), 257, 10, "0 issue \"ca.com\""},
+			},
+		}
+		data, err := json.Marshal(resp)
+		if err != nil {
+			return
+		}
+		w.Write(data)
+	case "break":
+		w.WriteHeader(400)
+	case "break-rcode":
+		data, err := json.Marshal(core.GPDNSResponse{Status: dns.RcodeServerFailure})
+		if err != nil {
+			return
+		}
+		w.Write(data)
+	case "break-dns-quorum":
+		resp := core.GPDNSResponse{
+			Status: dns.RcodeSuccess,
+			Answer: []core.GPDNSAnswer{
+				{r.URL.Query().Get("name"), 257, 10, strconv.Itoa(mrand.Int())},
+			},
+		}
+		data, err := json.Marshal(resp)
+		if err != nil {
+			return
+		}
+		w.Write(data)
+	}
 }
