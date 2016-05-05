@@ -562,7 +562,7 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
 	if c.Publisher != nil {
 		conn, err := bgrpc.ClientSetup(c.Publisher)
 		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
-		pubc = &bgrpc.PublisherClientWrapper{pubPB.NewPublisherClient(conn)}
+		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn))
 		grpcTimeout = c.Publisher.Timeout.Duration
 	} else {
 		pubc, err = rpc.NewPublisherClient(clientName, amqpConf, stats)

@@ -8,7 +8,6 @@ package publisher
 import (
 	"crypto/x509"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -20,7 +19,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 )
 
 // Log contains the CT client and signature verifier for a particular CT log
@@ -69,11 +67,6 @@ type Impl struct {
 	SA core.StorageAuthority
 }
 
-// as a gRPC server without changing its AMQP public API.
-type GRPCWrapper struct {
-	Inner *Impl
-}
-
 // New creates a Publisher that will submit certificates
 // to any CT logs configured in CTConfig
 func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration, logger blog.Logger) *Impl {
@@ -86,15 +79,6 @@ func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration, log
 		ctLogs:            logs,
 		log:               logger,
 	}
-}
-
-// SubmitToCT is a wrapper used by gRPC until we remove the old
-// RPC code.y
-func (pub GRPCWrapper) SubmitToCT(ctx context.Context, request *pubPB.Request) (*pubPB.Empty, error) {
-	if request == nil || request.Der == nil {
-		return nil, errors.New("incomplete SubmitToCT gRPC message")
-	}
-	return &pubPB.Empty{}, pub.Inner.SubmitToCT(ctx, request.Der)
 }
 
 // SubmitToCT will submit the certificate represented by certDER to any CT
