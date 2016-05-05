@@ -280,17 +280,6 @@ func (sa *StorageAuthority) FQDNSetExists(_ context.Context, names []string) (bo
 	return false, nil
 }
 
-// GetLatestValidAuthorization is a mock
-func (sa *StorageAuthority) GetLatestValidAuthorization(_ context.Context, registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
-	if registrationID == 1 && identifier.Type == "dns" {
-		if sa.authorizedDomains[identifier.Value] || identifier.Value == "not-an-example.com" {
-			exp := sa.clk.Now().AddDate(100, 0, 0)
-			return core.Authorization{Status: core.StatusValid, RegistrationID: 1, Expires: &exp, Identifier: identifier}, nil
-		}
-	}
-	return core.Authorization{}, errors.New("no authz")
-}
-
 // GetValidAuthorizations is a mock
 func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
 	if regID == 1 {
