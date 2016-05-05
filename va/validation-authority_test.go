@@ -1035,7 +1035,7 @@ func TestLimitedReader(t *testing.T) {
 	test.AssertEquals(t, core.StatusInvalid, mockRA.lastAuthz.Challenges[0].Status)
 	test.Assert(t, mockRA.lastAuthz.Challenges[0].Error != nil, "fetchHTTP didn't fail on oversized body")
 	test.AssertEquals(t, mockRA.lastAuthz.Challenges[0].Error.Type, probs.UnauthorizedProblem)
-	test.AssertEquals(t, len(log.GetAllMatching("response too large")), 2)
+	test.AssertEquals(t, len(log.GetAllMatching("Invalid response")), 2)
 }
 
 type MockRegistrationAuthority struct {

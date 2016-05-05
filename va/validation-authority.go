@@ -284,7 +284,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	if len(body) >= maxResponseSize {
 		return nil, validationRecords, &probs.ProblemDetails{
 			Type:   probs.UnauthorizedProblem,
-			Detail: fmt.Sprintf("Invalid response from %s: response too large, \"%s\"", url.String(), body),
+			Detail: fmt.Sprintf("Invalid response from %s: \"%s\"", url.String(), body),
 		}
 	}
 
