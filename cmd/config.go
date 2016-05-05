@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
+	cfsslConfig "github.com/cloudflare/cfssl/config"
+	"github.com/letsencrypt/pkcs11key"
+
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/va"
 )
 
 // Config stores configuration parameters that applications
@@ -25,10 +25,6 @@ import (
 //
 // Note: NO DEFAULTS are provided.
 type Config struct {
-	ActivityMonitor struct {
-		ServiceConfig
-	}
-
 	// Default AMQPConfig for services that don't specify one.
 	// TODO(jsha): Delete this after a deploy.
 	AMQP *AMQPConfig
@@ -87,20 +83,20 @@ type Config struct {
 
 		IssuerDomain string
 
-		PortConfig va.PortConfig
+		PortConfig PortConfig
 
 		MaxConcurrentRPCServerRequests int64
 
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
 
+		CAAService *GRPCClientConfig
+
+		CAADistributedResolver *CAADistributedResolverConfig
+
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
-	}
-
-	SQL struct {
-		SQLDebug bool
 	}
 
 	Statsd StatsdConfig
@@ -189,9 +185,13 @@ type Config struct {
 
 	CertChecker struct {
 		DBConfig
+		HostnamePolicyConfig
 
 		Workers             int
 		ReportDirectoryPath string
+		UnexpiredOnly       bool
+		BadResultsOnly      bool
+		CheckPeriod         ConfigDuration
 	}
 	AllowedSigningAlgos *AllowedSigningAlgos
 
@@ -502,4 +502,37 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 type LogDescription struct {
 	URI string
 	Key string
+}
+
+// GRPCClientConfig contains the information needed to talk to the gRPC service
+type GRPCClientConfig struct {
+	ServerAddress         string
+	ServerIssuerPath      string
+	ClientCertificatePath string
+	ClientKeyPath         string
+	Timeout               ConfigDuration
+}
+
+// GRPCServerConfig contains the information needed to run a gRPC service
+type GRPCServerConfig struct {
+	Address               string `json:"address" yaml:"address"`
+	ServerCertificatePath string `json:"serverCertificatePath" yaml:"server-certificate-path"`
+	ServerKeyPath         string `json:"serverKeyPath" yaml:"server-key-path"`
+	ClientIssuerPath      string `json:"clientIssuerPath" yaml:"client-issuer-path"`
+}
+
+// PortConfig specifies what ports the VA should call to on the remote
+// host when performing its checks.
+type PortConfig struct {
+	HTTPPort  int
+	HTTPSPort int
+	TLSPort   int
+}
+
+// CAADistributedResolverConfig specifies the HTTP client setup and interfaces
+// needed to resolve CAA addresses over multiple paths
+type CAADistributedResolverConfig struct {
+	Timeout     ConfigDuration
+	MaxFailures int
+	Proxies     []string
 }

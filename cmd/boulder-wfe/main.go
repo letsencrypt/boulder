@@ -10,10 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/facebookgo/httpdown"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/codegangsta/cli"
+	"github.com/facebookgo/httpdown"
+	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -24,7 +23,7 @@ import (
 
 const clientName = "WFE"
 
-func setupWFE(c cmd.Config, logger *blog.AuditLogger, stats statsd.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
+func setupWFE(c cmd.Config, logger blog.Logger, stats metrics.Statter) (*rpc.RegistrationAuthorityClient, *rpc.StorageAuthorityClient) {
 	amqpConf := c.WFE.AMQP
 	rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create RA client")
@@ -50,12 +49,12 @@ func main() {
 		}
 		return config
 	}
-	app.Action = func(c cmd.Config, stats statsd.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		go cmd.DebugServer(c.WFE.DebugAddr)
 
 		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), c.KeyPolicy())
 		cmd.FailOnError(err, "Unable to create WFE")
-		rac, sac := setupWFE(c, auditlogger, stats)
+		rac, sac := setupWFE(c, logger, stats)
 		wfe.RA = rac
 		wfe.SA = sac
 		wfe.SubscriberAgreementURL = c.SubscriberAgreementURL
@@ -79,7 +78,7 @@ func main() {
 		wfe.IssuerCert, err = cmd.LoadCert(c.Common.IssuerCert)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read issuer cert [%s]", c.Common.IssuerCert))
 
-		auditlogger.Info(fmt.Sprintf("WFE using key policy: %#v", c.KeyPolicy()))
+		logger.Info(fmt.Sprintf("WFE using key policy: %#v", c.KeyPolicy()))
 
 		go cmd.ProfileCmd("WFE", stats)
 
@@ -90,7 +89,7 @@ func main() {
 
 		httpMonitor := metrics.NewHTTPMonitor(stats, h, "WFE")
 
-		auditlogger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
+		logger.Info(fmt.Sprintf("Server running, listening on %s...\n", c.WFE.ListenAddress))
 		srv := &http.Server{
 			Addr:    c.WFE.ListenAddress,
 			Handler: httpMonitor,

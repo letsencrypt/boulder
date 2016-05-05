@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/golang/mock/gomock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/golang/mock/gomock"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/mocks"
+	blog "github.com/letsencrypt/boulder/log"
+	"github.com/streadway/amqp"
 )
 
 // mockChannelMaker always returns the given amqpChannel
@@ -30,7 +30,6 @@ func setup(t *testing.T) (*amqpConnector, *MockamqpChannel, func()) {
 			channel: mockChannel,
 		},
 		queueName:        "fooqueue",
-		routingKey:       "fooqueue",
 		retryTimeoutBase: time.Second,
 		clk:              clock.NewFake(),
 	}
@@ -88,7 +87,7 @@ func TestReconnect(t *testing.T) {
 	mockChannel.EXPECT().Consume("fooqueue", consumerName, AmqpAutoAck, AmqpExclusive, AmqpNoLocal, AmqpNoWait, nil).Return(make(<-chan amqp.Delivery), nil)
 	mockChannel.EXPECT().NotifyClose(gomock.Any()).Return(make(chan *amqp.Error))
 
-	log = mocks.UseMockLog()
+	log = blog.UseMock()
 
 	ac.reconnect(&cmd.AMQPConfig{}, log)
 	if ac.channel != mockChannel {
@@ -129,5 +128,8 @@ func TestPublish(t *testing.T) {
 			Type:          "testMsg",
 			Timestamp:     ac.clk.Now(),
 		})
-	ac.publish("fooqueue", "03c52e", "3000", "replyTo", "testMsg", []byte("body"))
+	err := ac.publish("fooqueue", "03c52e", "3000", "replyTo", "testMsg", []byte("body"))
+	if err != nil {
+		t.Error(err)
+	}
 }

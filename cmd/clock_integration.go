@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -18,12 +18,12 @@ import (
 // The FAKECLOCK env var is in the time.UnixDate format, returned by `date -d`.
 func Clock() clock.Clock {
 	if tgt := os.Getenv("FAKECLOCK"); tgt != "" {
-		targetTime, err := time.Parse(tgt, time.UnixDate)
+		targetTime, err := time.Parse(time.UnixDate, tgt)
 		FailOnError(err, fmt.Sprintf("cmd.Clock: bad format for FAKECLOCK: %v\n", err))
 
 		cl := clock.NewFake()
 		cl.Set(targetTime)
-		blog.GetAuditLogger().Notice(fmt.Sprintf("Time was set to %v via FAKECLOCK", targetTime))
+		blog.Get().Info(fmt.Sprintf("Time was set to %v via FAKECLOCK", targetTime))
 		return cl
 	}
 	return clock.Default()

@@ -25,9 +25,12 @@ import (
 	"testing"
 	"time"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"golang.org/x/net/context"
 
+	ct "github.com/google/certificate-transparency/go"
+	"github.com/jmhodges/clock"
+
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -115,7 +118,8 @@ OY8B7wwvZTLzU6WWs781TJXx2CE04PneeeArLpVLkiGIWjk=
 
 const issuerPath = "../test/test-ca.pem"
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
+var ctx = context.Background()
 
 func getPort(hs *httptest.Server) (int, error) {
 	url, err := url.Parse(hs.URL)
@@ -256,7 +260,7 @@ func badLogSrv() *httptest.Server {
 func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
-	pub := New(nil, nil, 0)
+	pub := New(nil, nil, 0, log)
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert(intermediatePEM.Bytes))
 	pub.SA = mocks.NewStorageAuthority(clock.NewFake())
 
@@ -289,14 +293,14 @@ func TestBasicSuccessful(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 
 	// No Intermediate
 	pub.issuerBundle = []ct.ASN1Cert{}
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
@@ -311,7 +315,7 @@ func TestGoodRetry(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
@@ -326,7 +330,7 @@ func TestUnexpectedError(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed .*http://localhost:"+strconv.Itoa(port))), 1)
 }
@@ -343,7 +347,7 @@ func TestRetryAfter(t *testing.T) {
 
 	log.Clear()
 	startedWaiting := time.Now()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 	test.Assert(t, time.Since(startedWaiting) > time.Duration(retryAfter*2)*time.Second, fmt.Sprintf("Submitter retried submission too fast: %s", time.Since(startedWaiting)))
@@ -361,7 +365,8 @@ func TestRetryAfterContext(t *testing.T) {
 
 	pub.submissionTimeout = time.Second
 	s := time.Now()
-	pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
+	test.AssertNotError(t, err, "Failed to submit to CT")
 	took := time.Since(s)
 	test.Assert(t, len(log.GetAllMatching(".*Failed to submit certificate to CT log at .*: context deadline exceeded.*")) == 1, "Submission didn't timeout")
 	test.Assert(t, took >= time.Second, fmt.Sprintf("Submission took too long to timeout: %s", took))
@@ -382,7 +387,7 @@ func TestMultiLog(t *testing.T) {
 	addLog(t, pub, portB, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
@@ -397,7 +402,7 @@ func TestBadServer(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to verify SCT receipt")), 1)
 }

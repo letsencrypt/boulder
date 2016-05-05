@@ -19,7 +19,7 @@ func TestChecksVASafeDomain(t *testing.T) {
 
 	va.IsNotSafe = true
 
-	_, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	if err == nil {
 		t.Errorf("want UnauthorizedError, got nil")
 	} else if _, ok := err.(core.UnauthorizedError); !ok {
@@ -32,7 +32,7 @@ func TestHandlesVASafeDomainError(t *testing.T) {
 	defer cleanUp()
 	va.IsSafeDomainErr = errors.New("welp")
 
-	_, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	_, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	if err == nil {
 		t.Errorf("want InternalServerError, got nil")
 	} else if _, ok := err.(core.InternalServerError); !ok {
@@ -45,10 +45,10 @@ func TestAllowsNullSafeDomainCheck(t *testing.T) {
 	defer cleanUp()
 	ra.dc = nil
 
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
-	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
 }

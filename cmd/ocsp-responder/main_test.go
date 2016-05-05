@@ -8,17 +8,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
-	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
-	"github.com/letsencrypt/boulder/core"
+	"github.com/cactus/go-statsd-client/statsd"
+	cfocsp "github.com/cloudflare/cfssl/ocsp"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mocks"
-	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/letsencrypt/boulder/test/vars"
+	"golang.org/x/crypto/ocsp"
 )
 
 var (
@@ -60,31 +55,9 @@ func TestMux(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSAOcspResp)
-	test.AssertNotError(t, err, "Could not connect to database")
-	src, err := makeDBSource(dbMap, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", blog.NewMock())
 	if err != nil {
 		t.Fatalf("makeDBSource: %s", err)
-	}
-	defer test.ResetSATestDatabase(t)
-
-	ocspResp, err := ocsp.ParseResponse(resp, nil)
-	if err != nil {
-		t.Fatalf("ocsp.ParseResponse: %s", err)
-	}
-
-	status := &core.CertificateStatus{
-		Serial:          core.SerialToString(ocspResp.SerialNumber),
-		OCSPLastUpdated: time.Now(),
-		OCSPResponse:    resp,
-	}
-	setupDBMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = setupDBMap.Insert(status)
-	if err != nil {
-		t.Fatalf("unable to insert response: %s", err)
 	}
 
 	h := cfocsp.NewResponder(src)
@@ -102,6 +75,18 @@ func TestDBHandler(t *testing.T) {
 	}
 }
 
+// mockSelector always returns the same certificateStatus
+type mockSelector struct{}
+
+func (bs mockSelector) SelectOne(output interface{}, _ string, _ ...interface{}) error {
+	outputPtr, ok := output.(*[]uint8)
+	if !ok {
+		return fmt.Errorf("incorrect output type %T", output)
+	}
+	*outputPtr = resp
+	return nil
+}
+
 // brokenSelector allows us to test what happens when gorp SelectOne statements
 // throw errors and satisfies the dbSelector interface
 type brokenSelector struct{}
@@ -111,11 +96,9 @@ func (bs brokenSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) er
 }
 
 func TestErrorLog(t *testing.T) {
-	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
+	mockLog := blog.NewMock()
+	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", mockLog)
 	test.AssertNotError(t, err, "Failed to create broken dbMap")
-
-	src.log.SyslogWriter = mocks.NewSyslogWriter()
-	mockLog := src.log.SyslogWriter.(*mocks.SyslogWriter)
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")

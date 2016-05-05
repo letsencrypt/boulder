@@ -11,8 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
+	"golang.org/x/net/context"
+
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -26,19 +28,26 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
+type certificateStorage interface {
+	AddCertificate(context.Context, []byte, int64) (string, error)
+	GetCertificate(ctx context.Context, serial string) (core.Certificate, error)
+}
+
 var (
-	b64derOrphan = regexp.MustCompile(`b64der=\[([a-zA-Z0-9+/]+)\]`)
-	regOrphan    = regexp.MustCompile(`regID=\[(\d+)\]`)
+	b64derOrphan     = regexp.MustCompile(`b64der=\[([a-zA-Z0-9+/=]+)\]`)
+	regOrphan        = regexp.MustCompile(`regID=\[(\d+)\]`)
+	errAlreadyExists = fmt.Errorf("Certificate already exists in DB")
 )
 
-func checkDER(sai core.StorageAuthority, der []byte) error {
+func checkDER(sai certificateStorage, der []byte) error {
+	ctx := context.Background()
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
 		return fmt.Errorf("Failed to parse DER: %s", err)
 	}
-	_, err = sai.GetCertificate(core.SerialToString(cert.SerialNumber))
+	_, err = sai.GetCertificate(ctx, core.SerialToString(cert.SerialNumber))
 	if err == nil {
-		return fmt.Errorf("Existing certificate found with serial %s", core.SerialToString(cert.SerialNumber))
+		return errAlreadyExists
 	}
 	if _, ok := err.(core.NotFoundError); ok {
 		return nil
@@ -46,13 +55,14 @@ func checkDER(sai core.StorageAuthority, der []byte) error {
 	return fmt.Errorf("Existing certificate lookup failed: %s", err)
 }
 
-func parseLogLine(sa core.StorageAuthority, logger *blog.AuditLogger, line string) (found bool, added bool) {
-	if !strings.Contains(line, "b64der=") {
+func parseLogLine(sa certificateStorage, logger blog.Logger, line string) (found bool, added bool) {
+	ctx := context.Background()
+	if !strings.Contains(line, "b64der=") || !strings.Contains(line, "orphaning certificate") {
 		return false, false
 	}
 	derStr := b64derOrphan.FindStringSubmatch(line)
 	if len(derStr) <= 1 {
-		logger.Err(fmt.Sprintf("b64der variable is empty, [%s]", line))
+		logger.Err(fmt.Sprintf("Didn't match regex for b64der: %s", line))
 		return true, false
 	}
 	der, err := base64.StdEncoding.DecodeString(derStr[1])
@@ -62,7 +72,11 @@ func parseLogLine(sa core.StorageAuthority, logger *blog.AuditLogger, line strin
 	}
 	err = checkDER(sa, der)
 	if err != nil {
-		logger.Err(fmt.Sprintf("%s, [%s]", err, line))
+		logFunc := logger.Err
+		if err == errAlreadyExists {
+			logFunc = logger.Info
+		}
+		logFunc(fmt.Sprintf("%s, [%s]", err, line))
 		return true, false
 	}
 	// extract the regID
@@ -76,7 +90,7 @@ func parseLogLine(sa core.StorageAuthority, logger *blog.AuditLogger, line strin
 		logger.Err(fmt.Sprintf("Couldn't parse regID: %s, [%s]", err, line))
 		return true, false
 	}
-	_, err = sa.AddCertificate(der, int64(regID))
+	_, err = sa.AddCertificate(ctx, der, int64(regID))
 	if err != nil {
 		logger.Err(fmt.Sprintf("Failed to store certificate: %s, [%s]", err, line))
 		return true, false
@@ -84,7 +98,7 @@ func parseLogLine(sa core.StorageAuthority, logger *blog.AuditLogger, line strin
 	return true, true
 }
 
-func setup(c *cli.Context) (statsd.Statter, *blog.AuditLogger, *rpc.StorageAuthorityClient) {
+func setup(c *cli.Context) (statsd.Statter, blog.Logger, *rpc.StorageAuthorityClient) {
 	configJSON, err := ioutil.ReadFile(c.GlobalString("config"))
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf config
@@ -165,6 +179,7 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) {
+				ctx := context.Background()
 				_, _, sa := setup(c)
 				derPath := c.String("der-file")
 				if derPath == "" {
@@ -180,11 +195,12 @@ func main() {
 				cmd.FailOnError(err, "Failed to read DER file")
 				err = checkDER(sa, der)
 				cmd.FailOnError(err, "Pre-AddCertificate checks failed")
-				_, err = sa.AddCertificate(der, int64(regID))
+				_, err = sa.AddCertificate(ctx, der, int64(regID))
 				cmd.FailOnError(err, "Failed to add certificate to database")
 			},
 		},
 	}
 
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	cmd.FailOnError(err, "Failed to run application")
 }

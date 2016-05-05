@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/miekg/dns"
+	"golang.org/x/net/context"
 )
 
 // MockDNSResolver is a mock
@@ -62,10 +62,10 @@ func (mock *MockDNSResolver) LookupHost(_ context.Context, hostname string) ([]n
 		return []net.IP{}, nil
 	}
 	if hostname == "always.timeout" {
-		return []net.IP{}, &dnsError{dns.TypeA, "always.timeout", MockTimeoutError(), -1}
+		return []net.IP{}, &DNSError{dns.TypeA, "always.timeout", MockTimeoutError(), -1}
 	}
 	if hostname == "always.error" {
-		return []net.IP{}, &dnsError{dns.TypeA, "always.error", &net.OpError{
+		return []net.IP{}, &DNSError{dns.TypeA, "always.error", &net.OpError{
 			Err: errors.New("some net error"),
 		}, -1}
 	}
@@ -79,15 +79,15 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
 	case "caa-timeout.com":
-		return nil, &dnsError{dns.TypeCAA, "always.timeout", MockTimeoutError(), -1}
+		return nil, &DNSError{dns.TypeCAA, "always.timeout", MockTimeoutError(), -1}
 	case "reserved.com":
 		record.Tag = "issue"
-		record.Value = "symantec.com"
+		record.Value = "ca.com"
 		results = append(results, &record)
 	case "critical.com":
 		record.Flag = 1
 		record.Tag = "issue"
-		record.Value = "symantec.com"
+		record.Value = "ca.com"
 		results = append(results, &record)
 	case "present.com", "present.servfail.com":
 		record.Tag = "issue"
@@ -101,7 +101,7 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 	case "multi-crit-present.com":
 		record.Flag = 1
 		record.Tag = "issue"
-		record.Value = "symantec.com"
+		record.Value = "ca.com"
 		results = append(results, &record)
 		secondRecord := record
 		secondRecord.Value = "letsencrypt.org"
@@ -129,6 +129,8 @@ func (mock *MockDNSResolver) LookupCAA(_ context.Context, domain string) ([]*dns
 		record.Tag = "issue"
 		record.Value = ";"
 		results = append(results, &record)
+	case "bad-local-resolver.com":
+		return nil, DNSError{underlying: MockTimeoutError()}
 	}
 	return results, nil
 }

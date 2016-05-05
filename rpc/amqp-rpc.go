@@ -22,10 +22,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"golang.org/x/net/context"
+
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -103,7 +105,7 @@ func amqpSubscribe(ch amqpChannel, name, routingKey string) (<-chan amqp.Deliver
 
 // DeliveryHandler is a function that will process an amqp.DeliveryHandler
 type DeliveryHandler func(amqp.Delivery)
-type messageHandler func([]byte) ([]byte, error)
+type messageHandler func(context.Context, []byte) ([]byte, error)
 
 // AmqpRPCServer listens on a specified queue within an AMQP channel.
 // When messages arrive on that queue, it dispatches them based on type,
@@ -114,7 +116,7 @@ type messageHandler func([]byte) ([]byte, error)
 type AmqpRPCServer struct {
 	serverQueue    string
 	connection     *amqpConnector
-	log            *blog.AuditLogger
+	log            blog.Logger
 	handleDelivery DeliveryHandler
 	// Servers that just care about messages (method + body) add entries to
 	// dispatchTable
@@ -131,22 +133,10 @@ type AmqpRPCServer struct {
 
 const wildcardRoutingKey = "#"
 
-// NewMonitorServer creates an AmqpRPCServer that binds its queue to the
-// wildcard routing key instead of the default of binding to the queue name.
-// This allows Activity Monitor to observe all messages sent to the exchange.
-func NewMonitorServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
-	server, err := NewAmqpRPCServer(amqpConf, maxConcurrentRPCServerRequests, stats)
-	if err != nil {
-		return nil, err
-	}
-	server.connection.routingKey = wildcardRoutingKey
-	return server, nil
-}
-
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
 func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
-	log := blog.GetAuditLogger()
+	log := blog.Get()
 
 	reconnectBase := amqpConf.ReconnectTimeouts.Base.Duration
 	if reconnectBase == 0 {
@@ -172,15 +162,6 @@ func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests i
 func (rpc *AmqpRPCServer) Handle(method string, handler messageHandler) {
 	rpc.mu.Lock()
 	rpc.dispatchTable[method] = handler
-	rpc.mu.Unlock()
-}
-
-// HandleDeliveries allows a server to receive amqp.Delivery directly (e.g.
-// ActivityMonitor), it can provide one of these. Otherwise processMessage is
-// used by default.
-func (rpc *AmqpRPCServer) HandleDeliveries(handler DeliveryHandler) {
-	rpc.mu.Lock()
-	rpc.handleDelivery = handler
 	rpc.mu.Unlock()
 }
 
@@ -212,8 +193,6 @@ func wrapError(err error) *rpcError {
 			wrapped.Type = "NotFoundError"
 		case core.SignatureValidationError:
 			wrapped.Type = "SignatureValidationError"
-		case core.CertificateIssuanceError:
-			wrapped.Type = "CertificateIssuanceError"
 		case core.NoSuchRegistrationError:
 			wrapped.Type = "NoSuchRegistrationError"
 		case core.TooManyRPCRequestsError:
@@ -246,8 +225,6 @@ func unwrapError(rpcError *rpcError) error {
 			return core.NotFoundError(rpcError.Value)
 		case "SignatureValidationError":
 			return core.SignatureValidationError(rpcError.Value)
-		case "CertificateIssuanceError":
-			return core.CertificateIssuanceError(rpcError.Value)
 		case "NoSuchRegistrationError":
 			return core.NoSuchRegistrationError(rpcError.Value)
 		case "TooManyRPCRequestsError":
@@ -299,7 +276,7 @@ func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 	var conn *amqp.Connection
 	var err error
 
-	log := blog.GetAuditLogger()
+	log := blog.Get()
 
 	serverURL, err := conf.ServerURL()
 	if err != nil {
@@ -368,6 +345,8 @@ func makeAmqpChannel(conf *cmd.AMQPConfig) (*amqp.Channel, error) {
 }
 
 func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
+	ctx := context.TODO()
+
 	// XXX-JWS: jws.Verify(body)
 	cb, present := rpc.dispatchTable[msg.Type]
 	rpc.log.Debug(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
@@ -378,7 +357,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	}
 	var response rpcResponse
 	var err error
-	response.ReturnVal, err = cb(msg.Body)
+	response.ReturnVal, err = cb(ctx, msg.Body)
 	response.Error = wrapError(err)
 	jsonResponse, err := json.Marshal(response)
 	if err != nil {
@@ -387,13 +366,16 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 		return
 	}
 	rpc.log.Debug(fmt.Sprintf(" [s>][%s][%s] replying %s: %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, response.debugString(), msg.CorrelationId))
-	rpc.connection.publish(
+	err = rpc.connection.publish(
 		msg.ReplyTo,
 		msg.CorrelationId,
 		"30000",
 		"",
 		msg.Type,
 		jsonResponse)
+	if err != nil {
+		rpc.log.AuditErr(fmt.Errorf(" [s>][%s][%s] Error condition replying to RPC %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
+	}
 }
 
 func (rpc *AmqpRPCServer) replyTooManyRequests(msg amqp.Delivery) error {
@@ -435,7 +417,7 @@ func (rpc *AmqpRPCServer) Start(c *cmd.AMQPConfig) error {
 			if ok {
 				rpc.stats.TimingDuration(fmt.Sprintf("RPC.MessageLag.%s", rpc.serverQueue), rpc.clk.Now().Sub(msg.Timestamp), 1.0)
 				if rpc.maxConcurrentRPCServerRequests > 0 && atomic.LoadInt64(&rpc.currentGoroutines) >= rpc.maxConcurrentRPCServerRequests {
-					rpc.replyTooManyRequests(msg)
+					_ = rpc.replyTooManyRequests(msg)
 					rpc.stats.Inc(fmt.Sprintf("RPC.CallsDropped.%s", rpc.serverQueue), 1, 1.0)
 					break // this breaks the select, not the for
 				}
@@ -522,7 +504,7 @@ type AmqpRPCCLient struct {
 	clientQueue string
 	connection  *amqpConnector
 	timeout     time.Duration
-	log         *blog.AuditLogger
+	log         blog.Logger
 
 	mu      sync.RWMutex
 	pending map[string]chan []byte
@@ -569,7 +551,7 @@ func NewAmqpRPCClient(
 		connection:  newAMQPConnector(clientQueue, reconnectBase, reconnectMax),
 		pending:     make(map[string]chan []byte),
 		timeout:     timeout,
-		log:         blog.GetAuditLogger(),
+		log:         blog.Get(),
 		stats:       stats,
 	}
 
@@ -617,7 +599,7 @@ func NewAmqpRPCClient(
 // dispatch sends a body to the destination, and returns the id for the request
 // that can be used to correlate it with responses, and a response channel that
 // can be used to monitor for responses, or discarded for one-shot actions.
-func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) (string, chan []byte) {
+func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) (string, chan []byte, error) {
 	// Create a channel on which to direct the response
 	// At least in some cases, it's important that this channel
 	// be buffered to avoid deadlock
@@ -634,7 +616,7 @@ func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) (string, chan []b
 
 	// Send the request
 	rpc.log.Debug(fmt.Sprintf(" [c>][%s] requesting %s(%s) [%s]", rpc.clientQueue, method, safeDER(body), corrID))
-	rpc.connection.publish(
+	err = rpc.connection.publish(
 		rpc.serverQueue,
 		corrID,
 		"30000",
@@ -642,30 +624,37 @@ func (rpc *AmqpRPCCLient) dispatch(method string, body []byte) (string, chan []b
 		method,
 		body)
 
-	return corrID, responseChan
+	if err != nil {
+		return "", nil, err
+	}
+
+	return corrID, responseChan, nil
 }
 
 // DispatchSync sends a body to the destination, and blocks waiting on a response.
 func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []byte, err error) {
 	rpc.stats.Inc(fmt.Sprintf("RPC.Traffic.Tx.%s", rpc.serverQueue), int64(len(body)), 1.0)
 	callStarted := time.Now()
-	corrID, responseChan := rpc.dispatch(method, body)
+	corrID, responseChan, err := rpc.dispatch(method, body)
+	if err != nil {
+		return nil, err
+	}
 	select {
 	case jsonResponse := <-responseChan:
 		var rpcResponse rpcResponse
 		err = json.Unmarshal(jsonResponse, &rpcResponse)
 		rpc.log.Debug(fmt.Sprintf(" [c<][%s] response %s: %s [%s]", rpc.clientQueue, method, rpcResponse.debugString(), corrID))
 		if err != nil {
-			return
+			return nil, err
 		}
 		err = unwrapError(rpcResponse.Error)
 		if err != nil {
 			rpc.stats.Inc(fmt.Sprintf("RPC.ClientCallLatency.%s.Error", method), 1, 1.0)
-			return
+			return nil, err
 		}
 		rpc.stats.TimingDuration(fmt.Sprintf("RPC.ClientCallLatency.%s.Success", method), time.Since(callStarted), 1.0)
 		response = rpcResponse.ReturnVal
-		return
+		return response, nil
 	case <-time.After(rpc.timeout):
 		rpc.stats.TimingDuration(fmt.Sprintf("RPC.ClientCallLatency.%s.Timeout", method), time.Since(callStarted), 1.0)
 		rpc.log.Warning(fmt.Sprintf(" [c!][%s] AMQP-RPC timeout [%s]", rpc.clientQueue, method))
@@ -673,6 +662,6 @@ func (rpc *AmqpRPCCLient) DispatchSync(method string, body []byte) (response []b
 		delete(rpc.pending, corrID)
 		rpc.mu.Unlock()
 		err = errors.New("AMQP-RPC timeout")
-		return
+		return nil, err
 	}
 }

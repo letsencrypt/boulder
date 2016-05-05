@@ -5,11 +5,13 @@
 
 package core
 
+import "golang.org/x/net/context"
+
 // ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {
 	// [RegistrationAuthority]
 	// TODO(#1167): remove
-	UpdateValidations(Authorization, int) error
+	UpdateValidations(context.Context, Authorization, int) error
 	// PerformValidation checks the challenge with the given index in the
 	// given Authorization and returns the updated ValidationRecords.
 	//
@@ -17,8 +19,8 @@ type ValidationAuthority interface {
 	// *probs.ProblemDetails.
 	//
 	// TODO(#1626): remove authz parameter
-	PerformValidation(string, Challenge, Authorization) ([]ValidationRecord, error)
-	IsSafeDomain(*IsSafeDomainRequest) (*IsSafeDomainResponse, error)
+	PerformValidation(context.Context, string, Challenge, Authorization) ([]ValidationRecord, error)
+	IsSafeDomain(context.Context, *IsSafeDomainRequest) (*IsSafeDomainResponse, error)
 }
 
 // IsSafeDomainRequest is the request struct for the IsSafeDomain call. The Domain field

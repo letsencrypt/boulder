@@ -28,9 +28,9 @@ import (
 	"strings"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
+	jose "github.com/square/go-jose"
 )
 
 // Package Variables Variables
@@ -80,10 +80,6 @@ type LengthRequiredError string
 // the user client.
 type SignatureValidationError string
 
-// CertificateIssuanceError indicates the certificate failed to be issued
-// for some reason.
-type CertificateIssuanceError string
-
 // NoSuchRegistrationError indicates that a registration could not be found.
 type NoSuchRegistrationError string
 
@@ -104,7 +100,6 @@ func (e UnauthorizedError) Error() string        { return string(e) }
 func (e NotFoundError) Error() string            { return string(e) }
 func (e LengthRequiredError) Error() string      { return string(e) }
 func (e SignatureValidationError) Error() string { return string(e) }
-func (e CertificateIssuanceError) Error() string { return string(e) }
 func (e NoSuchRegistrationError) Error() string  { return string(e) }
 func (e RateLimitedError) Error() string         { return string(e) }
 func (e TooManyRPCRequestsError) Error() string  { return string(e) }
@@ -162,9 +157,7 @@ func RandomString(byteLength int) string {
 	b := make([]byte, byteLength)
 	_, err := io.ReadFull(rand.Reader, b)
 	if err != nil {
-		ohdear := "RandomString entropy failure? " + err.Error()
-		logger := blog.GetAuditLogger()
-		logger.EmergencyExit(ohdear)
+		panic(fmt.Sprintf("Error reading random bytes: %s", err))
 	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
@@ -206,7 +199,7 @@ func KeyDigest(key crypto.PublicKey) (string, error) {
 	default:
 		keyDER, err := x509.MarshalPKIXPublicKey(key)
 		if err != nil {
-			logger := blog.GetAuditLogger()
+			logger := blog.Get()
 			logger.Debug(fmt.Sprintf("Problem marshaling public key: %s", err))
 			return "", err
 		}

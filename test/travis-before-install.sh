@@ -3,8 +3,8 @@ set -o xtrace
 
 # Boulder consists of multiple Go packages, which
 # refer to each other by their absolute GitHub path,
-# e.g. github.com/letsencrypt/boulder/analysis. That means, by default, if
-# someone forks the repo, Travis won't pass on their own repo. To fix that,
+# That means, by default, if someone forks the repo,
+# Travis won't pass on their own repo. To fix that,
 # we add a symlink.
 mkdir -p $TRAVIS_BUILD_DIR $GOPATH/src/github.com/letsencrypt
 if [ ! -d $GOPATH/src/github.com/letsencrypt/boulder ] ; then
