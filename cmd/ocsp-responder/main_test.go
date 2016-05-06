@@ -29,7 +29,7 @@ func TestMux(t *testing.T) {
 		t.Fatalf("ocsp.ParseRequest: %s", err)
 	}
 	src := make(cfocsp.InMemorySource)
-	src[ocspReq.SerialNumber.String()] = resp.ocspResponse
+	src[ocspReq.SerialNumber.String()] = resp.OCSPResponse
 	h := mux(stats, "/foobar/", src)
 	type muxTest struct {
 		method   string
@@ -37,7 +37,7 @@ func TestMux(t *testing.T) {
 		reqBody  []byte
 		respBody []byte
 	}
-	mts := []muxTest{{"POST", "/foobar/", req, resp.ocspResponse}, {"GET", "/", nil, nil}}
+	mts := []muxTest{{"POST", "/foobar/", req, resp.OCSPResponse}, {"GET", "/", nil, nil}}
 	for i, mt := range mts {
 		w := httptest.NewRecorder()
 		r, err := http.NewRequest(mt.method, mt.path, bytes.NewReader(mt.reqBody))
@@ -71,13 +71,13 @@ func TestDBHandler(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Code: want %d, got %d", http.StatusOK, w.Code)
 	}
-	if !bytes.Equal(w.Body.Bytes(), resp.ocspResponse) {
+	if !bytes.Equal(w.Body.Bytes(), resp.OCSPResponse) {
 		t.Errorf("Mismatched body: want %#v, got %#v", resp, w.Body.Bytes())
 	}
 
 	// check response with zero OCSPLastUpdated is ignored
-	resp.ocspLastUpdated = time.Time{}
-	defer func() { resp.ocspLastUpdated = time.Now() }()
+	resp.OCSPLastUpdated = time.Time{}
+	defer func() { resp.OCSPLastUpdated = time.Now() }()
 	w = httptest.NewRecorder()
 	r, _ = http.NewRequest("POST", "/", bytes.NewReader(req))
 	unauthorizedErrorResponse := []byte{0x30, 0x03, 0x0A, 0x01, 0x06}

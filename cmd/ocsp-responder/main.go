@@ -66,8 +66,8 @@ func NewSourceFromDatabase(dbMap dbSelector, caKeyHash []byte, log blog.Logger) 
 }
 
 type dbResponse struct {
-	ocspResponse    []byte
-	ocspLastUpdated time.Time
+	OCSPResponse    []byte
+	OCSPLastUpdated time.Time
 }
 
 // Response is called by the HTTP server to handle a new OCSP request.
@@ -83,7 +83,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 
 	var response dbResponse
 	defer func() {
-		if len(response.ocspResponse) != 0 {
+		if len(response.OCSPResponse) != 0 {
 			src.log.Debug(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 		}
 	}()
@@ -98,12 +98,12 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
-	if response.ocspLastUpdated.IsZero() {
+	if response.OCSPLastUpdated.IsZero() {
 		src.log.Debug(fmt.Sprintf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 		return nil, false
 	}
 
-	return response.ocspResponse, true
+	return response.OCSPResponse, true
 }
 
 func makeDBSource(dbMap dbSelector, issuerCert string, log blog.Logger) (*DBSource, error) {
