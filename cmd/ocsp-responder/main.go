@@ -65,6 +65,11 @@ func NewSourceFromDatabase(dbMap dbSelector, caKeyHash []byte, log blog.Logger) 
 	return
 }
 
+type dbResponse struct {
+	ocspResponse    []byte
+	ocspLastUpdated time.Time
+}
+
 // Response is called by the HTTP server to handle a new OCSP request.
 func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	// Check that this request is for the proper CA
@@ -76,12 +81,9 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	serialString := core.SerialToString(req.SerialNumber)
 	src.log.Debug(fmt.Sprintf("Searching for OCSP issued by us for serial %s", serialString))
 
-	var response struct {
-		OCSPResponse    []byte
-		OCSPLastUpdated time.Time
-	}
+	var response dbResponse
 	defer func() {
-		if len(response.OCSPResponse) != 0 {
+		if len(response.ocspResponse) != 0 {
 			src.log.Debug(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 		}
 	}()
@@ -96,12 +98,12 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
-	if len(response.OCSPResponse) == 0 && response.OCSPLastUpdated.IsZero() {
-		src.log.Debug(fmt.Sprintf("OCSP Response not sent (len=0) for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
+	if response.ocspLastUpdated.IsZero() {
+		src.log.Debug(fmt.Sprintf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 		return nil, false
 	}
 
-	return response.OCSPResponse, true
+	return response.ocspResponse, true
 }
 
 func makeDBSource(dbMap dbSelector, issuerCert string, log blog.Logger) (*DBSource, error) {
