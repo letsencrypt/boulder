@@ -35,7 +35,7 @@ branches:
 # command, which runs `go get`. We specifically want to avoid that because we
 # want to ensure all our dependencies are vendored.
 install:
-  - cd $GOPATH/src/github.com/letsencrypt/boulder
+  - echo
 
 env:
   global:
