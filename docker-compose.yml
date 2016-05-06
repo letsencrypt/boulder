@@ -22,8 +22,6 @@ boulder:
       - brabbitmq:boulder-rabbitmq
     extra_hosts:
       - boulder:127.0.0.1
-    environment:
-        FAKE_DNS: 172.17.0.1
 bmysql:
     image: mariadb:10.1
     net: bridge
