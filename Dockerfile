@@ -15,6 +15,8 @@ WORKDIR /go/src/github.com/letsencrypt/boulder
 
 # Copy in the Boulder sources
 COPY . .
+RUN mkdir bin
+RUN go install ./cmd/rabbitmq-setup
 
 RUN chown -R buser /go/
 
