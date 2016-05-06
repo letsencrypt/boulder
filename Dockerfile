@@ -15,8 +15,6 @@ WORKDIR /go/src/github.com/letsencrypt/boulder
 
 # Copy in the Boulder sources
 COPY . .
-RUN mkdir bin
-RUN go install ./...
 
 RUN chown -R buser /go/
 
