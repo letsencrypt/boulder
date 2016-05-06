@@ -234,9 +234,9 @@ def run_custom(cmd, cwd=None):
         die(ExitStatus.PythonFailure)
 
 def run_client_tests():
-    root = os.environ.get("LETSENCRYPT_PATH")
+    root = os.environ.get("CERTBOT_PATH")
     assert root is not None, (
-        "Please set LETSENCRYPT_PATH env variable to point at "
+        "Please set CERTBOT_PATH env variable to point at "
         "initialized (virtualenv) client repo root")
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
     run_custom(cmd, cwd=root)
@@ -258,18 +258,18 @@ def main():
     parser = argparse.ArgumentParser(description='Run integration tests')
     parser.add_argument('--all', dest="run_all", action="store_true",
                         help="run all of the clients' integration tests")
-    parser.add_argument('--letsencrypt', dest='run_letsencrypt', action='store_true',
-                        help="run the letsencrypt's (the python client's) integration tests")
+    parser.add_argument('--certbot', dest='run_certbot', action='store_true',
+                        help="run the certbot integration tests")
     parser.add_argument('--node', dest="run_node", action="store_true",
                         help="run the node client's integration tests")
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
     parser.add_argument('--custom', metavar="CMD", help="run custom command")
-    parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
+    parser.set_defaults(run_all=False, run_certbot=False, run_node=False)
     args = parser.parse_args()
 
-    if not (args.run_all or args.run_letsencrypt or args.run_node or args.custom is not None):
-        print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, --node, or --custom"
+    if not (args.run_all or args.run_certbot or args.run_node or args.custom is not None):
+        print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --certbot, --node, or --custom"
         die(ExitStatus.IncorrectCommandLineArgs)
 
     if not startservers.start(race_detection=True):
@@ -305,7 +305,7 @@ def main():
     # Simulate a disconnection from RabbitMQ to make sure reconnects work.
     startservers.bounce_forward()
 
-    if args.run_all or args.run_letsencrypt:
+    if args.run_all or args.run_certbot:
         run_client_tests()
 
     if args.custom:
