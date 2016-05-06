@@ -204,17 +204,6 @@ func NewTestDNSResolverImpl(readTimeout time.Duration, servers []string, stats m
 	return resolver
 }
 
-// LookupIPV6 controls whether the LookupHost function resolves AAAA records.
-// This method is not thread-safe, and it should only be used in a builder
-// pattern (i.e. immediately after calling NewDNSResolverImpl).
-//
-// This method will be removed soon and the resolver will default to true. This
-// method should not be relied upon for new code.
-func (dnsResolver *DNSResolverImpl) SetLookupIPv6(enabled bool) *DNSResolverImpl {
-	dnsResolver.LookupIPv6 = enabled
-	return dnsResolver
-}
-
 // exchangeOne performs a single DNS exchange with a randomly chosen server
 // out of the server list, returning the response, time, and error (if any).
 // This method sets the DNSSEC OK bit on the message to true before sending
@@ -330,6 +319,17 @@ func isPrivateV6(ip net.IP) bool {
 	return false
 }
 
+func (dnsResolver *DNSResolverImpl) lookupIP(ctx context.Context, hostname string, ipType uint16, stats metrics.Scope) ([]dns.RR, error) {
+	resp, err := dnsResolver.exchangeOne(ctx, hostname, ipType, stats)
+	if err != nil {
+		return nil, &DNSError{ipType, hostname, err, -1}
+	}
+	if resp.Rcode != dns.RcodeSuccess {
+		return nil, &DNSError{ipType, hostname, nil, resp.Rcode}
+	}
+	return resp.Answer, nil
+}
+
 // LookupHost sends a DNS query to find all A and AAAA records associated with
 // the provided hostname. This method assumes that the external resolver will
 // chase CNAME/DNAME aliases and return relevant records.  It will retry
@@ -341,37 +341,18 @@ func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname str
 	var errA, errAAAA error
 	var wg sync.WaitGroup
 
-	wg.Add(2)
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		respA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeA, dnsResolver.aStats)
-		if err != nil {
-			errA = &DNSError{dns.TypeA, hostname, err, -1}
-			return
-		}
-		if respA.Rcode != dns.RcodeSuccess {
-			errA = &DNSError{dns.TypeA, hostname, nil, respA.Rcode}
-			return
-		}
-		recordsA = respA.Answer
+		recordsA, errA = dnsResolver.lookupIP(ctx, hostname, dns.TypeA, dnsResolver.aStats)
 	}()
-	go func() {
-		defer wg.Done()
-		if !dnsResolver.LookupIPv6 {
-			return
-		}
-		respAAAA, err := dnsResolver.exchangeOne(ctx, hostname, dns.TypeAAAA, dnsResolver.aaaaStats)
-		if err != nil {
-			errAAAA = &DNSError{dns.TypeAAAA, hostname, err, -1}
-			return
-		}
-		if respAAAA.Rcode != dns.RcodeSuccess {
-			errAAAA = &DNSError{dns.TypeAAAA, hostname, nil, respAAAA.Rcode}
-			return
-		}
-		recordsAAAA = respAAAA.Answer
-	}()
-
+	if dnsResolver.LookupIPv6 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			recordsAAAA, errAAAA = dnsResolver.lookupIP(ctx, hostname, dns.TypeAAAA, dnsResolver.aaaaStats)
+		}()
+	}
 	wg.Wait()
 
 	if errA != nil && (errAAAA != nil || !dnsResolver.LookupIPv6) {
