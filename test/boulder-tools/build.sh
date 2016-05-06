@@ -13,6 +13,7 @@ apt-get install -y --no-install-recommends \
   softhsm \
   python-dev \
   python-virtualenv \
+  virtualenv \
   gcc \
   libaugeas0 \
   libssl-dev \
