@@ -3,7 +3,6 @@ import argparse
 import atexit
 import base64
 import datetime
-import errno
 import json
 import os
 import re
@@ -15,6 +14,8 @@ import tempfile
 import time
 import urllib
 import urllib2
+
+import startservers
 
 ISSUANCE_FAILED = 1
 REVOCATION_FAILED = 2
@@ -196,7 +197,28 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
 
     verify_ct_submission(expected_ct_submissions, "http://localhost:4500/submissions")
 
-    mailer_test(cert_file_pem)
+    # Check that the expiration mailer sends a reminder
+    expiry = get_expiry_time(cert_file_pem)
+    no_reminder = expiry + datetime.timedelta(days=-31)
+    first_reminder = expiry + datetime.timedelta(days=-13)
+    last_reminder = expiry + datetime.timedelta(days=-2)
+    try:
+        urllib2.urlopen("http://localhost:9381/clear", data='')
+        if subprocess.Popen(
+                (('FAKECLOCK=`date -d "%s"` ./bin/expiration-mailer --config test/boulder-config.json && ' * 3) + 'true') %
+                (no_reminder.isoformat(), first_reminder.isoformat(), last_reminder.isoformat()),
+                cwd='../..', shell=True).wait() != 0:
+            print("\nExpiry mailer failed")
+            return MAILER_FAILED
+        resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
+        mailcount = int(resp.read())
+        if mailcount != 2:
+            print("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
+            return MAILER_FAILED
+    except Exception as e:
+        print("\nExpiry mailer failed:")
+        print(e)
+        return MAILER_FAILED
 
     if subprocess.Popen('''
         node revoke.js %s %s http://localhost:4000/acme/revoke-cert
@@ -207,33 +229,9 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
     wait_for_ocsp_revoked(cert_file_pem, "../test-ca.pem", ee_ocsp_url)
     return 0
 
-def mailer_test(cert_file_pem):
-  # Check that the expiration mailer sends a reminder
-  expiry = get_expiry_time(cert_file_pem)
-  no_reminder = expiry + datetime.timedelta(days=-31)
-  first_reminder = expiry + datetime.timedelta(days=-13)
-  last_reminder = expiry + datetime.timedelta(days=-2)
-  try:
-      urllib2.urlopen("http://localhost:9381/clear", data='')
-      if subprocess.Popen(
-              (('FAKECLOCK=`date -d "%s"` ./bin/expiration-mailer --config test/boulder-config.json && ' * 3) + 'true') %
-              (no_reminder.isoformat(), first_reminder.isoformat(), last_reminder.isoformat()),
-              cwd='../..', shell=True).wait() != 0:
-          print("\nExpiry mailer failed")
-          return MAILER_FAILED
-      resp = urllib2.urlopen("http://localhost:9381/count?to=%s" % email_addr)
-      mailcount = int(resp.read())
-      if mailcount != 2:
-          print("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
-          return MAILER_FAILED
-  except Exception as e:
-      print("\nExpiry mailer failed:")
-      print(e)
-      return MAILER_FAILED
-
 def run_custom(cmd, cwd=None):
-  if subprocess.Popen(cmd, shell=True, cwd=cwd, executable='/bin/bash').wait() != 0:
-      die(ExitStatus.PythonFailure)
+    if subprocess.Popen(cmd, shell=True, cwd=cwd, executable='/bin/bash').wait() != 0:
+        die(ExitStatus.PythonFailure)
 
 def run_client_tests():
     root = os.environ.get("LETSENCRYPT_PATH")
@@ -270,26 +268,12 @@ def main():
     parser.set_defaults(run_all=False, run_letsencrypt=False, run_node=False)
     args = parser.parse_args()
 
-    # Wait until all servers are up. This means checking each server's debug
-    # port until it's available.
-    while True:
-        try:
-            ports = range(8000, 8005) + [4000]
-            for debug_port in ports:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.connect(('localhost', debug_port))
-                s.close()
-            break
-        except socket.error as e:
-            if e.errno == errno.ECONNREFUSED:
-                print "Waiting for debug port %d" % debug_port
-            else:
-                raise
-        time.sleep(1)
-
     if not (args.run_all or args.run_letsencrypt or args.run_node or args.custom is not None):
         print >> sys.stderr, "must run at least one of the letsencrypt or node tests with --all, --letsencrypt, --node, or --custom"
         die(ExitStatus.IncorrectCommandLineArgs)
+
+    if not startservers.start(race_detection=True):
+        die(ExitStatus.Error)
 
     if args.run_all or args.run_node:
         os.chdir('test/js')
@@ -318,12 +302,17 @@ def main():
             print("\nIssused certificate for domain with bad CAA records")
             die(ExitStatus.NodeFailure)
 
+    # Simulate a disconnection from RabbitMQ to make sure reconnects work.
+    startservers.bounce_forward()
+
     if args.run_all or args.run_letsencrypt:
         run_client_tests()
 
     if args.custom:
         run_custom(args.custom)
 
+    if not startservers.check():
+        die(ExitStatus.Error)
     exit_status = ExitStatus.OK
 
 if __name__ == "__main__":
