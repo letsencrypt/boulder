@@ -9,17 +9,6 @@ addons:
     - boulder
     - boulder-mysql
     - boulder-rabbitmq
-  apt:
-    packages:
-      - lsb-release
-      - python-dev
-      - python-virtualenv
-      - gcc
-      - libaugeas0
-      - libssl-dev
-      - libffi-dev
-      - ca-certificates
-      - rsyslog
 
 sudo: required
 
@@ -46,7 +35,6 @@ branches:
 # command, which runs `go get`. We specifically want to avoid that because we
 # want to ensure all our dependencies are vendored.
 install:
-  - travis_retry test/travis-before-install.sh
   - cd $GOPATH/src/github.com/letsencrypt/boulder
 
 env:
