@@ -240,18 +240,20 @@ func CreateDomainAuthWithRegID(t *testing.T, domainName string, sa *SQLStorageAu
 }
 
 // Ensure we get only valid authorization with correct RegID
-func TestGetLatestValidAuthorizationBasic(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+func TestGetValidAuthorizationsBasic(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	// attempt to get unauthorized domain
-	authz, err := sa.GetLatestValidAuthorization(ctx, 0, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
-	test.AssertError(t, err, "Should not have found a valid auth for example.org")
+	// Attempt to get unauthorized domain.
+	authzMap, err := sa.GetValidAuthorizations(ctx, 0, []string{"example.org"}, clk.Now())
+	// Should get no results, but not error.
+	test.AssertNotError(t, err, "Error getting valid authorizations")
+	test.AssertEquals(t, len(authzMap), 0)
 
 	reg := satest.CreateWorkingRegistration(t, sa)
 
 	// authorize "example.org"
-	authz = CreateDomainAuthWithRegID(t, "example.org", sa, reg.ID)
+	authz := CreateDomainAuthWithRegID(t, "example.org", sa, reg.ID)
 
 	// finalize auth
 	authz.Status = core.StatusValid
@@ -259,72 +261,114 @@ func TestGetLatestValidAuthorizationBasic(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
 
 	// attempt to get authorized domain with wrong RegID
-	authz, err = sa.GetLatestValidAuthorization(ctx, 0, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
-	test.AssertError(t, err, "Should not have found a valid auth for example.org and regID 0")
+	authzMap, err = sa.GetValidAuthorizations(ctx, 0, []string{"example.org"}, clk.Now())
+	test.AssertNotError(t, err, "Error getting valid authorizations")
+	test.AssertEquals(t, len(authzMap), 0)
 
 	// get authorized domain
-	authz, err = sa.GetLatestValidAuthorization(ctx, reg.ID, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "example.org"})
+	authzMap, err = sa.GetValidAuthorizations(ctx, reg.ID, []string{"example.org"}, clk.Now())
 	test.AssertNotError(t, err, "Should have found a valid auth for example.org and regID 42")
-	test.AssertEquals(t, authz.Status, core.StatusValid)
-	test.AssertEquals(t, authz.Identifier.Type, core.IdentifierDNS)
-	test.AssertEquals(t, authz.Identifier.Value, "example.org")
-	test.AssertEquals(t, authz.RegistrationID, reg.ID)
+	test.AssertEquals(t, len(authzMap), 1)
+	result := authzMap["example.org"]
+	test.AssertEquals(t, result.Status, core.StatusValid)
+	test.AssertEquals(t, result.Identifier.Type, core.IdentifierDNS)
+	test.AssertEquals(t, result.Identifier.Value, "example.org")
+	test.AssertEquals(t, result.RegistrationID, reg.ID)
 }
 
 // Ensure we get the latest valid authorization for an ident
-func TestGetLatestValidAuthorizationMultiple(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+func TestGetValidAuthorizationsDuplicate(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
 	domain := "example.org"
-	ident := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: domain}
 	var err error
 
 	reg := satest.CreateWorkingRegistration(t, sa)
+
+	makeAuthz := func(daysToExpiry int, status core.AcmeStatus) core.Authorization {
+		authz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
+		exp := clk.Now().AddDate(0, 0, daysToExpiry)
+		authz.Expires = &exp
+		authz.Status = status
+		err = sa.FinalizeAuthorization(ctx, authz)
+		test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+		return authz
+	}
+
 	// create invalid authz
-	authz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
-	exp := time.Now().AddDate(0, 0, 10) // expire in 10 day
-	authz.Expires = &exp
-	authz.Status = core.StatusInvalid
-	err = sa.FinalizeAuthorization(ctx, authz)
-	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+	makeAuthz(10, core.StatusInvalid)
 
 	// should not get the auth
-	authz, err = sa.GetLatestValidAuthorization(ctx, reg.ID, ident)
-	test.AssertError(t, err, "Should not have found a valid auth for "+domain)
+	authzMap, err := sa.GetValidAuthorizations(ctx, reg.ID, []string{domain}, clk.Now())
+	test.AssertEquals(t, len(authzMap), 0)
 
 	// create valid auth
-	authz = CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
-	exp = time.Now().AddDate(0, 0, 1) // expire in 1 day
-	authz.Expires = &exp
-	authz.Status = core.StatusValid
-	err = sa.FinalizeAuthorization(ctx, authz)
-	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+	makeAuthz(1, core.StatusValid)
 
 	// should get the valid auth even if it's expire date is lower than the invalid one
-	authz, err = sa.GetLatestValidAuthorization(ctx, reg.ID, ident)
+	authzMap, err = sa.GetValidAuthorizations(ctx, reg.ID, []string{domain}, clk.Now())
 	test.AssertNotError(t, err, "Should have found a valid auth for "+domain)
-	test.AssertEquals(t, authz.Status, core.StatusValid)
-	test.AssertEquals(t, authz.Identifier.Type, ident.Type)
-	test.AssertEquals(t, authz.Identifier.Value, ident.Value)
-	test.AssertEquals(t, authz.RegistrationID, reg.ID)
+	test.AssertEquals(t, len(authzMap), 1)
+	result1 := authzMap[domain]
+	test.AssertEquals(t, result1.Status, core.StatusValid)
+	test.AssertEquals(t, result1.Identifier.Type, core.IdentifierDNS)
+	test.AssertEquals(t, result1.Identifier.Value, domain)
+	test.AssertEquals(t, result1.RegistrationID, reg.ID)
 
 	// create a newer auth
-	newAuthz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
-	exp = time.Now().AddDate(0, 0, 2) // expire in 2 day
-	newAuthz.Expires = &exp
-	newAuthz.Status = core.StatusValid
-	err = sa.FinalizeAuthorization(ctx, newAuthz)
-	test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+newAuthz.ID)
+	newAuthz := makeAuthz(2, core.StatusValid)
 
-	authz, err = sa.GetLatestValidAuthorization(ctx, reg.ID, ident)
+	authzMap, err = sa.GetValidAuthorizations(ctx, reg.ID, []string{domain}, clk.Now())
 	test.AssertNotError(t, err, "Should have found a valid auth for "+domain)
-	test.AssertEquals(t, authz.Status, core.StatusValid)
-	test.AssertEquals(t, authz.Identifier.Type, ident.Type)
-	test.AssertEquals(t, authz.Identifier.Value, ident.Value)
-	test.AssertEquals(t, authz.RegistrationID, reg.ID)
+	test.AssertEquals(t, len(authzMap), 1)
+	result2 := authzMap[domain]
+	test.AssertEquals(t, result2.Status, core.StatusValid)
+	test.AssertEquals(t, result2.Identifier.Type, core.IdentifierDNS)
+	test.AssertEquals(t, result2.Identifier.Value, domain)
+	test.AssertEquals(t, result2.RegistrationID, reg.ID)
 	// make sure we got the latest auth
-	test.AssertEquals(t, authz.ID, newAuthz.ID)
+	test.AssertEquals(t, result2.ID, newAuthz.ID)
+}
+
+// Fetch multiple authzs at once. Check that
+func TestGetValidAuthorizationsMultiple(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+	var err error
+
+	reg := satest.CreateWorkingRegistration(t, sa)
+
+	makeAuthz := func(daysToExpiry int, status core.AcmeStatus, domain string) core.Authorization {
+		authz := CreateDomainAuthWithRegID(t, domain, sa, reg.ID)
+		exp := clk.Now().AddDate(0, 0, daysToExpiry)
+		authz.Expires = &exp
+		authz.Status = status
+		err = sa.FinalizeAuthorization(ctx, authz)
+		test.AssertNotError(t, err, "Couldn't finalize pending authorization with ID "+authz.ID)
+		return authz
+	}
+	makeAuthz(1, core.StatusValid, "blog.example.com")
+	makeAuthz(2, core.StatusInvalid, "blog.example.com")
+	makeAuthz(5, core.StatusValid, "www.example.com")
+	wwwAuthz := makeAuthz(6, core.StatusValid, "www.example.com")
+
+	authzMap, err := sa.GetValidAuthorizations(ctx, reg.ID,
+		[]string{"blog.example.com", "www.example.com", "absent.example.com"}, clk.Now())
+	test.AssertNotError(t, err, "Couldn't get authorizations")
+	test.AssertEquals(t, len(authzMap), 2)
+	blogResult := authzMap["blog.example.com"]
+	if blogResult == nil {
+		t.Errorf("Didn't find blog.example.com in result")
+	}
+	if blogResult.Status == core.StatusInvalid {
+		t.Errorf("Got invalid blogResult")
+	}
+	wwwResult := authzMap["www.example.com"]
+	if wwwResult == nil {
+		t.Errorf("Didn't find www.example.com in result")
+	}
+	test.AssertEquals(t, wwwResult.ID, wwwAuthz.ID)
 }
 
 func TestAddCertificate(t *testing.T) {

@@ -46,6 +46,14 @@ func (d DNSError) Error() string {
 		dns.TypeToString[d.recordType], d.hostname)
 }
 
+// Timeout returns true if the underlying error was a timeout
+func (d DNSError) Timeout() bool {
+	if netErr, ok := d.underlying.(*net.OpError); ok {
+		return netErr.Timeout()
+	}
+	return false
+}
+
 const detailDNSTimeout = "query timed out"
 const detailDNSNetFailure = "networking error"
 const detailServerFailure = "server failure at resolver"

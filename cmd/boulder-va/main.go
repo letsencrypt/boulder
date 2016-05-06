@@ -11,6 +11,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
@@ -50,12 +51,24 @@ func main() {
 			cmd.FailOnError(err, "Failed to load credentials and create connection to service")
 			caaClient = caaPB.NewCAACheckerClient(conn)
 		}
-		clk := clock.Default()
+		scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
 		sbc := newGoogleSafeBrowsing(c.VA.GoogleSafeBrowsing)
-		vai := va.NewValidationAuthorityImpl(pc, sbc, caaClient, stats, clk)
+		var cdrClient *cdr.CAADistributedResolver
+		if c.VA.CAADistributedResolver != nil {
+			var err error
+			cdrClient, err = cdr.New(
+				scoped,
+				c.VA.CAADistributedResolver.Timeout.Duration,
+				c.VA.CAADistributedResolver.MaxFailures,
+				c.VA.CAADistributedResolver.Proxies,
+				logger,
+			)
+			cmd.FailOnError(err, "Failed to create CAADistributedResolver")
+		}
+		clk := clock.Default()
+		vai := va.NewValidationAuthorityImpl(pc, sbc, caaClient, cdrClient, stats, clk)
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
-		scoped := metrics.NewStatsdScope(stats, "VA", "DNS")
 		dnsTries := c.VA.DNSTries
 		if dnsTries < 1 {
 			dnsTries = 1

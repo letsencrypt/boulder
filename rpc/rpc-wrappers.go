@@ -56,7 +56,6 @@ const (
 	MethodGetRegistration                   = "GetRegistration"                   // SA
 	MethodGetRegistrationByKey              = "GetRegistrationByKey"              // RA, SA
 	MethodGetAuthorization                  = "GetAuthorization"                  // SA
-	MethodGetLatestValidAuthorization       = "GetLatestValidAuthorization"       // SA
 	MethodGetValidAuthorizations            = "GetValidAuthorizations"            // SA
 	MethodGetCertificate                    = "GetCertificate"                    // SA
 	MethodGetCertificateStatus              = "GetCertificateStatus"              // SA
@@ -888,28 +887,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
-	rpc.Handle(MethodGetLatestValidAuthorization, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var lvar latestValidAuthorizationRequest
-		if err = json.Unmarshal(req, &lvar); err != nil {
-			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodNewAuthorization, err, req)
-			return
-		}
-
-		authz, err := impl.GetLatestValidAuthorization(ctx, lvar.RegID, lvar.Identifier)
-		if err != nil {
-			return
-		}
-
-		response, err = json.Marshal(authz)
-		if err != nil {
-			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetLatestValidAuthorization, err, req)
-			return
-		}
-		return
-	})
-
 	rpc.Handle(MethodGetValidAuthorizations, func(ctx context.Context, req []byte) (response []byte, err error) {
 		var mreq getValidAuthorizationsRequest
 		if err = json.Unmarshal(req, &mreq); err != nil {
@@ -1306,27 +1283,6 @@ func (cac StorageAuthorityClient) GetRegistrationByKey(ctx context.Context, key 
 // GetAuthorization sends a request to get an Authorization by ID
 func (cac StorageAuthorityClient) GetAuthorization(ctx context.Context, id string) (authz core.Authorization, err error) {
 	jsonAuthz, err := cac.rpc.DispatchSync(MethodGetAuthorization, []byte(id))
-	if err != nil {
-		return
-	}
-
-	err = json.Unmarshal(jsonAuthz, &authz)
-	return
-}
-
-// GetLatestValidAuthorization sends a request to get an Authorization by RegID, Identifier
-func (cac StorageAuthorityClient) GetLatestValidAuthorization(ctx context.Context, registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
-
-	var lvar latestValidAuthorizationRequest
-	lvar.RegID = registrationID
-	lvar.Identifier = identifier
-
-	data, err := json.Marshal(lvar)
-	if err != nil {
-		return
-	}
-
-	jsonAuthz, err := cac.rpc.DispatchSync(MethodGetLatestValidAuthorization, data)
 	if err != nil {
 		return
 	}

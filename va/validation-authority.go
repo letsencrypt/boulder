@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -56,10 +57,12 @@ type ValidationAuthorityImpl struct {
 	stats        statsd.Statter
 	clk          clock.Clock
 	caaClient    caaPB.CAACheckerClient
+	caaDR        *cdr.CAADistributedResolver
 }
 
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient,
+	cdrClient *cdr.CAADistributedResolver, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
 	logger := blog.Get()
 	return &ValidationAuthorityImpl{
 		SafeBrowsing: sbc,
@@ -70,6 +73,7 @@ func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient 
 		stats:        stats,
 		clk:          clk,
 		caaClient:    caaClient,
+		caaDR:        cdrClient,
 	}
 }
 
@@ -737,9 +741,44 @@ func newCAASet(CAAs []*dns.CAA) *CAASet {
 	return &filtered
 }
 
+type caaResult struct {
+	records []*dns.CAA
+	err     error
+}
+
+func parseResults(results []caaResult) (*CAASet, error) {
+	// Return first result
+	for _, res := range results {
+		if res.err != nil {
+			return nil, res.err
+		}
+		if len(res.records) > 0 {
+			return newCAASet(res.records), nil
+		}
+	}
+	return nil, nil
+}
+
+func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string, lookuper func(context.Context, string) ([]*dns.CAA, error)) []caaResult {
+	labels := strings.Split(name, ".")
+	results := make([]caaResult, len(labels))
+	var wg sync.WaitGroup
+
+	for i := 0; i < len(labels); i++ {
+		// Start the concurrent DNS lookup.
+		wg.Add(1)
+		go func(name string, r *caaResult) {
+			r.records, r.err = lookuper(ctx, name)
+			wg.Done()
+		}(strings.Join(labels[i:], "."), &results[i])
+	}
+
+	wg.Wait()
+	return results
+}
+
 func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, error) {
 	hostname = strings.TrimRight(hostname, ".")
-	labels := strings.Split(hostname, ".")
 
 	// See RFC 6844 "Certification Authority Processing" for pseudocode.
 	// Essentially: check CAA records for the FDQN to be issued, and all
@@ -749,38 +788,24 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	// the RPC call.
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
-
-	type result struct {
-		records []*dns.CAA
-		err     error
+	results := va.parallelCAALookup(ctx, hostname, va.DNSResolver.LookupCAA)
+	set, err := parseResults(results)
+	if err == nil {
+		return set, nil
 	}
-	results := make([]result, len(labels))
-
-	var wg sync.WaitGroup
-
-	for i := 0; i < len(labels); i++ {
-		// Start the concurrent DNS lookup.
-		wg.Add(1)
-		go func(name string, r *result) {
-			r.records, r.err = va.DNSResolver.LookupCAA(ctx, name)
-			wg.Done()
-		}(strings.Join(labels[i:], "."), &results[i])
+	if va.caaDR == nil {
+		return nil, err
 	}
-
-	wg.Wait()
-
-	// Return the first result
-	for _, res := range results {
-		if res.err != nil {
-			return nil, res.err
-		}
-		if len(res.records) > 0 {
-			return newCAASet(res.records), nil
+	// we have a CAADistributedResolver and one of the local lookups failed
+	// so we talk to the Google Public DNS service over various proxies
+	// instead if the initial error was a timeout
+	if dnsErr, ok := err.(*bdns.DNSError); ok {
+		if !dnsErr.Timeout() {
+			return nil, err
 		}
 	}
-
-	// no CAA records found
-	return nil, nil
+	results = va.parallelCAALookup(ctx, hostname, va.caaDR.LookupCAA)
+	return parseResults(results)
 }
 
 func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifier core.AcmeIdentifier) (present, valid bool, err error) {
