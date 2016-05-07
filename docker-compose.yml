@@ -2,7 +2,12 @@ boulder:
     build: .
     dockerfile: Dockerfile
     volumes:
+      # Cache built .a files for faster repeat runs
+      - /go/pkg/
       - /tmp:/tmp
+      - /home/jsha/certbot:/certbot
+    environment:
+      CERTBOT_PATH: /certbot
     net: bridge
     ports:
       - 4000:4000 # ACME

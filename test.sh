@@ -233,7 +233,7 @@ if [[ "$RUN" =~ "integration" ]] ; then
 
   source ${CERTBOT_PATH}/venv/bin/activate
 
-  python test/integration-test.py --all
+  python test/integration-test.py --certbot
   case $? in
     0) # Success
       update_status --state success
