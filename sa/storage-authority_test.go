@@ -41,7 +41,7 @@ var ctx = context.Background()
 // initSA constructs a SQLStorageAuthority and a clean up function
 // that should be defer'ed to the end of the test.
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
-	dbMap, err := NewDbMap(vars.DBConnSA)
+	dbMap, err := NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}

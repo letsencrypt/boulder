@@ -21,7 +21,7 @@ import (
 // database schema you wish to map. Each DbMap contains a list of mapped
 // tables. It automatically maps the tables for the primary parts of Boulder
 // around the Storage Authority.
-func NewDbMap(dbConnect string) (*gorp.DbMap, error) {
+func NewDbMap(dbConnect string, maxOpenConns int) (*gorp.DbMap, error) {
 	var err error
 	var config *mysql.Config
 	if strings.HasPrefix(dbConnect, "mysql+tcp://") {
@@ -36,7 +36,7 @@ func NewDbMap(dbConnect string) (*gorp.DbMap, error) {
 		return nil, err
 	}
 
-	return NewDbMapFromConfig(config)
+	return NewDbMapFromConfig(config, maxOpenConns)
 }
 
 // sqlOpen is used in the tests to check that the arguments are properly
@@ -45,9 +45,14 @@ var sqlOpen = func(dbType, connectStr string) (*sql.DB, error) {
 	return sql.Open(dbType, connectStr)
 }
 
+// setMaxOpenConns is also used so that we can replace it for testing.
+var setMaxOpenConns = func(db *sql.DB, maxOpenConns int) {
+	db.SetMaxOpenConns(maxOpenConns)
+}
+
 // NewDbMapFromConfig functions similarly to NewDbMap, but it takes the
 // decomposed form of the connection string, a *mysql.Config.
-func NewDbMapFromConfig(config *mysql.Config) (*gorp.DbMap, error) {
+func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, error) {
 	adjustMySQLConfig(config)
 
 	db, err := sqlOpen("mysql", config.FormatDSN())
@@ -57,6 +62,7 @@ func NewDbMapFromConfig(config *mysql.Config) (*gorp.DbMap, error) {
 	if err = db.Ping(); err != nil {
 		return nil, err
 	}
+	setMaxOpenConns(db, maxOpenConns)
 
 	dialect := gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
