@@ -2,33 +2,28 @@
 
 # Boulder deps
 apt-get update
+apt-get install -y --no-install-recommends apt-transport-https
+
+curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add -
+cat >/etc/apt/sources.list.d/bouldertools.list <<EOAPT
+deb https://deb.nodesource.com/node_4.x trusty main
+deb-src https://deb.nodesource.com/node_4.x trusty main
+deb http://ftp.debian.org/debian jessie-backports main
+EOAPT
+apt-get update
+apt-get install -y --no-install-recommends  -t jessie-backports letsencrypt python-letsencrypt-apache
+
 apt-get install -y --no-install-recommends \
-  apt-transport-https \
   libltdl-dev \
   mariadb-client-core-10.0 \
+  nodejs \
   rpm \
   ruby \
   ruby-dev \
   rsyslog \
   softhsm \
-  python-dev \
-  python-virtualenv \
-  virtualenv \
-  gcc \
-  libaugeas0 \
-  libssl-dev \
-  libffi-dev \
-  ca-certificates
-
-curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add -
-tee /etc/apt/sources.list.d/nodesource.list <<EOAPT
-deb https://deb.nodesource.com/node_4.x trusty main
-deb-src https://deb.nodesource.com/node_4.x trusty main
-EOAPT
-apt-get update
-apt-get install -y --no-install-recommends nodejs
-
-gem install fpm
+  protobuf-compiler \
+  ca-certificates &
 
 # Install port forwarder, database migration tool, and testing tools.
 GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
@@ -44,11 +39,10 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
   github.com/modocache/gover \
   github.com/tools/godep \
   golang.org/x/tools/cmd/stringer \
-  golang.org/x/tools/cover
+  golang.org/x/tools/cover &
 
-# Install protoc (used for testing that generated code is up-to-date)
-curl -sL https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz | \
- tar -xzC /tmp
-(cd /tmp/protobuf-2.6.1 && ./configure && make install)
+wait
+
+gem install fpm
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
