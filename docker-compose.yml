@@ -6,8 +6,6 @@ boulder:
       - /go/pkg/
       - /tmp:/tmp
       - /home/jsha/certbot:/certbot
-    environment:
-      CERTBOT_PATH: /certbot
     net: bridge
     extra_hosts:
       - le.wtf:127.0.0.1
