@@ -218,7 +218,6 @@ if [[ "$RUN" =~ "integration" ]] ; then
     echo "--- Recommend setting \$CERTBOT_PATH to  ---"
     echo "--- client repo with initialized virtualenv  ---"
     echo "------------------------------------------------"
-  elif [ ! -d "${CERTBOT_PATH}" ]; then
     run git clone \
       https://www.github.com/certbot/certbot.git \
       $CERTBOT_PATH || exit 1
