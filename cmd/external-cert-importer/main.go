@@ -152,7 +152,7 @@ func main() {
 		// Configure DB
 		dbURL, err := c.PA.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
-		dbMap, err := sa.NewDbMap(dbURL)
+		dbMap, err := sa.NewDbMap(dbURL, c.PA.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		dbMap.AddTableWithName(core.ExternalCert{}, "externalCerts").SetKeys(false, "SHA1")
