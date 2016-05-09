@@ -1437,6 +1437,8 @@ func (sc *serverConn) processHeaders(f *MetaHeadersFrame) error {
 	if f.Truncated {
 		// Their header list was too long. Send a 431 error.
 		handler = handleHeaderListTooLong
+	} else if err := checkValidHTTP2Request(req); err != nil {
+		handler = new400Handler(err)
 	}
 
 	go sc.runHandler(rw, req, handler)
@@ -1616,9 +1618,13 @@ func (sc *serverConn) newWriterAndRequest(st *stream, f *MetaHeadersFrame) (*res
 		Trailer:    trailer,
 	}
 	if bodyOpen {
-		st.reqBuf = sc.getRequestBodyBuf()
+		// Disabled, per golang.org/issue/14960:
+		// st.reqBuf = sc.getRequestBodyBuf()
+		// TODO: remove this 64k of garbage per request (again, but without a data race):
+		buf := make([]byte, initialWindowSize)
+
 		body.pipe = &pipe{
-			b: &fixedBuffer{buf: st.reqBuf},
+			b: &fixedBuffer{buf: buf},
 		}
 
 		if vv, ok := header["Content-Length"]; ok {
@@ -2174,5 +2180,36 @@ func foreachHeaderElement(v string, fn func(string)) {
 		if f = textproto.TrimString(f); f != "" {
 			fn(f)
 		}
+	}
+}
+
+// From http://httpwg.org/specs/rfc7540.html#rfc.section.8.1.2.2
+var connHeaders = []string{
+	"Connection",
+	"Keep-Alive",
+	"Proxy-Connection",
+	"Transfer-Encoding",
+	"Upgrade",
+}
+
+// checkValidHTTP2Request checks whether req is a valid HTTP/2 request,
+// per RFC 7540 Section 8.1.2.2.
+// The returned error is reported to users.
+func checkValidHTTP2Request(req *http.Request) error {
+	for _, h := range connHeaders {
+		if _, ok := req.Header[h]; ok {
+			return fmt.Errorf("request header %q is not valid in HTTP/2", h)
+		}
+	}
+	te := req.Header["Te"]
+	if len(te) > 0 && (len(te) > 1 || (te[0] != "trailers" && te[0] != "")) {
+		return errors.New(`request header "TE" may only be "trailers" in HTTP/2`)
+	}
+	return nil
+}
+
+func new400Handler(err error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
 }

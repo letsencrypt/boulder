@@ -206,6 +206,7 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
+    "lookupIPV6": true,
     "maxConcurrentRPCServerRequests": 16,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
@@ -214,6 +215,12 @@
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem"
+    },
+    "caaPublicResolver": {
+        "timeout": "10s",
+        "keepalive": "30s",
+        "maxFailures": 1,
+        "proxies": []
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",

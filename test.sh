@@ -103,11 +103,11 @@ function die() {
   exit 1
 }
 
-function build_letsencrypt() {
+function build_certbot() {
   run git clone \
-    https://www.github.com/letsencrypt/letsencrypt.git \
-    $LETSENCRYPT_PATH || exit 1
-  cd $LETSENCRYPT_PATH
+    https://www.github.com/certbot/certbot.git \
+    $CERTBOT_PATH || exit 1
+  cd $CERTBOT_PATH
   run ./tools/venv.sh
   cd -
 }
@@ -219,19 +219,19 @@ if [[ "$RUN" =~ "integration" ]] ; then
   start_context "integration"
   update_status --state pending --description "Integration Tests in progress"
 
-  if [ -z "$LETSENCRYPT_PATH" ]; then
-    export LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
+  if [ -z "$CERTBOT_PATH" ]; then
+    export CERTBOT_PATH=$(mktemp -d -t leXXXX)
     echo "------------------------------------------------"
     echo "--- Checking out letsencrypt client is slow. ---"
-    echo "--- Recommend setting \$LETSENCRYPT_PATH to  ---"
+    echo "--- Recommend setting \$CERTBOT_PATH to  ---"
     echo "--- client repo with initialized virtualenv  ---"
     echo "------------------------------------------------"
-    build_letsencrypt
-  elif [ ! -d "${LETSENCRYPT_PATH}" ]; then
-    build_letsencrypt
+    build_certbot
+  elif [ ! -d "${CERTBOT_PATH}" ]; then
+    build_certbot
   fi
 
-  source ${LETSENCRYPT_PATH}/venv/bin/activate
+  source ${CERTBOT_PATH}/venv/bin/activate
 
   python test/integration-test.py --all
   case $? in
@@ -260,16 +260,9 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   start_context "godep-restore"
   run_and_comment godep restore
   # Run godep save and do a diff, to ensure that the version we got from
-  # `godep restore` matched what was in the remote repo. We only do this on
-  # builds of the main fork (not PRs from external contributors), because godep
-  # rewrites import paths to the path of the fork we're building from, which
-  # creates spurious diffs if we're not building from the main fork.
-  # Once we switch to Go 1.6's imports and don't need rewriting anymore, we can
-  # do this for all builds.
-  if [[ "${TRAVIS_REPO_SLUG}" == "letsencrypt/boulder" ]] ; then
-    run_and_comment godep save ./...
-    run_and_comment git diff --exit-code
-  fi
+  # `godep restore` matched what was in the remote repo.
+  run_and_comment godep save ./...
+  run_and_comment git diff --exit-code
   end_context #godep-restore
 fi
 

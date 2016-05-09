@@ -14,8 +14,9 @@ import (
 	"time"
 
 	cfsslConfig "github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/pkcs11key"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // Config stores configuration parameters that applications
@@ -86,9 +87,13 @@ type Config struct {
 
 		MaxConcurrentRPCServerRequests int64
 
+		LookupIPv6 bool
+
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
 
 		CAAService *GRPCClientConfig
+
+		CAADistributedResolver *CAADistributedResolverConfig
 
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
@@ -524,4 +529,12 @@ type PortConfig struct {
 	HTTPPort  int
 	HTTPSPort int
 	TLSPort   int
+}
+
+// CAADistributedResolverConfig specifies the HTTP client setup and interfaces
+// needed to resolve CAA addresses over multiple paths
+type CAADistributedResolverConfig struct {
+	Timeout     ConfigDuration
+	MaxFailures int
+	Proxies     []string
 }
