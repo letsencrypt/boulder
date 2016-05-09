@@ -87,6 +87,8 @@ type Config struct {
 
 		MaxConcurrentRPCServerRequests int64
 
+		LookupIPv6 bool
+
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
 
 		CAAService *GRPCClientConfig
