@@ -319,7 +319,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 }
 
 func (ra *RegistrationAuthorityImpl) checkValidAuthorizationLimit(ctx context.Context, identifier core.AcmeIdentifier, regID int64) error {
-	limit := ra.rlPolicies.PendingAuthorizationsPerAccount
+	limit := ra.rlPolicies.ValidAuthorizationsPerName
 	if limit.Enabled() {
 		now := ra.clk.Now()
 		count, err := ra.SA.CountValidAuthorizations(ctx, identifier.Value, limit.WindowBegin(now), now)
