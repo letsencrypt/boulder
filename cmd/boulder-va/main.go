@@ -88,7 +88,6 @@ func main() {
 		vai.IssuerDomain = c.VA.IssuerDomain
 
 		amqpConf := c.VA.AMQP
-		// TODO remove
 		rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create RA client")
 
