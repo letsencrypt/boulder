@@ -9,7 +9,6 @@ addons:
     - boulder
     - boulder-mysql
     - boulder-rabbitmq
-    - boulder-va
   apt:
     packages:
       - lsb-release
