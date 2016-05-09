@@ -145,7 +145,7 @@ func main() {
 
 		if url.Scheme == "mysql+tcp" {
 			logger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
-			dbMap, err := sa.NewDbMap(config.Source)
+			dbMap, err := sa.NewDbMap(config.Source, config.DBConfig.MaxDBConns)
 			cmd.FailOnError(err, "Could not connect to database")
 			sa.SetSQLDebug(dbMap, logger)
 			source, err = makeDBSource(dbMap, c.Common.IssuerCert, logger)

@@ -45,7 +45,7 @@ func init() {
 }
 
 func BenchmarkCheckCert(b *testing.B) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
 		fmt.Println("Couldn't connect to database")
 		return
@@ -81,7 +81,7 @@ func BenchmarkCheckCert(b *testing.B) {
 }
 
 func TestCheckCert(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetSATestDatabase(t)
 	defer func() {
@@ -179,7 +179,7 @@ func TestCheckCert(t *testing.T) {
 }
 
 func TestGetAndProcessCerts(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	fc := clock.NewFake()
 
