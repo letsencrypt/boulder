@@ -17,7 +17,7 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-var ErrMissingParameters = bgrpc.CodedError(codes.FailedPrecondition, "required RPC parameter was missing")
+var ErrMissingParameters = CodedError(codes.FailedPrecondition, "required RPC parameter was missing")
 
 // This file defines functions to translate between the protobuf types and the
 // code types.

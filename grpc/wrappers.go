@@ -4,15 +4,15 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 // Package wrappers wraps the GRPC calls in the core interfaces.
-package wrappers
+package grpc
 
 import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/probs"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
+	ggrpc "google.golang.org/grpc"
 
-	vaPB "github.com/letsencrypt/boulder/rpc/pb/va"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 type ValidationAuthorityGRPCServer struct {
@@ -47,7 +47,7 @@ func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *va
 	return &vaPB.IsDomainSafe{Valid: &resp}, nil
 }
 
-func RegisterValidationAuthorityGRPCServer(s *grpc.Server, impl core.ValidationAuthority) error {
+func RegisterValidationAuthorityGRPCServer(s *ggrpc.Server, impl core.ValidationAuthority) error {
 	rpcSrv := &ValidationAuthorityGRPCServer{impl}
 	vaPB.RegisterVAServer(s, rpcSrv)
 	return nil
@@ -57,7 +57,7 @@ type ValidationAuthorityGRPCClient struct {
 	gc vaPB.VAClient
 }
 
-func NewValidationAuthorityGRPCClient(cc *grpc.ClientConn) core.ValidationAuthority {
+func NewValidationAuthorityGRPCClient(cc *ggrpc.ClientConn) core.ValidationAuthority {
 	return &ValidationAuthorityGRPCClient{vaPB.NewVAClient(cc)}
 }
 
