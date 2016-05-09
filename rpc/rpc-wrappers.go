@@ -70,6 +70,7 @@ const (
 	MethodCountCertificatesByNames          = "CountCertificatesByNames"          // SA
 	MethodCountRegistrationsByIP            = "CountRegistrationsByIP"            // SA
 	MethodCountPendingAuthorizations        = "CountPendingAuthorizations"        // SA
+	MethodCountValidAuthorizations          = "CountValidAuthorizations"          // SA
 	MethodGetSCTReceipt                     = "GetSCTReceipt"                     // SA
 	MethodAddSCTReceipt                     = "AddSCTReceipt"                     // SA
 	MethodSubmitToCT                        = "SubmitToCT"                        // Pub
@@ -187,6 +188,12 @@ type countRegistrationsByIPRequest struct {
 
 type countPendingAuthorizationsRequest struct {
 	RegID int64
+}
+
+type countValidAuthorizationsRequest struct {
+	Name  string
+	Begin time.Time
+	End   time.Time
 }
 
 type revokeAuthsRequest struct {
@@ -1146,6 +1153,20 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return json.Marshal(count)
 	})
 
+	rpc.Handle(MethodCountValidAuthorizations, func(ctx context.Context, req []byte) (response []byte, err error) {
+		var cReq countValidAuthorizationsRequest
+		err = json.Unmarshal(req, &cReq)
+		if err != nil {
+			return
+		}
+
+		count, err := impl.CountValidAuthorizations(ctx, cReq.Name, cReq.Begin, cReq.End)
+		if err != nil {
+			return
+		}
+		return json.Marshal(count)
+	})
+
 	rpc.Handle(MethodGetSCTReceipt, func(ctx context.Context, req []byte) (response []byte, err error) {
 		var gsctReq struct {
 			Serial string
@@ -1564,6 +1585,26 @@ func (cac StorageAuthorityClient) CountPendingAuthorizations(ctx context.Context
 		return
 	}
 	response, err := cac.rpc.DispatchSync(MethodCountPendingAuthorizations, data)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(response, &count)
+	return
+}
+
+// CountValidAuthorizations calls CountValidAuthorizations on the remote
+// StorageAuthority.
+func (cac StorageAuthorityClient) CountValidAuthorizations(ctx context.Context, name string, begin, end time.Time) (count int, err error) {
+	cReq := countValidAuthorizationsRequest{
+		Name:  name,
+		Begin: begin,
+		End:   end,
+	}
+	data, err := json.Marshal(cReq)
+	if err != nil {
+		return
+	}
+	response, err := cac.rpc.DispatchSync(MethodCountValidAuthorizations, data)
 	if err != nil {
 		return
 	}
