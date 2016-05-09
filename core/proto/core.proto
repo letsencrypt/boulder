@@ -2,6 +2,8 @@ syntax = "proto2";
 
 package core;
 
+option go_package = "proto";
+
 message Challenge {
 	optional int64 id = 1;
 	optional string type = 2;

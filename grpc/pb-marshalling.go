@@ -3,7 +3,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-package wrappers
+package grpc
 
 import (
 	"net"
@@ -12,10 +12,9 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/letsencrypt/boulder/core"
-	bgrpc "github.com/letsencrypt/boulder/grpc"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/probs"
-	corepb "github.com/letsencrypt/boulder/rpc/pb/core"
-	vapb "github.com/letsencrypt/boulder/rpc/pb/va"
+	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 var ErrMissingParameters = bgrpc.CodedError(codes.FailedPrecondition, "required RPC parameter was missing")

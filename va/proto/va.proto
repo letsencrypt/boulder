@@ -1,8 +1,9 @@
 syntax = "proto2";
 
 package va;
+option go_package = "proto";
 
-import "core/core.proto";
+import "core/proto/core.proto";
 
 service VA {
 	rpc IsSafeDomain(IsSafeDomainRequest) returns (IsDomainSafe) {}
