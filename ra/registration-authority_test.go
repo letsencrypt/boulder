@@ -748,7 +748,7 @@ func TestAuthzRateLimiting(t *testing.T) {
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
-		ValidAuthorizationsPerName: cmd.RateLimitPolicy{
+		ValidAuthorizationsPerFQDN: cmd.RateLimitPolicy{
 			Threshold: 2,
 			Window:    cmd.ConfigDuration{Duration: 24 * 7 * time.Hour},
 		},

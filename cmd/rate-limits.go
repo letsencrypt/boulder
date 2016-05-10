@@ -27,7 +27,7 @@ type RateLimitConfig struct {
 	PendingAuthorizationsPerAccount RateLimitPolicy `yaml:"pendingAuthorizationsPerAccount"`
 	// Number of valid authorizations that can exist for a name before new
 	// authorizations are denied.
-	ValidAuthorizationsPerName RateLimitPolicy `yaml:"validAuthorizationsPerName"`
+	ValidAuthorizationsPerFQDN RateLimitPolicy `yaml:"validAuthorizationsPerFQDN"`
 	// Number of certificates that can be extant containing a specific set
 	// of DNS names.
 	CertificatesPerFQDNSet RateLimitPolicy `yaml:"certificatesPerFQDNSet"`
