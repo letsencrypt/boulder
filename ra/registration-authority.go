@@ -830,7 +830,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	} else {
 		go func() {
-			records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, *ch, authz)
+			records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
 			var prob *probs.ProblemDetails
 			if p, ok := err.(*probs.ProblemDetails); ok {
 				prob = p
