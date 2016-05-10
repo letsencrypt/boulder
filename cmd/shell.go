@@ -38,10 +38,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
-
 	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/codegangsta/cli"
+	"github.com/go-sql-driver/mysql"
+	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -205,6 +205,15 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	_ = mysql.SetLogger(mysqlLogger{logger})
 
 	return stats, logger
+}
+
+func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Statter, prefix string) {
+	db := dbMap.Db
+	gaugeName := fmt.Sprintf("%s.OpenConnections")
+	for {
+		statter.Gauge(gaugeName, int64(db.Stats().OpenConnections), 1.0)
+		time.Sleep(1 * time.Second)
+	}
 }
 
 // VersionString produces a friendly Application version string

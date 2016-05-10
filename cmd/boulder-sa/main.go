@@ -25,6 +25,7 @@ func main() {
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Couldn't connect to SA database")
+		go cmd.ReportDbConnCount(dbMap, stats, "SA")
 
 		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 		cmd.FailOnError(err, "Failed to create SA impl")
