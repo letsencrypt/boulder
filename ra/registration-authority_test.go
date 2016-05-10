@@ -748,11 +748,15 @@ func TestAuthzRateLimiting(t *testing.T) {
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
+		ValidAuthorizationsPerName: cmd.RateLimitPolicy{
+			Threshold: 2,
+			Window:    cmd.ConfigDuration{Duration: 24 * 7 * time.Hour},
+		},
 	}
 	fc.Add(24 * 90 * time.Hour)
 
 	// Should be able to create an authzRequest
-	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	authz1, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	fc.Add(time.Hour)
@@ -762,10 +766,30 @@ func TestAuthzRateLimiting(t *testing.T) {
 	test.AssertError(t, err, "Pending Authorization rate limit failed.")
 
 	// Finalize pending authz
-	err = ra.OnValidationUpdate(ctx, authz)
+	authz1.Status = core.StatusValid
+	err = ra.SA.FinalizeAuthorization(ctx, authz1)
 	test.AssertNotError(t, err, "Could not store test data")
 
 	// Try to create a new authzRequest, should be fine now.
+	authz2, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
+
+	fc.Add(time.Hour)
+
+	// Finalize second pending authz
+	authz2.Status = core.StatusValid
+	err = ra.SA.FinalizeAuthorization(ctx, authz2)
+	test.AssertNotError(t, err, "Could not store test data")
+
+	// Third authz should trigger other rate limit
+	_, err = ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertError(t, err, "Valid Authorization rate limit failed.")
+
+	// Move out of the ratelimit window
+
+	fc.Add((24*7 - 1) * time.Hour)
+
+	// New authz should not trigger other rate limit
 	_, err = ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 }

@@ -868,8 +868,8 @@ func (ssa *SQLStorageAuthority) CountValidAuthorizations(ctx context.Context, na
 		`SELECT count(1) FROM authz
 		 WHERE status = "valid" AND
 				identifier = :ident AND
-				created > :begin AND
-				created < :end`,
+				created >= :begin AND
+				created <= :end`,
 		map[string]interface{}{
 			"ident": string(idJSON),
 			"begin": begin,

@@ -323,6 +323,11 @@ func (sa *StorageAuthority) CountPendingAuthorizations(_ context.Context, _ int6
 	return 0, nil
 }
 
+// CountValidAuthorizations is a mock
+func (sa *StorageAuthority) CountValidAuthorizations(ctx context.Context, name string, start, end time.Time) (int, error) {
+	return 0, nil
+}
+
 // Publisher is a mock
 type Publisher struct {
 	// empty
