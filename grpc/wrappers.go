@@ -76,13 +76,5 @@ func (vac ValidationAuthorityGRPCClient) PerformValidation(ctx context.Context, 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
 // third-party safe browsing API.
 func (vac ValidationAuthorityGRPCClient) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
-	resp, err := vac.gc.IsSafeDomain(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp == nil || (*resp).IsSafe == nil {
-		return nil, ErrNilReturn
-	}
-	return resp, nil
+	return vac.gc.IsSafeDomain(ctx, req)
 }
