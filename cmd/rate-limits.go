@@ -10,21 +10,20 @@ import (
 // RateLimitConfig contains all application layer rate limiting policies
 type RateLimitConfig struct {
 	// Total number of certificates that can be extant at any given time.
-	// The 2160h window, 90 days, is chosen to match certificate lifetime,
-	// since the main capacity factor is how many OCSP requests we can sign
-	// with available hardware.
+	// The 2160h window, 90 days, is chosen to match certificate lifetime, since the
+	// main capacity factor is how many OCSP requests we can sign with available
+	// hardware.
 	TotalCertificates RateLimitPolicy `yaml:"totalCertificates"`
 	// Number of certificates that can be extant containing any given name.
 	// These are counted by "base domain" aka eTLD+1, so any entries in the
-	// overrides section must be an eTLD+1 according to the publicsuffix
-	// package.
+	// overrides section must be an eTLD+1 according to the publicsuffix package.
 	CertificatesPerName RateLimitPolicy `yaml:"certificatesPerName"`
-	// Number of registrations that can be created per IP.  Note: Since
-	// this is checked before a registration is created, setting a
+	// Number of registrations that can be created per IP.
+	// Note: Since this is checked before a registration is created, setting a
 	// RegistrationOverride on it has no effect.
 	RegistrationsPerIP RateLimitPolicy `yaml:"registrationsPerIP"`
-	// Number of pending authorizations that can exist per account.
-	// Overrides by key are not applied, but overrides by registration are.
+	// Number of pending authorizations that can exist per account. Overrides by
+	// key are not applied, but overrides by registration are.
 	PendingAuthorizationsPerAccount RateLimitPolicy `yaml:"pendingAuthorizationsPerAccount"`
 	// Number of valid authorizations that can exist for a name before new
 	// authorizations are denied.
