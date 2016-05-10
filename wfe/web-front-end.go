@@ -878,6 +878,7 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(authz *core.Authorizatio
 	}
 	authz.ID = ""
 	authz.RegistrationID = 0
+	authz.Created = nil
 }
 
 func (wfe *WebFrontEndImpl) getChallenge(

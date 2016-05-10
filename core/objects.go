@@ -449,7 +449,7 @@ type Authorization struct {
 	// authorization was created before this field was added.
 	//
 	// TODO(riking): Change json tag to "-" after switching SA to grpc
-	Created *time.Time `json:"created" db:"created"`
+	Created *time.Time `json:"created,omitempty" db:"created"`
 
 	// An array of challenges objects used to validate the
 	// applicant's control of the identifier.  For authorizations
