@@ -161,13 +161,6 @@ type Config struct {
 		MaxConcurrentRPCServerRequests int64
 	}
 
-	ExternalCertImporter struct {
-		CertsToImportCSVFilename   string
-		DomainsToImportCSVFilename string
-		CertsToRemoveCSVFilename   string
-		StatsdRate                 float32
-	}
-
 	PA PAConfig
 
 	Common struct {
