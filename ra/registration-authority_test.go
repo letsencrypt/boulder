@@ -18,6 +18,9 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	jose "github.com/square/go-jose"
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -28,8 +31,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	jose "github.com/square/go-jose"
-	"golang.org/x/net/context"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 type DummyValidationAuthority struct {
@@ -53,7 +55,7 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, doma
 	return dva.RecordsReturn, dva.ProblemReturn
 }
 
-func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, domain string) (bool, error) {
+func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
 	if dva.IsSafeDomainErr != nil {
 		return false, dva.IsSafeDomainErr
 	}

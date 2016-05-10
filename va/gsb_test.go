@@ -15,6 +15,7 @@ import (
 	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 
 	"github.com/letsencrypt/boulder/cmd"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 func TestIsSafeDomain(t *testing.T) {
@@ -35,29 +36,36 @@ func TestIsSafeDomain(t *testing.T) {
 	sbc.EXPECT().IsListed("outofdate.com").Return("", safebrowsing.ErrOutOfDateHashes)
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, sbc, nil, nil, stats, clock.NewFake())
 
-	isSafe, err := va.IsSafeDomain(ctx, "good.com")
+	domain := "good.com"
+	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("good.com: want no error, got '%s'", err)
+	} else if !*resp.IsSafe {
+		t.Errorf("good.com: want true, got %t", resp)
 	}
-	if !isSafe {
-		t.Errorf("good.com: want true, got %t", isSafe)
-	}
-	isSafe, err = va.IsSafeDomain(ctx, "bad.com")
+
+	domain = "bad.com"
+	resp, err = va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("bad.com: want no error, got '%s'", err)
+	} else if *resp.IsSafe {
+		t.Errorf("bad.com: want false, got %t", resp)
 	}
-	if isSafe {
-		t.Errorf("bad.com: want false, got %t", isSafe)
-	}
-	_, err = va.IsSafeDomain(ctx, "errorful.com")
+
+	domain = "errorful.com"
+	resp, err = va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err == nil {
 		t.Errorf("errorful.com: want error, got none")
 	}
-	isSafe, err = va.IsSafeDomain(ctx, "outofdate.com")
+	if resp != nil {
+		t.Errorf("errorful.com: want resp == nil, got %v", resp)
+	}
+
+	domain = "outofdate.com"
+	resp, err = va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("outofdate.com: want no error, got '%s'", err)
-	}
-	if !isSafe {
+	} else if !*resp.IsSafe {
 		t.Errorf("outofdate.com: IsSafeDomain should fail open on out of date hashes")
 	}
 }
@@ -68,10 +76,11 @@ func TestAllowNilInIsSafeDomain(t *testing.T) {
 
 	// Be cool with a nil SafeBrowsing. This will happen in prod when we have
 	// flag mismatch between the VA and RA.
-	isSafe, err := va.IsSafeDomain(ctx, "example.com")
+	domain := "example.com"
+	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("nil SafeBrowsing, unexpected error: %s", err)
-	} else if !isSafe {
+	} else if !*resp.IsSafe {
 		t.Errorf("nil Safebrowsing, should fail open but failed closed")
 	}
 }

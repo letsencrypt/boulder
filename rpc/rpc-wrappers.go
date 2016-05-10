@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -595,17 +596,17 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 	})
 
 	rpc.Handle(MethodIsSafeDomain, func(ctx context.Context, req []byte) ([]byte, error) {
-		r := &core.IsSafeDomainRequest{}
+		r := &vaPB.IsSafeDomainRequest{}
 		if err := json.Unmarshal(req, r); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodIsSafeDomain, err, req)
 			return nil, err
 		}
-		resp, err := impl.IsSafeDomain(ctx, r.Domain)
+		resp, err := impl.IsSafeDomain(ctx, r)
 		if err != nil {
 			return nil, err
 		}
-		return json.Marshal(&core.IsSafeDomainResponse{IsSafe: resp})
+		return json.Marshal(resp)
 	})
 
 	return nil
@@ -663,8 +664,8 @@ func (vac ValidationAuthorityClient) PerformValidation(ctx context.Context, doma
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
 // third-party safe browsing API.
-func (vac ValidationAuthorityClient) IsSafeDomain(ctx context.Context, domain string) (isSafe bool, err error) {
-	data, err := json.Marshal(&core.IsSafeDomainRequest{Domain: domain})
+func (vac ValidationAuthorityClient) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (resp *vaPB.IsDomainSafe, err error) {
+	data, err := json.Marshal(req)
 	if err != nil {
 		return false, err
 	}
@@ -672,12 +673,12 @@ func (vac ValidationAuthorityClient) IsSafeDomain(ctx context.Context, domain st
 	if err != nil {
 		return false, err
 	}
-	resp := &core.IsSafeDomainResponse{}
+	resp := &vaPB.IsDomainSafe{}
 	err = json.Unmarshal(jsonResp, resp)
 	if err != nil {
 		return false, err
 	}
-	return resp.IsSafe, nil
+	return resp, nil
 }
 
 // NewPublisherServer creates a new server that wraps a CT publisher

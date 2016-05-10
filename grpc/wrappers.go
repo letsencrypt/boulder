@@ -33,18 +33,7 @@ func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, i
 }
 
 func (s *ValidationAuthorityGRPCServer) IsSafeDomain(ctx context.Context, in *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
-	if in == nil {
-		return nil, ErrMissingParameters
-	}
-	if in.Domain == nil {
-		return nil, ErrMissingParameters
-	}
-
-	resp, err := s.impl.IsSafeDomain(ctx, *in.Domain)
-	if err != nil {
-		return nil, err
-	}
-	return &vaPB.IsDomainSafe{Valid: &resp}, nil
+	return s.impl.IsSafeDomain(ctx, in)
 }
 
 func RegisterValidationAuthorityGRPCServer(s *ggrpc.Server, impl core.ValidationAuthority) error {
@@ -86,14 +75,14 @@ func (vac ValidationAuthorityGRPCClient) PerformValidation(ctx context.Context, 
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
 // third-party safe browsing API.
-func (vac ValidationAuthorityGRPCClient) IsSafeDomain(ctx context.Context, domain string) (isSafe bool, err error) {
-	valid, err := vac.gc.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
+func (vac ValidationAuthorityGRPCClient) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
+	resp, err := vac.gc.IsSafeDomain(ctx, req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	if valid == nil || (*valid).Valid == nil {
-		return false, ErrMissingParameters
+	if resp == nil || (*resp).IsSafe == nil {
+		return nil, ErrNilReturn
 	}
-	return *(*valid).Valid, nil
+	return resp, nil
 }

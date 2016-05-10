@@ -15,7 +15,7 @@ message IsSafeDomainRequest {
 }
 
 message IsDomainSafe {
-	optional bool valid = 1;
+	optional bool isSafe = 1;
 }
 
 message PerformValidationRequest {
