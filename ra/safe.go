@@ -9,7 +9,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/core"
-	bgrpc "github.com/letsencrypt/boulder/grpc"
 	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 

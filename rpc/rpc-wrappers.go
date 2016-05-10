@@ -667,16 +667,16 @@ func (vac ValidationAuthorityClient) PerformValidation(ctx context.Context, doma
 func (vac ValidationAuthorityClient) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (resp *vaPB.IsDomainSafe, err error) {
 	data, err := json.Marshal(req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	jsonResp, err := vac.rpc.DispatchSync(MethodIsSafeDomain, data)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	resp := &vaPB.IsDomainSafe{}
+	resp = new(vaPB.IsDomainSafe)
 	err = json.Unmarshal(jsonResp, resp)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	return resp, nil
 }

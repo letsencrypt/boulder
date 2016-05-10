@@ -57,9 +57,10 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, doma
 
 func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
 	if dva.IsSafeDomainErr != nil {
-		return false, dva.IsSafeDomainErr
+		return nil, dva.IsSafeDomainErr
 	}
-	return !dva.IsNotSafe, nil
+	ret := !dva.IsNotSafe
+	return &vaPB.IsDomainSafe{IsSafe: &ret}, nil
 }
 
 var (
