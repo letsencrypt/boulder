@@ -341,7 +341,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 		Expires: testCtx.fc.Now().AddDate(0, 0, 87),
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	err = setupDBMap.Insert(certB)
@@ -464,7 +464,7 @@ func TestCertIsRenewed(t *testing.T) {
 		},
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -565,7 +565,7 @@ func TestLifetimeOfACert(t *testing.T) {
 		Status: core.OCSPStatusGood,
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
 	err = setupDBMap.Insert(certStatusA)
@@ -670,7 +670,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 		Status: core.OCSPStatusRevoked,
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
 	err = setupDBMap.Insert(certStatusA)
@@ -741,7 +741,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Status:                core.OCSPStatusGood,
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
+	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	err = setupDBMap.Insert(certB)
@@ -782,7 +782,7 @@ type testCtx struct {
 func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	// We use the test_setup user (which has full permissions to everything)
 	// because the SA we return is used for inserting data to set up the test.
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms)
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, 0)
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}

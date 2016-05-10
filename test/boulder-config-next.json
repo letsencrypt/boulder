@@ -189,6 +189,7 @@
 
   "sa": {
     "dbConnectFile": "test/secrets/sa_dburl",
+    "maxDBConns": 10,
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8003",
     "amqp": {
@@ -235,6 +236,7 @@
 
   "revoker": {
     "dbConnectFile": "test/secrets/revoker_dburl",
+    "maxDBConns": 1,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -261,6 +263,7 @@
 
   "ocspUpdater": {
     "dbConnectFile": "test/secrets/ocsp_updater_dburl",
+    "maxDBConns": 10,
     "newCertificateWindow": "1s",
     "oldOCSPWindow": "2s",
     "missingSCTWindow": "1m",
@@ -299,6 +302,7 @@
     "from": "Expiry bot <test@example.com>",
     "passwordFile": "test/secrets/smtp_password",
     "dbConnectFile": "test/secrets/mailer_dburl",
+    "maxDBConns": 10,
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "nagCheckInterval": "24h",
@@ -347,7 +351,8 @@
   },
 
   "certChecker": {
-    "dbConnectFile": "test/secrets/cert_checker_dburl"
+    "dbConnectFile": "test/secrets/cert_checker_dburl",
+    "maxDBConns": 10
   },
 
   "subscriberAgreementURL": "http://boulder:4000/terms/v1",
