@@ -6,14 +6,15 @@ Thanks for helping us build Boulder! This page contains requirements and guideli
 * All patches must meet the deployability requirements listed below.
 
 # Review Requirements
-* All boulder patches require approval from two reviewers.
-  * We indicate review approval by attaching an r=username tag. After review, if changes need to be made, we add a needs-revision tag so we can easily skim the pull request list to see what needs review.
-* Exceptions to the two-review rule:
-  * Pull requests that change only documentation or test changes can be merged with one review, and shoudl be marked by either the submitter or the reviewer with the r1=test-only or r1=documentation labels, respectively. We define both terms strictly: any change to code that runs in production disqualifies this exception.
+* All pull requests must receive at least one positive review. Contributors are
+  strongly encouraged to get two positives reviews before merging whenever
+  possible.
+* Exception:
   * Pull requests from current master into the 'staging' branch can be merged without review. This is because any code in master has already been through the normal code review process. Similarly, pull requests from the current 'staging' branch into the 'release' branch can be merged without review. Pull requests into 'staging' or 'release' that aren't directly from master require the normal code review process. These pull requests should be marked by the submitter with the r0=branch-merge label.
-* New commits pushed to a branch invalidate previous reviews. In other words, two reviewers must give positive reviews of a branch after its most recent pushed commit.
+* We indicate review approval by attaching an r=username tag. After review, if changes need to be made, we add a needs-revision tag so we can easily skim the pull request list to see what needs review.
+* New commits pushed to a branch invalidate previous reviews. In other words, a reviewer must give positive reviews of a branch after its most recent pushed commit.
 * You cannot review your own code.
-* If a branch contains commits from multiple authors, it needs two reviewers who are not authors of commits on that branch.
+* If a branch contains commits from multiple authors, it needs a reviewer who is not an author of commits on that branch.
 * If a branch contains updates to files in the vendor/ directory, the author is responsible for running tests in all updated dependencies, and commenting in the review thread that they have done so. Reviewers must not approve reviews that have changes in vendor/ but lack a comment about tests.
 * Review changes to or addition of tests just as rigorously as you review code changes. Consider: Do tests actually test what they mean to test? Is this the best way to test the functionality in question? Do the tests cover all the functionality in the patch, including error cases?
 * Are there new RPCs or config fields? Make sure the patch meets the Deployability rules below.

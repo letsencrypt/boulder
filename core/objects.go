@@ -524,19 +524,6 @@ type IdentifierData struct {
 	CertSHA1     string `db:"certSHA1"`     // The hex encoding of the SHA-1 hash of a cert containing the identifier
 }
 
-// ExternalCert holds information about certificates issued by other CAs,
-// obtained through Certificate Transparency, the SSL Observatory, or scans.io.
-type ExternalCert struct {
-	SHA1     string    `db:"sha1"`       // The hex encoding of the SHA-1 hash of this cert
-	Issuer   string    `db:"issuer"`     // The Issuer field of this cert
-	Subject  string    `db:"subject"`    // The Subject field of this cert
-	NotAfter time.Time `db:"notAfter"`   // Date after which this cert should be considered invalid
-	SPKI     []byte    `db:"spki"`       // The hex encoding of the certificate's SubjectPublicKeyInfo in DER form
-	Valid    bool      `db:"valid"`      // Whether this certificate was valid at LastUpdated time
-	EV       bool      `db:"ev"`         // Whether this cert was EV valid
-	CertDER  []byte    `db:"rawDERCert"` // DER (binary) encoding of the raw certificate
-}
-
 // CertificateStatus structs are internal to the server. They represent the
 // latest data about the status of the certificate, required for OCSP updating
 // and for validating that the subscriber has accepted the certificate.

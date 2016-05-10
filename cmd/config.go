@@ -163,13 +163,6 @@ type Config struct {
 		MaxConcurrentRPCServerRequests int64
 	}
 
-	ExternalCertImporter struct {
-		CertsToImportCSVFilename   string
-		DomainsToImportCSVFilename string
-		CertsToRemoveCSVFilename   string
-		StatsdRate                 float32
-	}
-
 	PA PAConfig
 
 	Common struct {
@@ -262,6 +255,7 @@ type DBConfig struct {
 	DBConnect string
 	// A file containing a connect URL for the DB.
 	DBConnectFile string
+	MaxDBConns    int
 }
 
 // URL returns the DBConnect URL represented by this DBConfig object, either

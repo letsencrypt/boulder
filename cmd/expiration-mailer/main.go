@@ -315,7 +315,7 @@ func main() {
 		// Configure DB
 		dbURL, err := c.Mailer.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
-		dbMap, err := sa.NewDbMap(dbURL)
+		dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		amqpConf := c.Mailer.AMQP
