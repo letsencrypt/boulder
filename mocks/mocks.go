@@ -6,19 +6,24 @@
 package mocks
 
 import (
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	mrand "math/rand"
 	"net"
+	"net/http"
+	"strconv"
 	"time"
-
-	"golang.org/x/net/context"
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/core"
+	"github.com/miekg/dns"
 	"github.com/square/go-jose"
+	"golang.org/x/net/context"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // StorageAuthority is a mock
@@ -275,17 +280,6 @@ func (sa *StorageAuthority) FQDNSetExists(_ context.Context, names []string) (bo
 	return false, nil
 }
 
-// GetLatestValidAuthorization is a mock
-func (sa *StorageAuthority) GetLatestValidAuthorization(_ context.Context, registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
-	if registrationID == 1 && identifier.Type == "dns" {
-		if sa.authorizedDomains[identifier.Value] || identifier.Value == "not-an-example.com" {
-			exp := sa.clk.Now().AddDate(100, 0, 0)
-			return core.Authorization{Status: core.StatusValid, RegistrationID: 1, Expires: &exp, Identifier: identifier}, nil
-		}
-	}
-	return core.Authorization{}, errors.New("no authz")
-}
-
 // GetValidAuthorizations is a mock
 func (sa *StorageAuthority) GetValidAuthorizations(_ context.Context, regID int64, names []string, now time.Time) (map[string]*core.Authorization, error) {
 	if regID == 1 {
@@ -343,7 +337,15 @@ func (*Publisher) SubmitToCT(_ context.Context, der []byte) error {
 // calls (which are most of what we use).
 type Statter struct {
 	statsd.NoopClient
-	Counters map[string]int64
+	Counters            map[string]int64
+	TimingDurationCalls []TimingDuration
+}
+
+// TimingDuration records a statsd call to TimingDuration.
+type TimingDuration struct {
+	Metric   string
+	Duration time.Duration
+	Rate     float32
 }
 
 // Inc increments the indicated metric by the indicated value, in the Counters
@@ -353,9 +355,20 @@ func (s *Statter) Inc(metric string, value int64, rate float32) error {
 	return nil
 }
 
+// TimingDuration stores the parameters in the LastTimingDuration field of the
+// MockStatter.
+func (s *Statter) TimingDuration(metric string, delta time.Duration, rate float32) error {
+	s.TimingDurationCalls = append(s.TimingDurationCalls, TimingDuration{
+		Metric:   metric,
+		Duration: delta,
+		Rate:     rate,
+	})
+	return nil
+}
+
 // NewStatter returns an empty statter with all counters zero
-func NewStatter() Statter {
-	return Statter{statsd.NoopClient{}, map[string]int64{}}
+func NewStatter() *Statter {
+	return &Statter{statsd.NoopClient{}, map[string]int64{}, nil}
 }
 
 // Mailer is a mock
@@ -390,4 +403,42 @@ func (m *Mailer) SendMail(to []string, subject, msg string) error {
 // Close is a mock
 func (m *Mailer) Close() error {
 	return nil
+}
+
+// GPDNSHandler mocks the Google Public DNS API
+func GPDNSHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Query().Get("name") {
+	case "test-domain", "bad-local-resolver.com":
+		resp := core.GPDNSResponse{
+			Status: dns.RcodeSuccess,
+			Answer: []core.GPDNSAnswer{
+				{r.URL.Query().Get("name"), 257, 10, "0 issue \"ca.com\""},
+			},
+		}
+		data, err := json.Marshal(resp)
+		if err != nil {
+			return
+		}
+		w.Write(data)
+	case "break":
+		w.WriteHeader(400)
+	case "break-rcode":
+		data, err := json.Marshal(core.GPDNSResponse{Status: dns.RcodeServerFailure})
+		if err != nil {
+			return
+		}
+		w.Write(data)
+	case "break-dns-quorum":
+		resp := core.GPDNSResponse{
+			Status: dns.RcodeSuccess,
+			Answer: []core.GPDNSAnswer{
+				{r.URL.Query().Get("name"), 257, 10, strconv.Itoa(mrand.Int())},
+			},
+		}
+		data, err := json.Marshal(resp)
+		if err != nil {
+			return
+		}
+		w.Write(data)
+	}
 }

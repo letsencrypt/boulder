@@ -683,7 +683,6 @@ func (cc *ClientConn) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	readLoopResCh := cs.resc
-	requestCanceledCh := requestCancel(req)
 	bodyWritten := false
 
 	for {
@@ -717,7 +716,7 @@ func (cc *ClientConn) RoundTrip(req *http.Request) (*http.Response, error) {
 				cs.abortRequestBodyWrite(errStopReqBodyWriteAndCancel)
 			}
 			return nil, errTimeout
-		case <-requestCanceledCh:
+		case <-req.Cancel:
 			cc.forgetStreamID(cs.ID)
 			if !hasBody || bodyWritten {
 				cc.writeStreamReset(cs.ID, ErrCodeCancel, nil)
@@ -945,14 +944,11 @@ func (cc *ClientConn) encodeHeaders(req *http.Request, addGzipHeader bool, trail
 			// Host is :authority, already sent.
 			// Content-Length is automatic, set below.
 			continue
-		case "connection", "proxy-connection", "transfer-encoding", "upgrade":
+		case "connection", "proxy-connection", "transfer-encoding", "upgrade", "keep-alive":
 			// Per 8.1.2.2 Connection-Specific Header
 			// Fields, don't send connection-specific
-			// fields. We deal with these earlier in
-			// RoundTrip, deciding whether they're
-			// error-worthy, but we don't want to mutate
-			// the user's *Request so at this point, just
-			// skip over them at this point.
+			// fields. We have already checked if any
+			// are error-worthy so just ignore the rest.
 			continue
 		case "user-agent":
 			// Match Go's http1 behavior: at most one
@@ -1263,7 +1259,8 @@ func (rl *clientConnReadLoop) handleResponse(cs *clientStream, f *MetaHeadersFra
 	}
 
 	streamEnded := f.StreamEnded()
-	if !streamEnded || cs.req.Method == "HEAD" {
+	isHead := cs.req.Method == "HEAD"
+	if !streamEnded || isHead {
 		res.ContentLength = -1
 		if clens := res.Header["Content-Length"]; len(clens) == 1 {
 			if clen64, err := strconv.ParseInt(clens[0], 10, 64); err == nil {
@@ -1278,7 +1275,7 @@ func (rl *clientConnReadLoop) handleResponse(cs *clientStream, f *MetaHeadersFra
 		}
 	}
 
-	if streamEnded {
+	if streamEnded || isHead {
 		res.Body = noBody
 		return res, nil
 	}
@@ -1287,7 +1284,7 @@ func (rl *clientConnReadLoop) handleResponse(cs *clientStream, f *MetaHeadersFra
 	cs.bufPipe = pipe{b: buf}
 	cs.bytesRemain = res.ContentLength
 	res.Body = transportResponseBody{cs}
-	go cs.awaitRequestCancel(requestCancel(cs.req))
+	go cs.awaitRequestCancel(cs.req.Cancel)
 
 	if cs.requestedGzip && res.Header.Get("Content-Encoding") == "gzip" {
 		res.Header.Del("Content-Encoding")

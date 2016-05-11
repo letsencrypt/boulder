@@ -1,7 +1,7 @@
 {
 	"ImportPath": "github.com/letsencrypt/boulder",
 	"GoVersion": "go1.5",
-	"GodepVersion": "v63",
+	"GodepVersion": "v66",
 	"Packages": [
 		"./..."
 	],
@@ -148,15 +148,15 @@
 		},
 		{
 			"ImportPath": "github.com/square/go-jose",
-			"Rev": "70a7e670bd0d4bb35902d31f3a75a6689843abed"
+			"Rev": "d2a847139a1442cada879cc05cc4080485b8d193"
 		},
 		{
 			"ImportPath": "github.com/square/go-jose/cipher",
-			"Rev": "70a7e670bd0d4bb35902d31f3a75a6689843abed"
+			"Rev": "d2a847139a1442cada879cc05cc4080485b8d193"
 		},
 		{
 			"ImportPath": "github.com/square/go-jose/json",
-			"Rev": "70a7e670bd0d4bb35902d31f3a75a6689843abed"
+			"Rev": "d2a847139a1442cada879cc05cc4080485b8d193"
 		},
 		{
 			"ImportPath": "github.com/streadway/amqp",
@@ -176,23 +176,27 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "4876518f9e71663000c348837735820161a42df7"
+			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
+		},
+		{
+			"ImportPath": "golang.org/x/net/context/ctxhttp",
+			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2",
-			"Rev": "4876518f9e71663000c348837735820161a42df7"
+			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
 		},
 		{
 			"ImportPath": "golang.org/x/net/http2/hpack",
-			"Rev": "4876518f9e71663000c348837735820161a42df7"
+			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
 		},
 		{
 			"ImportPath": "golang.org/x/net/internal/timeseries",
-			"Rev": "4876518f9e71663000c348837735820161a42df7"
+			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
 		},
 		{
 			"ImportPath": "golang.org/x/net/trace",
-			"Rev": "4876518f9e71663000c348837735820161a42df7"
+			"Rev": "b797637b7aeeed133049c7281bfa31dcc9ca42d6"
 		},
 		{
 			"ImportPath": "google.golang.org/grpc",

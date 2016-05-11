@@ -58,7 +58,7 @@ func (p *mockPub) SubmitToCT(_ context.Context, _ []byte) error {
 var log = blog.UseMock()
 
 func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, clock.FakeClock, func()) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSA)
+	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	test.AssertNotError(t, err, "Failed to create dbMap")
 	sa.SetSQLDebug(dbMap, log)
 

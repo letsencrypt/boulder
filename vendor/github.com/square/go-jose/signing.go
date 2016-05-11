@@ -58,6 +58,7 @@ type genericSigner struct {
 
 type recipientSigInfo struct {
 	sigAlg    SignatureAlgorithm
+	keyID     string
 	publicKey *JsonWebKey
 	signer    payloadSigner
 }
@@ -128,7 +129,7 @@ func makeJWSRecipient(alg SignatureAlgorithm, signingKey interface{}) (recipient
 		if err != nil {
 			return recipientSigInfo{}, err
 		}
-		recipient.publicKey.KeyID = signingKey.KeyID
+		recipient.keyID = signingKey.KeyID
 		return recipient, nil
 	default:
 		return recipientSigInfo{}, ErrUnsupportedKeyType
@@ -145,11 +146,11 @@ func (ctx *genericSigner) Sign(payload []byte) (*JsonWebSignature, error) {
 			Alg: string(recipient.sigAlg),
 		}
 
-		if recipient.publicKey != nil {
-			if ctx.embedJwk {
-				protected.Jwk = recipient.publicKey
-			}
-			protected.Kid = recipient.publicKey.KeyID
+		if recipient.publicKey != nil && ctx.embedJwk {
+			protected.Jwk = recipient.publicKey
+		}
+		if recipient.keyID != "" {
+			protected.Kid = recipient.keyID
 		}
 
 		if ctx.nonceSource != nil {

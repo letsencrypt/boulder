@@ -23,7 +23,7 @@ func main() {
 
 		dbURL, err := saConf.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
-		dbMap, err := sa.NewDbMap(dbURL)
+		dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Couldn't connect to SA database")
 
 		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)

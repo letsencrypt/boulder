@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
 	cfocsp "github.com/cloudflare/cfssl/ocsp"
@@ -18,7 +19,7 @@ import (
 
 var (
 	req      = mustRead("./testdata/ocsp.req")
-	resp     = mustRead("./testdata/ocsp.resp")
+	resp     = dbResponse{mustRead("./testdata/ocsp.resp"), time.Now()}
 	stats, _ = statsd.NewNoopClient()
 )
 
@@ -28,7 +29,7 @@ func TestMux(t *testing.T) {
 		t.Fatalf("ocsp.ParseRequest: %s", err)
 	}
 	src := make(cfocsp.InMemorySource)
-	src[ocspReq.SerialNumber.String()] = resp
+	src[ocspReq.SerialNumber.String()] = resp.OCSPResponse
 	h := mux(stats, "/foobar/", src)
 	type muxTest struct {
 		method   string
@@ -36,7 +37,7 @@ func TestMux(t *testing.T) {
 		reqBody  []byte
 		respBody []byte
 	}
-	mts := []muxTest{{"POST", "/foobar/", req, resp}, {"GET", "/", nil, nil}}
+	mts := []muxTest{{"POST", "/foobar/", req, resp.OCSPResponse}, {"GET", "/", nil, nil}}
 	for i, mt := range mts {
 		w := httptest.NewRecorder()
 		r, err := http.NewRequest(mt.method, mt.path, bytes.NewReader(mt.reqBody))
@@ -70,8 +71,22 @@ func TestDBHandler(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Code: want %d, got %d", http.StatusOK, w.Code)
 	}
-	if !bytes.Equal(w.Body.Bytes(), resp) {
+	if !bytes.Equal(w.Body.Bytes(), resp.OCSPResponse) {
 		t.Errorf("Mismatched body: want %#v, got %#v", resp, w.Body.Bytes())
+	}
+
+	// check response with zero OCSPLastUpdated is ignored
+	resp.OCSPLastUpdated = time.Time{}
+	defer func() { resp.OCSPLastUpdated = time.Now() }()
+	w = httptest.NewRecorder()
+	r, _ = http.NewRequest("POST", "/", bytes.NewReader(req))
+	unauthorizedErrorResponse := []byte{0x30, 0x03, 0x0A, 0x01, 0x06}
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Errorf("Code: want %d, got %d", http.StatusOK, w.Code)
+	}
+	if !bytes.Equal(w.Body.Bytes(), unauthorizedErrorResponse) {
+		t.Errorf("Mismatched body: want %#v, got %#v", unauthorizedErrorResponse, w.Body.Bytes())
 	}
 }
 
@@ -79,7 +94,7 @@ func TestDBHandler(t *testing.T) {
 type mockSelector struct{}
 
 func (bs mockSelector) SelectOne(output interface{}, _ string, _ ...interface{}) error {
-	outputPtr, ok := output.(*[]uint8)
+	outputPtr, ok := output.(*dbResponse)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
 	}

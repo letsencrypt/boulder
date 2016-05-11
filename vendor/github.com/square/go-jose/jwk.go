@@ -115,7 +115,7 @@ func (k *JsonWebKey) UnmarshalJSON(data []byte) (err error) {
 	case "oct":
 		key, err = raw.symmetricKey()
 	default:
-		err = fmt.Errorf("square/go-jose: unkown json web key type '%s'", raw.Kty)
+		err = fmt.Errorf("square/go-jose: unknown json web key type '%s'", raw.Kty)
 	}
 
 	if err == nil {
@@ -180,7 +180,7 @@ func (k *JsonWebKey) Thumbprint(hash crypto.Hash) ([]byte, error) {
 	case *rsa.PrivateKey:
 		input, err = rsaThumbprintInput(key.N, key.E)
 	default:
-		return nil, fmt.Errorf("square/go-jose: unkown key type '%s'", reflect.TypeOf(key))
+		return nil, fmt.Errorf("square/go-jose: unknown key type '%s'", reflect.TypeOf(key))
 	}
 
 	if err != nil {
@@ -190,6 +190,34 @@ func (k *JsonWebKey) Thumbprint(hash crypto.Hash) ([]byte, error) {
 	h := hash.New()
 	h.Write([]byte(input))
 	return h.Sum(nil), nil
+}
+
+// Valid checks that the key contains the expected parameters
+func (k *JsonWebKey) Valid() bool {
+	if k.Key == nil {
+		return false
+	}
+	switch key := k.Key.(type) {
+	case *ecdsa.PublicKey:
+		if key.Curve == nil || key.X == nil || key.Y == nil {
+			return false
+		}
+	case *ecdsa.PrivateKey:
+		if key.Curve == nil || key.X == nil || key.Y == nil || key.D == nil {
+			return false
+		}
+	case *rsa.PublicKey:
+		if key.N == nil || key.E == 0 {
+			return false
+		}
+	case *rsa.PrivateKey:
+		if key.N == nil || key.E == 0 || key.D == nil || len(key.Primes) < 2 {
+			return false
+		}
+	default:
+		return false
+	}
+	return true
 }
 
 func (key rawJsonWebKey) rsaPublicKey() (*rsa.PublicKey, error) {
