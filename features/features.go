@@ -1,3 +1,5 @@
+//go:generate stringer -type=FeatureFlag
+
 package features
 
 import (
@@ -5,14 +7,28 @@ import (
 	"fmt"
 )
 
+type FeatureFlag int
+
+const (
+	NewVARPC FeatureFlag = iota
+)
+
 // List of features and their default value
-var features = map[string]bool{
-	"NewVARPC": false,
+var features = map[FeatureFlag]bool{
+	NewVARPC: false,
+}
+
+var nameToFeature = make(map[string]FeatureFlag, len(features))
+
+func init() {
+	for f := range features {
+		nameToFeature[f.String()] = f
+	}
 }
 
 type boolVar bool
 
-// you'd think bool would implement this
+// you'd think bool would implement this itself
 func (b boolVar) String() string { return fmt.Sprintf("%t", b) }
 
 // Set accepts a list of features and whether they should
@@ -20,10 +36,11 @@ func (b boolVar) String() string { return fmt.Sprintf("%t", b) }
 // a feature name that it doesn't know. It also
 func Set(featureSet map[string]bool) error {
 	for n, v := range featureSet {
-		if _, present := features[n]; !present {
+		f, present := nameToFeature[n]
+		if !present {
 			return fmt.Errorf("feature '%s' doesn't exist", n)
 		}
-		features[n] = v
+		features[f] = v
 	}
 	return nil
 }
@@ -31,15 +48,15 @@ func Set(featureSet map[string]bool) error {
 // Export populates a expvar.Map with the state of all
 // of the features.
 func Export(m *expvar.Map) {
-	for n, v := range features {
-		m.Set(n, boolVar(v))
+	for f, v := range features {
+		m.Set(f.String(), boolVar(v))
 	}
 }
 
 // Enabled returns true if the feature is enabled or false
 // if it isn't, it will panic if passed a feature name that
 // it doesn't know.
-func Enabled(n string) bool {
+func Enabled(n FeatureFlag) bool {
 	v, present := features[n]
 	if !present {
 		panic(fmt.Sprintf("feature '%s' doesn't exist", n))

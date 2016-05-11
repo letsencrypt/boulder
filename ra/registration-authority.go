@@ -791,7 +791,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(base core.Authorization
 
 	// Dispatch to the VA for service
 
-	if !ra.useNewVARPC || !features.Enabled("NewVARPC") {
+	if !ra.useNewVARPC || !features.Enabled(features.NewVARPC) {
 		// TODO(#1167): remove
 		ra.VA.UpdateValidations(authz, challengeIndex)
 		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
