@@ -38,9 +38,10 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
+
 	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/codegangsta/cli"
-	"github.com/go-sql-driver/mysql"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
