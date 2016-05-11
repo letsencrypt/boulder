@@ -227,7 +227,7 @@
         "proxies": []
     },
     "amqp": {
-    "serverURLFile": "test/secrets/amqp_url",
+      "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "VA.server",
       "RA": {
