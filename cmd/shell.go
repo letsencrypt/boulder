@@ -207,11 +207,10 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	return stats, logger
 }
 
-func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Statter, prefix string) {
+func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Scope) {
 	db := dbMap.Db
-	gaugeName := fmt.Sprintf("%s.OpenConnections", prefix)
 	for {
-		statter.Gauge(gaugeName, int64(db.Stats().OpenConnections), 1.0)
+		statter.Gauge("OpenConnections", int64(db.Stats().OpenConnections))
 		time.Sleep(1 * time.Second)
 	}
 }
