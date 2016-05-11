@@ -41,7 +41,6 @@ import (
 	cfsslLog "github.com/cloudflare/cfssl/log"
 	"github.com/codegangsta/cli"
 	"github.com/go-sql-driver/mysql"
-	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -205,14 +204,6 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	_ = mysql.SetLogger(mysqlLogger{logger})
 
 	return stats, logger
-}
-
-func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Scope) {
-	db := dbMap.Db
-	for {
-		statter.Gauge("OpenConnections", int64(db.Stats().OpenConnections))
-		time.Sleep(1 * time.Second)
-	}
 }
 
 // VersionString produces a friendly Application version string

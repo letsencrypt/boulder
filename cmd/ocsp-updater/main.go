@@ -573,8 +573,7 @@ func main() {
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		dbMap, err := sa.NewDbMap(dbURL, conf.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Could not connect to database")
-
-		go cmd.ReportDbConnCount(dbMap, stats, "OCSPUpdater")
+		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPUpdater"))
 
 		cac, pubc, sac := setupClients(conf, stats)
 
