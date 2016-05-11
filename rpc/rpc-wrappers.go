@@ -736,7 +736,7 @@ func NewCertificateAuthorityServer(rpc Server, impl core.CertificateAuthority) (
 		response, err = json.Marshal(cert)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-			errorCondition(MethodGetRegistration, err, req)
+			errorCondition(MethodIssueCertificate, err, req)
 			return
 		}
 
