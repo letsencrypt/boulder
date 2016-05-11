@@ -331,7 +331,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 		va.log.Info(fmt.Sprintf("TLS-01 connection failure for %s. err=[%#v] errStr=[%s]", identifier, err, err))
 		return validationRecords, &probs.ProblemDetails{
 			Type:   parseHTTPConnError(err),
-			Detail: fmt.Sprintf("Failed to connect to %s", hostPort),
+			Detail: fmt.Sprintf("Failed to connect to %s for TLS-SNI-01 challenge", hostPort),
 		}
 	}
 	// close errors are not important here
@@ -357,7 +357,8 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 	va.log.Info(fmt.Sprintf("Remote host failed to give TLS-01 challenge name. host: %s", identifier))
 	return validationRecords, &probs.ProblemDetails{
 		Type: probs.UnauthorizedProblem,
-		Detail: fmt.Sprintf("Incorrect validation certificate. Requested %s from %s. Received certificate containing '%v'",
+		Detail: fmt.Sprintf("Incorrect validation certificate for TLS-SNI-01 challenge. "+
+			"Requested %s from %s. Received certificate containing '%v'",
 			zName, hostPort, strings.Join(certs[0].DNSNames, ", ")),
 	}
 }
