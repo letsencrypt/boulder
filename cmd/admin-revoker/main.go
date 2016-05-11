@@ -25,9 +25,9 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
-	"github.com/letsencrypt/boulder/metrics"
 )
 
 func loadConfig(c *cli.Context) (config cmd.Config, err error) {
