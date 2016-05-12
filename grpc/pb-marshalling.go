@@ -122,30 +122,21 @@ func pbToVAChallenge(in *corepb.Challenge) (challenge core.Challenge, err error)
 	}, nil
 }
 
-func ipAddrToString(ip net.IP) (string, error) {
-	bytes, err := ip.MarshalText()
-	return string(bytes), err
-}
-
-func stringToIPAddr(in string) (net.IP, error) {
-	var ip net.IP
-	err := ip.UnmarshalText([]byte(in))
-	return ip, err
-}
-
 func validationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecord, error) {
 	addrs := make([]string, len(record.AddressesResolved))
 	var err error
 	for i, v := range record.AddressesResolved {
-		addrs[i], err = ipAddrToString(v)
+		addrBytes, err := v.MarshalText()
 		if err != nil {
 			return nil, err
 		}
+		addrs[i] = string(addrBytes)
 	}
-	addrUsed, err := ipAddrToString(record.AddressUsed)
+	addrUsedBytes, err := record.AddressUsed.MarshalText()
 	if err != nil {
 		return nil, err
 	}
+	addrUsed := string(addrUsedBytes)
 	return &corepb.ValidationRecord{
 		Hostname:          &record.Hostname,
 		Port:              &record.Port,
@@ -165,12 +156,13 @@ func pbToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	}
 	addrs := make([]net.IP, len(in.AddressesResolved))
 	for i, v := range in.AddressesResolved {
-		addrs[i], err = stringToIPAddr(v)
+		err = addrs[i].UnmarshalText([]byte(v))
 		if err != nil {
 			return
 		}
 	}
-	addrUsed, err := stringToIPAddr(*in.AddressUsed)
+	var addrUsed net.IP
+	err = addrUsed.UnmarshalText([]byte(*in.AddressUsed))
 	if err != nil {
 		return
 	}
