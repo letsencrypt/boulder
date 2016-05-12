@@ -12,7 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
+	jose "github.com/square/go-jose"
 )
 
 const JWK1JSON = `{
@@ -46,7 +46,10 @@ func TestJsonWebKey(t *testing.T) {
 	tc := BoulderTypeConverter{}
 
 	var jwk, out jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk)
+	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	marshaledI, err := tc.ToDb(jwk)
 	test.AssertNotError(t, err, "Could not ToDb")

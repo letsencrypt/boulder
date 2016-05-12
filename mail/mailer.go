@@ -21,7 +21,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 )
 
 type idGenerator interface {
@@ -158,11 +158,11 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 	if err != nil {
 		return err
 	}
-	if m.client.Mail(m.from); err != nil {
+	if err = m.client.Mail(m.from); err != nil {
 		return err
 	}
 	for _, t := range to {
-		if m.client.Rcpt(t); err != nil {
+		if err = m.client.Rcpt(t); err != nil {
 			return err
 		}
 	}

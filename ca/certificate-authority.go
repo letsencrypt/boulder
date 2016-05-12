@@ -23,14 +23,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	cferr "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/errors"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/signer/local"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/pkcs11"
+	"golang.org/x/net/context"
+
+	"github.com/cactus/go-statsd-client/statsd"
+	cfsslConfig "github.com/cloudflare/cfssl/config"
+	cferr "github.com/cloudflare/cfssl/errors"
+	"github.com/cloudflare/cfssl/ocsp"
+	"github.com/cloudflare/cfssl/signer"
+	"github.com/cloudflare/cfssl/signer/local"
+	"github.com/jmhodges/clock"
+	"github.com/miekg/pkcs11"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -117,6 +119,10 @@ const (
 	maxCNLength = 64
 )
 
+type certificateStorage interface {
+	AddCertificate(context.Context, []byte, int64) (string, error)
+}
+
 // CertificateAuthorityImpl represents a CA that signs certificates, CRLs, and
 // OCSP responses.
 type CertificateAuthorityImpl struct {
@@ -126,12 +132,12 @@ type CertificateAuthorityImpl struct {
 	issuers map[string]*internalIssuer
 	// The common name of the default issuer cert
 	defaultIssuer    *internalIssuer
-	SA               core.StorageAuthority
+	SA               certificateStorage
 	PA               core.PolicyAuthority
 	Publisher        core.Publisher
 	keyPolicy        core.KeyPolicy
 	clk              clock.Clock
-	log              *blog.AuditLogger
+	log              blog.Logger
 	stats            statsd.Statter
 	prefix           int // Prepended to the serial number
 	validityPeriod   time.Duration
@@ -203,8 +209,7 @@ func NewCertificateAuthorityImpl(
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
-	logger := blog.GetAuditLogger()
-	logger.Notice("Certificate Authority Starting")
+	logger := blog.Get()
 
 	if config.SerialPrefix <= 0 || config.SerialPrefix >= 256 {
 		err = errors.New("Must have a positive non-zero serial prefix less than 256 for CA.")
@@ -354,7 +359,7 @@ func (ca *CertificateAuthorityImpl) extensionsFromCSR(csr *x509.CertificateReque
 }
 
 // GenerateOCSP produces a new OCSP response and returns it
-func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest) ([]byte, error) {
+func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) ([]byte, error) {
 	cert, err := x509.ParseCertificate(xferObj.CertDER)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -391,7 +396,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(xferObj core.OCSPSigningRequest
 // enforcing all policies. Names (domains) in the CertificateRequest will be
 // lowercased before storage.
 // Currently it will always sign with the defaultIssuer.
-func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
 	key, ok := csr.PublicKey.(crypto.PublicKey)
@@ -449,9 +454,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	if ca.maxNames > 0 && len(hostNames) > ca.maxNames {
-		err := core.MalformedRequestError(fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames))
-		ca.log.WarningErr(err)
-		return emptyCert, err
+		msg := fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames)
+		ca.log.Info(msg)
+		return emptyCert, core.MalformedRequestError(msg)
 	}
 
 	// Verify that names are allowed by policy
@@ -534,7 +539,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		req.Subject.SerialNumber = serialHex
 	}
 
-	ca.log.AuditNotice(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
+	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
 		serialHex, strings.Join(hostNames, ", "), csrPEM))
 
 	certPEM, err := issuer.eeSigner.Sign(req)
@@ -546,7 +551,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 		return emptyCert, err
 	}
 
-	ca.log.AuditNotice(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] pem=[%s]",
+	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] pem=[%s]",
 		serialHex, strings.Join(hostNames, ", "), csrPEM,
 		certPEM))
 
@@ -581,7 +586,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Store the cert with the certificate authority, if provided
-	_, err = ca.SA.AddCertificate(certDER, regID)
+	_, err = ca.SA.AddCertificate(ctx, certDER, regID)
 	if err != nil {
 		err = core.InternalServerError(err.Error())
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -596,7 +601,10 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(csr x509.CertificateRequest
 	}
 
 	// Submit the certificate to any configured CT logs
-	go ca.Publisher.SubmitToCT(certDER)
+	go func() {
+		ctx := context.Background()
+		_ = ca.Publisher.SubmitToCT(ctx, certDER)
+	}()
 
 	// Do not return an err at this point; caller must know that the Certificate
 	// was issued. (Also, it should be impossible for err to be non-nil here)

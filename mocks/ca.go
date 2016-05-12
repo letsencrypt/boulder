@@ -5,6 +5,8 @@ import (
 	"encoding/pem"
 	"fmt"
 
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -15,7 +17,7 @@ type MockCA struct {
 }
 
 // IssueCertificate is a mock
-func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
+func (ca *MockCA) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	if ca.PEM == nil {
 		return core.Certificate{}, fmt.Errorf("MockCA's PEM field must be set before calling IssueCertificate")
 	}
@@ -30,11 +32,11 @@ func (ca *MockCA) IssueCertificate(csr x509.CertificateRequest, regID int64) (co
 }
 
 // GenerateOCSP is a mock
-func (ca *MockCA) GenerateOCSP(xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
+func (ca *MockCA) GenerateOCSP(ctx context.Context, xferObj core.OCSPSigningRequest) (ocsp []byte, err error) {
 	return
 }
 
 // RevokeCertificate is a mock
-func (ca *MockCA) RevokeCertificate(serial string, reasonCode core.RevocationCode) (err error) {
+func (ca *MockCA) RevokeCertificate(ctx context.Context, serial string, reasonCode core.RevocationCode) (err error) {
 	return
 }
