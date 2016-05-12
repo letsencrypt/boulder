@@ -32,8 +32,6 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	jose "github.com/square/go-jose"
-	"golang.org/x/net/context"
 )
 
 type DummyValidationAuthority struct {
@@ -526,7 +524,7 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
 	ra.useNewVARPC = true
-	features.Set(map[string]bool{"NewVARPC": true})
+	_ = features.Set(map[string]bool{"NewVARPC": true})
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
