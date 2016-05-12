@@ -1041,7 +1041,7 @@ func TestLimitedReader(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching("Invalid response")), 2)
 }
 
-func TestGetCAASetFallback(t *testing.T) {
+func TestCheckCAAFallback(t *testing.T) {
 	testSrv := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
 	defer testSrv.Close()
 
@@ -1051,11 +1051,11 @@ func TestGetCAASetFallback(t *testing.T) {
 	caaDR.URI = testSrv.URL
 	caaDR.Clients["1.1.1.1"] = new(http.Client)
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, caaDR, stats, clock.Default())
+	va.IssuerDomain = "letsencrypt.org"
 	va.DNSResolver = &bdns.MockDNSResolver{}
 
-	set, err := va.getCAASet(ctx, "bad-local-resolver.com")
-	test.AssertNotError(t, err, "getCAASet failed to fail back to cdr on timeout")
-	test.AssertEquals(t, len(set.Issue), 1)
+	prob := va.checkCAA(ctx, core.AcmeIdentifier{Value: "bad-local-resolver.com", Type: "dns"})
+	test.Assert(t, prob == nil, fmt.Sprintf("returned ProblemDetails was non-nil: %#v", prob))
 }
 
 func TestParseResults(t *testing.T) {

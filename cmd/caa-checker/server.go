@@ -194,6 +194,9 @@ func (ccs *caaCheckerServer) ValidForIssuance(ctx context.Context, check *pb.Che
 			return nil, bgrpc.CodedError(bgrpc.DNSQueryTimeout.GRPCCode(), err.Error())
 		}
 		if dnsErr, ok := err.(*bdns.DNSError); ok {
+			if dnsErr.Timeout() {
+				return nil, bgrpc.CodedError(bgrpc.DNSQueryTimeout.GRPCCode(), err.Error())
+			}
 			return nil, bgrpc.CodedError(bgrpc.DNSError.GRPCCode(), dnsErr.Error())
 		}
 		return nil, bgrpc.CodedError(bgrpc.DNSError.GRPCCode(), "server failure at resolver")

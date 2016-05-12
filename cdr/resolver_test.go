@@ -24,7 +24,7 @@ var log = blog.UseMock()
 
 func TestParseAnswer(t *testing.T) {
 	as := []core.GPDNSAnswer{
-		{"a", 257, 10, "0 issue \"ca.com\""},
+		{"a", 257, 10, "0 issue \"letsencrypt.org\""},
 		{"b", 1, 10, "1.1.1.1"},
 	}
 
@@ -35,7 +35,7 @@ func TestParseAnswer(t *testing.T) {
 	test.AssertEquals(t, r[0].Hdr.Ttl, uint32(10))
 	test.AssertEquals(t, r[0].Flag, uint8(0))
 	test.AssertEquals(t, r[0].Tag, "issue")
-	test.AssertEquals(t, r[0].Value, "ca.com")
+	test.AssertEquals(t, r[0].Value, "letsencrypt.org")
 }
 
 func TestQueryCAA(t *testing.T) {
@@ -51,14 +51,14 @@ func TestQueryCAA(t *testing.T) {
 
 	client := new(http.Client)
 	cpr := CAADistributedResolver{logger: log}
-	set, err := cpr.queryCAA(context.Background(), req, client)
+	set, err := cpr.queryCAA(context.Background(), testServ.URL+"?name=test-domain", client)
 	test.AssertNotError(t, err, "queryCAA failed")
 	test.AssertEquals(t, len(set), 1)
 	test.AssertEquals(t, set[0].Hdr.Name, "test-domain.")
 	test.AssertEquals(t, set[0].Hdr.Ttl, uint32(10))
 	test.AssertEquals(t, set[0].Flag, uint8(0))
 	test.AssertEquals(t, set[0].Tag, "issue")
-	test.AssertEquals(t, set[0].Value, "ca.com")
+	test.AssertEquals(t, set[0].Value, "letsencrypt.org")
 }
 
 func TestLookupCAA(t *testing.T) {
@@ -85,7 +85,7 @@ func TestLookupCAA(t *testing.T) {
 	test.AssertEquals(t, set[0].Hdr.Ttl, uint32(10))
 	test.AssertEquals(t, set[0].Flag, uint8(0))
 	test.AssertEquals(t, set[0].Tag, "issue")
-	test.AssertEquals(t, set[0].Value, "ca.com")
+	test.AssertEquals(t, set[0].Value, "letsencrypt.org")
 
 	set, err = cpr.LookupCAA(context.Background(), "break")
 	test.AssertError(t, err, "LookupCAA should've failed")

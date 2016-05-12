@@ -412,7 +412,7 @@ func GPDNSHandler(w http.ResponseWriter, r *http.Request) {
 		resp := core.GPDNSResponse{
 			Status: dns.RcodeSuccess,
 			Answer: []core.GPDNSAnswer{
-				{r.URL.Query().Get("name"), 257, 10, "0 issue \"ca.com\""},
+				{r.URL.Query().Get("name"), 257, 10, "0 issue \"letsencrypt.org\""},
 			},
 		}
 		data, err := json.Marshal(resp)

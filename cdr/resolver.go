@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/miekg/dns"
@@ -42,7 +41,7 @@ import (
 // cache state between the distributed nodes so this should be safe).
 //
 // Since DNS isn't a super secure protocol and Google has recently introduced
-// a public HTTPS API for their DNS resolver so instead we use that.
+// a public HTTPS API for their DNS resolver we use that instead.
 //
 // API reference:
 //   https://developers.google.com/speed/public-dns/docs/dns-over-https#api_specification
@@ -118,8 +117,8 @@ func New(scope metrics.Scope, timeout time.Duration, maxFailures int, proxies []
 // failed queries if the context has not expired as we expect to be running
 // multiple queries in parallel and only need a M of N quorum (we also expect
 // GPD to have quite good availability)
-func (cdr *CAADistributedResolver) queryCAA(ctx context.Context, req *http.Request, ic *http.Client) ([]*dns.CAA, error) {
-	apiResp, err := ctxhttp.Do(ctx, ic, req)
+func (cdr *CAADistributedResolver) queryCAA(ctx context.Context, url string, ic *http.Client) ([]*dns.CAA, error) {
+	apiResp, err := ctxhttp.Get(ctx, ic, url)
 	if err != nil {
 		return nil, err
 	}
@@ -185,24 +184,16 @@ func marshalCanonicalCAASet(set []*dns.CAA) ([]byte, error) {
 
 // LookupCAA performs a multipath CAA DNS lookup using GPDNS
 func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
-	query := make(url.Values)
-	query.Add("name", domain)
-	query.Add("type", strconv.Itoa(int(dns.TypeCAA))) // CAA
-	rawQuery := query.Encode()
+	url := fmt.Sprintf("%s?name=%s&type=%d", cdr.URI, domain, dns.TypeCAA)
 
 	// min of ctx deadline and time.Now().Add(cdr.timeout)
 	caaCtx, cancel := context.WithTimeout(ctx, cdr.timeout)
 	defer cancel()
 	results := make(chan queryResult, len(cdr.Clients))
 	for addr, interfaceClient := range cdr.Clients {
-		req, err := http.NewRequest("GET", cdr.URI, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.URL.RawQuery = rawQuery
 		go func(ic *http.Client, ia string) {
 			started := time.Now()
-			records, err := cdr.queryCAA(caaCtx, req, ic)
+			records, err := cdr.queryCAA(caaCtx, url, ic)
 			cdr.stats.TimingDuration(fmt.Sprintf("CDR.GPDNS.Latency.%s", ia), time.Since(started))
 			if err != nil {
 				cdr.stats.Inc(fmt.Sprintf("CDR.GPDNS.Failures.%s", ia), 1)
