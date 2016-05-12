@@ -358,7 +358,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 	return validationRecords, &probs.ProblemDetails{
 		Type: probs.UnauthorizedProblem,
 		Detail: fmt.Sprintf("Incorrect validation certificate for TLS-SNI-01 challenge. "+
-			"Requested %s from %s. Received certificate containing '%v'",
+			"Requested %s from %s. Received certificate containing '%s'",
 			zName, hostPort, strings.Join(certs[0].DNSNames, ", ")),
 	}
 }
