@@ -90,11 +90,10 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 		return err
 	}
 
+	localCtx, cancel := context.WithTimeout(ctx, pub.submissionTimeout)
+	defer cancel()
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 	for _, ctLog := range pub.ctLogs {
-		localCtx, cancel := context.WithTimeout(ctx, pub.submissionTimeout)
-		// since there are possible error cases defer instead of explicitly cancelling
-		defer cancel()
 		sct, err := ctLog.client.AddChainWithContext(localCtx, chain)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -124,7 +123,7 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 			continue
 		}
 
-		err = pub.SA.AddSCTReceipt(ctx, internalSCT)
+		err = pub.SA.AddSCTReceipt(localCtx, internalSCT)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.Err(fmt.Sprintf("Failed to store SCT receipt in database: %s", err))
