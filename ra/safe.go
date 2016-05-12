@@ -34,9 +34,5 @@ func (d *DomainCheck) IsSafe(ctx context.Context, domain string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if resp.IsSafe == nil {
-		// omitempty means that nil = false
-		return false, nil
-	}
-	return *resp.IsSafe, nil
+	return resp.GetIsSafe(), nil
 }

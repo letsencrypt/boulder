@@ -40,7 +40,8 @@ func TestIsSafeDomain(t *testing.T) {
 	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("good.com: want no error, got '%s'", err)
-	} else if !*resp.IsSafe {
+	}
+	if !resp.GetIsSafe() {
 		t.Errorf("good.com: want true, got %t", resp)
 	}
 
@@ -48,7 +49,8 @@ func TestIsSafeDomain(t *testing.T) {
 	resp, err = va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("bad.com: want no error, got '%s'", err)
-	} else if *resp.IsSafe {
+	}
+	if resp.GetIsSafe() {
 		t.Errorf("bad.com: want false, got %t", resp)
 	}
 
@@ -65,7 +67,8 @@ func TestIsSafeDomain(t *testing.T) {
 	resp, err = va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("outofdate.com: want no error, got '%s'", err)
-	} else if !*resp.IsSafe {
+	}
+	if !resp.GetIsSafe() {
 		t.Errorf("outofdate.com: IsSafeDomain should fail open on out of date hashes")
 	}
 }
@@ -80,7 +83,8 @@ func TestAllowNilInIsSafeDomain(t *testing.T) {
 	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		t.Errorf("nil SafeBrowsing, unexpected error: %s", err)
-	} else if !*resp.IsSafe {
+	}
+	if !resp.GetIsSafe() {
 		t.Errorf("nil Safebrowsing, should fail open but failed closed")
 	}
 }
