@@ -254,7 +254,7 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 		}
 	}
 
-	if pa.exactBlacklist[joined] {
+	if pa.exactBlacklist[domain] {
 		return errBlacklisted
 	}
 	return nil
