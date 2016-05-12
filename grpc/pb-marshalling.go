@@ -18,7 +18,6 @@ import (
 )
 
 var ErrMissingParameters = CodedError(codes.FailedPrecondition, "required RPC parameter was missing")
-var ErrNilReturn = CodedError(codes.Internal, "unexpected nil return value with no error")
 
 // This file defines functions to translate between the protobuf types and the
 // code types.
