@@ -29,9 +29,11 @@ var _ = math.Inf
 const _ = proto1.ProtoPackageIsVersion1
 
 type Challenge struct {
-	Id                *int64              `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
-	Type              *string             `protobuf:"bytes,2,opt,name=type" json:"type,omitempty"`
-	Status            *string             `protobuf:"bytes,6,opt,name=status" json:"status,omitempty"`
+	Id     *int64  `protobuf:"varint,1,opt,name=id" json:"id,omitempty"`
+	Type   *string `protobuf:"bytes,2,opt,name=type" json:"type,omitempty"`
+	Status *string `protobuf:"bytes,6,opt,name=status" json:"status,omitempty"`
+	// We use a string instead of an int64 millis / int32 nanos / timezone
+	// because having to decompose into 3 fields is extremely awkward.
 	ValidatedTime     *string             `protobuf:"bytes,8,opt,name=validatedTime" json:"validatedTime,omitempty"`
 	Uri               *string             `protobuf:"bytes,9,opt,name=uri" json:"uri,omitempty"`
 	Token             *string             `protobuf:"bytes,3,opt,name=token" json:"token,omitempty"`
