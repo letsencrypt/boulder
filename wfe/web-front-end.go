@@ -200,11 +200,14 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 	wfe.CertBase = wfe.BaseURL + CertPath
 
 	// Only generate directory once
-	directory := map[string]string{
+	directory := map[string]interface{}{
 		"new-reg":     wfe.NewReg,
 		"new-authz":   wfe.NewAuthz,
 		"new-cert":    wfe.NewCert,
 		"revoke-cert": wfe.BaseURL + RevokeCertPath,
+		"meta": map[string]string{
+			"terms-of-service": wfe.SubscriberAgreementURL,
+		},
 	}
 	directoryJSON, err := json.Marshal(directory)
 	if err != nil {
