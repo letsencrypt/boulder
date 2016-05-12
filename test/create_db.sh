@@ -22,36 +22,32 @@ mysql $dbconn -e "SET GLOBAL binlog_format = 'MIXED';"
 # Drop all users to get a fresh start
 mysql $dbconn < test/drop_users.sql
 
-for svc in $SERVICES; do
-	for dbenv in $DBENVS; do
-		(
-		db="boulder_${svc}_${dbenv}"
-		create_script="drop database if exists \`${db}\`; create database if not exists \`${db}\`;"
+for dbenv in $DBENVS; do
+  (
+  db="boulder_sa_${dbenv}"
+  create_script="drop database if exists \`${db}\`; create database if not exists \`${db}\`;"
 
-		mysql $dbconn -e "$create_script" || die "unable to create ${db}"
+  mysql $dbconn -e "$create_script" || die "unable to create ${db}"
 
-		echo "created empty ${db} database"
+  echo "created empty ${db} database"
 
-		goose -path=./$svc/_db/ -env=$dbenv up || die "unable to migrate ${db}"
-		echo "migrated ${db} database"
+  goose -path=./sa/_db/ -env=$dbenv up || die "unable to migrate ${db}"
+  echo "migrated ${db} database"
 
-		# With MYSQL_CONTAINER, patch the GRANT statements to
-		# use 127.0.0.1, not localhost, as MySQL may interpret
-		# 'username'@'localhost' to mean only users for UNIX
-		# socket connections.
-		USERS_SQL=test/${svc}_db_users.sql
-		if [[ -f $USERS_SQL ]]; then
-			if [[ $MYSQL_CONTAINER ]]; then
-				sed -e "s/'localhost'/'%'/g" < $USERS_SQL | \
-					mysql $dbconn -D $db || die "unable to add users to ${db}"
-			else
-				sed -e "s/'localhost'/'127.%'/g" < $USERS_SQL | \
-					mysql $dbconn -D $db < $USERS_SQL || die "unable to add users to ${db}"
-			fi
-			echo "added users to ${db}"
-		fi
-		) &
-	done
+  # With MYSQL_CONTAINER, patch the GRANT statements to
+  # use 127.0.0.1, not localhost, as MySQL may interpret
+  # 'username'@'localhost' to mean only users for UNIX
+  # socket connections.
+  USERS_SQL=test/sa_db_users.sql
+  if [[ ${MYSQL_CONTAINER} ]]; then
+    sed -e "s/'localhost'/'%'/g" < ${USERS_SQL} | \
+      mysql $dbconn -D $db || die "unable to add users to ${db}"
+  else
+    sed -e "s/'localhost'/'127.%'/g" < $USERS_SQL | \
+      mysql $dbconn -D $db < $USERS_SQL || die "unable to add users to ${db}"
+  fi
+  echo "added users to ${db}"
+  ) &
 done
 wait
 

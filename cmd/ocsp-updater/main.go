@@ -571,7 +571,7 @@ func main() {
 		// Configure DB
 		dbURL, err := conf.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
-		dbMap, err := sa.NewDbMap(dbURL)
+		dbMap, err := sa.NewDbMap(dbURL, conf.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		cac, pubc, sac := setupClients(conf, stats)

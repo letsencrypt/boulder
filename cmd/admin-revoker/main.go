@@ -54,7 +54,7 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, blog.L
 
 	dbURL, err := c.Revoker.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbMap, err := sa.NewDbMap(dbURL)
+	dbMap, err := sa.NewDbMap(dbURL, c.Revoker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't setup database connection")
 
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)

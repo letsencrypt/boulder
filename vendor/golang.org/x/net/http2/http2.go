@@ -170,8 +170,9 @@ var (
 //  RFC 7230 says:
 //   header-field   = field-name ":" OWS field-value OWS
 //   field-name     = token
+//   token          = 1*tchar
 //   tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*" / "+" / "-" / "." /
-//           "^" / "_" / "
+//           "^" / "_" / "`" / "|" / "~" / DIGIT / ALPHA
 // Further, http2 says:
 //   "Just as in HTTP/1.x, header field names are strings of ASCII
 //   characters that are compared in a case-insensitive
@@ -321,7 +322,7 @@ func mustUint31(v int32) uint32 {
 }
 
 // bodyAllowedForStatus reports whether a given response status code
-// permits a body. See RFC2616, section 4.4.
+// permits a body. See RFC 2616, section 4.4.
 func bodyAllowedForStatus(status int) bool {
 	switch {
 	case status >= 100 && status <= 199:
