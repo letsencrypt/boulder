@@ -107,6 +107,16 @@ func TestWillingToIssue(t *testing.T) {
 		`www.google.com`,
 		`lots.of.labels.pornhub.com`,
 	}
+	blacklistContents := []string{
+		`ebay.co.uk`,
+		`google.com`,
+		`pornhub.com`,
+	}
+	exactBlacklistContents := []string{
+		`www.mozilla.org`,
+		`addons.mozilla.org`,
+		`bugzilla.mozilla.org`,
+	}
 
 	shouldBeAccepted := []string{
 		"www.zombo.com",
@@ -120,7 +130,8 @@ func TestWillingToIssue(t *testing.T) {
 	pa := paImpl(t)
 
 	blacklistBytes, err := json.Marshal(blacklistJSON{
-		Blacklist: shouldBeBlacklisted,
+		Blacklist:      blacklistContents,
+		ExactBlacklist: exactBlacklistContents,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize blacklist")
 	f, _ := ioutil.TempFile("", "test-blacklist.txt")
