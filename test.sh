@@ -263,7 +263,7 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   # `godep restore` matched what was in the remote repo.
   cp Godeps/Godeps.json Godeps/Godeps.json.head
   run_and_comment godep save ./...
-  run_and_comment jq --argfile head Godeps/Godeps.json.head --argfile master Godeps/Godeps.json -n 'if $master.Deps-$head.Deps | length > 0 then "added",$master.Deps-$head.Deps else empty end, if $head.Deps-$master.Deps | length > 0 then "removed",$head.Deps-$master.Deps else empty end'
+  run_and_comment diff <(sed /GodepVersion/d Godeps/Godeps.json.head) <(sed /GodepVersion/d Godeps/Godeps.json)
   end_context #godep-restore
 fi
 

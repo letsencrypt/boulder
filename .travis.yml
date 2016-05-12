@@ -20,7 +20,6 @@ addons:
       - libffi-dev
       - ca-certificates
       - rsyslog
-      - jq
   mariadb: "10.0"
 
 sudo: false
