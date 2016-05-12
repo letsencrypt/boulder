@@ -30,11 +30,10 @@ func (va *ValidationAuthorityImpl) IsSafeDomain(ctx context.Context, req *vaPB.I
 	if req == nil || req.Domain == nil {
 		return nil, bgrpc.ErrMissingParameters
 	}
-	var status bool
 	va.stats.Inc("VA.IsSafeDomain.Requests", 1, 1.0)
 	if va.SafeBrowsing == nil {
 		va.stats.Inc("VA.IsSafeDomain.Skips", 1, 1.0)
-		status = true
+		status := true
 		return &vaPB.IsDomainSafe{IsSafe: &status}, nil
 	}
 
@@ -43,13 +42,13 @@ func (va *ValidationAuthorityImpl) IsSafeDomain(ctx context.Context, req *vaPB.I
 		va.stats.Inc("VA.IsSafeDomain.Errors", 1, 1.0)
 		if err == safebrowsing.ErrOutOfDateHashes {
 			va.stats.Inc("VA.IsSafeDomain.OutOfDateHashErrors", 1, 1.0)
-			status = true
+			status := true
 			return &vaPB.IsDomainSafe{IsSafe: &status}, nil
 		}
 		return nil, err
 	}
 	va.stats.Inc("VA.IsSafeDomain.Successes", 1, 1.0)
-	status = (list == "")
+	status := (list == "")
 	if status {
 		va.stats.Inc("VA.IsSafeDomain.Status.Good", 1, 1.0)
 	} else {
