@@ -18,10 +18,12 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"golang.org/x/net/context"
+
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/codegangsta/cli"
+	"github.com/jmhodges/clock"
+	"gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -41,12 +43,12 @@ type emailContent struct {
 }
 
 type regStore interface {
-	GetRegistration(int64) (core.Registration, error)
+	GetRegistration(context.Context, int64) (core.Registration, error)
 }
 
 type mailer struct {
 	stats         statsd.Statter
-	log           *blog.AuditLogger
+	log           blog.Logger
 	dbMap         *gorp.DbMap
 	rs            regStore
 	mailer        mail.Mailer
@@ -116,15 +118,15 @@ func (m *mailer) updateCertStatus(serial string) error {
 	// Update CertificateStatus object
 	tx, err := m.dbMap.Begin()
 	if err != nil {
+		err = sa.Rollback(tx, err)
 		m.log.Err(fmt.Sprintf("Error opening transaction for certificate %s: %s", serial, err))
-		tx.Rollback()
 		return err
 	}
 
 	csObj, err := tx.Get(&core.CertificateStatus{}, serial)
 	if err != nil {
+		err = sa.Rollback(tx, err)
 		m.log.Err(fmt.Sprintf("Error fetching status for certificate %s: %s", serial, err))
-		tx.Rollback()
 		return err
 	}
 	certStatus := csObj.(*core.CertificateStatus)
@@ -132,15 +134,15 @@ func (m *mailer) updateCertStatus(serial string) error {
 
 	_, err = tx.Update(certStatus)
 	if err != nil {
+		err = sa.Rollback(tx, err)
 		m.log.Err(fmt.Sprintf("Error updating status for certificate %s: %s", serial, err))
-		tx.Rollback()
 		return err
 	}
 
 	err = tx.Commit()
 	if err != nil {
+		err = sa.Rollback(tx, err)
 		m.log.Err(fmt.Sprintf("Error committing transaction for certificate %s: %s", serial, err))
-		tx.Rollback()
 		return err
 	}
 
@@ -162,6 +164,7 @@ func (m *mailer) certIsRenewed(serial string) (renewed bool, err error) {
 }
 
 func (m *mailer) processCerts(allCerts []core.Certificate) {
+	ctx := context.Background()
 	m.log.Info(fmt.Sprintf("expiration-mailer: Found %d certificates, starting sending messages", len(allCerts)))
 
 	regIDToCerts := make(map[int64][]core.Certificate)
@@ -173,7 +176,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 	}
 
 	for regID, certs := range regIDToCerts {
-		reg, err := m.rs.GetRegistration(regID)
+		reg, err := m.rs.GetRegistration(ctx, regID)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error fetching registration %d: %s", regID, err))
 			m.stats.Inc("Mailer.Expiration.Errors.GetRegistration", 1, 1.0)
@@ -202,15 +205,21 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			parsedCerts = append(parsedCerts, parsedCert)
 		}
 
+		if len(parsedCerts) == 0 {
+			// all certificates are renewed
+			continue
+		}
+
 		err = m.sendNags(reg.Contact, parsedCerts)
 		if err != nil {
 			m.log.Err(fmt.Sprintf("Error sending nag emails: %s", err))
 			continue
 		}
-		for _, cert := range certs {
-			err = m.updateCertStatus(cert.Serial)
+		for _, cert := range parsedCerts {
+			serial := core.SerialToString(cert.SerialNumber)
+			err = m.updateCertStatus(serial)
 			if err != nil {
-				m.log.Err(fmt.Sprintf("Error updating certificate status for %s: %s", cert.Serial, err))
+				m.log.Err(fmt.Sprintf("Error updating certificate status for %s: %s", serial, err))
 				m.stats.Inc("Mailer.Expiration.Errors.UpdateCertificateStatus", 1, 1.0)
 				continue
 			}
@@ -300,13 +309,13 @@ func main() {
 		return config
 	}
 
-	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		go cmd.DebugServer(c.Mailer.DebugAddr)
 
 		// Configure DB
 		dbURL, err := c.Mailer.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
-		dbMap, err := sa.NewDbMap(dbURL)
+		dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Could not connect to database")
 
 		amqpConf := c.Mailer.AMQP
@@ -327,13 +336,15 @@ func main() {
 		mailClient := mail.New(c.Mailer.Server, c.Mailer.Port, c.Mailer.Username, smtpPassword, c.Mailer.From)
 		err = mailClient.Connect()
 		cmd.FailOnError(err, "Couldn't connect to mail server.")
-		defer mailClient.Close()
+		defer func() {
+			_ = mailClient.Close()
+		}()
 
 		nagCheckInterval := defaultNagCheckInterval
 		if s := c.Mailer.NagCheckInterval; s != "" {
 			nagCheckInterval, err = time.ParseDuration(s)
 			if err != nil {
-				auditlogger.Err(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
+				logger.Err(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
 				return
 			}
 		}
@@ -342,7 +353,7 @@ func main() {
 		for _, nagDuration := range c.Mailer.NagTimes {
 			dur, err := time.ParseDuration(nagDuration)
 			if err != nil {
-				auditlogger.Err(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
+				logger.Err(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
 				return
 			}
 			nags = append(nags, dur+nagCheckInterval)
@@ -357,7 +368,7 @@ func main() {
 		m := mailer{
 			stats:         stats,
 			subject:       subject,
-			log:           auditlogger,
+			log:           logger,
 			dbMap:         dbMap,
 			rs:            sac,
 			mailer:        &mailClient,
@@ -367,7 +378,7 @@ func main() {
 			clk:           cmd.Clock(),
 		}
 
-		auditlogger.Info("expiration-mailer: Starting")
+		logger.Info("expiration-mailer: Starting")
 		err = m.findExpiringCertificates()
 		cmd.FailOnError(err, "expiration-mailer has failed")
 	}

@@ -27,7 +27,6 @@ import (
 	"errors"
 	"expvar" // For DebugServer, below.
 	"fmt"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/go-sql-driver/mysql"
 	"io/ioutil"
 	"log"
 	"log/syslog"
@@ -39,8 +38,10 @@ import (
 	"runtime"
 	"time"
 
-	cfsslLog "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/log"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
+	"github.com/go-sql-driver/mysql"
+
+	cfsslLog "github.com/cloudflare/cfssl/log"
+	"github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
@@ -50,7 +51,7 @@ import (
 
 // AppShell contains CLI Metadata
 type AppShell struct {
-	Action func(Config, metrics.Statter, *blog.AuditLogger)
+	Action func(Config, metrics.Statter, blog.Logger)
 	Config func(*cli.Context, Config) Config
 	App    *cli.App
 }
@@ -145,14 +146,14 @@ func (as *AppShell) Run() {
 			}
 		}
 
-		stats, auditlogger := StatsAndLogging(config.Statsd, config.Syslog)
-		auditlogger.Info(as.VersionString())
+		stats, logger := StatsAndLogging(config.Statsd, config.Syslog)
+		logger.Info(as.VersionString())
 
 		// If as.Action generates a panic, this will log it to syslog.
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
+		defer logger.AuditPanic()
 
-		as.Action(config, stats, auditlogger)
+		as.Action(config, stats, logger)
 	}
 
 	err := as.App.Run(os.Args)
@@ -161,17 +162,31 @@ func (as *AppShell) Run() {
 
 // mysqlLogger proxies blog.AuditLogger to provide a Print(...) method.
 type mysqlLogger struct {
-	*blog.AuditLogger
+	blog.Logger
 }
 
 func (m mysqlLogger) Print(v ...interface{}) {
 	m.Err(fmt.Sprintf("[mysql] %s", fmt.Sprint(v...)))
 }
 
+// cfsslLogger provides two additional methods that are expected by CFSSL's
+// logger but not supported by Boulder's Logger.
+type cfsslLogger struct {
+	blog.Logger
+}
+
+func (cl cfsslLogger) Crit(msg string) {
+	cl.Err(msg)
+}
+
+func (cl cfsslLogger) Emerg(msg string) {
+	cl.Err(msg)
+}
+
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
 // parameters, and return them both. Crashes if any setup fails.
 // Also sets the constructed AuditLogger as the default logger.
-func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statter, *blog.AuditLogger) {
+func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statter, blog.Logger) {
 	stats, err := metrics.NewStatter(statConf.Server, statConf.Prefix)
 	FailOnError(err, "Couldn't connect to statsd")
 
@@ -186,14 +201,14 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 	if logConf.StdoutLevel != nil {
 		level = *logConf.StdoutLevel
 	}
-	auditLogger, err := blog.NewAuditLogger(syslogger, stats, level)
+	logger, err := blog.New(syslogger, level)
 	FailOnError(err, "Could not connect to Syslog")
 
-	blog.SetAuditLogger(auditLogger)
-	cfsslLog.SetLogger(auditLogger)
-	mysql.SetLogger(mysqlLogger{auditLogger})
+	_ = blog.Set(logger)
+	cfsslLog.SetLogger(cfsslLogger{logger})
+	_ = mysql.SetLogger(mysqlLogger{logger})
 
-	return stats, auditLogger
+	return stats, logger
 }
 
 // VersionString produces a friendly Application version string
@@ -205,7 +220,7 @@ func (as *AppShell) VersionString() string {
 func FailOnError(err error, msg string) {
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		logger := blog.GetAuditLogger()
+		logger := blog.Get()
 		logger.Err(fmt.Sprintf("%s: %s", msg, err))
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
 		os.Exit(1)
@@ -293,5 +308,8 @@ func DebugServer(addr string) {
 	if err != nil {
 		log.Fatalf("unable to boot debug server on %#v", addr)
 	}
-	http.Serve(ln, nil)
+	err = http.Serve(ln, nil)
+	if err != nil {
+		log.Fatalf("unable to boot debug server: %v", err)
+	}
 }

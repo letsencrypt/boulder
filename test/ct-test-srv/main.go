@@ -24,7 +24,7 @@ import (
 	"os"
 	"sync/atomic"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
+	ct "github.com/google/certificate-transparency/go"
 )
 
 func createSignedSCT(leaf []byte, k *ecdsa.PrivateKey) []byte {

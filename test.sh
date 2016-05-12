@@ -10,16 +10,15 @@ fi
 # Order doesn't matter. Note: godep-restore is specifically left out of the
 # defaults, because we don't want to run it locally (would be too disruptive to
 # GOPATH).
-RUN=${RUN:-vet lint fmt migrations unit integration}
+RUN=${RUN:-vet fmt migrations unit integration errcheck}
 
 # The list of segments to hard fail on, as opposed to continuing to the end of
-# the unit tests before failing.  By defuault, we only hard-fail for gofmt,
-# since its errors are common and easy to fix.
-HARDFAIL=${HARDFAIL:-fmt}
+# the unit tests before failing.
+HARDFAIL=${HARDFAIL:-fmt godep-restore}
 
 FAILURE=0
 
-TESTPATHS=$(go list -f '{{ .ImportPath }}' ./...)
+TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | grep -v /vendor/)
 
 # We need to know, for github-pr-status, what the triggering commit is.
 # Assume first it's the travis commit (for builds of master), unless we're
@@ -66,7 +65,6 @@ function run() {
 
   if [ ${status} -eq 0 ]; then
     update_status --state success
-    echo "Success: $@"
   else
     FAILURE=1
     update_status --state failure
@@ -78,27 +76,24 @@ function run() {
 
 function run_and_comment() {
   echo "$@"
-  result=$("$@" 2>&1)
-  cat <<<"${result}"
+  result_file=$(mktemp -t bouldertestXXXX)
+  "$@" 2>&1 | tee ${result_file}
 
-  if [ "x${result}" == "x" ]; then
-    update_status --state success
-    echo "Success: $@"
-  else
+  # Fail if result_file is nonempty.
+  if [ -s ${result_file} ]; then
+    echo "[!] FAILURE: $@"
     FAILURE=1
     update_status --state failure
-    echo "[!] FAILURE: $@"
-  fi
-
-  # If this is a travis PR run, post a comment
-  if [ "x${TRAVIS}" != "x" ] && [ "${TRAVIS_PULL_REQUEST}" != "false" ] && [ -f "${GITHUB_SECRET_FILE}" ] ; then
-    # If the output is non-empty, post a comment and mark this as a failure
-    if [ -n "${result}" ] ; then
-      echo $'```\n'${result}$'\n```' | github-pr-status --authfile $GITHUB_SECRET_FILE \
+    # If this is a travis PR run, post a comment
+    if [ "x${TRAVIS}" != "x" ] && [ "${TRAVIS_PULL_REQUEST}" != "false" ] && [ -f "${GITHUB_SECRET_FILE}" ] ; then
+      (echo '```' ; cat ${result_file} ; echo -e '\n```') | github-pr-status --authfile $GITHUB_SECRET_FILE \
         --owner "letsencrypt" --repo "boulder" \
         comment --pr "${TRAVIS_PULL_REQUEST}" -b -
     fi
+  else
+    update_status --state success
   fi
+  rm ${result_file}
 }
 
 function die() {
@@ -108,27 +103,12 @@ function die() {
   exit 1
 }
 
-function build_letsencrypt() {
-  # Test for python 2 installs with the usual names.
-  if hash python2 2>/dev/null; then
-    PY=python2
-  elif hash python2.7 2>/dev/null; then
-    PY=python2.7
-  else
-    die "unable to find a python2 or python2.7 binary in \$PATH"
-  fi
-
+function build_certbot() {
   run git clone \
-    https://www.github.com/letsencrypt/letsencrypt.git \
-    $LETSENCRYPT_PATH || exit 1
-
-  cd $LETSENCRYPT_PATH
-
-  run virtualenv --no-site-packages -p $PY ./venv
-  run ./venv/bin/pip install -U setuptools
-  run ./venv/bin/pip install -U pip
-  run ./venv/bin/pip install -e acme -e . -e letsencrypt-apache -e letsencrypt-nginx
-
+    https://www.github.com/certbot/certbot.git \
+    $CERTBOT_PATH || exit 1
+  cd $CERTBOT_PATH
+  run ./tools/venv.sh
   cd -
 }
 
@@ -139,15 +119,15 @@ function run_unit_tests() {
     # are not stdlib packages. We can then install them with the race
     # detector enabled to prevent our individual `go test` calls from
     # building them multiple times.
-    all_shared_imports=$(go list -f '{{ join .Imports "\n" }}' $TESTPATHS | sort | uniq)
+    all_shared_imports=$(go list -f '{{ join .Imports "\n" }}' ${TESTPATHS} | sort | uniq)
     deps=$(go list -f '{{ if not .Standard }}{{ .ImportPath }}{{ end }}' ${all_shared_imports})
     echo "go installing race detector enabled dependencies"
-    go install -v -race $deps
+    go install -race $deps
 
     # Run each test by itself for Travis, so we can get coverage
     for path in ${TESTPATHS}; do
       dir=$(basename $path)
-      run go test -race -cover -coverprofile=${dir}.coverprofile ${path}
+      go test -race -cover -coverprofile=${dir}.coverprofile ${path} || FAILURE=1
     done
 
     # Gather all the coverprofiles
@@ -165,7 +145,7 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    run go test -p 1 $GOTESTFLAGS ./...
+    run go test -p 1 $GOTESTFLAGS ${TESTPATHS}
   fi
 }
 
@@ -178,17 +158,8 @@ GOBIN=${GOBIN:-$HOME/gopath/bin}
 #
 if [[ "$RUN" =~ "vet" ]] ; then
   start_context "vet"
-  run_and_comment go vet ./...
+  run_and_comment go vet ${TESTPATHS}
   end_context #vet
-fi
-
-#
-# Run Go Lint, a style-focused static analysis tool
-#
-if [[ "$RUN" =~ "lint" ]] ; then
-  start_context "lint"
-  run_and_comment golint -min_confidence=0.81 ./...
-  end_context #lint
 fi
 
 #
@@ -197,7 +168,7 @@ fi
 if [[ "$RUN" =~ "fmt" ]] ; then
   start_context "fmt"
   check_gofmt() {
-    unformatted=$(find . -name "*.go" -not -path "./Godeps/*" -print | xargs -n1 gofmt -l)
+    unformatted=$(find . -name "*.go" -not -path "./vendor/*" -print | xargs -n1 gofmt -l)
     if [ "x${unformatted}" == "x" ] ; then
       return 0
     else
@@ -248,19 +219,19 @@ if [[ "$RUN" =~ "integration" ]] ; then
   start_context "integration"
   update_status --state pending --description "Integration Tests in progress"
 
-  if [ -z "$LETSENCRYPT_PATH" ]; then
-    export LETSENCRYPT_PATH=$(mktemp -d -t leXXXX)
+  if [ -z "$CERTBOT_PATH" ]; then
+    export CERTBOT_PATH=$(mktemp -d -t leXXXX)
     echo "------------------------------------------------"
     echo "--- Checking out letsencrypt client is slow. ---"
-    echo "--- Recommend setting \$LETSENCRYPT_PATH to  ---"
+    echo "--- Recommend setting \$CERTBOT_PATH to  ---"
     echo "--- client repo with initialized virtualenv  ---"
     echo "------------------------------------------------"
-    build_letsencrypt
-  elif [ ! -d "${LETSENCRYPT_PATH}" ]; then
-    build_letsencrypt
+    build_certbot
+  elif [ ! -d "${CERTBOT_PATH}" ]; then
+    build_certbot
   fi
 
-  source ${LETSENCRYPT_PATH}/venv/bin/activate
+  source ${CERTBOT_PATH}/venv/bin/activate
 
   python test/integration-test.py --all
   case $? in
@@ -289,17 +260,47 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   start_context "godep-restore"
   run_and_comment godep restore
   # Run godep save and do a diff, to ensure that the version we got from
-  # `godep restore` matched what was in the remote repo. We only do this on
-  # builds of the main fork (not PRs from external contributors), because godep
-  # rewrites import paths to the path of the fork we're building from, which
-  # creates spurious diffs if we're not building from the main fork.
-  # Once we switch to Go 1.6's imports and don't need rewriting anymore, we can
-  # do this for all builds.
-  if [[ "${TRAVIS_REPO_SLUG}" == "letsencrypt/boulder" ]] ; then
-    run_and_comment godep save -r ./...
-    run_and_comment git diff --exit-code Godeps/_workspace/
-  fi
+  # `godep restore` matched what was in the remote repo.
+  run_and_comment godep save ./...
+  run_and_comment git diff --exit-code
   end_context #godep-restore
+fi
+
+#
+# Run errcheck, to ensure that error returns are always used.
+# Note: errcheck seemingly doesn't understand ./vendor/ yet, and so will fail
+# if imports are not available in $GOPATH. So, in Travis, it always needs to
+# run after `godep restore`. Locally it can run anytime, assuming you have the
+# packages present in #GOPATH.
+#
+if [[ "$RUN" =~ "errcheck" ]] ; then
+  start_context "errcheck"
+  run_and_comment errcheck \
+    -ignore io:Write,os:Remove,net/http:Write,github.com/letsencrypt/boulder/metrics:.*,github.com/cactus/go-statsd-client/statsd:.* \
+    $(echo ${TESTPATHS} | tr ' ' '\n' | grep -v test)
+  end_context #errcheck
+fi
+
+# Run generate to make sure all our generated code can be re-generated with
+# current tools.
+# Note: Some of the tools we use seemingly don't understand ./vendor yet, and
+# so will fail if imports are not available in $GOPATH. So, in travis, this
+# always needs to run after `godep restore`.
+if [[ "$RUN" =~ "generate" ]] ; then
+  start_context "generate"
+  # Additionally, we need to run go install before go generate because the stringer command
+  # (using in ./grpc/) checks imports, and depends on the presence of a built .a
+  # file to determine an import really exists. See
+  # https://golang.org/src/go/internal/gcimporter/gcimporter.go#L30
+  # Without this, we get error messages like:
+  #   stringer: checking package: grpc/bcodes.go:6:2: could not import
+  #     github.com/letsencrypt/boulder/probs (can't find import:
+  #     github.com/letsencrypt/boulder/probs)
+  go install ./probs
+  go install google.golang.org/grpc/codes
+  run_and_comment go generate ${TESTPATHS}
+  run_and_comment git diff --exit-code .
+  end_context #"generate"
 fi
 
 exit ${FAILURE}

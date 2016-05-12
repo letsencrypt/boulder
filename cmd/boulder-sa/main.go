@@ -6,7 +6,7 @@
 package main
 
 import (
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
@@ -17,16 +17,16 @@ import (
 
 func main() {
 	app := cmd.NewAppShell("boulder-sa", "Handles SQL operations")
-	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		saConf := c.SA
 		go cmd.DebugServer(saConf.DebugAddr)
 
 		dbURL, err := saConf.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
-		dbMap, err := sa.NewDbMap(dbURL)
+		dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Couldn't connect to SA database")
 
-		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), auditlogger)
+		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 		cmd.FailOnError(err, "Failed to create SA impl")
 
 		go cmd.ProfileCmd("SA", stats)
@@ -34,7 +34,8 @@ func main() {
 		amqpConf := saConf.AMQP
 		sas, err := rpc.NewAmqpRPCServer(amqpConf, c.SA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create SA RPC server")
-		rpc.NewStorageAuthorityServer(sas, sai)
+		err = rpc.NewStorageAuthorityServer(sas, sai)
+		cmd.FailOnError(err, "Unable to setup SA RPC server")
 
 		err = sas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run SA RPC server")

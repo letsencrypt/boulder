@@ -34,14 +34,8 @@ func ResetSATestDatabase(t testing.TB) func() {
 	return resetTestDatabase(t, "sa")
 }
 
-// ResetPolicyTestDatabase deletes all rows in all tables in the Policy DB. It
-// acts the same as ResetSATestDatabase.
-func ResetPolicyTestDatabase(t testing.TB) func() {
-	return resetTestDatabase(t, "policy")
-}
-
 func resetTestDatabase(t testing.TB, dbType string) func() {
-	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(localhost:3306)/boulder_%s_test", dbType))
+	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(boulder-mysql:3306)/boulder_%s_test", dbType))
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}
@@ -52,7 +46,7 @@ func resetTestDatabase(t testing.TB, dbType string) func() {
 		if err := deleteEverythingInAllTables(db); err != nil {
 			t.Fatalf("Failed to truncate tables after the test: %s", err)
 		}
-		db.Close()
+		_ = db.Close()
 	}
 }
 

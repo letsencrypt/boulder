@@ -12,10 +12,9 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/helpers"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/pkcs11key"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/cloudflare/cfssl/helpers"
+	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/pkcs11key"
 
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
@@ -24,7 +23,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/rpc"
-	"github.com/letsencrypt/boulder/sa"
 )
 
 const clientName = "CA"
@@ -108,26 +106,20 @@ func loadSigner(issuerConfig cmd.IssuerConfig) (crypto.Signer, error) {
 
 func main() {
 	app := cmd.NewAppShell("boulder-ca", "Handles issuance operations")
-	app.Action = func(c cmd.Config, stats metrics.Statter, auditlogger *blog.AuditLogger) {
+	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		// Validate PA config and set defaults if needed
 		cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
 		go cmd.DebugServer(c.CA.DebugAddr)
 
-		var paDbMap *gorp.DbMap
-		if c.CA.HostnamePolicyFile == "" {
-			dbURL, err := c.PA.DBConfig.URL()
-			cmd.FailOnError(err, "Couldn't load DB URL")
-			paDbMap, err = sa.NewDbMap(dbURL)
-			cmd.FailOnError(err, "Couldn't connect to policy database")
-		}
-		pa, err := policy.New(paDbMap, c.PA.EnforcePolicyWhitelist, c.PA.Challenges)
+		pa, err := policy.New(c.PA.Challenges)
 		cmd.FailOnError(err, "Couldn't create PA")
 
-		if c.CA.HostnamePolicyFile != "" {
-			err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
-			cmd.FailOnError(err, "Couldn't load hostname policy file")
+		if c.CA.HostnamePolicyFile == "" {
+			cmd.FailOnError(fmt.Errorf("HostnamePolicyFile was empty."), "")
 		}
+		err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
+		cmd.FailOnError(err, "Couldn't load hostname policy file")
 
 		issuers, err := loadIssuers(c)
 		cmd.FailOnError(err, "Couldn't load issuers")
@@ -152,7 +144,8 @@ func main() {
 
 		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
-		rpc.NewCertificateAuthorityServer(cas, cai)
+		err = rpc.NewCertificateAuthorityServer(cas, cai)
+		cmd.FailOnError(err, "Unable to setup CA RPC server")
 
 		err = cas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run CA RPC server")

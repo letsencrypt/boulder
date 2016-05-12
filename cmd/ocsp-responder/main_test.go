@@ -10,20 +10,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	cfocsp "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/ocsp"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
-	"github.com/letsencrypt/boulder/core"
+	"github.com/cactus/go-statsd-client/statsd"
+	cfocsp "github.com/cloudflare/cfssl/ocsp"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mocks"
-	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/letsencrypt/boulder/test/vars"
+	"golang.org/x/crypto/ocsp"
 )
 
 var (
 	req      = mustRead("./testdata/ocsp.req")
-	resp     = mustRead("./testdata/ocsp.resp")
+	resp     = dbResponse{mustRead("./testdata/ocsp.resp"), time.Now()}
 	stats, _ = statsd.NewNoopClient()
 )
 
@@ -33,7 +29,7 @@ func TestMux(t *testing.T) {
 		t.Fatalf("ocsp.ParseRequest: %s", err)
 	}
 	src := make(cfocsp.InMemorySource)
-	src[ocspReq.SerialNumber.String()] = resp
+	src[ocspReq.SerialNumber.String()] = resp.OCSPResponse
 	h := mux(stats, "/foobar/", src)
 	type muxTest struct {
 		method   string
@@ -41,7 +37,7 @@ func TestMux(t *testing.T) {
 		reqBody  []byte
 		respBody []byte
 	}
-	mts := []muxTest{{"POST", "/foobar/", req, resp}, {"GET", "/", nil, nil}}
+	mts := []muxTest{{"POST", "/foobar/", req, resp.OCSPResponse}, {"GET", "/", nil, nil}}
 	for i, mt := range mts {
 		w := httptest.NewRecorder()
 		r, err := http.NewRequest(mt.method, mt.path, bytes.NewReader(mt.reqBody))
@@ -60,31 +56,9 @@ func TestMux(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	dbMap, err := sa.NewDbMap(vars.DBConnSAOcspResp)
-	test.AssertNotError(t, err, "Could not connect to database")
-	src, err := makeDBSource(dbMap, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
+	src, err := makeDBSource(mockSelector{}, "./testdata/test-ca.der.pem", blog.NewMock())
 	if err != nil {
 		t.Fatalf("makeDBSource: %s", err)
-	}
-	defer test.ResetSATestDatabase(t)
-
-	ocspResp, err := ocsp.ParseResponse(resp, nil)
-	if err != nil {
-		t.Fatalf("ocsp.ParseResponse: %s", err)
-	}
-
-	status := &core.CertificateStatus{
-		Serial:          core.SerialToString(ocspResp.SerialNumber),
-		OCSPLastUpdated: time.Now(),
-		OCSPResponse:    resp,
-	}
-	setupDBMap, err := sa.NewDbMap("mysql+tcp://test_setup@localhost:3306/boulder_sa_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = setupDBMap.Insert(status)
-	if err != nil {
-		t.Fatalf("unable to insert response: %s", err)
 	}
 
 	h := cfocsp.NewResponder(src)
@@ -97,9 +71,35 @@ func TestDBHandler(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("Code: want %d, got %d", http.StatusOK, w.Code)
 	}
-	if !bytes.Equal(w.Body.Bytes(), resp) {
+	if !bytes.Equal(w.Body.Bytes(), resp.OCSPResponse) {
 		t.Errorf("Mismatched body: want %#v, got %#v", resp, w.Body.Bytes())
 	}
+
+	// check response with zero OCSPLastUpdated is ignored
+	resp.OCSPLastUpdated = time.Time{}
+	defer func() { resp.OCSPLastUpdated = time.Now() }()
+	w = httptest.NewRecorder()
+	r, _ = http.NewRequest("POST", "/", bytes.NewReader(req))
+	unauthorizedErrorResponse := []byte{0x30, 0x03, 0x0A, 0x01, 0x06}
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Errorf("Code: want %d, got %d", http.StatusOK, w.Code)
+	}
+	if !bytes.Equal(w.Body.Bytes(), unauthorizedErrorResponse) {
+		t.Errorf("Mismatched body: want %#v, got %#v", unauthorizedErrorResponse, w.Body.Bytes())
+	}
+}
+
+// mockSelector always returns the same certificateStatus
+type mockSelector struct{}
+
+func (bs mockSelector) SelectOne(output interface{}, _ string, _ ...interface{}) error {
+	outputPtr, ok := output.(*dbResponse)
+	if !ok {
+		return fmt.Errorf("incorrect output type %T", output)
+	}
+	*outputPtr = resp
+	return nil
 }
 
 // brokenSelector allows us to test what happens when gorp SelectOne statements
@@ -111,11 +111,9 @@ func (bs brokenSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) er
 }
 
 func TestErrorLog(t *testing.T) {
-	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", blog.GetAuditLogger())
+	mockLog := blog.NewMock()
+	src, err := makeDBSource(brokenSelector{}, "./testdata/test-ca.der.pem", mockLog)
 	test.AssertNotError(t, err, "Failed to create broken dbMap")
-
-	src.log.SyslogWriter = mocks.NewSyslogWriter()
-	mockLog := src.log.SyslogWriter.(*mocks.SyslogWriter)
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")

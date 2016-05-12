@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/square/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
+	jose "github.com/square/go-jose"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
@@ -32,6 +32,8 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	jose "github.com/square/go-jose"
+	"golang.org/x/net/context"
 )
 
 type DummyValidationAuthority struct {
@@ -43,19 +45,19 @@ type DummyValidationAuthority struct {
 	IsSafeDomainErr error
 }
 
-func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
+func (dva *DummyValidationAuthority) UpdateValidations(ctx context.Context, authz core.Authorization, index int) (err error) {
 	dva.Called = true
 	dva.Argument = authz
 	return
 }
 
-func (dva *DummyValidationAuthority) PerformValidation(domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	dva.Called = true
 	dva.Argument = authz
 	return dva.RecordsReturn, dva.ProblemReturn
 }
 
-func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
 	if dva.IsSafeDomainErr != nil {
 		return nil, dva.IsSafeDomainErr
 	}
@@ -136,7 +138,7 @@ var (
 	}
 	AuthzFinal = core.Authorization{}
 
-	log = mocks.UseMockLog()
+	log = blog.UseMock()
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
@@ -145,7 +147,7 @@ func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
 		return
 	}
 
-	out = core.Challenge{KeyAuthorization: &keyAuthorization}
+	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization.String()}
 	return
 }
 
@@ -154,6 +156,8 @@ var testKeyPolicy = core.KeyPolicy{
 	AllowECDSANISTP256: true,
 	AllowECDSANISTP384: true,
 }
+
+var ctx = context.Background()
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
@@ -171,7 +175,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	fc := clock.NewFake()
 
-	dbMap, err := sa.NewDbMap(vars.DBConnSA)
+	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
@@ -184,13 +188,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	va := &DummyValidationAuthority{}
 
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	if err != nil {
-		t.Fatalf("Failed to create dbMap: %s", err)
-	}
-	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
-	pa, err := policy.New(paDbMap, false, SupportedChallenges)
+	pa, err := policy.New(SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	stats, _ := statsd.NewNoopClient()
 
@@ -199,19 +200,18 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	}
 	cleanUp := func() {
 		saDBCleanUp()
-		policyDBCleanUp()
 	}
 
 	block, _ := pem.Decode(CSRPEM)
 	ExampleCSR, _ = x509.ParseCertificateRequest(block.Bytes)
 
-	Registration, _ = ssa.NewRegistration(core.Registration{
+	Registration, _ = ssa.NewRegistration(ctx, core.Registration{
 		Key:       AccountKeyA,
 		InitialIP: net.ParseIP("3.2.3.3"),
 	})
 
 	ra := NewRegistrationAuthorityImpl(fc,
-		blog.GetAuditLogger(),
+		log,
 		stats,
 		&DomainCheck{va},
 		cmd.RateLimitConfig{
@@ -330,7 +330,7 @@ func TestNewRegistration(t *testing.T) {
 		InitialIP: net.ParseIP("7.6.6.5"),
 	}
 
-	result, err := ra.NewRegistration(input)
+	result, err := ra.NewRegistration(ctx, input)
 	if err != nil {
 		t.Fatalf("could not create new registration: %s", err)
 	}
@@ -341,7 +341,7 @@ func TestNewRegistration(t *testing.T) {
 		"Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
-	reg, err := sa.GetRegistration(result.ID)
+	reg, err := sa.GetRegistration(ctx, result.ID)
 	test.AssertNotError(t, err, "Failed to retrieve registration")
 	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
 }
@@ -358,7 +358,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 		InitialIP: net.ParseIP("5.0.5.0"),
 	}
 
-	result, err := ra.NewRegistration(input)
+	result, err := ra.NewRegistration(ctx, input)
 	test.AssertNotError(t, err, "Could not create new registration")
 
 	test.Assert(t, result.ID != 23, "ID shouldn't be set by user")
@@ -366,7 +366,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
 
 	id := result.ID
-	result2, err := ra.UpdateRegistration(result, core.Registration{
+	result2, err := ra.UpdateRegistration(ctx, result, core.Registration{
 		ID:  33,
 		Key: ShortKey,
 	})
@@ -384,21 +384,21 @@ func TestNewRegistrationBadKey(t *testing.T) {
 		Key:     ShortKey,
 	}
 
-	_, err := ra.NewRegistration(input)
+	_, err := ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
 }
 
 func TestNewAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_, err := ra.NewAuthorization(AuthzRequest, 0)
+	_, err := ra.NewAuthorization(ctx, AuthzRequest, 0)
 	test.AssertError(t, err, "Authorization cannot have registrationID == 0")
 
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Verify that returned authz same as DB
-	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
 
@@ -427,11 +427,11 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 			Value: "NOT-example.COM",
 		},
 	}
-	authz, err := ra.NewAuthorization(authzReq, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, authzReq, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 	test.AssertEquals(t, "not-example.com", authz.Identifier.Value)
 
-	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
 }
@@ -446,7 +446,7 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 			Value: "127.0.0.1",
 		},
 	}
-	_, err := ra.NewAuthorization(authzReq, Registration.ID)
+	_, err := ra.NewAuthorization(ctx, authzReq, Registration.ID)
 	if err == nil {
 		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
 	}
@@ -460,16 +460,16 @@ func TestUpdateAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	response, err := makeResponse(authz.Challenges[ResponseIndex])
 	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
 	// Verify that returned authz same as DB
-	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
 
@@ -487,7 +487,7 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	expiry := fc.Now().Add(-2 * time.Hour)
@@ -495,7 +495,7 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 
 	response, err := makeResponse(authz.Challenges[ResponseIndex])
 
-	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertError(t, err, "Updated expired authorization")
 }
 
@@ -504,20 +504,20 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Change the account key
-	reg, err := sa.GetRegistration(authz.RegistrationID)
+	reg, err := sa.GetRegistration(ctx, authz.RegistrationID)
 	test.AssertNotError(t, err, "GetRegistration failed")
 	reg.Key = AccountKeyC // was AccountKeyA
-	err = sa.UpdateRegistration(reg)
+	err = sa.UpdateRegistration(ctx, reg)
 	test.AssertNotError(t, err, "UpdateRegistration failed")
 
 	// Verify that the RA rejected the authorization request
 	response, err := makeResponse(authz.Challenges[ResponseIndex])
 	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	_, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	_, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
 
 	t.Log("DONE TestUpdateAuthorizationReject")
@@ -530,7 +530,7 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	response, err := makeResponse(authz.Challenges[ResponseIndex])
@@ -540,11 +540,11 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 		{Hostname: "example.com"}}
 	va.ProblemReturn = nil
 
-	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
 	// Verify that returned authz same as DB
-	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
 
@@ -562,22 +562,24 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 func TestOnValidationUpdateSuccess(t *testing.T) {
 	_, sa, ra, fclk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	authzUpdated, err := sa.NewPendingAuthorization(AuthzInitial)
+	authzUpdated, err := sa.NewPendingAuthorization(ctx, AuthzInitial)
 	test.AssertNotError(t, err, "Failed to create new pending authz")
 
 	expires := fclk.Now().Add(300 * 24 * time.Hour)
 	authzUpdated.Expires = &expires
-	sa.UpdatePendingAuthorization(authzUpdated)
+	err = sa.UpdatePendingAuthorization(ctx, authzUpdated)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Simulate a successful simpleHTTP challenge
 	authzFromVA := authzUpdated
 	authzFromVA.Challenges[0].Status = core.StatusValid
 
-	ra.OnValidationUpdate(authzFromVA)
+	err = ra.OnValidationUpdate(ctx, authzFromVA)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Verify that the Authz in the DB is the same except for Status->StatusValid
 	authzFromVA.Status = core.StatusValid
-	dbAuthz, err := sa.GetAuthorization(authzFromVA.ID)
+	dbAuthz, err := sa.GetAuthorization(ctx, authzFromVA.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	t.Log("authz from VA: ", authzFromVA)
 	t.Log("authz from DB: ", dbAuthz)
@@ -588,17 +590,18 @@ func TestOnValidationUpdateSuccess(t *testing.T) {
 func TestOnValidationUpdateFailure(t *testing.T) {
 	_, sa, ra, fclk, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	authzFromVA, _ := sa.NewPendingAuthorization(AuthzInitial)
+	authzFromVA, _ := sa.NewPendingAuthorization(ctx, AuthzInitial)
 	expires := fclk.Now().Add(300 * 24 * time.Hour)
 	authzFromVA.Expires = &expires
-	sa.UpdatePendingAuthorization(authzFromVA)
+	err := sa.UpdatePendingAuthorization(ctx, authzFromVA)
+	test.AssertNotError(t, err, "Could not store test data")
 	authzFromVA.Challenges[0].Status = core.StatusInvalid
 
-	err := ra.OnValidationUpdate(authzFromVA)
+	err = ra.OnValidationUpdate(ctx, authzFromVA)
 	test.AssertNotError(t, err, "unable to update validation")
 
 	authzFromVA.Status = core.StatusInvalid
-	dbAuthz, err := sa.GetAuthorization(authzFromVA.ID)
+	dbAuthz, err := sa.GetAuthorization(ctx, authzFromVA.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authzFromVA, dbAuthz)
 }
@@ -606,8 +609,9 @@ func TestOnValidationUpdateFailure(t *testing.T) {
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	authz := core.Authorization{}
-	authz, _ = sa.NewPendingAuthorization(authz)
+	authz := core.Authorization{RegistrationID: 1}
+	authz, err := sa.NewPendingAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
 	authz.Identifier = core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: "www.example.com",
@@ -621,14 +625,14 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign CSR")
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	test.AssertNotError(t, err, "Failed to parse CSR")
-	sa.UpdatePendingAuthorization(authz)
-	sa.FinalizeAuthorization(authz)
+	err = sa.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
 	certRequest := core.CertificateRequest{
 		CSR: parsedCSR,
 	}
 
 	// Registration has key == AccountKeyA
-	_, err = ra.NewCertificate(certRequest, Registration.ID)
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
 	test.AssertEquals(t, err.Error(), "Certificate public key must be different than account key")
 
@@ -639,9 +643,10 @@ func TestAuthorizationRequired(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	AuthzFinal.RegistrationID = 1
-	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
-	sa.UpdatePendingAuthorization(AuthzFinal)
-	sa.FinalizeAuthorization(AuthzFinal)
+	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// ExampleCSR requests not-example.com and www.not-example.com,
 	// but the authorization only covers not-example.com
@@ -649,7 +654,7 @@ func TestAuthorizationRequired(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err := ra.NewCertificate(certRequest, 1)
+	_, err = ra.NewCertificate(ctx, certRequest, 1)
 	test.Assert(t, err != nil, "Issued certificate with insufficient authorization")
 
 	t.Log("DONE TestAuthorizationRequired")
@@ -659,15 +664,18 @@ func TestNewCertificate(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
-	sa.UpdatePendingAuthorization(AuthzFinal)
-	sa.FinalizeAuthorization(AuthzFinal)
+	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Inject another final authorization to cover www.not-example.com
 	authzFinalWWW := AuthzFinal
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
-	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
-	sa.FinalizeAuthorization(authzFinalWWW)
+	authzFinalWWW, err = sa.NewPendingAuthorization(ctx, authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(ctx, authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Check that we fail if the CSR signature is invalid
 	ExampleCSR.Signature[0]++
@@ -675,7 +683,7 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err := ra.NewCertificate(certRequest, Registration.ID)
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	ExampleCSR.Signature[0]--
 	test.AssertError(t, err, "Failed to check CSR signature")
 
@@ -685,7 +693,7 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	cert, err := ra.NewCertificate(certRequest, Registration.ID)
+	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 
 	_, err = x509.ParseCertificate(cert.DER)
@@ -705,15 +713,17 @@ func TestTotalCertRateLimit(t *testing.T) {
 	fc.Add(24 * 90 * time.Hour)
 
 	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
-	sa.UpdatePendingAuthorization(AuthzFinal)
-	sa.FinalizeAuthorization(AuthzFinal)
+	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
 
 	// Inject another final authorization to cover www.not-example.com
 	authzFinalWWW := AuthzFinal
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
-	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
-	sa.FinalizeAuthorization(authzFinalWWW)
+	authzFinalWWW, err = sa.NewPendingAuthorization(ctx, authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(ctx, authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
 	certRequest := core.CertificateRequest{
@@ -723,14 +733,14 @@ func TestTotalCertRateLimit(t *testing.T) {
 	// TODO(jsha): Since we're using a real SA rather than a mock, we call
 	// NewCertificate twice and insert the first result into the SA. Instead we
 	// should mock out the SA and have it return the cert count that we want.
-	cert, err := ra.NewCertificate(certRequest, Registration.ID)
+	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
-	_, err = sa.AddCertificate(cert.DER, Registration.ID)
+	_, err = sa.AddCertificate(ctx, cert.DER, Registration.ID)
 	test.AssertNotError(t, err, "Failed to store certificate")
 
 	fc.Add(time.Hour)
 
-	_, err = ra.NewCertificate(certRequest, Registration.ID)
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Total certificate rate limit failed")
 }
 
@@ -747,20 +757,21 @@ func TestAuthzRateLimiting(t *testing.T) {
 	fc.Add(24 * 90 * time.Hour)
 
 	// Should be able to create an authzRequest
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	fc.Add(time.Hour)
 
 	// Second one should trigger rate limit
-	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)
+	_, err = ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertError(t, err, "Pending Authorization rate limit failed.")
 
 	// Finalize pending authz
-	ra.OnValidationUpdate(authz)
+	err = ra.OnValidationUpdate(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Try to create a new authzRequest, should be fine now.
-	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)
+	_, err = ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 }
 
@@ -800,7 +811,7 @@ type mockSAWithNameCounts struct {
 	clk        clock.FakeClock
 }
 
-func (m mockSAWithNameCounts) CountCertificatesByNames(names []string, earliest, latest time.Time) (ret map[string]int, err error) {
+func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
 	if latest != m.clk.Now() {
 		m.t.Error("incorrect latest")
 	}
@@ -834,31 +845,31 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	ra.SA = mockSA
 
 	// One base domain, below threshold
-	err := ra.checkCertificatesPerNameLimit([]string{"www.example.com", "example.com"}, rlp, 99)
+	err := ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertNotError(t, err, "rate limited example.com incorrectly")
 
 	// One base domain, above threshold
 	mockSA.nameCounts["example.com"] = 10
-	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "example.com"}, rlp, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type %#v", err)
 	}
 
 	// SA misbehaved and didn't send back a count for every input name
-	err = ra.checkCertificatesPerNameLimit([]string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to error on misbehaving SA")
 
 	// Two base domains, one above threshold but with an override.
 	mockSA.nameCounts["example.com"] = 0
 	mockSA.nameCounts["bigissuer.com"] = 50
-	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
 
 	// Two base domains, one above its override
 	mockSA.nameCounts["example.com"] = 0
 	mockSA.nameCounts["bigissuer.com"] = 100
-	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type")
@@ -866,7 +877,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 
 	// One base domain, above its override (which is below threshold)
 	mockSA.nameCounts["smallissuer.co.uk"] = 1
-	err = ra.checkCertificatesPerNameLimit([]string{"www.smallissuer.co.uk"}, rlp, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type %#v", err)

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/test"
 )
@@ -74,28 +74,41 @@ func TestConnect(t *testing.T) {
 		t.Errorf("listen: %s", err)
 	}
 	go func() {
-		defer l.Close()
+		defer func() {
+			err := l.Close()
+			if err != nil {
+				t.Errorf("listen.Close: %s", err)
+			}
+		}()
 		for {
 			conn, err := l.Accept()
 			if err != nil {
 				return
 			}
 			go func() {
-				defer conn.Close()
+				defer func() {
+					err := conn.Close()
+					if err != nil {
+						t.Errorf("conn.Close: %s", err)
+					}
+				}()
 				buf := bufio.NewReader(conn)
-				conn.Write([]byte("220 smtp.example.com ESMTP\n"))
+				// we can ignore write errors because any
+				// failures will be caught on the connecting
+				// side
+				_, _ = conn.Write([]byte("220 smtp.example.com ESMTP\n"))
 				if err := expect(t, buf, "EHLO localhost"); err != nil {
 					return
 				}
 
-				conn.Write([]byte("250-PIPELINING\n"))
-				conn.Write([]byte("250-AUTH PLAIN LOGIN\n"))
-				conn.Write([]byte("250 8BITMIME\n"))
+				_, _ = conn.Write([]byte("250-PIPELINING\n"))
+				_, _ = conn.Write([]byte("250-AUTH PLAIN LOGIN\n"))
+				_, _ = conn.Write([]byte("250 8BITMIME\n"))
 				// Base64 encoding of "user@example.com\0paswd"
 				if err := expect(t, buf, "AUTH PLAIN AHVzZXJAZXhhbXBsZS5jb20AcGFzd2Q="); err != nil {
 					return
 				}
-				conn.Write([]byte("235 2.7.0 Authentication successful\n"))
+				_, _ = conn.Write([]byte("235 2.7.0 Authentication successful\n"))
 			}()
 		}
 	}()
@@ -103,5 +116,9 @@ func TestConnect(t *testing.T) {
 	err = m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)
+	}
+	err = m.Close()
+	if err != nil {
+		t.Errorf("Failed to clean up: %s", err)
 	}
 }

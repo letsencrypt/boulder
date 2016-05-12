@@ -59,10 +59,11 @@ or
 
 Edit /etc/hosts to add this line:
 
-    127.0.0.1 boulder-rabbitmq boulder-mysql
+    127.0.0.1 boulder boulder-rabbitmq boulder-mysql
 
 Resolve Go-dependencies, set up a database and RabbitMQ:
 
+    export GO15VENDOREXPERIMENT=1
     ./test/setup.sh
 
 **Note**: `setup.sh` calls `create_db.sh`, which uses the root MariaDB
@@ -82,7 +83,7 @@ Working with a client:
 Check out the official Let's Encrypt client from https://github.com/letsencrypt/letsencrypt/ and follow the setup instructions there. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for letsencrypt that has all those flags:
 
     source ~/letsencrypt/tests/integration/_common.sh
-    letsencrypt_test certonly -a standalone -d example.com
+    certbot_test certonly -a standalone -d example.com
 
 Your local Boulder instance uses a fake DNS server that returns 127.0.0.1 for
 any query, so you can use any value for the -d flag.
@@ -123,8 +124,8 @@ The full details of how the various ACME operations happen in Boulder are laid o
 Dependencies
 ------------
 
-All Go dependencies are vendored under the Godeps directory,
-to [make dependency management easier](https://groups.google.com/forum/m/#!topic/golang-dev/nMWoEAG55v8).
+All Go dependencies are vendored under the vendor directory,
+to [make dependency management easier](https://golang.org/cmd/go/#hdr-Vendor_Directories).
 
 Local development also requires a RabbitMQ installation and MariaDB
 10 installation (see above). MariaDB should be run on port 3306 for the
@@ -145,7 +146,7 @@ go get -u github.com/cloudflare/cfssl/...
 godep update github.com/cloudflare/cfssl/...
 # Save the dependencies, rewriting any internal or external dependencies that
 # may have been added.
-godep save -r ./...
-git add Godeps
+godep save ./...
+git add Godeps vendor
 git commit
 ```

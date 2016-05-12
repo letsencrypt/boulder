@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -23,7 +23,7 @@ func Clock() clock.Clock {
 
 		cl := clock.NewFake()
 		cl.Set(targetTime)
-		blog.GetAuditLogger().Notice(fmt.Sprintf("Time was set to %v via FAKECLOCK", targetTime))
+		blog.Get().Info(fmt.Sprintf("Time was set to %v via FAKECLOCK", targetTime))
 		return cl
 	}
 	return clock.Default()

@@ -18,9 +18,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	"github.com/codegangsta/cli"
+	"github.com/jmhodges/clock"
+	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -37,9 +37,9 @@ const (
 	filenameLayout = "20060102"
 
 	expectedValidityPeriod = time.Hour * 24 * 90
-
-	batchSize = 1000
 )
+
+var batchSize = 1000
 
 type report struct {
 	begin     time.Time
@@ -74,9 +74,7 @@ type certChecker struct {
 	stats        metrics.Statter
 }
 
-func newChecker(saDbMap *gorp.DbMap, paDbMap *gorp.DbMap, clk clock.Clock, enforceWhitelist bool, challengeTypes map[string]bool, period time.Duration) certChecker {
-	pa, err := policy.New(paDbMap, enforceWhitelist, challengeTypes)
-	cmd.FailOnError(err, "Failed to create PA")
+func newChecker(saDbMap *gorp.DbMap, clk clock.Clock, pa core.PolicyAuthority, period time.Duration) certChecker {
 	c := certChecker{
 		pa:          pa,
 		dbMap:       saDbMap,
@@ -121,9 +119,6 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	args["lastSerial"] = ""
 	for offset := 0; offset < count; {
 		var certs []core.Certificate
-		if offset > 0 {
-			args["lastSerial"] = certs[len(certs)-1].Serial
-		}
 		_, err = c.dbMap.Select(
 			&certs,
 			getCertsQuery,
@@ -135,6 +130,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		for _, cert := range certs {
 			c.certs <- cert
 		}
+		args["lastSerial"] = certs[len(certs)-1].Serial
 		offset += len(certs)
 	}
 
@@ -281,9 +277,9 @@ func main() {
 		cmd.FailOnError(err, "Failed to create StatsD client")
 		syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 		cmd.FailOnError(err, "Failed to dial syslog")
-		logger, err := blog.NewAuditLogger(syslogger, stats, 0)
+		logger, err := blog.New(syslogger, 0)
 		cmd.FailOnError(err, "Failed to construct logger")
-		err = blog.SetAuditLogger(logger)
+		err = blog.Set(logger)
 		cmd.FailOnError(err, "Failed to set audit logger")
 
 		if connect := c.GlobalString("db-connect"); connect != "" {
@@ -304,20 +300,18 @@ func main() {
 
 		saDbURL, err := config.CertChecker.DBConfig.URL()
 		cmd.FailOnError(err, "Couldn't load DB URL")
-		saDbMap, err := sa.NewDbMap(saDbURL)
+		saDbMap, err := sa.NewDbMap(saDbURL, config.CertChecker.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Could not connect to database")
 
-		paDbURL, err := config.PA.DBConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
-		paDbMap, err := sa.NewDbMap(paDbURL)
-		cmd.FailOnError(err, "Could not connect to policy database")
+		pa, err := policy.New(config.PA.Challenges)
+		cmd.FailOnError(err, "Failed to create PA")
+		err = pa.SetHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
+		cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
 
 		checker := newChecker(
 			saDbMap,
-			paDbMap,
 			clock.Default(),
-			config.PA.EnforcePolicyWhitelist,
-			config.PA.Challenges,
+			pa,
 			config.CertChecker.CheckPeriod.Duration,
 		)
 		fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
@@ -352,5 +346,6 @@ func main() {
 		cmd.FailOnError(err, "Failed to dump results: %s\n")
 	}
 
-	app.Run(os.Args)
+	err := app.Run(os.Args)
+	cmd.FailOnError(err, "Failed to run application")
 }

@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/streadway/amqp"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -89,7 +89,7 @@ func (ac *amqpConnector) connect(config *cmd.AMQPConfig) error {
 // reconnect attempts repeatedly to connect and subscribe to the named queue. It
 // will loop forever until it succeeds. This is used for a running server, where
 // we don't want to shut down because we lost our AMQP connection.
-func (ac *amqpConnector) reconnect(config *cmd.AMQPConfig, log blog.SyslogWriter) {
+func (ac *amqpConnector) reconnect(config *cmd.AMQPConfig, log blog.Logger) {
 	for i := 0; ; i++ {
 		ac.clk.Sleep(core.RetryBackoff(i, ac.retryTimeoutBase, ac.retryTimeoutMax, 2))
 		log.Info(fmt.Sprintf(" [!] attempting reconnect for %s", ac.queueName))
@@ -109,7 +109,7 @@ func (ac *amqpConnector) cancel() {
 	ac.mu.RLock()
 	channel := ac.channel
 	ac.mu.RUnlock()
-	channel.Cancel(consumerName, false)
+	_ = channel.Cancel(consumerName, false)
 }
 
 // publish publishes a message onto the provided queue. We provide this wrapper
