@@ -188,6 +188,10 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 	})
 }
 
+func marshalIndent(v interface{}) ([]byte, error) {
+	return json.MarshalIndent(v, "", "  ")
+}
+
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
 func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
@@ -206,7 +210,7 @@ func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
 		"new-cert":    wfe.NewCert,
 		"revoke-cert": wfe.BaseURL + RevokeCertPath,
 	}
-	directoryJSON, err := json.Marshal(directory)
+	directoryJSON, err := marshalIndent(directory)
 	if err != nil {
 		return nil, err
 	}
@@ -470,7 +474,7 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 		wfe.log.AuditErr(fmt.Errorf("Internal error - %s - %s", prob.Detail, ierr))
 	}
 
-	problemDoc, err := json.Marshal(prob)
+	problemDoc, err := marshalIndent(prob)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		wfe.log.AuditErr(fmt.Errorf("Could not marshal error message: %s - %+v", err, prob))
@@ -547,7 +551,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
 	regURL := fmt.Sprintf("%s%d", wfe.RegBase, reg.ID)
-	responseBody, err := json.Marshal(reg)
+	responseBody, err := marshalIndent(reg)
 	if err != nil {
 		// ServerInternal because we just created this registration, and it
 		// should be OK.
@@ -603,7 +607,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
 	authzURL := wfe.AuthzBase + string(authz.ID)
 	wfe.prepAuthorizationForDisplay(&authz)
-	responseBody, err := json.Marshal(authz)
+	responseBody, err := marshalIndent(authz)
 	if err != nil {
 		// ServerInternal because we generated the authz, it should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling authz"), err)
@@ -890,7 +894,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 
 	wfe.prepChallengeForDisplay(authz, challenge)
 
-	jsonReply, err := json.Marshal(challenge)
+	jsonReply, err := marshalIndent(challenge)
 	if err != nil {
 		// InternalServerError because this is a failure to decode data passed in
 		// by the caller, which got it from the DB.
@@ -962,7 +966,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// assumption: UpdateAuthorization does not modify order of challenges
 	challenge := updatedAuthorization.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(authz, &challenge)
-	jsonReply, err := json.Marshal(challenge)
+	jsonReply, err := marshalIndent(challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		logEvent.AddError("failed to marshal challenge: %s", err)
@@ -1040,7 +1044,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 
-	jsonReply, err := json.Marshal(updatedReg)
+	jsonReply, err := marshalIndent(updatedReg)
 	if err != nil {
 		// ServerInternal because we just generated the reg, it should be OK
 		logEvent.AddError("unable to marshal updated registration: %s", err)
@@ -1084,7 +1088,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 
 	wfe.prepAuthorizationForDisplay(&authz)
 
-	jsonReply, err := json.Marshal(authz)
+	jsonReply, err := marshalIndent(authz)
 	if err != nil {
 		// InternalServerError because this is a failure to decode from our DB.
 		logEvent.AddError("Failed to JSON marshal authz: %s", err)
