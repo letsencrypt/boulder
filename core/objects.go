@@ -284,10 +284,6 @@ type Challenge struct {
 	// Contains the error that occurred during challenge validation, if any
 	Error *probs.ProblemDetails `json:"error,omitempty"`
 
-	// If successful, the time at which this challenge
-	// was completed by the server.
-	Validated *time.Time `json:"validated,omitempty"`
-
 	// A URI to which a response can be POSTed
 	URI string `json:"uri"`
 

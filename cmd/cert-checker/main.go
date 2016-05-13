@@ -302,6 +302,7 @@ func main() {
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		saDbMap, err := sa.NewDbMap(saDbURL, config.CertChecker.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Could not connect to database")
+		go sa.ReportDbConnCount(saDbMap, metrics.NewStatsdScope(stats, "CertChecker"))
 
 		pa, err := policy.New(config.PA.Challenges)
 		cmd.FailOnError(err, "Failed to create PA")
