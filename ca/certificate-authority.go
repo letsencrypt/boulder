@@ -23,8 +23,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/context"
-
 	"github.com/cactus/go-statsd-client/statsd"
 	cfsslConfig "github.com/cloudflare/cfssl/config"
 	cferr "github.com/cloudflare/cfssl/errors"
@@ -33,6 +31,7 @@ import (
 	"github.com/cloudflare/cfssl/signer/local"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
+	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -602,8 +601,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 
 	// Submit the certificate to any configured CT logs
 	go func() {
-		ctx := context.Background()
-		_ = ca.Publisher.SubmitToCT(ctx, certDER)
+		// since we don't want this method to be canceled if the parent context
+		// expires pass a background context to it
+		_ = ca.Publisher.SubmitToCT(context.Background(), certDER)
 	}()
 
 	// Do not return an err at this point; caller must know that the Certificate
