@@ -23,8 +23,10 @@ import (
 	"github.com/letsencrypt/boulder/akamai"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -479,12 +481,7 @@ func (updater *OCSPUpdater) missingReceiptsTick(ctx context.Context, batchSize i
 			updater.log.AuditErr(fmt.Errorf("Failed to get certificate: %s", err))
 			continue
 		}
-		// TODO(#1679) only submit to the logs we don't have a SCT for
-		err = updater.pubc.SubmitToCT(ctx, cert.DER)
-		if err != nil {
-			updater.log.AuditErr(fmt.Errorf("Failed to submit certificate to CT log: %s", err))
-			continue
-		}
+		_ = updater.pubc.SubmitToCT(ctx, cert.DER)
 	}
 	return nil
 }
@@ -551,12 +548,17 @@ func setupClients(c cmd.OCSPUpdaterConfig, stats metrics.Statter) (
 	cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create CA client")
 
-	pubc, err := rpc.NewPublisherClient(clientName, amqpConf, stats)
-	cmd.FailOnError(err, "Unable to create Publisher client")
-
+	var pubc core.Publisher
+	if c.Publisher != nil {
+		conn, err := bgrpc.ClientSetup(c.Publisher)
+		cmd.FailOnError(err, "Failed to load credentials and create connection to service")
+		pubc = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.Publisher.Timeout.Duration)
+	} else {
+		pubc, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
+		cmd.FailOnError(err, "Unable to create Publisher client")
+	}
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Unable to create SA client")
-
 	return cac, pubc, sac
 }
 

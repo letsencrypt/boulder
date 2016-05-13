@@ -342,6 +342,8 @@ type CAConfig struct {
 	// EnableMustStaple governs whether the Must Staple extension in CSRs
 	// triggers issuance of certificates with Must Staple.
 	EnableMustStaple bool
+
+	PublisherService *GRPCClientConfig
 }
 
 // PAConfig specifies how a policy authority should connect to its
@@ -426,6 +428,8 @@ type OCSPUpdaterConfig struct {
 
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    ConfigDuration
+
+	Publisher *GRPCClientConfig
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the
