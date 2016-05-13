@@ -25,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -56,6 +57,7 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, blog.L
 	cmd.FailOnError(err, "Couldn't load DB URL")
 	dbMap, err := sa.NewDbMap(dbURL, c.Revoker.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Couldn't setup database connection")
+	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AdminRevoker"))
 
 	sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 	cmd.FailOnError(err, "Failed to create SA client")

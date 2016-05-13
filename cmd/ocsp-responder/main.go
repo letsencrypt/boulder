@@ -148,6 +148,7 @@ func main() {
 			dbMap, err := sa.NewDbMap(config.Source, config.DBConfig.MaxDBConns)
 			cmd.FailOnError(err, "Could not connect to database")
 			sa.SetSQLDebug(dbMap, logger)
+			go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPResponder"))
 			source, err = makeDBSource(dbMap, c.Common.IssuerCert, logger)
 			cmd.FailOnError(err, "Couldn't load OCSP DB")
 		} else if url.Scheme == "file" {
