@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -336,25 +335,27 @@ func (dnsResolver *DNSResolverImpl) lookupIP(ctx context.Context, hostname strin
 // requests in the case of temporary network errors. It can return net package,
 // context.Canceled, and context.DeadlineExceeded errors, all wrapped in the
 // DNSError type.
+// The records are return with all A records preceding all AAAA records (if
+// present).
 func (dnsResolver *DNSResolverImpl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
-	var wg sync.WaitGroup
+	aaaaChan := make(chan struct{})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		recordsA, errA = dnsResolver.lookupIP(ctx, hostname, dns.TypeA, dnsResolver.aStats)
-	}()
 	if dnsResolver.LookupIPv6 {
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
 			recordsAAAA, errAAAA = dnsResolver.lookupIP(ctx, hostname, dns.TypeAAAA, dnsResolver.aaaaStats)
+			aaaaChan <- struct{}{}
 		}()
 	}
-	wg.Wait()
+	recordsA, errA = dnsResolver.lookupIP(ctx, hostname, dns.TypeA, dnsResolver.aStats)
 
+	if dnsResolver.LookupIPv6 {
+		<-aaaaChan
+	}
+
+	// If both A and AAAA lookups error, return the error from the A lookup.
+	// If either lookup succeeds, continue.
 	if errA != nil && (errAAAA != nil || !dnsResolver.LookupIPv6) {
 		return nil, errA
 	}
