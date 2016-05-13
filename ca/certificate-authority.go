@@ -601,7 +601,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 
 	// Submit the certificate to any configured CT logs
 	go func() {
-		_ = ca.Publisher.SubmitToCT(ctx, certDER)
+		// since we don't want this method to be canceled if the parent context
+		// expires pass a background context to it
+		_ = ca.Publisher.SubmitToCT(context.Background(), certDER)
 	}()
 
 	// Do not return an err at this point; caller must know that the Certificate
