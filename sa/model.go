@@ -50,7 +50,8 @@ type challModel struct {
 	Type   string          `db:"type"`
 	Status core.AcmeStatus `db:"status"`
 	Error  []byte          `db:"error"`
-	// removed from core.Challenge
+	// This field is unused, but is kept temporarily to avoid a database migration.
+	// TODO(#1818): remove
 	Validated        *time.Time `db:"validated"`
 	Token            string     `db:"token"`
 	KeyAuthorization string     `db:"keyAuthorization"`
