@@ -8,9 +8,6 @@ message Challenge {
 	optional int64 id = 1;
 	optional string type = 2;
 	optional string status = 6;
-	// We use a string instead of an int64 millis / int32 nanos / timezone
-	// because having to decompose into 3 fields is extremely awkward.
-	optional string validatedTime = 8; // time.RFC3339Nano
 	optional string uri = 9;
 	optional string token = 3;
 	optional string accountKey = 4; // jose.JsonWebKey.MarshalJSON()
