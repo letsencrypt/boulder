@@ -261,8 +261,9 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   run_and_comment godep restore
   # Run godep save and do a diff, to ensure that the version we got from
   # `godep restore` matched what was in the remote repo.
+  cp Godeps/Godeps.json Godeps/Godeps.json.head
   run_and_comment godep save ./...
-  run_and_comment git diff --exit-code
+  run_and_comment diff <(sed /GodepVersion/d Godeps/Godeps.json.head) <(sed /GodepVersion/d Godeps/Godeps.json)
   end_context #godep-restore
 fi
 
