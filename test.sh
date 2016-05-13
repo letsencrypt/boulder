@@ -264,6 +264,7 @@ if [[ "$RUN" =~ "godep-restore" ]] ; then
   cp Godeps/Godeps.json Godeps/Godeps.json.head
   run_and_comment godep save ./...
   run_and_comment diff <(sed /GodepVersion/d Godeps/Godeps.json.head) <(sed /GodepVersion/d Godeps/Godeps.json)
+  run_and_comment git diff --exit-code -- ./vendor/
   end_context #godep-restore
 fi
 
@@ -300,7 +301,7 @@ if [[ "$RUN" =~ "generate" ]] ; then
   go install ./probs
   go install google.golang.org/grpc/codes
   run_and_comment go generate ${TESTPATHS}
-  run_and_comment git diff --exit-code .
+  run_and_comment git diff --exit-code $(ls | grep -v Godeps)
   end_context #"generate"
 fi
 
