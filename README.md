@@ -83,7 +83,7 @@ Working with a client:
 Check out the official Let's Encrypt client from https://github.com/letsencrypt/letsencrypt/ and follow the setup instructions there. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for letsencrypt that has all those flags:
 
     source ~/letsencrypt/tests/integration/_common.sh
-    letsencrypt_test certonly -a standalone -d example.com
+    certbot_test certonly -a standalone -d example.com
 
 Your local Boulder instance uses a fake DNS server that returns 127.0.0.1 for
 any query, so you can use any value for the -d flag.

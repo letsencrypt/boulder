@@ -87,6 +87,8 @@ type Config struct {
 
 		MaxConcurrentRPCServerRequests int64
 
+		LookupIPv6 bool
+
 		GoogleSafeBrowsing *GoogleSafeBrowsingConfig
 
 		CAAService *GRPCClientConfig
@@ -157,13 +159,6 @@ type Config struct {
 		ServiceConfig
 		SubmissionTimeout              ConfigDuration
 		MaxConcurrentRPCServerRequests int64
-	}
-
-	ExternalCertImporter struct {
-		CertsToImportCSVFilename   string
-		DomainsToImportCSVFilename string
-		CertsToRemoveCSVFilename   string
-		StatsdRate                 float32
 	}
 
 	PA PAConfig
@@ -248,6 +243,7 @@ type ServiceConfig struct {
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
 	AMQP      *AMQPConfig
+	GRPC      *GRPCServerConfig
 }
 
 // DBConfig defines how to connect to a database. The connect string may be
@@ -257,6 +253,7 @@ type DBConfig struct {
 	DBConnect string
 	// A file containing a connect URL for the DB.
 	DBConnectFile string
+	MaxDBConns    int
 }
 
 // URL returns the DBConnect URL represented by this DBConfig object, either
@@ -343,6 +340,8 @@ type CAConfig struct {
 	// EnableMustStaple governs whether the Must Staple extension in CSRs
 	// triggers issuance of certificates with Must Staple.
 	EnableMustStaple bool
+
+	PublisherService *GRPCClientConfig
 }
 
 // PAConfig specifies how a policy authority should connect to its
@@ -427,6 +426,8 @@ type OCSPUpdaterConfig struct {
 
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    ConfigDuration
+
+	Publisher *GRPCClientConfig
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the
