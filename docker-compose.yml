@@ -5,7 +5,6 @@ boulder:
       # Cache built .a files for faster repeat runs
       - /go/pkg/
       - /tmp:/tmp
-      - /home/jsha/certbot:/certbot
     net: bridge
     extra_hosts:
       - le.wtf:127.0.0.1
