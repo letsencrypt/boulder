@@ -103,6 +103,14 @@ function die() {
   exit 1
 }
 
+function build_certbot() {
+  run git clone \
+    https://www.github.com/certbot/certbot.git \
+    $CERTBOT_PATH || exit 1
+  cd $CERTBOT_PATH
+  run ./tools/venv.sh
+  cd -
+}
 
 function run_unit_tests() {
   if [ "${TRAVIS}" == "true" ]; then
@@ -218,12 +226,13 @@ if [[ "$RUN" =~ "integration" ]] ; then
     echo "--- Recommend setting \$CERTBOT_PATH to  ---"
     echo "--- client repo with initialized virtualenv  ---"
     echo "------------------------------------------------"
-    run git clone \
-      https://www.github.com/certbot/certbot.git \
-      $CERTBOT_PATH || exit 1
+    build_certbot
+  elif [ ! -d "${CERTBOT_PATH}" ]; then
+    build_certbot
   fi
 
-  python test/integration-test.py --certbot
+  source ${CERTBOT_PATH}/${VENV_NAME:-venv}/bin/activate
+  python test/integration-test.py --all
   case $? in
     0) # Success
       update_status --state success

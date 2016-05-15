@@ -1,3 +1,6 @@
-PATH=/go/bin:/go/src/github.com/letsencrypt/boulder/bin:/usr/local/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
+PATH=/certbot/dvenv/bin:/go/bin:/go/src/github.com/letsencrypt/boulder/bin:/usr/local/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
 GOPATH=/go
 GOBIN=/go/src/github.com/letsencrypt/boulder/bin
+GO15VENDOREXPERIMENT=1
+CERTBOT_PATH=/certbot
+VENV_NAME=dvenv

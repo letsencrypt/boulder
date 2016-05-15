@@ -30,8 +30,4 @@ MYSQL_CONTAINER=1 bash $DIR/create_db.sh
 # Set up rabbitmq exchange
 rabbitmq-setup -server amqp://boulder-rabbitmq
 
-if [[ $# -eq 0 ]]; then
-    exec su buser -c ./start.py
-fi
-
-exec su buser -c "$@"
+exec "$@"
