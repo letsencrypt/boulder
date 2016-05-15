@@ -3,10 +3,10 @@ FROM j4cob/boulder-tools:latest
 # Boulder exposes its web application at port TCP 4000
 EXPOSE 4000 4002 4003 8053 8055
 
-COPY ./test/docker-environment /etc/environment
-ENV BASH_ENV /etc/environment
 ENV GO15VENDOREXPERIMENT 1
 ENV GOBIN /go/src/github.com/letsencrypt/boulder/bin
+ENV PATH /go/bin:/go/src/github.com/letsencrypt/boulder/bin:/usr/local/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
+ENV GOPATH /go
 
 RUN adduser --disabled-password --gecos "" --home /go/src/github.com/letsencrypt/boulder -q buser
 RUN chown -R buser /go/
