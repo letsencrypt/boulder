@@ -5,6 +5,8 @@ EXPOSE 4000 4002 4003 8053 8055
 
 COPY ./test/docker-environment /etc/environment
 ENV BASH_ENV /etc/environment
+ENV GO15VENDOREXPERIMENT 1
+ENV GOBIN /go/src/github.com/letsencrypt/boulder/bin
 
 RUN adduser --disabled-password --gecos "" --home /go/src/github.com/letsencrypt/boulder -q buser
 RUN chown -R buser /go/
