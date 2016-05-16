@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -19,6 +20,24 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/square/go-jose"
 )
+
+const MaxCNLength = 64
+
+// This map is used to detect algorithms in crypto/x509 that
+// are no longer considered sufficiently strong.
+// * No MD2, MD5, or SHA-1
+// * No DSA
+//
+// SHA1WithRSA is allowed because there's still a fair bit of it
+// out there, but we should try to remove it soon.
+var BadSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
+	x509.UnknownSignatureAlgorithm: true,
+	x509.MD2WithRSA:                true,
+	x509.MD5WithRSA:                true,
+	x509.DSAWithSHA1:               true,
+	x509.DSAWithSHA256:             true,
+	x509.ECDSAWithSHA1:             true,
+}
 
 // AcmeStatus defines the state of a given authorization
 type AcmeStatus string
@@ -139,6 +158,55 @@ func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rawCertificateRequest{
 		CSR: cr.CSR.Raw,
 	})
+}
+
+func (cr *CertificateRequest) FillFields(forceCNFromSAN bool) {
+	if forceCNFromSAN && cr.CSR.Subject.CommonName == "" {
+		cr.CSR.Subject.CommonName = cr.CSR.DNSNames[0]
+	} else if cr.CSR.Subject.CommonName != "" {
+		cr.CSR.DNSNames = append(cr.CSR.DNSNames, cr.CSR.Subject.CommonName)
+	}
+	cr.CSR.Subject.CommonName = strings.ToLower(cr.CSR.Subject.CommonName)
+	cr.CSR.DNSNames = UniqueLowerNames(cr.CSR.DNSNames)
+}
+
+// VerifyCSR checks the validity of a x509.CertificateRequest
+func VerifyCSR(csr *x509.CertificateRequest, maxCNLength, maxNames int, badSignatureAlgs map[x509.SignatureAlgorithm]bool, keyPolicy KeyPolicy, pa PolicyAuthority, regID int64) error {
+	key, ok := csr.PublicKey.(crypto.PublicKey)
+	if !ok {
+		return errors.New("invalid public key in CSR")
+	}
+	if err := keyPolicy.GoodKey(key); err != nil {
+		return fmt.Errorf("invalid public key in CSR: %s", err)
+	}
+	if badSignatureAlgs[csr.SignatureAlgorithm] {
+		return fmt.Errorf("signature algorithm %s not supported", csr.SignatureAlgorithm.String())
+	}
+	if err := csr.CheckSignature(); err != nil {
+		return err
+	}
+	if len(csr.DNSNames) == 0 && csr.Subject.CommonName == "" {
+		return errors.New("at least one dNSName or a CN is required")
+	}
+	if len(csr.Subject.CommonName) > maxCNLength {
+		return fmt.Errorf("CN was longer than %d bytes", maxCNLength)
+	}
+	if maxNames > 0 && len(csr.DNSNames) > maxNames {
+		return fmt.Errorf("CSR contains more than %d dnsNames", maxNames)
+	}
+	badNames := []string{}
+	for _, name := range csr.DNSNames {
+		if err := pa.WillingToIssue(AcmeIdentifier{
+			Type:  IdentifierDNS,
+			Value: name,
+		}, regID); err != nil {
+			badNames = append(badNames, name)
+		}
+	}
+	if len(badNames) > 0 {
+		return fmt.Errorf("policy forbids issuing for: %s", strings.Join(badNames, ", "))
+	}
+	return nil
 }
 
 // Registration objects represent non-public metadata attached

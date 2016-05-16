@@ -65,6 +65,7 @@ type RegistrationAuthorityImpl struct {
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
 	useNewVARPC                  bool
+	maxNames                     int
 
 	regByIPStats         metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
@@ -526,11 +527,13 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		return emptyCert, err
 	}
 
+	// Fill required fields
+	req.FillFields(false)
+
 	// Verify the CSR
 	csr := req.CSR
-	if err = csr.CheckSignature(); err != nil {
-		logEvent.Error = err.Error()
-		err = core.UnauthorizedError("Invalid signature on CSR")
+	if err := core.VerifyCSR(csr, core.MaxCNLength, ra.maxNames, core.BadSignatureAlgorithms, ra.keyPolicy, ra.PA, regID); err != nil {
+		err = core.MalformedRequestError(err.Error())
 		return emptyCert, err
 	}
 
