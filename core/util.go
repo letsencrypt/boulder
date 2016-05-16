@@ -424,7 +424,9 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *KeyPolicy,
 		return fmt.Errorf("invalid public key in CSR: %s", err)
 	}
 	if BadSignatureAlgorithms[csr.SignatureAlgorithm] {
-		return fmt.Errorf("signature algorithm %s not supported", csr.SignatureAlgorithm.String())
+		// go1.6 provides a stringer for x509.SignatureAlgorithm but 1.5.x
+		// does not
+		return errors.New("signature algorithm not supported")
 	}
 	if err := csr.CheckSignature(); err != nil {
 		return errors.New("invalid signature on CSR")

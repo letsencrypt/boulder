@@ -229,7 +229,7 @@ func TestVerifyCSR(t *testing.T) {
 			testingPolicy,
 			&mockPA{},
 			0,
-			errors.New("signature algorithm 0 not supported"),
+			errors.New("signature algorithm not supported"),
 		},
 		{
 			brokenSignedReq,
