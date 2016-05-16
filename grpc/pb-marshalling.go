@@ -86,7 +86,7 @@ func pbToProblemDetails(in *corepb.ProblemDetails) (*probs.ProblemDetails, error
 }
 
 func vaChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
-	accountKey, err := jwkToString(challenge.AccountKey)
+	accountKey, err := challenge.AccountKey.MarshalJSON()
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func vaChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		Type:             &challenge.Type,
 		Status:           &st,
 		Token:            &challenge.Token,
-		AccountKey:       &accountKey,
+		AccountKey:       accountKey,
 		KeyAuthorization: &challenge.ProvidedKeyAuthorization,
 	}, nil
 }
@@ -108,7 +108,8 @@ func pbToVAChallenge(in *corepb.Challenge) (challenge core.Challenge, err error)
 	if in.AccountKey == nil || in.Id == nil || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	jwk, err := stringToJWK(*in.AccountKey)
+	var jwk *jose.JsonWebKey
+	err = jwk.UnmarshalJSON(in.AccountKey)
 	if err != nil {
 		return
 	}
@@ -123,25 +124,23 @@ func pbToVAChallenge(in *corepb.Challenge) (challenge core.Challenge, err error)
 }
 
 func validationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecord, error) {
-	addrs := make([]string, len(record.AddressesResolved))
+	addrs := make([][]byte, len(record.AddressesResolved))
 	var err error
 	for i, v := range record.AddressesResolved {
-		addrBytes, err := v.MarshalText()
+		addrs[i], err = v.MarshalText()
 		if err != nil {
 			return nil, err
 		}
-		addrs[i] = string(addrBytes)
 	}
-	addrUsedBytes, err := record.AddressUsed.MarshalText()
+	addrUsed, err := record.AddressUsed.MarshalText()
 	if err != nil {
 		return nil, err
 	}
-	addrUsed := string(addrUsedBytes)
 	return &corepb.ValidationRecord{
 		Hostname:          &record.Hostname,
 		Port:              &record.Port,
 		AddressesResolved: addrs,
-		AddressUsed:       &addrUsed,
+		AddressUsed:       addrUsed,
 		Authorities:       record.Authorities,
 		Url:               &record.URL,
 	}, nil
@@ -162,7 +161,7 @@ func pbToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		}
 	}
 	var addrUsed net.IP
-	err = addrUsed.UnmarshalText([]byte(*in.AddressUsed))
+	err = addrUsed.UnmarshalText(in.AddressUsed)
 	if err != nil {
 		return
 	}
