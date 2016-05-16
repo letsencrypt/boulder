@@ -179,13 +179,13 @@ func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, aut
 	return nil
 }
 
-type MockPA struct{}
+type mockPA struct{}
 
-func (pa *MockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
+func (pa *mockPA) ChallengesFor(identifier core.AcmeIdentifier, key *jose.JsonWebKey) (challenges []core.Challenge, combinations [][]int) {
 	return
 }
 
-func (pa *MockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa *mockPA) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	return nil
 }
 
@@ -578,12 +578,12 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
-	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0, testKeyPolicy, false)
+	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0, testKeyPolicy, false, 0, true)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
 		PEM: mockCertPEM,
 	}
-	ra.PA = &MockPA{}
+	ra.PA = &mockPA{}
 	wfe.RA = ra
 	responseWriter := httptest.NewRecorder()
 
@@ -653,7 +653,7 @@ func TestIssueCertificate(t *testing.T) {
     }`, wfe.nonceService)))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"urn:acme:error:unauthorized","detail":"Error creating new cert :: Invalid signature on CSR","status":403}`)
+		`{"type":"urn:acme:error:malformed","detail":"Error creating new cert :: invalid signature on CSR","status":400}`)
 
 	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
 	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=meep.com | b64url

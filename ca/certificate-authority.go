@@ -97,9 +97,6 @@ const (
 	// Increments when CA handles a CSR requesting an extension other than those
 	// listed above
 	metricCSRExtensionOther = "CA.CSRExtensions.Other"
-
-	// Maximum length allowed for the common name. RFC 5280
-	maxCNLength = 64
 )
 
 type certificateStorage interface {
@@ -382,7 +379,10 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
-	if err := core.VerifyCSR(&csr, maxCNLength, ca.maxNames, core.BadSignatureAlgorithms, ca.keyPolicy, ca.PA, regID); err != nil {
+	// Since the RPC layer uses the CertificateRequest.Raw field when transporting the CSR
+	// we must re-normalize the CN/DNSNames
+	core.NormalizeCSR(&csr, ca.forceCNFromSAN)
+	if err := core.VerifyCSR(&csr, ca.maxNames, &ca.keyPolicy, ca.PA, regID); err != nil {
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, core.MalformedRequestError(err.Error())

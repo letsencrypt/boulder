@@ -67,6 +67,9 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
+
+		MaxNames     int
+		DoNotForceCN bool
 	}
 
 	SA struct {
