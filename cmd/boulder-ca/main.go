@@ -19,9 +19,11 @@ import (
 	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
+	pubPB "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -139,13 +141,19 @@ func main() {
 		cai.SA, err = rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Failed to create SA client")
 
-		cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Failed to create Publisher client")
+		if c.CA.PublisherService != nil {
+			conn, err := bgrpc.ClientSetup(c.CA.PublisherService)
+			cmd.FailOnError(err, "Failed to load credentials and create connection to service")
+			cai.Publisher = bgrpc.NewPublisherClientWrapper(pubPB.NewPublisherClient(conn), c.CA.PublisherService.Timeout.Duration)
+		} else {
+			cai.Publisher, err = rpc.NewPublisherClient(clientName, amqpConf, stats)
+			cmd.FailOnError(err, "Failed to create Publisher client")
+		}
 
 		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
 		err = rpc.NewCertificateAuthorityServer(cas, cai)
-		cmd.FailOnError(err, "Unable to setup CA RPC server")
+		cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")
 
 		err = cas.Start(amqpConf)
 		cmd.FailOnError(err, "Unable to run CA RPC server")

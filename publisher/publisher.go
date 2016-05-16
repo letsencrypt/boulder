@@ -82,7 +82,7 @@ func New(bundle []ct.ASN1Cert, logs []*Log, submissionTimeout time.Duration, log
 }
 
 // SubmitToCT will submit the certificate represented by certDER to any CT
-// logs configured in pub.CT.Logs
+// logs configured in pub.CT.Logs (AMQP RPC method).
 func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
@@ -90,11 +90,11 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 		return err
 	}
 
+	localCtx, cancel := context.WithTimeout(ctx, pub.submissionTimeout)
+	defer cancel()
 	chain := append([]ct.ASN1Cert{der}, pub.issuerBundle...)
 	for _, ctLog := range pub.ctLogs {
-		ctx, cancel := context.WithTimeout(context.Background(), pub.submissionTimeout)
-		defer cancel()
-		sct, err := ctLog.client.AddChainWithContext(ctx, chain)
+		sct, err := ctLog.client.AddChainWithContext(localCtx, chain)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.Err(fmt.Sprintf("Failed to submit certificate to CT log at %s: %s", ctLog.uri, err))
@@ -123,7 +123,7 @@ func (pub *Impl) SubmitToCT(ctx context.Context, der []byte) error {
 			continue
 		}
 
-		err = pub.SA.AddSCTReceipt(ctx, internalSCT)
+		err = pub.SA.AddSCTReceipt(localCtx, internalSCT)
 		if err != nil {
 			// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 			pub.log.Err(fmt.Sprintf("Failed to store SCT receipt in database: %s", err))
