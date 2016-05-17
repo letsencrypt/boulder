@@ -55,6 +55,9 @@ GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 -- Cert checker
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 
+-- Expired authorization purger
+GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
+
 -- Name set table backfiller
 GRANT SELECT ON certificates to 'backfiller'@'localhost';
 GRANT INSERT,SELECT ON fqdnSets to 'backfiller'@'localhost';

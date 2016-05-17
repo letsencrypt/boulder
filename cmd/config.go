@@ -188,6 +188,13 @@ type Config struct {
 		BadResultsOnly      bool
 		CheckPeriod         ConfigDuration
 	}
+
+	ExpiredAuthzPurger struct {
+		DBConfig
+
+		GracePeriod ConfigDuration
+	}
+
 	AllowedSigningAlgos *AllowedSigningAlgos
 
 	SubscriberAgreementURL string

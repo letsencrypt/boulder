@@ -100,6 +100,7 @@ var cliOptions = cli.parse({
   agreeTerms:  ["agree", "Agree to terms of service", "boolean", null],
   domains:  ["domains", "Domain name(s) for which to request a certificate (comma-separated)", "string", null],
   challType: ["challType", "Name of challenge type to use for validations", "string", "http-01"],
+  abortStep: ["abort-step", "Stop the issuance after reaching a certain step", "string", null]
 });
 
 var state = {
@@ -125,6 +126,7 @@ var state = {
   authorizationURL: "",
   responseURL: "",
   path: "",
+  abortStep: cliOptions.abortStep,
   retryDelay: 1000,
 
   newCertificateURL: "",
@@ -233,6 +235,9 @@ function makeAccountKeyPair(answers) {
 }
 
 function register(answers) {
+  if (state.abortStep === "register") {
+    process.exit(8);
+  }
   var email = answers.email;
 
   // Register public key
@@ -312,6 +317,9 @@ function sendAgreement(answers) {
 }
 
 function getChallenges(answers) {
+  if (state.abortStep === "beforeNewAuthz") {
+    process.exit(8);
+  }
   state.domain = answers.domain;
 
   // Register public key
@@ -341,6 +349,10 @@ function getReadyToValidate(err, resp, body) {
   state.newCertificateURL = links["next"];
 
   var authz = JSON.parse(body);
+
+  if (state.abortStep === "startChallenge") {
+    process.exit(8);
+  }
 
   var challenges = authz.challenges.filter(function(x) { return x.type == cliOptions.challType; });
   if (challenges.length == 0) {
@@ -477,6 +489,9 @@ function ensureValidation(err, resp, body) {
 }
 
 function getCertificate() {
+  if (state.abortStep === "getCertificate") {
+    process.exit(8);
+  }
   cli.spinner("Requesting certificate");
   var csr = cryptoUtil.generateCSR(state.certPrivateKey, state.validatedDomains);
   post(state.newCertificateURL, {

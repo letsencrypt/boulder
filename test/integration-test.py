@@ -20,6 +20,7 @@ import startservers
 ISSUANCE_FAILED = 1
 REVOCATION_FAILED = 2
 MAILER_FAILED = 3
+ABORT_SUCCESS = 8
 
 class ExitStatus:
     OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs = range(7)
@@ -168,19 +169,32 @@ def verify_ct_submission(expectedSubmissions, url):
         die(ExitStatus.CTFailure)
     return 0
 
-def run_node_test(domain, chall_type, expected_ct_submissions):
+def run_node_test(domain, chall_type, expected_ct_submissions, abort_step="null"):
     email_addr = "js.integration.test@letsencrypt.org"
     cert_file = os.path.join(tempdir, "cert.der")
     cert_file_pem = os.path.join(tempdir, "cert.pem")
     key_file = os.path.join(tempdir, "key.pem")
+
+    if abort_step is None or abort_step == "":
+        abort_step = "null"
+
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
-    if subprocess.Popen('''
+    exit_code = subprocess.Popen('''
         node test.js --email %s --agree true \
           --domains %s --new-reg http://localhost:4000/acme/new-reg \
-          --certKey %s --cert %s --challType %s && \
+          --certKey %s --cert %s --challType %s --abort-step %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
-        ''' % (email_addr, domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
-        shell=True).wait() != 0:
+        ''' % (email_addr, domain, key_file, cert_file, chall_type, abort_step, cert_file, cert_file_pem),
+                                 shell=True).wait()
+
+    if abort_step != "null":
+        if exit_code == ABORT_SUCCESS:
+            return ABORT_SUCCESS
+        else:
+            print("\nDid not properly abort at requested phase")
+            return ISSUANCE_FAILED
+
+    if exit_code != 0:
         print("\nIssuing failed")
         return ISSUANCE_FAILED
 
@@ -300,6 +314,44 @@ def main():
 
         if run_node_test("bad-caa-reserved.com", challenge_types[0], expected_ct_submissions) != ISSUANCE_FAILED:
             print("\nIssused certificate for domain with bad CAA records")
+            die(ExitStatus.NodeFailure)
+
+        if run_node_test("challenge-not-started.com", challenge_types[0], None, "startChallenge")\
+                != ABORT_SUCCESS:
+            print("\nDidn't cleanly abort before attempting challenge")
+            die(ExitStatus.NodeFailure)
+
+        now = datetime.datetime.now()
+        after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
+
+        target_time = now
+        expected_output = 'Deleted a total of 0 expired pending authorizations'
+        try:
+            out = subprocess.check_output(
+                '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config test/boulder-config.json'''
+                  % target_time.isoformat(), cwd='../..', shell=True)
+
+            print(out)
+            if expected_output not in out:
+                print("\nBad output from authz purger")
+                die(ExitStatus.NodeFailure)
+        except subprocess.CalledProcessError as e:
+            print("\nFailed to run authz purger: %s" % e)
+            die(ExitStatus.NodeFailure)
+
+        target_time = after_grace_period
+        expected_output = 'Deleted a total of 1 expired pending authorizations'
+        try:
+            out = subprocess.check_output(
+                '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config test/boulder-config.json'''
+                % target_time.isoformat(), cwd='../..', shell=True)
+
+            print(out)
+            if expected_output not in out:
+                print("\nBad output from authz purger")
+                die(ExitStatus.NodeFailure)
+        except subprocess.CalledProcessError as e:
+            print("\nFailed to run authz purger: %s" % e)
             die(ExitStatus.NodeFailure)
 
     # Simulate a disconnection from RabbitMQ to make sure reconnects work.
