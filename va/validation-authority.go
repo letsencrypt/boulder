@@ -515,7 +515,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 			va.log.AuditInfo(fmt.Sprintf("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]", identifier.Value, present, valid))
 			if !valid {
 				prob = &probs.ProblemDetails{
-					Type:   probs.ConnectionProblem,
+					Type:   probs.CAAProblem,
 					Detail: fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value),
 				}
 			}
@@ -555,7 +555,7 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 	))
 	if !*r.Valid {
 		return &probs.ProblemDetails{
-			Type:   probs.ConnectionProblem,
+			Type:   probs.CAAProblem,
 			Detail: fmt.Sprintf("CAA record for %s prevents issuance", ident.Value),
 		}
 	}
@@ -627,7 +627,7 @@ func (va *ValidationAuthorityImpl) checkGPDNS(ctx context.Context, identifier co
 	))
 	if !valid {
 		return &probs.ProblemDetails{
-			Type:   probs.ConnectionProblem,
+			Type:   probs.CAAProblem,
 			Detail: fmt.Sprintf("CAA records prevents issuance for %s", identifier.Value),
 		}
 	}
