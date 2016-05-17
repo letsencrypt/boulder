@@ -38,10 +38,10 @@ func (p *expiredAuthzPurger) setDefaults() {
 	}
 }
 
-func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time) error {
+func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time) (int64, error) {
 	tx, err := p.db.Begin()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	rowsAffected := int64(0)
@@ -56,19 +56,19 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time) error {
 			p.batchSize,
 		)
 		if err != nil {
-			return err
+			return rowsAffected, err
 		}
 		rows, err := result.RowsAffected()
 		if err != nil {
-			return err
+			return rowsAffected, err
 		}
 
 		rowsAffected += rows
-		p.log.Warning(fmt.Sprintf("Progress: Deleted %d (%d) expired pending authorizations", rows, rowsAffected))
+		p.log.Info(fmt.Sprintf("Progress: Deleted %d (%d) expired pending authorizations", rows, rowsAffected))
 
 		if rows < p.batchSize {
 			p.log.Info(fmt.Sprintf("Deleted a total of %d expired pending authorizations", rowsAffected))
-			return nil
+			return rowsAffected, nil
 		}
 	}
 }
@@ -130,7 +130,7 @@ func main() {
 		purger.setDefaults()
 
 		purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
-		err = purger.purgeAuthzs(purgeBefore)
+		_, err = purger.purgeAuthzs(purgeBefore)
 		cmd.FailOnError(err, "Failed to purge authorizations")
 	}
 
