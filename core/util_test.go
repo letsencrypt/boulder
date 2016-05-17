@@ -6,20 +6,13 @@
 package core
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	_ "crypto/sha256"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
 	"net/url"
 	"reflect"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/square/go-jose"
