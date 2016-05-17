@@ -44,7 +44,7 @@ function run() {
   "$@" 2>&1
   local status=$?
 
-  if [ ${status} -eq 0 ]; then
+  if [ "${status}" != 0 ]; then
     FAILURE=1
     echo "[!] FAILURE: $@"
   fi
