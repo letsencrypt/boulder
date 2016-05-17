@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -531,8 +532,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	// Verify the CSR
 	csr := req.CSR
-	core.NormalizeCSR(csr, ra.forceCNFromSAN)
-	if err := core.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, regID); err != nil {
+	csrlib.NormalizeCSR(csr, ra.forceCNFromSAN)
+	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, regID); err != nil {
 		err = core.MalformedRequestError(err.Error())
 		return emptyCert, err
 	}
