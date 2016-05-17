@@ -125,7 +125,7 @@ func main() {
 			stats: stats,
 			log:   auditlogger,
 			clk:   cmd.Clock(),
-			db: dbMap,
+			db:    dbMap,
 		}
 		purger.setDefaults()
 
