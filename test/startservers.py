@@ -85,7 +85,6 @@ def start(race_detection):
 
     # Wait until all servers are up before returning to caller. This means
     # checking each server's debug port until it's available.
-    # seconds.
     while True:
         try:
             # If one of the servers has died, quit immediately.
