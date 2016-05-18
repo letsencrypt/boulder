@@ -25,9 +25,17 @@ wait_tcp_port boulder-mysql 3306
 wait_tcp_port boulder-rabbitmq 5672
 
 # create the database
-MYSQL_CONTAINER=1 bash $DIR/create_db.sh
+MYSQL_CONTAINER=1 $DIR/create_db.sh
 
 # Set up rabbitmq exchange
 rabbitmq-setup -server amqp://boulder-rabbitmq
 
-exec "$@"
+if [[ $# -eq 0 ]]; then
+    exec ./start.py
+fi
+
+# TODO(jsha): Change to an unprivileged user before running commands. Currently,
+# running as an unprivileged user causes the certbot integration test to fail
+# during the test of the manual plugin. There's a call to killpg in there that
+# kills the whole test, but only when run under `su buser -c "..."`
+exec $@

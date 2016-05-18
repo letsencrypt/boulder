@@ -44,7 +44,7 @@ env:
 
 install:
   - docker-compose pull
-  - docker pull j4cob/boulder-tools
+  - docker pull letsencrypt/boulder-tools
   - docker-compose build
 
 script:

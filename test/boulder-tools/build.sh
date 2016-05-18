@@ -2,7 +2,7 @@
 
 # Boulder deps
 apt-get update
-apt-get install -y --no-install-recommends apt-transport-https
+apt-get install -y --no-install-recommends apt-transport-https ca-certificates
 
 curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add -
 cat >/etc/apt/sources.list.d/bouldertools.list <<EOAPT
@@ -22,8 +22,7 @@ apt-get install -y --no-install-recommends \
   ruby-dev \
   rsyslog \
   softhsm \
-  protobuf-compiler \
-  ca-certificates &
+  protobuf-compiler &
 
 # Install port forwarder, database migration tool, and testing tools.
 GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
@@ -33,7 +32,6 @@ GOBIN=/usr/local/bin GOPATH=/tmp/gopath go get \
   github.com/golang/mock/mockgen \
   github.com/golang/protobuf/proto \
   github.com/golang/protobuf/protoc-gen-go \
-  github.com/jcjones/github-pr-status \
   github.com/kisielk/errcheck \
   github.com/mattn/goveralls \
   github.com/modocache/gover \
