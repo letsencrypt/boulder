@@ -1,34 +1,24 @@
-FROM golang:1.5
-
-MAINTAINER J.C. Jones "jjones@letsencrypt.org"
-MAINTAINER William Budington "bill@eff.org"
-
-# Install dependencies packages
-RUN apt-get update && apt-get install -y \
-	libltdl-dev \
-	mariadb-client-core-10.0 \
-	nodejs \
-	rsyslog \
-	softhsm \
-	--no-install-recommends \
-	&& rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# Install port forwarder, database migration tool and go lint
-RUN go get -v \
-	github.com/jsha/listenbuddy \
-	bitbucket.org/liamstask/goose/cmd/goose \
-	github.com/golang/lint/golint
+FROM letsencrypt/boulder-tools:latest
 
 # Boulder exposes its web application at port TCP 4000
 EXPOSE 4000 4002 4003 8053 8055
 
 ENV GO15VENDOREXPERIMENT 1
+ENV GOBIN /go/src/github.com/letsencrypt/boulder/bin
+ENV PATH /go/bin:/go/src/github.com/letsencrypt/boulder/bin:/usr/local/go/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin/
+ENV GOPATH /go
+
+RUN adduser --disabled-password --gecos "" --home /go/src/github.com/letsencrypt/boulder -q buser
+RUN chown -R buser /go/
 
 WORKDIR /go/src/github.com/letsencrypt/boulder
 
-ENTRYPOINT [ "./test/entrypoint.sh" ]
-
 # Copy in the Boulder sources
-COPY . /go/src/github.com/letsencrypt/boulder
+COPY . .
+RUN mkdir bin
+RUN go install ./cmd/rabbitmq-setup
+COPY ./test/certbot /go/bin/
 
-RUN GOBIN=/go/src/github.com/letsencrypt/boulder/bin go install  ./...
+RUN chown -R buser /go/
+
+ENTRYPOINT [ "./test/entrypoint.sh" ]

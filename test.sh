@@ -72,15 +72,6 @@ function die() {
   exit 1
 }
 
-function build_certbot() {
-  run git clone \
-    https://www.github.com/certbot/certbot.git \
-    $CERTBOT_PATH || exit 1
-  cd $CERTBOT_PATH
-  run ./tools/venv.sh
-  cd -
-}
-
 function run_unit_tests() {
   if [ "${TRAVIS}" == "true" ]; then
 
@@ -188,18 +179,20 @@ if [[ "$RUN" =~ "integration" ]] ; then
   start_context "integration"
 
   if [ -z "$CERTBOT_PATH" ]; then
-    export CERTBOT_PATH=$(mktemp -d -t leXXXX)
+    export CERTBOT_PATH=$(mktemp -d -t cbpXXXX)
     echo "------------------------------------------------"
     echo "--- Checking out letsencrypt client is slow. ---"
     echo "--- Recommend setting \$CERTBOT_PATH to  ---"
     echo "--- client repo with initialized virtualenv  ---"
     echo "------------------------------------------------"
-    build_certbot
-  elif [ ! -d "${CERTBOT_PATH}" ]; then
-    build_certbot
+    run git clone \
+      https://www.github.com/certbot/certbot.git \
+      $CERTBOT_PATH || exit 1
   fi
 
-  source ${CERTBOT_PATH}/venv/bin/activate
+  if ! type certbot >/dev/null 2>/dev/null; then
+    source ${CERTBOT_PATH}/${VENV_NAME:-venv}/bin/activate
+  fi
 
   python test/integration-test.py --all
   if [ "$?" != 0 ]; then
