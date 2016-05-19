@@ -39,15 +39,10 @@ func (p *expiredAuthzPurger) setDefaults() {
 }
 
 func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time) (int64, error) {
-	tx, err := p.db.Begin()
-	if err != nil {
-		return 0, err
-	}
-
 	rowsAffected := int64(0)
 
 	for {
-		result, err := tx.Exec(`
+		result, err := p.db.Exec(`
 			DELETE FROM pendingAuthorizations
 			WHERE expires < ?
 			LIMIT ?
