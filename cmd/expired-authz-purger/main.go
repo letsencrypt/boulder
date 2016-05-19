@@ -95,7 +95,7 @@ func main() {
 
 		configJSON, err := ioutil.ReadFile(configFileName)
 		if err != nil {
-			fmt.Printf("Failed to read config file: %s\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to read config file: %s\n", err)
 			return
 		}
 
