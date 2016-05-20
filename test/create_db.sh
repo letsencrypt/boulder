@@ -19,6 +19,9 @@ fi
 # to the format we use in production, MIXED.
 mysql $dbconn -e "SET GLOBAL binlog_format = 'MIXED';"
 
+# Drop all users to get a fresh start
+mysql $dbconn < test/drop_users.sql
+
 for dbenv in $DBENVS; do
   (
   db="boulder_sa_${dbenv}"
@@ -39,8 +42,6 @@ for dbenv in $DBENVS; do
   if [[ ${MYSQL_CONTAINER} ]]; then
     sed -e "s/'localhost'/'%'/g" < ${USERS_SQL} | \
       mysql $dbconn -D $db || die "unable to add users to ${db}"
-  elif mysqld -V | grep "10.0"; then
-      mysql $dbconn -D $db < test/mariadb100_users.sql
   else
     sed -e "s/'localhost'/'127.%'/g" < $USERS_SQL | \
       mysql $dbconn -D $db < $USERS_SQL || die "unable to add users to ${db}"
