@@ -31,8 +31,12 @@ type Config struct {
 
 	WFE struct {
 		ServiceConfig
-		BaseURL       string
-		ListenAddress string
+		BaseURL          string
+		ListenAddress    string
+		TLSListenAddress string
+
+		ServerCertificatePath string
+		ServerKeyPath         string
 
 		AllowOrigins []string
 

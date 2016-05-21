@@ -6,8 +6,10 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/codegangsta/cli"
@@ -100,8 +102,36 @@ func main() {
 			KillTimeout: wfe.ShutdownKillTimeout,
 			Stats:       metrics.NewFBAdapter(stats, "WFE", clock.Default()),
 		}
-		err = httpdown.ListenAndServe(srv, hd)
-		cmd.FailOnError(err, "Error starting HTTP server")
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			err = httpdown.ListenAndServe(srv, hd)
+			wg.Done()
+			cmd.FailOnError(err, "Error starting HTTP server")
+		}()
+
+		if c.WFE.TLSListenAddress != "" {
+			cer, err := tls.LoadX509KeyPair(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
+			if err != nil {
+				cmd.FailOnError(err, "Couldn't read WFE server certificate")
+			}
+			tlsConfig := &tls.Config{Certificates: []tls.Certificate{cer}}
+
+			logger.Info(fmt.Sprintf("TLS Server running, listening on %s...\n", c.WFE.TLSListenAddress))
+			TLSSrv := &http.Server{
+				Addr:      c.WFE.TLSListenAddress,
+				Handler:   httpMonitor,
+				TLSConfig: tlsConfig,
+			}
+			wg.Add(1)
+			go func() {
+				err = httpdown.ListenAndServe(TLSSrv, hd)
+				wg.Done()
+				cmd.FailOnError(err, "Error starting TLS server")
+			}()
+		}
+
+		wg.Wait()
 	}
 
 	app.Run()

@@ -12,6 +12,9 @@
 
   "wfe": {
     "listenAddress": "0.0.0.0:4000",
+    "TLSListenAddress": "0.0.0.0:4430",
+    "serverCertificatePath": "test/wfe.pem",
+    "serverKeyPath": "test/wfe.key",
     "allowOrigins": ["*"],
     "certCacheDuration": "6h",
     "certNoCacheExpirationWindow": "96h",
@@ -61,7 +64,7 @@
             "backdate": "1h",
             "is_ca": false,
             "issuer_urls": [
-              "http://127.0.0.1:4000/acme/issuer-cert"
+              "http://boulder:4430/acme/issuer-cert"
             ],
             "ocsp_url": "http://127.0.0.1:4002/",
             "crl_url": "http://example.com/crl",
@@ -98,7 +101,7 @@
             "backdate": "1h",
             "is_ca": false,
             "issuer_urls": [
-              "http://127.0.0.1:4000/acme/issuer-cert"
+              "http://boulder:4430/acme/issuer-cert"
             ],
             "ocsp_url": "http://127.0.0.1:4002/",
             "crl_url": "http://example.com/crl",
