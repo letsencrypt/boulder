@@ -50,26 +50,61 @@ var _Singleton singleton
 // The constant used to identify audit-specific messages
 const auditTag = "[AUDIT]"
 
+const syslogDefaultFacility = syslog.LOG_LOCAL0
+
 // New returns a new Logger that uses the given syslog.Writer as a backend.
-func New(log *syslog.Writer, stdoutLogLevel int) (Logger, error) {
-	if log == nil {
-		return nil, errors.New("Attempted to use a nil System Logger.")
+func New(syslogNetwork, syslogAddr, syslogTag string, stdoutLogLevel int) (Logger, error) {
+	syslogIsStdout := false
+	logForTerminal := false
+	if syslogNetwork == "" {
+		if syslogAddr != "" {
+			return nil, fmt.Errorf(
+				"syslog address must be empty when network is empty while %s was given", syslogAddr)
+		}
+		if s := os.Getenv("STDOUT_LOG"); s != "" {
+			syslogIsStdout = true
+			if s == "terminal" {
+				logForTerminal = true
+			} else if s != "plain" {
+				return nil, fmt.Errorf(
+					"STDOUT_LOG must be either plain or terminal while %s was given", s)
+			}
+		}
+	}
+	if syslogTag == "" {
+		syslogTag = path.Base(os.Args[0])
+	}
+
+	var syslogger *syslog.Writer
+	var stdoutLog *stdoutLog
+	var err error
+	if syslogIsStdout {
+		// When we log to stdout, use stdoutLogLevel above error
+		// as a hint to show colors.
+		stdoutLog = newStdoutLog(syslogTag, 7, logForTerminal)
+	} else {
+		if stdoutLogLevel >= int(syslog.LOG_ERR) {
+			// Always format as if for terminal when stdout log is an
+			// extra log beyond syslog.
+			stdoutLog = newStdoutLog(syslogTag, stdoutLogLevel, true)
+		}
+		syslogger, err = syslog.Dial(
+			syslogNetwork,
+			syslogAddr,
+			syslogDefaultFacility|syslog.LOG_INFO, // default, overridden by log calls
+			syslogTag)
+	}
+	if err != nil {
+		return nil, err
 	}
 	return &impl{
-		&bothWriter{log, stdoutLogLevel, clock.Default()},
+		&bothWriter{syslogger, stdoutLog},
 	}, nil
 }
 
 // initialize should only be used in unit tests.
 func initialize() {
-	// defaultPriority is never used because we always use specific priority-based
-	// logging methods.
-	const defaultPriority = syslog.LOG_INFO | syslog.LOG_LOCAL0
-	syslogger, err := syslog.Dial("", "", defaultPriority, "test")
-	if err != nil {
-		panic(err)
-	}
-	logger, err := New(syslogger, int(syslog.LOG_DEBUG))
+	logger, err := New("", "", "test", int(syslog.LOG_DEBUG))
 	if err != nil {
 		panic(err)
 	}
@@ -110,54 +145,97 @@ type writer interface {
 
 // bothWriter implements writer and writes to both syslog and stdout.
 type bothWriter struct {
-	*syslog.Writer
-	stdoutLevel int
-	clk         clock.Clock
+	syslog    *syslog.Writer
+	stdoutLog *stdoutLog
 }
 
 // Log the provided message at the appropriate level, writing to
 // both stdout and the Logger, as well as informing statsd.
 func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
-	var prefix string
-	var err error
+	if w.syslog != nil {
+		var err error
+		switch level {
+		case syslog.LOG_ERR:
+			err = w.syslog.Err(msg)
+		case syslog.LOG_WARNING:
+			err = w.syslog.Warning(msg)
+		case syslog.LOG_INFO:
+			err = w.syslog.Info(msg)
+		case syslog.LOG_DEBUG:
+			err = w.syslog.Debug(msg)
+		default:
+			err = w.syslog.Err(fmt.Sprintf("%s (unknown logging level: %d)", msg, int(level)))
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to write to syslog: %s (%s)", msg, err)
+		}
+	}
+	if w.stdoutLog != nil {
+		w.stdoutLog.logAtLevel(level, msg)
+	}
+}
 
-	const red = "\033[31m\033[1m"
-	const yellow = "\033[33m"
+// Implement writer to log to stdout
+type stdoutLog struct {
+	tag         string
+	stdoutLevel int
+	forTerminal bool
+	clk         clock.Clock
+}
 
-	switch level {
-	case syslog.LOG_ERR:
-		err = w.Err(msg)
-		prefix = red + "E"
-	case syslog.LOG_WARNING:
-		err = w.Warning(msg)
-		prefix = yellow + "W"
-	case syslog.LOG_INFO:
-		err = w.Info(msg)
-		prefix = "I"
-	case syslog.LOG_DEBUG:
-		err = w.Debug(msg)
-		prefix = "D"
-	default:
-		err = w.Err(fmt.Sprintf("%s (unknown logging level: %d)", msg, int(level)))
+func newStdoutLog(tag string, stdoutLogLevel int, forTerminal bool) *stdoutLog {
+	slog := &stdoutLog{tag, stdoutLogLevel, forTerminal, nil}
+	if forTerminal {
+		slog.clk = clock.Default()
+	}
+	return slog
+}
+
+func (slog *stdoutLog) logAtLevel(level syslog.Priority, msg string) {
+	if int(level) > slog.stdoutLevel {
+		return
 	}
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write to syslog: %s (%s)", msg, err)
+	var prefix string
+	switch level {
+	case syslog.LOG_ERR:
+		prefix = "E"
+	case syslog.LOG_WARNING:
+		prefix = "W"
+	case syslog.LOG_INFO:
+		prefix = "I"
+	case syslog.LOG_DEBUG:
+		prefix = "D"
+	default:
+		msg = fmt.Sprintf("%s (unknown logging level: %d)", msg, int(level))
+		level = syslog.LOG_ERR
+		prefix = "E"
 	}
 
 	var reset string
-	if strings.HasPrefix(prefix, "\033") {
-		reset = "\033[0m"
+	if slog.forTerminal {
+		const red = "\033[31m\033[1m"
+		const yellow = "\033[33m"
+		color := ""
+		if level <= syslog.LOG_ERR {
+			color = red
+		} else if level <= syslog.LOG_WARNING {
+			color = yellow
+		}
+		if color != "" {
+			reset = "\033[0m"
+		}
+		prefix = color + prefix + slog.clk.Now().Format("150405")
+	} else {
+		// Use the standard syslog reporting of facility and level
+		prefix = fmt.Sprintf("<%d> %s", int(syslogDefaultFacility|level), prefix)
 	}
 
-	if int(level) <= w.stdoutLevel {
-		fmt.Printf("%s%s %s %s%s\n",
-			prefix,
-			w.clk.Now().Format("150405"),
-			path.Base(os.Args[0]),
-			msg,
-			reset)
-	}
+	fmt.Printf("%s %s %s%s\n",
+		prefix,
+		slog.tag,
+		msg,
+		reset)
 }
 
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3

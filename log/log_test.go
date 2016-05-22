@@ -8,8 +8,8 @@ package log
 import (
 	"errors"
 	"fmt"
-	"log/syslog"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -22,10 +22,7 @@ const stdoutLevel = 7
 func setup(t *testing.T) *impl {
 	// Write all logs to UDP on a high port so as to not bother the system
 	// which is running the test
-	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
-	test.AssertNotError(t, err, "Could not construct syslog object")
-
-	logger, err := New(writer, stdoutLevel)
+	logger, err := New("udp", "127.0.0.1:65530", "", stdoutLevel)
 	test.AssertNotError(t, err, "Could not construct syslog object")
 	impl, ok := logger.(*impl)
 	if !ok {
@@ -64,10 +61,35 @@ func TestSingleton(t *testing.T) {
 	test.AssertEquals(t, log4, log1)
 }
 
-func TestConstructionNil(t *testing.T) {
+func TestConstructionErrors(t *testing.T) {
 	t.Parallel()
-	_, err := New(nil, stdoutLevel)
-	test.AssertError(t, err, "Nil shouldn't be permitted.")
+	_, err := New("", "test", "", stdoutLevel)
+	test.AssertError(t, err, "Non-empty address when network is empty shouldn't be permitted.")
+}
+
+func setenv(name, value string) {
+	err := os.Setenv(name, value)
+	if err != nil {
+		panic("failed os.Setenv")
+	}
+}
+
+func TestConstructionStdout(t *testing.T) {
+	saved := os.Getenv("STDOUT_LOG")
+	defer func() {
+		setenv("STDOUT_LOG", saved)
+	}()
+	setenv("STDOUT_LOG", "plain")
+	_, err := New("", "", "", stdoutLevel)
+	test.AssertNotError(t, err, "Could not construct syslog object")
+
+	setenv("STDOUT_LOG", "terminal")
+	_, err = New("", "", "", stdoutLevel)
+	test.AssertNotError(t, err, "Could not construct syslog object")
+
+	setenv("STDOUT_LOG", "unknown")
+	_, err = New("", "", "", stdoutLevel)
+	test.AssertError(t, err, "Only plain and terminal should be accepted values for STDOUT_LOG")
 }
 
 func TestEmit(t *testing.T) {
@@ -92,7 +114,7 @@ func ExampleLogger() {
 		fmt.Printf("Wrong type of impl's writer: %T\n", impl.w)
 		return
 	}
-	bw.clk = clock.NewFake()
+	bw.stdoutLog.clk = clock.NewFake()
 	impl.AuditErr(errors.New("Error Audit"))
 	impl.Warning("Warning Audit")
 	// Output:
@@ -174,10 +196,8 @@ func TestTransmission(t *testing.T) {
 	}()
 
 	fmt.Printf("Going to %s\n", l.LocalAddr().String())
-	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
-	test.AssertNotError(t, err, "Failed to find connect to log server")
 
-	impl, err := New(writer, stdoutLevel)
+	impl, err := New("udp", l.LocalAddr().String(), "", stdoutLevel)
 	test.AssertNotError(t, err, "Failed to construct audit logger")
 
 	data := make([]byte, 128)

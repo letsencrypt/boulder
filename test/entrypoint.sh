@@ -4,9 +4,6 @@ set -e -u
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# start rsyslog
-service rsyslog start
-
 wait_tcp_port() {
     local host="$1" port="$2"
 
@@ -26,6 +23,11 @@ wait_tcp_port boulder-rabbitmq 5672
 
 # create the database
 MYSQL_CONTAINER=1 $DIR/create_db.sh
+
+export STDOUT_LOG=plain
+if [[ -t 1 ]]; then
+    STDOUT_LOG=terminal
+fi
 
 # Set up rabbitmq exchange
 go run cmd/rabbitmq-setup/main.go -server amqp://boulder-rabbitmq

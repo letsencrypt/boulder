@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log/syslog"
 	"os"
 	"reflect"
 	"runtime"
@@ -275,9 +274,7 @@ func main() {
 
 		stats, err := metrics.NewStatter(config.Statsd.Server, config.Statsd.Prefix)
 		cmd.FailOnError(err, "Failed to create StatsD client")
-		syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
-		cmd.FailOnError(err, "Failed to dial syslog")
-		logger, err := blog.New(syslogger, 0)
+		logger, err := blog.New("", "", "", 0)
 		cmd.FailOnError(err, "Failed to construct logger")
 		err = blog.Set(logger)
 		cmd.FailOnError(err, "Failed to set audit logger")
