@@ -25,7 +25,7 @@ func setup(t *testing.T) *impl {
 	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
-	logger, err := New(writer, stdoutLevel)
+	logger, err := New(writer, stdoutLevel, stdoutLevel)
 	test.AssertNotError(t, err, "Could not construct syslog object")
 	impl, ok := logger.(*impl)
 	if !ok {
@@ -66,7 +66,7 @@ func TestSingleton(t *testing.T) {
 
 func TestConstructionNil(t *testing.T) {
 	t.Parallel()
-	_, err := New(nil, stdoutLevel)
+	_, err := New(nil, stdoutLevel, stdoutLevel)
 	test.AssertError(t, err, "Nil shouldn't be permitted.")
 }
 
@@ -177,7 +177,7 @@ func TestTransmission(t *testing.T) {
 	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	test.AssertNotError(t, err, "Failed to find connect to log server")
 
-	impl, err := New(writer, stdoutLevel)
+	impl, err := New(writer, stdoutLevel, stdoutLevel)
 	test.AssertNotError(t, err, "Failed to construct audit logger")
 
 	data := make([]byte, 128)

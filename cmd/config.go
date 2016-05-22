@@ -442,6 +442,7 @@ type SyslogConfig struct {
 	Network     string
 	Server      string
 	StdoutLevel *int
+	SyslogLevel *int
 }
 
 // StatsdConfig defines the config for Statsd.
