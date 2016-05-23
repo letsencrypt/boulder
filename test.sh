@@ -20,16 +20,6 @@ FAILURE=0
 
 TESTPATHS=$(go list -f '{{ .ImportPath }}' ./... | grep -v /vendor/)
 
-# We need to know, for github-pr-status, what the triggering commit is.
-# Assume first it's the travis commit (for builds of master), unless we're
-# a PR, when it's actually the first parent.
-TRIGGER_COMMIT=${TRAVIS_COMMIT}
-if [ "x${TRAVIS_PULL_REQUEST}" != "x" ] ; then
-  revs=$(git rev-list --parents -n 1 HEAD)
-  # The trigger commit is the last ID in the space-delimited rev-list
-  TRIGGER_COMMIT=${revs##* }
-fi
-
 GITHUB_SECRET_FILE="/tmp/github-secret.json"
 
 start_context() {
@@ -49,25 +39,13 @@ end_context() {
   CONTEXT=""
 }
 
-update_status() {
-  if ([ "${TRAVIS}" == "true" ] && [ "x${CONTEXT}" != "x" ]) && [ -f "${GITHUB_SECRET_FILE}" ]; then
-    github-pr-status --authfile $GITHUB_SECRET_FILE \
-      --owner "letsencrypt" --repo "boulder" \
-      status --sha "${TRIGGER_COMMIT}" --context "${CONTEXT}" \
-      --url "https://travis-ci.org/letsencrypt/boulder/builds/${TRAVIS_BUILD_ID}" $*
-  fi
-}
-
 function run() {
   echo "$@"
   "$@" 2>&1
   local status=$?
 
-  if [ ${status} -eq 0 ]; then
-    update_status --state success
-  else
+  if [ "${status}" != 0 ]; then
     FAILURE=1
-    update_status --state failure
     echo "[!] FAILURE: $@"
   fi
 
@@ -83,15 +61,6 @@ function run_and_comment() {
   if [ -s ${result_file} ]; then
     echo "[!] FAILURE: $@"
     FAILURE=1
-    update_status --state failure
-    # If this is a travis PR run, post a comment
-    if [ "x${TRAVIS}" != "x" ] && [ "${TRAVIS_PULL_REQUEST}" != "false" ] && [ -f "${GITHUB_SECRET_FILE}" ] ; then
-      (echo '```' ; cat ${result_file} ; echo -e '\n```') | github-pr-status --authfile $GITHUB_SECRET_FILE \
-        --owner "letsencrypt" --repo "boulder" \
-        comment --pr "${TRAVIS_PULL_REQUEST}" -b -
-    fi
-  else
-    update_status --state success
   fi
   rm ${result_file}
 }
@@ -217,7 +186,6 @@ fi
 if [[ "$RUN" =~ "integration" ]] ; then
   # Set context to integration, and force a pending state
   start_context "integration"
-  update_status --state pending --description "Integration Tests in progress"
 
   if [ -z "$CERTBOT_PATH" ]; then
     export CERTBOT_PATH=$(mktemp -d -t leXXXX)
@@ -234,23 +202,10 @@ if [[ "$RUN" =~ "integration" ]] ; then
   source ${CERTBOT_PATH}/venv/bin/activate
 
   python test/integration-test.py --all
-  case $? in
-    0) # Success
-      update_status --state success
-      ;;
-    1) # Python client failed
-      update_status --state success --description "Python integration failed."
-      FAILURE=1
-      ;;
-    2) # Node client failed
-      update_status --state failure --description "NodeJS integration failed."
-      FAILURE=1
-      ;;
-    *) # Error occurred
-      update_status --state error --description "Unknown error occurred."
-      FAILURE=1
-      ;;
-  esac
+  if [ "$?" != 0 ]; then
+    echo "Integration test failed: $?"
+    FAILURE=1
+  fi
   end_context #integration
 fi
 
