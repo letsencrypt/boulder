@@ -127,10 +127,7 @@ func validationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 	addrs := make([][]byte, len(record.AddressesResolved))
 	var err error
 	for i, v := range record.AddressesResolved {
-		addrs[i], err = v.MarshalText()
-		if err != nil {
-			return nil, err
-		}
+		addrs[i] = []byte(v)
 	}
 	addrUsed, err := record.AddressUsed.MarshalText()
 	if err != nil {
@@ -155,10 +152,7 @@ func pbToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	}
 	addrs := make([]net.IP, len(in.AddressesResolved))
 	for i, v := range in.AddressesResolved {
-		err = addrs[i].UnmarshalText([]byte(v))
-		if err != nil {
-			return
-		}
+		addrs[i] = net.IP(v)
 	}
 	var addrUsed net.IP
 	err = addrUsed.UnmarshalText(in.AddressUsed)
@@ -251,3 +245,4 @@ func argsToPerformValidationRequest(domain string, challenge core.Challenge, aut
 	}, nil
 
 }
+
