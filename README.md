@@ -113,17 +113,17 @@ This component model lets us separate the function of the CA by security context
 
 ```
 
-subscriber <--ACME--> WFE ---+
-  .                          |
-  .                          +--- RA --- CA
-  .                          |           |
-subscriber <-checks->  VA ---+           |
-                                         |
-                                     OCSP Updater
-                                         |
-web browser <-OCSP-> OCSP Responder --- MariaDB
-                                         |
-                                        SA
+                             +--------- OCSP Updater
+                             |               |
+                             v               |
+                            CA               |
+                             ^               |
+                             |               v
+       Subscriber -> WFE --> RA --> SA --> MariaDB
+                             |               ^
+Subscriber server <- VA <----+               |
+                                             |
+          Browser ------------------>  OCSP Responder
 
 ```
 
