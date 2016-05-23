@@ -108,7 +108,7 @@ func pbToVAChallenge(in *corepb.Challenge) (challenge core.Challenge, err error)
 	if in.AccountKey == nil || in.Id == nil || in.Type == nil || in.Status == nil || in.Token == nil || in.KeyAuthorization == nil {
 		return core.Challenge{}, ErrMissingParameters
 	}
-	var jwk *jose.JsonWebKey
+	jwk := new(jose.JsonWebKey)
 	err = jwk.UnmarshalJSON(in.AccountKey)
 	if err != nil {
 		return
