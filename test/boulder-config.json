@@ -3,7 +3,7 @@
     "network": "",
     "server": "",
     "stdoutlevel": 6,
-    "sysloglevel": 7
+    "sysloglevel": 4
   },
 
   "statsd": {

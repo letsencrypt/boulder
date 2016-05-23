@@ -129,23 +129,23 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	case syslog.LOG_ERR:
 		if syslogAllowed {
 			err = w.Err(msg)
-			prefix = red + "E"
 		}
+		prefix = red + "E"
 	case syslog.LOG_WARNING:
 		if syslogAllowed {
 			err = w.Warning(msg)
-			prefix = yellow + "W"
 		}
+		prefix = yellow + "W"
 	case syslog.LOG_INFO:
 		if syslogAllowed {
 			err = w.Info(msg)
-			prefix = "I"
 		}
+		prefix = "I"
 	case syslog.LOG_DEBUG:
 		if syslogAllowed {
 			err = w.Debug(msg)
-			prefix = "D"
 		}
+		prefix = "D"
 	default:
 		err = w.Err(fmt.Sprintf("%s (unknown logging level: %d)", msg, int(level)))
 	}
