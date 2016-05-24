@@ -42,7 +42,7 @@ func TestIsSafeDomain(t *testing.T) {
 		t.Errorf("good.com: want no error, got '%s'", err)
 	}
 	if !resp.GetIsSafe() {
-		t.Errorf("good.com: want true, got %t", resp)
+		t.Errorf("good.com: want true, got %t", resp.GetIsSafe())
 	}
 
 	domain = "bad.com"
@@ -51,7 +51,7 @@ func TestIsSafeDomain(t *testing.T) {
 		t.Errorf("bad.com: want no error, got '%s'", err)
 	}
 	if resp.GetIsSafe() {
-		t.Errorf("bad.com: want false, got %t", resp)
+		t.Errorf("bad.com: want false, got %t", resp.GetIsSafe())
 	}
 
 	domain = "errorful.com"
