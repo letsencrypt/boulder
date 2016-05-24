@@ -31,6 +31,7 @@ type Config struct {
 
 	WFE struct {
 		ServiceConfig
+		BaseURL       string
 		ListenAddress string
 
 		AllowOrigins []string
@@ -163,7 +164,6 @@ type Config struct {
 	PA PAConfig
 
 	Common struct {
-		BaseURL string
 		// Path to a PEM-encoded copy of the issuer certificate.
 		IssuerCert string
 

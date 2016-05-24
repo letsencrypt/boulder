@@ -56,6 +56,7 @@ type WebFrontEndImpl struct {
 	clk   clock.Clock
 
 	// URL configuration parameters
+	BaseURL       string
 	NewReg        string
 	RegBase       string
 	NewAuthz      string
@@ -191,7 +192,7 @@ func marshalIndent(v interface{}) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
 
-func relativeEndpoints(request *http.Request, directory map[string]string) []byte {
+func (wfe *WebFrontEndImpl) relativeEndpoints(request *http.Request, directory map[string]string) []byte {
 	// Create an empty map sized equal to the provided directory to store the
 	// relative-ized result
 	relativeDir := make(map[string]string, len(directory))
@@ -209,10 +210,16 @@ func relativeEndpoints(request *http.Request, directory map[string]string) []byt
 		proto = fmt.Sprintf("%s://", specifiedProto)
 	}
 
-	// Copy each entry of the provided directory into the new relative map, using
-	// the request protocol & host to prefix each endpoint key value.
+	// Copy each entry of the provided directory into the new relative map. If
+	// `wfe.BaseURL` != "", use the old behaviour and prefix each endpoint with
+	// the `BaseURL`. Otherwise, prefix each endpoint using the request protocol
+	// & host.
 	for k, v := range directory {
-		relativeDir[k] = fmt.Sprintf("%s%s%s", proto, request.Host, v)
+		if wfe.BaseURL != "" {
+			relativeDir[k] = fmt.Sprintf("%s%s", wfe.BaseURL, v)
+		} else {
+			relativeDir[k] = fmt.Sprintf("%s%s%s", proto, request.Host, v)
+		}
 	}
 
 	directoryJSON, _ := marshalIndent(relativeDir)
@@ -308,7 +315,7 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 // using the `request.Host` of the HTTP request.
 func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json")
-	response.Write(relativeEndpoints(request, wfe.DirectoryEndpoints))
+	response.Write(wfe.relativeEndpoints(request, wfe.DirectoryEndpoints))
 }
 
 // The ID is always the last slash-separated token in the path
