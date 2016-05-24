@@ -245,4 +245,3 @@ func argsToPerformValidationRequest(domain string, challenge core.Challenge, aut
 	}, nil
 
 }
-
