@@ -197,8 +197,16 @@ func relativeEndpoints(request *http.Request, directory map[string]string) []byt
 	relativeDir := make(map[string]string, len(directory))
 
 	proto := "http://"
+
+	// If the request was received via TLS, use `https://` for the protocol
 	if request.TLS != nil {
 		proto = "https://"
+	}
+
+	// Allow upstream proxies  to specify the forwarded protocol. Allow this value
+	// to override our own guess.
+	if specifiedProto := request.Header.Get("X-Forwarded-Proto"); specifiedProto != "" {
+		proto = fmt.Sprintf("%s://", specifiedProto)
 	}
 
 	// Copy each entry of the provided directory into the new relative map, using

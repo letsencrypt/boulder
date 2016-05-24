@@ -544,22 +544,37 @@ func TestDirectory(t *testing.T) {
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
 	dirTests := []struct {
-		host   string
-		result string
+		host        string
+		protoHeader string
+		result      string
 	}{
-		{"localhost:4300", `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
-		{"127.0.0.1:4300", `{"new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
+		// Test localhost:4300 with no proto header
+		{"localhost:4300", "", `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		// Test 127.0.0.1:4300 with no proto header
+		{"127.0.0.1:4300", "", `{"new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
+		// Test localhost:4300 with HTTP proto header
+		{"localhost:4300", "http", `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		// Test localhost:4300 with HTTPS proto header
+		{"localhost:4300", "https", `{"new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
 	}
 
 	url, _ := url.Parse("/directory")
 
 	for _, tt := range dirTests {
+		var headers map[string][]string
 		responseWriter := httptest.NewRecorder()
+
+		if tt.protoHeader != "" {
+			headers = map[string][]string{
+				"X-Forwarded-Proto": {tt.protoHeader},
+			}
+		}
 
 		mux.ServeHTTP(responseWriter, &http.Request{
 			Method: "GET",
 			Host:   tt.host,
 			URL:    url,
+			Header: headers,
 		})
 		test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
 		test.AssertEquals(t, responseWriter.Code, http.StatusOK)
