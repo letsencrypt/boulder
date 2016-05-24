@@ -1,6 +1,8 @@
 boulder:
     build: .
     dockerfile: Dockerfile
+    environment:
+        FAKE_DNS: 127.0.0.1
     volumes:
       # Cache built .a files for faster repeat runs
       - /go/pkg/
