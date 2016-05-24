@@ -56,7 +56,6 @@ type WebFrontEndImpl struct {
 	clk   clock.Clock
 
 	// URL configuration parameters
-	BaseURL       string
 	NewReg        string
 	RegBase       string
 	NewAuthz      string
@@ -65,8 +64,8 @@ type WebFrontEndImpl struct {
 	NewCert       string
 	CertBase      string
 
-	// JSON encoded endpoint directory
-	DirectoryJSON []byte
+	// Map of endpoint directory entries
+	DirectoryEndpoints map[string]string
 
 	// Issuer certificate (DER) for /acme/issuer-cert
 	IssuerCert []byte
@@ -192,29 +191,44 @@ func marshalIndent(v interface{}) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
 
+func relativeEndpoints(request *http.Request, directory map[string]string) []byte {
+	// Create an empty map sized equal to the provided directory to store the
+	// relative-ized result
+	relativeDir := make(map[string]string, len(directory))
+
+	proto := "http://"
+	if request.TLS != nil {
+		proto = "https://"
+	}
+
+	// Copy each entry of the provided directory into the new relative map, using
+	// the request protocol & host to prefix each endpoint key value.
+	for k, v := range directory {
+		relativeDir[k] = fmt.Sprintf("%s%s%s", proto, request.Host, v)
+	}
+
+	directoryJSON, _ := marshalIndent(relativeDir)
+
+	return directoryJSON
+}
+
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
 func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
-	wfe.NewReg = wfe.BaseURL + NewRegPath
-	wfe.RegBase = wfe.BaseURL + RegPath
-	wfe.NewAuthz = wfe.BaseURL + NewAuthzPath
-	wfe.AuthzBase = wfe.BaseURL + AuthzPath
-	wfe.ChallengeBase = wfe.BaseURL + ChallengePath
-	wfe.NewCert = wfe.BaseURL + NewCertPath
-	wfe.CertBase = wfe.BaseURL + CertPath
+	wfe.NewReg = NewRegPath
+	wfe.RegBase = RegPath
+	wfe.NewAuthz = NewAuthzPath
+	wfe.AuthzBase = AuthzPath
+	wfe.ChallengeBase = ChallengePath
+	wfe.NewCert = NewCertPath
+	wfe.CertBase = CertPath
 
-	// Only generate directory once
-	directory := map[string]string{
+	wfe.DirectoryEndpoints = map[string]string{
 		"new-reg":     wfe.NewReg,
 		"new-authz":   wfe.NewAuthz,
 		"new-cert":    wfe.NewCert,
-		"revoke-cert": wfe.BaseURL + RevokeCertPath,
+		"revoke-cert": RevokeCertPath,
 	}
-	directoryJSON, err := marshalIndent(directory)
-	if err != nil {
-		return nil, err
-	}
-	wfe.DirectoryJSON = directoryJSON
 
 	m := http.NewServeMux()
 	wfe.HandleFunc(m, DirectoryPath, wfe.Directory, "GET")
@@ -281,11 +295,12 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", age))
 }
 
-// Directory is an HTTP request handler that simply provides the directory
-// object stored in the WFE's DirectoryJSON member.
+// Directory is an HTTP request handler that provides the directory
+// object stored in the WFE's DirectoryEndpoints member with paths prefixed
+// using the `request.Host` of the HTTP request.
 func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json")
-	response.Write(wfe.DirectoryJSON)
+	response.Write(relativeEndpoints(request, wfe.DirectoryEndpoints))
 }
 
 // The ID is always the last slash-separated token in the path
@@ -784,9 +799,11 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 	serial := parsedCertificate.SerialNumber
 	certURL := wfe.CertBase + core.SerialToString(serial)
 
+	relativeIssuerPath := fmt.Sprintf("%s%s", request.Host, IssuerPath)
+
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
-	response.Header().Add("Link", link(wfe.BaseURL+IssuerPath, "up"))
+	response.Header().Add("Link", link(relativeIssuerPath, "up"))
 	response.Header().Set("Content-Type", "application/pkix-cert")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(cert.DER); err != nil {

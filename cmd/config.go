@@ -31,7 +31,6 @@ type Config struct {
 
 	WFE struct {
 		ServiceConfig
-		BaseURL       string
 		ListenAddress string
 
 		AllowOrigins []string

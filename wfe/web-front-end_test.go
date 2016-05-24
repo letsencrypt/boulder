@@ -221,13 +221,13 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
-	wfe.NewReg = wfe.BaseURL + NewRegPath
-	wfe.RegBase = wfe.BaseURL + RegPath
-	wfe.NewAuthz = wfe.BaseURL + NewAuthzPath
-	wfe.AuthzBase = wfe.BaseURL + AuthzPath
-	wfe.ChallengeBase = wfe.BaseURL + ChallengePath
-	wfe.NewCert = wfe.BaseURL + NewCertPath
-	wfe.CertBase = wfe.BaseURL + CertPath
+	wfe.NewReg = NewRegPath
+	wfe.RegBase = RegPath
+	wfe.NewAuthz = NewAuthzPath
+	wfe.AuthzBase = AuthzPath
+	wfe.ChallengeBase = ChallengePath
+	wfe.NewCert = NewCertPath
+	wfe.CertBase = CertPath
 	wfe.SubscriberAgreementURL = agreementURL
 	wfe.log = blog.NewMock()
 
@@ -540,20 +540,31 @@ func TestIndex(t *testing.T) {
 
 func TestDirectory(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.BaseURL = "http://localhost:4300"
 	mux, err := wfe.Handler()
 	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
 
-	responseWriter := httptest.NewRecorder()
+	dirTests := []struct {
+		host   string
+		result string
+	}{
+		{"localhost:4300", `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
+		{"127.0.0.1:4300", `{"new-authz":"http://127.0.0.1:4300/acme/new-authz","new-cert":"http://127.0.0.1:4300/acme/new-cert","new-reg":"http://127.0.0.1:4300/acme/new-reg","revoke-cert":"http://127.0.0.1:4300/acme/revoke-cert"}`},
+	}
 
 	url, _ := url.Parse("/directory")
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    url,
-	})
-	test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	assertJSONEquals(t, responseWriter.Body.String(), `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`)
+
+	for _, tt := range dirTests {
+		responseWriter := httptest.NewRecorder()
+
+		mux.ServeHTTP(responseWriter, &http.Request{
+			Method: "GET",
+			Host:   tt.host,
+			URL:    url,
+		})
+		test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
+		test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+		assertJSONEquals(t, responseWriter.Body.String(), tt.result)
+	}
 }
 
 // TODO: Write additional test cases for:
