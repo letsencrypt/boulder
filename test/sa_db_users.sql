@@ -68,11 +68,11 @@ GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 
 -- Expired authorization purger
-GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
+-- GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
 
 -- Name set table backfiller
-GRANT SELECT ON certificates to 'backfiller'@'localhost';
-GRANT INSERT,SELECT ON fqdnSets to 'backfiller'@'localhost';
+-- GRANT SELECT ON certificates to 'backfiller'@'localhost';
+-- GRANT INSERT,SELECT ON fqdnSets to 'backfiller'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';

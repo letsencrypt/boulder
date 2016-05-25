@@ -6,10 +6,12 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
@@ -32,7 +34,35 @@ type expiredAuthzPurger struct {
 	batchSize int64
 }
 
-func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time) (int64, error) {
+func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64, error) {
+	if !yes {
+		var count int
+		_, err := p.db.Select(&count, `SELECT COUNT(pa.id) FROM pendingAuthorizations AS pa WHERE expires <= ?`, purgeBefore)
+		if err != nil {
+			return 0, err
+		}
+		if count == 0 {
+			return 0, nil
+		}
+		fmt.Fprintf(os.Stdout, "About to purge %d pending authorizations, proceed? [y/N]: ", count)
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			text, err := reader.ReadString('\n')
+			if err != nil {
+				return 0, err
+			}
+			text = strings.ToLower(text)
+			if text != "y" && text != "n" {
+				continue
+			}
+			if text == "y" {
+				break
+			} else {
+				os.Exit(0)
+			}
+		}
+	}
+
 	rowsAffected := int64(0)
 	for {
 		result, err := p.db.Exec(`
@@ -82,6 +112,14 @@ func main() {
 			Value: 1000,
 			Usage: "Size of batches to do SELECT queries in",
 		},
+		cli.BoolFlag{
+			Name:  "force",
+			Usage: "Allows purge of all pending authorizations (dangerous)",
+		},
+		cli.BoolFlag{
+			Name:  "yes",
+			Usage: "Skips the purge confirmation",
+		},
 	}
 
 	app.Action = func(c *cli.Context) {
@@ -116,8 +154,12 @@ func main() {
 			batchSize: int64(c.GlobalInt("batch-size")),
 		}
 
+		if config.ExpiredAuthzPurger.GracePeriod.Duration == 0 && !c.GlobalBool("force") {
+			fmt.Fprintln(os.Stderr, "Grace period is 0, refusing to purge all pending authorizations without -force")
+			os.Exit(1)
+		}
 		purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
-		_, err = purger.purgeAuthzs(purgeBefore)
+		_, err = purger.purgeAuthzs(purgeBefore, c.GlobalBool("yes"))
 		cmd.FailOnError(err, "Failed to purge authorizations")
 	}
 
