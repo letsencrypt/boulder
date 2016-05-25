@@ -231,6 +231,13 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	wfe.SubscriberAgreementURL = agreementURL
 	wfe.log = blog.NewMock()
 
+	wfe.DirectoryEndpoints = map[string]string{
+		"new-reg":     wfe.NewReg,
+		"new-authz":   wfe.NewAuthz,
+		"new-cert":    wfe.NewCert,
+		"revoke-cert": RevokeCertPath,
+	}
+
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = mocks.NewStorageAuthority(fc)
 	wfe.stats, _ = statsd.NewNoopClient()
@@ -736,10 +743,10 @@ func TestIssueCertificate(t *testing.T) {
 		string(cert.Raw))
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"/acme/cert/0000ff0000000000000e4b4f67d86e818c46")
+		"http://localhost/acme/cert/0000ff0000000000000e4b4f67d86e818c46")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		`</acme/issuer-cert>;rel="up"`)
+		`<http://localhost/acme/issuer-cert>;rel="up"`)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Content-Type"),
 		"application/pkix-cert")
@@ -753,7 +760,7 @@ func TestIssueCertificate(t *testing.T) {
 func TestGetChallenge(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	challengeURL := "/acme/challenge/valid/23"
+	challengeURL := "http://localhost/acme/challenge/valid/23"
 
 	for _, method := range []string{"GET", "HEAD"} {
 		resp := httptest.NewRecorder()
@@ -773,14 +780,14 @@ func TestGetChallenge(t *testing.T) {
 			"application/json")
 		test.AssertEquals(t,
 			resp.Header().Get("Link"),
-			`</acme/authz/valid>;rel="up"`)
+			`<http://localhost/acme/authz/valid>;rel="up"`)
 		// Body is only relevant for GET. For HEAD, body will
 		// be discarded by HandleFunc() anyway, so it doesn't
 		// matter what Challenge() writes to it.
 		if method == "GET" {
 			assertJSONEquals(
 				t, resp.Body.String(),
-				`{"type":"dns","uri":"/acme/challenge/valid/23"}`)
+				`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
 		}
 	}
 }
@@ -799,7 +806,7 @@ func TestChallenge(t *testing.T) {
 	`), &key)
 	test.AssertNotError(t, err, "Could not unmarshal testing key")
 
-	challengeURL := "/acme/challenge/valid/23"
+	challengeURL := "http://localhost/acme/challenge/valid/23"
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath(challengeURL,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
@@ -810,10 +817,10 @@ func TestChallenge(t *testing.T) {
 		challengeURL)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		`</acme/authz/valid>;rel="up"`)
+		`<http://localhost/acme/authz/valid>;rel="up"`)
 	assertJSONEquals(
 		t, responseWriter.Body.String(),
-		`{"type":"dns","uri":"/acme/challenge/valid/23"}`)
+		`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
 
 	// Expired challenges should be inaccessible
 	challengeURL = "/acme/challenge/expired/23"
@@ -869,7 +876,7 @@ func TestNewECDSARegistration(t *testing.T) {
 	test.AssertEquals(t, reg.Agreement, "http://example.invalid/terms")
 	test.AssertEquals(t, reg.InitialIP.String(), "1.1.1.1")
 
-	test.AssertEquals(t, responseWriter.Header().Get("Location"), "/acme/reg/0")
+	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/0")
 
 	key, err = jose.LoadPrivateKey([]byte(testE1KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
@@ -886,7 +893,7 @@ func TestNewECDSARegistration(t *testing.T) {
 
 	wfe.NewRegistration(ctx, newRequestEvent(), responseWriter, makePostRequest(result.FullSerialize()))
 	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
-	test.AssertEquals(t, responseWriter.Header().Get("Location"), "/acme/reg/3")
+	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/reg/3")
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
@@ -991,14 +998,14 @@ func TestNewRegistration(t *testing.T) {
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"/acme/reg/0")
+		"http://localhost/acme/reg/0")
 	links := responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "</acme/new-authz>;rel=\"next\""), true)
+	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
 	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		`</acme/new-authz>;rel="next"`)
+		`<http://localhost/acme/new-authz>;rel="next"`)
 
 	key, err = jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
@@ -1020,7 +1027,7 @@ func TestNewRegistration(t *testing.T) {
 		`{"type":"urn:acme:error:malformed","detail":"Registration key is already in use","status":409}`)
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"/acme/reg/1")
+		"http://localhost/acme/reg/1")
 	test.AssertEquals(t, responseWriter.Code, 409)
 }
 
@@ -1236,10 +1243,10 @@ func TestAuthorization(t *testing.T) {
 
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Location"),
-		"/acme/authz/bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q")
+		"http://localhost/acme/authz/bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q")
 	test.AssertEquals(
 		t, responseWriter.Header().Get("Link"),
-		`</acme/new-cert>;rel="next"`)
+		`<http://localhost/acme/new-cert>;rel="next"`)
 
 	assertJSONEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"}}`)
 
@@ -1346,7 +1353,7 @@ func TestRegistration(t *testing.T) {
 		makePostRequestWithPath("/1", result.FullSerialize()))
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
 	links := responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "</acme/new-authz>;rel=\"next\""), true)
+	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
 	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
 
 	responseWriter.Body.Reset()

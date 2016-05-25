@@ -192,11 +192,8 @@ func marshalIndent(v interface{}) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
 
-func (wfe *WebFrontEndImpl) relativeEndpoints(request *http.Request, directory map[string]string) []byte {
-	// Create an empty map sized equal to the provided directory to store the
-	// relative-ized result
-	relativeDir := make(map[string]string, len(directory))
-
+func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint string) string {
+	var result string
 	proto := "http://"
 	host := request.Host
 
@@ -217,16 +214,26 @@ func (wfe *WebFrontEndImpl) relativeEndpoints(request *http.Request, directory m
 		host = "localhost"
 	}
 
+	if wfe.BaseURL != "" {
+		result = fmt.Sprintf("%s%s", wfe.BaseURL, endpoint)
+	} else {
+		result = fmt.Sprintf("%s%s%s", proto, host, endpoint)
+	}
+
+	return result
+}
+
+func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]string) []byte {
+	// Create an empty map sized equal to the provided directory to store the
+	// relative-ized result
+	relativeDir := make(map[string]string, len(directory))
+
 	// Copy each entry of the provided directory into the new relative map. If
 	// `wfe.BaseURL` != "", use the old behaviour and prefix each endpoint with
 	// the `BaseURL`. Otherwise, prefix each endpoint using the request protocol
 	// & host.
 	for k, v := range directory {
-		if wfe.BaseURL != "" {
-			relativeDir[k] = fmt.Sprintf("%s%s", wfe.BaseURL, v)
-		} else {
-			relativeDir[k] = fmt.Sprintf("%s%s%s", proto, host, v)
-		}
+		relativeDir[k] = wfe.relativeEndpoint(request, v)
 	}
 
 	//TODO: Handle error.
@@ -322,7 +329,7 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 // using the `request.Host` of the HTTP request.
 func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json")
-	response.Write(wfe.relativeEndpoints(request, wfe.DirectoryEndpoints))
+	response.Write(wfe.relativeDirectory(request, wfe.DirectoryEndpoints))
 }
 
 // The ID is always the last slash-separated token in the path
@@ -546,7 +553,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 	}
 
 	if existingReg, err := wfe.SA.GetRegistrationByKey(ctx, *key); err == nil {
-		response.Header().Set("Location", fmt.Sprintf("%s%d", wfe.RegBase, existingReg.ID))
+		response.Header().Set("Location", wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", wfe.RegBase, existingReg.ID)))
 		// TODO(#595): check for missing registration err
 		wfe.sendError(response, logEvent, probs.Conflict("Registration key is already in use"), err)
 		return
@@ -587,7 +594,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
 	// that reg.ID is a string being passed to %d.
-	regURL := fmt.Sprintf("%s%d", wfe.RegBase, reg.ID)
+	regURL := wfe.relativeEndpoint(request, fmt.Sprintf("%s%d", wfe.RegBase, reg.ID))
 	responseBody, err := marshalIndent(reg)
 	if err != nil {
 		// ServerInternal because we just created this registration, and it
@@ -599,7 +606,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 
 	response.Header().Add("Location", regURL)
 	response.Header().Set("Content-Type", "application/json")
-	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
+	response.Header().Add("Link", link(wfe.relativeEndpoint(request, wfe.NewAuthz), "next"))
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
@@ -642,8 +649,8 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 	logEvent.Extra["AuthzID"] = authz.ID
 
 	// Make a URL for this authz, then blow away the ID and RegID before serializing
-	authzURL := wfe.AuthzBase + string(authz.ID)
-	wfe.prepAuthorizationForDisplay(&authz)
+	authzURL := wfe.relativeEndpoint(request, wfe.AuthzBase+string(authz.ID))
+	wfe.prepAuthorizationForDisplay(request, &authz)
 	responseBody, err := marshalIndent(authz)
 	if err != nil {
 		// ServerInternal because we generated the authz, it should be OK
@@ -652,7 +659,7 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requ
 	}
 
 	response.Header().Add("Location", authzURL)
-	response.Header().Add("Link", link(wfe.NewCert, "next"))
+	response.Header().Add("Link", link(wfe.relativeEndpoint(request, wfe.NewCert), "next"))
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(http.StatusCreated)
 	if _, err = response.Write(responseBody); err != nil {
@@ -819,9 +826,9 @@ func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *reques
 		return
 	}
 	serial := parsedCertificate.SerialNumber
-	certURL := wfe.CertBase + core.SerialToString(serial)
+	certURL := wfe.relativeEndpoint(request, wfe.CertBase+core.SerialToString(serial))
 
-	relativeIssuerPath := fmt.Sprintf("%s%s", request.Host, IssuerPath)
+	relativeIssuerPath := wfe.relativeEndpoint(request, IssuerPath)
 
 	// TODO Content negotiation
 	response.Header().Add("Location", certURL)
@@ -905,8 +912,8 @@ func (wfe *WebFrontEndImpl) Challenge(
 // fields.
 // TODO: Come up with a cleaner way to do this.
 // https://github.com/letsencrypt/boulder/issues/761
-func (wfe *WebFrontEndImpl) prepChallengeForDisplay(authz core.Authorization, challenge *core.Challenge) {
-	challenge.URI = fmt.Sprintf("%s%s/%d", wfe.ChallengeBase, authz.ID, challenge.ID)
+func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
+	challenge.URI = wfe.relativeEndpoint(request, fmt.Sprintf("%s%s/%d", wfe.ChallengeBase, authz.ID, challenge.ID))
 	challenge.AccountKey = nil
 	// 0 is considered "empty" for the purpose of the JSON omitempty tag.
 	challenge.ID = 0
@@ -915,9 +922,9 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(authz core.Authorization, ch
 // prepAuthorizationForDisplay takes a core.Authorization and prepares it for
 // display to the client by clearing its ID and RegistrationID fields, and
 // preparing all its challenges.
-func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(authz *core.Authorization) {
+func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, authz *core.Authorization) {
 	for i := range authz.Challenges {
-		wfe.prepChallengeForDisplay(*authz, &authz.Challenges[i])
+		wfe.prepChallengeForDisplay(request, *authz, &authz.Challenges[i])
 	}
 	authz.ID = ""
 	authz.RegistrationID = 0
@@ -931,7 +938,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	challenge *core.Challenge,
 	logEvent *requestEvent) {
 
-	wfe.prepChallengeForDisplay(authz, challenge)
+	wfe.prepChallengeForDisplay(request, authz, challenge)
 
 	jsonReply, err := marshalIndent(challenge)
 	if err != nil {
@@ -942,7 +949,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 		return
 	}
 
-	authzURL := wfe.AuthzBase + string(authz.ID)
+	authzURL := wfe.relativeEndpoint(request, wfe.AuthzBase+string(authz.ID))
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Set("Content-Type", "application/json")
 	response.Header().Add("Link", link(authzURL, "up"))
@@ -1004,7 +1011,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 	// assumption: UpdateAuthorization does not modify order of challenges
 	challenge := updatedAuthorization.Challenges[challengeIndex]
-	wfe.prepChallengeForDisplay(authz, &challenge)
+	wfe.prepChallengeForDisplay(request, authz, &challenge)
 	jsonReply, err := marshalIndent(challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
@@ -1013,7 +1020,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		return
 	}
 
-	authzURL := wfe.AuthzBase + string(authz.ID)
+	authzURL := wfe.relativeEndpoint(request, wfe.AuthzBase+string(authz.ID))
 	response.Header().Add("Location", challenge.URI)
 	response.Header().Set("Content-Type", "application/json")
 	response.Header().Add("Link", link(authzURL, "up"))
@@ -1091,7 +1098,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 		return
 	}
 	response.Header().Set("Content-Type", "application/json")
-	response.Header().Add("Link", link(wfe.NewAuthz, "next"))
+	response.Header().Add("Link", link(wfe.relativeEndpoint(request, wfe.NewAuthz), "next"))
 	if len(wfe.SubscriberAgreementURL) > 0 {
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
@@ -1125,7 +1132,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 		return
 	}
 
-	wfe.prepAuthorizationForDisplay(&authz)
+	wfe.prepAuthorizationForDisplay(request, &authz)
 
 	jsonReply, err := marshalIndent(authz)
 	if err != nil {
@@ -1134,7 +1141,7 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *request
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to JSON marshal authz"), err)
 		return
 	}
-	response.Header().Add("Link", link(wfe.NewCert, "next"))
+	response.Header().Add("Link", link(wfe.relativeEndpoint(request, wfe.NewCert), "next"))
 	response.Header().Set("Content-Type", "application/json")
 	response.WriteHeader(http.StatusOK)
 	if _, err = response.Write(jsonReply); err != nil {
