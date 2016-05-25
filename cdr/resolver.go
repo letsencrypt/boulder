@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/miekg/dns"
@@ -184,7 +185,10 @@ func marshalCanonicalCAASet(set []*dns.CAA) ([]byte, error) {
 
 // LookupCAA performs a multipath CAA DNS lookup using GPDNS
 func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string) ([]*dns.CAA, error) {
-	url := fmt.Sprintf("%s?name=%s&type=%d", cdr.URI, domain, dns.TypeCAA)
+	query := make(url.Values)
+	query.Add("name", domain)
+	query.Add("type", strconv.Itoa(int(dns.TypeCAA)))
+	url := fmt.Sprintf("%s?%s", cdr.URI, query.Encode())
 
 	// min of ctx deadline and time.Now().Add(cdr.timeout)
 	caaCtx, cancel := context.WithTimeout(ctx, cdr.timeout)
