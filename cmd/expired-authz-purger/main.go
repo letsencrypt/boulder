@@ -49,10 +49,10 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64
 				return 0, err
 			}
 			text = strings.ToLower(text)
-			if text != "y" && text != "n" && text != "" {
+			if text != "y\n" && text != "n\n" && text != "\n" {
 				continue
 			}
-			if text == "n" || text == "" {
+			if text == "n\n" || text == "\n" {
 				os.Exit(0)
 			} else {
 				break
@@ -80,7 +80,7 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64
 
 		p.stats.Inc("PendingAuthzDeleted", rows, 1.0)
 		rowsAffected += rows
-		p.log.Info(fmt.Sprintf("Progress: Deleted %d (%d) expired pending authorizations", rows, rowsAffected))
+		p.log.Info(fmt.Sprintf("Progress: Deleted %d (%d total) expired pending authorizations", rows, rowsAffected))
 
 		if rows < p.batchSize {
 			p.log.Info(fmt.Sprintf("Deleted a total of %d expired pending authorizations", rowsAffected))
