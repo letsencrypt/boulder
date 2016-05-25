@@ -539,6 +539,10 @@ func TestIndex(t *testing.T) {
 }
 
 func TestDirectory(t *testing.T) {
+	// Note: using `wfe.BaseURL` to test the non-relative /directory behaviour
+	// This tests to ensure the `Host` in the following `http.Request` is not
+	// used.by setting `BaseURL` using `localhost`, sending `127.0.0.1` in the Host,
+	// and expecting `localhost` in the JSON result.
 	wfe, _ := setupWFE(t)
 	wfe.BaseURL = "http://localhost:4300"
 	mux, err := wfe.Handler()
@@ -567,6 +571,8 @@ func TestRelativeDirectory(t *testing.T) {
 		protoHeader string
 		result      string
 	}{
+		// Test '' (No host header) with no proto header
+		{"", "", `{"new-authz":"http://localhost/acme/new-authz","new-cert":"http://localhost/acme/new-cert","new-reg":"http://localhost/acme/new-reg","revoke-cert":"http://localhost/acme/revoke-cert"}`},
 		// Test localhost:4300 with no proto header
 		{"localhost:4300", "", `{"new-authz":"http://localhost:4300/acme/new-authz","new-cert":"http://localhost:4300/acme/new-cert","new-reg":"http://localhost:4300/acme/new-reg","revoke-cert":"http://localhost:4300/acme/revoke-cert"}`},
 		// Test 127.0.0.1:4300 with no proto header

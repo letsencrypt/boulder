@@ -198,6 +198,7 @@ func (wfe *WebFrontEndImpl) relativeEndpoints(request *http.Request, directory m
 	relativeDir := make(map[string]string, len(directory))
 
 	proto := "http://"
+	host := request.Host
 
 	// If the request was received via TLS, use `https://` for the protocol
 	if request.TLS != nil {
@@ -210,6 +211,12 @@ func (wfe *WebFrontEndImpl) relativeEndpoints(request *http.Request, directory m
 		proto = fmt.Sprintf("%s://", specifiedProto)
 	}
 
+	// Default to "localhost" when no request.Host is provided. Otherwise requests
+	// with an empty `Host` produce results like `http:///acme/new-authz`
+	if request.Host == "" {
+		host = "localhost"
+	}
+
 	// Copy each entry of the provided directory into the new relative map. If
 	// `wfe.BaseURL` != "", use the old behaviour and prefix each endpoint with
 	// the `BaseURL`. Otherwise, prefix each endpoint using the request protocol
@@ -218,12 +225,12 @@ func (wfe *WebFrontEndImpl) relativeEndpoints(request *http.Request, directory m
 		if wfe.BaseURL != "" {
 			relativeDir[k] = fmt.Sprintf("%s%s", wfe.BaseURL, v)
 		} else {
-			relativeDir[k] = fmt.Sprintf("%s%s%s", proto, request.Host, v)
+			relativeDir[k] = fmt.Sprintf("%s%s%s", proto, host, v)
 		}
 	}
 
+	//TODO: Handle error.
 	directoryJSON, _ := marshalIndent(relativeDir)
-
 	return directoryJSON
 }
 
