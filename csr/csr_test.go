@@ -49,7 +49,7 @@ func TestVerifyCSR(t *testing.T) {
 	signedReqWithHosts.DNSNames = []string{"a.com", "b.com"}
 	signedReqWithLongCN := new(x509.CertificateRequest)
 	*signedReqWithLongCN = *signedReq
-	signedReqWithLongCN.Subject.CommonName = strings.Repeat("a", core.MaxCNLength+1)
+	signedReqWithLongCN.Subject.CommonName = strings.Repeat("a", maxCNLength+1)
 	signedReqWithBadName := new(x509.CertificateRequest)
 	*signedReqWithBadName = *signedReq
 	signedReqWithBadName.DNSNames = []string{"bad-name.com"}

@@ -10,6 +10,25 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
+// maxCNLength is the maximum length allowed for the common name as specified in RFC 5280
+const maxCNLength = 64
+
+// This map is used to detect algorithms in crypto/x509 that
+// are no longer considered sufficiently strong.
+// * No MD2, MD5, or SHA-1
+// * No DSA
+//
+// SHA1WithRSA is allowed because there's still a fair bit of it
+// out there, but we should try to remove it soon.
+var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
+	x509.UnknownSignatureAlgorithm: true,
+	x509.MD2WithRSA:                true,
+	x509.MD5WithRSA:                true,
+	x509.DSAWithSHA1:               true,
+	x509.DSAWithSHA256:             true,
+	x509.ECDSAWithSHA1:             true,
+}
+
 // VerifyCSR checks the validity of a x509.CertificateRequest
 func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *core.KeyPolicy, pa core.PolicyAuthority, regID int64) error {
 	key, ok := csr.PublicKey.(crypto.PublicKey)
@@ -19,7 +38,7 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *core.KeyPo
 	if err := keyPolicy.GoodKey(key); err != nil {
 		return fmt.Errorf("invalid public key in CSR: %s", err)
 	}
-	if core.BadSignatureAlgorithms[csr.SignatureAlgorithm] {
+	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
 		// go1.6 provides a stringer for x509.SignatureAlgorithm but 1.5.x
 		// does not
 		return errors.New("signature algorithm not supported")
@@ -30,8 +49,8 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *core.KeyPo
 	if len(csr.DNSNames) == 0 && csr.Subject.CommonName == "" {
 		return errors.New("at least one DNS name is required")
 	}
-	if len(csr.Subject.CommonName) > core.MaxCNLength {
-		return fmt.Errorf("CN was longer than %d bytes", core.MaxCNLength)
+	if len(csr.Subject.CommonName) > maxCNLength {
+		return fmt.Errorf("CN was longer than %d bytes", maxCNLength)
 	}
 	if maxNames > 0 && len(csr.DNSNames) > maxNames {
 		return fmt.Errorf("CSR contains more than %d DNS names", maxNames)
