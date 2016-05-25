@@ -25,6 +25,7 @@ CREATE USER IF NOT EXISTS 'mailer'@'localhost';
 CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
 CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
+CREATE USER IF NOT EXISTS 'purger'@'localhost';
 
 -- Storage Authority
 GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'localhost';
@@ -68,11 +69,7 @@ GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 
 -- Expired authorization purger
--- GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
-
--- Name set table backfiller
--- GRANT SELECT ON certificates to 'backfiller'@'localhost';
--- GRANT INSERT,SELECT ON fqdnSets to 'backfiller'@'localhost';
+GRANT SELECT,DELETE ON pendingAuthorizations TO 'purger'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';

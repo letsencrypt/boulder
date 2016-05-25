@@ -37,28 +37,25 @@ type expiredAuthzPurger struct {
 func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64, error) {
 	if !yes {
 		var count int
-		_, err := p.db.Select(&count, `SELECT COUNT(pa.id) FROM pendingAuthorizations AS pa WHERE expires <= ?`, purgeBefore)
+		err := p.db.SelectOne(&count, `SELECT COUNT(pa.id) FROM pendingAuthorizations AS pa WHERE expires <= ?`, purgeBefore)
 		if err != nil {
 			return 0, err
 		}
-		if count == 0 {
-			return 0, nil
-		}
-		fmt.Fprintf(os.Stdout, "About to purge %d pending authorizations, proceed? [y/N]: ", count)
 		reader := bufio.NewReader(os.Stdin)
 		for {
+			fmt.Fprintf(os.Stdout, "\nAbout to purge %d pending authorizations, proceed? [y/N]: ", count)
 			text, err := reader.ReadString('\n')
 			if err != nil {
 				return 0, err
 			}
 			text = strings.ToLower(text)
-			if text != "y" && text != "n" {
+			if text != "y" && text != "n" && text != "" {
 				continue
 			}
-			if text == "y" {
-				break
-			} else {
+			if text == "n" || text == "" {
 				os.Exit(0)
+			} else {
+				break
 			}
 		}
 	}
