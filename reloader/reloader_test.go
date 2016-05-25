@@ -36,14 +36,16 @@ func TestNoStat(t *testing.T) {
 func TestNoRead(t *testing.T) {
 	f, _ := ioutil.TempFile("", "test-no-read.txt")
 	defer os.Remove(f.Name())
-	err := f.Chmod(0)
-	if err != nil {
-		t.Fatalf("failed to chmod file: %s", err)
+	oldReadFile := readFile
+	readFile = func(string) ([]byte, error) {
+		return nil, fmt.Errorf("read failed")
 	}
-	_, err = New(f.Name(), noop, testErrCb(t))
+	_, err := New(f.Name(), noop, testErrCb(t))
 	if err == nil {
 		t.Fatalf("Expected New to return error when permission denied.")
+		readFile = oldReadFile
 	}
+	readFile = oldReadFile
 }
 
 func TestFirstError(t *testing.T) {
@@ -182,10 +184,11 @@ func TestReloadFailure(t *testing.T) {
 
 	time.Sleep(15 * time.Millisecond)
 	// Create a file with no permissions
-	err = ioutil.WriteFile(filename, []byte("second body"), 0)
-	if err != nil {
-		t.Fatal(err)
+	oldReadFile := readFile
+	readFile = func(string) ([]byte, error) {
+		return nil, fmt.Errorf("permisssion denied")
 	}
+
 	fakeTick <- time.Now()
 	select {
 	case r := <-reloads:
@@ -195,11 +198,8 @@ func TestReloadFailure(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatalf("timed out waiting for reload")
 	}
+	readFile = oldReadFile
 
-	err = os.Remove(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
 	err = ioutil.WriteFile(filename, []byte("third body"), 0644)
 	if err != nil {
 		t.Fatal(err)

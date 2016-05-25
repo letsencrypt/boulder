@@ -142,7 +142,7 @@ func main() {
 
 	is := integrationSrv{key: key}
 	s := &http.Server{
-		Addr:    "localhost:4500",
+		Addr:    "0.0.0.0:4500",
 		Handler: http.HandlerFunc(is.handler),
 	}
 	log.Fatal(s.ListenAndServe())
