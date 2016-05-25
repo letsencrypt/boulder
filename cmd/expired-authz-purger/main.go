@@ -32,19 +32,12 @@ type expiredAuthzPurger struct {
 	batchSize int64
 }
 
-func (p *expiredAuthzPurger) setDefaults() {
-	if p.batchSize == 0 {
-		p.batchSize = 1000
-	}
-}
-
 func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time) (int64, error) {
 	rowsAffected := int64(0)
-
 	for {
 		result, err := p.db.Exec(`
 			DELETE FROM pendingAuthorizations
-			WHERE expires < ?
+			WHERE expires <= ?
 			LIMIT ?
 			`,
 			purgeBefore,
@@ -58,6 +51,7 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time) (int64, error) {
 			return rowsAffected, err
 		}
 
+		p.stats.Inc("PendingAuthzDeleted", rows, 1.0)
 		rowsAffected += rows
 		p.log.Info(fmt.Sprintf("Progress: Deleted %d (%d) expired pending authorizations", rows, rowsAffected))
 
@@ -83,17 +77,15 @@ func main() {
 			EnvVar: "BOULDER_CONFIG",
 			Usage:  "Path to Boulder JSON configuration file",
 		},
+		cli.IntFlag{
+			Name:  "batch-size",
+			Value: 1000,
+			Usage: "Size of batches to do SELECT queries in",
+		},
 	}
 
 	app.Action = func(c *cli.Context) {
-		configFileName := c.GlobalString("config")
-
-		if configFileName == "" {
-			fmt.Println("Option -config (or BOULDER_CONFIG) is required")
-			return
-		}
-
-		configJSON, err := ioutil.ReadFile(configFileName)
+		configJSON, err := ioutil.ReadFile(c.GlobalString("config"))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to read config file: %s\n", err)
 			return
@@ -117,12 +109,12 @@ func main() {
 		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AuthzPurger"))
 
 		purger := &expiredAuthzPurger{
-			stats: stats,
-			log:   auditlogger,
-			clk:   cmd.Clock(),
-			db:    dbMap,
+			stats:     stats,
+			log:       auditlogger,
+			clk:       cmd.Clock(),
+			db:        dbMap,
+			batchSize: int64(c.GlobalInt("batch-size")),
 		}
-		purger.setDefaults()
 
 		purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
 		_, err = purger.purgeAuthzs(purgeBefore)
