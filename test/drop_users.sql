@@ -3,6 +3,9 @@
 -- Note that dropping a non-existing user produces an error that aborts the
 -- script, so we first grant a harmless privilege to each user to ensure it
 -- exists.
+
+USE mysql;
+
 GRANT USAGE ON *.* TO 'policy'@'localhost';
 DROP USER 'policy'@'localhost';
 GRANT USAGE ON *.* TO 'sa'@'localhost';
@@ -23,3 +26,5 @@ GRANT USAGE ON *.* TO 'purger'@'localhost';
 DROP USER 'purger'@'localhost';
 GRANT USAGE ON *.* TO 'backfiller'@'localhost';
 DROP USER 'backfiller'@'localhost';
+GRANT USAGE ON *.* TO 'test_setup'@'localhost';
+DROP USER 'test_setup'@'localhost';
