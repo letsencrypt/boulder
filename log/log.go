@@ -51,12 +51,12 @@ var _Singleton singleton
 const auditTag = "[AUDIT]"
 
 // New returns a new Logger that uses the given syslog.Writer as a backend.
-func New(log *syslog.Writer, stdoutLogLevel int) (Logger, error) {
+func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, error) {
 	if log == nil {
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
 	return &impl{
-		&bothWriter{log, stdoutLogLevel, clock.Default()},
+		&bothWriter{log, stdoutLogLevel, syslogLogLevel, clock.Default()},
 	}, nil
 }
 
@@ -69,7 +69,7 @@ func initialize() {
 	if err != nil {
 		panic(err)
 	}
-	logger, err := New(syslogger, int(syslog.LOG_DEBUG))
+	logger, err := New(syslogger, int(syslog.LOG_DEBUG), int(syslog.LOG_DEBUG))
 	if err != nil {
 		panic(err)
 	}
@@ -112,6 +112,7 @@ type writer interface {
 type bothWriter struct {
 	*syslog.Writer
 	stdoutLevel int
+	syslogLevel int
 	clk         clock.Clock
 }
 
@@ -124,18 +125,26 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	const red = "\033[31m\033[1m"
 	const yellow = "\033[33m"
 
-	switch level {
+	switch syslogAllowed := int(level) <= w.syslogLevel; level {
 	case syslog.LOG_ERR:
-		err = w.Err(msg)
+		if syslogAllowed {
+			err = w.Err(msg)
+		}
 		prefix = red + "E"
 	case syslog.LOG_WARNING:
-		err = w.Warning(msg)
+		if syslogAllowed {
+			err = w.Warning(msg)
+		}
 		prefix = yellow + "W"
 	case syslog.LOG_INFO:
-		err = w.Info(msg)
+		if syslogAllowed {
+			err = w.Info(msg)
+		}
 		prefix = "I"
 	case syslog.LOG_DEBUG:
-		err = w.Debug(msg)
+		if syslogAllowed {
+			err = w.Debug(msg)
+		}
 		prefix = "D"
 	default:
 		err = w.Err(fmt.Sprintf("%s (unknown logging level: %d)", msg, int(level)))
