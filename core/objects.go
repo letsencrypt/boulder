@@ -441,6 +441,12 @@ type Authorization struct {
 	// lifetime + certificate lifetime.
 	Expires *time.Time `json:"expires,omitempty" db:"expires"`
 
+	// The date on which this authorization was created. Will be nil if the
+	// authorization was created before this field was added.
+	//
+	// TODO(riking): Change json tag to "-" after switching SA to grpc
+	Created *time.Time `json:"created,omitempty" db:"created"`
+
 	// An array of challenges objects used to validate the
 	// applicant's control of the identifier.  For authorizations
 	// in process, these are challenges to be fulfilled; for

@@ -68,6 +68,7 @@ type RegistrationAuthorityImpl struct {
 
 	regByIPStats         metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
+	validAuthByNameStats metrics.Scope
 	certsForDomainStats  metrics.Scope
 	totalCertsStats      metrics.Scope
 }
@@ -91,6 +92,7 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats sta
 
 		regByIPStats:         scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
 		pendAuthByRegIDStats: scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
+		validAuthByNameStats: scope.NewScope("RA", "RateLimit", "ValidAuthorizationsPerName"),
 		certsForDomainStats:  scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
 		totalCertsStats:      scope.NewScope("RA", "RateLimit", "TotalCertificates"),
 	}
@@ -316,6 +318,24 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 	return nil
 }
 
+func (ra *RegistrationAuthorityImpl) checkValidAuthorizationLimit(ctx context.Context, identifier core.AcmeIdentifier, regID int64) error {
+	limit := ra.rlPolicies.ValidAuthorizationsPerFQDN
+	if limit.Enabled() {
+		now := ra.clk.Now()
+		count, err := ra.SA.CountValidAuthorizations(ctx, identifier.Value, limit.WindowBegin(now), now)
+		if err != nil {
+			return err
+		}
+		if count >= limit.GetThreshold(identifier.Value, regID) {
+			ra.validAuthByNameStats.Inc("Exceeded", 1)
+			ra.log.Info(fmt.Sprintf("Rate limit exceeded, ValidAuthorizationsPerName, name: %s", identifier.Value))
+			return core.RateLimitedError("Too many currently completed authorizations.")
+		}
+		ra.validAuthByNameStats.Inc("Pass", 1)
+	}
+	return nil
+}
+
 // NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
 func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, request core.Authorization, regID int64) (authz core.Authorization, err error) {
@@ -337,6 +357,10 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		return authz, err
 	}
 
+	if err = ra.checkValidAuthorizationLimit(ctx, identifier, regID); err != nil {
+		return authz, err
+	}
+
 	if identifier.Type == core.IdentifierDNS {
 		isSafe, err := ra.dc.IsSafe(ctx, identifier.Value)
 		if err != nil {
@@ -352,7 +376,8 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	// Create validations. The WFE will  update them with URIs before sending them out.
 	challenges, combinations := ra.PA.ChallengesFor(identifier, &reg.Key)
 
-	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
+	now := ra.clk.Now()
+	expires := now.Add(ra.pendingAuthorizationLifetime)
 
 	// Partially-filled object
 	authz = core.Authorization{
@@ -361,6 +386,7 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		Status:         core.StatusPending,
 		Combinations:   combinations,
 		Challenges:     challenges,
+		Created:        &now,
 		Expires:        &expires,
 	}
 

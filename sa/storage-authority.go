@@ -856,6 +856,28 @@ func (ssa *SQLStorageAuthority) CountPendingAuthorizations(ctx context.Context, 
 	return
 }
 
+// CountValidAuthorizations returns the number of completed authorizations
+// started in the given date range.
+func (ssa *SQLStorageAuthority) CountValidAuthorizations(ctx context.Context, name string, begin, end time.Time) (count int, err error) {
+	id := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
+	idJSON, err := json.Marshal(id)
+	if err != nil {
+		return 0, err
+	}
+	err = ssa.dbMap.SelectOne(&count,
+		`SELECT count(1) FROM authz
+		 WHERE status = "valid" AND
+				identifier = :ident AND
+				created >= :begin AND
+				created <= :end`,
+		map[string]interface{}{
+			"ident": string(idJSON),
+			"begin": begin,
+			"end":   end,
+		})
+	return
+}
+
 // ErrNoReceipt is an error type for non-existent SCT receipt
 type ErrNoReceipt string
 
