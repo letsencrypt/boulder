@@ -171,6 +171,8 @@
     "useNewVARPC": true,
     "debugAddr": "localhost:8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
+    "maxNames": 1000,
+    "doNotForceCN": true,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,

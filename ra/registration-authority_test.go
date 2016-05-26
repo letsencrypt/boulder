@@ -215,7 +215,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 				Threshold: 100,
 				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
-		}, 1, testKeyPolicy, false)
+		}, 1, testKeyPolicy, false, 0, true)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca

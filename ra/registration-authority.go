@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -65,6 +66,8 @@ type RegistrationAuthorityImpl struct {
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
 	useNewVARPC                  bool
+	maxNames                     int
+	forceCNFromSAN               bool
 
 	regByIPStats         metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
@@ -73,7 +76,7 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool, maxNames int, forceCNFromSAN bool) *RegistrationAuthorityImpl {
 	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
@@ -88,11 +91,12 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats sta
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		useNewVARPC:                  newVARPC,
-
-		regByIPStats:         scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
-		pendAuthByRegIDStats: scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
-		certsForDomainStats:  scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
-		totalCertsStats:      scope.NewScope("RA", "RateLimit", "TotalCertificates"),
+		maxNames:                     maxNames,
+		forceCNFromSAN:               forceCNFromSAN,
+		regByIPStats:                 scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
+		pendAuthByRegIDStats:         scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
+		certsForDomainStats:          scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
+		totalCertsStats:              scope.NewScope("RA", "RateLimit", "TotalCertificates"),
 	}
 	return ra
 }
@@ -413,7 +417,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
 		return
 	}
-	if len(csr.Subject.CommonName) > 0 &&
+	if !ra.forceCNFromSAN && len(csr.Subject.CommonName) > 0 &&
 		parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
 		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
 		return
@@ -528,9 +532,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	// Verify the CSR
 	csr := req.CSR
-	if err = csr.CheckSignature(); err != nil {
-		logEvent.Error = err.Error()
-		err = core.UnauthorizedError("Invalid signature on CSR")
+	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
+		err = core.MalformedRequestError(err.Error())
 		return emptyCert, err
 	}
 
@@ -540,9 +543,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	// Validate that authorization key is authorized for all domains
 	names := make([]string, len(csr.DNSNames))
 	copy(names, csr.DNSNames)
-	if len(csr.Subject.CommonName) > 0 {
-		names = append(names, csr.Subject.CommonName)
-	}
 
 	if len(names) == 0 {
 		err = core.UnauthorizedError("CSR has no names in it")
