@@ -532,8 +532,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	// Verify the CSR
 	csr := req.CSR
-	csrlib.NormalizeCSR(csr, ra.forceCNFromSAN)
-	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, regID); err != nil {
+	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
 		err = core.MalformedRequestError(err.Error())
 		return emptyCert, err
 	}

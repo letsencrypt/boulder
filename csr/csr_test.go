@@ -121,7 +121,7 @@ func TestVerifyCSR(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		err := VerifyCSR(c.csr, c.maxNames, c.keyPolicy, c.pa, c.regID)
+		err := VerifyCSR(c.csr, c.maxNames, c.keyPolicy, c.pa, false, c.regID)
 		test.AssertDeepEquals(t, c.expectedError, err)
 	}
 }
@@ -165,7 +165,7 @@ func TestNormalizeCSR(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		NormalizeCSR(c.csr, c.forceCN)
+		normalizeCSR(c.csr, c.forceCN)
 		test.AssertEquals(t, c.expectedCN, c.csr.Subject.CommonName)
 		test.AssertDeepEquals(t, c.expectedNames, c.expectedNames)
 	}
