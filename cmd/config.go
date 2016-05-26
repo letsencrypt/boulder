@@ -164,6 +164,7 @@ type Config struct {
 	PA PAConfig
 
 	Common struct {
+		BaseURL string
 		// Path to a PEM-encoded copy of the issuer certificate.
 		IssuerCert string
 

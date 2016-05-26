@@ -83,6 +83,7 @@ func main() {
 		go cmd.ProfileCmd("WFE", stats)
 
 		// Set up paths
+		wfe.BaseURL = c.Common.BaseURL
 		h, err := wfe.Handler()
 		cmd.FailOnError(err, "Problem setting up HTTP handlers")
 
