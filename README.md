@@ -16,6 +16,10 @@ in a Docker container, run:
 
     ./test/run-docker.sh
 
+Or, using docker-compose:
+
+    docker-compose up
+
 Slow start
 ----------
 
@@ -29,7 +33,10 @@ for better integrity guarantees when getting updates.
 Boulder requires an installation of RabbitMQ, libtool-ltdl, goose, and
 MariaDB 10.1 to work correctly. On Ubuntu and CentOS, you may have to
 install RabbitMQ from https://rabbitmq.com/download.html to get a
-recent version.
+recent version. If you want to save some trouble installing MariaDB and RabbitMQ
+you can run them using Docker:
+
+    docker-compose up -d bmysql brabbitmq
 
 Also, Boulder requires Go 1.5. As of September 2015 this version is not yet
 available in OS repositories, so you will have to install from https://golang.org/dl/.
@@ -80,13 +87,14 @@ Run tests:
 
 Working with a client:
 
-Check out the official Let's Encrypt client from https://github.com/letsencrypt/letsencrypt/ and follow the setup instructions there. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for letsencrypt that has all those flags:
+Check out the Certbot client from https://github.com/certbot/certbot and follow the setup instructions there. Once you've got the client set up, you'll probably want to run it against your local Boulder. There are a number of command line flags that are necessary to run the client against a local Boulder, and without root access. The simplest way to run the client locally is to source a file that provides an alias for letsencrypt that has all those flags:
 
     source ~/letsencrypt/tests/integration/_common.sh
     certbot_test certonly -a standalone -d example.com
 
 Your local Boulder instance uses a fake DNS server that returns 127.0.0.1 for
-any query, so you can use any value for the -d flag.
+any query, so you can use any value for the -d flag. You can also override that
+value by setting the environment variable FAKE_DNS=1.2.3.4
 
 Component Model
 ---------------
@@ -98,16 +106,24 @@ The CA is divided into the following main components:
 3. Validation Authority
 4. Certificate Authority
 5. Storage Authority
+6. OCSP Updater
+7. OCSP Responder
 
-This component model lets us separate the function of the CA by security context.  The Web Front End and Validation Authority need access to the Internet, which puts them at greater risk of compromise.  The Registration Authority can live without Internet connectivity, but still needs to talk to the Web Front End and Validation Authority.  The Certificate Authority need only receive instructions from the Registration Authority.
+This component model lets us separate the function of the CA by security context.  The Web Front End and Validation Authority need access to the Internet, which puts them at greater risk of compromise.  The Registration Authority can live without Internet connectivity, but still needs to talk to the Web Front End and Validation Authority.  The Certificate Authority need only receive instructions from the Registration Authority. All components talk to the SA for storage, so lines indicating SA RPCs are not shown here.
 
 ```
 
-client <--ACME--> WFE ---+
-  .                      |
-  .                      +--- RA --- CA
-  .                      |
-client <-checks->  VA ---+
+                             +--------- OCSP Updater
+                             |               |
+                             v               |
+                            CA               |
+                             ^               |
+                             |               v
+       Subscriber -> WFE --> RA --> SA --> MariaDB
+                             |               ^
+Subscriber server <- VA <----+               |
+                                             |
+          Browser ------------------>  OCSP Responder
 
 ```
 
@@ -144,8 +160,7 @@ godep restore
 go get -u github.com/cloudflare/cfssl/...
 # Update the Godep config to the appropriate version.
 godep update github.com/cloudflare/cfssl/...
-# Save the dependencies, rewriting any internal or external dependencies that
-# may have been added.
+# Save the dependencies
 godep save ./...
 git add Godeps vendor
 git commit

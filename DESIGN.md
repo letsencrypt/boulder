@@ -3,7 +3,7 @@
 Boulder is built in a rather decentralized way in order to enable different
 parts to be deployed in different security contexts.
 
-In order to you understand how boulder works and ensure it's working correctly,
+In order for you to understand how boulder works and ensure it's working correctly,
 this document lays out how various operations flow through boulder.  We show a
 diagram of how calls go between components, and provide notes on what each
 component does to help the process along.  Each step is in its own subsection
