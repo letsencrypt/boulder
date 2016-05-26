@@ -29,7 +29,9 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.ECDSAWithSHA1:             true,
 }
 
-// VerifyCSR checks the validity of a x509.CertificateRequest
+// VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
+// the CSR which lowers the case of DNS names and subject CN, and if forceCNFromSAN is true it
+// will hoist a DNS name into the CN if it is empty.
 func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *core.KeyPolicy, pa core.PolicyAuthority, forceCNFromSAN bool, regID int64) error {
 	normalizeCSR(csr, forceCNFromSAN)
 	key, ok := csr.PublicKey.(crypto.PublicKey)
@@ -71,8 +73,8 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *core.KeyPo
 	return nil
 }
 
-// normalizeCSR deduplicates and lowers the case ofdNSNames and lowers the case of the subject CN. If forceCNFromSAN is true it will
-// also hoist a dNSName into the CN if the latter is empty
+// normalizeCSR deduplicates and lowers the case of dNSNames and the subject CN.
+// If forceCNFromSAN is true it will also hoist a dNSName into the CN if it is empty.
 func normalizeCSR(csr *x509.CertificateRequest, forceCNFromSAN bool) {
 	if forceCNFromSAN && csr.Subject.CommonName == "" {
 		if len(csr.DNSNames) > 0 {
