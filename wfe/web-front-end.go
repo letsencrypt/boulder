@@ -251,14 +251,6 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
 func (wfe *WebFrontEndImpl) Handler() (http.Handler, error) {
-	wfe.NewReg = NewRegPath
-	wfe.RegBase = RegPath
-	wfe.NewAuthz = NewAuthzPath
-	wfe.AuthzBase = AuthzPath
-	wfe.ChallengeBase = ChallengePath
-	wfe.NewCert = NewCertPath
-	wfe.CertBase = CertPath
-
 	wfe.DirectoryEndpoints = map[string]string{
 		"new-reg":     wfe.NewReg,
 		"new-authz":   wfe.NewAuthz,
