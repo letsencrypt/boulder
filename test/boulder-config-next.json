@@ -367,11 +367,6 @@
     "maxDBConns": 10
   },
 
-  "expiredAuthzPurger": {
-    "dbConnectFile": "test/secrets/purger_dburl",
-    "gracePeriod": "168h"
-  },
-
   "subscriberAgreementURL": "http://boulder:4000/terms/v1",
 
   "allowedSigningAlgos": {

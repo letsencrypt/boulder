@@ -7,15 +7,14 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
+	"flag"
 	"fmt"
-	"io/ioutil"
+	"log/syslog"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/cactus/go-statsd-client/statsd"
-	"github.com/codegangsta/cli"
 	"github.com/jmhodges/clock"
 	"gopkg.in/gorp.v1"
 
@@ -90,76 +89,64 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64
 }
 
 func main() {
-	app := cli.NewApp()
-	app.Name = "expired-authz-purger"
-	app.Usage = "Purge expired pending authorizations from the database"
-	app.Version = cmd.Version()
-	app.Author = "Boulder contributors"
-	app.Email = "ca-dev@letsencrypt.org"
+	batchSize := flag.Int("batch-size", 1000, "Size of batches to do SELECT queries in")
+	force := flag.Bool("force", false, "Allows purge of all expired pending authorizations (dangerous)")
+	yes := flag.Bool("yes", false, "Skips the purge confirmation")
+	dbConnect := flag.String("db-connect", "", "DB Connection URI")
+	dbConnectFile := flag.String("db-connect-file", "", "File to read DB Connection URI from")
+	maxDBConns := flag.Int("max-db-conns", 0, "Maximum number of DB connections to use")
+	gracePeriodStr := flag.String("grace-period", "", "Period after which to purge expired pending authorizations")
+	statsdServer := flag.String("statsd-server", "", "Address of StatsD server")
+	statsdPrefix := flag.String("statsd-prefix", "boulder", "StatsD stats prefix")
+	syslogNetwork := flag.String("syslog-network", "", "Network type to use for syslog messages")
+	syslogServer := flag.String("syslog-server", "", "Address of syslog server")
+	syslogStdoutLevel := flag.Int("syslog-stdout-level", int(syslog.LOG_DEBUG), "Level of which to print to STDOUT messages sent to syslog")
+	flag.Parse()
 
-	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:   "config",
-			Value:  "config.json",
-			EnvVar: "BOULDER_CONFIG",
-			Usage:  "Path to Boulder JSON configuration file",
+	// Set up logging
+	stats, auditlogger := cmd.StatsAndLogging(
+		cmd.StatsdConfig{
+			Server: *statsdServer,
+			Prefix: *statsdPrefix,
 		},
-		cli.IntFlag{
-			Name:  "batch-size",
-			Value: 1000,
-			Usage: "Size of batches to do SELECT queries in",
+		cmd.SyslogConfig{
+			Network:     *syslogNetwork,
+			Server:      *syslogServer,
+			StdoutLevel: syslogStdoutLevel,
 		},
-		cli.BoolFlag{
-			Name:  "force",
-			Usage: "Allows purge of all pending authorizations (dangerous)",
-		},
-		cli.BoolFlag{
-			Name:  "yes",
-			Usage: "Skips the purge confirmation",
-		},
+	)
+	auditlogger.Info(cmd.Version())
+
+	// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
+	defer auditlogger.AuditPanic()
+
+	// Configure DB
+	dbConf := cmd.DBConfig{DBConnect: *dbConnect, DBConnectFile: *dbConnectFile}
+	dbURL, err := dbConf.URL()
+	cmd.FailOnError(err, "Couldn't load DB URL")
+	dbMap, err := sa.NewDbMap(dbURL, *maxDBConns)
+	cmd.FailOnError(err, "Could not connect to database")
+	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AuthzPurger"))
+
+	purger := &expiredAuthzPurger{
+		stats:     stats,
+		log:       auditlogger,
+		clk:       cmd.Clock(),
+		db:        dbMap,
+		batchSize: int64(*batchSize),
 	}
 
-	app.Action = func(c *cli.Context) {
-		configJSON, err := ioutil.ReadFile(c.GlobalString("config"))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to read config file: %s\n", err)
-			return
-		}
-
-		var config cmd.Config
-		err = json.Unmarshal(configJSON, &config)
-
-		// Set up logging
-		stats, auditlogger := cmd.StatsAndLogging(config.Statsd, config.Syslog)
-		auditlogger.Info(app.Version)
-
-		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		defer auditlogger.AuditPanic()
-
-		// Configure DB
-		dbURL, err := config.ExpiredAuthzPurger.DBConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
-		dbMap, err := sa.NewDbMap(dbURL, config.ExpiredAuthzPurger.DBConfig.MaxDBConns)
-		cmd.FailOnError(err, "Could not connect to database")
-		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AuthzPurger"))
-
-		purger := &expiredAuthzPurger{
-			stats:     stats,
-			log:       auditlogger,
-			clk:       cmd.Clock(),
-			db:        dbMap,
-			batchSize: int64(c.GlobalInt("batch-size")),
-		}
-
-		if config.ExpiredAuthzPurger.GracePeriod.Duration == 0 && !c.GlobalBool("force") {
-			fmt.Fprintln(os.Stderr, "Grace period is 0, refusing to purge all pending authorizations without -force")
-			os.Exit(1)
-		}
-		purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
-		_, err = purger.purgeAuthzs(purgeBefore, c.GlobalBool("yes"))
-		cmd.FailOnError(err, "Failed to purge authorizations")
+	gracePeriod, err := time.ParseDuration(*gracePeriodStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to parse grace-period argument: %s\n", err)
+		os.Exit(1)
 	}
 
-	err := app.Run(os.Args)
-	cmd.FailOnError(err, "Failed to run application")
+	if gracePeriod == 0 && !*force {
+		fmt.Fprintln(os.Stderr, "Grace period is 0, refusing to purge all expired pending authorizations without -force")
+		os.Exit(1)
+	}
+	purgeBefore := purger.clk.Now().Add(-gracePeriod)
+	_, err = purger.purgeAuthzs(purgeBefore, *yes)
+	cmd.FailOnError(err, "Failed to purge authorizations")
 }
