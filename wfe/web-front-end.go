@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -194,18 +195,18 @@ func marshalIndent(v interface{}) ([]byte, error) {
 
 func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint string) string {
 	var result string
-	proto := "http://"
+	proto := "http"
 	host := request.Host
 
 	// If the request was received via TLS, use `https://` for the protocol
 	if request.TLS != nil {
-		proto = "https://"
+		proto = "https"
 	}
 
 	// Allow upstream proxies  to specify the forwarded protocol. Allow this value
 	// to override our own guess.
 	if specifiedProto := request.Header.Get("X-Forwarded-Proto"); specifiedProto != "" {
-		proto = fmt.Sprintf("%s://", specifiedProto)
+		proto = specifiedProto
 	}
 
 	// Default to "localhost" when no request.Host is provided. Otherwise requests
@@ -217,7 +218,8 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 	if wfe.BaseURL != "" {
 		result = fmt.Sprintf("%s%s", wfe.BaseURL, endpoint)
 	} else {
-		result = fmt.Sprintf("%s%s%s", proto, host, endpoint)
+		resultUrl := url.URL{Scheme: proto, Host: host, Path: endpoint}
+		result = resultUrl.String()
 	}
 
 	return result
