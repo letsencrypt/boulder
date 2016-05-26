@@ -328,7 +328,7 @@ def main():
         expected_output = 'Deleted a total of 0 expired pending authorizations'
         try:
             out = subprocess.check_output(
-                '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger -db-connect-file test/secrets/purger_dburl -grace-period 168h -yes'''
+                '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config test/boulder-config-next.json --yes'''
                   % target_time.isoformat(), cwd='../..', shell=True)
 
             print(out)
@@ -343,7 +343,7 @@ def main():
         expected_output = 'Deleted a total of 1 expired pending authorizations'
         try:
             out = subprocess.check_output(
-                '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger -db-connect-file test/secrets/purger_dburl -grace-period 168h -yes'''
+                '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config test/boulder-config-next.json --yes'''
                 % target_time.isoformat(), cwd='../..', shell=True)
 
             print(out)
