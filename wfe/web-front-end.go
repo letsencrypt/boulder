@@ -223,7 +223,7 @@ func (wfe *WebFrontEndImpl) relativeEndpoint(request *http.Request, endpoint str
 	return result
 }
 
-func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]string) []byte {
+func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory map[string]string) ([]byte, error) {
 	// Create an empty map sized equal to the provided directory to store the
 	// relative-ized result
 	relativeDir := make(map[string]string, len(directory))
@@ -236,9 +236,14 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 		relativeDir[k] = wfe.relativeEndpoint(request, v)
 	}
 
-	//TODO: Handle error.
-	directoryJSON, _ := marshalIndent(relativeDir)
-	return directoryJSON
+	directoryJSON, err := marshalIndent(relativeDir)
+
+	// This should never happen since we are just marshalling known strings
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return directoryJSON, nil
 }
 
 // Handler returns an http.Handler that uses various functions for
@@ -329,7 +334,16 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 // using the `request.Host` of the HTTP request.
 func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "application/json")
-	response.Write(wfe.relativeDirectory(request, wfe.DirectoryEndpoints))
+
+	relDir, err := wfe.relativeDirectory(request, wfe.DirectoryEndpoints)
+
+	if err != nil {
+		marshalProb := probs.ServerInternal("unable to marshall JSON directory")
+		wfe.sendError(response, logEvent, marshalProb, nil)
+		return
+	}
+
+	response.Write(relDir)
 }
 
 // The ID is always the last slash-separated token in the path
