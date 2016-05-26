@@ -340,7 +340,7 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 	relDir, err := wfe.relativeDirectory(request, wfe.DirectoryEndpoints)
 
 	if err != nil {
-		marshalProb := probs.ServerInternal("unable to marshall JSON directory")
+		marshalProb := probs.ServerInternal("unable to marshal JSON directory")
 		wfe.sendError(response, logEvent, marshalProb, nil)
 		return
 	}
