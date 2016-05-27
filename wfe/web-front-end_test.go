@@ -214,8 +214,9 @@ var ctx = context.Background()
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
 	stats, _ := statsd.NewNoopClient()
+	logger := blog.NewMock()
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy)
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, logger)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
