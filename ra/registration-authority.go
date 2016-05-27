@@ -65,6 +65,8 @@ type RegistrationAuthorityImpl struct {
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
+	useNewVARPC                  bool
+	maxNames                     int
 	forceCNFromSAN               bool
 
 	regByIPStats         metrics.Scope
