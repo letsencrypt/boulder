@@ -531,7 +531,8 @@ func TestValidateHTTP(t *testing.T) {
 
 	defer hs.Close()
 
-	va.validateChallenge(ctx, ident, chall)
+	_, prob := va.validateChallenge(ctx, ident, chall)
+	test.Assert(t, prob == nil, "validation failed")
 }
 
 // challengeType == "tls-sni-00" or "dns-00", since they're the same
@@ -681,7 +682,8 @@ func TestPerformValidationInvalid(t *testing.T) {
 	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, nil, stats, clock.Default())
 	va.DNSResolver = &bdns.MockDNSResolver{}
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
-	va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
+	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
+	test.Assert(t, prob != nil, "validation succeeded")
 	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.invalid")
 }
 
@@ -693,7 +695,8 @@ func TestPerformValidationValid(t *testing.T) {
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
 	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
-	va.PerformValidation(context.Background(), "good-dns01.com", chalDNS, core.Authorization{})
+	_, prob := va.PerformValidation(context.Background(), "good-dns01.com", chalDNS, core.Authorization{})
+	test.Assert(t, prob == nil, fmt.Sprintf("validation failed: %#v", prob))
 	test.AssertEquals(t, stats.TimingDurationCalls[0].Metric, "VA.Validations.dns-01.valid")
 }
 

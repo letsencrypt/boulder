@@ -635,7 +635,15 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
-	return records, prob
+	if prob == nil {
+		// This is necessary because if we just naively returned prob, it would be a
+		// non-nil interface value containing a nil pointer, rather than a nil
+		// interface value. See, e.g.
+		// https://stackoverflow.com/questions/29138591/hiding-nil-values-understanding-why-golang-fails-here
+		return records, nil
+	} else {
+		return records, prob
+	}
 }
 
 // CAASet consists of filtered CAA records
