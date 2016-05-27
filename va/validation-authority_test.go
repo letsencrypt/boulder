@@ -755,7 +755,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 		_, prob := va.validateChallenge(ctx, ident, authz.Challenges[i])
 		test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 		if !strings.Contains(prob.Error(), "Challenge failed sanity check.") {
-			t.Errorf("Got wrong error: %s", prob.Error)
+			t.Errorf("Got wrong error: %s", prob.Error())
 		}
 	}
 }
