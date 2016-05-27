@@ -171,3 +171,12 @@ func UnknownHost(detail string) *ProblemDetails {
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
+
+// RateLimited returns a ProblemDetails representing a RateLimitedProblem error
+func RateLimited(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       RateLimitedProblem,
+		Detail:     detail,
+		HTTPStatus: statusTooManyRequests,
+	}
+}
