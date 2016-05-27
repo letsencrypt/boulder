@@ -310,7 +310,6 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 // object stored in the WFE's DirectoryEndpoints member with paths prefixed
 // using the `request.Host` of the HTTP request.
 func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
-
 	directoryEndpoints := map[string]string{
 		"new-reg":     newRegPath,
 		"new-authz":   newAuthzPath,
