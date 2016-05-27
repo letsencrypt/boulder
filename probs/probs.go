@@ -162,3 +162,12 @@ func ConnectionFailure(detail string) *ProblemDetails {
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
+
+// UnknownHost returns a ProblemDetails representing an UnknownHostProblem error
+func UnknownHost(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       UnknownHostProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
