@@ -221,22 +221,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
-	wfe.NewReg = NewRegPath
-	wfe.RegBase = RegPath
-	wfe.NewAuthz = NewAuthzPath
-	wfe.AuthzBase = AuthzPath
-	wfe.ChallengeBase = ChallengePath
-	wfe.NewCert = NewCertPath
-	wfe.CertBase = CertPath
 	wfe.SubscriberAgreementURL = agreementURL
 	wfe.log = blog.NewMock()
-
-	wfe.DirectoryEndpoints = map[string]string{
-		"new-reg":     wfe.NewReg,
-		"new-authz":   wfe.NewAuthz,
-		"new-cert":    wfe.NewCert,
-		"revoke-cert": RevokeCertPath,
-	}
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = mocks.NewStorageAuthority(fc)
@@ -530,7 +516,7 @@ func TestIndex(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertNotEquals(t, responseWriter.Body.String(), "404 page not found\n")
-	test.Assert(t, strings.Contains(responseWriter.Body.String(), DirectoryPath),
+	test.Assert(t, strings.Contains(responseWriter.Body.String(), directoryPath),
 		"directory path not found")
 	test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=10")
 
@@ -648,7 +634,7 @@ func TestIssueCertificate(t *testing.T) {
 	// GET instead of POST should be rejected
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL(NewCertPath),
+		URL:    mustParseURL(newCertPath),
 	})
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
@@ -924,7 +910,7 @@ func TestNewRegistration(t *testing.T) {
 		{
 			&http.Request{
 				Method: "GET",
-				URL:    mustParseURL(NewRegPath),
+				URL:    mustParseURL(newRegPath),
 			},
 			`{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`,
 		},
@@ -933,7 +919,7 @@ func TestNewRegistration(t *testing.T) {
 		{
 			&http.Request{
 				Method: "POST",
-				URL:    mustParseURL(NewRegPath),
+				URL:    mustParseURL(newRegPath),
 				Header: map[string][]string{
 					"Content-Length": {"0"},
 				},
@@ -943,20 +929,20 @@ func TestNewRegistration(t *testing.T) {
 
 		// POST, but body that isn't valid JWS
 		{
-			makePostRequestWithPath(NewRegPath, "hi"),
+			makePostRequestWithPath(newRegPath, "hi"),
 			`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`,
 		},
 
 		// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 		{
-			makePostRequestWithPath(NewRegPath, fooBody.FullSerialize()),
+			makePostRequestWithPath(newRegPath, fooBody.FullSerialize()),
 			`{"type":"urn:acme:error:malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 
 		// Same signed body, but payload modified by one byte, breaking signature.
 		// should fail JWS verification.
 		{
-			makePostRequestWithPath(NewRegPath, `
+			makePostRequestWithPath(newRegPath, `
 			{
 				"header": {
 					"alg": "RS256",
@@ -973,7 +959,7 @@ func TestNewRegistration(t *testing.T) {
 			`{"type":"urn:acme:error:malformed","detail":"JWS verification error","status":400}`,
 		},
 		{
-			makePostRequestWithPath(NewRegPath, wrongAgreementBody.FullSerialize()),
+			makePostRequestWithPath(newRegPath, wrongAgreementBody.FullSerialize()),
 			`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [` + agreementURL + `]","status":400}`,
 		},
 	}
@@ -1189,7 +1175,7 @@ func TestAuthorization(t *testing.T) {
 	// GET instead of POST should be rejected
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL(NewAuthzPath),
+		URL:    mustParseURL(newAuthzPath),
 	})
 	assertJSONEquals(t, responseWriter.Body.String(), `{"type":"urn:acme:error:malformed","detail":"Method not allowed","status":405}`)
 
@@ -1284,7 +1270,7 @@ func TestRegistration(t *testing.T) {
 	// Test invalid method
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "MAKE-COFFEE",
-		URL:    mustParseURL(RegPath),
+		URL:    mustParseURL(regPath),
 		Body:   makeBody("invalid"),
 	})
 	assertJSONEquals(t,
@@ -1295,7 +1281,7 @@ func TestRegistration(t *testing.T) {
 	// Test GET proper entry returns 405
 	mux.ServeHTTP(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL(RegPath),
+		URL:    mustParseURL(regPath),
 	})
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
