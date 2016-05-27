@@ -147,10 +147,7 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 		return nil
 	}
 
-	return &probs.ProblemDetails{
-		Type:   probs.InvalidEmailProblem,
-		Detail: emptyDNSResponseDetail,
-	}
+	return probs.InvalidEmail(emptyDNSResponseDetail)
 }
 
 type certificateRequestEvent struct {
