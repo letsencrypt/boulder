@@ -178,10 +178,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	httpRequest, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		va.log.Info(fmt.Sprintf("Failed to parse URL '%s'. err=[%#v] errStr=[%s]", identifier, err, err))
-		return nil, nil, &probs.ProblemDetails{
-			Type:   probs.MalformedProblem,
-			Detail: "URL provided for HTTP was invalid",
-		}
+		return nil, nil, probs.Malformed("URL provided for HTTP was invalid")
 	}
 
 	if va.UserAgent != "" {
@@ -366,10 +363,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != core.IdentifierDNS {
 		va.log.Info(fmt.Sprintf("Got non-DNS identifier for HTTP validation: %s", identifier))
-		return nil, &probs.ProblemDetails{
-			Type:   probs.MalformedProblem,
-			Detail: "Identifier type for HTTP validation was not DNS",
-		}
+		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
 	}
 
 	// Perform the fetch
@@ -408,10 +402,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != "dns" {
 		va.log.Info(fmt.Sprintf("Identifier type for TLS-SNI was not DNS: %s", identifier))
-		return nil, &probs.ProblemDetails{
-			Type:   probs.MalformedProblem,
-			Detail: "Identifier type for TLS-SNI was not DNS",
-		}
+		return nil, probs.Malformed("Identifier type for TLS-SNI was not DNS")
 	}
 
 	// Compute the digest that will appear in the certificate
@@ -420,10 +411,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	if err != nil {
 		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
 		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
-		return nil, &probs.ProblemDetails{
-			Type:   probs.MalformedProblem,
-			Detail: errString,
-		}
+		return nil, probs.Malformed(errString)
 	}
 	h.Write([]byte(ka))
 	Z := hex.EncodeToString(h.Sum(nil))
@@ -457,10 +445,7 @@ func parseHTTPConnError(err error) probs.ProblemType {
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != core.IdentifierDNS {
 		va.log.Info(fmt.Sprintf("Identifier type for DNS challenge was not DNS: %s", identifier))
-		return nil, &probs.ProblemDetails{
-			Type:   probs.MalformedProblem,
-			Detail: "Identifier type for DNS was not itself DNS",
-		}
+		return nil, probs.Malformed("Identifier type for DNS was not itself DNS")
 	}
 
 	// Compute the digest of the key authorization file
@@ -469,10 +454,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	if err != nil {
 		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
 		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
-		return nil, &probs.ProblemDetails{
-			Type:   probs.MalformedProblem,
-			Detail: errString,
-		}
+		return nil, probs.Malformed(errString)
 	}
 	h.Write([]byte(ka))
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
@@ -625,10 +607,7 @@ func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, 
 
 func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if !challenge.IsSaneForValidation() {
-		return nil, &probs.ProblemDetails{
-			Type:   probs.MalformedProblem,
-			Detail: fmt.Sprintf("Challenge failed sanity check."),
-		}
+		return nil, probs.Malformed("Challenge failed sanity check.")
 	}
 	switch challenge.Type {
 	case core.ChallengeTypeHTTP01:
@@ -638,10 +617,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	case core.ChallengeTypeDNS01:
 		return va.validateDNS01(ctx, identifier, challenge)
 	}
-	return nil, &probs.ProblemDetails{
-		Type:   probs.MalformedProblem,
-		Detail: fmt.Sprintf("invalid challenge type %s", challenge.Type),
-	}
+	return nil, probs.Malformed(fmt.Sprintf("invalid challenge type %s", challenge.Type))
 }
 
 // UpdateValidations runs the validate() method asynchronously using
