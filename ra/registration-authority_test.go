@@ -521,7 +521,6 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
-	ra.useNewVARPC = true
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization

@@ -47,8 +47,6 @@ const (
 	MethodUpdateAuthorization               = "UpdateAuthorization"               // RA
 	MethodRevokeCertificateWithReg          = "RevokeCertificateWithReg"          // RA
 	MethodAdministrativelyRevokeCertificate = "AdministrativelyRevokeCertificate" // RA
-	MethodOnValidationUpdate                = "OnValidationUpdate"                // RA
-	MethodUpdateValidations                 = "UpdateValidations"                 // VA
 	MethodPerformValidation                 = "PerformValidation"                 // VA
 	MethodIsSafeDomain                      = "IsSafeDomain"                      // VA
 	MethodIssueCertificate                  = "IssueCertificate"                  // CA
@@ -392,18 +390,6 @@ func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority)
 		return
 	})
 
-	rpc.Handle(MethodOnValidationUpdate, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var authz core.Authorization
-		if err = json.Unmarshal(req, &authz); err != nil {
-			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodOnValidationUpdate, err, req)
-			return
-		}
-
-		err = impl.OnValidationUpdate(ctx, authz)
-		return
-	})
-
 	return nil
 }
 
@@ -545,33 +531,10 @@ func (rac RegistrationAuthorityClient) AdministrativelyRevokeCertificate(ctx con
 	return
 }
 
-// OnValidationUpdate senda a notice that a validation has updated
-func (rac RegistrationAuthorityClient) OnValidationUpdate(ctx context.Context, authz core.Authorization) (err error) {
-	data, err := json.Marshal(authz)
-	if err != nil {
-		return
-	}
-
-	_, err = rac.rpc.DispatchSync(MethodOnValidationUpdate, data)
-	return
-}
-
 // NewValidationAuthorityServer constructs an RPC server
 //
 // ValidationAuthorityClient / Server
-//  -> UpdateValidations
 func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (err error) {
-	rpc.Handle(MethodUpdateValidations, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var vaReq validationRequest
-		if err = json.Unmarshal(req, &vaReq); err != nil {
-			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodUpdateValidations, err, req)
-			return
-		}
-
-		return nil, impl.UpdateValidations(ctx, vaReq.Authz, vaReq.Index)
-	})
-
 	rpc.Handle(MethodPerformValidation, func(ctx context.Context, req []byte) (response []byte, err error) {
 		var vaReq performValidationRequest
 		if err = json.Unmarshal(req, &vaReq); err != nil {
@@ -620,21 +583,6 @@ type ValidationAuthorityClient struct {
 func NewValidationAuthorityClient(clientName string, amqpConf *cmd.AMQPConfig, stats statsd.Statter) (*ValidationAuthorityClient, error) {
 	client, err := NewAmqpRPCClient(clientName+"->VA", amqpConf, amqpConf.VA, stats)
 	return &ValidationAuthorityClient{rpc: client}, err
-}
-
-// UpdateValidations sends an Update Validations request
-func (vac ValidationAuthorityClient) UpdateValidations(ctx context.Context, authz core.Authorization, index int) error {
-	vaReq := validationRequest{
-		Authz: authz,
-		Index: index,
-	}
-	data, err := json.Marshal(vaReq)
-	if err != nil {
-		return err
-	}
-
-	_, err = vac.rpc.DispatchSync(MethodUpdateValidations, data)
-	return err
 }
 
 // PerformValidation has the VA revalidate the specified challenge and returns
