@@ -380,10 +380,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	if err != nil {
 		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
 		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
-		return validationRecords, &probs.ProblemDetails{
-			Type:   probs.ServerInternalProblem,
-			Detail: errString,
-		}
+		return validationRecords, probs.ServerInternal(errString)
 	}
 
 	if expectedKeyAuth != payload {
