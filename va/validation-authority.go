@@ -52,7 +52,6 @@ var validationTimeout = time.Second * 5
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	RA           core.RegistrationAuthority
 	log          blog.Logger
 	DNSResolver  bdns.DNSResolver
 	IssuerDomain string

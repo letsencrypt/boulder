@@ -88,10 +88,6 @@ func main() {
 		vai.IssuerDomain = c.VA.IssuerDomain
 
 		amqpConf := c.VA.AMQP
-		rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create RA client")
-
-		vai.RA = rac
 
 		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats)
 		cmd.FailOnError(err, "Unable to create VA RPC server")
