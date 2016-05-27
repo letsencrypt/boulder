@@ -110,16 +110,10 @@ const (
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
 	emails, err := mail.ParseAddressList(address)
 	if err != nil {
-		return &probs.ProblemDetails{
-			Type:   probs.InvalidEmailProblem,
-			Detail: unparseableEmailDetail,
-		}
+		return probs.InvalidEmail(unparseableEmailDetail)
 	}
 	if len(emails) > 1 {
-		return &probs.ProblemDetails{
-			Type:   probs.InvalidEmailProblem,
-			Detail: multipleAddressDetail,
-		}
+		return probs.InvalidEmail(multipleAddressDetail)
 	}
 	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])

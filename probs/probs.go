@@ -142,3 +142,13 @@ func ContentLengthRequired() *ProblemDetails {
 		HTTPStatus: http.StatusLengthRequired,
 	}
 }
+
+// InvalidEmail returns a ProblemDetails representing an invalid email address
+// error
+func InvalidEmail(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       InvalidEmailProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
