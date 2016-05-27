@@ -231,7 +231,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	directoryJSON, err := marshalIndent(relativeDir)
 	// This should never happen since we are just marshalling known strings
 	if err != nil {
-		return []byte{}, err
+		return nil, err
 	}
 
 	return directoryJSON, nil
