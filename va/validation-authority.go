@@ -275,27 +275,18 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	}
 	if err != nil {
 		va.log.Info(fmt.Sprintf("Error reading HTTP response body from %s. err=[%#v] errStr=[%s]", url.String(), err, err))
-		return nil, validationRecords, &probs.ProblemDetails{
-			Type:   probs.UnauthorizedProblem,
-			Detail: fmt.Sprintf("Error reading HTTP response body: %v", err),
-		}
+		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Error reading HTTP response body: %v", err))
 	}
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, validationRecords, &probs.ProblemDetails{
-			Type:   probs.UnauthorizedProblem,
-			Detail: fmt.Sprintf("Invalid response from %s: \"%s\"", url.String(), body),
-		}
+		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Invalid response from %s: \"%s\"", url.String(), body))
 	}
 
 	if httpResponse.StatusCode != 200 {
 		va.log.Info(fmt.Sprintf("Non-200 status code from HTTP: %s returned %d", url.String(), httpResponse.StatusCode))
-		return nil, validationRecords, &probs.ProblemDetails{
-			Type: probs.UnauthorizedProblem,
-			Detail: fmt.Sprintf("Invalid response from %s [%s]: %d",
-				url.String(), dialer.record.AddressUsed, httpResponse.StatusCode),
-		}
+		return nil, validationRecords, probs.Unauthorized(fmt.Sprintf("Invalid response from %s [%s]: %d",
+			url.String(), dialer.record.AddressUsed, httpResponse.StatusCode))
 	}
 
 	return body, validationRecords, nil
@@ -340,10 +331,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		va.log.Info(fmt.Sprintf("TLS-01 challenge for %s resulted in no certificates", identifier))
-		return validationRecords, &probs.ProblemDetails{
-			Type:   probs.UnauthorizedProblem,
-			Detail: "No certs presented for TLS SNI challenge",
-		}
+		return validationRecords, probs.Unauthorized("No certs presented for TLS SNI challenge")
 	}
 	for _, name := range certs[0].DNSNames {
 		if subtle.ConstantTimeCompare([]byte(name), []byte(zName)) == 1 {
@@ -352,12 +340,10 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 	}
 
 	va.log.Info(fmt.Sprintf("Remote host failed to give TLS-01 challenge name. host: %s", identifier))
-	return validationRecords, &probs.ProblemDetails{
-		Type: probs.UnauthorizedProblem,
-		Detail: fmt.Sprintf("Incorrect validation certificate for TLS-SNI-01 challenge. "+
+	return validationRecords, probs.Unauthorized(
+		fmt.Sprintf("Incorrect validation certificate for TLS-SNI-01 challenge. "+
 			"Requested %s from %s. Received certificate containing '%s'",
-			zName, hostPort, strings.Join(certs[0].DNSNames, ", ")),
-	}
+			zName, hostPort, strings.Join(certs[0].DNSNames, ", ")))
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
@@ -387,10 +373,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 		errString := fmt.Sprintf("The key authorization file from the server did not match this challenge [%v] != [%v]",
 			expectedKeyAuth, payload)
 		va.log.Info(fmt.Sprintf("%s for %s", errString, identifier))
-		return validationRecords, &probs.ProblemDetails{
-			Type:   probs.UnauthorizedProblem,
-			Detail: errString,
-		}
+		return validationRecords, probs.Unauthorized(errString)
 	}
 
 	return validationRecords, nil
@@ -476,10 +459,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 		}
 	}
 
-	return nil, &probs.ProblemDetails{
-		Type:   probs.UnauthorizedProblem,
-		Detail: "Correct value not found for DNS challenge",
-	}
+	return nil, probs.Unauthorized("Correct value not found for DNS challenge")
 }
 
 func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
