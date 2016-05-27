@@ -229,7 +229,6 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 	}
 
 	directoryJSON, err := marshalIndent(relativeDir)
-
 	// This should never happen since we are just marshalling known strings
 	if err != nil {
 		return []byte{}, err
@@ -320,7 +319,6 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 	response.Header().Set("Content-Type", "application/json")
 
 	relDir, err := wfe.relativeDirectory(request, directoryEndpoints)
-
 	if err != nil {
 		marshalProb := probs.ServerInternal("unable to marshal JSON directory")
 		wfe.sendError(response, logEvent, marshalProb, nil)
