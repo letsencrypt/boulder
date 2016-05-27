@@ -152,3 +152,13 @@ func InvalidEmail(detail string) *ProblemDetails {
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
+
+// ConnectionFailure returns a ProblemDetails representing a ConnectionProblem
+// error
+func ConnectionFailure(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       ConnectionProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}

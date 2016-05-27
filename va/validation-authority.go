@@ -512,10 +512,9 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditInfo(fmt.Sprintf("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]", identifier.Value, present, valid))
 	if !valid {
-		return &probs.ProblemDetails{
-			Type:   probs.ConnectionProblem,
-			Detail: fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value),
-		}
+		return probs.ConnectionFailure(
+			fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value),
+		)
 	}
 	return nil
 }
@@ -547,10 +546,9 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 		*r.Valid,
 	))
 	if !*r.Valid {
-		return &probs.ProblemDetails{
-			Type:   probs.ConnectionProblem,
-			Detail: fmt.Sprintf("CAA record for %s prevents issuance", ident.Value),
-		}
+		return probs.ConnectionFailure(
+			fmt.Sprintf("CAA record for %s prevents issuance", ident.Value),
+		)
 	}
 	return nil
 }
