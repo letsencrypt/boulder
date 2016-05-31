@@ -32,7 +32,7 @@ type expiredAuthzPurger struct {
 func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64, error) {
 	if !yes {
 		var count int
-		err := p.db.SelectOne(&count, `SELECT COUNT(pa.id) FROM pendingAuthorizations AS pa WHERE expires <= ?`, purgeBefore)
+		err := p.db.SelectOne(&count, `SELECT COUNT(1) FROM pendingAuthorizations AS pa WHERE expires <= ?`, purgeBefore)
 		if err != nil {
 			return 0, err
 		}
