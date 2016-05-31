@@ -1,10 +1,12 @@
-package cmd
+package ratelimit
 
 import (
 	"io/ioutil"
 	"time"
 
 	"gopkg.in/yaml.v2"
+
+	"github.com/letsencrypt/boulder/cmd"
 )
 
 // RateLimitConfig contains all application layer rate limiting policies
@@ -33,7 +35,7 @@ type RateLimitConfig struct {
 // RateLimitPolicy describes a general limiting policy
 type RateLimitPolicy struct {
 	// How long to count items for
-	Window ConfigDuration `yaml:"window"`
+	Window cmd.ConfigDuration `yaml:"window"`
 	// The max number of items that can be present before triggering the rate
 	// limit. Zero means "no limit."
 	Threshold int `yaml:"threshold"`

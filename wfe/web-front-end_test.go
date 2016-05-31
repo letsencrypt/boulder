@@ -27,11 +27,11 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/square/go-jose"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -617,7 +617,7 @@ func TestIssueCertificate(t *testing.T) {
 	// TODO: Use a mock RA so we can test various conditions of authorized, not
 	// authorized, etc.
 	stats, _ := statsd.NewNoopClient(nil)
-	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, cmd.RateLimitConfig{}, 0, testKeyPolicy, false, 0, true)
+	ra := ra.NewRegistrationAuthorityImpl(fc, wfe.log, stats, nil, ratelimit.RateLimitConfig{}, 0, testKeyPolicy, false, 0, true)
 	ra.SA = mocks.NewStorageAuthority(fc)
 	ra.CA = &mocks.MockCA{
 		PEM: mockCertPEM,
