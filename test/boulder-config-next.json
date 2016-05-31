@@ -151,6 +151,10 @@
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "15s"
+      },
+      "Publisher": {
+        "server": "Publisher.server",
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -300,6 +304,10 @@
       "CA": {
         "server": "CA.server",
         "rpcTimeout": "15s"
+      },
+      "Publisher": {
+        "server": "Publisher.server",
+        "rpcTimeout": "15s"
       }
     }
   },
@@ -340,6 +348,7 @@
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
+      "serviceQueue": "Publisher.server",
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "15s"

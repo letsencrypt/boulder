@@ -13,7 +13,7 @@ import time
 
 default_config = os.environ.get('BOULDER_CONFIG')
 if default_config is None:
-    default_config = 'test/boulder-config.json'
+    default_config = 'test/boulder-config-next.json'
 processes = []
 
 

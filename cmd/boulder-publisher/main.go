@@ -54,15 +54,15 @@ func main() {
 			pubPB.RegisterPublisherServer(s, gw)
 			err = s.Serve(l)
 			cmd.FailOnError(err, "gRPC service failed")
-		} else {
-			pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats)
-			cmd.FailOnError(err, "Unable to create Publisher RPC server")
-			err = rpc.NewPublisherServer(pubs, pubi)
-			cmd.FailOnError(err, "Unable to setup Publisher RPC server")
-
-			err = pubs.Start(amqpConf)
-			cmd.FailOnError(err, "Unable to run Publisher RPC server")
 		}
+
+		pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats)
+		cmd.FailOnError(err, "Unable to create Publisher RPC server")
+		err = rpc.NewPublisherServer(pubs, pubi)
+		cmd.FailOnError(err, "Unable to setup Publisher RPC server")
+
+		err = pubs.Start(amqpConf)
+		cmd.FailOnError(err, "Unable to run Publisher RPC server")
 	}
 
 	app.Run()
