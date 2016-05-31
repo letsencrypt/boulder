@@ -180,3 +180,12 @@ func RateLimited(detail string) *ProblemDetails {
 		HTTPStatus: statusTooManyRequests,
 	}
 }
+
+// TLSError returns a ProblemDetails representing a TLSProblem error
+func TLSError(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       TLSProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}

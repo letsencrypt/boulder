@@ -59,6 +59,7 @@ func TestProblemDetailsConvenience(t *testing.T) {
 		{UnknownHost("unknown host detail"), UnknownHostProblem, http.StatusBadRequest, "unknown host detail"},
 		{RateLimited("rate limited detail"), RateLimitedProblem, statusTooManyRequests, "rate limited detail"},
 		{BadNonce("bad nonce detail"), BadNonceProblem, http.StatusBadRequest, "bad nonce detail"},
+		{TLSError("TLS error detail"), TLSProblem, http.StatusBadRequest, "TLS error detail"},
 	}
 
 	for _, c := range testCases {
