@@ -131,11 +131,7 @@ func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
 	case SignatureValidationError:
 		return probs.Malformed(fmt.Sprintf("%s :: %s", msg, err))
 	case RateLimitedError:
-		return &probs.ProblemDetails{
-			Type:       probs.RateLimitedProblem,
-			Detail:     fmt.Sprintf("%s :: %s", msg, err),
-			HTTPStatus: statusTooManyRequests,
-		}
+		return probs.RateLimited(fmt.Sprintf("%s :: %s", msg, err))
 	case BadNonceError:
 		return probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
 	default:
