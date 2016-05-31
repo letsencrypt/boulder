@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 // This package provides utilities that underlie the specific commands.
 // The idea is to make the specific command files very small, e.g.:
 //
@@ -193,11 +188,15 @@ func StatsAndLogging(statConf StatsdConfig, logConf SyslogConfig) (metrics.Statt
 		syslog.LOG_INFO|syslog.LOG_LOCAL0, // default, overridden by log calls
 		tag)
 	FailOnError(err, "Could not connect to Syslog")
-	level := int(syslog.LOG_DEBUG)
+	stdoutLoglevel := int(syslog.LOG_DEBUG)
 	if logConf.StdoutLevel != nil {
-		level = *logConf.StdoutLevel
+		stdoutLoglevel = *logConf.StdoutLevel
 	}
-	logger, err := blog.New(syslogger, level)
+	syslogLogLevel := int(syslog.LOG_DEBUG)
+	if logConf.SyslogLevel != nil {
+		syslogLogLevel = *logConf.SyslogLevel
+	}
+	logger, err := blog.New(syslogger, stdoutLoglevel, syslogLogLevel)
 	FailOnError(err, "Could not connect to Syslog")
 
 	_ = blog.Set(logger)

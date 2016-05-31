@@ -72,15 +72,6 @@ function die() {
   exit 1
 }
 
-function build_certbot() {
-  run git clone \
-    https://www.github.com/certbot/certbot.git \
-    $CERTBOT_PATH || exit 1
-  cd $CERTBOT_PATH
-  run ./tools/venv.sh
-  cd -
-}
-
 function run_unit_tests() {
   if [ "${TRAVIS}" == "true" ]; then
 
@@ -100,12 +91,12 @@ function run_unit_tests() {
     done
 
     # Gather all the coverprofiles
-    [ -e $GOBIN/gover ] && run $GOBIN/gover
+    run gover
 
     # We don't use the run function here because sometimes goveralls fails to
     # contact the server and exits with non-zero status, but we don't want to
     # treat that as a failure.
-    [ -e $GOBIN/goveralls ] && $GOBIN/goveralls -coverprofile=gover.coverprofile -service=travis-ci
+    goveralls -v -coverprofile=gover.coverprofile -service=travis-ci
   else
     # When running locally, we skip the -race flag for speedier test runs. We
     # also pass -p 1 to require the tests to run serially instead of in
@@ -117,10 +108,6 @@ function run_unit_tests() {
     run go test -p 1 $GOTESTFLAGS ${TESTPATHS}
   fi
 }
-
-# Path for installed go package binaries. If yours is different, override with
-# GOBIN=/my/path/to/bin ./test.sh
-GOBIN=${GOBIN:-$HOME/gopath/bin}
 
 #
 # Run Go Vet, a correctness-focused static analysis tool
@@ -188,18 +175,20 @@ if [[ "$RUN" =~ "integration" ]] ; then
   start_context "integration"
 
   if [ -z "$CERTBOT_PATH" ]; then
-    export CERTBOT_PATH=$(mktemp -d -t leXXXX)
+    export CERTBOT_PATH=$(mktemp -d -t cbpXXXX)
     echo "------------------------------------------------"
     echo "--- Checking out letsencrypt client is slow. ---"
     echo "--- Recommend setting \$CERTBOT_PATH to  ---"
     echo "--- client repo with initialized virtualenv  ---"
     echo "------------------------------------------------"
-    build_certbot
-  elif [ ! -d "${CERTBOT_PATH}" ]; then
-    build_certbot
+    run git clone -b v0.6.0 \
+      https://www.github.com/certbot/certbot.git \
+      $CERTBOT_PATH || exit 1
   fi
 
-  source ${CERTBOT_PATH}/venv/bin/activate
+  if ! type certbot >/dev/null 2>/dev/null; then
+    source ${CERTBOT_PATH}/${VENV_NAME:-venv}/bin/activate
+  fi
 
   python test/integration-test.py --all
   if [ "$?" != 0 ]; then

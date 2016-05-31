@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package ra
 
 import (
@@ -25,9 +20,10 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/ratelimit"
 )
 
 // DefaultAuthorizationLifetime is the 10 month default authorization lifetime.
@@ -59,12 +55,14 @@ type RegistrationAuthorityImpl struct {
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
-	rlPolicies                   cmd.RateLimitConfig
+	rlPolicies                   ratelimit.RateLimitConfig
 	tiMu                         *sync.RWMutex
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
 	useNewVARPC                  bool
+	maxNames                     int
+	forceCNFromSAN               bool
 
 	regByIPStats         metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
@@ -73,7 +71,7 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies ratelimit.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool, maxNames int, forceCNFromSAN bool) *RegistrationAuthorityImpl {
 	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
@@ -87,12 +85,12 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats sta
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
-		useNewVARPC:                  newVARPC,
-
-		regByIPStats:         scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
-		pendAuthByRegIDStats: scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
-		certsForDomainStats:  scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
-		totalCertsStats:      scope.NewScope("RA", "RateLimit", "TotalCertificates"),
+		maxNames:                     maxNames,
+		forceCNFromSAN:               forceCNFromSAN,
+		regByIPStats:                 scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
+		pendAuthByRegIDStats:         scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
+		certsForDomainStats:          scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
+		totalCertsStats:              scope.NewScope("RA", "RateLimit", "TotalCertificates"),
 	}
 	return ra
 }
@@ -106,16 +104,10 @@ const (
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
 	emails, err := mail.ParseAddressList(address)
 	if err != nil {
-		return &probs.ProblemDetails{
-			Type:   probs.InvalidEmailProblem,
-			Detail: unparseableEmailDetail,
-		}
+		return probs.InvalidEmail(unparseableEmailDetail)
 	}
 	if len(emails) > 1 {
-		return &probs.ProblemDetails{
-			Type:   probs.InvalidEmailProblem,
-			Detail: multipleAddressDetail,
-		}
+		return probs.InvalidEmail(multipleAddressDetail)
 	}
 	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
@@ -149,10 +141,7 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 		return nil
 	}
 
-	return &probs.ProblemDetails{
-		Type:   probs.InvalidEmailProblem,
-		Detail: emptyDNSResponseDetail,
-	}
+	return probs.InvalidEmail(emptyDNSResponseDetail)
 }
 
 type certificateRequestEvent struct {
@@ -413,7 +402,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
 		return
 	}
-	if len(csr.Subject.CommonName) > 0 &&
+	if !ra.forceCNFromSAN && len(csr.Subject.CommonName) > 0 &&
 		parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
 		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
 		return
@@ -528,9 +517,8 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	// Verify the CSR
 	csr := req.CSR
-	if err = csr.CheckSignature(); err != nil {
-		logEvent.Error = err.Error()
-		err = core.UnauthorizedError("Invalid signature on CSR")
+	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
+		err = core.MalformedRequestError(err.Error())
 		return emptyCert, err
 	}
 
@@ -540,9 +528,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 	// Validate that authorization key is authorized for all domains
 	names := make([]string, len(csr.DNSNames))
 	copy(names, csr.DNSNames)
-	if len(csr.Subject.CommonName) > 0 {
-		names = append(names, csr.Subject.CommonName)
-	}
 
 	if len(names) == 0 {
 		err = core.UnauthorizedError("CSR has no names in it")
@@ -642,7 +627,7 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	return domains, nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit cmd.RateLimitPolicy, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
 	names, err := domainsForRateLimiting(names)
 	if err != nil {
 		return err
@@ -688,7 +673,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit cmd.RateLimitPolicy, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
 	count, err := ra.SA.CountFQDNSets(ctx, limit.Window.Duration, names)
 	if err != nil {
 		return err
@@ -824,45 +809,38 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	// Dispatch to the VA for service
 
 	vaCtx := context.Background()
-	if !ra.useNewVARPC {
-		// TODO(#1167): remove
-		_ = ra.VA.UpdateValidations(vaCtx, authz, challengeIndex)
-		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
-	} else {
-		go func() {
-			records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
-			var prob *probs.ProblemDetails
-			if p, ok := err.(*probs.ProblemDetails); ok {
-				prob = p
-			} else if err != nil {
-				prob = probs.ServerInternal("Could not communicate with VA")
-				ra.log.Err(fmt.Sprintf("Could not communicate with VA: %s", err))
-			}
+	go func() {
+		records, err := ra.VA.PerformValidation(vaCtx, authz.Identifier.Value, authz.Challenges[challengeIndex], authz)
+		var prob *probs.ProblemDetails
+		if p, ok := err.(*probs.ProblemDetails); ok {
+			prob = p
+		} else if err != nil {
+			prob = probs.ServerInternal("Could not communicate with VA")
+			ra.log.Err(fmt.Sprintf("Could not communicate with VA: %s", err))
+		}
 
-			// Save the updated records
-			challenge := &authz.Challenges[challengeIndex]
-			challenge.ValidationRecord = records
+		// Save the updated records
+		challenge := &authz.Challenges[challengeIndex]
+		challenge.ValidationRecord = records
 
-			if !challenge.RecordsSane() && prob == nil {
-				prob = probs.ServerInternal("Records for validation failed sanity check")
-			}
+		if !challenge.RecordsSane() && prob == nil {
+			prob = probs.ServerInternal("Records for validation failed sanity check")
+		}
 
-			if prob != nil {
-				challenge.Status = core.StatusInvalid
-				challenge.Error = prob
-			} else {
-				challenge.Status = core.StatusValid
-			}
-			authz.Challenges[challengeIndex] = *challenge
+		if prob != nil {
+			challenge.Status = core.StatusInvalid
+			challenge.Error = prob
+		} else {
+			challenge.Status = core.StatusValid
+		}
+		authz.Challenges[challengeIndex] = *challenge
 
-			err = ra.OnValidationUpdate(vaCtx, authz)
-			if err != nil {
-				ra.log.Err(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
-			}
-		}()
-		ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
-	}
-
+		err = ra.onValidationUpdate(vaCtx, authz)
+		if err != nil {
+			ra.log.Err(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
+		}
+	}()
+	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
 	return
 }
 
@@ -942,8 +920,9 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	return nil
 }
 
-// OnValidationUpdate is called when a given Authorization is updated by the VA.
-func (ra *RegistrationAuthorityImpl) OnValidationUpdate(ctx context.Context, authz core.Authorization) error {
+// onValidationUpdate saves a validation's new status after receiving an
+// authorization back from the VA.
+func (ra *RegistrationAuthorityImpl) onValidationUpdate(ctx context.Context, authz core.Authorization) error {
 	// Consider validation successful if any of the combinations
 	// specified in the authorization has been fulfilled
 	validated := map[int]bool{}

@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -19,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -41,7 +37,7 @@ func main() {
 		err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 		cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
+		rateLimitPolicies, err := ratelimit.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
 		cmd.FailOnError(err, "Couldn't load rate limit policies file")
 
 		go cmd.ProfileCmd("RA", stats)
@@ -70,7 +66,7 @@ func main() {
 
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), logger, stats,
 			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration, c.KeyPolicy(),
-			c.RA.UseNewVARPC)
+			c.RA.UseNewVARPC, c.RA.MaxNames, c.RA.DoNotForceCN)
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse RA DNS timeout")

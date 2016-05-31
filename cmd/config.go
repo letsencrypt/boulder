@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package cmd
 
 import (
@@ -69,6 +64,9 @@ type Config struct {
 		DNSTries int
 
 		VAService *GRPCClientConfig
+
+		MaxNames     int
+		DoNotForceCN bool
 	}
 
 	SA struct {
@@ -444,6 +442,7 @@ type SyslogConfig struct {
 	Network     string
 	Server      string
 	StdoutLevel *int
+	SyslogLevel *int
 }
 
 // StatsdConfig defines the config for Statsd.

@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 // This is a test server that implements the subset of RFC6962 APIs needed to
 // run Boulder's CT log submission code. Currently it only implements add-chain.
 // This is used by startservers.py.
@@ -142,7 +137,7 @@ func main() {
 
 	is := integrationSrv{key: key}
 	s := &http.Server{
-		Addr:    "localhost:4500",
+		Addr:    "0.0.0.0:4500",
 		Handler: http.HandlerFunc(is.handler),
 	}
 	log.Fatal(s.ListenAndServe())

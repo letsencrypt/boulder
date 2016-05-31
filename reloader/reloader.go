@@ -23,6 +23,9 @@ func (r *Reloader) Stop() {
 	r.stopChan <- struct{}{}
 }
 
+// A pointer we can override for testing.
+var readFile = ioutil.ReadFile
+
 // New loads the filename provided, and calls the callback.  It then spawns a
 // goroutine to check for updates to that file, calling the callback again with
 // any new contents. The first load, and the first call to callback, are run
@@ -37,7 +40,7 @@ func New(filename string, dataCallback func([]byte) error, errorCallback func(er
 	if err != nil {
 		return nil, err
 	}
-	b, err := ioutil.ReadFile(filename)
+	b, err := readFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +61,7 @@ func New(filename string, dataCallback func([]byte) error, errorCallback func(er
 				if !currentFileInfo.ModTime().After(fileInfo.ModTime()) {
 					continue
 				}
-				b, err := ioutil.ReadFile(filename)
+				b, err := readFile(filename)
 				if err != nil {
 					errorCallback(err)
 					continue

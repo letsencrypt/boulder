@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package core
 
 import (
@@ -75,9 +70,6 @@ type RegistrationAuthority interface {
 
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code RevocationCode, adminName string) error
-
-	// [ValidationAuthority]
-	OnValidationUpdate(ctx context.Context, authz Authorization) error
 }
 
 // CertificateAuthority defines the public interface for the Boulder CA

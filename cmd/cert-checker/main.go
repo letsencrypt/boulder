@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -277,7 +272,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to create StatsD client")
 		syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 		cmd.FailOnError(err, "Failed to dial syslog")
-		logger, err := blog.New(syslogger, 0)
+		logger, err := blog.New(syslogger, 0, 0)
 		cmd.FailOnError(err, "Failed to construct logger")
 		err = blog.Set(logger)
 		cmd.FailOnError(err, "Failed to set audit logger")
