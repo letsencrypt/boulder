@@ -175,9 +175,6 @@ def run_node_test(domain, chall_type, expected_ct_submissions, abort_step="null"
     cert_file_pem = os.path.join(tempdir, "cert.pem")
     key_file = os.path.join(tempdir, "key.pem")
 
-    if abort_step is None or abort_step == "":
-        abort_step = "null"
-
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
     exit_code = subprocess.Popen('''
         node test.js --email %s --agree true \
@@ -188,11 +185,7 @@ def run_node_test(domain, chall_type, expected_ct_submissions, abort_step="null"
                                  shell=True).wait()
 
     if abort_step != "null":
-        if exit_code == ABORT_SUCCESS:
-            return ABORT_SUCCESS
-        else:
-            print("\nDid not properly abort at requested phase")
-            return ISSUANCE_FAILED
+        return ABORT_SUCCESS
 
     if exit_code != 0:
         print("\nIssuing failed")
@@ -255,6 +248,45 @@ def run_client_tests():
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
     run_custom(cmd, cwd=root)
 
+def run_expired_authz_purger_test(challenge_types):
+    if run_node_test("challenge-not-started.com", challenge_types[0], None, "startChallenge")\
+       != ABORT_SUCCESS:
+        print("\nDidn't cleanly abort before attempting challenge")
+        die(ExitStatus.NodeFailure)
+
+        now = datetime.datetime.now()
+        after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
+
+        target_time = now
+        expected_output = 'Deleted a total of 0 expired pending authorizations'
+        try:
+            out = subprocess.check_output(
+                '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config test/boulder-config-next.json --yes'''
+                % target_time.isoformat(), cwd='../..', shell=True)
+
+            print(out)
+            if expected_output not in out:
+                print("\nBad output from authz purger")
+                die(ExitStatus.NodeFailure)
+        except subprocess.CalledProcessError as e:
+            print("\nFailed to run authz purger: %s" % e)
+            die(ExitStatus.NodeFailure)
+
+            target_time = after_grace_period
+            expected_output = 'Deleted a total of 1 expired pending authorizations'
+            try:
+                out = subprocess.check_output(
+                    '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config test/boulder-config-next.json --yes'''
+                    % target_time.isoformat(), cwd='../..', shell=True)
+
+                print(out)
+                if expected_output not in out:
+                    print("\nBad output from authz purger")
+                    die(ExitStatus.NodeFailure)
+            except subprocess.CalledProcessError as e:
+                print("\nFailed to run authz purger: %s" % e)
+                die(ExitStatus.NodeFailure)
+
 @atexit.register
 def cleanup():
     import shutil
@@ -316,43 +348,7 @@ def main():
             print("\nIssused certificate for domain with bad CAA records")
             die(ExitStatus.NodeFailure)
 
-        if run_node_test("challenge-not-started.com", challenge_types[0], None, "startChallenge")\
-                != ABORT_SUCCESS:
-            print("\nDidn't cleanly abort before attempting challenge")
-            die(ExitStatus.NodeFailure)
-
-        now = datetime.datetime.now()
-        after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
-
-        target_time = now
-        expected_output = 'Deleted a total of 0 expired pending authorizations'
-        try:
-            out = subprocess.check_output(
-                '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config test/boulder-config-next.json --yes'''
-                  % target_time.isoformat(), cwd='../..', shell=True)
-
-            print(out)
-            if expected_output not in out:
-                print("\nBad output from authz purger")
-                die(ExitStatus.NodeFailure)
-        except subprocess.CalledProcessError as e:
-            print("\nFailed to run authz purger: %s" % e)
-            die(ExitStatus.NodeFailure)
-
-        target_time = after_grace_period
-        expected_output = 'Deleted a total of 1 expired pending authorizations'
-        try:
-            out = subprocess.check_output(
-                '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config test/boulder-config-next.json --yes'''
-                % target_time.isoformat(), cwd='../..', shell=True)
-
-            print(out)
-            if expected_output not in out:
-                print("\nBad output from authz purger")
-                die(ExitStatus.NodeFailure)
-        except subprocess.CalledProcessError as e:
-            print("\nFailed to run authz purger: %s" % e)
-            die(ExitStatus.NodeFailure)
+        run_expired_authz_purger_test(challenge_types)
 
     # Simulate a disconnection from RabbitMQ to make sure reconnects work.
     startservers.bounce_forward()

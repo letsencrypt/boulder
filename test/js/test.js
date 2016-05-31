@@ -235,9 +235,6 @@ function makeAccountKeyPair(answers) {
 }
 
 function register(answers) {
-  if (state.abortStep === "register") {
-    process.exit(8);
-  }
   var email = answers.email;
 
   // Register public key
@@ -317,9 +314,6 @@ function sendAgreement(answers) {
 }
 
 function getChallenges(answers) {
-  if (state.abortStep === "beforeNewAuthz") {
-    process.exit(8);
-  }
   state.domain = answers.domain;
 
   // Register public key
@@ -493,9 +487,6 @@ function ensureValidation(err, resp, body) {
 }
 
 function getCertificate() {
-  if (state.abortStep === "getCertificate") {
-    process.exit(8);
-  }
   cli.spinner("Requesting certificate");
   var csr = cryptoUtil.generateCSR(state.certPrivateKey, state.validatedDomains);
   post(state.newCertificateURL, {
