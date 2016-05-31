@@ -261,10 +261,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 	httpResponse, err := client.Do(httpRequest)
 	if err != nil {
 		va.log.Info(fmt.Sprintf("HTTP request to %s failed. err=[%#v] errStr=[%s]", url, err, err))
-		return nil, validationRecords, &probs.ProblemDetails{
-			Type:   parseHTTPConnError(err),
-			Detail: fmt.Sprintf("Could not connect to %s", url),
-		}
+		return nil, validationRecords,
+			parseHTTPConnError(fmt.Sprintf("Could not connect to %s", url), err)
 	}
 
 	body, err := ioutil.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
@@ -316,10 +314,8 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 
 	if err != nil {
 		va.log.Info(fmt.Sprintf("TLS-01 connection failure for %s. err=[%#v] errStr=[%s]", identifier, err, err))
-		return validationRecords, &probs.ProblemDetails{
-			Type:   parseHTTPConnError(err),
-			Detail: fmt.Sprintf("Failed to connect to %s for TLS-SNI-01 challenge", hostPort),
-		}
+		return validationRecords,
+			parseHTTPConnError(fmt.Sprintf("Failed to connect to %s for TLS-SNI-01 challenge", hostPort), err)
 	}
 	// close errors are not important here
 	defer func() {
@@ -399,9 +395,9 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	return va.validateTLSWithZName(ctx, identifier, challenge, ZName)
 }
 
-// parseHTTPConnError returns the ACME ProblemType corresponding to an error
+// parseHTTPConnError returns a ProblemDetails corresponding to an error
 // that occurred during domain validation.
-func parseHTTPConnError(err error) probs.ProblemType {
+func parseHTTPConnError(detail string, err error) *probs.ProblemDetails {
 	if urlErr, ok := err.(*url.Error); ok {
 		err = urlErr.Err
 	}
@@ -412,13 +408,13 @@ func parseHTTPConnError(err error) probs.ProblemType {
 	if netErr, ok := err.(*net.OpError); ok {
 		dnsErr, ok := netErr.Err.(*net.DNSError)
 		if ok && !dnsErr.Timeout() && !dnsErr.Temporary() {
-			return probs.UnknownHostProblem
+			return probs.UnknownHost(detail)
 		} else if fmt.Sprintf("%T", netErr.Err) == "tls.alert" {
-			return probs.TLSProblem
+			return probs.TLSError(detail)
 		}
 	}
 
-	return probs.ConnectionProblem
+	return probs.ConnectionFailure(detail)
 }
 
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
