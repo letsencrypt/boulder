@@ -1,8 +1,10 @@
 package ra
 
 import (
-	"github.com/letsencrypt/boulder/core"
 	"golang.org/x/net/context"
+
+	"github.com/letsencrypt/boulder/core"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 // TODO(jmhodges): remove once VA is deployed and stable with IsSafeDomain
@@ -23,9 +25,9 @@ func (d *DomainCheck) IsSafe(ctx context.Context, domain string) (bool, error) {
 		return true, nil
 	}
 
-	resp, err := d.VA.IsSafeDomain(ctx, &core.IsSafeDomainRequest{Domain: domain})
+	resp, err := d.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		return false, err
 	}
-	return resp.IsSafe, nil
+	return resp.GetIsSafe(), nil
 }
