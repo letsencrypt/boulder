@@ -521,7 +521,6 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
-	ra.useNewVARPC = true
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
@@ -552,53 +551,6 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	test.Assert(t, authz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
 
 	t.Log("DONE TestUpdateAuthorizationNewRPC")
-}
-
-func TestOnValidationUpdateSuccess(t *testing.T) {
-	_, sa, ra, fclk, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	authzUpdated, err := sa.NewPendingAuthorization(ctx, AuthzInitial)
-	test.AssertNotError(t, err, "Failed to create new pending authz")
-
-	expires := fclk.Now().Add(300 * 24 * time.Hour)
-	authzUpdated.Expires = &expires
-	err = sa.UpdatePendingAuthorization(ctx, authzUpdated)
-	test.AssertNotError(t, err, "Could not store test data")
-
-	// Simulate a successful simpleHTTP challenge
-	authzFromVA := authzUpdated
-	authzFromVA.Challenges[0].Status = core.StatusValid
-
-	err = ra.OnValidationUpdate(ctx, authzFromVA)
-	test.AssertNotError(t, err, "Could not store test data")
-
-	// Verify that the Authz in the DB is the same except for Status->StatusValid
-	authzFromVA.Status = core.StatusValid
-	dbAuthz, err := sa.GetAuthorization(ctx, authzFromVA.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	t.Log("authz from VA: ", authzFromVA)
-	t.Log("authz from DB: ", dbAuthz)
-
-	assertAuthzEqual(t, authzFromVA, dbAuthz)
-}
-
-func TestOnValidationUpdateFailure(t *testing.T) {
-	_, sa, ra, fclk, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	authzFromVA, _ := sa.NewPendingAuthorization(ctx, AuthzInitial)
-	expires := fclk.Now().Add(300 * 24 * time.Hour)
-	authzFromVA.Expires = &expires
-	err := sa.UpdatePendingAuthorization(ctx, authzFromVA)
-	test.AssertNotError(t, err, "Could not store test data")
-	authzFromVA.Challenges[0].Status = core.StatusInvalid
-
-	err = ra.OnValidationUpdate(ctx, authzFromVA)
-	test.AssertNotError(t, err, "unable to update validation")
-
-	authzFromVA.Status = core.StatusInvalid
-	dbAuthz, err := sa.GetAuthorization(ctx, authzFromVA.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	assertAuthzEqual(t, authzFromVA, dbAuthz)
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -762,7 +714,7 @@ func TestAuthzRateLimiting(t *testing.T) {
 	test.AssertError(t, err, "Pending Authorization rate limit failed.")
 
 	// Finalize pending authz
-	err = ra.OnValidationUpdate(ctx, authz)
+	err = ra.onValidationUpdate(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
 
 	// Try to create a new authzRequest, should be fine now.

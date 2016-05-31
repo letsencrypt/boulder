@@ -52,7 +52,6 @@ var validationTimeout = time.Second * 5
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	RA           core.RegistrationAuthority
 	log          blog.Logger
 	DNSResolver  bdns.DNSResolver
 	IssuerDomain string
@@ -555,53 +554,6 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 	return nil
 }
 
-// Overall validation process
-//
-// TODO(#1167): remove, functionality moved to RA
-func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Authorization, challengeIndex int) {
-	logEvent := verificationRequestEvent{
-		ID:          authz.ID,
-		Requester:   authz.RegistrationID,
-		RequestTime: va.clk.Now(),
-	}
-	challenge := &authz.Challenges[challengeIndex]
-
-	var validationRecords []core.ValidationRecord
-	var prob *probs.ProblemDetails
-
-	vStart := va.clk.Now()
-
-	validationRecords, prob = va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
-
-	challenge.ValidationRecord = validationRecords
-
-	// Check for malformed ValidationRecords
-	if !challenge.RecordsSane() && prob == nil {
-		prob = probs.ServerInternal("Records for validation failed sanity check")
-	}
-
-	if prob != nil {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = prob
-		logEvent.Error = prob.Error()
-	} else {
-		challenge.Status = core.StatusValid
-	}
-	logEvent.Challenge = *challenge
-
-	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart), 1.0)
-
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.AuditObject("Validation result", logEvent)
-
-	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
-
-	err := va.RA.OnValidationUpdate(ctx, authz)
-	if err != nil {
-		va.log.Err(fmt.Sprintf("va: unable to communicate updated authz [%d] to RA: %q authz=[%#v]", authz.RegistrationID, err, authz))
-	}
-}
-
 func (va *ValidationAuthorityImpl) validateChallengeAndCAA(ctx context.Context, identifier core.AcmeIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	ch := make(chan *probs.ProblemDetails, 1)
 	go func() {
@@ -646,18 +598,8 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	}
 }
 
-// UpdateValidations runs the validate() method asynchronously using
-// goroutines.
-//
-// TODO(#1167): remove this method
-func (va *ValidationAuthorityImpl) UpdateValidations(ctx context.Context, authz core.Authorization, challengeIndex int) error {
-	// TODO(#1292): add a proper deadline here
-	go va.validate(ctx, authz, challengeIndex)
-	return nil
-}
-
-// PerformValidation runs the validate() method synchronously and returns the
-// updated Challenge.
+// PerformValidation validates the given challenge. It always returns a list of
+// validation records, even when it also returns an error.
 //
 // TODO(#1626): remove authz parameter
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
@@ -693,7 +635,15 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
-	return records, prob
+	if prob == nil {
+		// This is necessary because if we just naively returned prob, it would be a
+		// non-nil interface value containing a nil pointer, rather than a nil
+		// interface value. See, e.g.
+		// https://stackoverflow.com/questions/29138591/hiding-nil-values-understanding-why-golang-fails-here
+		return records, nil
+	} else {
+		return records, prob
+	}
 }
 
 // CAASet consists of filtered CAA records

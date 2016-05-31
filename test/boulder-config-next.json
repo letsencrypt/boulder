@@ -168,7 +168,6 @@
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
     "dnsTries": 3,
-    "useNewVARPC": true,
     "debugAddr": "localhost:8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,

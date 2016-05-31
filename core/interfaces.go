@@ -75,9 +75,6 @@ type RegistrationAuthority interface {
 
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code RevocationCode, adminName string) error
-
-	// [ValidationAuthority]
-	OnValidationUpdate(ctx context.Context, authz Authorization) error
 }
 
 // CertificateAuthority defines the public interface for the Boulder CA
