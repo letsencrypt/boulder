@@ -20,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -205,8 +206,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		log,
 		stats,
 		&DomainCheck{va},
-		cmd.RateLimitConfig{
-			TotalCertificates: cmd.RateLimitPolicy{
+		ratelimit.RateLimitConfig{
+			TotalCertificates: ratelimit.RateLimitPolicy{
 				Threshold: 100,
 				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
@@ -646,8 +647,8 @@ func TestTotalCertRateLimit(t *testing.T) {
 	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies = cmd.RateLimitConfig{
-		TotalCertificates: cmd.RateLimitPolicy{
+	ra.rlPolicies = ratelimit.RateLimitConfig{
+		TotalCertificates: ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
@@ -690,8 +691,8 @@ func TestAuthzRateLimiting(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies = cmd.RateLimitConfig{
-		PendingAuthorizationsPerAccount: cmd.RateLimitPolicy{
+	ra.rlPolicies = ratelimit.RateLimitConfig{
+		PendingAuthorizationsPerAccount: ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
@@ -767,7 +768,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	rlp := cmd.RateLimitPolicy{
+	rlp := ratelimit.RateLimitPolicy{
 		Threshold: 3,
 		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
 		Overrides: map[string]int{

@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -34,7 +35,7 @@ func main() {
 		err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 		cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
+		rateLimitPolicies, err := ratelimit.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
 		cmd.FailOnError(err, "Couldn't load rate limit policies file")
 
 		go cmd.ProfileCmd("RA", stats)

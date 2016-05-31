@@ -20,10 +20,10 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/ratelimit"
 )
 
 // DefaultAuthorizationLifetime is the 10 month default authorization lifetime.
@@ -55,7 +55,7 @@ type RegistrationAuthorityImpl struct {
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
-	rlPolicies                   cmd.RateLimitConfig
+	rlPolicies                   ratelimit.RateLimitConfig
 	tiMu                         *sync.RWMutex
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
@@ -71,7 +71,7 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool, maxNames int, forceCNFromSAN bool) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies ratelimit.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool, maxNames int, forceCNFromSAN bool) *RegistrationAuthorityImpl {
 	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
@@ -627,7 +627,7 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	return domains, nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit cmd.RateLimitPolicy, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
 	names, err := domainsForRateLimiting(names)
 	if err != nil {
 		return err
@@ -673,7 +673,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit cmd.RateLimitPolicy, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
 	count, err := ra.SA.CountFQDNSets(ctx, limit.Window.Duration, names)
 	if err != nil {
 		return err
