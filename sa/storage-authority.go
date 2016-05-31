@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package sa
 
 import (
@@ -209,24 +204,6 @@ func (ssa *SQLStorageAuthority) GetAuthorization(ctx context.Context, id string)
 	return
 }
 
-// GetLatestValidAuthorization gets the valid authorization with biggest expire date for a given domain and registrationId
-func (ssa *SQLStorageAuthority) GetLatestValidAuthorization(ctx context.Context, registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
-	ident, err := json.Marshal(identifier)
-	if err != nil {
-		return
-	}
-	var auth core.Authorization
-	err = ssa.dbMap.SelectOne(&auth, "SELECT id FROM authz "+
-		"WHERE identifier = :identifier AND registrationID = :registrationID AND status = 'valid' "+
-		"ORDER BY expires DESC LIMIT 1",
-		map[string]interface{}{"identifier": string(ident), "registrationID": registrationID})
-	if err != nil {
-		return
-	}
-
-	return ssa.GetAuthorization(ctx, auth.ID)
-}
-
 // GetValidAuthorizations returns the latest authorization object for all
 // domain names from the parameters that the account has authorizations for.
 func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, registrationID int64, names []string, now time.Time) (latest map[string]*core.Authorization, err error) {
@@ -253,7 +230,6 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, regi
 		AND expires > ?
 		AND identifier IN (`+strings.Join(qmarks, ",")+`)
 		AND status = 'valid'
-		ORDER BY expires ASC
 		`, append([]interface{}{registrationID, now}, params...)...)
 	if err != nil {
 		return nil, err
@@ -261,12 +237,18 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations(ctx context.Context, regi
 
 	byName := make(map[string]*core.Authorization)
 	for _, auth := range auths {
+		// No real life authorizations should have a nil expires. If we find them,
+		// don't consider them valid.
+		if auth.Expires == nil {
+			continue
+		}
 		if auth.Identifier.Type != core.IdentifierDNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %q", auth.Identifier.Type, auth.ID)
 		}
-		// Due to ORDER BY expires, this results in the latest value
-		// for each name being used.
-		byName[auth.Identifier.Value] = auth
+		existing, present := byName[auth.Identifier.Value]
+		if !present || auth.Expires.After(*existing.Expires) {
+			byName[auth.Identifier.Value] = auth
+		}
 	}
 
 	return byName, nil

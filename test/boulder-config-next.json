@@ -2,7 +2,8 @@
   "syslog": {
     "network": "",
     "server": "",
-    "stdoutlevel": 7
+    "stdoutlevel": 7,
+    "sysloglevel": 4
   },
 
   "statsd": {
@@ -140,16 +141,19 @@
       }
     },
     "maxConcurrentRPCServerRequests": 16,
+    "publisherService": {
+      "serverAddress": "boulder:9091",
+      "serverIssuerPath": "test/grpc-creds/ca.pem",
+      "clientCertificatePath": "test/grpc-creds/client.pem",
+      "clientKeyPath": "test/grpc-creds/key.pem",
+      "timeout": "10s"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
       "serviceQueue": "CA.server",
       "SA": {
         "server": "SA.server",
-        "rpcTimeout": "15s"
-      },
-      "Publisher": {
-        "server": "Publisher.server",
         "rpcTimeout": "15s"
       }
     }
@@ -168,9 +172,10 @@
     "maxConcurrentRPCServerRequests": 16,
     "maxContactsPerRegistration": 100,
     "dnsTries": 3,
-    "useNewVARPC": true,
     "debugAddr": "localhost:8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
+    "maxNames": 1000,
+    "doNotForceCN": true,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -193,6 +198,7 @@
 
   "sa": {
     "dbConnectFile": "test/secrets/sa_dburl",
+    "maxDBConns": 10,
     "maxConcurrentRPCServerRequests": 16,
     "debugAddr": "localhost:8003",
     "amqp": {
@@ -210,6 +216,7 @@
       "httpsPort": 5001,
       "tlsPort": 5001
     },
+    "lookupIPV6": true,
     "maxConcurrentRPCServerRequests": 16,
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
@@ -238,6 +245,7 @@
 
   "revoker": {
     "dbConnectFile": "test/secrets/revoker_dburl",
+    "maxDBConns": 1,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -254,6 +262,7 @@
 
   "ocspResponder": {
     "source": "mysql+tcp://ocsp_resp@boulder-mysql:3306/boulder_sa_integration?readTimeout=800ms&writeTimeout=800ms",
+    "maxDBConns": 10,
     "path": "/",
     "listenAddress": "0.0.0.0:4002",
     "maxAge": "10s",
@@ -264,6 +273,7 @@
 
   "ocspUpdater": {
     "dbConnectFile": "test/secrets/ocsp_updater_dburl",
+    "maxDBConns": 10,
     "newCertificateWindow": "1s",
     "oldOCSPWindow": "2s",
     "missingSCTWindow": "1m",
@@ -277,6 +287,13 @@
     "signFailureBackoffFactor": 1.2,
     "signFailureBackoffMax": "30m",
     "debugAddr": "localhost:8006",
+    "publisher": {
+      "serverAddress": "boulder:9091",
+      "serverIssuerPath": "test/grpc-creds/ca.pem",
+      "clientCertificatePath": "test/grpc-creds/client.pem",
+      "clientKeyPath": "test/grpc-creds/key.pem",
+      "timeout": "10s"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -286,10 +303,6 @@
       },
       "CA": {
         "server": "CA.server",
-        "rpcTimeout": "15s"
-      },
-      "Publisher": {
-        "server": "Publisher.server",
         "rpcTimeout": "15s"
       }
     }
@@ -302,6 +315,7 @@
     "from": "Expiry bot <test@example.com>",
     "passwordFile": "test/secrets/smtp_password",
     "dbConnectFile": "test/secrets/mailer_dburl",
+    "maxDBConns": 10,
     "messageLimit": 0,
     "nagTimes": ["24h", "72h", "168h", "336h"],
     "nagCheckInterval": "24h",
@@ -321,10 +335,15 @@
     "maxConcurrentRPCServerRequests": 16,
     "submissionTimeout": "5s",
     "debugAddr": "localhost:8009",
+    "grpc": {
+      "address": "boulder:9091",
+      "clientIssuerPath": "test/grpc-creds/ca.pem",
+      "serverCertificatePath": "test/grpc-creds/server.pem",
+      "serverKeyPath": "test/grpc-creds/key.pem"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
-      "serviceQueue": "Publisher.server",
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "15s"
@@ -333,8 +352,7 @@
   },
 
   "common": {
-    "baseURL": "http://127.0.0.1:4000",
-    "issuerCert": "test/test-ca2.pem",
+    "issuerCert": "test/test-ca.pem",
     "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "10s",
     "dnsAllowLoopbackAddresses": true,
@@ -350,7 +368,8 @@
   },
 
   "certChecker": {
-    "dbConnectFile": "test/secrets/cert_checker_dburl"
+    "dbConnectFile": "test/secrets/cert_checker_dburl",
+    "maxDBConns": 10
   },
 
   "subscriberAgreementURL": "http://boulder:4000/terms/v1",

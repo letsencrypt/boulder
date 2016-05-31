@@ -70,8 +70,8 @@ rpm: build
 	fpm -s dir -t rpm --rpm-digest sha256 --name "boulder" \
 		--license "Mozilla Public License v2.0" --vendor "ISRG" \
 		--url "https://github.com/letsencrypt/boulder" --prefix=/opt/boulder \
-		--version $(VERSION) --iteration $(COMMIT_ID) --epoch $(EPOCH) \
-		--package $(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.rpm \
+		--version "$(VERSION)" --iteration "$(COMMIT_ID)" --epoch "$(EPOCH)" \
+		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.rpm" \
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
 		--depends "libtool-ltdl" --maintainer "$(MAINTAINER)" \
 		test/boulder-config.json sa/_db data/ $(OBJECTS)

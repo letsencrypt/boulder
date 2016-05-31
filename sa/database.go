@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package sa
 
 import (
@@ -10,18 +5,21 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
+	gorp "gopkg.in/gorp.v1"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	gorp "gopkg.in/gorp.v1"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 // NewDbMap creates the root gorp mapping object. Create one of these for each
 // database schema you wish to map. Each DbMap contains a list of mapped
 // tables. It automatically maps the tables for the primary parts of Boulder
 // around the Storage Authority.
-func NewDbMap(dbConnect string) (*gorp.DbMap, error) {
+func NewDbMap(dbConnect string, maxOpenConns int) (*gorp.DbMap, error) {
 	var err error
 	var config *mysql.Config
 	if strings.HasPrefix(dbConnect, "mysql+tcp://") {
@@ -36,7 +34,7 @@ func NewDbMap(dbConnect string) (*gorp.DbMap, error) {
 		return nil, err
 	}
 
-	return NewDbMapFromConfig(config)
+	return NewDbMapFromConfig(config, maxOpenConns)
 }
 
 // sqlOpen is used in the tests to check that the arguments are properly
@@ -45,9 +43,14 @@ var sqlOpen = func(dbType, connectStr string) (*sql.DB, error) {
 	return sql.Open(dbType, connectStr)
 }
 
+// setMaxOpenConns is also used so that we can replace it for testing.
+var setMaxOpenConns = func(db *sql.DB, maxOpenConns int) {
+	db.SetMaxOpenConns(maxOpenConns)
+}
+
 // NewDbMapFromConfig functions similarly to NewDbMap, but it takes the
 // decomposed form of the connection string, a *mysql.Config.
-func NewDbMapFromConfig(config *mysql.Config) (*gorp.DbMap, error) {
+func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, error) {
 	adjustMySQLConfig(config)
 
 	db, err := sqlOpen("mysql", config.FormatDSN())
@@ -57,6 +60,7 @@ func NewDbMapFromConfig(config *mysql.Config) (*gorp.DbMap, error) {
 	if err = db.Ping(); err != nil {
 		return nil, err
 	}
+	setMaxOpenConns(db, maxOpenConns)
 
 	dialect := gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
@@ -142,6 +146,14 @@ type SQLLogger struct {
 // Printf adapts the AuditLogger to GORP's interface
 func (log *SQLLogger) Printf(format string, v ...interface{}) {
 	log.Debug(fmt.Sprintf(format, v...))
+}
+
+func ReportDbConnCount(dbMap *gorp.DbMap, statter metrics.Scope) {
+	db := dbMap.Db
+	for {
+		statter.Gauge("OpenConnections", int64(db.Stats().OpenConnections))
+		time.Sleep(1 * time.Second)
+	}
 }
 
 // initTables constructs the table map for the ORM.

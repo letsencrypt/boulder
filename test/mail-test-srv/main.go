@@ -16,7 +16,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-var apiPort = flag.String("http", "9381", "http port to listen on")
+var listenAPI = flag.String("http", "0.0.0.0:9381", "http port to listen on")
 
 type rcvdMail struct {
 	From string
@@ -162,7 +162,7 @@ func serveSMTP(l net.Listener) error {
 }
 
 func main() {
-	l, err := net.Listen("tcp", ":9380")
+	l, err := net.Listen("tcp", "0.0.0.0:9380")
 	if err != nil {
 		log.Fatalln("Couldn't bind for SMTP", err)
 	}
@@ -170,7 +170,7 @@ func main() {
 
 	setupHTTP(http.DefaultServeMux)
 	go func() {
-		err := http.ListenAndServe(":"+*apiPort, http.DefaultServeMux)
+		err := http.ListenAndServe(*listenAPI, http.DefaultServeMux)
 		if err != nil {
 			log.Fatalln("Couldn't start HTTP server", err)
 		}

@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -45,7 +40,7 @@ func init() {
 }
 
 func BenchmarkCheckCert(b *testing.B) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
 		fmt.Println("Couldn't connect to database")
 		return
@@ -81,7 +76,7 @@ func BenchmarkCheckCert(b *testing.B) {
 }
 
 func TestCheckCert(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetSATestDatabase(t)
 	defer func() {
@@ -179,7 +174,7 @@ func TestCheckCert(t *testing.T) {
 }
 
 func TestGetAndProcessCerts(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA)
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	fc := clock.NewFake()
 

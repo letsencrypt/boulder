@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package core
 
 import (
@@ -75,9 +70,6 @@ type RegistrationAuthority interface {
 
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code RevocationCode, adminName string) error
-
-	// [ValidationAuthority]
-	OnValidationUpdate(ctx context.Context, authz Authorization) error
 }
 
 // CertificateAuthority defines the public interface for the Boulder CA
@@ -98,7 +90,6 @@ type StorageGetter interface {
 	GetRegistration(ctx context.Context, regID int64) (Registration, error)
 	GetRegistrationByKey(ctx context.Context, jwk jose.JsonWebKey) (Registration, error)
 	GetAuthorization(ctx context.Context, authzID string) (Authorization, error)
-	GetLatestValidAuthorization(ctx context.Context, regID int64, domain AcmeIdentifier) (Authorization, error)
 	GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*Authorization, error)
 	GetCertificate(ctx context.Context, serial string) (Certificate, error)
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)

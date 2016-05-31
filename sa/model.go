@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package sa
 
 import (
@@ -47,14 +42,16 @@ type challModel struct {
 	ID              int64  `db:"id"`
 	AuthorizationID string `db:"authorizationID"`
 
-	Type             string          `db:"type"`
-	Status           core.AcmeStatus `db:"status"`
-	Error            []byte          `db:"error"`
-	Validated        *time.Time      `db:"validated"`
-	Token            string          `db:"token"`
-	KeyAuthorization string          `db:"keyAuthorization"`
-	ValidationRecord []byte          `db:"validationRecord"`
-	AccountKey       []byte          `db:"accountKey"`
+	Type   string          `db:"type"`
+	Status core.AcmeStatus `db:"status"`
+	Error  []byte          `db:"error"`
+	// This field is unused, but is kept temporarily to avoid a database migration.
+	// TODO(#1818): remove
+	Validated        *time.Time `db:"validated"`
+	Token            string     `db:"token"`
+	KeyAuthorization string     `db:"keyAuthorization"`
+	ValidationRecord []byte     `db:"validationRecord"`
+	AccountKey       []byte     `db:"accountKey"`
 
 	LockCol int64
 
@@ -114,7 +111,6 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 		AuthorizationID:  authID,
 		Type:             c.Type,
 		Status:           c.Status,
-		Validated:        c.Validated,
 		Token:            c.Token,
 		KeyAuthorization: c.ProvidedKeyAuthorization,
 	}
@@ -153,11 +149,10 @@ func challengeToModel(c *core.Challenge, authID string) (*challModel, error) {
 
 func modelToChallenge(cm *challModel) (core.Challenge, error) {
 	c := core.Challenge{
-		ID:        cm.ID,
-		Type:      cm.Type,
-		Status:    cm.Status,
-		Validated: cm.Validated,
-		Token:     cm.Token,
+		ID:     cm.ID,
+		Type:   cm.Type,
+		Status: cm.Status,
+		Token:  cm.Token,
 		ProvidedKeyAuthorization: cm.KeyAuthorization,
 	}
 	if len(cm.Error) > 0 {

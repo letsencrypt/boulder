@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package policy
 
 import (
@@ -27,8 +22,9 @@ import (
 type AuthorityImpl struct {
 	log blog.Logger
 
-	blacklist   map[string]bool
-	blacklistMu sync.RWMutex
+	blacklist      map[string]bool
+	exactBlacklist map[string]bool
+	blacklistMu    sync.RWMutex
 
 	enabledChallenges map[string]bool
 	pseudoRNG         *rand.Rand
@@ -50,7 +46,8 @@ func New(challengeTypes map[string]bool) (*AuthorityImpl, error) {
 }
 
 type blacklistJSON struct {
-	Blacklist []string
+	Blacklist      []string
+	ExactBlacklist []string
 }
 
 // SetHostnamePolicyFile will load the given policy file, returning error if it
@@ -80,8 +77,13 @@ func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
 	for _, v := range bl.Blacklist {
 		nameMap[v] = true
 	}
+	exactNameMap := make(map[string]bool)
+	for _, v := range bl.ExactBlacklist {
+		exactNameMap[v] = true
+	}
 	pa.blacklistMu.Lock()
 	pa.blacklist = nameMap
+	pa.exactBlacklist = exactNameMap
 	pa.blacklistMu.Unlock()
 	return nil
 }
@@ -245,6 +247,10 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 		if pa.blacklist[joined] {
 			return errBlacklisted
 		}
+	}
+
+	if pa.exactBlacklist[domain] {
+		return errBlacklisted
 	}
 	return nil
 }

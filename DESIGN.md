@@ -3,7 +3,7 @@
 Boulder is built in a rather decentralized way in order to enable different
 parts to be deployed in different security contexts.
 
-In order to you understand how boulder works and ensure it's working correctly,
+In order for you to understand how boulder works and ensure it's working correctly,
 this document lays out how various operations flow through boulder.  We show a
 diagram of how calls go between components, and provide notes on what each
 component does to help the process along.  Each step is in its own subsection
@@ -104,13 +104,11 @@ Notes:
 ```
 1: Client ---chal--> WFE
 2:                   WFE ---UpdateAuthorization--> RA
-3:                                                 RA ---UpdateValidations--> VA
-4:                                                 RA <-------return--------- VA
-5:                   WFE <--------return---------- RA
-6: Client <--------- WFE
-7: Client <~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~> VA
-8:                                                 RA <--OnValidationUpdate-- VA
-9:                                                 RA --------return--------> VA
+3:                                                 RA ---PerformValidation--> VA
+4: Client <~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~> VA
+5:                                                 RA <-------return--------- VA
+6:                   WFE <--------return---------- RA
+7: Client <--------- WFE
 ```
 
 * 1-2: WFE does the following:

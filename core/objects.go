@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package core
 
 import (
@@ -284,10 +279,6 @@ type Challenge struct {
 	// Contains the error that occurred during challenge validation, if any
 	Error *probs.ProblemDetails `json:"error,omitempty"`
 
-	// If successful, the time at which this challenge
-	// was completed by the server.
-	Validated *time.Time `json:"validated,omitempty"`
-
 	// A URI to which a response can be POSTed
 	URI string `json:"uri"`
 
@@ -522,19 +513,6 @@ type Certificate struct {
 type IdentifierData struct {
 	ReversedName string `db:"reversedName"` // The label-wise reverse of an identifier, e.g. com.example or com.example.*
 	CertSHA1     string `db:"certSHA1"`     // The hex encoding of the SHA-1 hash of a cert containing the identifier
-}
-
-// ExternalCert holds information about certificates issued by other CAs,
-// obtained through Certificate Transparency, the SSL Observatory, or scans.io.
-type ExternalCert struct {
-	SHA1     string    `db:"sha1"`       // The hex encoding of the SHA-1 hash of this cert
-	Issuer   string    `db:"issuer"`     // The Issuer field of this cert
-	Subject  string    `db:"subject"`    // The Subject field of this cert
-	NotAfter time.Time `db:"notAfter"`   // Date after which this cert should be considered invalid
-	SPKI     []byte    `db:"spki"`       // The hex encoding of the certificate's SubjectPublicKeyInfo in DER form
-	Valid    bool      `db:"valid"`      // Whether this certificate was valid at LastUpdated time
-	EV       bool      `db:"ev"`         // Whether this cert was EV valid
-	CertDER  []byte    `db:"rawDERCert"` // DER (binary) encoding of the raw certificate
 }
 
 // CertificateStatus structs are internal to the server. They represent the

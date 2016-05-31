@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -65,6 +60,11 @@ func NewSourceFromDatabase(dbMap dbSelector, caKeyHash []byte, log blog.Logger) 
 	return
 }
 
+type dbResponse struct {
+	OCSPResponse    []byte
+	OCSPLastUpdated time.Time
+}
+
 // Response is called by the HTTP server to handle a new OCSP request.
 func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	// Check that this request is for the proper CA
@@ -76,15 +76,15 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	serialString := core.SerialToString(req.SerialNumber)
 	src.log.Debug(fmt.Sprintf("Searching for OCSP issued by us for serial %s", serialString))
 
-	var response []byte
+	var response dbResponse
 	defer func() {
-		if len(response) != 0 {
+		if len(response.OCSPResponse) != 0 {
 			src.log.Debug(fmt.Sprintf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
 		}
 	}()
 	err := src.dbMap.SelectOne(
 		&response,
-		"SELECT ocspResponse FROM certificateStatus WHERE serial = :serial",
+		"SELECT ocspResponse, ocspLastUpdated FROM certificateStatus WHERE serial = :serial",
 		map[string]interface{}{"serial": serialString},
 	)
 	if err != nil && err != sql.ErrNoRows {
@@ -93,8 +93,12 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 	if err != nil {
 		return nil, false
 	}
+	if response.OCSPLastUpdated.IsZero() {
+		src.log.Debug(fmt.Sprintf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(src.caKeyHash), serialString))
+		return nil, false
+	}
 
-	return response, true
+	return response.OCSPResponse, true
 }
 
 func makeDBSource(dbMap dbSelector, issuerCert string, log blog.Logger) (*DBSource, error) {
@@ -136,9 +140,10 @@ func main() {
 
 		if url.Scheme == "mysql+tcp" {
 			logger.Info(fmt.Sprintf("Loading OCSP Database for CA Cert: %s", c.Common.IssuerCert))
-			dbMap, err := sa.NewDbMap(config.Source)
+			dbMap, err := sa.NewDbMap(config.Source, config.DBConfig.MaxDBConns)
 			cmd.FailOnError(err, "Could not connect to database")
 			sa.SetSQLDebug(dbMap, logger)
+			go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPResponder"))
 			source, err = makeDBSource(dbMap, c.Common.IssuerCert, logger)
 			cmd.FailOnError(err, "Couldn't load OCSP DB")
 		} else if url.Scheme == "file" {

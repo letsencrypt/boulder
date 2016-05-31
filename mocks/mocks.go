@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package mocks
 
 import (
@@ -278,17 +273,6 @@ func (sa *StorageAuthority) CountFQDNSets(_ context.Context, since time.Duration
 // FQDNSetExists is a mock
 func (sa *StorageAuthority) FQDNSetExists(_ context.Context, names []string) (bool, error) {
 	return false, nil
-}
-
-// GetLatestValidAuthorization is a mock
-func (sa *StorageAuthority) GetLatestValidAuthorization(_ context.Context, registrationID int64, identifier core.AcmeIdentifier) (authz core.Authorization, err error) {
-	if registrationID == 1 && identifier.Type == "dns" {
-		if sa.authorizedDomains[identifier.Value] || identifier.Value == "not-an-example.com" {
-			exp := sa.clk.Now().AddDate(100, 0, 0)
-			return core.Authorization{Status: core.StatusValid, RegistrationID: 1, Expires: &exp, Identifier: identifier}, nil
-		}
-	}
-	return core.Authorization{}, errors.New("no authz")
 }
 
 // GetValidAuthorizations is a mock

@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package sa
 
 import (
@@ -14,11 +9,30 @@ import (
 )
 
 func TestInvalidDSN(t *testing.T) {
-	_, err := NewDbMap("invalid")
+	_, err := NewDbMap("invalid", 0)
 	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
 }
 
 var errExpected = errors.New("expected")
+
+func TestMaxOpenConns(t *testing.T) {
+	oldSetMaxOpenConns := setMaxOpenConns
+	defer func() {
+		setMaxOpenConns = oldSetMaxOpenConns
+	}()
+	maxOpenConns := -1
+	setMaxOpenConns = func(db *sql.DB, m int) {
+		maxOpenConns = m
+		oldSetMaxOpenConns(db, maxOpenConns)
+	}
+	_, err := NewDbMap("sa@tcp(boulder-mysql:3306)/boulder_sa_integration", 100)
+	if err != nil {
+		t.Errorf("connecting to DB: %s", err)
+	}
+	if maxOpenConns != 100 {
+		t.Errorf("maxOpenConns was not set: expected %d, got %d", 100, maxOpenConns)
+	}
+}
 
 func TestNewDbMap(t *testing.T) {
 	const mysqlConnectURL = "mysql+tcp://policy:password@boulder-mysql:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
@@ -35,7 +49,7 @@ func TestNewDbMap(t *testing.T) {
 		return nil, errExpected
 	}
 
-	dbMap, err := NewDbMap(mysqlConnectURL)
+	dbMap, err := NewDbMap(mysqlConnectURL, 0)
 	if err != errExpected {
 		t.Errorf("got incorrect error: %v", err)
 	}
