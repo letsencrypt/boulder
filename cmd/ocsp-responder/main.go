@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -148,6 +143,7 @@ func main() {
 			dbMap, err := sa.NewDbMap(config.Source, config.DBConfig.MaxDBConns)
 			cmd.FailOnError(err, "Could not connect to database")
 			sa.SetSQLDebug(dbMap, logger)
+			go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "OCSPResponder"))
 			source, err = makeDBSource(dbMap, c.Common.IssuerCert, logger)
 			cmd.FailOnError(err, "Couldn't load OCSP DB")
 		} else if url.Scheme == "file" {

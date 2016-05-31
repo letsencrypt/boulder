@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package core
 
 import (
@@ -283,10 +278,6 @@ type Challenge struct {
 
 	// Contains the error that occurred during challenge validation, if any
 	Error *probs.ProblemDetails `json:"error,omitempty"`
-
-	// If successful, the time at which this challenge
-	// was completed by the server.
-	Validated *time.Time `json:"validated,omitempty"`
 
 	// A URI to which a response can be POSTed
 	URI string `json:"uri"`

@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -25,6 +20,7 @@ func main() {
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		dbMap, err := sa.NewDbMap(dbURL, saConf.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Couldn't connect to SA database")
+		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "SA"))
 
 		sai, err := sa.NewSQLStorageAuthority(dbMap, clock.Default(), logger)
 		cmd.FailOnError(err, "Failed to create SA impl")

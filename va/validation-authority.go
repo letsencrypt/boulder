@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package va
 
 import (
@@ -52,7 +47,6 @@ var validationTimeout = time.Second * 5
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	RA           core.RegistrationAuthority
 	log          blog.Logger
 	DNSResolver  bdns.DNSResolver
 	IssuerDomain string
@@ -331,7 +325,7 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 		va.log.Info(fmt.Sprintf("TLS-01 connection failure for %s. err=[%#v] errStr=[%s]", identifier, err, err))
 		return validationRecords, &probs.ProblemDetails{
 			Type:   parseHTTPConnError(err),
-			Detail: "Failed to connect to host for DVSNI challenge",
+			Detail: fmt.Sprintf("Failed to connect to %s for TLS-SNI-01 challenge", hostPort),
 		}
 	}
 	// close errors are not important here
@@ -357,8 +351,9 @@ func (va *ValidationAuthorityImpl) validateTLSWithZName(ctx context.Context, ide
 	va.log.Info(fmt.Sprintf("Remote host failed to give TLS-01 challenge name. host: %s", identifier))
 	return validationRecords, &probs.ProblemDetails{
 		Type: probs.UnauthorizedProblem,
-		Detail: fmt.Sprintf("Correct zName not found for TLS SNI challenge. Found '%v'",
-			strings.Join(certs[0].DNSNames, ", ")),
+		Detail: fmt.Sprintf("Incorrect validation certificate for TLS-SNI-01 challenge. "+
+			"Requested %s from %s. Received certificate containing '%s'",
+			zName, hostPort, strings.Join(certs[0].DNSNames, ", ")),
 	}
 }
 
@@ -562,53 +557,6 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 	return nil
 }
 
-// Overall validation process
-//
-// TODO(#1167): remove, functionality moved to RA
-func (va *ValidationAuthorityImpl) validate(ctx context.Context, authz core.Authorization, challengeIndex int) {
-	logEvent := verificationRequestEvent{
-		ID:          authz.ID,
-		Requester:   authz.RegistrationID,
-		RequestTime: va.clk.Now(),
-	}
-	challenge := &authz.Challenges[challengeIndex]
-
-	var validationRecords []core.ValidationRecord
-	var prob *probs.ProblemDetails
-
-	vStart := va.clk.Now()
-
-	validationRecords, prob = va.validateChallengeAndCAA(ctx, authz.Identifier, *challenge)
-
-	challenge.ValidationRecord = validationRecords
-
-	// Check for malformed ValidationRecords
-	if !challenge.RecordsSane() && prob == nil {
-		prob = probs.ServerInternal("Records for validation failed sanity check")
-	}
-
-	if prob != nil {
-		challenge.Status = core.StatusInvalid
-		challenge.Error = prob
-		logEvent.Error = prob.Error()
-	} else {
-		challenge.Status = core.StatusValid
-	}
-	logEvent.Challenge = *challenge
-
-	va.stats.TimingDuration(fmt.Sprintf("VA.Validations.%s.%s", challenge.Type, challenge.Status), time.Since(vStart), 1.0)
-
-	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-	va.log.AuditObject("Validation result", logEvent)
-
-	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
-
-	err := va.RA.OnValidationUpdate(ctx, authz)
-	if err != nil {
-		va.log.Err(fmt.Sprintf("va: unable to communicate updated authz [%d] to RA: %q authz=[%#v]", authz.RegistrationID, err, authz))
-	}
-}
-
 func (va *ValidationAuthorityImpl) checkGPDNS(ctx context.Context, identifier core.AcmeIdentifier) *probs.ProblemDetails {
 	results := va.parallelCAALookup(ctx, identifier.Value, va.caaDR.LookupCAA)
 	set, err := parseResults(results)
@@ -674,18 +622,8 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	}
 }
 
-// UpdateValidations runs the validate() method asynchronously using
-// goroutines.
-//
-// TODO(#1167): remove this method
-func (va *ValidationAuthorityImpl) UpdateValidations(ctx context.Context, authz core.Authorization, challengeIndex int) error {
-	// TODO(#1292): add a proper deadline here
-	go va.validate(ctx, authz, challengeIndex)
-	return nil
-}
-
-// PerformValidation runs the validate() method synchronously and returns the
-// updated Challenge.
+// PerformValidation validates the given challenge. It always returns a list of
+// validation records, even when it also returns an error.
 //
 // TODO(#1626): remove authz parameter
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
@@ -721,7 +659,15 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, domain
 	// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 	va.log.AuditObject("Validation result", logEvent)
 	va.log.Info(fmt.Sprintf("Validations: %+v", authz))
-	return records, prob
+	if prob == nil {
+		// This is necessary because if we just naively returned prob, it would be a
+		// non-nil interface value containing a nil pointer, rather than a nil
+		// interface value. See, e.g.
+		// https://stackoverflow.com/questions/29138591/hiding-nil-values-understanding-why-golang-fails-here
+		return records, nil
+	} else {
+		return records, prob
+	}
 }
 
 // CAASet consists of filtered CAA records
