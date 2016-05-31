@@ -104,13 +104,11 @@ Notes:
 ```
 1: Client ---chal--> WFE
 2:                   WFE ---UpdateAuthorization--> RA
-3:                                                 RA ---UpdateValidations--> VA
-4:                                                 RA <-------return--------- VA
-5:                   WFE <--------return---------- RA
-6: Client <--------- WFE
-7: Client <~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~> VA
-8:                                                 RA <--OnValidationUpdate-- VA
-9:                                                 RA --------return--------> VA
+3:                                                 RA ---PerformValidation--> VA
+4: Client <~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~> VA
+5:                                                 RA <-------return--------- VA
+6:                   WFE <--------return---------- RA
+7: Client <--------- WFE
 ```
 
 * 1-2: WFE does the following:
