@@ -67,6 +67,9 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
+
+		MaxNames     int
+		DoNotForceCN bool
 	}
 
 	SA struct {
@@ -442,6 +445,7 @@ type SyslogConfig struct {
 	Network     string
 	Server      string
 	StdoutLevel *int
+	SyslogLevel *int
 }
 
 // StatsdConfig defines the config for Statsd.

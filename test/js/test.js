@@ -366,9 +366,12 @@ function validateDns01(challenge) {
   var recordName = "_acme-challenge." + state.domain + ".";
 
   function txtCallback(err, resp, body) {
-    if (Math.floor(resp.statusCode / 100) != 2) {
+    if (err) {
+      console.log("Updating dns-test-srv failed:", err);
+      process.exit(1);
+    } else if (Math.floor(resp.statusCode / 100) != 2) {
       // Non-2XX response
-      console.log("Updating dns-test-srv failed with code " + resp.statusCode);
+      console.log("Updating dns-test-srv failed with code", resp.statusCode);
       process.exit(1);
     }
     post(state.responseURL, {
@@ -467,7 +470,8 @@ function ensureValidation(err, resp, body) {
       });
     }
   } else if (authz.status == "invalid") {
-    console.log("The CA was unable to validate the file you provisioned:"  + body);
+    console.log("The CA was unable to validate the file you provisioned:");
+    console.log(JSON.stringify(authz.challenges, null, "  "));
     process.exit(1);
   } else {
     console.log("The CA returned an authorization in an unexpected state");

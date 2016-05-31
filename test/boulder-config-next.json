@@ -2,7 +2,8 @@
   "syslog": {
     "network": "",
     "server": "",
-    "stdoutlevel": 7
+    "stdoutlevel": 7,
+    "sysloglevel": 4
   },
 
   "statsd": {
@@ -170,6 +171,8 @@
     "useNewVARPC": true,
     "debugAddr": "localhost:8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
+    "maxNames": 1000,
+    "doNotForceCN": true,
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -346,7 +349,6 @@
   },
 
   "common": {
-    "baseURL": "http://127.0.0.1:4000",
     "issuerCert": "test/test-ca.pem",
     "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "10s",

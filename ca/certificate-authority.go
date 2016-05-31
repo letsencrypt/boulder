@@ -35,24 +35,9 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
 )
-
-// This map is used to detect algorithms in crypto/x509 that
-// are no longer considered sufficiently strong.
-// * No MD2, MD5, or SHA-1
-// * No DSA
-//
-// SHA1WithRSA is allowed because there's still a fair bit of it
-// out there, but we should try to remove it soon.
-var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
-	x509.UnknownSignatureAlgorithm: true,
-	x509.MD2WithRSA:                true,
-	x509.MD5WithRSA:                true,
-	x509.DSAWithSHA1:               true,
-	x509.DSAWithSHA256:             true,
-	x509.ECDSAWithSHA1:             true,
-}
 
 // Miscellaneous PKIX OIDs that we need to refer to
 var (
@@ -113,9 +98,6 @@ const (
 	// Increments when CA handles a CSR requesting an extension other than those
 	// listed above
 	metricCSRExtensionOther = "CA.CSRExtensions.Other"
-
-	// Maximum length allowed for the common name. RFC 5280
-	maxCNLength = 64
 )
 
 type certificateStorage interface {
@@ -398,80 +380,10 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
-	key, ok := csr.PublicKey.(crypto.PublicKey)
-	if !ok {
-		err := core.MalformedRequestError("Invalid public key in CSR.")
+	if err := csrlib.VerifyCSR(&csr, ca.maxNames, &ca.keyPolicy, ca.PA, ca.forceCNFromSAN, regID); err != nil {
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
-		return emptyCert, err
-	}
-	if err := ca.keyPolicy.GoodKey(key); err != nil {
-		err = core.MalformedRequestError(fmt.Sprintf("Invalid public key in CSR: %s", err.Error()))
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
-	}
-	if badSignatureAlgorithms[csr.SignatureAlgorithm] {
-		err := core.MalformedRequestError("Invalid signature algorithm in CSR")
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
-	}
-
-	// Pull hostnames from CSR
-	// Authorization is checked by the RA
-	commonName := ""
-	hostNames := make([]string, len(csr.DNSNames))
-	copy(hostNames, csr.DNSNames)
-
-	if len(csr.Subject.CommonName) > 0 {
-		commonName = strings.ToLower(csr.Subject.CommonName)
-		hostNames = append(hostNames, commonName)
-	}
-
-	if len(hostNames) == 0 {
-		err := core.MalformedRequestError("Cannot issue a certificate without a hostname.")
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
-	}
-
-	// Collapse any duplicate names.  Note that this operation may re-order the names
-	hostNames = core.UniqueLowerNames(hostNames)
-
-	if ca.forceCNFromSAN && commonName == "" {
-		commonName = hostNames[0]
-	}
-
-	if len(commonName) > maxCNLength {
-		msg := fmt.Sprintf("Common name was longer than 64 bytes, was %d",
-			len(csr.Subject.CommonName))
-		err := core.MalformedRequestError(msg)
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
-	}
-
-	if ca.maxNames > 0 && len(hostNames) > ca.maxNames {
-		msg := fmt.Sprintf("Certificate request has %d names, maximum is %d.", len(hostNames), ca.maxNames)
-		ca.log.Info(msg)
-		return emptyCert, core.MalformedRequestError(msg)
-	}
-
-	// Verify that names are allowed by policy
-	var badNames []string
-	for _, name := range hostNames {
-		identifier := core.AcmeIdentifier{Type: core.IdentifierDNS, Value: name}
-		if err := ca.PA.WillingToIssue(identifier, regID); err != nil {
-			ca.log.AuditErr(err)
-			badNames = append(badNames, name)
-		}
-	}
-	if len(badNames) > 0 {
-		err := core.MalformedRequestError(fmt.Sprintf("Policy forbids issuing for: %s", strings.Join(badNames, ", ")))
-		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
-		ca.log.AuditErr(err)
-		return emptyCert, err
+		return emptyCert, core.MalformedRequestError(err.Error())
 	}
 
 	requestedExtensions, err := ca.extensionsFromCSR(&csr)
@@ -511,13 +423,13 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	serialHex := core.SerialToString(serialBigInt)
 
 	var profile string
-	switch key.(type) {
+	switch csr.PublicKey.(type) {
 	case *rsa.PublicKey:
 		profile = ca.rsaProfile
 	case *ecdsa.PublicKey:
 		profile = ca.ecdsaProfile
 	default:
-		err = core.InternalServerError(fmt.Sprintf("unsupported key type %T", key))
+		err = core.InternalServerError(fmt.Sprintf("unsupported key type %T", csr.PublicKey))
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err)
 		return emptyCert, err
@@ -527,9 +439,9 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	req := signer.SignRequest{
 		Request: csrPEM,
 		Profile: profile,
-		Hosts:   hostNames,
+		Hosts:   csr.DNSNames,
 		Subject: &signer.Subject{
-			CN: commonName,
+			CN: csr.Subject.CommonName,
 		},
 		Serial:     serialBigInt,
 		Extensions: requestedExtensions,
@@ -539,7 +451,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	}
 
 	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
-		serialHex, strings.Join(hostNames, ", "), csrPEM))
+		serialHex, strings.Join(csr.DNSNames, ", "), csrPEM))
 
 	certPEM, err := issuer.eeSigner.Sign(req)
 	ca.noteSignError(err)
@@ -551,7 +463,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 	}
 
 	ca.log.AuditInfo(fmt.Sprintf("Signing success: serial=[%s] names=[%s] csr=[%s] pem=[%s]",
-		serialHex, strings.Join(hostNames, ", "), csrPEM,
+		serialHex, strings.Join(csr.DNSNames, ", "), csrPEM,
 		certPEM))
 
 	if len(certPEM) == 0 {
