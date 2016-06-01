@@ -29,7 +29,13 @@ func TestIsSafeDomain(t *testing.T) {
 	sbc.EXPECT().IsListed("bad.com").Return("bad", nil)
 	sbc.EXPECT().IsListed("errorful.com").Return("", errors.New("welp"))
 	sbc.EXPECT().IsListed("outofdate.com").Return("", safebrowsing.ErrOutOfDateHashes)
-	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, sbc, nil, nil, stats, clock.NewFake())
+	va := NewValidationAuthorityImpl(
+		&cmd.PortConfig{},
+		sbc,
+		nil,
+		nil,
+		stats,
+		clock.NewFake())
 
 	domain := "good.com"
 	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})

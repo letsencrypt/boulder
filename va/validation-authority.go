@@ -48,13 +48,13 @@ var validationTimeout = time.Second * 5
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	log          blog.Logger
-	DNSResolver  bdns.DNSResolver
-	IssuerDomain string
-	SafeBrowsing SafeBrowsing
+	dnsResolver  bdns.DNSResolver
+	issuerDomain string
+	safeBrowsing SafeBrowsing
 	httpPort     int
 	httpsPort    int
 	tlsPort      int
-	UserAgent    string
+	userAgent    string
 	stats        statsd.Statter
 	clk          clock.Clock
 	caaClient    caaPB.CAACheckerClient
@@ -62,15 +62,27 @@ type ValidationAuthorityImpl struct {
 }
 
 // NewValidationAuthorityImpl constructs a new VA
-func NewValidationAuthorityImpl(pc *cmd.PortConfig, sbc SafeBrowsing, caaClient caaPB.CAACheckerClient,
-	cdrClient *cdr.CAADistributedResolver, stats statsd.Statter, clk clock.Clock) *ValidationAuthorityImpl {
+func NewValidationAuthorityImpl(
+	pc *cmd.PortConfig,
+	sbc SafeBrowsing,
+	caaClient caaPB.CAACheckerClient,
+	cdrClient *cdr.CAADistributedResolver,
+	resolver bdns.DNSResolver,
+	userAgent string,
+	issuerDomain string,
+	stats statsd.Statter,
+	clk clock.Clock,
+) *ValidationAuthorityImpl {
 	logger := blog.Get()
 	return &ValidationAuthorityImpl{
-		SafeBrowsing: sbc,
 		log:          logger,
+		dnsResolver:  resolver,
+		issuerDomain: issuerDomain,
+		safeBrowsing: sbc,
 		httpPort:     pc.HTTPPort,
 		httpsPort:    pc.HTTPSPort,
 		tlsPort:      pc.TLSPort,
+		userAgent:    userAgent,
 		stats:        stats,
 		clk:          clk,
 		caaClient:    caaClient,
@@ -95,7 +107,7 @@ type verificationRequestEvent struct {
 // net/http, except we only send A queries and accept IPv4 addresses.
 // TODO(#593): Add IPv6 support
 func (va ValidationAuthorityImpl) getAddr(ctx context.Context, hostname string) (net.IP, []net.IP, *probs.ProblemDetails) {
-	addrs, err := va.DNSResolver.LookupHost(ctx, hostname)
+	addrs, err := va.dnsResolver.LookupHost(ctx, hostname)
 	if err != nil {
 		va.log.Debug(fmt.Sprintf("%s DNS failure: %s", hostname, err))
 		problem := bdns.ProblemDetailsFromDNSError(err)
@@ -174,8 +186,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		return nil, nil, probs.Malformed("URL provided for HTTP was invalid")
 	}
 
-	if va.UserAgent != "" {
-		httpRequest.Header["User-Agent"] = []string{va.UserAgent}
+	if va.userAgent != "" {
+		httpRequest.Header["User-Agent"] = []string{va.userAgent}
 	}
 
 	dialer, prob := va.resolveAndConstructDialer(ctx, host, port)
@@ -216,8 +228,8 @@ func (va *ValidationAuthorityImpl) fetchHTTP(ctx context.Context, identifier cor
 		// Set Accept header for mod_security (see the other place the header is
 		// set)
 		req.Header.Set("Accept", "*/*")
-		if va.UserAgent != "" {
-			req.Header["User-Agent"] = []string{va.UserAgent}
+		if va.userAgent != "" {
+			req.Header["User-Agent"] = []string{va.userAgent}
 		}
 
 		reqHost := req.URL.Host
@@ -430,7 +442,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, identifier.Value)
-	txts, authorities, err := va.DNSResolver.LookupTXT(ctx, challengeSubdomain)
+	txts, authorities, err := va.dnsResolver.LookupTXT(ctx, challengeSubdomain)
 
 	if err != nil {
 		va.log.Info(fmt.Sprintf("Failed to lookup txt records for %s. err=[%#v] errStr=[%s]", identifier, err, err))
@@ -468,7 +480,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 }
 
 func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident core.AcmeIdentifier) *probs.ProblemDetails {
-	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: &ident.Value, IssuerDomain: &va.IssuerDomain})
+	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: &ident.Value, IssuerDomain: &va.issuerDomain})
 	if err != nil {
 		va.log.Warning(fmt.Sprintf("grpc: error calling ValidForIssuance: %s", err))
 		prob := &probs.ProblemDetails{Type: bgrpc.CodeToProblem(grpc.Code(err))}
@@ -681,7 +693,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	// the RPC call.
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
-	results := va.parallelCAALookup(ctx, hostname, va.DNSResolver.LookupCAA)
+	results := va.parallelCAALookup(ctx, hostname, va.dnsResolver.LookupCAA)
 	set, err := parseResults(results)
 	if err == nil {
 		return set, nil
@@ -744,7 +756,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(ctx context.Context, identifi
 	//
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range caaSet.Issue {
-		if extractIssuerDomain(caa) == va.IssuerDomain {
+		if extractIssuerDomain(caa) == va.issuerDomain {
 			va.stats.Inc("VA.CAA.Authorized", 1, 1.0)
 			return true, true, nil
 		}

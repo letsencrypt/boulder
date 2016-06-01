@@ -59,13 +59,8 @@ func main() {
 		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create SA client")
 
-		var dc *ra.DomainCheck
-		if c.RA.UseIsSafeDomain {
-			dc = &ra.DomainCheck{VA: vac}
-		}
-
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), logger, stats,
-			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration, c.KeyPolicy(),
+			rateLimitPolicies, c.RA.MaxContactsPerRegistration, c.KeyPolicy(),
 			c.RA.UseNewVARPC, c.RA.MaxNames, c.RA.DoNotForceCN)
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
