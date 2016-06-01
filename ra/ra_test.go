@@ -200,20 +200,23 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 		InitialIP: net.ParseIP("3.2.3.3"),
 	})
 
+	testRLConfig := ratelimit.RateLimitConfig{
+		TotalCertificates: ratelimit.RateLimitPolicy{
+			Threshold: 100,
+			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+		},
+	}
+
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		ratelimit.RateLimitConfig{
-			TotalCertificates: ratelimit.RateLimitPolicy{
-				Threshold: 100,
-				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-			},
-		}, 1, testKeyPolicy, false, 0, true)
+		1, testKeyPolicy, false, 0, true)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
 	ra.PA = pa
 	ra.DNSResolver = &bdns.MockDNSResolver{}
+	ra.rlPolicies = testRLConfig
 
 	AuthzInitial.RegistrationID = Registration.ID
 
