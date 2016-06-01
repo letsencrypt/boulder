@@ -52,8 +52,10 @@ func main() {
 			cmd.FailOnError(err, "Failed to setup gRPC server")
 			gw := bgrpc.NewPublisherServerWrapper(pubi)
 			pubPB.RegisterPublisherServer(s, gw)
-			err = s.Serve(l)
-			cmd.FailOnError(err, "gRPC service failed")
+			go func() {
+				err = s.Serve(l)
+				cmd.FailOnError(err, "gRPC service failed")
+			}()
 		}
 
 		pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats)
