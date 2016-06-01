@@ -8,13 +8,12 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
+	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/va"
-
-	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 )
 
 const clientName = "VA"
@@ -84,13 +83,22 @@ func main() {
 
 		amqpConf := c.VA.AMQP
 
-		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats)
-		cmd.FailOnError(err, "Unable to create VA RPC server")
-		err = rpc.NewValidationAuthorityServer(vas, vai)
-		cmd.FailOnError(err, "Unable to setup VA RPC server")
+		if c.VA.GRPC != nil {
+			s, l, err := bgrpc.NewServer(c.VA.GRPC)
+			cmd.FailOnError(err, "Unable to setup VA gRPC server")
+			err = bgrpc.RegisterValidationAuthorityGRPCServer(s, vai)
+			cmd.FailOnError(err, "Unable to register VA gRPC server")
+			err = s.Serve(l)
+			cmd.FailOnError(err, "VA gRPC service failed")
+		} else {
+			vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats)
+			cmd.FailOnError(err, "Unable to create VA RPC server")
+			err = rpc.NewValidationAuthorityServer(vas, vai)
+			cmd.FailOnError(err, "Unable to setup VA RPC server")
 
-		err = vas.Start(amqpConf)
-		cmd.FailOnError(err, "Unable to run VA RPC server")
+			err = vas.Start(amqpConf)
+			cmd.FailOnError(err, "Unable to run VA RPC server")
+		}
 	}
 
 	app.Run()

@@ -8,14 +8,15 @@ import (
 	"net"
 	"time"
 
+	"github.com/cactus/go-statsd-client/statsd"
+	jose "github.com/square/go-jose"
 	"golang.org/x/net/context"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
-	jose "github.com/square/go-jose"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 // This file defines RPC wrappers around the ${ROLE}Impl classes,
@@ -553,7 +554,7 @@ func NewValidationAuthorityServer(rpc Server, impl core.ValidationAuthority) (er
 	})
 
 	rpc.Handle(MethodIsSafeDomain, func(ctx context.Context, req []byte) ([]byte, error) {
-		r := &core.IsSafeDomainRequest{}
+		r := &vaPB.IsSafeDomainRequest{}
 		if err := json.Unmarshal(req, r); err != nil {
 			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
 			improperMessage(MethodIsSafeDomain, err, req)
@@ -606,7 +607,7 @@ func (vac ValidationAuthorityClient) PerformValidation(ctx context.Context, doma
 
 // IsSafeDomain returns true if the domain given is determined to be safe by an
 // third-party safe browsing API.
-func (vac ValidationAuthorityClient) IsSafeDomain(ctx context.Context, req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+func (vac ValidationAuthorityClient) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (resp *vaPB.IsDomainSafe, err error) {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
@@ -615,7 +616,7 @@ func (vac ValidationAuthorityClient) IsSafeDomain(ctx context.Context, req *core
 	if err != nil {
 		return nil, err
 	}
-	resp := &core.IsSafeDomainResponse{}
+	resp = new(vaPB.IsDomainSafe)
 	err = json.Unmarshal(jsonResp, resp)
 	if err != nil {
 		return nil, err

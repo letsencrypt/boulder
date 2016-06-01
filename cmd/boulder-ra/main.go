@@ -5,12 +5,14 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
-
-	"github.com/letsencrypt/boulder/cmd"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/rpc"
@@ -41,8 +43,15 @@ func main() {
 		go cmd.ProfileCmd("RA", stats)
 
 		amqpConf := c.RA.AMQP
-		vac, err := rpc.NewValidationAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create VA client")
+		var vac core.ValidationAuthority
+		if c.RA.VAService != nil {
+			conn, err := bgrpc.ClientSetup(c.RA.VAService)
+			cmd.FailOnError(err, "Unable to create VA client")
+			vac = bgrpc.NewValidationAuthorityGRPCClient(conn)
+		} else {
+			vac, err = rpc.NewValidationAuthorityClient(clientName, amqpConf, stats)
+			cmd.FailOnError(err, "Unable to create VA client")
+		}
 
 		cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create CA client")

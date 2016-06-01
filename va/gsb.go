@@ -3,9 +3,11 @@
 package va
 
 import (
-	"github.com/letsencrypt/boulder/core"
 	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 	"golang.org/x/net/context"
+
+	bgrpc "github.com/letsencrypt/boulder/grpc"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 // SafeBrowsing is an interface for an third-party safe browing API client.
@@ -19,28 +21,33 @@ type SafeBrowsing interface {
 // third-party safe browsing API. It's meant be called by the RA before pending
 // authorization creation. If no third-party client was provided, it fails open
 // and increments a Skips metric.
-func (va *ValidationAuthorityImpl) IsSafeDomain(ctx context.Context, req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+func (va *ValidationAuthorityImpl) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
+	if req == nil || req.Domain == nil {
+		return nil, bgrpc.ErrMissingParameters
+	}
 	va.stats.Inc("VA.IsSafeDomain.Requests", 1, 1.0)
 	if va.SafeBrowsing == nil {
 		va.stats.Inc("VA.IsSafeDomain.Skips", 1, 1.0)
-		return &core.IsSafeDomainResponse{IsSafe: true}, nil
+		status := true
+		return &vaPB.IsDomainSafe{IsSafe: &status}, nil
 	}
 
-	list, err := va.SafeBrowsing.IsListed(req.Domain)
+	list, err := va.SafeBrowsing.IsListed(*req.Domain)
 	if err != nil {
 		va.stats.Inc("VA.IsSafeDomain.Errors", 1, 1.0)
 		if err == safebrowsing.ErrOutOfDateHashes {
 			va.stats.Inc("VA.IsSafeDomain.OutOfDateHashErrors", 1, 1.0)
-			return &core.IsSafeDomainResponse{IsSafe: true}, nil
+			status := true
+			return &vaPB.IsDomainSafe{IsSafe: &status}, nil
 		}
 		return nil, err
 	}
 	va.stats.Inc("VA.IsSafeDomain.Successes", 1, 1.0)
-	status := list == ""
+	status := (list == "")
 	if status {
 		va.stats.Inc("VA.IsSafeDomain.Status.Good", 1, 1.0)
 	} else {
 		va.stats.Inc("VA.IsSafeDomain.Status.Bad", 1, 1.0)
 	}
-	return &core.IsSafeDomainResponse{IsSafe: status}, nil
+	return &vaPB.IsDomainSafe{IsSafe: &status}, nil
 }

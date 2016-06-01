@@ -63,6 +63,8 @@ type Config struct {
 		// will be turned into 1.
 		DNSTries int
 
+		VAService *GRPCClientConfig
+
 		MaxNames     int
 		DoNotForceCN bool
 	}
