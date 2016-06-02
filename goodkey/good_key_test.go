@@ -1,4 +1,4 @@
-package core
+package goodkey
 
 import (
 	"crypto/ecdsa"

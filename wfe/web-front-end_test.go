@@ -24,6 +24,7 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/square/go-jose"
@@ -202,7 +203,7 @@ func signRequest(t *testing.T, req string, nonceService *nonce.NonceService) str
 	return ret
 }
 
-var testKeyPolicy = core.KeyPolicy{
+var testKeyPolicy = goodkey.KeyPolicy{
 	AllowRSA:           true,
 	AllowECDSANISTP256: true,
 	AllowECDSANISTP384: true,
