@@ -126,7 +126,6 @@ var state = {
   authorizationURL: "",
   responseURL: "",
   path: "",
-  abortStep: cliOptions.abortStep,
   retryDelay: 1000,
 
   newCertificateURL: "",
@@ -344,8 +343,8 @@ function getReadyToValidate(err, resp, body) {
 
   var authz = JSON.parse(body);
 
-  if (state.abortStep === "startChallenge") {
-    process.exit(8);
+  if (cliOptions.abortStep === "startChallenge") {
+    process.exit(0);
   }
 
   var challenges = authz.challenges.filter(function(x) { return x.type == cliOptions.challType; });

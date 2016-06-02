@@ -188,7 +188,6 @@ type Config struct {
 		BadResultsOnly      bool
 		CheckPeriod         ConfigDuration
 	}
-
 	AllowedSigningAlgos *AllowedSigningAlgos
 
 	SubscriberAgreementURL string

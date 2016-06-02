@@ -20,7 +20,7 @@ import startservers
 ISSUANCE_FAILED = 1
 REVOCATION_FAILED = 2
 MAILER_FAILED = 3
-ABORT_SUCCESS = 8
+ABORT_SUCCESS = 0
 
 class ExitStatus:
     OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs = range(7)
@@ -169,7 +169,7 @@ def verify_ct_submission(expectedSubmissions, url):
         die(ExitStatus.CTFailure)
     return 0
 
-def run_node_test(domain, chall_type, expected_ct_submissions, abort_step="null"):
+def run_node_test(domain, chall_type, expected_ct_submissions):
     email_addr = "js.integration.test@letsencrypt.org"
     cert_file = os.path.join(tempdir, "cert.der")
     cert_file_pem = os.path.join(tempdir, "cert.pem")
@@ -179,13 +179,10 @@ def run_node_test(domain, chall_type, expected_ct_submissions, abort_step="null"
     exit_code = subprocess.Popen('''
         node test.js --email %s --agree true \
           --domains %s --new-reg http://localhost:4000/acme/new-reg \
-          --certKey %s --cert %s --challType %s --abort-step %s && \
+          --certKey %s --cert %s --challType %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
-        ''' % (email_addr, domain, key_file, cert_file, chall_type, abort_step, cert_file, cert_file_pem),
+        ''' % (email_addr, domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
                                  shell=True).wait()
-
-    if abort_step != "null":
-        return ABORT_SUCCESS
 
     if exit_code != 0:
         print("\nIssuing failed")
@@ -249,16 +246,38 @@ def run_client_tests():
     run_custom(cmd, cwd=root)
 
 def run_expired_authz_purger_test(challenge_types):
-    if run_node_test("challenge-not-started.com", challenge_types[0], None, "startChallenge")\
-       != ABORT_SUCCESS:
+    # Issue the certificate and transform it from DER-encoded to PEM-encoded.
+    exit_code = subprocess.Popen('''
+        node test.js --email %s --agree true \
+          --domains %s \
+          --challType %s --abort-step %s
+        ''' % ("purger@test.com", "eap-test.com", "http-01", "startChallenge"),
+                                 shell=True).wait()
+
+    if exit_code != ABORT_SUCCESS:
         print("\nDidn't cleanly abort before attempting challenge")
         die(ExitStatus.NodeFailure)
 
-        now = datetime.datetime.now()
-        after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
+    now = datetime.datetime.now()
+    after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
 
-        target_time = now
-        expected_output = 'Deleted a total of 0 expired pending authorizations'
+    target_time = now
+    expected_output = 'Deleted a total of 0 expired pending authorizations'
+    try:
+        out = subprocess.check_output(
+            '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes'''
+            % target_time.isoformat(), cwd='../..', shell=True)
+
+        print(out)
+        if expected_output not in out:
+                print("\nBad output from authz purger")
+                die(ExitStatus.NodeFailure)
+    except subprocess.CalledProcessError as e:
+        print("\nFailed to run authz purger: %s" % e)
+        die(ExitStatus.NodeFailure)
+
+        target_time = after_grace_period
+        expected_output = 'Deleted a total of 1 expired pending authorizations'
         try:
             out = subprocess.check_output(
                 '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes'''
@@ -271,21 +290,6 @@ def run_expired_authz_purger_test(challenge_types):
         except subprocess.CalledProcessError as e:
             print("\nFailed to run authz purger: %s" % e)
             die(ExitStatus.NodeFailure)
-
-            target_time = after_grace_period
-            expected_output = 'Deleted a total of 1 expired pending authorizations'
-            try:
-                out = subprocess.check_output(
-                    '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes'''
-                    % target_time.isoformat(), cwd='../..', shell=True)
-
-                print(out)
-                if expected_output not in out:
-                    print("\nBad output from authz purger")
-                    die(ExitStatus.NodeFailure)
-            except subprocess.CalledProcessError as e:
-                print("\nFailed to run authz purger: %s" % e)
-                die(ExitStatus.NodeFailure)
 
 @atexit.register
 def cleanup():
