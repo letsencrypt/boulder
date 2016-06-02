@@ -20,7 +20,6 @@ import startservers
 ISSUANCE_FAILED = 1
 REVOCATION_FAILED = 2
 MAILER_FAILED = 3
-ABORT_SUCCESS = 0
 
 class ExitStatus:
     OK, PythonFailure, NodeFailure, Error, OCSPFailure, CTFailure, IncorrectCommandLineArgs = range(7)
@@ -176,15 +175,13 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
     key_file = os.path.join(tempdir, "key.pem")
 
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
-    exit_code = subprocess.Popen('''
+    if subprocess.Popen('''
         node test.js --email %s --agree true \
           --domains %s --new-reg http://localhost:4000/acme/new-reg \
           --certKey %s --cert %s --challType %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
         ''' % (email_addr, domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
-                                 shell=True).wait()
-
-    if exit_code != 0:
+        shell=True).wait() != 0:
         print("\nIssuing failed")
         return ISSUANCE_FAILED
 
@@ -247,20 +244,10 @@ def run_client_tests():
 
 
 def get_future_output(cmd, date, cwd=None):
-    return subprocess.check_output('FAKECLOCK=`date -d "%s"` %s' % (date.isoformat(), cmd), cwd=cwd, shell=True)
+    return subprocess.check_output(cmd, cwd=cwd, env={'FAKECLOCK': date.isoformat()}, shell=True)
 
 def run_expired_authz_purger_test(challenge_types):
-    # Issue the certificate and transform it from DER-encoded to PEM-encoded.
-    exit_code = subprocess.Popen('''
-        node test.js --email %s --agree true \
-          --domains %s \
-          --challType %s --abort-step %s
-        ''' % ("purger@test.com", "eap-test.com", "http-01", "startChallenge"),
-                                 shell=True).wait()
-
-    if exit_code != ABORT_SUCCESS:
-        print("\nDidn't cleanly abort before attempting challenge")
-        die(ExitStatus.NodeFailure)
+    subprocess.check_output('''node test.js --email %s --agree true --domains %s --abort-step %s''' % ("purger@test.com", "eap-test.com", "startChallenge"), shell=True)
 
     now = datetime.datetime.now()
     after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
