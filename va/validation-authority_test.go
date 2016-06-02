@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"github.com/square/go-jose"
@@ -889,21 +888,12 @@ func TestGetCAASetFallback(t *testing.T) {
 	testSrv := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
 	defer testSrv.Close()
 
-	stats, _ := statsd.NewNoopClient()
-	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, []string{}, log)
+	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, nil, log)
 	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")
 	caaDR.URI = testSrv.URL
 	caaDR.Clients["1.1.1.1"] = new(http.Client)
-	va := NewValidationAuthorityImpl(
-		&cmd.PortConfig{},
-		nil,
-		nil,
-		caaDR,
-		&bdns.MockDNSResolver{},
-		"user agent 1.0",
-		"letsencrypt.org",
-		stats,
-		clock.Default())
+	va, _ := setup()
+	va.caaDR = caaDR
 
 	set, err := va.getCAASet(ctx, "bad-local-resolver.com")
 	test.AssertNotError(t, err, "getCAASet failed to fail back to cdr on timeout")
