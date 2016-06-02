@@ -364,11 +364,9 @@ func TestHTTPRedirectLoop(t *testing.T) {
 	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
-	log := blog.NewMock()
-	va, _ := setup(log)
+	va, _ := setup(blog.NewMock())
 	va.httpPort = port
 
-	log.Clear()
 	_, prob := va.validateHTTP01(ctx, ident, chall)
 	if prob == nil {
 		t.Fatalf("Challenge should have failed for %s", chall.Token)

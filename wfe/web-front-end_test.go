@@ -214,13 +214,11 @@ var ctx = context.Background()
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	fc := clock.NewFake()
 	stats, _ := statsd.NewNoopClient()
-	log := blog.NewMock()
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, log)
+	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, blog.NewMock())
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
-	wfe.log = blog.NewMock()
 
 	wfe.RA = &MockRegistrationAuthority{}
 	wfe.SA = mocks.NewStorageAuthority(fc)
