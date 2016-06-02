@@ -59,6 +59,7 @@ func main() {
 			)
 			cmd.FailOnError(err, "Failed to create CAADistributedResolver")
 		}
+
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		dnsTries := c.VA.DNSTries
@@ -85,7 +86,8 @@ func main() {
 			c.VA.UserAgent,
 			c.VA.IssuerDomain,
 			stats,
-			clk)
+			clk,
+			logger)
 
 		amqpConf := c.VA.AMQP
 

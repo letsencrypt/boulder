@@ -72,8 +72,8 @@ func NewValidationAuthorityImpl(
 	issuerDomain string,
 	stats statsd.Statter,
 	clk clock.Clock,
+	logger blog.Logger,
 ) *ValidationAuthorityImpl {
-	logger := blog.Get()
 	return &ValidationAuthorityImpl{
 		log:          logger,
 		dnsResolver:  resolver,
