@@ -20,6 +20,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	jose "github.com/square/go-jose"
 )
@@ -61,7 +62,7 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 
 	// Register of anti-replay nonces
-	nonceService *core.NonceService
+	nonceService *nonce.NonceService
 
 	// Key policy.
 	keyPolicy core.KeyPolicy
@@ -87,7 +88,7 @@ type WebFrontEndImpl struct {
 func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock, keyPolicy core.KeyPolicy) (WebFrontEndImpl, error) {
 	logger := blog.Get()
 
-	nonceService, err := core.NewNonceService()
+	nonceService, err := nonce.NewNonceService()
 	if err != nil {
 		return WebFrontEndImpl{}, err
 	}
