@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/syslog"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 )
 
 const stdoutLevel = 7
+const syslogLevel = 7
 
 func setup(t *testing.T) *impl {
 	// Write all logs to UDP on a high port so as to not bother the system
@@ -25,7 +27,7 @@ func setup(t *testing.T) *impl {
 	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
-	logger, err := New(writer, stdoutLevel)
+	logger, err := New(writer, stdoutLevel, syslogLevel)
 	test.AssertNotError(t, err, "Could not construct syslog object")
 	impl, ok := logger.(*impl)
 	if !ok {
@@ -66,7 +68,7 @@ func TestSingleton(t *testing.T) {
 
 func TestConstructionNil(t *testing.T) {
 	t.Parallel()
-	_, err := New(nil, stdoutLevel)
+	_, err := New(nil, stdoutLevel, syslogLevel)
 	test.AssertError(t, err, "Nil shouldn't be permitted.")
 }
 
@@ -177,7 +179,7 @@ func TestTransmission(t *testing.T) {
 	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	test.AssertNotError(t, err, "Failed to find connect to log server")
 
-	impl, err := New(writer, stdoutLevel)
+	impl, err := New(writer, stdoutLevel, syslogLevel)
 	test.AssertNotError(t, err, "Failed to construct audit logger")
 
 	data := make([]byte, 128)
@@ -205,6 +207,44 @@ func TestTransmission(t *testing.T) {
 	impl.Warning("audit-logger_test.go: warning")
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
+}
+
+func TestSyslogLevels(t *testing.T) {
+	t.Parallel()
+
+	l, err := newUDPListener("127.0.0.1:0")
+	test.AssertNotError(t, err, "Failed to open log server")
+	defer func() {
+		err = l.Close()
+		test.AssertNotError(t, err, "listener.Close returned error")
+	}()
+
+	fmt.Printf("Going to %s\n", l.LocalAddr().String())
+	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+	test.AssertNotError(t, err, "Failed to find connect to log server")
+
+	// create a logger with syslog level debug
+	impl, err := New(writer, stdoutLevel, int(syslog.LOG_DEBUG))
+	test.AssertNotError(t, err, "Failed to construct audit logger")
+
+	data := make([]byte, 512)
+
+	// debug messages should be sent to the logger
+	impl.Debug("log_test.go: debug")
+	_, _, err = l.ReadFrom(data)
+	test.AssertNotError(t, err, "Failed to find packet")
+	test.Assert(t, strings.Contains(string(data), "log_test.go: debug"), "Failed to find log message")
+
+	// create a logger with syslog level info
+	impl, err = New(writer, stdoutLevel, int(syslog.LOG_INFO))
+	test.AssertNotError(t, err, "Failed to construct audit logger")
+
+	// debug messages should not be sent to the logger
+	impl.Debug("log_test.go: debug")
+	n, _, err := l.ReadFrom(data)
+	if n != 0 && err == nil {
+		t.Error("Failed to withhold debug log message")
+	}
 }
 
 func newUDPListener(addr string) (*net.UDPConn, error) {

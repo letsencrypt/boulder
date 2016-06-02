@@ -67,6 +67,9 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
+
+		MaxNames     int
+		DoNotForceCN bool
 	}
 
 	SA struct {
@@ -161,13 +164,6 @@ type Config struct {
 		MaxConcurrentRPCServerRequests int64
 	}
 
-	ExternalCertImporter struct {
-		CertsToImportCSVFilename   string
-		DomainsToImportCSVFilename string
-		CertsToRemoveCSVFilename   string
-		StatsdRate                 float32
-	}
-
 	PA PAConfig
 
 	Common struct {
@@ -250,6 +246,7 @@ type ServiceConfig struct {
 	// DebugAddr is the address to run the /debug handlers on.
 	DebugAddr string
 	AMQP      *AMQPConfig
+	GRPC      *GRPCServerConfig
 }
 
 // DBConfig defines how to connect to a database. The connect string may be
@@ -346,6 +343,8 @@ type CAConfig struct {
 	// EnableMustStaple governs whether the Must Staple extension in CSRs
 	// triggers issuance of certificates with Must Staple.
 	EnableMustStaple bool
+
+	PublisherService *GRPCClientConfig
 }
 
 // PAConfig specifies how a policy authority should connect to its
@@ -430,6 +429,8 @@ type OCSPUpdaterConfig struct {
 
 	SignFailureBackoffFactor float64
 	SignFailureBackoffMax    ConfigDuration
+
+	Publisher *GRPCClientConfig
 }
 
 // GoogleSafeBrowsingConfig is the JSON config struct for the VA's use of the
@@ -444,6 +445,7 @@ type SyslogConfig struct {
 	Network     string
 	Server      string
 	StdoutLevel *int
+	SyslogLevel *int
 }
 
 // StatsdConfig defines the config for Statsd.

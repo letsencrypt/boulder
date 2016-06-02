@@ -317,6 +317,7 @@ func main() {
 		cmd.FailOnError(err, "Couldn't load DB URL")
 		dbMap, err := sa.NewDbMap(dbURL, c.Mailer.DBConfig.MaxDBConns)
 		cmd.FailOnError(err, "Could not connect to database")
+		go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "ExpirationMailer"))
 
 		amqpConf := c.Mailer.AMQP
 		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
