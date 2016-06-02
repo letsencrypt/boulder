@@ -42,7 +42,6 @@ func TestIsSafeDomain(t *testing.T) {
 		clock.NewFake(),
 		blog.NewMock())
 
-
 	domain := "good.com"
 	resp, err := va.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
