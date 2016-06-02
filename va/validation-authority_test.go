@@ -218,8 +218,7 @@ func TestHTTP(t *testing.T) {
 	if badPort == 65536 {
 		badPort = goodPort - 1
 	}
-	log := blog.NewMock()
-	va, _ := setup(log)
+	va, _, log := setup()
 	va.httpPort = badPort
 
 	_, prob := va.validateHTTP01(ctx, ident, chall)
@@ -309,7 +308,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 	log := blog.NewMock()
-	va, _ := setup(log)
+	va, _, log := setup()
 	va.httpPort = port
 
 	setChallengeToken(&chall, pathMoved)
@@ -364,7 +363,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	va.httpPort = port
 
 	_, prob := va.validateHTTP01(ctx, ident, chall)
@@ -381,7 +380,7 @@ func TestHTTPRedirectUserAgent(t *testing.T) {
 	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	va.userAgent = rejectUserAgent
 	va.httpPort = port
 
@@ -421,8 +420,7 @@ func TestTLSSNI(t *testing.T) {
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 
-	log := blog.NewMock()
-	va, _ := setup(log)
+	va, _, log := setup()
 	va.tlsPort = port
 
 	_, prob := va.validateTLSSNI01(ctx, ident, chall)
@@ -491,7 +489,7 @@ func TestTLSError(t *testing.T) {
 
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	va.tlsPort = port
 
 	_, prob := va.validateTLSSNI01(ctx, ident, chall)
@@ -508,7 +506,7 @@ func TestValidateHTTP(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	va.httpPort = port
 
 	defer hs.Close()
@@ -552,7 +550,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	va.tlsPort = port
 
 	_, prob := va.validateChallenge(ctx, ident, chall)
@@ -561,7 +559,7 @@ func TestValidateTLSSNI01(t *testing.T) {
 }
 
 func TestValidateTLSSNINotSane(t *testing.T) {
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 
@@ -573,7 +571,7 @@ func TestValidateTLSSNINotSane(t *testing.T) {
 }
 
 func TestCAATimeout(t *testing.T) {
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	err := va.checkCAA(ctx, core.AcmeIdentifier{Type: core.IdentifierDNS, Value: "caa-timeout.com"})
 	if err.Type != probs.ConnectionProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.ConnectionProblem, err.Type)
@@ -615,7 +613,7 @@ func TestCAAChecking(t *testing.T) {
 		{"unsatisfiable.com", true, false},
 	}
 
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	for _, caaTest := range tests {
 		present, valid, err := va.checkCAARecords(ctx, core.AcmeIdentifier{Type: "dns", Value: caaTest.Domain})
 		if err != nil {
@@ -651,7 +649,7 @@ func TestCAAChecking(t *testing.T) {
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
-	va, stats := setup(blog.NewMock())
+	va, stats, _ := setup()
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 	_, prob := va.PerformValidation(context.Background(), "foo.com", chalDNS, core.Authorization{})
 	test.Assert(t, prob != nil, "validation succeeded")
@@ -659,7 +657,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 }
 
 func TestPerformValidationValid(t *testing.T) {
-	va, stats := setup(blog.NewMock())
+	va, stats, _ := setup()
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.Token = expectedToken
@@ -670,7 +668,7 @@ func TestPerformValidationValid(t *testing.T) {
 }
 
 func TestDNSValidationFailure(t *testing.T) {
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 
@@ -688,7 +686,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	chalDNS := core.DNSChallenge01(accountKey)
 	chalDNS.ProvidedKeyAuthorization, _ = chalDNS.ExpectedKeyAuthorization()
 
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 
 	_, prob := va.validateChallenge(ctx, notDNS, chalDNS)
 
@@ -696,7 +694,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 }
 
 func TestDNSValidationNotSane(t *testing.T) {
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 
 	chal0 := core.DNSChallenge01(accountKey)
 	chal0.Token = ""
@@ -727,7 +725,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 }
 
 func TestDNSValidationServFail(t *testing.T) {
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 
 	chalDNS := createChallenge(core.ChallengeTypeDNS01)
 
@@ -741,7 +739,7 @@ func TestDNSValidationServFail(t *testing.T) {
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	va.dnsResolver = bdns.NewTestDNSResolverImpl(
 		time.Second*5,
 		nil,
@@ -757,7 +755,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 }
 
 func TestDNSValidationOK(t *testing.T) {
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01(accountKey)
@@ -776,7 +774,7 @@ func TestDNSValidationOK(t *testing.T) {
 }
 
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 
 	// create a challenge with well known token
 	chalDNS := core.DNSChallenge01(accountKey)
@@ -798,7 +796,7 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 // the existence of some Internet resources. Because of that,
 // it asserts nothing; it is intended for coverage.
 func TestDNSValidationLive(t *testing.T) {
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 
 	goodChalDNS := core.DNSChallenge01(accountKey)
 	// The matching value LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo
@@ -839,7 +837,7 @@ func TestCAAFailure(t *testing.T) {
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
 
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	va.tlsPort = port
 
 	ident.Value = "reserved.com"
@@ -855,7 +853,7 @@ func TestLimitedReader(t *testing.T) {
 	hs := httpSrv(t, "01234567890123456789012345678901234567890123456789012345678901234567890123456789")
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	va.httpPort = port
 
 	defer hs.Close()
@@ -867,8 +865,9 @@ func TestLimitedReader(t *testing.T) {
 		"Expected failure due to truncation")
 }
 
-func setup(logger blog.Logger) (*ValidationAuthorityImpl, *mocks.Statter) {
+func setup() (*ValidationAuthorityImpl, *mocks.Statter, *blog.Mock) {
 	stats := mocks.NewStatter()
+	logger := blog.NewMock()
 	va := NewValidationAuthorityImpl(
 		&cmd.PortConfig{},
 		nil,
@@ -880,7 +879,7 @@ func setup(logger blog.Logger) (*ValidationAuthorityImpl, *mocks.Statter) {
 		stats,
 		clock.Default(),
 		logger)
-	return va, stats
+	return va, stats, logger
 }
 
 func TestGetCAASetFallback(t *testing.T) {
@@ -891,7 +890,7 @@ func TestGetCAASetFallback(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")
 	caaDR.URI = testSrv.URL
 	caaDR.Clients["1.1.1.1"] = new(http.Client)
-	va, _ := setup(blog.NewMock())
+	va, _, _ := setup()
 	va.caaDR = caaDR
 
 	set, err := va.getCAASet(ctx, "bad-local-resolver.com")
