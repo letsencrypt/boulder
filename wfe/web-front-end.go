@@ -19,7 +19,9 @@ import (
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	jose "github.com/square/go-jose"
 )
@@ -61,10 +63,10 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 
 	// Register of anti-replay nonces
-	nonceService *core.NonceService
+	nonceService *nonce.NonceService
 
 	// Key policy.
-	keyPolicy core.KeyPolicy
+	keyPolicy goodkey.KeyPolicy
 
 	// Cache settings
 	CertCacheDuration           time.Duration
@@ -84,10 +86,10 @@ type WebFrontEndImpl struct {
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
-func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock, keyPolicy core.KeyPolicy) (WebFrontEndImpl, error) {
+func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock, keyPolicy goodkey.KeyPolicy) (WebFrontEndImpl, error) {
 	logger := blog.Get()
 
-	nonceService, err := core.NewNonceService()
+	nonceService, err := nonce.NewNonceService()
 	if err != nil {
 		return WebFrontEndImpl{}, err
 	}

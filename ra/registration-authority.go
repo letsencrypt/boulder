@@ -14,6 +14,7 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/net/publicsuffix"
@@ -51,7 +52,7 @@ type RegistrationAuthorityImpl struct {
 	clk         clock.Clock
 	log         blog.Logger
 	dc          *DomainCheck
-	keyPolicy   core.KeyPolicy
+	keyPolicy   goodkey.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
@@ -71,7 +72,7 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies ratelimit.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool, maxNames int, forceCNFromSAN bool) *RegistrationAuthorityImpl {
+func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies ratelimit.RateLimitConfig, maxContactsPerReg int, keyPolicy goodkey.KeyPolicy, newVARPC bool, maxNames int, forceCNFromSAN bool) *RegistrationAuthorityImpl {
 	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
