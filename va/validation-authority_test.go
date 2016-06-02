@@ -307,7 +307,6 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	defer hs.Close()
 	port, err := getPort(hs)
 	test.AssertNotError(t, err, "failed to get test server port")
-	log := blog.NewMock()
 	va, _, log := setup()
 	va.httpPort = port
 
