@@ -59,7 +59,6 @@ func main() {
 			)
 			cmd.FailOnError(err, "Failed to create CAADistributedResolver")
 		}
-
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		dnsTries := c.VA.DNSTries
