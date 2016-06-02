@@ -34,6 +34,9 @@ func TestIsSafeDomain(t *testing.T) {
 		sbc,
 		nil,
 		nil,
+		nil,
+		"user agent 1.0",
+		"letsencrypt.org",
 		stats,
 		clock.NewFake())
 
@@ -76,7 +79,16 @@ func TestIsSafeDomain(t *testing.T) {
 
 func TestAllowNilInIsSafeDomain(t *testing.T) {
 	stats, _ := statsd.NewNoopClient()
-	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, nil, stats, clock.NewFake())
+	va := NewValidationAuthorityImpl(
+		&cmd.PortConfig{},
+		nil,
+		nil,
+		nil,
+		nil,
+		"user agent 1.0",
+		"letsencrypt.org",
+		stats,
+		clock.NewFake())
 
 	// Be cool with a nil SafeBrowsing. This will happen in prod when we have
 	// flag mismatch between the VA and RA.
