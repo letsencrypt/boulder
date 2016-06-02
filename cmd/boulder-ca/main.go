@@ -126,7 +126,8 @@ func main() {
 			clock.Default(),
 			stats,
 			issuers,
-			c.KeyPolicy())
+			c.KeyPolicy(),
+			logger)
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.PA = pa
 

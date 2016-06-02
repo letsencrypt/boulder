@@ -183,10 +183,10 @@ func NewCertificateAuthorityImpl(
 	stats statsd.Statter,
 	issuers []Issuer,
 	keyPolicy goodkey.KeyPolicy,
+	logger blog.Logger,
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error
-	logger := blog.Get()
 
 	if config.SerialPrefix <= 0 || config.SerialPrefix >= 256 {
 		err = errors.New("Must have a positive non-zero serial prefix less than 256 for CA.")
