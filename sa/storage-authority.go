@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"sort"
 	"strings"
 	"time"
 
@@ -784,26 +783,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 	}
 
 	err = tx.Commit()
-	return
-}
-
-// AlreadyDeniedCSR queries to find if the name list has already been denied.
-func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(ctx context.Context, names []string) (already bool, err error) {
-	sort.Strings(names)
-
-	var denied int64
-	err = ssa.dbMap.SelectOne(
-		&denied,
-		"SELECT count(*) FROM deniedCSRs WHERE names = :names",
-		map[string]interface{}{"names": strings.ToLower(strings.Join(names, ","))},
-	)
-	if err != nil {
-		return
-	}
-	if denied > 0 {
-		already = true
-	}
-
 	return
 }
 

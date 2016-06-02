@@ -207,11 +207,6 @@ func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, serial strin
 	}
 }
 
-// AlreadyDeniedCSR is a mock
-func (sa *StorageAuthority) AlreadyDeniedCSR(_ context.Context, domains []string) (bool, error) {
-	return false, nil
-}
-
 // AddCertificate is a mock
 func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64) (digest string, err error) {
 	return

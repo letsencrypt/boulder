@@ -9,7 +9,6 @@ import (
 	"os/user"
 	"sort"
 	"strconv"
-	"strings"
 
 	"golang.org/x/net/context"
 
@@ -60,15 +59,7 @@ func setupContext(context *cli.Context) (rpc.RegistrationAuthorityClient, blog.L
 	return *rac, logger, dbMap, *sac, stats
 }
 
-func addDeniedNames(tx *gorp.Transaction, names []string) (err error) {
-	sort.Strings(names)
-	deniedCSR := &core.DeniedCSR{Names: strings.ToLower(strings.Join(names, ","))}
-
-	err = tx.Insert(deniedCSR)
-	return
-}
-
-func revokeBySerial(ctx context.Context, serial string, reasonCode core.RevocationCode, deny bool, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
+func revokeBySerial(ctx context.Context, serial string, reasonCode core.RevocationCode, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
@@ -86,13 +77,6 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode core.Revocati
 	if err != nil {
 		return
 	}
-	if deny {
-		// Retrieve DNS names associated with serial
-		err = addDeniedNames(tx, append(cert.DNSNames, cert.Subject.CommonName))
-		if err != nil {
-			return
-		}
-	}
 
 	u, err := user.Current()
 	err = rac.AdministrativelyRevokeCertificate(ctx, *cert, reasonCode, u.Username)
@@ -104,7 +88,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode core.Revocati
 	return
 }
 
-func revokeByReg(ctx context.Context, regID int64, reasonCode core.RevocationCode, deny bool, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
+func revokeByReg(ctx context.Context, regID int64, reasonCode core.RevocationCode, rac rpc.RegistrationAuthorityClient, logger blog.Logger, tx *gorp.Transaction) (err error) {
 	var certs []core.Certificate
 	_, err = tx.Select(&certs, "SELECT serial FROM certificates WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
@@ -112,7 +96,7 @@ func revokeByReg(ctx context.Context, regID int64, reasonCode core.RevocationCod
 	}
 
 	for _, cert := range certs {
-		err = revokeBySerial(ctx, cert.Serial, reasonCode, deny, rac, logger, tx)
+		err = revokeBySerial(ctx, cert.Serial, reasonCode, rac, logger, tx)
 		if err != nil {
 			return
 		}
@@ -144,21 +128,16 @@ func main() {
 			EnvVar: "BOULDER_CONFIG",
 			Usage:  "Path to Boulder JSON configuration file",
 		},
-		cli.BoolFlag{
-			Name:  "deny",
-			Usage: "Add certificate DNS names to the denied list",
-		},
 	}
 	app.Commands = []cli.Command{
 		{
 			Name:  "serial-revoke",
 			Usage: "Revoke a single certificate by the hex serial number",
 			Action: func(c *cli.Context) {
-				// 1: serial,  2: reasonCode (3: deny flag)
+				// 1: serial,  2: reasonCode
 				serial := c.Args().First()
 				reasonCode, err := strconv.Atoi(c.Args().Get(1))
 				cmd.FailOnError(err, "Reason code argument must be an integer")
-				deny := c.GlobalBool("deny")
 
 				cac, logger, dbMap, _, _ := setupContext(c)
 
@@ -167,7 +146,7 @@ func main() {
 					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't begin transaction")
 				}
 
-				err = revokeBySerial(ctx, serial, core.RevocationCode(reasonCode), deny, cac, logger, tx)
+				err = revokeBySerial(ctx, serial, core.RevocationCode(reasonCode), cac, logger, tx)
 				if err != nil {
 					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
 				}
@@ -180,12 +159,11 @@ func main() {
 			Name:  "reg-revoke",
 			Usage: "Revoke all certificates associated with a registration ID",
 			Action: func(c *cli.Context) {
-				// 1: registration ID,  2: reasonCode (3: deny flag)
+				// 1: registration ID,  2: reasonCode
 				regID, err := strconv.ParseInt(c.Args().First(), 10, 64)
 				cmd.FailOnError(err, "Registration ID argument must be an integer")
 				reasonCode, err := strconv.Atoi(c.Args().Get(1))
 				cmd.FailOnError(err, "Reason code argument must be an integer")
-				deny := c.GlobalBool("deny")
 
 				cac, logger, dbMap, sac, _ := setupContext(c)
 				// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
@@ -201,7 +179,7 @@ func main() {
 					cmd.FailOnError(err, "Couldn't fetch registration")
 				}
 
-				err = revokeByReg(ctx, regID, core.RevocationCode(reasonCode), deny, cac, logger, tx)
+				err = revokeByReg(ctx, regID, core.RevocationCode(reasonCode), cac, logger, tx)
 				if err != nil {
 					cmd.FailOnError(sa.Rollback(tx, err), "Couldn't revoke certificate")
 				}

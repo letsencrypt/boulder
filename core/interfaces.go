@@ -93,7 +93,6 @@ type StorageGetter interface {
 	GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*Authorization, error)
 	GetCertificate(ctx context.Context, serial string) (Certificate, error)
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
-	AlreadyDeniedCSR(ctx context.Context, names []string) (wasDenied bool, err error)
 	CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error)
 	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain map[string]int, err error)
 	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)

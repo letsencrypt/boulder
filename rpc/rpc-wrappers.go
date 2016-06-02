@@ -58,7 +58,6 @@ const (
 	MethodUpdatePendingAuthorization        = "UpdatePendingAuthorization"        // SA
 	MethodFinalizeAuthorization             = "FinalizeAuthorization"             // SA
 	MethodAddCertificate                    = "AddCertificate"                    // SA
-	MethodAlreadyDeniedCSR                  = "AlreadyDeniedCSR"                  // SA
 	MethodCountCertificatesRange            = "CountCertificatesRange"            // SA
 	MethodCountCertificatesByNames          = "CountCertificatesByNames"          // SA
 	MethodCountRegistrationsByIP            = "CountRegistrationsByIP"            // SA
@@ -150,15 +149,6 @@ type performValidationRequest struct {
 type performValidationResponse struct {
 	Records []core.ValidationRecord
 	Problem *probs.ProblemDetails
-}
-
-type alreadyDeniedCSRReq struct {
-	Names []string
-}
-
-type updateOCSPRequest struct {
-	Serial       string
-	OCSPResponse []byte
 }
 
 type countRequest struct {
@@ -997,29 +987,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
-	rpc.Handle(MethodAlreadyDeniedCSR, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var adcReq alreadyDeniedCSRReq
-
-		err = json.Unmarshal(req, &adcReq)
-		if err != nil {
-			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodAlreadyDeniedCSR, err, req)
-			return
-		}
-
-		exists, err := impl.AlreadyDeniedCSR(ctx, adcReq.Names)
-		if err != nil {
-			return
-		}
-
-		if exists {
-			response = []byte{1}
-		} else {
-			response = []byte{0}
-		}
-		return
-	})
-
 	rpc.Handle(MethodCountCertificatesRange, func(ctx context.Context, req []byte) (response []byte, err error) {
 		var cReq countRequest
 		err = json.Unmarshal(req, &cReq)
@@ -1390,30 +1357,6 @@ func (cac StorageAuthorityClient) AddCertificate(ctx context.Context, cert []byt
 		return
 	}
 	id = string(response)
-	return
-}
-
-// AlreadyDeniedCSR sends a request to search for denied names
-func (cac StorageAuthorityClient) AlreadyDeniedCSR(ctx context.Context, names []string) (exists bool, err error) {
-	var adcReq alreadyDeniedCSRReq
-	adcReq.Names = names
-
-	data, err := json.Marshal(adcReq)
-	if err != nil {
-		return
-	}
-
-	response, err := cac.rpc.DispatchSync(MethodAlreadyDeniedCSR, data)
-	if err != nil {
-		return
-	}
-
-	switch response[0] {
-	case 0:
-		exists = false
-	case 1:
-		exists = true
-	}
 	return
 }
 

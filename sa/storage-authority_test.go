@@ -2,10 +2,8 @@ package sa
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -469,23 +467,6 @@ func TestCountCertificatesByNames(t *testing.T) {
 	test.AssertEquals(t, counts["foo.com"], 0)
 	test.AssertEquals(t, counts["example.com"], 1)
 	test.AssertEquals(t, counts["example.co.bn"], 1)
-}
-
-func TestDeniedCSR(t *testing.T) {
-	key, _ := rsa.GenerateKey(rand.Reader, 512)
-	template := &x509.CertificateRequest{
-		Subject:  pkix.Name{CommonName: "google.com"},
-		DNSNames: []string{"badguys.com", "reallybad.com"},
-	}
-	csrBytes, _ := x509.CreateCertificateRequest(rand.Reader, template, key)
-	csr, _ := x509.ParseCertificateRequest(csrBytes)
-
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	exists, err := sa.AlreadyDeniedCSR(ctx, append(csr.DNSNames, csr.Subject.CommonName))
-	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
-	test.Assert(t, !exists, "Found non-existent CSR")
 }
 
 const (
