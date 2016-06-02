@@ -544,17 +544,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		return emptyCert, err
 	}
 
-	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(ctx, names)
-	if err != nil {
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-	if csrPreviousDenied {
-		err = core.UnauthorizedError("CSR has already been revoked/denied")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
 	if core.KeyDigestEquals(csr.PublicKey, registration.Key) {
 		err = core.MalformedRequestError("Certificate public key must be different than account key")
 		return emptyCert, err
