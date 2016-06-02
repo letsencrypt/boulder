@@ -245,6 +245,10 @@ def run_client_tests():
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
     run_custom(cmd, cwd=root)
 
+
+def get_future_output(cmd, date, cwd=None):
+    return subprocess.check_output('FAKECLOCK=`date -d "%s"` %s' % (date.isoformat(), cmd), cwd=cwd, shell=True)
+
 def run_expired_authz_purger_test(challenge_types):
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
     exit_code = subprocess.Popen('''
@@ -264,9 +268,7 @@ def run_expired_authz_purger_test(challenge_types):
     target_time = now
     expected_output = 'Deleted a total of 0 expired pending authorizations'
     try:
-        out = subprocess.check_output(
-            '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes'''
-            % target_time.isoformat(), cwd='../..', shell=True)
+        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
 
         print(out)
         if expected_output not in out:
@@ -279,9 +281,7 @@ def run_expired_authz_purger_test(challenge_types):
         target_time = after_grace_period
         expected_output = 'Deleted a total of 1 expired pending authorizations'
         try:
-            out = subprocess.check_output(
-                '''FAKECLOCK=`date -d "%s"` ./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes'''
-                % target_time.isoformat(), cwd='../..', shell=True)
+            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
 
             print(out)
             if expected_output not in out:
