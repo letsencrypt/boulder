@@ -63,6 +63,7 @@ func newUpdater(
 	config cmd.OCSPUpdaterConfig,
 	numLogs int,
 	issuerPath string,
+	log blog.Logger,
 ) (*OCSPUpdater, error) {
 	if config.NewCertificateBatchSize == 0 ||
 		config.OldOCSPBatchSize == 0 ||
@@ -74,8 +75,6 @@ func newUpdater(
 		config.MissingSCTWindow.Duration == 0 {
 		return nil, fmt.Errorf("Loop window sizes must be non-zero")
 	}
-
-	log := blog.Get()
 
 	updater := OCSPUpdater{
 		stats:               stats,
@@ -585,6 +584,7 @@ func main() {
 			conf,
 			len(c.Common.CT.Logs),
 			c.Common.IssuerCert,
+			auditlogger,
 		)
 
 		cmd.FailOnError(err, "Failed to create updater")

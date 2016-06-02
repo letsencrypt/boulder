@@ -130,8 +130,12 @@ const wildcardRoutingKey = "#"
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
-func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
-	log := blog.Get()
+func NewAmqpRPCServer(
+	amqpConf *cmd.AMQPConfig,
+	maxConcurrentRPCServerRequests int64,
+	stats statsd.Statter,
+	log blog.Logger,
+) (*AmqpRPCServer, error) {
 
 	reconnectBase := amqpConf.ReconnectTimeouts.Base.Duration
 	if reconnectBase == 0 {
