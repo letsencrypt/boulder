@@ -31,6 +31,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -111,7 +112,7 @@ type CertificateAuthorityImpl struct {
 	SA               certificateStorage
 	PA               core.PolicyAuthority
 	Publisher        core.Publisher
-	keyPolicy        core.KeyPolicy
+	keyPolicy        goodkey.KeyPolicy
 	clk              clock.Clock
 	log              blog.Logger
 	stats            statsd.Statter
@@ -181,7 +182,7 @@ func NewCertificateAuthorityImpl(
 	clk clock.Clock,
 	stats statsd.Statter,
 	issuers []Issuer,
-	keyPolicy core.KeyPolicy,
+	keyPolicy goodkey.KeyPolicy,
 ) (*CertificateAuthorityImpl, error) {
 	var ca *CertificateAuthorityImpl
 	var err error

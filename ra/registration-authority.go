@@ -14,6 +14,7 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/net/publicsuffix"
@@ -51,7 +52,7 @@ type RegistrationAuthorityImpl struct {
 	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
 	log         blog.Logger
-	keyPolicy   core.KeyPolicy
+	keyPolicy   goodkey.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
@@ -77,12 +78,11 @@ func NewRegistrationAuthorityImpl(
 	stats statsd.Statter,
 	policies ratelimit.RateLimitConfig,
 	maxContactsPerReg int,
-	keyPolicy core.KeyPolicy,
+	keyPolicy goodkey.KeyPolicy,
 	newVARPC bool,
 	maxNames int,
 	forceCNFromSAN bool,
 ) *RegistrationAuthorityImpl {
-	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,

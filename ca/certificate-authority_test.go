@@ -19,6 +19,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
@@ -130,7 +131,7 @@ type testCtx struct {
 	caConfig  cmd.CAConfig
 	pa        core.PolicyAuthority
 	issuers   []Issuer
-	keyPolicy core.KeyPolicy
+	keyPolicy goodkey.KeyPolicy
 	fc        clock.FakeClock
 	stats     *mocks.Statter
 }
@@ -238,7 +239,7 @@ func setup(t *testing.T) *testCtx {
 
 	issuers := []Issuer{{caKey, caCert}}
 
-	keyPolicy := core.KeyPolicy{
+	keyPolicy := goodkey.KeyPolicy{
 		AllowRSA:           true,
 		AllowECDSANISTP256: true,
 		AllowECDSANISTP384: true,

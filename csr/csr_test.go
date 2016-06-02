@@ -12,10 +12,11 @@ import (
 	"github.com/square/go-jose"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/test"
 )
 
-var testingPolicy = &core.KeyPolicy{
+var testingPolicy = &goodkey.KeyPolicy{
 	AllowRSA:           true,
 	AllowECDSANISTP256: true,
 	AllowECDSANISTP384: true,
@@ -57,7 +58,7 @@ func TestVerifyCSR(t *testing.T) {
 	cases := []struct {
 		csr           *x509.CertificateRequest
 		maxNames      int
-		keyPolicy     *core.KeyPolicy
+		keyPolicy     *goodkey.KeyPolicy
 		pa            core.PolicyAuthority
 		regID         int64
 		expectedError error

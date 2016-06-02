@@ -24,6 +24,8 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/square/go-jose"
 
@@ -188,7 +190,7 @@ func makeBody(s string) io.ReadCloser {
 	return ioutil.NopCloser(strings.NewReader(s))
 }
 
-func signRequest(t *testing.T, req string, nonceService *core.NonceService) string {
+func signRequest(t *testing.T, req string, nonceService *nonce.NonceService) string {
 	accountKey, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
 	test.AssertNotError(t, err, "Failed to load key")
 
@@ -201,7 +203,7 @@ func signRequest(t *testing.T, req string, nonceService *core.NonceService) stri
 	return ret
 }
 
-var testKeyPolicy = core.KeyPolicy{
+var testKeyPolicy = goodkey.KeyPolicy{
 	AllowRSA:           true,
 	AllowECDSANISTP256: true,
 	AllowECDSANISTP384: true,
