@@ -20,6 +20,16 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+type eapConfig struct {
+	cmd.DBConfig
+
+	Statsd cmd.StatsdConfig
+	Syslog cmd.SyslogConfig
+
+	GracePeriod cmd.ConfigDuration
+	BatchSize   int
+}
+
 type expiredAuthzPurger struct {
 	stats statsd.Statter
 	log   blog.Logger
@@ -85,8 +95,6 @@ func (p *expiredAuthzPurger) purgeAuthzs(purgeBefore time.Time, yes bool) (int64
 }
 
 func main() {
-	batchSize := flag.Int("batch-size", 1000, "Size of batches to do SELECT queries in")
-	force := flag.Bool("force", false, "Allows purge of all expired pending authorizations (dangerous)")
 	yes := flag.Bool("yes", false, "Skips the purge confirmation")
 	configPath := flag.String("config", "config.json", "Path to Boulder configuration file")
 	flag.Parse()
@@ -97,8 +105,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	var config cmd.Config
+	var config eapConfig
 	err = json.Unmarshal(configJSON, &config)
+	cmd.FailOnError(err, "Failed to parse config")
 
 	// Set up logging
 	stats, auditlogger := cmd.StatsAndLogging(config.Statsd, config.Syslog)
@@ -108,9 +117,9 @@ func main() {
 	defer auditlogger.AuditPanic()
 
 	// Configure DB
-	dbURL, err := config.ExpiredAuthzPurger.DBConfig.URL()
+	dbURL, err := config.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbMap, err := sa.NewDbMap(dbURL, config.ExpiredAuthzPurger.DBConfig.MaxDBConns)
+	dbMap, err := sa.NewDbMap(dbURL, config.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AuthzPurger"))
 
@@ -119,14 +128,14 @@ func main() {
 		log:       auditlogger,
 		clk:       cmd.Clock(),
 		db:        dbMap,
-		batchSize: int64(*batchSize),
+		batchSize: int64(config.BatchSize),
 	}
 
-	if config.ExpiredAuthzPurger.GracePeriod.Duration == 0 && !*force {
-		fmt.Fprintln(os.Stderr, "Grace period is 0, refusing to purge all pending authorizations without -force")
+	if config.GracePeriod.Duration == 0 {
+		fmt.Fprintln(os.Stderr, "Grace period is 0, refusing to purge all pending authorizations")
 		os.Exit(1)
 	}
-	purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
+	purgeBefore := purger.clk.Now().Add(-config.GracePeriod.Duration)
 	_, err = purger.purgeAuthzs(purgeBefore, *yes)
 	cmd.FailOnError(err, "Failed to purge authorizations")
 }
