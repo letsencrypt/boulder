@@ -89,6 +89,7 @@ func setup(t *testing.T) (*OCSPUpdater, core.StorageAuthority, *gorp.DbMap, cloc
 		},
 		0,
 		"",
+		blog.NewMock(),
 	)
 
 	return updater, sa, dbMap, fc, cleanUp

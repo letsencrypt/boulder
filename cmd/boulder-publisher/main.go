@@ -58,7 +58,7 @@ func main() {
 			}()
 		}
 
-		pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats)
+		pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats, logger)
 		cmd.FailOnError(err, "Unable to create Publisher RPC server")
 		err = rpc.NewPublisherServer(pubs, pubi)
 		cmd.FailOnError(err, "Unable to setup Publisher RPC server")
