@@ -539,40 +539,6 @@ func TestGetSCTReceipt(t *testing.T) {
 	test.Assert(t, sqlSCT.CertificateSerial == sct.CertificateSerial, "Invalid certificate serial")
 }
 
-func TestUpdateOCSP(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	// Add a cert to the DB to test with.
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
-
-	serial := "000000000000000000000000000000021bd4"
-	const ocspResponse = "this is a fake OCSP response"
-
-	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
-	if certificateStatusObj == nil {
-		t.Fatalf("Failed to get certificate status for %s", serial)
-	}
-	beforeUpdate := certificateStatusObj.(*core.CertificateStatus)
-
-	fc.Add(1 * time.Hour)
-
-	err = sa.UpdateOCSP(ctx, serial, []byte(ocspResponse))
-	test.AssertNotError(t, err, "UpdateOCSP failed")
-
-	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
-	certificateStatus := certificateStatusObj.(*core.CertificateStatus)
-	test.AssertNotError(t, err, "Failed to fetch certificate status")
-	test.Assert(t,
-		certificateStatus.OCSPLastUpdated.After(beforeUpdate.OCSPLastUpdated),
-		fmt.Sprintf("UpdateOCSP did not take. before: %s; after: %s", beforeUpdate.OCSPLastUpdated, certificateStatus.OCSPLastUpdated))
-	test.AssertEquals(t, ocspResponse, string(certificateStatus.OCSPResponse))
-}
-
 func TestMarkCertificateRevoked(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()

@@ -227,11 +227,6 @@ func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial str
 	return
 }
 
-// UpdateOCSP is a mock
-func (sa *StorageAuthority) UpdateOCSP(_ context.Context, serial string, ocspResponse []byte) (err error) {
-	return
-}
-
 // NewPendingAuthorization is a mock
 func (sa *StorageAuthority) NewPendingAuthorization(_ context.Context, authz core.Authorization) (output core.Authorization, err error) {
 	return

@@ -54,7 +54,6 @@ const (
 	MethodGetCertificate                    = "GetCertificate"                    // SA
 	MethodGetCertificateStatus              = "GetCertificateStatus"              // SA
 	MethodMarkCertificateRevoked            = "MarkCertificateRevoked"            // SA
-	MethodUpdateOCSP                        = "UpdateOCSP"                        // SA
 	MethodNewPendingAuthorization           = "NewPendingAuthorization"           // SA
 	MethodUpdatePendingAuthorization        = "UpdatePendingAuthorization"        // SA
 	MethodFinalizeAuthorization             = "FinalizeAuthorization"             // SA
@@ -998,19 +997,6 @@ func NewStorageAuthorityServer(rpc Server, impl core.StorageAuthority) error {
 		return
 	})
 
-	rpc.Handle(MethodUpdateOCSP, func(ctx context.Context, req []byte) (response []byte, err error) {
-		var updateOCSPReq updateOCSPRequest
-
-		if err = json.Unmarshal(req, &updateOCSPReq); err != nil {
-			// AUDIT[ Improper Messages ] 0786b6f2-91ca-4f48-9883-842a19084c64
-			improperMessage(MethodUpdateOCSP, err, req)
-			return
-		}
-
-		err = impl.UpdateOCSP(ctx, updateOCSPReq.Serial, updateOCSPReq.OCSPResponse)
-		return
-	})
-
 	rpc.Handle(MethodAlreadyDeniedCSR, func(ctx context.Context, req []byte) (response []byte, err error) {
 		var adcReq alreadyDeniedCSRReq
 
@@ -1293,22 +1279,6 @@ func (cac StorageAuthorityClient) MarkCertificateRevoked(ctx context.Context, se
 	}
 
 	_, err = cac.rpc.DispatchSync(MethodMarkCertificateRevoked, data)
-	return
-}
-
-// UpdateOCSP sends a request to store an updated OCSP response
-func (cac StorageAuthorityClient) UpdateOCSP(ctx context.Context, serial string, ocspResponse []byte) (err error) {
-	var updateOCSPReq updateOCSPRequest
-
-	updateOCSPReq.Serial = serial
-	updateOCSPReq.OCSPResponse = ocspResponse
-
-	data, err := json.Marshal(updateOCSPReq)
-	if err != nil {
-		return
-	}
-
-	_, err = cac.rpc.DispatchSync(MethodUpdateOCSP, data)
 	return
 }
 
