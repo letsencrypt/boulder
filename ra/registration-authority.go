@@ -25,6 +25,7 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ratelimit"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 // DefaultAuthorizationLifetime is the 10 month default authorization lifetime.
@@ -51,7 +52,6 @@ type RegistrationAuthorityImpl struct {
 	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
 	log         blog.Logger
-	dc          *DomainCheck
 	keyPolicy   goodkey.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
@@ -72,14 +72,22 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies ratelimit.RateLimitConfig, maxContactsPerReg int, keyPolicy goodkey.KeyPolicy, newVARPC bool, maxNames int, forceCNFromSAN bool) *RegistrationAuthorityImpl {
-	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
+func NewRegistrationAuthorityImpl(
+	clk clock.Clock,
+	logger blog.Logger,
+	stats statsd.Statter,
+	policies ratelimit.RateLimitConfig,
+	maxContactsPerReg int,
+	keyPolicy goodkey.KeyPolicy,
+	newVARPC bool,
+	maxNames int,
+	forceCNFromSAN bool,
+) *RegistrationAuthorityImpl {
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
-		dc:    dc,
 		authorizationLifetime:        DefaultAuthorizationLifetime,
 		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
 		rlPolicies:                   policies,
@@ -328,13 +336,13 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	if identifier.Type == core.IdentifierDNS {
-		isSafe, err := ra.dc.IsSafe(ctx, identifier.Value)
+		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
 		if err != nil {
 			outErr := core.InternalServerError("unable to determine if domain was safe")
 			ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), err))
 			return authz, outErr
 		}
-		if !isSafe {
+		if !isSafeResp.GetIsSafe() {
 			return authz, core.UnauthorizedError(fmt.Sprintf("%#v was considered an unsafe domain by a third-party API", identifier.Value))
 		}
 	}

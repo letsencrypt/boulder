@@ -40,12 +40,6 @@ type DummyValidationAuthority struct {
 	IsSafeDomainErr error
 }
 
-func (dva *DummyValidationAuthority) UpdateValidations(ctx context.Context, authz core.Authorization, index int) (err error) {
-	dva.Called = true
-	dva.Argument = authz
-	return
-}
-
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	dva.Called = true
 	dva.Argument = authz
@@ -209,7 +203,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		&DomainCheck{va},
 		ratelimit.RateLimitConfig{
 			TotalCertificates: ratelimit.RateLimitPolicy{
 				Threshold: 100,

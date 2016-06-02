@@ -26,13 +26,13 @@ func (va *ValidationAuthorityImpl) IsSafeDomain(ctx context.Context, req *vaPB.I
 		return nil, bgrpc.ErrMissingParameters
 	}
 	va.stats.Inc("VA.IsSafeDomain.Requests", 1, 1.0)
-	if va.SafeBrowsing == nil {
+	if va.safeBrowsing == nil {
 		va.stats.Inc("VA.IsSafeDomain.Skips", 1, 1.0)
 		status := true
 		return &vaPB.IsDomainSafe{IsSafe: &status}, nil
 	}
 
-	list, err := va.SafeBrowsing.IsListed(*req.Domain)
+	list, err := va.safeBrowsing.IsListed(*req.Domain)
 	if err != nil {
 		va.stats.Inc("VA.IsSafeDomain.Errors", 1, 1.0)
 		if err == safebrowsing.ErrOutOfDateHashes {

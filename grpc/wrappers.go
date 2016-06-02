@@ -61,10 +61,6 @@ func NewValidationAuthorityGRPCClient(cc *ggrpc.ClientConn) core.ValidationAutho
 	return &ValidationAuthorityGRPCClient{vaPB.NewVAClient(cc)}
 }
 
-func (vac ValidationAuthorityGRPCClient) UpdateValidations(ctx context.Context, authz core.Authorization, index int) error {
-	panic("UpdateValidations should not be called on VA GRPC client")
-}
-
 // PerformValidation has the VA revalidate the specified challenge and returns
 // the updated Challenge object.
 func (vac ValidationAuthorityGRPCClient) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
