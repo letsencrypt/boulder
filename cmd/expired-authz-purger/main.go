@@ -21,13 +21,15 @@ import (
 )
 
 type eapConfig struct {
-	cmd.DBConfig
+	ExpiredAuthzPurger struct {
+		cmd.DBConfig
 
-	Statsd cmd.StatsdConfig
-	Syslog cmd.SyslogConfig
+		Statsd cmd.StatsdConfig
+		Syslog cmd.SyslogConfig
 
-	GracePeriod cmd.ConfigDuration
-	BatchSize   int
+		GracePeriod cmd.ConfigDuration
+		BatchSize   int
+	}
 }
 
 type expiredAuthzPurger struct {
@@ -110,16 +112,16 @@ func main() {
 	cmd.FailOnError(err, "Failed to parse config")
 
 	// Set up logging
-	stats, auditlogger := cmd.StatsAndLogging(config.Statsd, config.Syslog)
+	stats, auditlogger := cmd.StatsAndLogging(config.ExpiredAuthzPurger.Statsd, config.ExpiredAuthzPurger.Syslog)
 	auditlogger.Info(cmd.Version())
 
 	// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 	defer auditlogger.AuditPanic()
 
 	// Configure DB
-	dbURL, err := config.DBConfig.URL()
+	dbURL, err := config.ExpiredAuthzPurger.DBConfig.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbMap, err := sa.NewDbMap(dbURL, config.DBConfig.MaxDBConns)
+	dbMap, err := sa.NewDbMap(dbURL, config.ExpiredAuthzPurger.DBConfig.MaxDBConns)
 	cmd.FailOnError(err, "Could not connect to database")
 	go sa.ReportDbConnCount(dbMap, metrics.NewStatsdScope(stats, "AuthzPurger"))
 
@@ -128,14 +130,14 @@ func main() {
 		log:       auditlogger,
 		clk:       cmd.Clock(),
 		db:        dbMap,
-		batchSize: int64(config.BatchSize),
+		batchSize: int64(config.ExpiredAuthzPurger.BatchSize),
 	}
 
-	if config.GracePeriod.Duration == 0 {
+	if config.ExpiredAuthzPurger.GracePeriod.Duration == 0 {
 		fmt.Fprintln(os.Stderr, "Grace period is 0, refusing to purge all pending authorizations")
 		os.Exit(1)
 	}
-	purgeBefore := purger.clk.Now().Add(-config.GracePeriod.Duration)
+	purgeBefore := purger.clk.Now().Add(-config.ExpiredAuthzPurger.GracePeriod.Duration)
 	_, err = purger.purgeAuthzs(purgeBefore, *yes)
 	cmd.FailOnError(err, "Failed to purge authorizations")
 }
