@@ -241,6 +241,43 @@ def run_client_tests():
     cmd = os.path.join(root, 'tests', 'boulder-integration.sh')
     run_custom(cmd, cwd=root)
 
+
+def get_future_output(cmd, date, cwd=None):
+    return subprocess.check_output(cmd, cwd=cwd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")}, shell=True)
+
+def run_expired_authz_purger_test():
+    subprocess.check_output('''node test.js --email %s --agree true --domains %s --abort-step %s''' %
+                            ("purger@test.com", "eap-test.com", "startChallenge"), shell=True)
+
+    now = datetime.datetime.utcnow()
+    after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
+
+    target_time = now
+    expected_output = 'Deleted a total of 0 expired pending authorizations'
+    try:
+        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
+
+        print(out)
+        if expected_output not in out:
+                print("\nBad output from authz purger")
+                die(ExitStatus.NodeFailure)
+    except subprocess.CalledProcessError as e:
+        print("\nFailed to run authz purger: %s" % e)
+        die(ExitStatus.NodeFailure)
+
+    target_time = after_grace_period
+    expected_output = 'Deleted a total of 1 expired pending authorizations'
+    try:
+        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
+
+        print(out)
+        if expected_output not in out:
+            print("\nBad output from authz purger")
+            die(ExitStatus.NodeFailure)
+    except subprocess.CalledProcessError as e:
+        print("\nFailed to run authz purger: %s" % e)
+        die(ExitStatus.NodeFailure)
+
 @atexit.register
 def cleanup():
     import shutil
@@ -301,6 +338,8 @@ def main():
         if run_node_test("bad-caa-reserved.com", challenge_types[0], expected_ct_submissions) != ISSUANCE_FAILED:
             print("\nIssused certificate for domain with bad CAA records")
             die(ExitStatus.NodeFailure)
+
+        run_expired_authz_purger_test()
 
     # Simulate a disconnection from RabbitMQ to make sure reconnects work.
     startservers.bounce_forward()

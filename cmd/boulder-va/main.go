@@ -95,8 +95,10 @@ func main() {
 			cmd.FailOnError(err, "Unable to setup VA gRPC server")
 			err = bgrpc.RegisterValidationAuthorityGRPCServer(s, vai)
 			cmd.FailOnError(err, "Unable to register VA gRPC server")
-			err = s.Serve(l)
-			cmd.FailOnError(err, "VA gRPC service failed")
+			go func() {
+				err = s.Serve(l)
+				cmd.FailOnError(err, "VA gRPC service failed")
+			}()
 		}
 
 		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats, logger)
