@@ -429,13 +429,17 @@ func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int
 				"offset": len(allSerials),
 			},
 		)
-		if err == sql.ErrNoRows || len(serials) < batchSize {
+		if err == sql.ErrNoRows || len(serials) == 0 {
 			break
 		}
 		if err != nil {
 			return nil, err
 		}
 		allSerials = append(allSerials, serials...)
+
+		if len(serials) < batchSize {
+			break
+		}
 	}
 	return allSerials, nil
 }
