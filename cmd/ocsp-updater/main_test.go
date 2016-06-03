@@ -103,7 +103,7 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Couldn't get the core.CertificateStatus from the database")
@@ -158,7 +158,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	earliest := fc.Now().Add(-time.Hour)
 	certs, err := updater.findStaleOCSPResponses(earliest, 10)
@@ -186,7 +186,7 @@ func TestGetCertificatesWithMissingResponses(t *testing.T) {
 	cert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, cert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	statuses, err := updater.getCertificatesWithMissingResponses(10)
 	test.AssertNotError(t, err, "Couldn't get status")
@@ -201,7 +201,7 @@ func TestFindRevokedCertificatesToUpdate(t *testing.T) {
 	cert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, cert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	statuses, err := updater.findRevokedCertificatesToUpdate(10)
 	test.AssertNotError(t, err, "Failed to find revoked certificates")
@@ -223,7 +223,7 @@ func TestNewCertificateTick(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	prev := fc.Now().Add(-time.Hour)
 	err = updater.newCertificateTick(ctx, 10)
@@ -242,7 +242,7 @@ func TestOldOCSPResponsesTick(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	updater.ocspMinTimeToExpiry = 1 * time.Hour
 	err = updater.oldOCSPResponsesTick(ctx, 10)
@@ -262,7 +262,7 @@ func TestMissingReceiptsTick(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	fc.Set(parsedCert.NotBefore.Add(time.Minute))
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	updater.numLogs = 1
 	updater.oldestIssuedSCT = 2 * time.Hour
@@ -293,7 +293,7 @@ func TestRevokedCertificatesTick(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	err = sa.MarkCertificateRevoked(ctx, core.SerialToString(parsedCert.SerialNumber), core.RevocationCode(1))
 	test.AssertNotError(t, err, "Failed to revoke certificate")
@@ -319,7 +319,7 @@ func TestStoreResponseGuard(t *testing.T) {
 	parsedCert, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddCertificate(ctx, parsedCert.Raw, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
 	status, err := sa.GetCertificateStatus(ctx, core.SerialToString(parsedCert.SerialNumber))
 	test.AssertNotError(t, err, "Failed to get certificate status")
