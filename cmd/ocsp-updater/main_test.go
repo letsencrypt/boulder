@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/x509"
+	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -283,6 +285,57 @@ func TestMissingReceiptsTick(t *testing.T) {
 	updater.numLogs = 1
 	err = updater.missingReceiptsTick(ctx, 10)
 	test.AssertNotError(t, err, "Failed to run missingReceiptsTick")
+}
+
+/*
+ * Boulder Issue #1872 identified that the `getSerialsIssuedSince` function may
+ * never terminate if there are always new serials added between iterations of
+ * the SQL query loop. In order to unit test the fix we require
+ * a `dbMockAdapter` implementation that will forever return a serial when
+ * queried.
+ */
+type unexhaustableSerialsSelector struct{}
+
+func (s unexhaustableSerialsSelector) Select(output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
+	outputPtr, ok := output.(*[]string)
+	if !ok {
+		return nil, fmt.Errorf("incorrect output type %T", output)
+	}
+	// Always return one serial regardless of the query
+	*outputPtr = []string{"1234"}
+	return nil, nil
+}
+
+func (s unexhaustableSerialsSelector) Exec(_ string, _ ...interface{}) (sql.Result, error) {
+	return nil, nil // NOP - we don't use this selector anywhere Exec is called
+}
+
+func (s unexhaustableSerialsSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
+	return nil // NOP - we don't use this selector anywhere SelectOne is called
+}
+
+func TestMissingReceiptsTickTerminate(t *testing.T) {
+	updater, _, _, fc, cleanUp := setup(t)
+	defer cleanUp()
+
+	// Replace the dbMap with the unexhaustableSerialsSelector to ensure the
+	// conditions that manifest Issue #1872 are met
+	updater.dbMap = unexhaustableSerialsSelector{}
+	updater.numLogs = 1
+	updater.oldestIssuedSCT = 2 * time.Hour
+
+	// Note: Must use a batch size larger than the # of rows returned by
+	// unexhaustableSerialsSelector or `updater.getSerialsIssuedSince` will never
+	// return
+	batchSize := 5
+
+	serials, err := updater.getSerialsIssuedSince(fc.Now().Add(-2*time.Hour), batchSize)
+	test.AssertNotError(t, err, "Failed to retrieve serials")
+	// Even though the unexhaustableSerialsSelector returns 1 result for every
+	// query, since we abort when results < batchSize the expected behaviour is to
+	// terminate with 1 result, the first fake serial returned for the first
+	// query. No subsequent results are evaluated.
+	test.AssertEquals(t, len(serials), 1)
 }
 
 func TestRevokedCertificatesTick(t *testing.T) {
