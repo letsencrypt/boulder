@@ -572,8 +572,6 @@ func TestRelativeDirectory(t *testing.T) {
 		{"localhost:4300", "https", `{"new-authz":"https://localhost:4300/acme/new-authz","new-cert":"https://localhost:4300/acme/new-cert","new-reg":"https://localhost:4300/acme/new-reg","revoke-cert":"https://localhost:4300/acme/revoke-cert"}`},
 	}
 
-	url, _ := url.Parse("/directory")
-
 	for _, tt := range dirTests {
 		var headers map[string][]string
 		responseWriter := httptest.NewRecorder()
@@ -587,7 +585,7 @@ func TestRelativeDirectory(t *testing.T) {
 		mux.ServeHTTP(responseWriter, &http.Request{
 			Method: "GET",
 			Host:   tt.host,
-			URL:    url,
+			URL:    mustParseURL(directoryPath),
 			Header: headers,
 		})
 		test.AssertEquals(t, responseWriter.Header().Get("Content-Type"), "application/json")
@@ -757,6 +755,7 @@ func TestGetChallenge(t *testing.T) {
 		resp := httptest.NewRecorder()
 
 		req, err := http.NewRequest(method, challengeURL, nil)
+		req.URL.Path = "valid/23"
 		test.AssertNotError(t, err, "Could not make NewRequest")
 
 		wfe.Challenge(ctx, newRequestEvent(), resp, req)
@@ -798,8 +797,9 @@ func TestChallenge(t *testing.T) {
 	test.AssertNotError(t, err, "Could not unmarshal testing key")
 
 	challengeURL := "http://localhost/acme/challenge/valid/23"
+	path := "valid/23"
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
-		makePostRequestWithPath(challengeURL,
+		makePostRequestWithPath(path,
 			signRequest(t, `{"resource":"challenge"}`, wfe.nonceService)))
 
 	test.AssertEquals(t, responseWriter.Code, 202)
@@ -814,7 +814,7 @@ func TestChallenge(t *testing.T) {
 		`{"type":"dns","uri":"http://localhost/acme/challenge/valid/23"}`)
 
 	// Expired challenges should be inaccessible
-	challengeURL = "/acme/challenge/expired/23"
+	challengeURL = "expired/23"
 	responseWriter = httptest.NewRecorder()
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath(challengeURL,
@@ -1246,7 +1246,7 @@ func TestAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 
 	// Expired authorizations should be inaccessible
-	authzURL := "/acme/authz/expired"
+	authzURL := "expired"
 	responseWriter = httptest.NewRecorder()
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
@@ -1255,6 +1255,15 @@ func TestAuthorization(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	assertJSONEquals(t, responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Expired authorization","status":404}`)
+	responseWriter.Body.Reset()
+
+	// Ensure that a valid authorization can't be reached with an invalid URL
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+		URL:    mustParseURL("/a/bunch/of/garbage/valid"),
+		Method: "GET",
+	})
+	assertJSONEquals(t, responseWriter.Body.String(),
+		`{"type":"urn:acme:error:malformed","detail":"Unable to find authorization","status":404}`)
 }
 
 func contains(s []string, e string) bool {
@@ -1294,7 +1303,7 @@ func TestRegistration(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Test POST invalid JSON
-	wfe.Registration(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/2", "invalid"))
+	wfe.Registration(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("2", "invalid"))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Parse error reading JWS","status":400}`)
@@ -1312,7 +1321,7 @@ func TestRegistration(t *testing.T) {
 	result, err := signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Unable to sign")
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
-		makePostRequestWithPath("/2", result.FullSerialize()))
+		makePostRequestWithPath("2", result.FullSerialize()))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:unauthorized","detail":"No registration exists matching provided key","status":403}`)
@@ -1331,7 +1340,7 @@ func TestRegistration(t *testing.T) {
 
 	// Test POST valid JSON with registration up in the mock
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
-		makePostRequestWithPath("/1", result.FullSerialize()))
+		makePostRequestWithPath("1", result.FullSerialize()))
 	assertJSONEquals(t,
 		responseWriter.Body.String(),
 		`{"type":"urn:acme:error:malformed","detail":"Provided agreement URL [https://letsencrypt.org/im-bad] does not match current agreement URL [`+agreementURL+`]","status":400}`)
@@ -1341,12 +1350,20 @@ func TestRegistration(t *testing.T) {
 	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
 	test.AssertNotError(t, err, "Couldn't sign")
 	wfe.Registration(ctx, newRequestEvent(), responseWriter,
-		makePostRequestWithPath("/1", result.FullSerialize()))
+		makePostRequestWithPath("1", result.FullSerialize()))
 	test.AssertNotContains(t, responseWriter.Body.String(), "urn:acme:error")
 	links := responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<http://localhost/acme/new-authz>;rel=\"next\""), true)
 	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
+	responseWriter.Body.Reset()
 
+	// Test POST valid JSON with garbage in URL but valid registration ID
+	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
+	test.AssertNotError(t, err, "Couldn't sign")
+	wfe.Registration(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("/a/bunch/of/garbage/1", result.FullSerialize()))
+	test.AssertContains(t, responseWriter.Body.String(), "400")
+	test.AssertContains(t, responseWriter.Body.String(), "urn:acme:error:malformed")
 	responseWriter.Body.Reset()
 }
 
