@@ -65,6 +65,11 @@ func (th *topHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		logEvent.Endpoint = r.URL.String()
 	}
 	defer th.logEvent(logEvent)
+	defer func() {
+		if logEvent.Requester > 0 {
+			w.Header().Set("Boulder-Requester", fmt.Sprintf("%d", logEvent.Requester))
+		}
+	}()
 
 	th.wfe.ServeHTTP(logEvent, w, r)
 }

@@ -110,6 +110,8 @@ func NewWebFrontEndImpl(
 // http.HandleFunc(), but with a wrapper around the handler that
 // provides some generic per-request functionality:
 //
+// * Set a unique tracking header Boulder-Request-ID.
+//
 // * Set a Replay-Nonce header.
 //
 // * Respond to OPTIONS requests, including CORS preflight requests.
@@ -137,6 +139,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 		log: wfe.log,
 		clk: clock.Default(),
 		wfe: wfeHandlerFunc(func(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
+			response.Header().Set("Boulder-Request-ID", logEvent.ID)
+
 			// We do not propagate errors here, because (1) they should be
 			// transient, and (2) they fail closed.
 			nonce, err := wfe.nonceService.Nonce()
