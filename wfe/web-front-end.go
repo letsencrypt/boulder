@@ -845,8 +845,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Challenge URIs are of the form /acme/challenge/<auth id>/<challenge id>.
-	// Here we parse out the id components. TODO: Use a better tool to parse out
-	// URL structure: https://github.com/letsencrypt/boulder/issues/437
+	// Here we parse out the id components.
 	slug := strings.Split(request.URL.Path, "/")
 	if len(slug) != 2 {
 		notFound()
