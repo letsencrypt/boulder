@@ -173,7 +173,6 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
     cert_file = os.path.join(tempdir, "cert.der")
     cert_file_pem = os.path.join(tempdir, "cert.pem")
     key_file = os.path.join(tempdir, "key.pem")
-
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
     if subprocess.Popen('''
         node test.js --email %s --agree true \
@@ -244,12 +243,13 @@ def run_client_tests():
 
 
 def get_future_output(cmd, date, cwd=None):
-    return subprocess.check_output(cmd, cwd=cwd, env={'FAKECLOCK': date.isoformat()}, shell=True)
+    return subprocess.check_output(cmd, cwd=cwd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")}, shell=True)
 
-def run_expired_authz_purger_test(challenge_types):
-    subprocess.check_output('''node test.js --email %s --agree true --domains %s --abort-step %s''' % ("purger@test.com", "eap-test.com", "startChallenge"), shell=True)
+def run_expired_authz_purger_test():
+    subprocess.check_output('''node test.js --email %s --agree true --domains %s --abort-step %s''' %
+                            ("purger@test.com", "eap-test.com", "startChallenge"), shell=True)
 
-    now = datetime.datetime.now()
+    now = datetime.datetime.utcnow()
     after_grace_period = now + datetime.timedelta(days=+14, minutes=+3)
 
     target_time = now
@@ -265,18 +265,18 @@ def run_expired_authz_purger_test(challenge_types):
         print("\nFailed to run authz purger: %s" % e)
         die(ExitStatus.NodeFailure)
 
-        target_time = after_grace_period
-        expected_output = 'Deleted a total of 1 expired pending authorizations'
-        try:
-            out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
+    target_time = after_grace_period
+    expected_output = 'Deleted a total of 1 expired pending authorizations'
+    try:
+        out = get_future_output("./bin/expired-authz-purger --config cmd/expired-authz-purger/config.json --yes", target_time, cwd="../..")
 
-            print(out)
-            if expected_output not in out:
-                print("\nBad output from authz purger")
-                die(ExitStatus.NodeFailure)
-        except subprocess.CalledProcessError as e:
-            print("\nFailed to run authz purger: %s" % e)
+        print(out)
+        if expected_output not in out:
+            print("\nBad output from authz purger")
             die(ExitStatus.NodeFailure)
+    except subprocess.CalledProcessError as e:
+        print("\nFailed to run authz purger: %s" % e)
+        die(ExitStatus.NodeFailure)
 
 @atexit.register
 def cleanup():
@@ -339,7 +339,7 @@ def main():
             print("\nIssused certificate for domain with bad CAA records")
             die(ExitStatus.NodeFailure)
 
-        run_expired_authz_purger_test(challenge_types)
+        run_expired_authz_purger_test()
 
     # Simulate a disconnection from RabbitMQ to make sure reconnects work.
     startservers.bounce_forward()
