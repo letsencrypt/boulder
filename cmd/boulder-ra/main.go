@@ -80,9 +80,9 @@ func main() {
 		rai.CA = cac
 		rai.SA = sac
 
-		ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats)
+		ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats, logger)
 		cmd.FailOnError(err, "Unable to create RA RPC server")
-		err = rpc.NewRegistrationAuthorityServer(ras, rai)
+		err = rpc.NewRegistrationAuthorityServer(ras, rai, logger)
 		cmd.FailOnError(err, "Unable to setup RA RPC server")
 
 		err = ras.Start(amqpConf)

@@ -85,7 +85,8 @@ func main() {
 			c.VA.UserAgent,
 			c.VA.IssuerDomain,
 			stats,
-			clk)
+			clk,
+			logger)
 
 		amqpConf := c.VA.AMQP
 
@@ -94,11 +95,13 @@ func main() {
 			cmd.FailOnError(err, "Unable to setup VA gRPC server")
 			err = bgrpc.RegisterValidationAuthorityGRPCServer(s, vai)
 			cmd.FailOnError(err, "Unable to register VA gRPC server")
-			err = s.Serve(l)
-			cmd.FailOnError(err, "VA gRPC service failed")
+			go func() {
+				err = s.Serve(l)
+				cmd.FailOnError(err, "VA gRPC service failed")
+			}()
 		}
 
-		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats)
+		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats, logger)
 		cmd.FailOnError(err, "Unable to create VA RPC server")
 		err = rpc.NewValidationAuthorityServer(vas, vai)
 		cmd.FailOnError(err, "Unable to setup VA RPC server")

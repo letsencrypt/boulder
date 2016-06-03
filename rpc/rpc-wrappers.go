@@ -215,9 +215,7 @@ func errorCondition(method string, err error, obj interface{}) {
 }
 
 // NewRegistrationAuthorityServer constructs an RPC server
-func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority) error {
-	log := blog.Get()
-
+func NewRegistrationAuthorityServer(rpc Server, impl core.RegistrationAuthority, log blog.Logger) error {
 	rpc.Handle(MethodNewRegistration, func(ctx context.Context, req []byte) (response []byte, err error) {
 		var rr registrationRequest
 		if err = json.Unmarshal(req, &rr); err != nil {
