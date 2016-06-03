@@ -1604,8 +1604,8 @@ func TestHeaderBoulderRequestId(t *testing.T) {
 		URL:    mustParseURL(directoryPath),
 	})
 
-	id := responseWriter.Header().Get("Boulder-Request-ID")
-	test.AssertNotEquals(t, id, "")
+	test.AssertNotEquals(t, responseWriter.Header().Get("Boulder-Request-ID"), "")
+	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "")
 }
 
 func TestHeaderBoulderRequester(t *testing.T) {
@@ -1629,4 +1629,5 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	mux.ServeHTTP(responseWriter, request)
 
 	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")
+	test.AssertNotEquals(t, responseWriter.Header().Get("Boulder-Request-ID"), "")
 }
