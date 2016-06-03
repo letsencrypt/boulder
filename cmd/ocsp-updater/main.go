@@ -13,7 +13,6 @@ import (
 	"github.com/jmhodges/clock"
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/net/context"
-	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/akamai"
 	"github.com/letsencrypt/boulder/cmd"
@@ -26,13 +25,24 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+/*
+ * ocspDB is an interface collecting the gorp.DbMap functions that the
+ * various parts of OCSPUpdater rely on. Using this adapter shim allows tests to
+ * swap out the dbMap implementation.
+ */
+type ocspDB interface {
+	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
+	SelectOne(holder interface{}, query string, args ...interface{}) error
+	Exec(query string, args ...interface{}) (sql.Result, error)
+}
+
 // OCSPUpdater contains the useful objects for the Updater
 type OCSPUpdater struct {
 	stats statsd.Statter
 	log   blog.Logger
 	clk   clock.Clock
 
-	dbMap *gorp.DbMap
+	dbMap ocspDB
 
 	cac  core.CertificateAuthority
 	pubc core.Publisher
@@ -56,7 +66,7 @@ type OCSPUpdater struct {
 func newUpdater(
 	stats statsd.Statter,
 	clk clock.Clock,
-	dbMap *gorp.DbMap,
+	dbMap ocspDB,
 	ca core.CertificateAuthority,
 	pub core.Publisher,
 	sac core.StorageAuthority,
@@ -436,6 +446,10 @@ func (updater *OCSPUpdater) getSerialsIssuedSince(since time.Time, batchSize int
 			return nil, err
 		}
 		allSerials = append(allSerials, serials...)
+
+		if len(serials) < batchSize {
+			break
+		}
 	}
 	return allSerials, nil
 }
