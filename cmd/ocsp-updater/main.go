@@ -26,11 +26,11 @@ import (
 )
 
 /*
- * dbMockAdapter is an interface collecting the gorp.DbMap functions that the
+ * ocspDB is an interface collecting the gorp.DbMap functions that the
  * various parts of OCSPUpdater rely on. Using this adapter shim allows tests to
  * swap out the dbMap implementation.
  */
-type dbMockAdapter interface {
+type ocspDB interface {
 	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
 	SelectOne(holder interface{}, query string, args ...interface{}) error
 	Exec(query string, args ...interface{}) (sql.Result, error)
@@ -42,7 +42,7 @@ type OCSPUpdater struct {
 	log   blog.Logger
 	clk   clock.Clock
 
-	dbMap dbMockAdapter
+	dbMap ocspDB
 
 	cac  core.CertificateAuthority
 	pubc core.Publisher
@@ -66,7 +66,7 @@ type OCSPUpdater struct {
 func newUpdater(
 	stats statsd.Statter,
 	clk clock.Clock,
-	dbMap dbMockAdapter,
+	dbMap ocspDB,
 	ca core.CertificateAuthority,
 	pub core.Publisher,
 	sac core.StorageAuthority,
