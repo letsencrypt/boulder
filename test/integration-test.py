@@ -175,8 +175,7 @@ def run_node_test(domain, chall_type, expected_ct_submissions):
     key_file = os.path.join(tempdir, "key.pem")
     # Issue the certificate and transform it from DER-encoded to PEM-encoded.
     if subprocess.Popen('''
-        node test.js --email %s --agree true \
-          --domains %s --new-reg http://localhost:4000/acme/new-reg \
+        node test.js --email %s --domains %s \
           --certKey %s --cert %s --challType %s && \
         openssl x509 -in %s -out %s -inform der -outform pem
         ''' % (email_addr, domain, key_file, cert_file, chall_type, cert_file, cert_file_pem),
@@ -246,7 +245,7 @@ def get_future_output(cmd, date, cwd=None):
     return subprocess.check_output(cmd, cwd=cwd, env={'FAKECLOCK': date.strftime("%a %b %d %H:%M:%S UTC %Y")}, shell=True)
 
 def run_expired_authz_purger_test():
-    subprocess.check_output('''node test.js --email %s --agree true --domains %s --abort-step %s''' %
+    subprocess.check_output('''node test.js --email %s --domains %s --abort-step %s''' %
                             ("purger@test.com", "eap-test.com", "startChallenge"), shell=True)
 
     now = datetime.datetime.utcnow()
