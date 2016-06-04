@@ -1605,7 +1605,6 @@ func TestHeaderBoulderRequestId(t *testing.T) {
 	})
 
 	test.AssertNotEquals(t, responseWriter.Header().Get("Boulder-Request-ID"), "")
-	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "")
 }
 
 func TestHeaderBoulderRequester(t *testing.T) {
@@ -1622,12 +1621,17 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	signer, err := jose.NewSigner("RS256", rsaKey)
 	test.AssertNotError(t, err, "Failed to make signer")
 
+	// requests that do not call sendError() have the requester header
 	signer.SetNonceSource(wfe.nonceService)
 	result, err := signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
-
 	request := makePostRequestWithPath(regPath+"1", result.FullSerialize())
 	mux.ServeHTTP(responseWriter, request)
-
 	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")
-	test.AssertNotEquals(t, responseWriter.Header().Get("Boulder-Request-ID"), "")
+
+	// requests that do call sendError() also should have the requester header
+	signer.SetNonceSource(wfe.nonceService)
+	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"https://letsencrypt.org/im-bad"}`))
+	request = makePostRequestWithPath(regPath+"1", result.FullSerialize())
+	mux.ServeHTTP(responseWriter, request)
+	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")
 }
