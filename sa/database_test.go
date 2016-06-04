@@ -3,9 +3,11 @@ package sa
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
 func TestInvalidDSN(t *testing.T) {
@@ -57,4 +59,19 @@ func TestNewDbMap(t *testing.T) {
 		t.Errorf("expected nil, got %v", dbMap)
 	}
 
+}
+
+func TestStrictness(t *testing.T) {
+	const mysqlConnectURL = "mysql+tcp://policy:password@boulder-mysql:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
+
+	dbMap, err := NewDbMap(vars.DBConnSA, 1)
+	_, err = dbMap.Exec(`insert into authz set
+		id="hi", identifier="foo", status="pending", combinations="combos",
+		registrationID=999999999999999999999999999;`)
+	if err == nil {
+		t.Fatal("Expected error when providing out of range value, got none.")
+	}
+	if !strings.Contains(err.Error(), "Out of range value for column") {
+		t.Fatal("Got wrong type of error: %s", err)
+	}
 }
