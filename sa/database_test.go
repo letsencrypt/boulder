@@ -72,6 +72,6 @@ func TestStrictness(t *testing.T) {
 		t.Fatal("Expected error when providing out of range value, got none.")
 	}
 	if !strings.Contains(err.Error(), "Out of range value for column") {
-		t.Fatal("Got wrong type of error: %s", err)
+		t.Fatalf("Got wrong type of error: %s", err)
 	}
 }
