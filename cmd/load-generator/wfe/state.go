@@ -354,7 +354,11 @@ func (s *State) Nonce() (string, error) {
 	s.nMu.Lock()
 	defer s.nMu.Unlock()
 	nonce := s.noncePool[0]
-	s.noncePool = s.noncePool[1:]
+	if len(s.noncePool) > 1 {
+		s.noncePool = s.noncePool[1:]
+	} else {
+		s.noncePool = []string{}
+	}
 	return nonce, nil
 }
 
