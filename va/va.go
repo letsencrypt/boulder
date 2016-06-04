@@ -32,6 +32,7 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 
 	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
+	"errors"
 )
 
 const (
@@ -366,7 +367,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, identifie
 	expectedKeyAuth, err := challenge.ExpectedKeyAuthorization()
 	if err != nil {
 		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
-		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
+		va.log.AuditErr(fmt.Errorf("%s for %s", errString, identifier))
 		return validationRecords, probs.ServerInternal(errString)
 	}
 
@@ -391,7 +392,7 @@ func (va *ValidationAuthorityImpl) validateTLSSNI01(ctx context.Context, identif
 	ka, err := challenge.ExpectedKeyAuthorization()
 	if err != nil {
 		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
-		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
+		va.log.AuditErr(fmt.Errorf("%s for %s", errString, identifier))
 		return nil, probs.Malformed(errString)
 	}
 	h.Write([]byte(ka))
@@ -434,7 +435,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, identifier
 	ka, err := challenge.ExpectedKeyAuthorization()
 	if err != nil {
 		errString := fmt.Sprintf("Failed to construct expected key authorization value: %s", err)
-		va.log.Err(fmt.Sprintf("%s for %s", errString, identifier))
+		va.log.AuditErr(fmt.Errorf("%s for %s", errString, identifier))
 		return nil, probs.Malformed(errString)
 	}
 	h.Write([]byte(ka))
@@ -492,7 +493,7 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 		return prob
 	}
 	if r.Present == nil || r.Valid == nil {
-		va.log.Err("gRPC: communication failure: response is missing fields")
+		va.log.AuditErr(errors.New("gRPC: communication failure: response is missing fields"))
 		return &probs.ProblemDetails{
 			Type:   probs.ServerInternalProblem,
 			Detail: "Internal communication failure",
