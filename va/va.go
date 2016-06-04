@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -32,7 +33,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 
 	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
-	"errors"
 )
 
 const (
