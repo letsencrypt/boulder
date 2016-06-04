@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math/big"
 	"sync"
+	"sync/atomic"
 )
 
 // MaxUsed defines the maximum number of Nonces we're willing to hold in
@@ -19,7 +20,7 @@ var errInvalidNonceLength = errors.New("invalid nonce length")
 
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
-	mu       sync.Mutex
+	mu       sync.RWMutex
 	latest   int64
 	earliest int64
 	used     map[int64]bool
@@ -103,11 +104,7 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 
 // Nonce provides a new Nonce.
 func (ns *NonceService) Nonce() (string, error) {
-	ns.mu.Lock()
-	ns.latest++
-	latest := ns.latest
-	ns.mu.Unlock()
-	return ns.encrypt(latest)
+	return ns.encrypt(atomic.AddInt64(&ns.latest, 1))
 }
 
 // minUsed returns the lowest key in the used map. Requires that a lock be held
@@ -130,20 +127,24 @@ func (ns *NonceService) Valid(nonce string) bool {
 		return false
 	}
 
+	latest, earliest := atomic.LoadInt64(&ns.latest), atomic.LoadInt64(&ns.earliest)
+	if c > latest {
+		return false
+	}
+
+	if c <= earliest {
+		return false
+	}
+
+	ns.mu.RLock()
+	if ns.used[c] {
+		ns.mu.RUnlock()
+		return false
+	}
+	ns.mu.RUnlock()
+
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
-	if c > ns.latest {
-		return false
-	}
-
-	if c <= ns.earliest {
-		return false
-	}
-
-	if ns.used[c] {
-		return false
-	}
-
 	ns.used[c] = true
 	if len(ns.used) > ns.maxUsed {
 		ns.earliest = ns.minUsed()
