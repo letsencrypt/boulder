@@ -86,6 +86,14 @@ func BenchmarkNonce(b *testing.B) {
 		b.Fatal(err)
 	}
 
+	// fill map
+	for i := 0; i < MaxUsed; i++ {
+		_, err := ns.Nonce()
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			_, err := ns.Nonce()

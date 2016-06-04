@@ -5,8 +5,8 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
-	"math/big"
 	"sync"
 	"sync/atomic"
 )
@@ -65,9 +65,7 @@ func (ns *NonceService) encrypt(counter int64) (string, error) {
 
 	// Encode counter to plaintext
 	pt := make([]byte, 8)
-	ctr := big.NewInt(counter)
-	pad := 8 - len(ctr.Bytes())
-	copy(pt[pad:], ctr.Bytes())
+	binary.BigEndian.PutUint64(pt, uint64(counter))
 
 	// Encrypt
 	ret := make([]byte, nonceLen)
@@ -97,9 +95,7 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 		return 0, err
 	}
 
-	ctr := big.NewInt(0)
-	ctr.SetBytes(pt)
-	return ctr.Int64(), nil
+	return int64(binary.BigEndian.Uint64(pt)), nil
 }
 
 // Nonce provides a new Nonce.
@@ -110,7 +106,7 @@ func (ns *NonceService) Nonce() (string, error) {
 // minUsed returns the lowest key in the used map. Requires that a lock be held
 // by caller.
 func (ns *NonceService) minUsed() int64 {
-	min := ns.latest
+	min := atomic.LoadInt64(&ns.latest)
 	for t := range ns.used {
 		if t < min {
 			min = t
@@ -127,12 +123,11 @@ func (ns *NonceService) Valid(nonce string) bool {
 		return false
 	}
 
-	latest, earliest := atomic.LoadInt64(&ns.latest), atomic.LoadInt64(&ns.earliest)
-	if c > latest {
+	if c > atomic.LoadInt64(&ns.latest) {
 		return false
 	}
 
-	if c <= earliest {
+	if c <= atomic.LoadInt64(&ns.earliest) {
 		return false
 	}
 
@@ -147,8 +142,9 @@ func (ns *NonceService) Valid(nonce string) bool {
 	defer ns.mu.Unlock()
 	ns.used[c] = true
 	if len(ns.used) > ns.maxUsed {
-		ns.earliest = ns.minUsed()
-		delete(ns.used, ns.earliest)
+		earliest := ns.minUsed()
+		atomic.StoreInt64(&ns.earliest, earliest)
+		delete(ns.used, earliest)
 	}
 
 	return true
