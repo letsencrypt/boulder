@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
+	"github.com/codegangsta/cli"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/cmd/load-generator/responder"
@@ -60,7 +60,7 @@ func main() {
 				cli.StringFlag{
 					Name:  "apiBase",
 					Usage: "The base URI of boulder-wfe",
-					Value: "http://localhost:4000",
+					Value: "http://boulder:4000",
 				},
 				cli.IntFlag{
 					Name:  "rate",
@@ -88,7 +88,7 @@ func main() {
 				cli.StringFlag{
 					Name:  "termsURL",
 					Usage: "The terms URL to agree too",
-					Value: "http://127.0.0.1:4001/terms/v1",
+					Value: "http://boulder:4000/terms/v1",
 				},
 				cli.StringFlag{
 					Name:  "challRPCAddr",
