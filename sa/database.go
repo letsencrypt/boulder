@@ -66,6 +66,10 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 	initTables(dbmap)
+	_, err = dbmap.Exec("SET sql_mode = 'STRICT_ALL_TABLES';")
+	if err != nil {
+		return nil, err
+	}
 
 	return dbmap, err
 }
