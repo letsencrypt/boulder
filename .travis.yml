@@ -6,23 +6,14 @@ go:
 addons:
   hosts:
     - le.wtf
-  apt:
-    packages:
-      - lsb-release
-      - python-dev
-      - python-virtualenv
-      - gcc
-      - libaugeas0
-      - libssl-dev
-      - libffi-dev
-      - ca-certificates
-      - rsyslog
-  mariadb: "10.0"
+    - boulder
+    - boulder-mysql
+    - boulder-rabbitmq
 
-sudo: false
+sudo: required
 
 services:
-  - rabbitmq
+  - docker
 
 matrix:
   fast_finish: true
@@ -40,23 +31,22 @@ branches:
     - release
     - /^test-.*$/
 
-before_install:
-  - travis_retry test/travis-before-install.sh
-
-# Override default Travis install command to prevent it from adding
-# Godeps/_workspace to GOPATH. When that happens, it hides failures that should
-# arise from importing non-vendorized paths.
-install:
-  - true
-
 env:
   global:
-    - LETSENCRYPT_PATH=$HOME/letsencrypt
+    - PATH=$HOME/bin:$PATH # protoc gets installed here
+    - GO15VENDOREXPERIMENT=1
   matrix:
-    - RUN="integration vet lint fmt migrations"
+    - RUN="vet fmt migrations integration godep-restore errcheck generate"
+    # Config changes that have landed in master but not yet been applied to
+    # production can be made in boulder-config-next.json.
+    - RUN="integration" BOULDER_CONFIG="test/boulder-config-next.json"
     - RUN="unit"
-    - RUN="godep-restore"
+
+install:
+  - ./test/travis-before-install.sh
+  - docker-compose pull
+  - docker pull letsencrypt/boulder-tools
+  - docker-compose build
 
 script:
-  - bash test.sh
-
+  - docker-compose run -e RUN="${RUN}" -e TRAVIS="${TRAVIS}" -e TRAVIS_COMMIT="${TRAVIS_COMMIT}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_PULL_REQUEST="${TRAVIS_PULL_REQUEST}" -e TRAVIS_JOB_ID="${TRAVIS_JOB_ID}" -e COVERALLS_TOKEN="${COVERALLS_TOKEN}" boulder  ./test.sh

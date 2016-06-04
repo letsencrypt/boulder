@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -33,15 +34,18 @@ func TestSendEarliestCertInfo(t *testing.T) {
 	rawCertA := newX509Cert("happy A",
 		ctx.fc.Now().AddDate(0, 0, 5),
 		[]string{"example-A.com", "SHARED-example.com"},
-		1337,
+		serial1,
 	)
 	rawCertB := newX509Cert("happy B",
 		ctx.fc.Now().AddDate(0, 0, 2),
 		[]string{"shared-example.com", "example-b.com"},
-		1337,
+		serial2,
 	)
 
-	ctx.m.sendNags([]*core.AcmeURL{email1, email2}, []*x509.Certificate{rawCertA, rawCertB})
+	err := ctx.m.sendNags([]*core.AcmeURL{email1, email2}, []*x509.Certificate{rawCertA, rawCertB})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(ctx.mc.Messages) != 2 {
 		t.Errorf("num of messages, want %d, got %d", 2, len(ctx.mc.Messages))
 	}
@@ -49,20 +53,26 @@ func TestSendEarliestCertInfo(t *testing.T) {
 		t.Fatalf("no message sent")
 	}
 	domains := "example-a.com\nexample-b.com\nshared-example.com"
-	expected := fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 2 days (%s)`,
-		domains,
-		rawCertB.NotAfter.Format(time.RFC822Z))
+	expected := mocks.MailerMessage{
+		Subject: "",
+		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 2 days (%s)`,
+			domains,
+			rawCertB.NotAfter.Format(time.RFC822Z)),
+	}
+	expected.To = "one@example.com"
 	test.AssertEquals(t, expected, ctx.mc.Messages[0])
+	expected.To = "two@example.com"
+	test.AssertEquals(t, expected, ctx.mc.Messages[1])
 }
 
-func newX509Cert(commonName string, notAfter time.Time, dnsNames []string, serial int64) *x509.Certificate {
+func newX509Cert(commonName string, notAfter time.Time, dnsNames []string, serial *big.Int) *x509.Certificate {
 	return &x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: commonName,
 		},
 		NotAfter:     notAfter,
 		DNSNames:     dnsNames,
-		SerialNumber: big.NewInt(serial),
+		SerialNumber: serial,
 	}
 
 }

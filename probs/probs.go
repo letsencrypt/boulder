@@ -47,7 +47,7 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 		return prob.HTTPStatus
 	}
 	switch prob.Type {
-	case ConnectionProblem, MalformedProblem, TLSProblem, UnknownHostProblem, BadNonceProblem:
+	case ConnectionProblem, MalformedProblem, TLSProblem, UnknownHostProblem, BadNonceProblem, InvalidEmailProblem:
 		return http.StatusBadRequest
 	case ServerInternalProblem:
 		return http.StatusInternalServerError
@@ -140,5 +140,52 @@ func ContentLengthRequired() *ProblemDetails {
 		Type:       MalformedProblem,
 		Detail:     "missing Content-Length header",
 		HTTPStatus: http.StatusLengthRequired,
+	}
+}
+
+// InvalidEmail returns a ProblemDetails representing an invalid email address
+// error
+func InvalidEmail(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       InvalidEmailProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// ConnectionFailure returns a ProblemDetails representing a ConnectionProblem
+// error
+func ConnectionFailure(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       ConnectionProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// UnknownHost returns a ProblemDetails representing an UnknownHostProblem error
+func UnknownHost(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       UnknownHostProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// RateLimited returns a ProblemDetails representing a RateLimitedProblem error
+func RateLimited(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       RateLimitedProblem,
+		Detail:     detail,
+		HTTPStatus: statusTooManyRequests,
+	}
+}
+
+// TLSError returns a ProblemDetails representing a TLSProblem error
+func TLSError(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       TLSProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }

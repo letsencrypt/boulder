@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package core
 
 import (
@@ -15,7 +10,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/square/go-jose"
+
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -77,7 +73,10 @@ const JWK2JSON = `{
 func TestKeyDigest(t *testing.T) {
 	// Test with JWK (value, reference, and direct)
 	var jwk jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk)
+	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
+	if err != nil {
+		t.Fatal(err)
+	}
 	digest, err := KeyDigest(jwk)
 	test.Assert(t, err == nil && digest == JWK1Digest, "Failed to digest JWK by value")
 	digest, err = KeyDigest(&jwk)
@@ -92,8 +91,14 @@ func TestKeyDigest(t *testing.T) {
 
 func TestKeyDigestEquals(t *testing.T) {
 	var jwk1, jwk2 jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk1)
-	json.Unmarshal([]byte(JWK2JSON), &jwk2)
+	err := json.Unmarshal([]byte(JWK1JSON), &jwk1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = json.Unmarshal([]byte(JWK2JSON), &jwk2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	test.Assert(t, KeyDigestEquals(jwk1, jwk1), "Key digests for same key should match")
 	test.Assert(t, !KeyDigestEquals(jwk1, jwk2), "Key digests for different keys should not match")
@@ -109,9 +114,9 @@ func TestAcmeURL(t *testing.T) {
 }
 
 func TestUniqueLowerNames(t *testing.T) {
-	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com"})
+	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com", "a.com"})
 	sort.Strings(u)
-	test.AssertDeepEquals(t, []string{"bar.com", "baz.com", "foobar.com"}, u)
+	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
 }
 
 func TestUnmarshalAcmeURL(t *testing.T) {

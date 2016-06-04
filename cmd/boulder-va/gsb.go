@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -10,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	safebrowsing "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-safe-browsing-api"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/va"
+	safebrowsing "github.com/letsencrypt/go-safe-browsing-api"
 )
 
 // newGoogleSafeBrowsing returns nil if the GoogleSafeBrowsing struct given is
@@ -36,7 +31,8 @@ func newGoogleSafeBrowsing(gsb *cmd.GoogleSafeBrowsingConfig) va.SafeBrowsing {
 		}
 		cmd.FailOnError(err, "unable to open Google Safe Browsing data directory")
 	}
-	f.Close()
+	err = f.Close()
+	cmd.FailOnError(err, "unable to access Google Safe Browsing data directory")
 	sbc, err := safebrowsing.NewSafeBrowsing(gsb.APIKey, gsb.DataDir)
 	if err != nil {
 		cmd.FailOnError(err, "unable to create new safe browsing client")

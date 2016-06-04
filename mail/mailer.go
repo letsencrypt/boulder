@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package mail
 
 import (
@@ -21,7 +16,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	"github.com/jmhodges/clock"
 )
 
 type idGenerator interface {
@@ -43,6 +38,7 @@ func (s realSource) generate() *big.Int {
 // Mailer provides the interface for a mailer
 type Mailer interface {
 	SendMail([]string, string, string) error
+	Close() error
 }
 
 // MailerImpl defines a mail transfer agent to use for sending mail
@@ -157,11 +153,11 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 	if err != nil {
 		return err
 	}
-	if m.client.Mail(m.from); err != nil {
+	if err = m.client.Mail(m.from); err != nil {
 		return err
 	}
 	for _, t := range to {
-		if m.client.Rcpt(t); err != nil {
+		if err = m.client.Rcpt(t); err != nil {
 			return err
 		}
 	}
@@ -180,4 +176,12 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 		return err
 	}
 	return nil
+}
+
+// Close closes the connection.
+func (m *MailerImpl) Close() error {
+	if m.client == nil {
+		return errors.New("call Connect before Close")
+	}
+	return m.client.Close()
 }

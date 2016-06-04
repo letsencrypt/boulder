@@ -6,12 +6,12 @@ import (
 	"crypto/rsa"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/square/go-jose"
 )
 
 func TestRejectsNone(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	_, _, _, prob := wfe.verifyPOST(newRequestEvent(), makePostRequest(`
+	_, _, _, prob := wfe.verifyPOST(ctx, newRequestEvent(), makePostRequest(`
 		{
 			"header": {
 				"alg": "none",
@@ -35,7 +35,7 @@ func TestRejectsNone(t *testing.T) {
 
 func TestRejectsHS256(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	_, _, _, prob := wfe.verifyPOST(newRequestEvent(), makePostRequest(`
+	_, _, _, prob := wfe.verifyPOST(ctx, newRequestEvent(), makePostRequest(`
 		{
 			"header": {
 				"alg": "HS256",

@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -16,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
+	"github.com/miekg/dns"
 )
 
 type testSrv struct {
@@ -152,7 +147,7 @@ func (ts *testSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 func (ts *testSrv) serveTestResolver() {
 	dns.HandleFunc(".", ts.dnsHandler)
 	dnsServer := &dns.Server{
-		Addr:         "127.0.0.1:8053",
+		Addr:         "0.0.0.0:8053",
 		Net:          "tcp",
 		ReadTimeout:  time.Millisecond,
 		WriteTimeout: time.Millisecond,
@@ -165,7 +160,7 @@ func (ts *testSrv) serveTestResolver() {
 		}
 	}()
 	webServer := &http.Server{
-		Addr:    "localhost:8055",
+		Addr:    "0.0.0.0:8055",
 		Handler: http.HandlerFunc(ts.setTXT),
 	}
 	go func() {
@@ -178,7 +173,6 @@ func (ts *testSrv) serveTestResolver() {
 }
 
 func main() {
-	fmt.Println("dns-srv: Starting test DNS server")
 	ts := testSrv{mu: new(sync.RWMutex), txtRecords: make(map[string]string)}
 	ts.serveTestResolver()
 	forever := make(chan bool, 1)

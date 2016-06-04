@@ -1,48 +1,42 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package policy
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net"
 	"regexp"
 	"strings"
+	"sync"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/net/publicsuffix"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/reloader"
+	"github.com/letsencrypt/net/publicsuffix"
+	"github.com/square/go-jose"
 )
 
 // AuthorityImpl enforces CA policy decisions.
 type AuthorityImpl struct {
-	log *blog.AuditLogger
-	DB  *AuthorityDatabaseImpl
+	log blog.Logger
 
-	EnforceWhitelist  bool
+	blacklist      map[string]bool
+	exactBlacklist map[string]bool
+	blacklistMu    sync.RWMutex
+
 	enabledChallenges map[string]bool
 	pseudoRNG         *rand.Rand
 }
 
 // New constructs a Policy Authority.
-func New(dbMap *gorp.DbMap, enforceWhitelist bool, challengeTypes map[string]bool) (*AuthorityImpl, error) {
-	logger := blog.GetAuditLogger()
-	logger.Notice("Policy Authority Starting")
-
-	// Setup policy db
-	padb, err := NewAuthorityDatabaseImpl(dbMap)
-	if err != nil {
-		return nil, err
-	}
+// TODO(https://github.com/letsencrypt/boulder/issues/1616): Remove the _ bool
+// argument (used to be enforceWhitelist). Update all callers.
+func New(challengeTypes map[string]bool) (*AuthorityImpl, error) {
 
 	pa := AuthorityImpl{
-		log:               logger,
-		DB:                padb,
-		EnforceWhitelist:  enforceWhitelist,
+		log:               blog.Get(),
 		enabledChallenges: challengeTypes,
 		// We don't need real randomness for this.
 		pseudoRNG: rand.New(rand.NewSource(99)),
@@ -51,16 +45,56 @@ func New(dbMap *gorp.DbMap, enforceWhitelist bool, challengeTypes map[string]boo
 	return &pa, nil
 }
 
+type blacklistJSON struct {
+	Blacklist      []string
+	ExactBlacklist []string
+}
+
+// SetHostnamePolicyFile will load the given policy file, returning error if it
+// fails. It will also start a reloader in case the file changes.
+func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
+	_, err := reloader.New(f, pa.loadHostnamePolicy, pa.hostnamePolicyLoadError)
+	return err
+}
+
+func (pa *AuthorityImpl) hostnamePolicyLoadError(err error) {
+	pa.log.Err(fmt.Sprintf("error loading hostname policy: %s", err))
+}
+
+func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
+	hash := sha256.Sum256(b)
+	pa.log.Info(fmt.Sprintf("loading hostname policy, sha256: %s",
+		hex.EncodeToString(hash[:])))
+	var bl blacklistJSON
+	err := json.Unmarshal(b, &bl)
+	if err != nil {
+		return err
+	}
+	if len(bl.Blacklist) == 0 {
+		return fmt.Errorf("No entries in blacklist.")
+	}
+	nameMap := make(map[string]bool)
+	for _, v := range bl.Blacklist {
+		nameMap[v] = true
+	}
+	exactNameMap := make(map[string]bool)
+	for _, v := range bl.ExactBlacklist {
+		exactNameMap[v] = true
+	}
+	pa.blacklistMu.Lock()
+	pa.blacklist = nameMap
+	pa.exactBlacklist = exactNameMap
+	pa.blacklistMu.Unlock()
+	return nil
+}
+
 const (
 	maxLabels = 10
 
-	// DNS defines max label length as 63 characters. Some implementations allow
-	// more, but we will be conservative.
-	maxLabelLength = 63
-
-	// This is based off maxLabels * maxLabelLength, but is also a restriction based
-	// on the max size of indexed storage in the issuedNames table.
-	maxDNSIdentifierLength = 640
+	// RFC 1034 says DNS labels have a max of 63 octets, and names have a max of 255
+	// octets: https://tools.ietf.org/html/rfc1035#page-10
+	maxLabelLength         = 63
+	maxDNSIdentifierLength = 255
 
 	// whitelistedPartnerRegID is the registartion ID we check for to see if we need
 	// to skip the domain whitelist (but not the blacklist). This is for an
@@ -97,7 +131,7 @@ var (
 	errInvalidIdentifier   = core.MalformedRequestError("Invalid identifier type")
 	errNonPublic           = core.MalformedRequestError("Name does not end in a public suffix")
 	errICANNTLD            = core.MalformedRequestError("Name is an ICANN TLD")
-	errBlacklisted         = core.MalformedRequestError("Name is blacklisted")
+	errBlacklisted         = core.MalformedRequestError("Policy forbids issuing for name")
 	errNotWhitelisted      = core.MalformedRequestError("Name is not whitelisted")
 	errInvalidDNSCharacter = core.MalformedRequestError("Invalid character in DNS name")
 	errNameTooLong         = core.MalformedRequestError("DNS name too long")
@@ -130,7 +164,7 @@ var (
 //    where comparison is case-independent (normalized to lower case)
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError.
-func (pa AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
+func (pa *AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) error {
 	if id.Type != core.IdentifierDNS {
 		return errInvalidIdentifier
 	}
@@ -146,7 +180,7 @@ func (pa AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) erro
 		}
 	}
 
-	if len(domain) > 255 {
+	if len(domain) > maxDNSIdentifierLength {
 		return errNameTooLong
 	}
 
@@ -191,20 +225,33 @@ func (pa AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) erro
 		return errICANNTLD
 	}
 
-	// Use the domain whitelist if the PA has been asked to. However, if the
-	// registration ID is from a whitelisted partner we're allowing to register
-	// any domain, they can get in, too.
-	enforceWhitelist := pa.EnforceWhitelist
-	if regID == whitelistedPartnerRegID {
-		enforceWhitelist = false
-	}
-
-	// Require no match against blacklist and if enforceWhitelist is true
-	// require domain to match a whitelist rule.
-	if err := pa.DB.CheckHostLists(domain, enforceWhitelist); err != nil {
+	// Require no match against blacklist
+	if err := pa.checkHostLists(domain); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (pa *AuthorityImpl) checkHostLists(domain string) error {
+	pa.blacklistMu.RLock()
+	defer pa.blacklistMu.RUnlock()
+
+	if pa.blacklist == nil {
+		return fmt.Errorf("Hostname policy not yet loaded.")
+	}
+
+	labels := strings.Split(domain, ".")
+	for i := range labels {
+		joined := strings.Join(labels[i:], ".")
+		if pa.blacklist[joined] {
+			return errBlacklisted
+		}
+	}
+
+	if pa.exactBlacklist[domain] {
+		return errBlacklisted
+	}
 	return nil
 }
 
@@ -212,7 +259,7 @@ func (pa AuthorityImpl) WillingToIssue(id core.AcmeIdentifier, regID int64) erro
 // acceptable for the given identifier.
 //
 // Note: Current implementation is static, but future versions may not be.
-func (pa AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int) {
+func (pa *AuthorityImpl) ChallengesFor(identifier core.AcmeIdentifier, accountKey *jose.JsonWebKey) ([]core.Challenge, [][]int) {
 	challenges := []core.Challenge{}
 
 	if pa.enabledChallenges[core.ChallengeTypeHTTP01] {

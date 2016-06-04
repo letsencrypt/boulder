@@ -1,18 +1,12 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
-// This command does a one-time setup of the RabbitMQ exchange and the Activity
-// Monitor queue, suitable for setting up a dev environment or Travis.
+// This command does a one-time setup of the RabbitMQ exchange suitable
+// for setting up a dev environment or Travis.
 
 import (
 	"flag"
-	"fmt"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/streadway/amqp"
+	"github.com/streadway/amqp"
 
 	"github.com/letsencrypt/boulder/cmd"
 )
@@ -62,18 +56,5 @@ func main() {
 		nil)
 	if err != nil {
 		cmd.FailOnError(err, "Could not declare queue")
-	}
-
-	routingKey := "#" //wildcard
-
-	err = ch.QueueBind(
-		monitorQueueName,
-		routingKey,
-		amqpExchange,
-		false,
-		nil)
-	if err != nil {
-		txt := fmt.Sprintf("Could not bind to queue [%s]. NOTE: You may need to delete %s to re-trigger the bind attempt after fixing permissions, or manually bind the queue to %s.", monitorQueueName, monitorQueueName, routingKey)
-		cmd.FailOnError(err, txt)
 	}
 }

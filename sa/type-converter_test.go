@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package sa
 
 import (
@@ -12,7 +7,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	jose "github.com/square/go-jose"
 )
 
 const JWK1JSON = `{
@@ -46,7 +41,10 @@ func TestJsonWebKey(t *testing.T) {
 	tc := BoulderTypeConverter{}
 
 	var jwk, out jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk)
+	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	marshaledI, err := tc.ToDb(jwk)
 	test.AssertNotError(t, err, "Could not ToDb")

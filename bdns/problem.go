@@ -1,20 +1,16 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package bdns
 
 import (
 	"fmt"
 	"net"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/miekg/dns"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/miekg/dns"
+	"golang.org/x/net/context"
 )
 
-type dnsError struct {
+// DNSError wraps a DNS error with various relevant information
+type DNSError struct {
 	recordType uint16
 	hostname   string
 	// Exactly one of rCode or underlying should be set.
@@ -22,7 +18,7 @@ type dnsError struct {
 	rCode      int
 }
 
-func (d dnsError) Error() string {
+func (d DNSError) Error() string {
 	var detail string
 	if d.underlying != nil {
 		if netErr, ok := d.underlying.(*net.OpError); ok {
@@ -45,6 +41,14 @@ func (d dnsError) Error() string {
 		dns.TypeToString[d.recordType], d.hostname)
 }
 
+// Timeout returns true if the underlying error was a timeout
+func (d DNSError) Timeout() bool {
+	if netErr, ok := d.underlying.(*net.OpError); ok {
+		return netErr.Timeout()
+	}
+	return false
+}
+
 const detailDNSTimeout = "query timed out"
 const detailDNSNetFailure = "networking error"
 const detailServerFailure = "server failure at resolver"
@@ -55,14 +59,8 @@ const detailServerFailure = "server failure at resolver"
 // core.ProblemDetails. The detail string will contain a mention of the DNS
 // record type and domain given.
 func ProblemDetailsFromDNSError(err error) *probs.ProblemDetails {
-	if dnsErr, ok := err.(*dnsError); ok {
-		return &probs.ProblemDetails{
-			Type:   probs.ConnectionProblem,
-			Detail: dnsErr.Error(),
-		}
+	if dnsErr, ok := err.(*DNSError); ok {
+		return probs.ConnectionFailure(dnsErr.Error())
 	}
-	return &probs.ProblemDetails{
-		Type:   probs.ConnectionProblem,
-		Detail: detailServerFailure,
-	}
+	return probs.ConnectionFailure(detailServerFailure)
 }

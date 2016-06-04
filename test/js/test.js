@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-//
 // To test against a Boulder running on localhost in test mode:
 // cd boulder/test/js
 // npm install
@@ -174,8 +169,6 @@ register
   |
 getTerms
   | \
-  |  getAgreement
-  |  |
   |  sendAgreement
   | /
 getDomain
@@ -264,20 +257,15 @@ function getTerms(err, resp) {
   if (state.termsRequired) {
     state.termsURL = links["terms-of-service"];
     console.log(state.termsURL);
-    request.get(state.termsURL, getAgreement)
+    getAgreement();
   } else {
     inquirer.prompt(questions.domain, getChallenges);
   }
 }
 
-function getAgreement(err, resp, body) {
-  if (err) {
-    console.log("getAgreement error:", err);
-    process.exit(1);
-  }
-  // TODO: Check content-type
-  console.log("The CA requires your agreement to terms.");
-  console.log(state.termsURL);
+function getAgreement() {
+  console.log("The CA requires your agreement to terms:",
+    state.termsURL);
   console.log();
 
   if (!cliOptions.agreeTerms) {
@@ -373,9 +361,12 @@ function validateDns01(challenge) {
   var recordName = "_acme-challenge." + state.domain + ".";
 
   function txtCallback(err, resp, body) {
-    if (Math.floor(resp.statusCode / 100) != 2) {
+    if (err) {
+      console.log("Updating dns-test-srv failed:", err);
+      process.exit(1);
+    } else if (Math.floor(resp.statusCode / 100) != 2) {
       // Non-2XX response
-      console.log("Updating dns-test-srv failed with code " + resp.statusCode);
+      console.log("Updating dns-test-srv failed with code", resp.statusCode);
       process.exit(1);
     }
     post(state.responseURL, {
@@ -474,7 +465,8 @@ function ensureValidation(err, resp, body) {
       });
     }
   } else if (authz.status == "invalid") {
-    console.log("The CA was unable to validate the file you provisioned:"  + body);
+    console.log("The CA was unable to validate the file you provisioned:");
+    console.log(JSON.stringify(authz.challenges, null, "  "));
     process.exit(1);
   } else {
     console.log("The CA returned an authorization in an unexpected state");

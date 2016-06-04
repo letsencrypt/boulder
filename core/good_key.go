@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package core
 
 import (
@@ -195,6 +190,11 @@ func (policy *KeyPolicy) goodKeyRSA(key rsa.PublicKey) (err error) {
 	}
 	if modulusBitLen > maxKeySize {
 		return MalformedRequestError(fmt.Sprintf("Key too large: %d > %d", modulusBitLen, maxKeySize))
+	}
+	// Bit lengths that are not a multiple of 8 may cause problems on some
+	// client implementations.
+	if modulusBitLen%8 != 0 {
+		return MalformedRequestError(fmt.Sprintf("Key length wasn't a multiple of 8: %d", modulusBitLen))
 	}
 	// The CA SHALL confirm that the value of the public exponent is an
 	// odd number equal to 3 or more. Additionally, the public exponent

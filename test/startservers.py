@@ -11,21 +11,6 @@ import tempfile
 import threading
 import time
 
-
-class ToSServerThread(threading.Thread):
-    class ToSHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write("Do What Ye Will (An it Harm None).\n")
-    def run(self):
-        try:
-            BaseHTTPServer.HTTPServer(("localhost", 4001), self.ToSHandler).serve_forever()
-        except Exception as e:
-            print "Problem starting ToSServer: %s" % e
-            sys.exit(1)
-
-
 default_config = os.environ.get('BOULDER_CONFIG')
 if default_config is None:
     default_config = 'test/boulder-config.json'
@@ -38,7 +23,7 @@ def install(race_detection):
     # BUILD_ID.
     cmd = "make GO_BUILD_FLAGS=''  "
     if race_detection:
-        cmd = "make GO_BUILD_FLAGS=-race"
+        cmd = "make GO_BUILD_FLAGS='-race -tags \"integration\"'"
 
     return subprocess.call(cmd, shell=True) == 0
 
@@ -59,9 +44,6 @@ def start(race_detection):
     """
     global processes
     forward()
-    t = ToSServerThread()
-    t.daemon = True
-    t.start()
     progs = [
         'boulder-wfe',
         'boulder-ra',
@@ -72,7 +54,8 @@ def start(race_detection):
         'ocsp-updater',
         'ocsp-responder',
         'ct-test-srv',
-        'dns-test-srv'
+        'dns-test-srv',
+        'mail-test-srv'
     ]
     if not install(race_detection):
         return False
@@ -93,10 +76,15 @@ def start(race_detection):
     except Exception as e:
         print(e)
         return False
+    # And the separate CAA checking service.
+    try:
+        processes.append(run('caa-checker', race_detection, 'cmd/caa-checker/test-config.yml'))
+    except Exception as e:
+        print(e)
+        return False
 
     # Wait until all servers are up before returning to caller. This means
     # checking each server's debug port until it's available.
-    # seconds.
     while True:
         try:
             # If one of the servers has died, quit immediately.
@@ -123,7 +111,7 @@ def start(race_detection):
 
 def forward():
     """Add a TCP forwarder between Boulder and RabbitMQ to simulate failures."""
-    cmd = """exec listenbuddy -listen :5673 -speak localhost:5672"""
+    cmd = """exec listenbuddy -listen :5673 -speak boulder-rabbitmq:5672"""
     p = subprocess.Popen(cmd, shell=True)
     p.cmd = cmd
     print('started %s with pid %d' % (p.cmd, p.pid))

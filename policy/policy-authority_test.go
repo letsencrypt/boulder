@@ -1,25 +1,19 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package policy
 
 import (
 	"encoding/json"
+	"io/ioutil"
+	"os"
 	"testing"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"github.com/square/go-jose"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/mocks"
-	"github.com/letsencrypt/boulder/sa"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/letsencrypt/boulder/test/vars"
 )
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
 
 var enabledChallenges = map[string]bool{
 	core.ChallengeTypeHTTP01:   true,
@@ -27,21 +21,12 @@ var enabledChallenges = map[string]bool{
 	core.ChallengeTypeDNS01:    true,
 }
 
-func paImpl(t *testing.T) (*AuthorityImpl, func()) {
-	dbMap, cleanUp := paDBMap(t)
-	pa, err := New(dbMap, false, enabledChallenges)
+func paImpl(t *testing.T) *AuthorityImpl {
+	pa, err := New(enabledChallenges)
 	if err != nil {
-		cleanUp()
 		t.Fatalf("Couldn't create policy implementation: %s", err)
 	}
-	return pa, cleanUp
-}
-
-func paDBMap(t *testing.T) (*gorp.DbMap, func()) {
-	dbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	test.AssertNotError(t, err, "Could not construct dbMap")
-	cleanUp := test.ResetPolicyTestDatabase(t)
-	return dbMap, cleanUp
+	return pa
 }
 
 func TestWillingToIssue(t *testing.T) {
@@ -112,29 +97,47 @@ func TestWillingToIssue(t *testing.T) {
 	}
 
 	shouldBeBlacklisted := []string{
-		`addons.mozilla.org`,
-		`ebay.co.uk`,
-		`www.google.com`,
-		`lots.of.labels.pornhub.com`,
+		`highvalue.website1.org`,
+		`website2.co.uk`,
+		`www.website3.com`,
+		`lots.of.labels.website4.com`,
+	}
+	blacklistContents := []string{
+		`website2.com`,
+		`website2.org`,
+		`website2.co.uk`,
+		`website3.com`,
+		`website4.com`,
+	}
+	exactBlacklistContents := []string{
+		`www.website1.org`,
+		`highvalue.website1.org`,
+		`dl.website1.org`,
 	}
 
 	shouldBeAccepted := []string{
-		"www.zombo.com",
-		"zombo.com",
+		`lowvalue.website1.org`,
+		`website4.sucks`,
+		"www.unrelated.com",
+		"unrelated.com",
 		"www.8675309.com",
 		"8675309.com",
-		"zom2bo.com",
-		"www.zom-bo.com",
+		"web5ite2.com",
+		"www.web-site2.com",
 	}
 
-	pa, cleanup := paImpl(t)
-	defer cleanup()
+	pa := paImpl(t)
 
-	rules := RuleSet{}
-	for _, b := range shouldBeBlacklisted {
-		rules.Blacklist = append(rules.Blacklist, BlacklistRule{Host: b})
-	}
-	err := pa.DB.LoadRules(rules)
+	blacklistBytes, err := json.Marshal(blacklistJSON{
+		Blacklist:      blacklistContents,
+		ExactBlacklist: exactBlacklistContents,
+	})
+	test.AssertNotError(t, err, "Couldn't serialize blacklist")
+	f, _ := ioutil.TempFile("", "test-blacklist.txt")
+	defer os.Remove(f.Name())
+	err = ioutil.WriteFile(f.Name(), blacklistBytes, 0640)
+	test.AssertNotError(t, err, "Couldn't write blacklist")
+	err = pa.SetHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Test for invalid identifier type
@@ -187,8 +190,7 @@ var accountKeyJSON = `{
 }`
 
 func TestChallengesFor(t *testing.T) {
-	pa, cleanup := paImpl(t)
-	defer cleanup()
+	pa := paImpl(t)
 
 	var accountKey *jose.JsonWebKey
 	err := json.Unmarshal([]byte(accountKeyJSON), &accountKey)
@@ -212,101 +214,4 @@ func TestChallengesFor(t *testing.T) {
 	}
 	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
 	test.AssertDeepEquals(t, expectedCombos, combinations)
-}
-
-func TestWillingToIssueWithWhitelist(t *testing.T) {
-	dbMap, cleanUp := paDBMap(t)
-	defer cleanUp()
-	pa, err := New(dbMap, true, nil)
-	test.AssertNotError(t, err, "Couldn't create policy implementation")
-	googID := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
-		Value: "www.google.com",
-	}
-	zomboID := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
-		Value: "www.zombo.com",
-	}
-
-	type listTestCase struct {
-		regID int64
-		id    core.AcmeIdentifier
-		err   error
-	}
-	pa.DB.LoadRules(RuleSet{
-		Whitelist: []WhitelistRule{
-			{Host: "www.zombo.com"},
-		},
-	})
-
-	// Note that www.google.com is not in the blacklist for this test. We no
-	// longer have a hardcoded blacklist.
-	testCases := []listTestCase{
-		{100, googID, errNotWhitelisted},
-		{whitelistedPartnerRegID, googID, nil},
-		{100, zomboID, nil},
-		{whitelistedPartnerRegID, zomboID, nil},
-	}
-	for _, tc := range testCases {
-		err := pa.WillingToIssue(tc.id, tc.regID)
-		if err != tc.err {
-			t.Errorf("%#v, %d: want %#v, got %#v", tc.id.Value, tc.regID, tc.err, err)
-		}
-	}
-
-	pa.DB.LoadRules(RuleSet{
-		Blacklist: []BlacklistRule{
-			{Host: "www.google.com"},
-		},
-		Whitelist: []WhitelistRule{
-			{Host: "www.zombo.com"},
-		},
-	})
-
-	exampleID := core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
-		Value: "www.example.com",
-	}
-
-	testCases = []listTestCase{
-		// This errNotWhitelisted is surprising and accidental from the ordering
-		// of the whitelist and blacklist check. The whitelist will be gone soon
-		// enough.
-		{100, googID, errNotWhitelisted},
-		{whitelistedPartnerRegID, googID, errBlacklisted},
-		{100, zomboID, nil},
-		{whitelistedPartnerRegID, zomboID, nil},
-		{100, exampleID, errNotWhitelisted},
-		{whitelistedPartnerRegID, exampleID, nil},
-	}
-	for _, tc := range testCases {
-		err := pa.WillingToIssue(tc.id, tc.regID)
-		if err != tc.err {
-			t.Errorf("%#v, %d: want %#v, got %#v", tc.id.Value, tc.regID, tc.err, err)
-		}
-	}
-
-	pa.DB.LoadRules(RuleSet{
-		Blacklist: []BlacklistRule{
-			{Host: "www.google.com"},
-		},
-		Whitelist: []WhitelistRule{
-			{Host: "www.zombo.com"},
-			{Host: "www.google.com"},
-		},
-	})
-	testCases = []listTestCase{
-		{100, googID, errBlacklisted},
-		{whitelistedPartnerRegID, googID, errBlacklisted},
-		{100, zomboID, nil},
-		{whitelistedPartnerRegID, zomboID, nil},
-		{100, exampleID, errNotWhitelisted},
-		{whitelistedPartnerRegID, exampleID, nil},
-	}
-	for _, tc := range testCases {
-		err := pa.WillingToIssue(tc.id, tc.regID)
-		if err != tc.err {
-			t.Errorf("%#v, %d: want %#v, got %#v", tc.id.Value, tc.regID, tc.err, err)
-		}
-	}
 }

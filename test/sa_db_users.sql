@@ -14,6 +14,18 @@
 -- drop command will fail. So we grant the dummy `USAGE` privilege to make sure
 -- the user exists and then drop the user.
 
+
+-- These lines require MariaDB 10.1
+CREATE USER IF NOT EXISTS 'policy'@'localhost';
+CREATE USER IF NOT EXISTS 'sa'@'localhost';
+CREATE USER IF NOT EXISTS 'ocsp_resp'@'localhost';
+CREATE USER IF NOT EXISTS 'revoker'@'localhost';
+CREATE USER IF NOT EXISTS 'importer'@'localhost';
+CREATE USER IF NOT EXISTS 'mailer'@'localhost';
+CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
+CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
+CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
+
 -- Storage Authority
 GRANT SELECT,INSERT,UPDATE ON authz TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE,DELETE ON pendingAuthorizations TO 'sa'@'localhost';
@@ -26,6 +38,7 @@ GRANT SELECT,INSERT ON deniedCSRs TO 'sa'@'localhost';
 GRANT INSERT ON ocspResponses TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON challenges TO 'sa'@'localhost';
+GRANT SELECT,INSERT on fqdnSets TO 'sa'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
@@ -49,6 +62,7 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON externalCerts TO 'importer'@'localhost';
 -- Expiration mailer
 GRANT SELECT ON certificates TO 'mailer'@'localhost';
 GRANT SELECT,UPDATE ON certificateStatus TO 'mailer'@'localhost';
+GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 
 -- Cert checker
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';

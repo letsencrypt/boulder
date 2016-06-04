@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package publisher
 
 import (
@@ -25,10 +20,11 @@ import (
 	"testing"
 	"time"
 
-	ct "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go"
-	ctClient "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/google/certificate-transparency/go/client"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
+	ct "github.com/google/certificate-transparency/go"
+	"github.com/jmhodges/clock"
+	"golang.org/x/net/context"
 
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -116,7 +112,8 @@ OY8B7wwvZTLzU6WWs781TJXx2CE04PneeeArLpVLkiGIWjk=
 
 const issuerPath = "../test/test-ca.pem"
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
+var ctx = context.Background()
 
 func getPort(hs *httptest.Server) (int, error) {
 	url, err := url.Parse(hs.URL)
@@ -222,7 +219,8 @@ func retryableLogSrv(leaf []byte, k *ecdsa.PrivateKey, retries int, after *int) 
 		} else {
 			hits++
 			if after != nil {
-				w.Header().Set("Retry-After", fmt.Sprintf("%d", *after))
+				w.Header().Add("Retry-After", fmt.Sprintf("%d", *after))
+				w.WriteHeader(503)
 			}
 			w.WriteHeader(http.StatusRequestTimeout)
 		}
@@ -256,7 +254,7 @@ func badLogSrv() *httptest.Server {
 func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	intermediatePEM, _ := pem.Decode([]byte(testIntermediate))
 
-	pub := New(nil, nil)
+	pub := New(nil, nil, 0, log)
 	pub.issuerBundle = append(pub.issuerBundle, ct.ASN1Cert(intermediatePEM.Bytes))
 	pub.SA = mocks.NewStorageAuthority(clock.NewFake())
 
@@ -267,17 +265,16 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Couldn't generate test key")
 
-	return &pub, leaf, k
+	return pub, leaf, k
 }
 
 func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) {
-	verifier, err := ct.NewSignatureVerifier(pubKey)
-	test.AssertNotError(t, err, "Couldn't create signature verifier")
-
-	pub.ctLogs = append(pub.ctLogs, &Log{
-		client:   ctClient.New(fmt.Sprintf("http://localhost:%d", port)),
-		verifier: verifier,
-	})
+	uri := fmt.Sprintf("http://localhost:%d", port)
+	der, err := x509.MarshalPKIXPublicKey(pubKey)
+	test.AssertNotError(t, err, "Failed to marshal key")
+	newLog, err := NewLog(uri, base64.StdEncoding.EncodeToString(der))
+	test.AssertNotError(t, err, "Couldn't create log")
+	pub.ctLogs = append(pub.ctLogs, newLog)
 }
 
 func TestBasicSuccessful(t *testing.T) {
@@ -290,14 +287,14 @@ func TestBasicSuccessful(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 
 	// No Intermediate
 	pub.issuerBundle = []ct.ASN1Cert{}
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
@@ -312,7 +309,7 @@ func TestGoodRetry(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
@@ -327,8 +324,9 @@ func TestUnexpectedError(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
+	test.AssertEquals(t, len(log.GetAllMatching("Failed .*http://localhost:"+strconv.Itoa(port))), 1)
 }
 
 func TestRetryAfter(t *testing.T) {
@@ -343,11 +341,30 @@ func TestRetryAfter(t *testing.T) {
 
 	log.Clear()
 	startedWaiting := time.Now()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
+	test.Assert(t, time.Since(startedWaiting) > time.Duration(retryAfter*2)*time.Second, fmt.Sprintf("Submitter retried submission too fast: %s", time.Since(startedWaiting)))
+}
 
-	test.Assert(t, time.Since(startedWaiting) < time.Duration(retryAfter*2)*time.Second, fmt.Sprintf("Submitter retried submission too fast: %s", time.Since(startedWaiting)))
+func TestRetryAfterContext(t *testing.T) {
+	pub, leaf, k := setup(t)
+
+	retryAfter := 2
+	server := retryableLogSrv(leaf.Raw, k, 2, &retryAfter)
+	defer server.Close()
+	port, err := getPort(server)
+	test.AssertNotError(t, err, "Failed to get test server port")
+	addLog(t, pub, port, &k.PublicKey)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	s := time.Now()
+	err = pub.SubmitToCT(ctx, leaf.Raw)
+	test.AssertNotError(t, err, "Failed to submit to CT")
+	took := time.Since(s)
+	test.Assert(t, len(log.GetAllMatching(".*Failed to submit certificate to CT log at .*: context deadline exceeded.*")) == 1, "Submission didn't timeout")
+	test.Assert(t, took >= time.Second, fmt.Sprintf("Submission took too long to timeout: %s", took))
 }
 
 func TestMultiLog(t *testing.T) {
@@ -365,7 +382,7 @@ func TestMultiLog(t *testing.T) {
 	addLog(t, pub, portB, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to.*")), 0)
 }
@@ -380,7 +397,7 @@ func TestBadServer(t *testing.T) {
 	addLog(t, pub, port, &k.PublicKey)
 
 	log.Clear()
-	err = pub.SubmitToCT(leaf.Raw)
+	err = pub.SubmitToCT(ctx, leaf.Raw)
 	test.AssertNotError(t, err, "Certificate submission failed")
 	test.AssertEquals(t, len(log.GetAllMatching("Failed to verify SCT receipt")), 1)
 }

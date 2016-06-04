@@ -1,15 +1,8 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package ra
 
 import (
-	"bytes"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -18,42 +11,52 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cactus/go-statsd-client/statsd"
-	cfsslConfig "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/config"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/jmhodges/clock"
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/jmhodges/clock"
+	jose "github.com/square/go-jose"
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/ca"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 type DummyValidationAuthority struct {
 	Called          bool
 	Argument        core.Authorization
+	RecordsReturn   []core.ValidationRecord
+	ProblemReturn   *probs.ProblemDetails
 	IsNotSafe       bool
 	IsSafeDomainErr error
 }
 
-func (dva *DummyValidationAuthority) UpdateValidations(authz core.Authorization, index int) (err error) {
+func (dva *DummyValidationAuthority) UpdateValidations(ctx context.Context, authz core.Authorization, index int) (err error) {
 	dva.Called = true
 	dva.Argument = authz
 	return
 }
 
-func (dva *DummyValidationAuthority) IsSafeDomain(req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
+	dva.Called = true
+	dva.Argument = authz
+	return dva.RecordsReturn, dva.ProblemReturn
+}
+
+func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
 	if dva.IsSafeDomainErr != nil {
 		return nil, dva.IsSafeDomainErr
 	}
-	return &core.IsSafeDomainResponse{IsSafe: !dva.IsNotSafe}, nil
+	ret := !dva.IsNotSafe
+	return &vaPB.IsDomainSafe{IsSafe: &ret}, nil
 }
 
 var (
@@ -130,7 +133,7 @@ var (
 	}
 	AuthzFinal = core.Authorization{}
 
-	log = mocks.UseMockLog()
+	log = blog.UseMock()
 )
 
 func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
@@ -139,7 +142,7 @@ func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
 		return
 	}
 
-	out = core.Challenge{KeyAuthorization: &keyAuthorization}
+	out = core.Challenge{ProvidedKeyAuthorization: keyAuthorization.String()}
 	return
 }
 
@@ -148,6 +151,8 @@ var testKeyPolicy = core.KeyPolicy{
 	AllowECDSANISTP256: true,
 	AllowECDSANISTP384: true,
 }
+
+var ctx = context.Background()
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
@@ -165,11 +170,11 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	fc := clock.NewFake()
 
-	dbMap, err := sa.NewDbMap(vars.DBConnSA)
+	dbMap, err := sa.NewDbMap(vars.DBConnSA, 0)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -178,78 +183,38 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 
 	va := &DummyValidationAuthority{}
 
-	// PEM files in certificate-authority_test.go
-	caKeyPEM, _ := pem.Decode([]byte(CAkeyPEM))
-	caKey, _ := x509.ParsePKCS1PrivateKey(caKeyPEM.Bytes)
-	caCertPEM, _ := pem.Decode([]byte(CAcertPEM))
-	caCert, _ := x509.ParseCertificate(caCertPEM.Bytes)
-	cfsslC := cfsslConfig.Config{
-		Signing: &cfsslConfig.Signing{
-			Default: &cfsslConfig.SigningProfile{
-				Usage:        []string{"server auth", "client auth"},
-				ExpiryString: "1h",
-				CSRWhitelist: &cfsslConfig.CSRWhitelist{
-					PublicKey:          true,
-					PublicKeyAlgorithm: true,
-					SignatureAlgorithm: true,
-					DNSNames:           true,
-				},
-				ClientProvidesSerialNumbers: true,
-			},
-		},
-	}
-	caConf := cmd.CAConfig{
-		SerialPrefix: 10,
-		LifespanOCSP: "1h",
-		Expiry:       "1h",
-		CFSSL:        cfsslC,
-		RSAProfile:   "rsaEE",
-		ECDSAProfile: "ecdsaEE",
-	}
-	paDbMap, err := sa.NewDbMap(vars.DBConnPolicy)
-	if err != nil {
-		t.Fatalf("Failed to create dbMap: %s", err)
-	}
-	policyDBCleanUp := test.ResetPolicyTestDatabase(t)
-	pa, err := policy.New(paDbMap, false, SupportedChallenges)
+	pa, err := policy.New(SupportedChallenges)
 	test.AssertNotError(t, err, "Couldn't create PA")
+	err = pa.SetHostnamePolicyFile("../test/hostname-policy.json")
+	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	stats, _ := statsd.NewNoopClient()
 
-	ca, err := ca.NewCertificateAuthorityImpl(
-		caConf,
-		fc,
-		stats,
-		caCert,
-		caKey,
-		testKeyPolicy)
-	test.AssertNotError(t, err, "Couldn't create CA")
-	ca.SA = ssa
-	ca.PA = pa
-	ca.Publisher = &mocks.Publisher{}
+	ca := &mocks.MockCA{
+		PEM: eeCertPEM,
+	}
 	cleanUp := func() {
 		saDBCleanUp()
-		policyDBCleanUp()
 	}
 
-	csrDER, _ := hex.DecodeString(CSRhex)
-	ExampleCSR, _ = x509.ParseCertificateRequest(csrDER)
+	block, _ := pem.Decode(CSRPEM)
+	ExampleCSR, _ = x509.ParseCertificateRequest(block.Bytes)
 
-	Registration, _ = ssa.NewRegistration(core.Registration{
+	Registration, _ = ssa.NewRegistration(ctx, core.Registration{
 		Key:       AccountKeyA,
 		InitialIP: net.ParseIP("3.2.3.3"),
 	})
 
 	ra := NewRegistrationAuthorityImpl(fc,
-		blog.GetAuditLogger(),
+		log,
 		stats,
 		&DomainCheck{va},
-		cmd.RateLimitConfig{
-			TotalCertificates: cmd.RateLimitPolicy{
+		ratelimit.RateLimitConfig{
+			TotalCertificates: ratelimit.RateLimitPolicy{
 				Threshold: 100,
 				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
-		}, 1, testKeyPolicy)
+		}, 1, testKeyPolicy, false, 0, true)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca
@@ -291,19 +256,16 @@ func TestValidateContacts(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	tel, _ := core.ParseAcmeURL("tel:")
 	ansible, _ := core.ParseAcmeURL("ansible:earth.sol.milkyway.laniakea/letsencrypt")
 	validEmail, _ := core.ParseAcmeURL("mailto:admin@email.com")
+	otherValidEmail, _ := core.ParseAcmeURL("mailto:other-admin@email.com")
 	malformedEmail, _ := core.ParseAcmeURL("mailto:admin.com")
 
 	err := ra.validateContacts(context.Background(), []*core.AcmeURL{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{tel, validEmail})
+	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail, otherValidEmail})
 	test.AssertError(t, err, "Too Many Contacts")
-
-	err = ra.validateContacts(context.Background(), []*core.AcmeURL{tel})
-	test.AssertNotError(t, err, "Simple Telephone")
 
 	err = ra.validateContacts(context.Background(), []*core.AcmeURL{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
@@ -325,6 +287,7 @@ func TestValidateEmail(t *testing.T) {
 	}{
 		{"an email`", unparseableEmailDetail},
 		{"a@always.invalid", emptyDNSResponseDetail},
+		{"a@email.com, b@email.com", multipleAddressDetail},
 		{"a@always.timeout", "DNS problem: query timed out looking up A for always.timeout"},
 		{"a@always.error", "DNS problem: networking error looking up A for always.error"},
 	}
@@ -362,7 +325,7 @@ func TestNewRegistration(t *testing.T) {
 		InitialIP: net.ParseIP("7.6.6.5"),
 	}
 
-	result, err := ra.NewRegistration(input)
+	result, err := ra.NewRegistration(ctx, input)
 	if err != nil {
 		t.Fatalf("could not create new registration: %s", err)
 	}
@@ -373,7 +336,7 @@ func TestNewRegistration(t *testing.T) {
 		"Contact didn't match")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
-	reg, err := sa.GetRegistration(result.ID)
+	reg, err := sa.GetRegistration(ctx, result.ID)
 	test.AssertNotError(t, err, "Failed to retrieve registration")
 	test.Assert(t, core.KeyDigestEquals(reg.Key, AccountKeyB), "Retrieved registration differed.")
 }
@@ -390,7 +353,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 		InitialIP: net.ParseIP("5.0.5.0"),
 	}
 
-	result, err := ra.NewRegistration(input)
+	result, err := ra.NewRegistration(ctx, input)
 	test.AssertNotError(t, err, "Could not create new registration")
 
 	test.Assert(t, result.ID != 23, "ID shouldn't be set by user")
@@ -398,7 +361,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
 
 	id := result.ID
-	result2, err := ra.UpdateRegistration(result, core.Registration{
+	result2, err := ra.UpdateRegistration(ctx, result, core.Registration{
 		ID:  33,
 		Key: ShortKey,
 	})
@@ -416,21 +379,21 @@ func TestNewRegistrationBadKey(t *testing.T) {
 		Key:     ShortKey,
 	}
 
-	_, err := ra.NewRegistration(input)
+	_, err := ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
 }
 
 func TestNewAuthorization(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	_, err := ra.NewAuthorization(AuthzRequest, 0)
+	_, err := ra.NewAuthorization(ctx, AuthzRequest, 0)
 	test.AssertError(t, err, "Authorization cannot have registrationID == 0")
 
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Verify that returned authz same as DB
-	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
 
@@ -459,11 +422,11 @@ func TestNewAuthorizationCapitalLetters(t *testing.T) {
 			Value: "NOT-example.COM",
 		},
 	}
-	authz, err := ra.NewAuthorization(authzReq, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, authzReq, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 	test.AssertEquals(t, "not-example.com", authz.Identifier.Value)
 
-	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
 }
@@ -478,7 +441,7 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 			Value: "127.0.0.1",
 		},
 	}
-	_, err := ra.NewAuthorization(authzReq, Registration.ID)
+	_, err := ra.NewAuthorization(ctx, authzReq, Registration.ID)
 	if err == nil {
 		t.Fatalf("NewAuthorization succeeded for 127.0.0.1, should have failed")
 	}
@@ -492,16 +455,16 @@ func TestUpdateAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	response, err := makeResponse(authz.Challenges[ResponseIndex])
 	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
 	// Verify that returned authz same as DB
-	dbAuthz, err := sa.GetAuthorization(authz.ID)
+	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
 	assertAuthzEqual(t, authz, dbAuthz)
 
@@ -519,7 +482,7 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	expiry := fc.Now().Add(-2 * time.Hour)
@@ -527,7 +490,7 @@ func TestUpdateAuthorizationExpired(t *testing.T) {
 
 	response, err := makeResponse(authz.Challenges[ResponseIndex])
 
-	authz, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertError(t, err, "Updated expired authorization")
 }
 
@@ -536,74 +499,65 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	// Change the account key
-	reg, err := sa.GetRegistration(authz.RegistrationID)
+	reg, err := sa.GetRegistration(ctx, authz.RegistrationID)
 	test.AssertNotError(t, err, "GetRegistration failed")
 	reg.Key = AccountKeyC // was AccountKeyA
-	err = sa.UpdateRegistration(reg)
+	err = sa.UpdateRegistration(ctx, reg)
 	test.AssertNotError(t, err, "UpdateRegistration failed")
 
 	// Verify that the RA rejected the authorization request
 	response, err := makeResponse(authz.Challenges[ResponseIndex])
 	test.AssertNotError(t, err, "Unable to construct response to challenge")
-	_, err = ra.UpdateAuthorization(authz, ResponseIndex, response)
+	_, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
 	test.AssertEquals(t, err, core.UnauthorizedError("Challenge cannot be updated with a different key"))
 
 	t.Log("DONE TestUpdateAuthorizationReject")
 }
 
-func TestOnValidationUpdateSuccess(t *testing.T) {
-	_, sa, ra, fclk, cleanUp := initAuthorities(t)
+func TestUpdateAuthorizationNewRPC(t *testing.T) {
+	va, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	authzUpdated, err := sa.NewPendingAuthorization(AuthzInitial)
-	test.AssertNotError(t, err, "Failed to create new pending authz")
 
-	expires := fclk.Now().Add(300 * 24 * time.Hour)
-	authzUpdated.Expires = &expires
-	sa.UpdatePendingAuthorization(authzUpdated)
+	// We know this is OK because of TestNewAuthorization
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization failed")
 
-	// Simulate a successful simpleHTTP challenge
-	authzFromVA := authzUpdated
-	authzFromVA.Challenges[0].Status = core.StatusValid
+	response, err := makeResponse(authz.Challenges[ResponseIndex])
+	test.AssertNotError(t, err, "Unable to construct response to challenge")
+	authz.Challenges[ResponseIndex].Type = core.ChallengeTypeDNS01
+	va.RecordsReturn = []core.ValidationRecord{
+		{Hostname: "example.com"}}
+	va.ProblemReturn = nil
 
-	ra.OnValidationUpdate(authzFromVA)
+	authz, err = ra.UpdateAuthorization(ctx, authz, ResponseIndex, response)
+	test.AssertNotError(t, err, "UpdateAuthorization failed")
 
-	// Verify that the Authz in the DB is the same except for Status->StatusValid
-	authzFromVA.Status = core.StatusValid
-	dbAuthz, err := sa.GetAuthorization(authzFromVA.ID)
+	// Verify that returned authz same as DB
+	dbAuthz, err := sa.GetAuthorization(ctx, authz.ID)
 	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	t.Log("authz from VA: ", authzFromVA)
-	t.Log("authz from DB: ", dbAuthz)
+	assertAuthzEqual(t, authz, dbAuthz)
 
-	assertAuthzEqual(t, authzFromVA, dbAuthz)
-}
+	// Verify that the VA got the authz, and it's the same as the others
+	test.Assert(t, va.Called, "Authorization was not passed to the VA")
+	assertAuthzEqual(t, authz, va.Argument)
 
-func TestOnValidationUpdateFailure(t *testing.T) {
-	_, sa, ra, fclk, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	authzFromVA, _ := sa.NewPendingAuthorization(AuthzInitial)
-	expires := fclk.Now().Add(300 * 24 * time.Hour)
-	authzFromVA.Expires = &expires
-	sa.UpdatePendingAuthorization(authzFromVA)
-	authzFromVA.Challenges[0].Status = core.StatusInvalid
+	// Verify that the responses are reflected
+	test.Assert(t, len(va.Argument.Challenges) > 0, "Authz passed to VA has no challenges")
+	test.Assert(t, authz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
 
-	err := ra.OnValidationUpdate(authzFromVA)
-	test.AssertNotError(t, err, "unable to update validation")
-
-	authzFromVA.Status = core.StatusInvalid
-	dbAuthz, err := sa.GetAuthorization(authzFromVA.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	assertAuthzEqual(t, authzFromVA, dbAuthz)
+	t.Log("DONE TestUpdateAuthorizationNewRPC")
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	authz := core.Authorization{}
-	authz, _ = sa.NewPendingAuthorization(authz)
+	authz := core.Authorization{RegistrationID: 1}
+	authz, err := sa.NewPendingAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
 	authz.Identifier = core.AcmeIdentifier{
 		Type:  core.IdentifierDNS,
 		Value: "www.example.com",
@@ -617,14 +571,14 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign CSR")
 	parsedCSR, err := x509.ParseCertificateRequest(csrBytes)
 	test.AssertNotError(t, err, "Failed to parse CSR")
-	sa.UpdatePendingAuthorization(authz)
-	sa.FinalizeAuthorization(authz)
+	err = sa.FinalizeAuthorization(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
 	certRequest := core.CertificateRequest{
 		CSR: parsedCSR,
 	}
 
 	// Registration has key == AccountKeyA
-	_, err = ra.NewCertificate(certRequest, Registration.ID)
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
 	test.AssertEquals(t, err.Error(), "Certificate public key must be different than account key")
 
@@ -635,9 +589,10 @@ func TestAuthorizationRequired(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	AuthzFinal.RegistrationID = 1
-	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
-	sa.UpdatePendingAuthorization(AuthzFinal)
-	sa.FinalizeAuthorization(AuthzFinal)
+	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// ExampleCSR requests not-example.com and www.not-example.com,
 	// but the authorization only covers not-example.com
@@ -645,7 +600,7 @@ func TestAuthorizationRequired(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err := ra.NewCertificate(certRequest, 1)
+	_, err = ra.NewCertificate(ctx, certRequest, 1)
 	test.Assert(t, err != nil, "Issued certificate with insufficient authorization")
 
 	t.Log("DONE TestAuthorizationRequired")
@@ -655,15 +610,18 @@ func TestNewCertificate(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
-	sa.UpdatePendingAuthorization(AuthzFinal)
-	sa.FinalizeAuthorization(AuthzFinal)
+	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
 
-	// Inject another final authorization to cover www.example.com
+	// Inject another final authorization to cover www.not-example.com
 	authzFinalWWW := AuthzFinal
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
-	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
-	sa.FinalizeAuthorization(authzFinalWWW)
+	authzFinalWWW, err = sa.NewPendingAuthorization(ctx, authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(ctx, authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Check that we fail if the CSR signature is invalid
 	ExampleCSR.Signature[0]++
@@ -671,7 +629,7 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	_, err := ra.NewCertificate(certRequest, Registration.ID)
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	ExampleCSR.Signature[0]--
 	test.AssertError(t, err, "Failed to check CSR signature")
 
@@ -681,36 +639,19 @@ func TestNewCertificate(t *testing.T) {
 		CSR: ExampleCSR,
 	}
 
-	cert, err := ra.NewCertificate(certRequest, Registration.ID)
+	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
-	if err != nil {
-		return
-	}
 
-	parsedCert, err := x509.ParseCertificate(cert.DER)
+	_, err = x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "Failed to parse certificate")
-	if err != nil {
-		return
-	}
-
-	// Verify that cert shows up and is as expected
-	dbCert, err := sa.GetCertificate(core.SerialToString(parsedCert.SerialNumber))
-	test.AssertNotError(t, err, fmt.Sprintf("Could not fetch certificate %032x from database",
-		parsedCert.SerialNumber))
-	if err != nil {
-		return
-	}
-	test.Assert(t, bytes.Compare(cert.DER, dbCert.DER) == 0, "Certificates differ")
-
-	t.Log("DONE TestOnValidationUpdate")
 }
 
 func TestTotalCertRateLimit(t *testing.T) {
 	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies = cmd.RateLimitConfig{
-		TotalCertificates: cmd.RateLimitPolicy{
+	ra.rlPolicies = ratelimit.RateLimitConfig{
+		TotalCertificates: ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
@@ -718,26 +659,34 @@ func TestTotalCertRateLimit(t *testing.T) {
 	fc.Add(24 * 90 * time.Hour)
 
 	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, _ = sa.NewPendingAuthorization(AuthzFinal)
-	sa.UpdatePendingAuthorization(AuthzFinal)
-	sa.FinalizeAuthorization(AuthzFinal)
+	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
 
-	// Inject another final authorization to cover www.example.com
+	// Inject another final authorization to cover www.not-example.com
 	authzFinalWWW := AuthzFinal
 	authzFinalWWW.Identifier.Value = "www.not-example.com"
-	authzFinalWWW, _ = sa.NewPendingAuthorization(authzFinalWWW)
-	sa.FinalizeAuthorization(authzFinalWWW)
+	authzFinalWWW, err = sa.NewPendingAuthorization(ctx, authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
+	err = sa.FinalizeAuthorization(ctx, authzFinalWWW)
+	test.AssertNotError(t, err, "Could not store test data")
 
+	ExampleCSR.Subject.CommonName = "www.NOT-example.com"
 	certRequest := core.CertificateRequest{
 		CSR: ExampleCSR,
 	}
 
-	_, err := ra.NewCertificate(certRequest, Registration.ID)
+	// TODO(jsha): Since we're using a real SA rather than a mock, we call
+	// NewCertificate twice and insert the first result into the SA. Instead we
+	// should mock out the SA and have it return the cert count that we want.
+	cert, err := ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertNotError(t, err, "Failed to issue certificate")
+	_, err = sa.AddCertificate(ctx, cert.DER, Registration.ID)
+	test.AssertNotError(t, err, "Failed to store certificate")
 
 	fc.Add(time.Hour)
 
-	_, err = ra.NewCertificate(certRequest, Registration.ID)
+	_, err = ra.NewCertificate(ctx, certRequest, Registration.ID)
 	test.AssertError(t, err, "Total certificate rate limit failed")
 }
 
@@ -745,8 +694,8 @@ func TestAuthzRateLimiting(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies = cmd.RateLimitConfig{
-		PendingAuthorizationsPerAccount: cmd.RateLimitPolicy{
+	ra.rlPolicies = ratelimit.RateLimitConfig{
+		PendingAuthorizationsPerAccount: ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
@@ -754,20 +703,21 @@ func TestAuthzRateLimiting(t *testing.T) {
 	fc.Add(24 * 90 * time.Hour)
 
 	// Should be able to create an authzRequest
-	authz, err := ra.NewAuthorization(AuthzRequest, Registration.ID)
+	authz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 
 	fc.Add(time.Hour)
 
 	// Second one should trigger rate limit
-	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)
+	_, err = ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertError(t, err, "Pending Authorization rate limit failed.")
 
 	// Finalize pending authz
-	ra.OnValidationUpdate(authz)
+	err = ra.onValidationUpdate(ctx, authz)
+	test.AssertNotError(t, err, "Could not store test data")
 
 	// Try to create a new authzRequest, should be fine now.
-	_, err = ra.NewAuthorization(AuthzRequest, Registration.ID)
+	_, err = ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
 	test.AssertNotError(t, err, "NewAuthorization failed")
 }
 
@@ -788,7 +738,11 @@ func TestDomainsForRateLimiting(t *testing.T) {
 	test.AssertEquals(t, domains[1], "example.co.uk")
 
 	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
-	test.AssertError(t, err, "should fail on public suffix")
+	test.AssertNotError(t, err, "should not fail on public suffix")
+	test.AssertEquals(t, len(domains), 3)
+	test.AssertEquals(t, domains[0], "example.com")
+	test.AssertEquals(t, domains[1], "example.co.uk")
+	test.AssertEquals(t, domains[2], "co.uk")
 
 	domains, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
 	test.AssertNotError(t, err, "failed on foo.bar.baz")
@@ -803,7 +757,7 @@ type mockSAWithNameCounts struct {
 	clk        clock.FakeClock
 }
 
-func (m mockSAWithNameCounts) CountCertificatesByNames(names []string, earliest, latest time.Time) (ret map[string]int, err error) {
+func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, names []string, earliest, latest time.Time) (ret map[string]int, err error) {
 	if latest != m.clk.Now() {
 		m.t.Error("incorrect latest")
 	}
@@ -817,7 +771,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	rlp := cmd.RateLimitPolicy{
+	rlp := ratelimit.RateLimitPolicy{
 		Threshold: 3,
 		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
 		Overrides: map[string]int{
@@ -837,31 +791,31 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	ra.SA = mockSA
 
 	// One base domain, below threshold
-	err := ra.checkCertificatesPerNameLimit([]string{"www.example.com", "example.com"}, rlp, 99)
+	err := ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertNotError(t, err, "rate limited example.com incorrectly")
 
 	// One base domain, above threshold
 	mockSA.nameCounts["example.com"] = 10
-	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "example.com"}, rlp, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type %#v", err)
 	}
 
 	// SA misbehaved and didn't send back a count for every input name
-	err = ra.checkCertificatesPerNameLimit([]string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to error on misbehaving SA")
 
 	// Two base domains, one above threshold but with an override.
 	mockSA.nameCounts["example.com"] = 0
 	mockSA.nameCounts["bigissuer.com"] = 50
-	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
 
 	// Two base domains, one above its override
 	mockSA.nameCounts["example.com"] = 0
 	mockSA.nameCounts["bigissuer.com"] = 100
-	err = ra.checkCertificatesPerNameLimit([]string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type")
@@ -869,129 +823,153 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 
 	// One base domain, above its override (which is below threshold)
 	mockSA.nameCounts["smallissuer.co.uk"] = 1
-	err = ra.checkCertificatesPerNameLimit([]string{"www.smallissuer.co.uk"}, rlp, 99)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
 	if _, ok := err.(core.RateLimitedError); !ok {
 		t.Errorf("Incorrect error type %#v", err)
 	}
 }
 
-var CAkeyPEM = "-----BEGIN RSA PRIVATE KEY-----\n" +
-	"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\n" +
-	"-----END RSA PRIVATE KEY-----"
+var CAkeyPEM = `
+-----BEGIN RSA PRIVATE KEY-----
+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
+-----END RSA PRIVATE KEY-----
+`
 
-var CAcertPEM = "-----BEGIN CERTIFICATE-----\n" +
-	"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\n" +
-	"-----END CERTIFICATE-----"
+var CAcertPEM = `
+-----BEGIN CERTIFICATE-----
+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
+-----END CERTIFICATE-----
+`
 
 // CSR generated by Go:
 // * Random public key
 // * CN = not-example.com
 // * DNSNames = not-example.com, www.not-example.com
-var CSRhex = "308202ae308201960201003027310b300906035504061302" +
-	"5553311830160603550403130f6e6f742d6578616d706c65" +
-	"2e636f6d30820122300d06092a864886f70d010101050003" +
-	"82010f003082010a0282010100a4f507b52ca2766e2cea7b" +
-	"aaada9c3e08ea3423d6617ae84df65b6ed7e6c031605851b" +
-	"f0a14f3461a9f1882de9808b8e59d639c85eec58dbe653e3" +
-	"855e94d81904b7ce6675a1930e0ea6537aa3936fdc9d9780" +
-	"bc9596e5ec183811b137f83f28781d619fae8471ff3db1ad" +
-	"5a4b5cbf96d127d0f16e3c6ccbb97c48b43a7ddfcc17fdf3" +
-	"eac049cc81e4703ba90ce15d3cdfd9d0a3b0ec138f1c06e0" +
-	"8212c94e6884480d4b8f16fcf38f1b10d942cfca558b322e" +
-	"d8896be3104fb40e6851f3b414929b4f54fae89668ab0cbf" +
-	"76b7eb94703b17a73c9189409b088e7d61f39560a413562e" +
-	"64f26b650aede2d27bd2bacfc55d6a106243ba6ce07046d4" +
-	"fda618881b0203010001a042304006092a864886f70d0109" +
-	"0e31333031302f0603551d1104283026820f6e6f742d6578" +
-	"616d706c652e636f6d82137777772e6e6f742d6578616d70" +
-	"6c652e636f6d300d06092a864886f70d01010b0500038201" +
-	"01006e168e521ea37595698ceab29a3815c57b301dcd9c86" +
-	"6fdc7cfb966afde87da52c699f43133a6abfbbeb031f1b02" +
-	"cb072c8543b73fdffff6ee002ed367fe3b09992ac496c4ef" +
-	"1b7487e68c25f66b8d1223a07feebfad8fd7f19727bff7b4" +
-	"02bf6bef705c0a48e800e15bafbc622cb62ee446814234a3" +
-	"ebf9b8ba3c094d64b64aaa1b2b955f769ce60e9e304f7781" +
-	"57814f2f1cb1c4e2ee58bcdc0640dd2f0ff387ddb61ed479" +
-	"7ea935e79638a63dd64bd36723f34c1e6725ae57d8ff63f8" +
-	"749ac154cfaa55b3d3cccd7d42994c922cbb171a43c7ab68" +
-	"5170d833829d28a574fb25ffcf0fd5d3f19becaef2223541" +
-	"c2a8e596a80c8cde27bc78e20d7171fe43d8"
+var CSRPEM = []byte(`
+-----BEGIN CERTIFICATE REQUEST-----
+MIICrjCCAZYCAQAwJzELMAkGA1UEBhMCVVMxGDAWBgNVBAMTD25vdC1leGFtcGxl
+LmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKT1B7UsonZuLOp7
+qq2pw+COo0I9ZheuhN9ltu1+bAMWBYUb8KFPNGGp8Ygt6YCLjlnWOche7Fjb5lPj
+hV6U2BkEt85mdaGTDg6mU3qjk2/cnZeAvJWW5ewYOBGxN/g/KHgdYZ+uhHH/PbGt
+Wktcv5bRJ9Dxbjxsy7l8SLQ6fd/MF/3z6sBJzIHkcDupDOFdPN/Z0KOw7BOPHAbg
+ghLJTmiESA1Ljxb8848bENlCz8pVizIu2Ilr4xBPtA5oUfO0FJKbT1T66JZoqwy/
+drfrlHA7F6c8kYlAmwiOfWHzlWCkE1YuZPJrZQrt4tJ70rrPxV1qEGJDumzgcEbU
+/aYYiBsCAwEAAaBCMEAGCSqGSIb3DQEJDjEzMDEwLwYDVR0RBCgwJoIPbm90LWV4
+YW1wbGUuY29tghN3d3cubm90LWV4YW1wbGUuY29tMA0GCSqGSIb3DQEBCwUAA4IB
+AQBuFo5SHqN1lWmM6rKaOBXFezAdzZyGb9x8+5Zq/eh9pSxpn0MTOmq/u+sDHxsC
+ywcshUO3P9//9u4ALtNn/jsJmSrElsTvG3SH5owl9muNEiOgf+6/rY/X8Zcnv/e0
+Ar9r73BcCkjoAOFbr7xiLLYu5EaBQjSj6/m4ujwJTWS2SqobK5VfdpzmDp4wT3eB
+V4FPLxyxxOLuWLzcBkDdLw/zh922HtR5fqk155Y4pj3WS9NnI/NMHmclrlfY/2P4
+dJrBVM+qVbPTzM19QplMkiy7FxpDx6toUXDYM4KdKKV0+yX/zw/V0/Gb7K7yIjVB
+wqjllqgMjN4nvHjiDXFx/kPY
+-----END CERTIFICATE REQUEST-----
+`)
+
+var eeCertPEM = []byte(`
+-----BEGIN CERTIFICATE-----
+MIIEfTCCAmWgAwIBAgISCr9BRk0C9OOGVke6CAa8F+AXMA0GCSqGSIb3DQEBCwUA
+MDExCzAJBgNVBAYTAlVTMRAwDgYDVQQKDAdUZXN0IENBMRAwDgYDVQQDDAdUZXN0
+IENBMB4XDTE2MDMyMDE4MTEwMFoXDTE2MDMyMDE5MTEwMFowHjEcMBoGA1UEAxMT
+d3d3Lm5vdC1leGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoC
+ggEBAKT1B7UsonZuLOp7qq2pw+COo0I9ZheuhN9ltu1+bAMWBYUb8KFPNGGp8Ygt
+6YCLjlnWOche7Fjb5lPjhV6U2BkEt85mdaGTDg6mU3qjk2/cnZeAvJWW5ewYOBGx
+N/g/KHgdYZ+uhHH/PbGtWktcv5bRJ9Dxbjxsy7l8SLQ6fd/MF/3z6sBJzIHkcDup
+DOFdPN/Z0KOw7BOPHAbgghLJTmiESA1Ljxb8848bENlCz8pVizIu2Ilr4xBPtA5o
+UfO0FJKbT1T66JZoqwy/drfrlHA7F6c8kYlAmwiOfWHzlWCkE1YuZPJrZQrt4tJ7
+0rrPxV1qEGJDumzgcEbU/aYYiBsCAwEAAaOBoTCBnjAdBgNVHSUEFjAUBggrBgEF
+BQcDAQYIKwYBBQUHAwIwDAYDVR0TAQH/BAIwADAdBgNVHQ4EFgQUIEr9ryJ0aJuD
+CwBsCp7Eun8Hx4AwHwYDVR0jBBgwFoAUmiamd/N/8knrCb1QlhwB4WXCqaswLwYD
+VR0RBCgwJoIPbm90LWV4YW1wbGUuY29tghN3d3cubm90LWV4YW1wbGUuY29tMA0G
+CSqGSIb3DQEBCwUAA4ICAQBpGLrCt38Z+knbuE1ALEB3hqUQCAm1OPDW6HR+v2nO
+f2ERxTwL9Cad++3vONxgB68+6KQeIf5ph48OGnS5DgO13mb2cxLlmM2IJpkbSFtW
+VeRNFt/WxRJafpbKw2hgQNJ/sxEAsCyA+kVeh1oCxGQyPO7IIXtw5FecWfIiNNwM
+mVM17uchtvsM5BRePvet9xZxrKOFnn6TQRs8vC4e59Y8h52On+L2Q/ytAa7j3+fb
+7OYCe+yWypGeosekamZTMBjHFV3RRxsGdRATSuZkv1uewyUnEPmsy5Ow4doSYZKW
+QmKjti+vv1YhAhFxPArob0SG3YOiFuKzZ9rSOhUtzSg01ml/kRyOiC7rfO7NRzHq
+idhPUhu2QBmdJTLLOBQLvKDNDOHqDYwKdIHJ7pup2y0Fvm4T96q5bnrSdmz/QAlB
+XVw08HWMcjeOeHYiHST3yxYfQivTNm2PlKfUACb7vcrQ6pYhOnVdYgJZm6gkV4Xd
+K1HKja36snIevv/gSgsE7bGcBYLVCvf16o3IRt9K8CpDoSsWn0iAVcwUP2CyPLm4
+QsqA1afjTUPKQTAgDKRecDPhrT1+FjtBwdpXetpRiBK0UE5exfnI4nszZ9+BYG1l
+xGUhoOJp0T++nz6R3TX7Rwk7KmG6xX3vWr/MFu5A3c8fvkqj987Vti5BeBezCXfs
+rA==
+-----END CERTIFICATE-----
+`)

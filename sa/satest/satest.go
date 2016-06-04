@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/core"
+	jose "github.com/square/go-jose"
 )
 
 var theKey = `{
@@ -37,13 +39,13 @@ func GoodJWK() jose.JsonWebKey {
 // full-fledged SQLSAImpl. Long term, when the CA tests no longer need
 // CreateWorkingRegistration, this and CreateWorkingRegistration can
 // be pushed back into the SA tests proper.
-func CreateWorkingRegistration(t *testing.T, sa core.StorageAuthority) core.Registration {
+func CreateWorkingRegistration(t *testing.T, sa core.StorageAdder) core.Registration {
 	contact, err := core.ParseAcmeURL("mailto:foo@example.com")
 	if err != nil {
 		t.Fatalf("unable to parse contact link: %s", err)
 	}
 	contacts := []*core.AcmeURL{contact}
-	reg, err := sa.NewRegistration(core.Registration{
+	reg, err := sa.NewRegistration(context.Background(), core.Registration{
 		Key:       GoodJWK(),
 		Contact:   contacts,
 		InitialIP: net.ParseIP("88.77.66.11"),

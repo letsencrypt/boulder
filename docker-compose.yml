@@ -1,20 +1,41 @@
 boulder:
     build: .
     dockerfile: Dockerfile
-    net: host
-    ports:
-        - "4000:4000"
     environment:
-        MYSQL_CONTAINER: "yes"
-mysql:
-    image: mariadb:10.0
-    net: host
+        FAKE_DNS: 127.0.0.1
+    volumes:
+      - $GOPATH:/go/
+      - /tmp:/tmp
+    net: bridge
+    extra_hosts:
+      - le.wtf:127.0.0.1
+      - boulder:127.0.0.1
     ports:
-        - "3306:3306"
+      - 4000:4000 # ACME
+      - 4002:4002 # OCSP
+      - 4003:4003 # OCSP
+      - 4500:4500 # ct-test-srv
+      - 8000:8000 # debug ports
+      - 8001:8001
+      - 8002:8002
+      - 8003:8003
+      - 8004:8004
+      - 8055:8055 # dns-test-srv updates
+      - 9380:9380 # mail-test-srv
+      - 9381:9381 # mail-test-srv
+    links:
+      - bmysql:boulder-mysql
+      - brabbitmq:boulder-rabbitmq
+bmysql:
+    image: mariadb:10.1
+    net: bridge
     environment:
         MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-rabbitmq:
+    command: mysqld --bind-address=0.0.0.0
+    log_driver: none
+brabbitmq:
     image: rabbitmq:3
-    net: host
-    ports:
-        - "5672:5672"
+    net: bridge
+    environment:
+        RABBITMQ_NODE_IP_ADDRESS: "0.0.0.0"
+    log_driver: none

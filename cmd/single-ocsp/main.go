@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -14,9 +9,9 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/cloudflare/cfssl/crypto/pkcs11key"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/codegangsta/cli"
-	"github.com/letsencrypt/boulder/Godeps/_workspace/src/golang.org/x/crypto/ocsp"
+	"github.com/codegangsta/cli"
+	"github.com/letsencrypt/pkcs11key"
+	"golang.org/x/crypto/ocsp"
 )
 
 // PKCS11Config defines how to load a module for an HSM.
@@ -174,7 +169,8 @@ func main() {
 		if len(outFile) == 0 {
 			cmd.FailOnError(fmt.Errorf(""), "No output file provided")
 		}
-		ioutil.WriteFile(outFile, responseBytes, 0666)
+		err = ioutil.WriteFile(outFile, responseBytes, 0666)
+		cmd.FailOnError(err, "Failed to write output file")
 	}
 
 	err := app.Run(os.Args)

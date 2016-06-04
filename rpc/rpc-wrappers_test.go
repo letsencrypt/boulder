@@ -1,21 +1,19 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package rpc
 
 import (
 	"encoding/json"
 	"testing"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/mocks"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
+	jose "github.com/square/go-jose"
 )
 
-var log = mocks.UseMockLog()
+var log = blog.UseMock()
+var ctx = context.Background()
 
 const JWK1JSON = `{
   "kty": "RSA",
@@ -62,14 +60,15 @@ func TestRANewRegistration(t *testing.T) {
 	client := RegistrationAuthorityClient{mock}
 
 	var jwk jose.JsonWebKey
-	json.Unmarshal([]byte(JWK1JSON), &jwk)
+	err := json.Unmarshal([]byte(JWK1JSON), &jwk)
+	test.AssertNotError(t, err, "jwk unmarshal error")
 
 	reg := core.Registration{
 		ID:  1,
 		Key: jwk,
 	}
 
-	_, err := client.NewRegistration(reg)
+	_, err = client.NewRegistration(ctx, reg)
 	test.AssertNotError(t, err, "Updated Registration")
 	test.Assert(t, len(mock.LastBody) > 0, "Didn't send Registration")
 	test.AssertEquals(t, "NewRegistration", mock.LastMethod)
@@ -88,6 +87,6 @@ func TestGenerateOCSP(t *testing.T) {
 	}
 
 	mock.NextResp = []byte{}
-	_, err := client.GenerateOCSP(req)
+	_, err := client.GenerateOCSP(ctx, req)
 	test.AssertError(t, err, "Should have failed at signer")
 }

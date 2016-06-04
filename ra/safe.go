@@ -1,11 +1,11 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package ra
 
-import "github.com/letsencrypt/boulder/core"
+import (
+	"golang.org/x/net/context"
+
+	"github.com/letsencrypt/boulder/core"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
+)
 
 // TODO(jmhodges): remove once VA is deployed and stable with IsSafeDomain
 // replace with just a call to ra.VA.IsSafeDomain
@@ -19,15 +19,15 @@ type DomainCheck struct {
 
 // IsSafe returns true if the VA's IsSafeDomain RPC says the domain is safe or
 // if DomainCheck is nil.
-func (d *DomainCheck) IsSafe(domain string) (bool, error) {
+func (d *DomainCheck) IsSafe(ctx context.Context, domain string) (bool, error) {
 	// This nil check allows us to not actually call
 	if d == nil {
 		return true, nil
 	}
 
-	resp, err := d.VA.IsSafeDomain(&core.IsSafeDomainRequest{Domain: domain})
+	resp, err := d.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &domain})
 	if err != nil {
 		return false, err
 	}
-	return resp.IsSafe, nil
+	return resp.GetIsSafe(), nil
 }

@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package sa
 
 import (
@@ -10,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	jose "github.com/letsencrypt/boulder/Godeps/_workspace/src/github.com/letsencrypt/go-jose"
-	gorp "github.com/letsencrypt/boulder/Godeps/_workspace/src/gopkg.in/gorp.v1"
+	jose "github.com/square/go-jose"
+	gorp "gopkg.in/gorp.v1"
 
 	"github.com/letsencrypt/boulder/core"
 )
