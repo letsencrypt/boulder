@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 
 	ct "github.com/google/certificate-transparency/go"
@@ -28,7 +29,7 @@ func main() {
 		}
 
 		if c.Common.CT.IntermediateBundleFilename == "" {
-			logger.Err("No CT submission bundle provided")
+			logger.AuditErr(errors.New("No CT submission bundle provided"))
 			os.Exit(1)
 		}
 		pemBundle, err := core.LoadCertBundle(c.Common.CT.IntermediateBundleFilename)

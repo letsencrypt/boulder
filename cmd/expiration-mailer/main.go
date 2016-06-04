@@ -340,7 +340,7 @@ func main() {
 		if s := c.Mailer.NagCheckInterval; s != "" {
 			nagCheckInterval, err = time.ParseDuration(s)
 			if err != nil {
-				logger.Err(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
+				logger.AuditErr(fmt.Errorf("Failed to parse NagCheckInterval string %q: %s", s, err))
 				return
 			}
 		}
@@ -349,7 +349,7 @@ func main() {
 		for _, nagDuration := range c.Mailer.NagTimes {
 			dur, err := time.ParseDuration(nagDuration)
 			if err != nil {
-				logger.Err(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
+				logger.AuditErr(fmt.Errorf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
 				return
 			}
 			nags = append(nags, dur+nagCheckInterval)
