@@ -27,12 +27,11 @@ def install(race_detection):
 
     return subprocess.call(cmd, shell=True) == 0
 
-def run(binary, race_detection, config=default_config):
+def run(cmd, race_detection):
     # Note: Must use exec here so that killing this process kills the command.
-    cmd = """GORACE="halt_on_error=1" exec ./bin/%s --config %s""" % (binary, config)
-    p = subprocess.Popen(cmd, shell=True)
+    cmd = """exec ./bin/%s""" % cmd
+    p = subprocess.Popen(cmd, shell=True, env={'GORACE': 'halt_on_error=1'})
     p.cmd = cmd
-    print('started %s with pid %d' % (p.cmd, p.pid))
     return p
 
 def start(race_detection):
@@ -45,17 +44,19 @@ def start(race_detection):
     global processes
     forward()
     progs = [
-        'boulder-wfe',
-        'boulder-ra',
-        'boulder-sa',
-        'boulder-ca',
-        'boulder-va',
-        'boulder-publisher',
-        'ocsp-updater',
-        'ocsp-responder',
-        'ct-test-srv',
-        'dns-test-srv',
-        'mail-test-srv'
+        'boulder-wfe --config %s' % default_config,
+        'boulder-ra --config %s' % default_config,
+        'boulder-sa --config %s' % default_config,
+        'boulder-ca --config %s' % default_config,
+        'boulder-va --config %s' % default_config,
+        'boulder-publisher --config %s' % default_config,
+        'ocsp-updater --config %s' % default_config,
+        'ocsp-responder --config %s' % default_config,
+        'ct-test-srv --config %s' % default_config,
+        'dns-test-srv --config %s' % default_config,
+        'mail-test-srv --config %s' % default_config,
+        'ocsp-responder --config test/issuer-ocsp-responder.json',
+        'caa-checker --config cmd/caa-checker/test-config.yml'
     ]
     if not install(race_detection):
         return False
@@ -69,24 +70,11 @@ def start(race_detection):
             # Don't keep building stuff if a server has already died.
             return False
 
-    # Additionally run the issuer-ocsp-responder, which is not amenable to the
-    # above `run` pattern because it uses a different config file.
-    try:
-        processes.append(run('ocsp-responder', race_detection, 'test/issuer-ocsp-responder.json'))
-    except Exception as e:
-        print(e)
-        return False
-    # And the separate CAA checking service.
-    try:
-        processes.append(run('caa-checker', race_detection, 'cmd/caa-checker/test-config.yml'))
-    except Exception as e:
-        print(e)
-        return False
-
     # Wait until all servers are up before returning to caller. This means
     # checking each server's debug port until it's available.
     while True:
         try:
+            time.sleep(0.3)
             # If one of the servers has died, quit immediately.
             if not check():
                 return False
@@ -101,7 +89,6 @@ def start(race_detection):
                 print "Waiting for debug port %d" % debug_port
             else:
                 raise
-        time.sleep(1)
 
     # Some servers emit extra text after their debug server is open. Sleep 1
     # second so the "servers running" message comes last.
