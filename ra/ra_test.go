@@ -755,13 +755,16 @@ func TestRateLimitLiveReload(t *testing.T) {
 
 	// We'll work with a temporary file as the reloader monitored rate limit
 	// policy file
-	policyFile, _ := ioutil.TempFile("", "rate-limit-policies.yml")
+	policyFile, tempErr := ioutil.TempFile("", "rate-limit-policies.yml")
+	test.AssertNotError(t, tempErr, "should not fail to create TempFile")
 	filename := policyFile.Name()
 	defer os.Remove(filename)
 
 	// Start with bodyOne in the temp file
-	bodyOne, _ := ioutil.ReadFile("../test/rate-limit-policies.yml")
-	ioutil.WriteFile(filename, bodyOne, 0644)
+	bodyOne, readErr := ioutil.ReadFile("../test/rate-limit-policies.yml")
+	test.AssertNotError(t, readErr, "should not fail to read ../test/rate-limit-policies.yml")
+	writeErr := ioutil.WriteFile(filename, bodyOne, 0644)
+	test.AssertNotError(t, writeErr, "should not fail to write temp file")
 
 	// Configure the RA to use the monitored temp file as the policy file
 	err := ra.SetRateLimitPoliciesFile(filename)
@@ -780,9 +783,11 @@ func TestRateLimitLiveReload(t *testing.T) {
 	// Write a different  policy YAML to the monitored file, expect a reload.
 	// Sleep a few milliseconds before writing so the timestamp isn't identical to
 	// when we wrote bodyOne to the file earlier.
-	bodyTwo, _ := ioutil.ReadFile("../test/rate-limit-policies-b.yml")
+	bodyTwo, readErr := ioutil.ReadFile("../test/rate-limit-policies-b.yml")
+	test.AssertNotError(t, readErr, "should not fail to read ../test/rate-limit-policies-b.yml")
 	time.Sleep(15 * time.Millisecond)
-	ioutil.WriteFile(filename, bodyTwo, 0644)
+	writeErr = ioutil.WriteFile(filename, bodyTwo, 0644)
+	test.AssertNotError(t, writeErr, "should not fail to write temp file")
 
 	// Sleep to allow the reloader a chance to catch that an update occurred
 	time.Sleep(2 * time.Second)
