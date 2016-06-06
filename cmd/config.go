@@ -66,8 +66,7 @@ type Config struct {
 
 		VAService *GRPCClientConfig
 
-		MaxNames     int
-		DoNotForceCN bool
+		MaxNames int
 	}
 
 	SA struct {
@@ -332,11 +331,6 @@ type CAConfig struct {
 	CFSSL    cfsslConfig.Config
 
 	MaxConcurrentRPCServerRequests int64
-
-	// DoNotForceCN is a temporary config setting. It controls whether
-	// to add a certificate's serial to its Subject, and whether to
-	// not pull a SAN entry to be the CN if no CN was given in a CSR.
-	DoNotForceCN bool
 
 	// EnableMustStaple governs whether the Must Staple extension in CSRs
 	// triggers issuance of certificates with Must Staple.

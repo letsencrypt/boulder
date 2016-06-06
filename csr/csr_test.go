@@ -122,7 +122,7 @@ func TestVerifyCSR(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		err := VerifyCSR(c.csr, c.maxNames, c.keyPolicy, c.pa, false, c.regID)
+		err := VerifyCSR(c.csr, c.maxNames, c.keyPolicy, c.pa, c.regID)
 		test.AssertDeepEquals(t, c.expectedError, err)
 	}
 }
@@ -130,43 +130,37 @@ func TestVerifyCSR(t *testing.T) {
 func TestNormalizeCSR(t *testing.T) {
 	cases := []struct {
 		csr           *x509.CertificateRequest
-		forceCN       bool
 		expectedCN    string
 		expectedNames []string
 	}{
 		{
 			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
-			true,
-			"a.com",
+			"",
 			[]string{"a.com"},
 		},
 		{
 			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
-			true,
 			"a.com",
 			[]string{"a.com"},
 		},
 		{
 			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
-			false,
 			"",
 			[]string{"a.com"},
 		},
 		{
 			&x509.CertificateRequest{DNSNames: []string{"a.com", "a.com"}},
-			false,
 			"",
 			[]string{"a.com"},
 		},
 		{
 			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"B.com"}},
-			false,
 			"a.com",
 			[]string{"a.com", "b.com"},
 		},
 	}
 	for _, c := range cases {
-		normalizeCSR(c.csr, c.forceCN)
+		normalizeCSR(c.csr)
 		test.AssertEquals(t, c.expectedCN, c.csr.Subject.CommonName)
 		test.AssertDeepEquals(t, c.expectedNames, c.expectedNames)
 	}

@@ -63,7 +63,6 @@ type RegistrationAuthorityImpl struct {
 	maxContactsPerReg            int
 	useNewVARPC                  bool
 	maxNames                     int
-	forceCNFromSAN               bool
 
 	regByIPStats         metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
@@ -81,7 +80,6 @@ func NewRegistrationAuthorityImpl(
 	keyPolicy goodkey.KeyPolicy,
 	newVARPC bool,
 	maxNames int,
-	forceCNFromSAN bool,
 ) *RegistrationAuthorityImpl {
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
@@ -95,7 +93,6 @@ func NewRegistrationAuthorityImpl(
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		maxNames:                     maxNames,
-		forceCNFromSAN:               forceCNFromSAN,
 		regByIPStats:                 scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
 		pendAuthByRegIDStats:         scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
 		certsForDomainStats:          scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
@@ -411,8 +408,7 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(cert core.Certificate, csr *x509
 		err = core.InternalServerError("Generated certificate public key doesn't match CSR public key")
 		return
 	}
-	if !ra.forceCNFromSAN && len(csr.Subject.CommonName) > 0 &&
-		parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
+	if parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
 		err = core.InternalServerError("Generated certificate CommonName doesn't match CSR CommonName")
 		return
 	}
@@ -526,7 +522,7 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	// Verify the CSR
 	csr := req.CSR
-	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, ra.forceCNFromSAN, regID); err != nil {
+	if err := csrlib.VerifyCSR(csr, ra.maxNames, &ra.keyPolicy, ra.PA, regID); err != nil {
 		err = core.MalformedRequestError(err.Error())
 		return emptyCert, err
 	}

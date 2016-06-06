@@ -46,7 +46,6 @@
     "expiry": "2160h",
     "lifespanOCSP": "96h",
     "maxNames": 1000,
-    "doNotForceCN": true,
     "enableMustStaple": true,
     "hostnamePolicyFile": "test/hostname-policy.json",
     "cfssl": {
@@ -171,7 +170,6 @@
     "debugAddr": "localhost:8002",
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
-    "doNotForceCN": true,
     "vaService": {
       "serverAddress": "boulder:9092",
       "serverIssuerPath": "test/grpc-creds/ca.pem",
