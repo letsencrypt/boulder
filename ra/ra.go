@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/net/publicsuffix"
 	"golang.org/x/net/context"
 
@@ -104,7 +105,17 @@ func NewRegistrationAuthorityImpl(
 }
 
 func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) error {
-	rateLimitPolicies, err := ratelimit.LoadRateLimitPolicies(filename)
+	_, err := reloader.New(filename, ra.setRateLimitPolicies, ra.rateLimitPoliciesLoadError)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) setRateLimitPolicies(policyContent []byte) error {
+	rateLimitPolicies, err := ratelimit.LoadRateLimitPolicies(policyContent)
 
 	if err != nil {
 		return err
@@ -112,6 +123,12 @@ func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) e
 
 	ra.rlPolicies = rateLimitPolicies
 	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
+	// TODO(cpu): Determine if this is the best course of action for when the policy
+	// fails to load at runtime during a reload
+	ra.log.Err(fmt.Sprintf("error live loading rate limit policy: %s", err))
 }
 
 const (

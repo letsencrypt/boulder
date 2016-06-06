@@ -1,7 +1,6 @@
 package ratelimit
 
 import (
-	"io/ioutil"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -77,15 +76,11 @@ func (rlp *RateLimitPolicy) WindowBegin(windowEnd time.Time) time.Time {
 	return windowEnd.Add(-1 * rlp.Window.Duration)
 }
 
-// LoadRateLimitPolicies loads various rate limiting policies from a YAML
-// configuration file
-func LoadRateLimitPolicies(filename string) (RateLimitConfig, error) {
-	contents, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return RateLimitConfig{}, err
-	}
+// LoadRateLimitPolicies loads various rate limiting policies from a byte array of
+// YAML configuration (typically read from disk by a reloader)
+func LoadRateLimitPolicies(contents []byte) (RateLimitConfig, error) {
 	var rlc RateLimitConfig
-	err = yaml.Unmarshal(contents, &rlc)
+	err := yaml.Unmarshal(contents, &rlc)
 	if err != nil {
 		return RateLimitConfig{}, err
 	}
