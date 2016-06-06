@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 
@@ -745,6 +747,53 @@ func TestDomainsForRateLimiting(t *testing.T) {
 	test.AssertNotError(t, err, "failed on foo.bar.baz")
 	test.AssertEquals(t, len(domains), 1)
 	test.AssertEquals(t, domains[0], "example.com")
+}
+
+func TestRateLimitLiveReload(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// We'll work with a temporary file as the reloader monitored rate limit
+	// policy file
+	policyFile, _ := ioutil.TempFile("", "rate-limit-policies.yml")
+	filename := policyFile.Name()
+	defer os.Remove(filename)
+
+	// Start with bodyOne in the temp file
+	bodyOne, _ := ioutil.ReadFile("../test/rate-limit-policies.yml")
+	ioutil.WriteFile(filename, bodyOne, 0644)
+
+	// Configure the RA to use the monitored temp file as the policy file
+	err := ra.SetRateLimitPoliciesFile(filename)
+	test.AssertNotError(t, err, "failed to SetRateLimitPoliciesFile")
+
+	// Test some fields of the initial policy to ensure it loaded correctly
+	test.AssertEquals(t, ra.rlPolicies.TotalCertificates.Threshold, 100000)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName.Overrides["le.wtf"], 10000)
+	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP.Overrides["127.0.0.1"], 1000000)
+	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount.Threshold, 3)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet.Overrides["le.wtf"], 10000)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet.Threshold, 5)
+
+	// Write a different  policy YAML to the monitored file, expect a reload.
+	// Sleep a few milliseconds before writing so the timestamp isn't identical to
+	// when we wrote bodyOne to the file earlier.
+	bodyTwo, _ := ioutil.ReadFile("../test/rate-limit-policies-b.yml")
+	time.Sleep(15 * time.Millisecond)
+	ioutil.WriteFile(filename, bodyTwo, 0644)
+
+	// Sleep to allow the reloader a chance to catch that an update occurred
+	time.Sleep(2 * time.Second)
+
+	// Test fields of the policy to make sure writing the new policy to the monitored file
+	// resulted in the runtime values being updated
+	test.AssertEquals(t, ra.rlPolicies.TotalCertificates.Threshold, 99999)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName.Overrides["le.wtf"], 9999)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName.Overrides["le4.wtf"], 9999)
+	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP.Overrides["127.0.0.1"], 999990)
+	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount.Threshold, 999)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet.Overrides["le.wtf"], 9999)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet.Threshold, 99999)
 }
 
 type mockSAWithNameCounts struct {
