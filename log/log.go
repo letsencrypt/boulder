@@ -25,7 +25,7 @@ type Logger interface {
 	AuditPanic()
 	AuditInfo(string)
 	AuditObject(string, interface{})
-	AuditErr(error)
+	AuditErr(string)
 }
 
 // impl implements Logger.
@@ -185,10 +185,10 @@ func caller(level int) string {
 func (log *impl) AuditPanic() {
 	if err := recover(); err != nil {
 		buf := make([]byte, 8192)
-		log.AuditErr(fmt.Errorf("Panic caused by err: %s", err))
+		log.AuditErr(fmt.Sprintf("Panic caused by err: %s", err))
 
 		runtime.Stack(buf, false)
-		log.AuditErr(fmt.Errorf("Stack Trace (Current frame) %s", buf))
+		log.AuditErr(fmt.Sprintf("Stack Trace (Current frame) %s", buf))
 
 		runtime.Stack(buf, true)
 		log.Warning(fmt.Sprintf("Stack Trace (All frames): %s", buf))
@@ -237,6 +237,6 @@ func (log *impl) AuditObject(msg string, obj interface{}) {
 
 // AuditErr can format an error for auditing; it does so at ERR level.
 // AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-func (log *impl) AuditErr(msg error) {
-	log.auditAtLevel(syslog.LOG_ERR, msg.Error())
+func (log *impl) AuditErr(msg string) {
+	log.auditAtLevel(syslog.LOG_ERR, msg)
 }
