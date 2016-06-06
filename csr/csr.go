@@ -31,10 +31,10 @@ var badSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 }
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
-// the CSR which lowers the case of DNS names and subject CN, and if forceCNFromSAN is true it
-// will hoist a DNS name into the CN if it is empty.
-func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority, forceCNFromSAN bool, regID int64) error {
-	normalizeCSR(csr, forceCNFromSAN)
+// the CSR which lowers the case of DNS names and subject CN, and it will also hoist a DNS name
+// into the CN if it is empty.
+func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority, regID int64) error {
+	normalizeCSR(csr)
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
 		return errors.New("invalid public key in CSR")
@@ -75,13 +75,9 @@ func VerifyCSR(csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.Ke
 }
 
 // normalizeCSR deduplicates and lowers the case of dNSNames and the subject CN.
-// If forceCNFromSAN is true it will also hoist a dNSName into the CN if it is empty.
-func normalizeCSR(csr *x509.CertificateRequest, forceCNFromSAN bool) {
-	if forceCNFromSAN && csr.Subject.CommonName == "" {
-		if len(csr.DNSNames) > 0 {
-			csr.Subject.CommonName = csr.DNSNames[0]
-		}
-	} else if csr.Subject.CommonName != "" {
+// It will also hoist a dNSName into the CN if it is empty.
+func normalizeCSR(csr *x509.CertificateRequest) {
+	if csr.Subject.CommonName != "" {
 		csr.DNSNames = append(csr.DNSNames, csr.Subject.CommonName)
 	}
 	csr.Subject.CommonName = strings.ToLower(csr.Subject.CommonName)

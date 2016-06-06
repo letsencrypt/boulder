@@ -179,7 +179,6 @@ func setup(t *testing.T) *testCtx {
 		Expiry:       "8760h",
 		LifespanOCSP: cmd.ConfigDuration{Duration: 45 * time.Minute},
 		MaxNames:     2,
-		DoNotForceCN: true,
 		CFSSL: cfsslConfig.Config{
 			Signing: &cfsslConfig.Signing{
 				Profiles: map[string]*cfsslConfig.SigningProfile{

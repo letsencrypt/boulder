@@ -119,7 +119,6 @@ type CertificateAuthorityImpl struct {
 	prefix           int // Prepended to the serial number
 	validityPeriod   time.Duration
 	maxNames         int
-	forceCNFromSAN   bool
 	enableMustStaple bool
 }
 
@@ -234,7 +233,6 @@ func NewCertificateAuthorityImpl(
 		log:              logger,
 		stats:            stats,
 		keyPolicy:        keyPolicy,
-		forceCNFromSAN:   !config.DoNotForceCN, // Note the inversion here
 		enableMustStaple: config.EnableMustStaple,
 	}
 
@@ -376,7 +374,7 @@ func (ca *CertificateAuthorityImpl) GenerateOCSP(ctx context.Context, xferObj co
 func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x509.CertificateRequest, regID int64) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 
-	if err := csrlib.VerifyCSR(&csr, ca.maxNames, &ca.keyPolicy, ca.PA, ca.forceCNFromSAN, regID); err != nil {
+	if err := csrlib.VerifyCSR(&csr, ca.maxNames, &ca.keyPolicy, ca.PA, regID); err != nil {
 		// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 		ca.log.AuditErr(err.Error())
 		return emptyCert, core.MalformedRequestError(err.Error())
@@ -442,9 +440,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificate(ctx context.Context, csr x5
 		Serial:     serialBigInt,
 		Extensions: requestedExtensions,
 	}
-	if !ca.forceCNFromSAN {
-		req.Subject.SerialNumber = serialHex
-	}
+	req.Subject.SerialNumber = serialHex
 
 	ca.log.AuditInfo(fmt.Sprintf("Signing: serial=[%s] names=[%s] csr=[%s]",
 		serialHex, strings.Join(csr.DNSNames, ", "), csrPEM))
