@@ -110,8 +110,6 @@ func NewWebFrontEndImpl(
 // http.HandleFunc(), but with a wrapper around the handler that
 // provides some generic per-request functionality:
 //
-// * Set a unique tracking header Boulder-Request-ID.
-//
 // * Set a Replay-Nonce header.
 //
 // * Respond to OPTIONS requests, including CORS preflight requests.
