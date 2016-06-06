@@ -1604,7 +1604,8 @@ func TestHeaderBoulderRequestId(t *testing.T) {
 		URL:    mustParseURL(directoryPath),
 	})
 
-	test.AssertNotEquals(t, responseWriter.Header().Get("Boulder-Request-ID"), "")
+	requestID := responseWriter.Header().Get("Boulder-Request-ID")
+	test.Assert(t, len(requestID) > 0, "Boulder-Request-ID header is empty")
 }
 
 func TestHeaderBoulderRequester(t *testing.T) {
