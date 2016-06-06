@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"sort"
 	"strings"
 	"time"
 
@@ -451,20 +450,6 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, reg core.Re
 	return modelToRegistration(rm)
 }
 
-// UpdateOCSP stores an updated OCSP response.
-func (ssa *SQLStorageAuthority) UpdateOCSP(ctx context.Context, serial string, ocspResponse []byte) (err error) {
-	status, err := ssa.GetCertificateStatus(ctx, serial)
-	if err != nil {
-		return fmt.Errorf(
-			"Unable to update OCSP for certificate %s: cert status not found.", serial)
-	}
-
-	status.OCSPResponse = ocspResponse
-	status.OCSPLastUpdated = ssa.clk.Now()
-	_, err = ssa.dbMap.Update(&status)
-	return err
-}
-
 // MarkCertificateRevoked stores the fact that a certificate is revoked, along
 // with a timestamp and a reason.
 func (ssa *SQLStorageAuthority) MarkCertificateRevoked(ctx context.Context, serial string, reasonCode core.RevocationCode) (err error) {
@@ -798,26 +783,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, certDER []by
 	}
 
 	err = tx.Commit()
-	return
-}
-
-// AlreadyDeniedCSR queries to find if the name list has already been denied.
-func (ssa *SQLStorageAuthority) AlreadyDeniedCSR(ctx context.Context, names []string) (already bool, err error) {
-	sort.Strings(names)
-
-	var denied int64
-	err = ssa.dbMap.SelectOne(
-		&denied,
-		"SELECT count(*) FROM deniedCSRs WHERE names = :names",
-		map[string]interface{}{"names": strings.ToLower(strings.Join(names, ","))},
-	)
-	if err != nil {
-		return
-	}
-	if denied > 0 {
-		already = true
-	}
-
 	return
 }
 

@@ -14,16 +14,18 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/net/publicsuffix"
 	"golang.org/x/net/context"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/ratelimit"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 // DefaultAuthorizationLifetime is the 10 month default authorization lifetime.
@@ -50,12 +52,11 @@ type RegistrationAuthorityImpl struct {
 	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
 	log         blog.Logger
-	dc          *DomainCheck
-	keyPolicy   core.KeyPolicy
+	keyPolicy   goodkey.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
-	rlPolicies                   cmd.RateLimitConfig
+	rlPolicies                   ratelimit.RateLimitConfig
 	tiMu                         *sync.RWMutex
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
@@ -71,14 +72,22 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies cmd.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool, maxNames int, forceCNFromSAN bool) *RegistrationAuthorityImpl {
-	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
+func NewRegistrationAuthorityImpl(
+	clk clock.Clock,
+	logger blog.Logger,
+	stats statsd.Statter,
+	policies ratelimit.RateLimitConfig,
+	maxContactsPerReg int,
+	keyPolicy goodkey.KeyPolicy,
+	newVARPC bool,
+	maxNames int,
+	forceCNFromSAN bool,
+) *RegistrationAuthorityImpl {
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
-		dc:    dc,
 		authorizationLifetime:        DefaultAuthorizationLifetime,
 		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
 		rlPolicies:                   policies,
@@ -104,16 +113,10 @@ const (
 func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolver) (prob *probs.ProblemDetails) {
 	emails, err := mail.ParseAddressList(address)
 	if err != nil {
-		return &probs.ProblemDetails{
-			Type:   probs.InvalidEmailProblem,
-			Detail: unparseableEmailDetail,
-		}
+		return probs.InvalidEmail(unparseableEmailDetail)
 	}
 	if len(emails) > 1 {
-		return &probs.ProblemDetails{
-			Type:   probs.InvalidEmailProblem,
-			Detail: multipleAddressDetail,
-		}
+		return probs.InvalidEmail(multipleAddressDetail)
 	}
 	splitEmail := strings.SplitN(emails[0].Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
@@ -147,10 +150,7 @@ func validateEmail(ctx context.Context, address string, resolver bdns.DNSResolve
 		return nil
 	}
 
-	return &probs.ProblemDetails{
-		Type:   probs.InvalidEmailProblem,
-		Detail: emptyDNSResponseDetail,
-	}
+	return probs.InvalidEmail(emptyDNSResponseDetail)
 }
 
 type certificateRequestEvent struct {
@@ -336,13 +336,13 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	if identifier.Type == core.IdentifierDNS {
-		isSafe, err := ra.dc.IsSafe(ctx, identifier.Value)
+		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
 		if err != nil {
 			outErr := core.InternalServerError("unable to determine if domain was safe")
 			ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), err))
 			return authz, outErr
 		}
-		if !isSafe {
+		if !isSafeResp.GetIsSafe() {
 			return authz, core.UnauthorizedError(fmt.Sprintf("%#v was considered an unsafe domain by a third-party API", identifier.Value))
 		}
 	}
@@ -544,17 +544,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		return emptyCert, err
 	}
 
-	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(ctx, names)
-	if err != nil {
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-	if csrPreviousDenied {
-		err = core.UnauthorizedError("CSR has already been revoked/denied")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
 	if core.KeyDigestEquals(csr.PublicKey, registration.Key) {
 		err = core.MalformedRequestError("Certificate public key must be different than account key")
 		return emptyCert, err
@@ -636,7 +625,7 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 	return domains, nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit cmd.RateLimitPolicy, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
 	names, err := domainsForRateLimiting(names)
 	if err != nil {
 		return err
@@ -682,7 +671,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	return nil
 }
 
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit cmd.RateLimitPolicy, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
 	count, err := ra.SA.CountFQDNSets(ctx, limit.Window.Duration, names)
 	if err != nil {
 		return err

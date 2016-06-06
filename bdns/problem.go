@@ -60,13 +60,7 @@ const detailServerFailure = "server failure at resolver"
 // record type and domain given.
 func ProblemDetailsFromDNSError(err error) *probs.ProblemDetails {
 	if dnsErr, ok := err.(*DNSError); ok {
-		return &probs.ProblemDetails{
-			Type:   probs.ConnectionProblem,
-			Detail: dnsErr.Error(),
-		}
+		return probs.ConnectionFailure(dnsErr.Error())
 	}
-	return &probs.ProblemDetails{
-		Type:   probs.ConnectionProblem,
-		Detail: detailServerFailure,
-	}
+	return probs.ConnectionFailure(detailServerFailure)
 }

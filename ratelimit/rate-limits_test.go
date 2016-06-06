@@ -1,8 +1,10 @@
-package cmd
+package ratelimit
 
 import (
 	"testing"
 	"time"
+
+	"github.com/letsencrypt/boulder/cmd"
 )
 
 func TestEnabled(t *testing.T) {
@@ -49,7 +51,7 @@ func TestGetThreshold(t *testing.T) {
 
 func TestWindowBegin(t *testing.T) {
 	policy := RateLimitPolicy{
-		Window: ConfigDuration{Duration: 24 * time.Hour},
+		Window: cmd.ConfigDuration{Duration: 24 * time.Hour},
 	}
 	now := time.Date(2015, 9, 22, 0, 0, 0, 0, time.UTC)
 	expected := time.Date(2015, 9, 21, 0, 0, 0, 0, time.UTC)

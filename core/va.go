@@ -1,6 +1,10 @@
 package core
 
-import "golang.org/x/net/context"
+import (
+	"golang.org/x/net/context"
+
+	vaPB "github.com/letsencrypt/boulder/va/proto"
+)
 
 // ValidationAuthority defines the public interface for the Boulder VA
 type ValidationAuthority interface {
@@ -11,19 +15,6 @@ type ValidationAuthority interface {
 	// *probs.ProblemDetails.
 	//
 	// TODO(#1626): remove authz parameter
-	PerformValidation(context.Context, string, Challenge, Authorization) ([]ValidationRecord, error)
-	IsSafeDomain(context.Context, *IsSafeDomainRequest) (*IsSafeDomainResponse, error)
-}
-
-// IsSafeDomainRequest is the request struct for the IsSafeDomain call. The Domain field
-// should be just a domain with no leading scheme or trailing path.
-type IsSafeDomainRequest struct {
-	Domain string
-}
-
-// IsSafeDomainResponse is the response struct for the IsSafeDomain call. The
-// IsSafe bool is true if and only if the third-party safe browing API says the
-// domain is safe.
-type IsSafeDomainResponse struct {
-	IsSafe bool
+	PerformValidation(ctx context.Context, domain string, challenge Challenge, authz Authorization) ([]ValidationRecord, error)
+	IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (resp *vaPB.IsDomainSafe, err error)
 }

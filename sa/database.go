@@ -175,7 +175,6 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "Serial")
-	dbMap.AddTableWithName(core.DeniedCSR{}, "deniedCSRs").SetKeys(true, "ID")
 	dbMap.AddTableWithName(core.SignedCertificateTimestamp{}, "sctReceipts").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
 }

@@ -126,7 +126,8 @@ func main() {
 			clock.Default(),
 			stats,
 			issuers,
-			c.KeyPolicy())
+			c.KeyPolicy(),
+			logger)
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.PA = pa
 
@@ -145,7 +146,7 @@ func main() {
 			cmd.FailOnError(err, "Failed to create Publisher client")
 		}
 
-		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats)
+		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats, logger)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
 		err = rpc.NewCertificateAuthorityServer(cas, cai)
 		cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")

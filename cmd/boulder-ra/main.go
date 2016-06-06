@@ -5,13 +5,16 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
-
-	"github.com/letsencrypt/boulder/cmd"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/rpc"
 )
 
@@ -34,14 +37,21 @@ func main() {
 		err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 		cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-		rateLimitPolicies, err := cmd.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
+		rateLimitPolicies, err := ratelimit.LoadRateLimitPolicies(c.RA.RateLimitPoliciesFilename)
 		cmd.FailOnError(err, "Couldn't load rate limit policies file")
 
 		go cmd.ProfileCmd("RA", stats)
 
 		amqpConf := c.RA.AMQP
-		vac, err := rpc.NewValidationAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create VA client")
+		var vac core.ValidationAuthority
+		if c.RA.VAService != nil {
+			conn, err := bgrpc.ClientSetup(c.RA.VAService)
+			cmd.FailOnError(err, "Unable to create VA client")
+			vac = bgrpc.NewValidationAuthorityGRPCClient(conn)
+		} else {
+			vac, err = rpc.NewValidationAuthorityClient(clientName, amqpConf, stats)
+			cmd.FailOnError(err, "Unable to create VA client")
+		}
 
 		cac, err := rpc.NewCertificateAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create CA client")
@@ -49,13 +59,8 @@ func main() {
 		sac, err := rpc.NewStorageAuthorityClient(clientName, amqpConf, stats)
 		cmd.FailOnError(err, "Unable to create SA client")
 
-		var dc *ra.DomainCheck
-		if c.RA.UseIsSafeDomain {
-			dc = &ra.DomainCheck{VA: vac}
-		}
-
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), logger, stats,
-			dc, rateLimitPolicies, c.RA.MaxContactsPerRegistration, c.KeyPolicy(),
+			rateLimitPolicies, c.RA.MaxContactsPerRegistration, c.KeyPolicy(),
 			c.RA.UseNewVARPC, c.RA.MaxNames, c.RA.DoNotForceCN)
 		rai.PA = pa
 		raDNSTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
@@ -75,9 +80,9 @@ func main() {
 		rai.CA = cac
 		rai.SA = sac
 
-		ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats)
+		ras, err := rpc.NewAmqpRPCServer(amqpConf, c.RA.MaxConcurrentRPCServerRequests, stats, logger)
 		cmd.FailOnError(err, "Unable to create RA RPC server")
-		err = rpc.NewRegistrationAuthorityServer(ras, rai)
+		err = rpc.NewRegistrationAuthorityServer(ras, rai, logger)
 		cmd.FailOnError(err, "Unable to setup RA RPC server")
 
 		err = ras.Start(amqpConf)
