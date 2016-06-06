@@ -62,8 +62,6 @@ func TestNewDbMap(t *testing.T) {
 }
 
 func TestStrictness(t *testing.T) {
-	const mysqlConnectURL = "mysql+tcp://policy:password@boulder-mysql:3306/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
-
 	dbMap, err := NewDbMap(vars.DBConnSA, 1)
 	_, err = dbMap.Exec(`insert into authz set
 		id="hi", identifier="foo", status="pending", combinations="combos",
