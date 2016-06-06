@@ -84,7 +84,6 @@ func NewRegistrationAuthorityImpl(
 	maxNames int,
 	forceCNFromSAN bool,
 ) *RegistrationAuthorityImpl {
-	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
