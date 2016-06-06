@@ -188,7 +188,12 @@ func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string)
 	query := make(url.Values)
 	query.Add("name", domain)
 	query.Add("type", strconv.Itoa(int(dns.TypeCAA)))
-	url := fmt.Sprintf("%s?%s", cdr.URI, query.Encode())
+	uri, err := url.Parse(cdr.URI)
+	if err != nil {
+		return nil, err
+	}
+	uri.RawQuery = query.Encode()
+	uriStr := uri.String()
 
 	// min of ctx deadline and time.Now().Add(cdr.timeout)
 	caaCtx, cancel := context.WithTimeout(ctx, cdr.timeout)
@@ -197,7 +202,7 @@ func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string)
 	for addr, interfaceClient := range cdr.Clients {
 		go func(ic *http.Client, ia string) {
 			started := time.Now()
-			records, err := cdr.queryCAA(caaCtx, url, ic)
+			records, err := cdr.queryCAA(caaCtx, uriStr, ic)
 			cdr.stats.TimingDuration(fmt.Sprintf("CDR.GPDNS.Latency.%s", ia), time.Since(started))
 			if err != nil {
 				cdr.stats.Inc(fmt.Sprintf("CDR.GPDNS.Failures.%s", ia), 1)
@@ -210,7 +215,6 @@ func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string)
 	failed := 0
 	var CAAs []*dns.CAA
 	var canonicalSet []byte
-	var err error
 	for i := 0; i < len(cdr.Clients); i++ {
 		r := <-results
 		if r.err != nil {

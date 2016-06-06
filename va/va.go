@@ -475,10 +475,7 @@ func (va *ValidationAuthorityImpl) checkCAA(ctx context.Context, identifier core
 			// AUDIT[ Certificate Requests ] 11917fa4-10ef-4e0d-9105-bacbe7836a3c
 			va.log.AuditInfo(fmt.Sprintf("Checked CAA records for %s, [Present: %t, Valid for issuance: %t]", identifier.Value, present, valid))
 			if !valid {
-				prob = &probs.ProblemDetails{
-					Type:   probs.CAAProblem,
-					Detail: fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value),
-				}
+				prob = probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
 			}
 		}
 	}
@@ -515,10 +512,7 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 		*r.Valid,
 	))
 	if !*r.Valid {
-		return &probs.ProblemDetails{
-			Type:   probs.CAAProblem,
-			Detail: fmt.Sprintf("CAA record for %s prevents issuance", ident.Value),
-		}
+		return probs.ConnectionFailure(fmt.Sprintf("CAA record for %s prevents issuance", ident.Value))
 	}
 	return nil
 }
@@ -527,10 +521,7 @@ func (va *ValidationAuthorityImpl) checkGPDNS(ctx context.Context, identifier co
 	results := va.parallelCAALookup(ctx, identifier.Value, va.caaDR.LookupCAA)
 	set, err := parseResults(results)
 	if err != nil {
-		return &probs.ProblemDetails{
-			Type:   probs.ConnectionProblem,
-			Detail: err.Error(),
-		}
+		return probs.ConnectionFailure(err.Error())
 	}
 	present, valid := va.validateCAASet(set)
 	va.log.AuditInfo(fmt.Sprintf(
@@ -541,7 +532,7 @@ func (va *ValidationAuthorityImpl) checkGPDNS(ctx context.Context, identifier co
 	))
 	if !valid {
 		return &probs.ProblemDetails{
-			Type:   probs.CAAProblem,
+			Type:   probs.ConnectionProblem,
 			Detail: fmt.Sprintf("CAA records prevents issuance for %s", identifier.Value),
 		}
 	}
@@ -724,7 +715,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	// the RPC call.
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
-	results := va.parallelCAALookup(ctx, hostname, va.DNSResolver.LookupCAA)
+	results := va.parallelCAALookup(ctx, hostname, va.dnsResolver.LookupCAA)
 	return parseResults(results)
 }
 

@@ -841,7 +841,7 @@ func TestCAAFailure(t *testing.T) {
 
 	ident.Value = "reserved.com"
 	_, prob := va.validateChallengeAndCAA(ctx, ident, chall)
-	test.AssertEquals(t, prob.Type, probs.CAAProblem)
+	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 }
 
 func TestLimitedReader(t *testing.T) {
@@ -885,13 +885,23 @@ func TestCheckCAAFallback(t *testing.T) {
 	testSrv := httptest.NewServer(http.HandlerFunc(mocks.GPDNSHandler))
 	defer testSrv.Close()
 
+	stats := mocks.NewStatter()
+	logger := blog.NewMock()
 	caaDR, err := cdr.New(metrics.NewNoopScope(), time.Second, 1, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Failed to create CAADistributedResolver")
 	caaDR.URI = testSrv.URL
 	caaDR.Clients["1.1.1.1"] = new(http.Client)
-	va := NewValidationAuthorityImpl(&cmd.PortConfig{}, nil, nil, caaDR, stats, clock.Default())
-	va.IssuerDomain = "letsencrypt.org"
-	va.DNSResolver = &bdns.MockDNSResolver{}
+	va := NewValidationAuthorityImpl(
+		&cmd.PortConfig{},
+		nil,
+		nil,
+		caaDR,
+		&bdns.MockDNSResolver{},
+		"user agent 1.0",
+		"ca.com",
+		stats,
+		clock.Default(),
+		logger)
 
 	prob := va.checkCAA(ctx, core.AcmeIdentifier{Value: "bad-local-resolver.com", Type: "dns"})
 	test.Assert(t, prob == nil, fmt.Sprintf("returned ProblemDetails was non-nil: %#v", prob))

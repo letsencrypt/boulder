@@ -190,3 +190,12 @@ func TLSError(detail string) *ProblemDetails {
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
+
+// CAAError returns a ProblemDetails representing a CAAProblem error
+func CAAError(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       CAAProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusForbidden,
+	}
+}
