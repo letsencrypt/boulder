@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package sa
 
 import (
@@ -71,6 +66,10 @@ func NewDbMapFromConfig(config *mysql.Config, maxOpenConns int) (*gorp.DbMap, er
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 	initTables(dbmap)
+	_, err = dbmap.Exec("SET sql_mode = 'STRICT_ALL_TABLES';")
+	if err != nil {
+		return nil, err
+	}
 
 	return dbmap, err
 }
@@ -180,7 +179,6 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(false, "Serial")
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(false, "Serial").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.CRL{}, "crls").SetKeys(false, "Serial")
-	dbMap.AddTableWithName(core.DeniedCSR{}, "deniedCSRs").SetKeys(true, "ID")
 	dbMap.AddTableWithName(core.SignedCertificateTimestamp{}, "sctReceipts").SetKeys(true, "ID").SetVersionCol("LockCol")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
 }

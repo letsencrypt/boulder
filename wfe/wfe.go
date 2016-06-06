@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package wfe
 
 import (
@@ -24,7 +19,9 @@ import (
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	jose "github.com/square/go-jose"
 )
@@ -66,10 +63,10 @@ type WebFrontEndImpl struct {
 	SubscriberAgreementURL string
 
 	// Register of anti-replay nonces
-	nonceService *core.NonceService
+	nonceService *nonce.NonceService
 
 	// Key policy.
-	keyPolicy core.KeyPolicy
+	keyPolicy goodkey.KeyPolicy
 
 	// Cache settings
 	CertCacheDuration           time.Duration
@@ -89,10 +86,13 @@ type WebFrontEndImpl struct {
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
-func NewWebFrontEndImpl(stats statsd.Statter, clk clock.Clock, keyPolicy core.KeyPolicy) (WebFrontEndImpl, error) {
-	logger := blog.Get()
-
-	nonceService, err := core.NewNonceService()
+func NewWebFrontEndImpl(
+	stats statsd.Statter,
+	clk clock.Clock,
+	keyPolicy goodkey.KeyPolicy,
+	logger blog.Logger,
+) (WebFrontEndImpl, error) {
+	nonceService, err := nonce.NewNonceService()
 	if err != nil {
 		return WebFrontEndImpl{}, err
 	}
@@ -133,7 +133,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 		methodsMap["HEAD"] = true
 	}
 	methodsStr := strings.Join(methods, ", ")
-	mux.Handle(pattern, &topHandler{
+	handler := http.StripPrefix(pattern, &topHandler{
 		log: wfe.log,
 		clk: clock.Default(),
 		wfe: wfeHandlerFunc(func(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
@@ -177,6 +177,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h wfe
 			cancel()
 		}),
 	})
+	mux.Handle(pattern, handler)
 }
 
 func marshalIndent(v interface{}) ([]byte, error) {
@@ -326,12 +327,6 @@ func (wfe *WebFrontEndImpl) Directory(ctx context.Context, logEvent *requestEven
 	}
 
 	response.Write(relDir)
-}
-
-// The ID is always the last slash-separated token in the path
-func parseIDFromPath(path string) string {
-	re := regexp.MustCompile("^.*/")
-	return re.ReplaceAllString(path, "")
 }
 
 const (
@@ -511,13 +506,13 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 	// auditable events.
 	if prob.Type == probs.ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		wfe.log.AuditErr(fmt.Errorf("Internal error - %s - %s", prob.Detail, ierr))
+		wfe.log.AuditErr(fmt.Sprintf("Internal error - %s - %s", prob.Detail, ierr))
 	}
 
 	problemDoc, err := marshalIndent(prob)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		wfe.log.AuditErr(fmt.Errorf("Could not marshal error message: %s - %+v", err, prob))
+		wfe.log.AuditErr(fmt.Sprintf("Could not marshal error message: %s - %+v", err, prob))
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
@@ -850,9 +845,8 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Challenge URIs are of the form /acme/challenge/<auth id>/<challenge id>.
-	// Here we parse out the id components. TODO: Use a better tool to parse out
-	// URL structure: https://github.com/letsencrypt/boulder/issues/437
-	slug := strings.Split(request.URL.Path[len(challengePath):], "/")
+	// Here we parse out the id components.
+	slug := strings.Split(request.URL.Path, "/")
 	if len(slug) != 2 {
 		notFound()
 		return
@@ -1040,7 +1034,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 
 	// Requests to this handler should have a path that leads to a known
 	// registration
-	idStr := parseIDFromPath(request.URL.Path)
+	idStr := request.URL.Path
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		logEvent.AddError("registration ID must be an integer, was %#v", idStr)
@@ -1106,7 +1100,7 @@ func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestE
 // authorizations.
 func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	// Requests to this handler should have a path that leads to a known authz
-	id := parseIDFromPath(request.URL.Path)
+	id := request.URL.Path
 	authz, err := wfe.SA.GetAuthorization(ctx, id)
 	if err != nil {
 		logEvent.AddError("No such authorization at id %s", id)
@@ -1152,16 +1146,9 @@ var allHex = regexp.MustCompile("^[0-9a-f]+$")
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 
-	path := request.URL.Path
+	serial := request.URL.Path
 	// Certificate paths consist of the CertBase path, plus exactly sixteen hex
 	// digits.
-	if !strings.HasPrefix(path, certPath) {
-		logEvent.AddError("this request path should not have gotten to Certificate: %#v is not a prefix of %#v", path, certPath)
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
-		addNoCacheHeader(response)
-		return
-	}
-	serial := path[len(certPath):]
 	if !core.ValidSerial(serial) {
 		logEvent.AddError("certificate serial provided was not valid: %s", serial)
 		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)

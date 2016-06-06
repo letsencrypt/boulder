@@ -104,13 +104,11 @@ Notes:
 ```
 1: Client ---chal--> WFE
 2:                   WFE ---UpdateAuthorization--> RA
-3:                                                 RA ---UpdateValidations--> VA
-4:                                                 RA <-------return--------- VA
-5:                   WFE <--------return---------- RA
-6: Client <--------- WFE
-7: Client <~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~> VA
-8:                                                 RA <--OnValidationUpdate-- VA
-9:                                                 RA --------return--------> VA
+3:                                                 RA ---PerformValidation--> VA
+4: Client <~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~> VA
+5:                                                 RA <-------return--------- VA
+6:                   WFE <--------return---------- RA
+7: Client <--------- WFE
 ```
 
 * 1-2: WFE does the following:
@@ -180,7 +178,6 @@ Notes:
 * 2-3: RA does the following:
   * Verify the PKCS#10 CSR in the certificate request object
   * Verify that the CSR has a non-zero number of domain names
-  * Verify that the combination of domain names has not been previously denied
   * Verify that the public key in the CSR is different from the account key
   * For each authorization referenced in the certificate request
     * Retreive the authorization from the database

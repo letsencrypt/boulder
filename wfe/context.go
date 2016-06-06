@@ -79,7 +79,7 @@ func (th *topHandler) logEvent(logEvent *requestEvent) {
 	}
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {
-		th.log.Err(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
+		th.log.AuditErr(fmt.Sprintf("%s - failed to marshal logEvent - %s", msg, err))
 		return
 	}
 	th.log.Info(fmt.Sprintf("%s JSON=%s", msg, jsonEvent))

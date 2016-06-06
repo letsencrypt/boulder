@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package mocks
 
 import (
@@ -212,11 +207,6 @@ func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, serial strin
 	}
 }
 
-// AlreadyDeniedCSR is a mock
-func (sa *StorageAuthority) AlreadyDeniedCSR(_ context.Context, domains []string) (bool, error) {
-	return false, nil
-}
-
 // AddCertificate is a mock
 func (sa *StorageAuthority) AddCertificate(_ context.Context, certDER []byte, regID int64) (digest string, err error) {
 	return
@@ -229,11 +219,6 @@ func (sa *StorageAuthority) FinalizeAuthorization(_ context.Context, authz core.
 
 // MarkCertificateRevoked is a mock
 func (sa *StorageAuthority) MarkCertificateRevoked(_ context.Context, serial string, reasonCode core.RevocationCode) (err error) {
-	return
-}
-
-// UpdateOCSP is a mock
-func (sa *StorageAuthority) UpdateOCSP(_ context.Context, serial string, ocspResponse []byte) (err error) {
 	return
 }
 

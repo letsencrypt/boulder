@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package ra
 
 import (
@@ -18,18 +13,22 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	jose "github.com/square/go-jose"
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	jose "github.com/square/go-jose"
-	"golang.org/x/net/context"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 type DummyValidationAuthority struct {
@@ -41,23 +40,18 @@ type DummyValidationAuthority struct {
 	IsSafeDomainErr error
 }
 
-func (dva *DummyValidationAuthority) UpdateValidations(ctx context.Context, authz core.Authorization, index int) (err error) {
-	dva.Called = true
-	dva.Argument = authz
-	return
-}
-
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
 	dva.Called = true
 	dva.Argument = authz
 	return dva.RecordsReturn, dva.ProblemReturn
 }
 
-func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, req *core.IsSafeDomainRequest) (*core.IsSafeDomainResponse, error) {
+func (dva *DummyValidationAuthority) IsSafeDomain(ctx context.Context, req *vaPB.IsSafeDomainRequest) (*vaPB.IsDomainSafe, error) {
 	if dva.IsSafeDomainErr != nil {
 		return nil, dva.IsSafeDomainErr
 	}
-	return &core.IsSafeDomainResponse{IsSafe: !dva.IsNotSafe}, nil
+	ret := !dva.IsNotSafe
+	return &vaPB.IsDomainSafe{IsSafe: &ret}, nil
 }
 
 var (
@@ -147,7 +141,7 @@ func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
 	return
 }
 
-var testKeyPolicy = core.KeyPolicy{
+var testKeyPolicy = goodkey.KeyPolicy{
 	AllowRSA:           true,
 	AllowECDSANISTP256: true,
 	AllowECDSANISTP384: true,
@@ -209,9 +203,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		&DomainCheck{va},
-		cmd.RateLimitConfig{
-			TotalCertificates: cmd.RateLimitPolicy{
+		ratelimit.RateLimitConfig{
+			TotalCertificates: ratelimit.RateLimitPolicy{
 				Threshold: 100,
 				Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 			},
@@ -521,7 +514,6 @@ func TestUpdateAuthorizationReject(t *testing.T) {
 
 func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	va, sa, ra, _, cleanUp := initAuthorities(t)
-	ra.useNewVARPC = true
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
@@ -552,53 +544,6 @@ func TestUpdateAuthorizationNewRPC(t *testing.T) {
 	test.Assert(t, authz.Challenges[ResponseIndex].Status == core.StatusValid, "challenge was not marked as valid")
 
 	t.Log("DONE TestUpdateAuthorizationNewRPC")
-}
-
-func TestOnValidationUpdateSuccess(t *testing.T) {
-	_, sa, ra, fclk, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	authzUpdated, err := sa.NewPendingAuthorization(ctx, AuthzInitial)
-	test.AssertNotError(t, err, "Failed to create new pending authz")
-
-	expires := fclk.Now().Add(300 * 24 * time.Hour)
-	authzUpdated.Expires = &expires
-	err = sa.UpdatePendingAuthorization(ctx, authzUpdated)
-	test.AssertNotError(t, err, "Could not store test data")
-
-	// Simulate a successful simpleHTTP challenge
-	authzFromVA := authzUpdated
-	authzFromVA.Challenges[0].Status = core.StatusValid
-
-	err = ra.OnValidationUpdate(ctx, authzFromVA)
-	test.AssertNotError(t, err, "Could not store test data")
-
-	// Verify that the Authz in the DB is the same except for Status->StatusValid
-	authzFromVA.Status = core.StatusValid
-	dbAuthz, err := sa.GetAuthorization(ctx, authzFromVA.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	t.Log("authz from VA: ", authzFromVA)
-	t.Log("authz from DB: ", dbAuthz)
-
-	assertAuthzEqual(t, authzFromVA, dbAuthz)
-}
-
-func TestOnValidationUpdateFailure(t *testing.T) {
-	_, sa, ra, fclk, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	authzFromVA, _ := sa.NewPendingAuthorization(ctx, AuthzInitial)
-	expires := fclk.Now().Add(300 * 24 * time.Hour)
-	authzFromVA.Expires = &expires
-	err := sa.UpdatePendingAuthorization(ctx, authzFromVA)
-	test.AssertNotError(t, err, "Could not store test data")
-	authzFromVA.Challenges[0].Status = core.StatusInvalid
-
-	err = ra.OnValidationUpdate(ctx, authzFromVA)
-	test.AssertNotError(t, err, "unable to update validation")
-
-	authzFromVA.Status = core.StatusInvalid
-	dbAuthz, err := sa.GetAuthorization(ctx, authzFromVA.ID)
-	test.AssertNotError(t, err, "Could not fetch authorization from database")
-	assertAuthzEqual(t, authzFromVA, dbAuthz)
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -699,8 +644,8 @@ func TestTotalCertRateLimit(t *testing.T) {
 	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies = cmd.RateLimitConfig{
-		TotalCertificates: cmd.RateLimitPolicy{
+	ra.rlPolicies = ratelimit.RateLimitConfig{
+		TotalCertificates: ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
@@ -743,8 +688,8 @@ func TestAuthzRateLimiting(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies = cmd.RateLimitConfig{
-		PendingAuthorizationsPerAccount: cmd.RateLimitPolicy{
+	ra.rlPolicies = ratelimit.RateLimitConfig{
+		PendingAuthorizationsPerAccount: ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
 		},
@@ -762,7 +707,7 @@ func TestAuthzRateLimiting(t *testing.T) {
 	test.AssertError(t, err, "Pending Authorization rate limit failed.")
 
 	// Finalize pending authz
-	err = ra.OnValidationUpdate(ctx, authz)
+	err = ra.onValidationUpdate(ctx, authz)
 	test.AssertNotError(t, err, "Could not store test data")
 
 	// Try to create a new authzRequest, should be fine now.
@@ -820,7 +765,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	rlp := cmd.RateLimitPolicy{
+	rlp := ratelimit.RateLimitPolicy{
 		Threshold: 3,
 		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
 		Overrides: map[string]int{

@@ -1,16 +1,13 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package sa
 
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 )
 
 func TestInvalidDSN(t *testing.T) {
@@ -62,4 +59,17 @@ func TestNewDbMap(t *testing.T) {
 		t.Errorf("expected nil, got %v", dbMap)
 	}
 
+}
+
+func TestStrictness(t *testing.T) {
+	dbMap, err := NewDbMap(vars.DBConnSA, 1)
+	_, err = dbMap.Exec(`insert into authz set
+		id="hi", identifier="foo", status="pending", combinations="combos",
+		registrationID=999999999999999999999999999;`)
+	if err == nil {
+		t.Fatal("Expected error when providing out of range value, got none.")
+	}
+	if !strings.Contains(err.Error(), "Out of range value for column") {
+		t.Fatalf("Got wrong type of error: %s", err)
+	}
 }

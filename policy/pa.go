@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package policy
 
 import (
@@ -63,7 +58,7 @@ func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
 }
 
 func (pa *AuthorityImpl) hostnamePolicyLoadError(err error) {
-	pa.log.Err(fmt.Sprintf("error loading hostname policy: %s", err))
+	pa.log.AuditErr(fmt.Sprintf("error loading hostname policy: %s", err))
 }
 
 func (pa *AuthorityImpl) loadHostnamePolicy(b []byte) error {
