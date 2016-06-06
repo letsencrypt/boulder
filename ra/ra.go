@@ -58,6 +58,7 @@ type RegistrationAuthorityImpl struct {
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
 	rlPolicies                   ratelimit.RateLimitConfig
+	rlMu                         *sync.RWMutex
 	tiMu                         *sync.RWMutex
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
@@ -91,6 +92,7 @@ func NewRegistrationAuthorityImpl(
 		log:   logger,
 		authorizationLifetime:        DefaultAuthorizationLifetime,
 		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
+		rlMu:                 new(sync.RWMutex),
 		tiMu:                 new(sync.RWMutex),
 		maxContactsPerReg:    maxContactsPerReg,
 		keyPolicy:            keyPolicy,
@@ -121,7 +123,9 @@ func (ra *RegistrationAuthorityImpl) setRateLimitPolicies(policyContent []byte) 
 		return err
 	}
 
+	ra.rlMu.Lock()
 	ra.rlPolicies = rateLimitPolicies
+	ra.rlMu.Unlock()
 	return nil
 }
 
@@ -220,11 +224,15 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount(ctx context.Context) (int,
 	ra.tiMu.Lock()
 	defer ra.tiMu.Unlock()
 
+	ra.rlMu.RLock()
+	totalCertWindow := ra.rlPolicies.TotalCertificates.Window.Duration
+	ra.rlMu.RUnlock()
+
 	now := ra.clk.Now()
 	if ra.issuanceCountInvalid(now) {
 		count, err := ra.SA.CountCertificatesRange(
 			ctx,
-			now.Add(-ra.rlPolicies.TotalCertificates.Window.Duration),
+			now.Add(-totalCertWindow),
 			now,
 		)
 		if err != nil {
@@ -241,7 +249,10 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount(ctx context.Context) (int,
 const noRegistrationID = -1
 
 func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ctx context.Context, ip net.IP) error {
+	ra.rlMu.RLock()
 	limit := ra.rlPolicies.RegistrationsPerIP
+	ra.rlMu.RUnlock()
+
 	if limit.Enabled() {
 		now := ra.clk.Now()
 		count, err := ra.SA.CountRegistrationsByIP(ctx, ip, limit.WindowBegin(now), now)
@@ -322,7 +333,9 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 }
 
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
+	ra.rlMu.RLock()
 	limit := ra.rlPolicies.PendingAuthorizationsPerAccount
+	ra.rlMu.RUnlock()
 	if limit.Enabled() {
 		count, err := ra.SA.CountPendingAuthorizations(ctx, regID)
 		if err != nil {
@@ -714,13 +727,15 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 }
 
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
+	ra.rlMu.RLock()
 	limits := ra.rlPolicies
+	ra.rlMu.RUnlock()
 	if limits.TotalCertificates.Enabled() {
 		totalIssued, err := ra.getIssuanceCount(ctx)
 		if err != nil {
 			return err
 		}
-		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
+		if totalIssued >= limits.TotalCertificates.Threshold {
 			domains := strings.Join(names, ",")
 			ra.totalCertsStats.Inc("Exceeded", 1)
 			ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, regID: %d, domains: %s, totalIssued: %d", regID, domains, totalIssued))
