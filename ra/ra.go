@@ -814,7 +814,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 			prob = p
 		} else if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
-			ra.log.Err(fmt.Sprintf("Could not communicate with VA: %s", err))
+			ra.log.AuditErr(fmt.Sprintf("Could not communicate with VA: %s", err))
 		}
 
 		// Save the updated records
@@ -835,7 +835,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 		err = ra.onValidationUpdate(vaCtx, authz)
 		if err != nil {
-			ra.log.Err(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
+			ra.log.AuditErr(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
 		}
 	}()
 	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)

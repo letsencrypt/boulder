@@ -1,7 +1,6 @@
 package log
 
 import (
-	"errors"
 	"fmt"
 	"log/syslog"
 	"net"
@@ -90,7 +89,7 @@ func ExampleLogger() {
 		return
 	}
 	bw.clk = clock.NewFake()
-	impl.AuditErr(errors.New("Error Audit"))
+	impl.AuditErr("Error Audit")
 	impl.Warning("Warning Audit")
 	// Output:
 	// [31m[1mE000000 log.test [AUDIT] Error Audit[0m
@@ -102,7 +101,7 @@ func TestSyslogMethods(t *testing.T) {
 	impl := setup(t)
 
 	impl.AuditInfo("audit-logger_test.go: audit-info")
-	impl.AuditErr(errors.New("audit-logger_test.go: audit-err"))
+	impl.AuditErr("audit-logger_test.go: audit-err")
 	impl.Debug("audit-logger_test.go: debug")
 	impl.Err("audit-logger_test.go: err")
 	impl.Info("audit-logger_test.go: info")
@@ -183,7 +182,7 @@ func TestTransmission(t *testing.T) {
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
-	impl.AuditErr(errors.New("audit-logger_test.go: audit-err"))
+	impl.AuditErr("audit-logger_test.go: audit-err")
 	_, _, err = l.ReadFrom(data)
 	test.AssertNotError(t, err, "Failed to find packet")
 
