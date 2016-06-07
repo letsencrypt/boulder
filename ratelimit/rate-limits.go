@@ -29,8 +29,10 @@ func (r *RateLimitConfig) TotalCertificates() RateLimitPolicy {
 func (r *RateLimitConfig) SetTotalCertificatesPolicy(p RateLimitPolicy) {
 	r.Lock()
 	defer r.Unlock()
-
-	r.rlPolicy.CertificatesPerName = p
+	if r.rlPolicy == nil {
+		r.rlPolicy = &rateLimitConfig{}
+	}
+	r.rlPolicy.TotalCertificates = p
 }
 
 func (r *RateLimitConfig) CertificatesPerName() RateLimitPolicy {
@@ -42,6 +44,15 @@ func (r *RateLimitConfig) CertificatesPerName() RateLimitPolicy {
 	return r.rlPolicy.CertificatesPerName
 }
 
+func (r *RateLimitConfig) SetCertificatesPerNamePolicy(p RateLimitPolicy) {
+	r.Lock()
+	defer r.Unlock()
+	if r.rlPolicy == nil {
+		r.rlPolicy = &rateLimitConfig{}
+	}
+	r.rlPolicy.CertificatesPerName = p
+}
+
 func (r *RateLimitConfig) RegistrationsPerIP() RateLimitPolicy {
 	r.RLock()
 	defer r.RUnlock()
@@ -49,6 +60,15 @@ func (r *RateLimitConfig) RegistrationsPerIP() RateLimitPolicy {
 		return RateLimitPolicy{}
 	}
 	return r.rlPolicy.RegistrationsPerIP
+}
+
+func (r *RateLimitConfig) SetRegistrationsPerIPPolicy(p RateLimitPolicy) {
+	r.Lock()
+	defer r.Unlock()
+	if r.rlPolicy == nil {
+		r.rlPolicy = &rateLimitConfig{}
+	}
+	r.rlPolicy.RegistrationsPerIP = p
 }
 
 func (r *RateLimitConfig) PendingAuthorizationsPerAccount() RateLimitPolicy {
@@ -60,6 +80,15 @@ func (r *RateLimitConfig) PendingAuthorizationsPerAccount() RateLimitPolicy {
 	return r.rlPolicy.PendingAuthorizationsPerAccount
 }
 
+func (r *RateLimitConfig) SetPendingAuthorizationsPerAccountPolicy(p RateLimitPolicy) {
+	r.Lock()
+	defer r.Unlock()
+	if r.rlPolicy == nil {
+		r.rlPolicy = &rateLimitConfig{}
+	}
+	r.rlPolicy.PendingAuthorizationsPerAccount = p
+}
+
 func (r *RateLimitConfig) CertificatesPerFQDNSet() RateLimitPolicy {
 	r.RLock()
 	defer r.RUnlock()
@@ -67,6 +96,15 @@ func (r *RateLimitConfig) CertificatesPerFQDNSet() RateLimitPolicy {
 		return RateLimitPolicy{}
 	}
 	return r.rlPolicy.CertificatesPerFQDNSet
+}
+
+func (r *RateLimitConfig) SetCertificatesPerFQDNSetPolicy(p RateLimitPolicy) {
+	r.Lock()
+	defer r.Unlock()
+	if r.rlPolicy == nil {
+		r.rlPolicy = &rateLimitConfig{}
+	}
+	r.rlPolicy.CertificatesPerFQDNSet = p
 }
 
 // LoadPolicies loads various rate limiting policies from a byte array of
@@ -82,23 +120,6 @@ func (r *RateLimitConfig) LoadPolicies(contents []byte) error {
 	r.rlPolicy = &newPolicy
 	r.Unlock()
 	return nil
-}
-
-func (r *RateLimitConfig) New(
-	totalCerts RateLimitPolicy,
-	certsPerName RateLimitPolicy,
-	regsPerIP RateLimitPolicy,
-	pendingAuthsPerIP RateLimitPolicy,
-	certsPerFQDNSet RateLimitPolicy) {
-	r.Lock()
-	r.rlPolicy = &rateLimitConfig{
-		TotalCertificates:               totalCerts,
-		CertificatesPerName:             certsPerName,
-		RegistrationsPerIP:              regsPerIP,
-		PendingAuthorizationsPerAccount: pendingAuthsPerIP,
-		CertificatesPerFQDNSet:          certsPerFQDNSet,
-	}
-	r.Unlock()
 }
 
 // rateLimitConfig contains all application layer rate limiting policies. It is

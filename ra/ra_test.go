@@ -211,16 +211,12 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.CA = ca
 	ra.PA = pa
 	ra.DNSResolver = &bdns.MockDNSResolver{}
-	ra.rlPolicies.New(
+
+	ra.rlPolicies.SetTotalCertificatesPolicy(
 		ratelimit.RateLimitPolicy{
 			Threshold: 100,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		},
-		ratelimit.RateLimitPolicy{},
-		ratelimit.RateLimitPolicy{},
-		ratelimit.RateLimitPolicy{},
-		ratelimit.RateLimitPolicy{},
-	)
+		})
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -651,16 +647,11 @@ func TestTotalCertRateLimit(t *testing.T) {
 	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies.New(
+	ra.rlPolicies.SetTotalCertificatesPolicy(
 		ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		},
-		ratelimit.RateLimitPolicy{},
-		ratelimit.RateLimitPolicy{},
-		ratelimit.RateLimitPolicy{},
-		ratelimit.RateLimitPolicy{},
-	)
+		})
 	fc.Add(24 * 90 * time.Hour)
 
 	AuthzFinal.RegistrationID = Registration.ID
@@ -699,16 +690,11 @@ func TestAuthzRateLimiting(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies.New(
-		ratelimit.RateLimitPolicy{},
-		ratelimit.RateLimitPolicy{},
-		ratelimit.RateLimitPolicy{},
+	ra.rlPolicies.SetPendingAuthorizationsPerAccountPolicy(
 		ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		},
-		ratelimit.RateLimitPolicy{},
-	)
+		})
 	fc.Add(24 * 90 * time.Hour)
 
 	// Should be able to create an authzRequest
