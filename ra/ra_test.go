@@ -781,13 +781,12 @@ func TestRateLimitLiveReload(t *testing.T) {
 	test.AssertNotError(t, err, "failed to SetRateLimitPoliciesFile")
 
 	// Test some fields of the initial policy to ensure it loaded correctly
-	policies := ra.rlPolicies
-	test.AssertEquals(t, policies.TotalCertificates().Threshold, 100000)
-	test.AssertEquals(t, policies.CertificatesPerName().Overrides["le.wtf"], 10000)
-	test.AssertEquals(t, policies.RegistrationsPerIP().Overrides["127.0.0.1"], 1000000)
-	test.AssertEquals(t, policies.PendingAuthorizationsPerAccount().Threshold, 3)
-	test.AssertEquals(t, policies.CertificatesPerFQDNSet().Overrides["le.wtf"], 10000)
-	test.AssertEquals(t, policies.CertificatesPerFQDNSet().Threshold, 5)
+	test.AssertEquals(t, ra.rlPolicies.TotalCertificates().Threshold, 100000)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 10000)
+	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 1000000)
+	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 3)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], 10000)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, 5)
 
 	// Write a different  policy YAML to the monitored file, expect a reload.
 	// Sleep a few milliseconds before writing so the timestamp isn't identical to
@@ -803,14 +802,13 @@ func TestRateLimitLiveReload(t *testing.T) {
 
 	// Test fields of the policy to make sure writing the new policy to the monitored file
 	// resulted in the runtime values being updated
-	policies = ra.rlPolicies
-	test.AssertEquals(t, policies.TotalCertificates().Threshold, 99999)
-	test.AssertEquals(t, policies.CertificatesPerName().Overrides["le.wtf"], 9999)
-	test.AssertEquals(t, policies.CertificatesPerName().Overrides["le4.wtf"], 9999)
-	test.AssertEquals(t, policies.RegistrationsPerIP().Overrides["127.0.0.1"], 999990)
-	test.AssertEquals(t, policies.PendingAuthorizationsPerAccount().Threshold, 999)
-	test.AssertEquals(t, policies.CertificatesPerFQDNSet().Overrides["le.wtf"], 9999)
-	test.AssertEquals(t, policies.CertificatesPerFQDNSet().Threshold, 99999)
+	test.AssertEquals(t, ra.rlPolicies.TotalCertificates().Threshold, 99999)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], 9999)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le4.wtf"], 9999)
+	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], 999990)
+	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, 999)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], 9999)
+	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, 99999)
 }
 
 type mockSAWithNameCounts struct {
