@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/policy"
@@ -37,12 +38,6 @@ type DummyValidationAuthority struct {
 	ProblemReturn   *probs.ProblemDetails
 	IsNotSafe       bool
 	IsSafeDomainErr error
-}
-
-func (dva *DummyValidationAuthority) UpdateValidations(ctx context.Context, authz core.Authorization, index int) (err error) {
-	dva.Called = true
-	dva.Argument = authz
-	return
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, domain string, challenge core.Challenge, authz core.Authorization) ([]core.ValidationRecord, error) {
@@ -146,7 +141,7 @@ func makeResponse(ch core.Challenge) (out core.Challenge, err error) {
 	return
 }
 
-var testKeyPolicy = core.KeyPolicy{
+var testKeyPolicy = goodkey.KeyPolicy{
 	AllowRSA:           true,
 	AllowECDSANISTP256: true,
 	AllowECDSANISTP384: true,
@@ -208,7 +203,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		&DomainCheck{va},
 		ratelimit.RateLimitConfig{
 			TotalCertificates: ratelimit.RateLimitPolicy{
 				Threshold: 100,

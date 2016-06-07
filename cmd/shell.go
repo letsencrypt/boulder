@@ -157,7 +157,7 @@ type mysqlLogger struct {
 }
 
 func (m mysqlLogger) Print(v ...interface{}) {
-	m.Err(fmt.Sprintf("[mysql] %s", fmt.Sprint(v...)))
+	m.AuditErr(fmt.Sprintf("[mysql] %s", fmt.Sprint(v...)))
 }
 
 // cfsslLogger provides two additional methods that are expected by CFSSL's
@@ -167,11 +167,11 @@ type cfsslLogger struct {
 }
 
 func (cl cfsslLogger) Crit(msg string) {
-	cl.Err(msg)
+	cl.AuditErr(msg)
 }
 
 func (cl cfsslLogger) Emerg(msg string) {
-	cl.Err(msg)
+	cl.AuditErr(msg)
 }
 
 // StatsAndLogging constructs a Statter and an AuditLogger based on its config
@@ -216,7 +216,7 @@ func FailOnError(err error, msg string) {
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
 		logger := blog.Get()
-		logger.Err(fmt.Sprintf("%s: %s", msg, err))
+		logger.AuditErr(fmt.Sprintf("%s: %s", msg, err))
 		fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
 		os.Exit(1)
 	}

@@ -2,10 +2,8 @@ package sa
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -471,23 +469,6 @@ func TestCountCertificatesByNames(t *testing.T) {
 	test.AssertEquals(t, counts["example.co.bn"], 1)
 }
 
-func TestDeniedCSR(t *testing.T) {
-	key, _ := rsa.GenerateKey(rand.Reader, 512)
-	template := &x509.CertificateRequest{
-		Subject:  pkix.Name{CommonName: "google.com"},
-		DNSNames: []string{"badguys.com", "reallybad.com"},
-	}
-	csrBytes, _ := x509.CreateCertificateRequest(rand.Reader, template, key)
-	csr, _ := x509.ParseCertificateRequest(csrBytes)
-
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	exists, err := sa.AlreadyDeniedCSR(ctx, append(csr.DNSNames, csr.Subject.CommonName))
-	test.AssertNotError(t, err, "AlreadyDeniedCSR failed")
-	test.Assert(t, !exists, "Found non-existent CSR")
-}
-
 const (
 	sctVersion    = 0
 	sctTimestamp  = 1435787268907
@@ -537,40 +518,6 @@ func TestGetSCTReceipt(t *testing.T) {
 	test.Assert(t, sqlSCT.Timestamp == sct.Timestamp, "Invalid timestamp")
 	test.Assert(t, bytes.Compare(sqlSCT.Signature, sct.Signature) == 0, "Invalid signature")
 	test.Assert(t, sqlSCT.CertificateSerial == sct.CertificateSerial, "Invalid certificate serial")
-}
-
-func TestUpdateOCSP(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sa)
-	// Add a cert to the DB to test with.
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddCertificate(ctx, certDER, reg.ID)
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
-
-	serial := "000000000000000000000000000000021bd4"
-	const ocspResponse = "this is a fake OCSP response"
-
-	certificateStatusObj, err := sa.dbMap.Get(core.CertificateStatus{}, serial)
-	if certificateStatusObj == nil {
-		t.Fatalf("Failed to get certificate status for %s", serial)
-	}
-	beforeUpdate := certificateStatusObj.(*core.CertificateStatus)
-
-	fc.Add(1 * time.Hour)
-
-	err = sa.UpdateOCSP(ctx, serial, []byte(ocspResponse))
-	test.AssertNotError(t, err, "UpdateOCSP failed")
-
-	certificateStatusObj, err = sa.dbMap.Get(core.CertificateStatus{}, serial)
-	certificateStatus := certificateStatusObj.(*core.CertificateStatus)
-	test.AssertNotError(t, err, "Failed to fetch certificate status")
-	test.Assert(t,
-		certificateStatus.OCSPLastUpdated.After(beforeUpdate.OCSPLastUpdated),
-		fmt.Sprintf("UpdateOCSP did not take. before: %s; after: %s", beforeUpdate.OCSPLastUpdated, certificateStatus.OCSPLastUpdated))
-	test.AssertEquals(t, ocspResponse, string(certificateStatus.OCSPResponse))
 }
 
 func TestMarkCertificateRevoked(t *testing.T) {

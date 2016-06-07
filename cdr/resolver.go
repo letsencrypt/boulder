@@ -206,7 +206,7 @@ func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string)
 			cdr.stats.TimingDuration(fmt.Sprintf("CDR.GPDNS.Latency.%s", ia), time.Since(started))
 			if err != nil {
 				cdr.stats.Inc(fmt.Sprintf("CDR.GPDNS.Failures.%s", ia), 1)
-				cdr.logger.Err(fmt.Sprintf("queryCAA failed [via %s]: %s", ia, err))
+				cdr.logger.AuditErr(fmt.Sprintf("queryCAA failed [via %s]: %s", ia, err))
 			}
 			results <- queryResult{records, err}
 		}(interfaceClient, addr)
@@ -222,7 +222,7 @@ func (cdr *CAADistributedResolver) LookupCAA(ctx context.Context, domain string)
 			failed++
 			if failed > cdr.maxFailures {
 				cdr.stats.Inc("CDR.QuorumFailed", 1)
-				cdr.logger.Err(fmt.Sprintf("%d out of %d CAA queries failed", len(cdr.Clients), failed))
+				cdr.logger.AuditErr(fmt.Sprintf("%d out of %d CAA queries failed", len(cdr.Clients), failed))
 				return nil, r.err
 			}
 		}

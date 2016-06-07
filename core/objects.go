@@ -582,13 +582,6 @@ type CRL struct {
 	CRL string `db:"crl"`
 }
 
-// DeniedCSR is a list of names we deny issuing.
-type DeniedCSR struct {
-	ID int `db:"id"`
-
-	Names string `db:"names"`
-}
-
 // OCSPSigningRequest is a transfer object representing an OCSP Signing Request
 type OCSPSigningRequest struct {
 	CertDER   []byte

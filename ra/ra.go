@@ -14,6 +14,7 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/net/publicsuffix"
@@ -24,6 +25,7 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ratelimit"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 // DefaultAuthorizationLifetime is the 10 month default authorization lifetime.
@@ -50,8 +52,7 @@ type RegistrationAuthorityImpl struct {
 	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
 	log         blog.Logger
-	dc          *DomainCheck
-	keyPolicy   core.KeyPolicy
+	keyPolicy   goodkey.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
@@ -71,14 +72,22 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies ratelimit.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool, maxNames int, forceCNFromSAN bool) *RegistrationAuthorityImpl {
-	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
+func NewRegistrationAuthorityImpl(
+	clk clock.Clock,
+	logger blog.Logger,
+	stats statsd.Statter,
+	policies ratelimit.RateLimitConfig,
+	maxContactsPerReg int,
+	keyPolicy goodkey.KeyPolicy,
+	newVARPC bool,
+	maxNames int,
+	forceCNFromSAN bool,
+) *RegistrationAuthorityImpl {
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
-		dc:    dc,
 		authorizationLifetime:        DefaultAuthorizationLifetime,
 		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
 		rlPolicies:                   policies,
@@ -327,13 +336,13 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	if identifier.Type == core.IdentifierDNS {
-		isSafe, err := ra.dc.IsSafe(ctx, identifier.Value)
+		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
 		if err != nil {
 			outErr := core.InternalServerError("unable to determine if domain was safe")
 			ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), err))
 			return authz, outErr
 		}
-		if !isSafe {
+		if !isSafeResp.GetIsSafe() {
 			return authz, core.UnauthorizedError(fmt.Sprintf("%#v was considered an unsafe domain by a third-party API", identifier.Value))
 		}
 	}
@@ -531,17 +540,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 
 	if len(names) == 0 {
 		err = core.UnauthorizedError("CSR has no names in it")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
-	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(ctx, names)
-	if err != nil {
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-	if csrPreviousDenied {
-		err = core.UnauthorizedError("CSR has already been revoked/denied")
 		logEvent.Error = err.Error()
 		return emptyCert, err
 	}
@@ -816,7 +814,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 			prob = p
 		} else if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
-			ra.log.Err(fmt.Sprintf("Could not communicate with VA: %s", err))
+			ra.log.AuditErr(fmt.Sprintf("Could not communicate with VA: %s", err))
 		}
 
 		// Save the updated records
@@ -837,7 +835,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 		err = ra.onValidationUpdate(vaCtx, authz)
 		if err != nil {
-			ra.log.Err(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
+			ra.log.AuditErr(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
 		}
 	}()
 	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)

@@ -30,8 +30,14 @@ func (s *ValidationAuthorityGRPCServer) PerformValidation(ctx context.Context, i
 		return nil, err
 	}
 	records, err := s.impl.PerformValidation(ctx, domain, challenge, authz)
+	// If the type of error was a ProblemDetails, we need to return
+	// both that and the records to the caller (so it can update
+	// the challenge / authz in the SA with the failing records).
+	// The least error-prone way of doing this is to send a struct
+	// as the RPC response and return a nil error on the RPC layer,
+	// then unpack that into (records, error) to the caller.
 	prob, ok := err.(*probs.ProblemDetails)
-	if !ok {
+	if !ok && err != nil {
 		return nil, err
 	}
 	return validationResultToPB(records, prob)
@@ -53,10 +59,6 @@ type ValidationAuthorityGRPCClient struct {
 
 func NewValidationAuthorityGRPCClient(cc *ggrpc.ClientConn) core.ValidationAuthority {
 	return &ValidationAuthorityGRPCClient{vaPB.NewVAClient(cc)}
-}
-
-func (vac ValidationAuthorityGRPCClient) UpdateValidations(ctx context.Context, authz core.Authorization, index int) error {
-	panic("UpdateValidations should not be called on VA GRPC client")
 }
 
 // PerformValidation has the VA revalidate the specified challenge and returns
