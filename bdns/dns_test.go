@@ -171,12 +171,10 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 	return
 }
 
-func serveLoopResolver(stopChan chan bool) chan bool {
+func serveLoopResolver(stopChan chan bool){
 	dns.HandleFunc(".", mockDNSQuery)
 	server := &dns.Server{Addr: dnsLoopbackAddr, Net: "tcp", ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}
-	waitChan := make(chan bool, 1)
 	go func() {
-		waitChan <- true
 		err := server.ListenAndServe()
 		if err != nil {
 			fmt.Println(err)
@@ -190,13 +188,31 @@ func serveLoopResolver(stopChan chan bool) chan bool {
 			fmt.Println(err)
 		}
 	}()
-	return waitChan
+}
+
+func pollServer() {
+	var conn *dns.Conn
+	timeout := time.Duration(time.Millisecond * 500)
+	tries := 10
+
+	for i := 0; conn == nil; i++{
+		if i == tries {
+			fmt.Println("Max tries reached")
+			os.Exit(1)
+		}
+		conn, _ = dns.DialTimeout("tcp", dnsLoopbackAddr, timeout)
+		if conn == nil {
+			time.Sleep(timeout)
+		}
+	}
+
+	conn.Close()
 }
 
 func TestMain(m *testing.M) {
 	stop := make(chan bool, 1)
-	wait := serveLoopResolver(stop)
-	<-wait
+	serveLoopResolver(stop)
+	pollServer()
 	ret := m.Run()
 	stop <- true
 	os.Exit(ret)
