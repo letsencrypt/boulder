@@ -79,3 +79,55 @@ func TestRejectTooEarly(t *testing.T) {
 	test.Assert(t, ns.Valid(n1), "Rejected a valid nonce")
 	test.Assert(t, !ns.Valid(n0), "Accepted a nonce that we should have forgotten")
 }
+
+func BenchmarkNonce(b *testing.B) {
+	ns, err := NewNonceService()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	// fill map
+	for i := 0; i < MaxUsed; i++ {
+		_, err := ns.Nonce()
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, err := ns.Nonce()
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
+func BenchmarkValid(b *testing.B) {
+	ns, err := NewNonceService()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	// fill map + gather test nonces
+	testNonces := []string{}
+	for i := 0; i < MaxUsed; i++ {
+		nonce, err := ns.Nonce()
+		if err != nil {
+			b.Fatal(err)
+		}
+		if i < 100 {
+			testNonces = append(testNonces, nonce)
+		}
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			ns.Valid(testNonces[i%100])
+			i++
+		}
+	})
+}
