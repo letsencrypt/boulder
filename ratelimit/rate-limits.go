@@ -18,52 +18,54 @@ type RateLimitConfig struct {
 }
 
 func (r *RateLimitConfig) TotalCertificates() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
-
-	r.RLock()
-	defer r.RUnlock()
 	return r.rlPolicy.TotalCertificates
 }
 
+func (r *RateLimitConfig) SetTotalCertificatesPolicy(p RateLimitPolicy) {
+	r.Lock()
+	defer r.Unlock()
+
+	r.rlPolicy.CertificatesPerName = p
+}
+
 func (r *RateLimitConfig) CertificatesPerName() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
-
-	r.RLock()
-	defer r.RUnlock()
 	return r.rlPolicy.CertificatesPerName
 }
 
 func (r *RateLimitConfig) RegistrationsPerIP() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
-
-	r.RLock()
-	defer r.RUnlock()
 	return r.rlPolicy.RegistrationsPerIP
 }
 
 func (r *RateLimitConfig) PendingAuthorizationsPerAccount() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
-
-	r.RLock()
-	defer r.RUnlock()
 	return r.rlPolicy.PendingAuthorizationsPerAccount
 }
 
 func (r *RateLimitConfig) CertificatesPerFQDNSet() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
-
-	r.RLock()
-	defer r.RUnlock()
 	return r.rlPolicy.CertificatesPerFQDNSet
 }
 
