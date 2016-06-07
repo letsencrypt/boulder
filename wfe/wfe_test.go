@@ -1592,3 +1592,47 @@ func TestVerifyPOSTInvalidJWK(t *testing.T) {
 	test.AssertEquals(t, probs.MalformedProblem, prob.Type)
 	test.AssertEquals(t, http.StatusBadRequest, prob.HTTPStatus)
 }
+
+func TestHeaderBoulderRequestId(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	mux, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	responseWriter := httptest.NewRecorder()
+
+	mux.ServeHTTP(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(directoryPath),
+	})
+
+	requestID := responseWriter.Header().Get("Boulder-Request-ID")
+	test.Assert(t, len(requestID) > 0, "Boulder-Request-ID header is empty")
+}
+
+func TestHeaderBoulderRequester(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	mux, err := wfe.Handler()
+	test.AssertNotError(t, err, "Problem setting up HTTP handlers")
+	responseWriter := httptest.NewRecorder()
+
+	// create a signed request
+	key, err := jose.LoadPrivateKey([]byte(test1KeyPrivatePEM))
+	test.AssertNotError(t, err, "Failed to load key")
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key")
+	signer, err := jose.NewSigner("RS256", rsaKey)
+	test.AssertNotError(t, err, "Failed to make signer")
+
+	// requests that do not call sendError() have the requester header
+	signer.SetNonceSource(wfe.nonceService)
+	result, err := signer.Sign([]byte(`{"resource":"reg","agreement":"` + agreementURL + `"}`))
+	request := makePostRequestWithPath(regPath+"1", result.FullSerialize())
+	mux.ServeHTTP(responseWriter, request)
+	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")
+
+	// requests that do call sendError() also should have the requester header
+	signer.SetNonceSource(wfe.nonceService)
+	result, err = signer.Sign([]byte(`{"resource":"reg","agreement":"https://letsencrypt.org/im-bad"}`))
+	request = makePostRequestWithPath(regPath+"1", result.FullSerialize())
+	mux.ServeHTTP(responseWriter, request)
+	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")
+}
