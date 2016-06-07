@@ -18,30 +18,50 @@ type RateLimitConfig struct {
 }
 
 func (r *RateLimitConfig) TotalCertificates() RateLimitPolicy {
+	if r.rlPolicy == nil {
+		return RateLimitPolicy{}
+	}
+
 	r.RLock()
 	defer r.RUnlock()
 	return r.rlPolicy.TotalCertificates
 }
 
 func (r *RateLimitConfig) CertificatesPerName() RateLimitPolicy {
+	if r.rlPolicy == nil {
+		return RateLimitPolicy{}
+	}
+
 	r.RLock()
 	defer r.RUnlock()
 	return r.rlPolicy.CertificatesPerName
 }
 
 func (r *RateLimitConfig) RegistrationsPerIP() RateLimitPolicy {
+	if r.rlPolicy == nil {
+		return RateLimitPolicy{}
+	}
+
 	r.RLock()
 	defer r.RUnlock()
 	return r.rlPolicy.RegistrationsPerIP
 }
 
 func (r *RateLimitConfig) PendingAuthorizationsPerAccount() RateLimitPolicy {
+	if r.rlPolicy == nil {
+		return RateLimitPolicy{}
+	}
+
 	r.RLock()
 	defer r.RUnlock()
 	return r.rlPolicy.PendingAuthorizationsPerAccount
 }
 
 func (r *RateLimitConfig) CertificatesPerFQDNSet() RateLimitPolicy {
+	if r.rlPolicy == nil {
+		return RateLimitPolicy{}
+	}
+
 	r.RLock()
 	defer r.RUnlock()
 	return r.rlPolicy.CertificatesPerFQDNSet
