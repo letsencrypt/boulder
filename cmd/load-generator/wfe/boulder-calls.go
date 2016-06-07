@@ -179,7 +179,7 @@ func (s *State) solveHTTPOne(reg *registration, chall core.Challenge, signer jos
 		if newAuthz.Status == "invalid" {
 			break
 		}
-		time.Sleep(3 * time.Second) // XXX: Mimics client behaviour
+		time.Sleep(3 * time.Second) // XXX: Mimics certbot behaviour
 	}
 	if ident == "" {
 		return nil
@@ -263,6 +263,8 @@ func (s *State) newAuthorization(reg *registration) {
 				fmt.Printf("Failed to solve http-0 challenge: %s\n", err)
 				return
 			}
+			// case "tls-sni-02":
+			// case "dns-01":
 		}
 	}
 }
