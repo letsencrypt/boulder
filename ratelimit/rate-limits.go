@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -8,8 +9,79 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
-// RateLimitConfig contains all application layer rate limiting policies
+// RateLimitConfig is an exported container for a rateLimitConfig and a mutex
+// This allows the inner rateLimitConfig pointer to be updated safely when the
+// overall configuration changes (e.g. due to a live reload of the policy file)
 type RateLimitConfig struct {
+	sync.RWMutex
+	rlPolicy *rateLimitConfig
+}
+
+func (r *RateLimitConfig) TotalCertificates() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
+	return r.rlPolicy.TotalCertificates
+}
+
+func (r *RateLimitConfig) CertificatesPerName() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
+	return r.rlPolicy.CertificatesPerName
+}
+
+func (r *RateLimitConfig) RegistrationsPerIP() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
+	return r.rlPolicy.RegistrationsPerIP
+}
+
+func (r *RateLimitConfig) PendingAuthorizationsPerAccount() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
+	return r.rlPolicy.PendingAuthorizationsPerAccount
+}
+
+func (r *RateLimitConfig) CertificatesPerFQDNSet() RateLimitPolicy {
+	r.RLock()
+	defer r.RUnlock()
+	return r.rlPolicy.CertificatesPerFQDNSet
+}
+
+// LoadPolicies loads various rate limiting policies from a byte array of
+// YAML configuration (typically read from disk by a reloader)
+func (r *RateLimitConfig) LoadPolicies(contents []byte) error {
+	var newPolicy rateLimitConfig
+	err := yaml.Unmarshal(contents, &newPolicy)
+	if err != nil {
+		return err
+	}
+
+	r.Lock()
+	r.rlPolicy = &newPolicy
+	r.Unlock()
+	return nil
+}
+
+func (r *RateLimitConfig) New(
+	totalCerts RateLimitPolicy,
+	certsPerName RateLimitPolicy,
+	regsPerIP RateLimitPolicy,
+	pendingAuthsPerIP RateLimitPolicy,
+	certsPerFQDNSet RateLimitPolicy) {
+	r.Lock()
+	r.rlPolicy = &rateLimitConfig{
+		TotalCertificates:               totalCerts,
+		CertificatesPerName:             certsPerName,
+		RegistrationsPerIP:              regsPerIP,
+		PendingAuthorizationsPerAccount: pendingAuthsPerIP,
+		CertificatesPerFQDNSet:          certsPerFQDNSet,
+	}
+	r.Unlock()
+}
+
+// rateLimitConfig contains all application layer rate limiting policies. It is
+// unexported and clients are expected to use the exported container struct
+type rateLimitConfig struct {
 	// Total number of certificates that can be extant at any given time.
 	// The 2160h window, 90 days, is chosen to match certificate lifetime, since the
 	// main capacity factor is how many OCSP requests we can sign with available
@@ -74,15 +146,4 @@ func (rlp *RateLimitPolicy) GetThreshold(key string, regID int64) int {
 // particular end time (typically the current time).
 func (rlp *RateLimitPolicy) WindowBegin(windowEnd time.Time) time.Time {
 	return windowEnd.Add(-1 * rlp.Window.Duration)
-}
-
-// LoadRateLimitPolicies loads various rate limiting policies from a byte array of
-// YAML configuration (typically read from disk by a reloader)
-func LoadRateLimitPolicies(contents []byte) (RateLimitConfig, error) {
-	var rlc RateLimitConfig
-	err := yaml.Unmarshal(contents, &rlc)
-	if err != nil {
-		return RateLimitConfig{}, err
-	}
-	return rlc, nil
 }

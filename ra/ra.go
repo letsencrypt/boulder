@@ -58,7 +58,6 @@ type RegistrationAuthorityImpl struct {
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
 	rlPolicies                   ratelimit.RateLimitConfig
-	rlMu                         *sync.RWMutex
 	tiMu                         *sync.RWMutex
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
@@ -91,7 +90,6 @@ func NewRegistrationAuthorityImpl(
 		log:   logger,
 		authorizationLifetime:        DefaultAuthorizationLifetime,
 		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
-		rlMu:                 new(sync.RWMutex),
 		tiMu:                 new(sync.RWMutex),
 		maxContactsPerReg:    maxContactsPerReg,
 		keyPolicy:            keyPolicy,
@@ -102,29 +100,22 @@ func NewRegistrationAuthorityImpl(
 		certsForDomainStats:  scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
 		totalCertsStats:      scope.NewScope("RA", "RateLimit", "TotalCertificates"),
 	}
+	ra.rlPolicies.New(
+		ratelimit.RateLimitPolicy{},
+		ratelimit.RateLimitPolicy{},
+		ratelimit.RateLimitPolicy{},
+		ratelimit.RateLimitPolicy{},
+		ratelimit.RateLimitPolicy{})
 	return ra
 }
 
 func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) error {
-	_, err := reloader.New(filename, ra.setRateLimitPolicies, ra.rateLimitPoliciesLoadError)
+	_, err := reloader.New(filename, ra.rlPolicies.LoadPolicies, ra.rateLimitPoliciesLoadError)
 
 	if err != nil {
 		return err
 	}
 
-	return nil
-}
-
-func (ra *RegistrationAuthorityImpl) setRateLimitPolicies(policyContent []byte) error {
-	rateLimitPolicies, err := ratelimit.LoadRateLimitPolicies(policyContent)
-
-	if err != nil {
-		return err
-	}
-
-	ra.rlMu.Lock()
-	ra.rlPolicies = rateLimitPolicies
-	ra.rlMu.Unlock()
 	return nil
 }
 
@@ -223,9 +214,7 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount(ctx context.Context) (int,
 	ra.tiMu.Lock()
 	defer ra.tiMu.Unlock()
 
-	ra.rlMu.RLock()
-	totalCertWindow := ra.rlPolicies.TotalCertificates.Window.Duration
-	ra.rlMu.RUnlock()
+	totalCertWindow := ra.rlPolicies.TotalCertificates().Window.Duration
 
 	now := ra.clk.Now()
 	if ra.issuanceCountInvalid(now) {
@@ -248,9 +237,7 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount(ctx context.Context) (int,
 const noRegistrationID = -1
 
 func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ctx context.Context, ip net.IP) error {
-	ra.rlMu.RLock()
-	limit := ra.rlPolicies.RegistrationsPerIP
-	ra.rlMu.RUnlock()
+	limit := ra.rlPolicies.RegistrationsPerIP()
 
 	if limit.Enabled() {
 		now := ra.clk.Now()
@@ -332,9 +319,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 }
 
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
-	ra.rlMu.RLock()
-	limit := ra.rlPolicies.PendingAuthorizationsPerAccount
-	ra.rlMu.RUnlock()
+	limit := ra.rlPolicies.PendingAuthorizationsPerAccount()
 	if limit.Enabled() {
 		count, err := ra.SA.CountPendingAuthorizations(ctx, regID)
 		if err != nil {
@@ -726,15 +711,13 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 }
 
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
-	ra.rlMu.RLock()
-	limits := ra.rlPolicies
-	ra.rlMu.RUnlock()
-	if limits.TotalCertificates.Enabled() {
+	totalCertLimits := ra.rlPolicies.TotalCertificates()
+	if totalCertLimits.Enabled() {
 		totalIssued, err := ra.getIssuanceCount(ctx)
 		if err != nil {
 			return err
 		}
-		if totalIssued >= limits.TotalCertificates.Threshold {
+		if totalIssued >= totalCertLimits.Threshold {
 			domains := strings.Join(names, ",")
 			ra.totalCertsStats.Inc("Exceeded", 1)
 			ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, regID: %d, domains: %s, totalIssued: %d", regID, domains, totalIssued))
@@ -742,14 +725,18 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 		}
 		ra.totalCertsStats.Inc("Pass", 1)
 	}
-	if limits.CertificatesPerName.Enabled() {
-		err := ra.checkCertificatesPerNameLimit(ctx, names, limits.CertificatesPerName, regID)
+
+	certNameLimits := ra.rlPolicies.CertificatesPerName()
+	if certNameLimits.Enabled() {
+		err := ra.checkCertificatesPerNameLimit(ctx, names, certNameLimits, regID)
 		if err != nil {
 			return err
 		}
 	}
-	if limits.CertificatesPerFQDNSet.Enabled() {
-		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, limits.CertificatesPerFQDNSet, regID)
+
+	fqdnLimits := ra.rlPolicies.CertificatesPerFQDNSet()
+	if fqdnLimits.Enabled() {
+		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, fqdnLimits, regID)
 		if err != nil {
 			return err
 		}
