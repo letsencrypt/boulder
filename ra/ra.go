@@ -120,8 +120,6 @@ func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) e
 }
 
 func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
-	// TODO(cpu): Determine if this is the best course of action for when the policy
-	// fails to load at runtime during a reload
 	ra.log.Err(fmt.Sprintf("error live loading rate limit policy: %s", err))
 }
 
