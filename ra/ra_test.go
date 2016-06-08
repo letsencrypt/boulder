@@ -151,6 +151,40 @@ var testKeyPolicy = goodkey.KeyPolicy{
 
 var ctx = context.Background()
 
+// DummyRateLimitConfig satisfies the ratelimit.RateLimitConfig interface while
+// allowing easy mocking of the individual RateLimitPolicy's
+type DummyRateLimitConfig struct {
+	TotalCertificatesPolicy               ratelimit.RateLimitPolicy
+	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
+	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
+	PendingAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
+	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
+}
+
+func (r *DummyRateLimitConfig) TotalCertificates() ratelimit.RateLimitPolicy {
+	return r.TotalCertificatesPolicy
+}
+
+func (r *DummyRateLimitConfig) CertificatesPerName() ratelimit.RateLimitPolicy {
+	return r.CertificatesPerNamePolicy
+}
+
+func (r *DummyRateLimitConfig) RegistrationsPerIP() ratelimit.RateLimitPolicy {
+	return r.RegistrationsPerIPPolicy
+}
+
+func (r *DummyRateLimitConfig) PendingAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
+	return r.PendingAuthorizationsPerAccountPolicy
+}
+
+func (r *DummyRateLimitConfig) CertificatesPerFQDNSet() ratelimit.RateLimitPolicy {
+	return r.CertificatesPerFQDNSetPolicy
+}
+
+func (r *DummyRateLimitConfig) LoadPolicies(contents []byte) error {
+	return nil // NOP - unrequired behaviour for this mock
+}
+
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAuthority, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
@@ -211,12 +245,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra.CA = ca
 	ra.PA = pa
 	ra.DNSResolver = &bdns.MockDNSResolver{}
-
-	ra.rlPolicies.SetTotalCertificatesPolicy(
-		ratelimit.RateLimitPolicy{
-			Threshold: 100,
-			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		})
 
 	AuthzInitial.RegistrationID = Registration.ID
 
@@ -647,11 +675,12 @@ func TestTotalCertRateLimit(t *testing.T) {
 	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies.SetTotalCertificatesPolicy(
-		ratelimit.RateLimitPolicy{
+	ra.rlPolicies = &DummyRateLimitConfig{
+		TotalCertificatesPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		})
+		},
+	}
 	fc.Add(24 * 90 * time.Hour)
 
 	AuthzFinal.RegistrationID = Registration.ID
@@ -690,11 +719,12 @@ func TestAuthzRateLimiting(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies.SetPendingAuthorizationsPerAccountPolicy(
-		ratelimit.RateLimitPolicy{
+	ra.rlPolicies = &DummyRateLimitConfig{
+		PendingAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
-		})
+		},
+	}
 	fc.Add(24 * 90 * time.Hour)
 
 	// Should be able to create an authzRequest

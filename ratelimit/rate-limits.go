@@ -9,15 +9,28 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
-// RateLimitConfig is an exported container for a rateLimitConfig and a mutex
-// This allows the inner rateLimitConfig pointer to be updated safely when the
-// overall configuration changes (e.g. due to a live reload of the policy file)
-type RateLimitConfig struct {
+// RateLimitConfig is defined as an interface to allow mock implementations be
+// provided during unit testing
+type RateLimitConfig interface {
+	TotalCertificates() RateLimitPolicy
+	CertificatesPerName() RateLimitPolicy
+	RegistrationsPerIP() RateLimitPolicy
+	PendingAuthorizationsPerAccount() RateLimitPolicy
+	CertificatesPerFQDNSet() RateLimitPolicy
+	LoadPolicies(contents []byte) error
+}
+
+// MutexRateLimitConfig is an exported implementation of the RateLimitConfig
+// interface. It acts as a container for a rateLimitConfig and a mutex. This
+// allows the inner rateLimitConfig pointer to be updated safely
+// when the overall configuration changes (e.g. due to a reload of the
+// policy file)
+type MutexRateLimitConfig struct {
 	sync.RWMutex
 	rlPolicy *rateLimitConfig
 }
 
-func (r *RateLimitConfig) TotalCertificates() RateLimitPolicy {
+func (r *MutexRateLimitConfig) TotalCertificates() RateLimitPolicy {
 	r.RLock()
 	defer r.RUnlock()
 	if r.rlPolicy == nil {
@@ -26,16 +39,7 @@ func (r *RateLimitConfig) TotalCertificates() RateLimitPolicy {
 	return r.rlPolicy.TotalCertificates
 }
 
-func (r *RateLimitConfig) SetTotalCertificatesPolicy(p RateLimitPolicy) {
-	r.Lock()
-	defer r.Unlock()
-	if r.rlPolicy == nil {
-		r.rlPolicy = &rateLimitConfig{}
-	}
-	r.rlPolicy.TotalCertificates = p
-}
-
-func (r *RateLimitConfig) CertificatesPerName() RateLimitPolicy {
+func (r *MutexRateLimitConfig) CertificatesPerName() RateLimitPolicy {
 	r.RLock()
 	defer r.RUnlock()
 	if r.rlPolicy == nil {
@@ -44,16 +48,7 @@ func (r *RateLimitConfig) CertificatesPerName() RateLimitPolicy {
 	return r.rlPolicy.CertificatesPerName
 }
 
-func (r *RateLimitConfig) SetCertificatesPerNamePolicy(p RateLimitPolicy) {
-	r.Lock()
-	defer r.Unlock()
-	if r.rlPolicy == nil {
-		r.rlPolicy = &rateLimitConfig{}
-	}
-	r.rlPolicy.CertificatesPerName = p
-}
-
-func (r *RateLimitConfig) RegistrationsPerIP() RateLimitPolicy {
+func (r *MutexRateLimitConfig) RegistrationsPerIP() RateLimitPolicy {
 	r.RLock()
 	defer r.RUnlock()
 	if r.rlPolicy == nil {
@@ -62,16 +57,7 @@ func (r *RateLimitConfig) RegistrationsPerIP() RateLimitPolicy {
 	return r.rlPolicy.RegistrationsPerIP
 }
 
-func (r *RateLimitConfig) SetRegistrationsPerIPPolicy(p RateLimitPolicy) {
-	r.Lock()
-	defer r.Unlock()
-	if r.rlPolicy == nil {
-		r.rlPolicy = &rateLimitConfig{}
-	}
-	r.rlPolicy.RegistrationsPerIP = p
-}
-
-func (r *RateLimitConfig) PendingAuthorizationsPerAccount() RateLimitPolicy {
+func (r *MutexRateLimitConfig) PendingAuthorizationsPerAccount() RateLimitPolicy {
 	r.RLock()
 	defer r.RUnlock()
 	if r.rlPolicy == nil {
@@ -80,16 +66,7 @@ func (r *RateLimitConfig) PendingAuthorizationsPerAccount() RateLimitPolicy {
 	return r.rlPolicy.PendingAuthorizationsPerAccount
 }
 
-func (r *RateLimitConfig) SetPendingAuthorizationsPerAccountPolicy(p RateLimitPolicy) {
-	r.Lock()
-	defer r.Unlock()
-	if r.rlPolicy == nil {
-		r.rlPolicy = &rateLimitConfig{}
-	}
-	r.rlPolicy.PendingAuthorizationsPerAccount = p
-}
-
-func (r *RateLimitConfig) CertificatesPerFQDNSet() RateLimitPolicy {
+func (r *MutexRateLimitConfig) CertificatesPerFQDNSet() RateLimitPolicy {
 	r.RLock()
 	defer r.RUnlock()
 	if r.rlPolicy == nil {
@@ -98,18 +75,9 @@ func (r *RateLimitConfig) CertificatesPerFQDNSet() RateLimitPolicy {
 	return r.rlPolicy.CertificatesPerFQDNSet
 }
 
-func (r *RateLimitConfig) SetCertificatesPerFQDNSetPolicy(p RateLimitPolicy) {
-	r.Lock()
-	defer r.Unlock()
-	if r.rlPolicy == nil {
-		r.rlPolicy = &rateLimitConfig{}
-	}
-	r.rlPolicy.CertificatesPerFQDNSet = p
-}
-
 // LoadPolicies loads various rate limiting policies from a byte array of
 // YAML configuration (typically read from disk by a reloader)
-func (r *RateLimitConfig) LoadPolicies(contents []byte) error {
+func (r *MutexRateLimitConfig) LoadPolicies(contents []byte) error {
 	var newPolicy rateLimitConfig
 	err := yaml.Unmarshal(contents, &newPolicy)
 	if err != nil {

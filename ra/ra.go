@@ -57,7 +57,7 @@ type RegistrationAuthorityImpl struct {
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
-	rlPolicies                   *ratelimit.RateLimitConfig
+	rlPolicies                   ratelimit.RateLimitConfig
 	tiMu                         *sync.RWMutex
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
@@ -90,7 +90,7 @@ func NewRegistrationAuthorityImpl(
 		log:   logger,
 		authorizationLifetime:        DefaultAuthorizationLifetime,
 		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
-		rlPolicies:                   &ratelimit.RateLimitConfig{},
+		rlPolicies:                   &ratelimit.MutexRateLimitConfig{},
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
