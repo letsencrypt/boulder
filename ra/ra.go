@@ -106,7 +106,6 @@ func NewRegistrationAuthorityImpl(
 
 func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) error {
 	_, err := reloader.New(filename, ra.rlPolicies.LoadPolicies, ra.rateLimitPoliciesLoadError)
-
 	if err != nil {
 		return err
 	}
