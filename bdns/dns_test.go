@@ -201,9 +201,10 @@ func pollServer() {
 			os.Exit(1)
 		}
 		conn, _ = dns.DialTimeout("tcp", dnsLoopbackAddr, timeout)
-		if conn == nil {
-			time.Sleep(timeout)
+		if conn != nil {
+			break
 		}
+		time.Sleep(timeout)
 	}
 	_ = conn.Close()
 }
