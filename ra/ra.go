@@ -114,7 +114,7 @@ func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) e
 }
 
 func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
-	ra.log.Err(fmt.Sprintf("error live loading rate limit policy: %s", err))
+	ra.log.Err(fmt.Sprintf("error reloading rate limit policy: %s", err))
 }
 
 const (
