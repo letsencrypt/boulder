@@ -9,20 +9,11 @@ import (
 
 type nameRoundRobin struct {
 	names     chan []grpc.Address
-	connected map[grpc.Address]struct{}
+	connected []grpc.Address
+	i         int
 	done      bool
 	waitCh    chan struct{}
 	mu        sync.Mutex
-
-	// r         naming.Resolver
-	// w         naming.Watcher
-	// open      []Address // all the addresses the client should potentially connect
-	// mu        sync.Mutex
-	// addrCh    chan []Address // the channel to notify gRPC internals the list of addresses the client should connect to.
-	// connected []Address      // all the connected addresses
-	// next      int            // index of the next address to return for Get()
-	// waitCh    chan struct{}  // the channel to block when there is no connected address available
-	// done      bool           // The Balancer is closed.
 }
 
 // NameRoundRobin returns a Balancer that selects names round-robin
@@ -49,21 +40,19 @@ func (nrr *nameRoundRobin) Close() error {
 	return nil
 }
 
-func (nrr *nameRoundRobin) Get(ctx context.Context, opts grpc.BalancerGetOptions) (grpc.Address, func(), error) {
-	var ch chan struct{}
+func (nrr *nameRoundRobin) Get(ctx context.Context, _ grpc.BalancerGetOptions) (grpc.Address, func(), error) {
 	nrr.mu.Lock()
 	if nrr.done {
 		nrr.mu.Unlock()
 		return grpc.Address{}, nil, grpc.ErrClientConnClosing
 	}
 	if len(nrr.connected) > 0 {
-		var addr grpc.Address
-		for addr = range nrr.connected {
-			break
-		} // get random name from map
+		addr := nrr.connected[nrr.i]
+		nrr.i = (nrr.i + 1) % len(nrr.connected)
 		nrr.mu.Unlock()
 		return addr, nil, nil
 	}
+	var ch chan struct{}
 	if nrr.waitCh == nil {
 		ch = make(chan struct{})
 		nrr.waitCh = ch
@@ -92,15 +81,15 @@ func (nrr *nameRoundRobin) Start(name string) error {
 func (nrr *nameRoundRobin) Up(address grpc.Address) func(error) {
 	nrr.mu.Lock()
 	defer nrr.mu.Unlock()
-	if _, present := nrr.connected[address]; present {
-		return nil
-	}
-	nrr.connected[address] = struct{}{}
-	if len(nrr.connected) == 1 {
-		if nrr.waitCh != nil {
-			close(nrr.waitCh)
-			nrr.waitCh = nil
+	for _, a := range nrr.connected {
+		if a == address {
+			return nil
 		}
+	}
+	nrr.connected = append(nrr.connected, address)
+	if len(nrr.connected) == 1 && nrr.waitCh != nil {
+		close(nrr.waitCh)
+		nrr.waitCh = nil
 	}
 	return func(err error) {
 		nrr.down(address, err)
@@ -111,5 +100,11 @@ func (nrr *nameRoundRobin) down(address grpc.Address, err error) {
 	// should do something with the error...?
 	nrr.mu.Lock()
 	defer nrr.mu.Unlock()
-	delete(nrr.connected, address)
+	for i, a := range nrr.connected {
+		if a == address {
+			copy(nrr.connected[i:], nrr.connected[i+1:])
+			nrr.connected = nrr.connected[:len(nrr.connected)-1]
+			return
+		}
+	}
 }
