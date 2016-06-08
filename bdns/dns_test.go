@@ -171,12 +171,10 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 	return
 }
 
-func serveLoopResolver(stopChan chan bool) chan bool {
+func serveLoopResolver(stopChan chan bool) {
 	dns.HandleFunc(".", mockDNSQuery)
-	server := &dns.Server{Addr: dnsLoopbackAddr, Net: "tcp", ReadTimeout: time.Millisecond, WriteTimeout: time.Millisecond}
-	waitChan := make(chan bool, 1)
+	server := &dns.Server{Addr: dnsLoopbackAddr, Net: "tcp", ReadTimeout: time.Second, WriteTimeout: time.Second}
 	go func() {
-		waitChan <- true
 		err := server.ListenAndServe()
 		if err != nil {
 			fmt.Println(err)
@@ -190,13 +188,32 @@ func serveLoopResolver(stopChan chan bool) chan bool {
 			fmt.Println(err)
 		}
 	}()
-	return waitChan
+}
+
+func pollServer() {
+	backoff := time.Duration(200 * time.Millisecond)
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5*time.Second))
+	ticker := time.NewTicker(backoff)
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Fprintln(os.Stderr, "Timeout reached while testing for the dns server to come up")
+			os.Exit(1)
+		case <-ticker.C:
+			conn, _ := dns.DialTimeout("tcp", dnsLoopbackAddr, backoff)
+			if conn != nil {
+				_ = conn.Close()
+				return
+			}
+		}
+	}
 }
 
 func TestMain(m *testing.M) {
 	stop := make(chan bool, 1)
-	wait := serveLoopResolver(stop)
-	<-wait
+	serveLoopResolver(stop)
+	pollServer()
 	ret := m.Run()
 	stop <- true
 	os.Exit(ret)
