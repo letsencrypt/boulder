@@ -203,7 +203,7 @@ func pollServer() {
 		time.Sleep(backoff)
 	}
 	if conn == nil {
-		fmt.Fprintf(os.Stderr, "Max tries(%d) reached while testing for the dns server to come up\n", backoff)
+		fmt.Fprintf(os.Stderr, "Max tries(%d) reached while testing for the dns server to come up\n", tries)
 		os.Exit(1)
 	}
 	_ = conn.Close()
