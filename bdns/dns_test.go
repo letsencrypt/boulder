@@ -192,7 +192,7 @@ func serveLoopResolver(stopChan chan bool) {
 
 func pollServer() {
 	backoff := time.Duration(200 * time.Millisecond)
-	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(5*time.Second))
 	ticker := time.NewTicker(backoff)
 
 	for {
