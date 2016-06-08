@@ -228,7 +228,7 @@ func (cpc *CachePurgeClient) Purge(urls []string) error {
 		err := cpc.purge(urls)
 		if err != nil {
 			if _, ok := err.(errFatal); ok {
-				cpc.log.AuditErr(err)
+				cpc.log.AuditErr(err.Error())
 				cpc.stats.Inc("CCU.FatalFailures", 1, 1.0)
 				return err
 			}

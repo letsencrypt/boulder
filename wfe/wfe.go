@@ -306,6 +306,12 @@ func addCacheHeader(w http.ResponseWriter, age float64) {
 	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%.f", age))
 }
 
+func addRequesterHeader(w http.ResponseWriter, requester int64) {
+	if requester > 0 {
+		w.Header().Set("Boulder-Requester", fmt.Sprintf("%d", requester))
+	}
+}
+
 // Directory is an HTTP request handler that provides the directory
 // object stored in the WFE's DirectoryEndpoints member with paths prefixed
 // using the `request.Host` of the HTTP request.
@@ -506,13 +512,13 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *re
 	// auditable events.
 	if prob.Type == probs.ServerInternalProblem {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		wfe.log.AuditErr(fmt.Errorf("Internal error - %s - %s", prob.Detail, ierr))
+		wfe.log.AuditErr(fmt.Sprintf("Internal error - %s - %s", prob.Detail, ierr))
 	}
 
 	problemDoc, err := marshalIndent(prob)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		wfe.log.AuditErr(fmt.Errorf("Could not marshal error message: %s - %+v", err, prob))
+		wfe.log.AuditErr(fmt.Sprintf("Could not marshal error message: %s - %+v", err, prob))
 		problemDoc = []byte("{\"detail\": \"Problem marshalling error message.\"}")
 	}
 
@@ -537,6 +543,7 @@ func link(url, relation string) string {
 func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 
 	body, key, _, prob := wfe.verifyPOST(ctx, logEvent, request, false, core.ResourceNewReg)
+	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -581,6 +588,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 		return
 	}
 	logEvent.Requester = reg.ID
+	addRequesterHeader(response, reg.ID)
 	logEvent.Contacts = reg.Contact
 
 	// Use an explicitly typed variable. Otherwise `go vet' incorrectly complains
@@ -609,6 +617,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *reque
 // NewAuthorization is used by clients to submit a new ID Authorization
 func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	body, _, currReg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceNewAuthz)
+	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -665,6 +674,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *req
 	// We don't ask verifyPOST to verify there is a corresponding registration,
 	// because anyone with the right private key can revoke a certificate.
 	body, requestKey, registration, prob := wfe.verifyPOST(ctx, logEvent, request, false, core.ResourceRevokeCert)
+	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -758,6 +768,7 @@ func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateReq
 // authorized identifier.
 func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 	body, _, reg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceNewCert)
+	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -959,6 +970,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	challengeIndex int,
 	logEvent *requestEvent) {
 	body, _, currReg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceChallenge)
+	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -1026,6 +1038,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 func (wfe *WebFrontEndImpl) Registration(ctx context.Context, logEvent *requestEvent, response http.ResponseWriter, request *http.Request) {
 
 	body, _, currReg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceRegistration)
+	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// verifyPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)

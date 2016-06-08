@@ -114,14 +114,14 @@ func (m *mailer) updateCertStatus(serial string) error {
 	tx, err := m.dbMap.Begin()
 	if err != nil {
 		err = sa.Rollback(tx, err)
-		m.log.Err(fmt.Sprintf("Error opening transaction for certificate %s: %s", serial, err))
+		m.log.AuditErr(fmt.Sprintf("Error opening transaction for certificate %s: %s", serial, err))
 		return err
 	}
 
 	csObj, err := tx.Get(&core.CertificateStatus{}, serial)
 	if err != nil {
 		err = sa.Rollback(tx, err)
-		m.log.Err(fmt.Sprintf("Error fetching status for certificate %s: %s", serial, err))
+		m.log.AuditErr(fmt.Sprintf("Error fetching status for certificate %s: %s", serial, err))
 		return err
 	}
 	certStatus := csObj.(*core.CertificateStatus)
@@ -130,14 +130,14 @@ func (m *mailer) updateCertStatus(serial string) error {
 	_, err = tx.Update(certStatus)
 	if err != nil {
 		err = sa.Rollback(tx, err)
-		m.log.Err(fmt.Sprintf("Error updating status for certificate %s: %s", serial, err))
+		m.log.AuditErr(fmt.Sprintf("Error updating status for certificate %s: %s", serial, err))
 		return err
 	}
 
 	err = tx.Commit()
 	if err != nil {
 		err = sa.Rollback(tx, err)
-		m.log.Err(fmt.Sprintf("Error committing transaction for certificate %s: %s", serial, err))
+		m.log.AuditErr(fmt.Sprintf("Error committing transaction for certificate %s: %s", serial, err))
 		return err
 	}
 
@@ -173,7 +173,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 	for regID, certs := range regIDToCerts {
 		reg, err := m.rs.GetRegistration(ctx, regID)
 		if err != nil {
-			m.log.Err(fmt.Sprintf("Error fetching registration %d: %s", regID, err))
+			m.log.AuditErr(fmt.Sprintf("Error fetching registration %d: %s", regID, err))
 			m.stats.Inc("Mailer.Expiration.Errors.GetRegistration", 1, 1.0)
 			continue
 		}
@@ -183,14 +183,14 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			parsedCert, err := x509.ParseCertificate(cert.DER)
 			if err != nil {
 				// TODO(#1420): tell registration about this error
-				m.log.Err(fmt.Sprintf("Error parsing certificate %s: %s", cert.Serial, err))
+				m.log.AuditErr(fmt.Sprintf("Error parsing certificate %s: %s", cert.Serial, err))
 				m.stats.Inc("Mailer.Expiration.Errors.ParseCertificate", 1, 1.0)
 				continue
 			}
 
 			renewed, err := m.certIsRenewed(cert.Serial)
 			if err != nil {
-				m.log.Err(fmt.Sprintf("expiration-mailer: error fetching renewal state: %v", err))
+				m.log.AuditErr(fmt.Sprintf("expiration-mailer: error fetching renewal state: %v", err))
 				// assume not renewed
 			} else if renewed {
 				m.stats.Inc("Mailer.Expiration.Renewed", 1, 1.0)
@@ -207,14 +207,14 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 
 		err = m.sendNags(reg.Contact, parsedCerts)
 		if err != nil {
-			m.log.Err(fmt.Sprintf("Error sending nag emails: %s", err))
+			m.log.AuditErr(fmt.Sprintf("Error sending nag emails: %s", err))
 			continue
 		}
 		for _, cert := range parsedCerts {
 			serial := core.SerialToString(cert.SerialNumber)
 			err = m.updateCertStatus(serial)
 			if err != nil {
-				m.log.Err(fmt.Sprintf("Error updating certificate status for %s: %s", serial, err))
+				m.log.AuditErr(fmt.Sprintf("Error updating certificate status for %s: %s", serial, err))
 				m.stats.Inc("Mailer.Expiration.Errors.UpdateCertificateStatus", 1, 1.0)
 				continue
 			}
@@ -255,7 +255,7 @@ func (m *mailer) findExpiringCertificates() error {
 			},
 		)
 		if err != nil {
-			m.log.Err(fmt.Sprintf("expiration-mailer: Error loading certificates: %s", err))
+			m.log.AuditErr(fmt.Sprintf("expiration-mailer: Error loading certificates: %s", err))
 			return err // fatal
 		}
 
@@ -340,7 +340,7 @@ func main() {
 		if s := c.Mailer.NagCheckInterval; s != "" {
 			nagCheckInterval, err = time.ParseDuration(s)
 			if err != nil {
-				logger.Err(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
+				logger.AuditErr(fmt.Sprintf("Failed to parse NagCheckInterval string %q: %s", s, err))
 				return
 			}
 		}
@@ -349,7 +349,7 @@ func main() {
 		for _, nagDuration := range c.Mailer.NagTimes {
 			dur, err := time.ParseDuration(nagDuration)
 			if err != nil {
-				logger.Err(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
+				logger.AuditErr(fmt.Sprintf("Failed to parse nag duration string [%s]: %s", nagDuration, err))
 				return
 			}
 			nags = append(nags, dur+nagCheckInterval)

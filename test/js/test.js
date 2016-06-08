@@ -37,13 +37,6 @@ var questions = {
     }
   }],
 
-  terms: [{
-    type: "confirm",
-    name: "terms",
-    message: "Do you agree to these terms?",
-    default: true,
-  }],
-
   domain: [{
     type: "input",
     name: "domain",
@@ -92,7 +85,6 @@ var cliOptions = cli.parse({
   certKeyFile:  ["certKey", "File for cert key (created if not exists)", "path", "cert-key.pem"],
   certFile:  ["cert", "Path to output certificate (DER format)", "path", "cert.pem"],
   email:  ["email", "Email address", "string", null],
-  agreeTerms:  ["agree", "Agree to terms of service", "boolean", null],
   domains:  ["domains", "Domain name(s) for which to request a certificate (comma-separated)", "string", null],
   challType: ["challType", "Name of challenge type to use for validations", "string", "http-01"],
   abortStep: ["abort-step", "Stop the issuance after reaching a certain step", "string", null]
@@ -104,10 +96,6 @@ var state = {
 
   newRegistrationURL: cliOptions.newReg,
   registrationURL: "",
-
-  termsRequired: false,
-  termsAgreed: null,
-  termsURL: null,
 
   haveCLIDomains: !!(cliOptions.domains),
   domains: cliOptions.domains && cliOptions.domains.replace(/\s/g, "").split(/[^\w.-]+/),
@@ -169,9 +157,9 @@ main
 register
   |
 getTerms
-  | \
-  |  sendAgreement
-  | /
+  |
+sendAgreement
+  |
 getDomain
   |
 getChallenges
@@ -253,42 +241,16 @@ function getTerms(err, resp) {
 
   state.registrationURL = resp.headers["location"];
   state.newAuthorizationURL = links["next"];
-  state.termsRequired = ("terms-of-service" in links);
 
-  if (state.termsRequired) {
-    state.termsURL = links["terms-of-service"];
-    console.log(state.termsURL);
-    getAgreement();
-  } else {
-    inquirer.prompt(questions.domain, getChallenges);
-  }
+  sendAgreement(links["terms-of-service"]);
 }
 
-function getAgreement() {
-  console.log("The CA requires your agreement to terms:",
-    state.termsURL);
-  console.log();
-
-  if (!cliOptions.agreeTerms) {
-    inquirer.prompt(questions.terms, sendAgreement);
-  } else {
-    sendAgreement({terms: true});
-  }
-}
-
-function sendAgreement(answers) {
-  state.termsAgreed = answers.terms;
-
-  if (state.termsRequired && !state.termsAgreed) {
-    console.log("Sorry, can't proceed if you don't agree.");
-    process.exit(1);
-  }
-
+function sendAgreement(termsURL) {
   console.log("Posting agreement to: " + state.registrationURL)
 
   state.registration = {
     resource: "reg",
-    agreement: state.termsURL
+    agreement: termsURL
   }
   post(state.registrationURL, state.registration,
     function(err, resp, body) {

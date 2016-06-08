@@ -207,11 +207,11 @@ type fqdnSetExistsResponse struct {
 
 func improperMessage(method string, err error, obj interface{}) {
 	log := blog.Get()
-	log.AuditErr(fmt.Errorf("Improper message. method: %s err: %s data: %+v", method, err, obj))
+	log.AuditErr(fmt.Sprintf("Improper message. method: %s err: %s data: %+v", method, err, obj))
 }
 func errorCondition(method string, err error, obj interface{}) {
 	log := blog.Get()
-	log.AuditErr(fmt.Errorf("Error condition. method: %s err: %s data: %+v", method, err, obj))
+	log.AuditErr(fmt.Sprintf("Error condition. method: %s err: %s data: %+v", method, err, obj))
 }
 
 // NewRegistrationAuthorityServer constructs an RPC server
