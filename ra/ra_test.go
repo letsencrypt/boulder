@@ -151,9 +151,9 @@ var testKeyPolicy = goodkey.KeyPolicy{
 
 var ctx = context.Background()
 
-// DummyRateLimitConfig satisfies the ratelimit.RateLimitConfig interface while
+// dummyRateLimitConfig satisfies the ratelimit.RateLimitConfig interface while
 // allowing easy mocking of the individual RateLimitPolicy's
-type DummyRateLimitConfig struct {
+type dummyRateLimitConfig struct {
 	TotalCertificatesPolicy               ratelimit.RateLimitPolicy
 	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
 	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
@@ -161,27 +161,27 @@ type DummyRateLimitConfig struct {
 	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
 }
 
-func (r *DummyRateLimitConfig) TotalCertificates() ratelimit.RateLimitPolicy {
+func (r *dummyRateLimitConfig) TotalCertificates() ratelimit.RateLimitPolicy {
 	return r.TotalCertificatesPolicy
 }
 
-func (r *DummyRateLimitConfig) CertificatesPerName() ratelimit.RateLimitPolicy {
+func (r *dummyRateLimitConfig) CertificatesPerName() ratelimit.RateLimitPolicy {
 	return r.CertificatesPerNamePolicy
 }
 
-func (r *DummyRateLimitConfig) RegistrationsPerIP() ratelimit.RateLimitPolicy {
+func (r *dummyRateLimitConfig) RegistrationsPerIP() ratelimit.RateLimitPolicy {
 	return r.RegistrationsPerIPPolicy
 }
 
-func (r *DummyRateLimitConfig) PendingAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
+func (r *dummyRateLimitConfig) PendingAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
 	return r.PendingAuthorizationsPerAccountPolicy
 }
 
-func (r *DummyRateLimitConfig) CertificatesPerFQDNSet() ratelimit.RateLimitPolicy {
+func (r *dummyRateLimitConfig) CertificatesPerFQDNSet() ratelimit.RateLimitPolicy {
 	return r.CertificatesPerFQDNSetPolicy
 }
 
-func (r *DummyRateLimitConfig) LoadPolicies(contents []byte) error {
+func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
 	return nil // NOP - unrequired behaviour for this mock
 }
 
@@ -675,7 +675,7 @@ func TestTotalCertRateLimit(t *testing.T) {
 	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies = &DummyRateLimitConfig{
+	ra.rlPolicies = &dummyRateLimitConfig{
 		TotalCertificatesPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
@@ -719,7 +719,7 @@ func TestAuthzRateLimiting(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.rlPolicies = &DummyRateLimitConfig{
+	ra.rlPolicies = &dummyRateLimitConfig{
 		PendingAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
 			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},

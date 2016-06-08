@@ -64,7 +64,7 @@ func TestWindowBegin(t *testing.T) {
 }
 
 func TestLoadPolicies(t *testing.T) {
-	policy := MutexRateLimitConfig{}
+	policy := New()
 
 	policyContent, readErr := ioutil.ReadFile("../test/rate-limit-policies.yml")
 	test.AssertNotError(t, readErr, "Failed to load rate-limit-policies.yml")
@@ -136,7 +136,7 @@ func TestLoadPolicies(t *testing.T) {
 	// Test that the RateLimitConfig accessors do not panic when there has been no
 	// `LoadPolicy` call, and instead return empty RateLimitPolicy objects with default
 	// values.
-	emptyPolicy := MutexRateLimitConfig{}
+	emptyPolicy := New()
 	test.AssertEquals(t, emptyPolicy.TotalCertificates().Threshold, 0)
 	test.AssertEquals(t, emptyPolicy.CertificatesPerName().Threshold, 0)
 	test.AssertEquals(t, emptyPolicy.RegistrationsPerIP().Threshold, 0)
