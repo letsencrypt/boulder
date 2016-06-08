@@ -191,22 +191,23 @@ func serveLoopResolver(stopChan chan bool) {
 }
 
 func pollServer() {
-	var conn *dns.Conn
-	backoff := time.Duration(time.Millisecond * 200)
-	tries := 25
+	backoff := time.Duration(200 * time.Millisecond)
+	ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
+	ticker := time.NewTicker(backoff)
 
-	for i := 0; i < tries; i++ {
-		conn, _ = dns.DialTimeout("tcp", dnsLoopbackAddr, backoff)
-		if conn != nil {
-			break
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Fprintln(os.Stderr, "Timeout reached while testing for the dns server to come up")
+			os.Exit(1)
+		case <-ticker.C:
+			conn, _ := dns.DialTimeout("tcp", dnsLoopbackAddr, backoff)
+			if conn != nil {
+				_ = conn.Close()
+				return
+			}
 		}
-		time.Sleep(backoff)
 	}
-	if conn == nil {
-		fmt.Fprintf(os.Stderr, "Max tries(%d) reached while testing for the dns server to come up\n", tries)
-		os.Exit(1)
-	}
-	_ = conn.Close()
 }
 
 func TestMain(m *testing.M) {
