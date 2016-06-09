@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -93,7 +88,7 @@ func (src *DBSource) Response(req *ocsp.Request) ([]byte, bool) {
 		map[string]interface{}{"serial": serialString},
 	)
 	if err != nil && err != sql.ErrNoRows {
-		src.log.Err(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
+		src.log.AuditErr(fmt.Sprintf("Failed to retrieve response from certificateStatus table: %s", err))
 	}
 	if err != nil {
 		return nil, false

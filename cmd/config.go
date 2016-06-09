@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package cmd
 
 import (
@@ -17,6 +12,7 @@ import (
 	"github.com/letsencrypt/pkcs11key"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 )
 
 // Config stores configuration parameters that applications
@@ -67,6 +63,8 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
+
+		VAService *GRPCClientConfig
 
 		MaxNames     int
 		DoNotForceCN bool
@@ -206,16 +204,16 @@ type AllowedSigningAlgos struct {
 }
 
 // KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
-func (config *Config) KeyPolicy() core.KeyPolicy {
+func (config *Config) KeyPolicy() goodkey.KeyPolicy {
 	if config.AllowedSigningAlgos != nil {
-		return core.KeyPolicy{
+		return goodkey.KeyPolicy{
 			AllowRSA:           config.AllowedSigningAlgos.RSA,
 			AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
 			AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
 			AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
 		}
 	}
-	return core.KeyPolicy{
+	return goodkey.KeyPolicy{
 		AllowRSA: true,
 	}
 }

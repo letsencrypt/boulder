@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -52,7 +47,7 @@ func main() {
 	app.Action = func(c cmd.Config, stats metrics.Statter, logger blog.Logger) {
 		go cmd.DebugServer(c.WFE.DebugAddr)
 
-		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), c.KeyPolicy())
+		wfe, err := wfe.NewWebFrontEndImpl(stats, clock.Default(), c.KeyPolicy(), logger)
 		cmd.FailOnError(err, "Unable to create WFE")
 		rac, sac := setupWFE(c, logger, stats)
 		wfe.RA = rac

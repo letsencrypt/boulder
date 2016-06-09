@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -13,13 +8,12 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
 	"github.com/letsencrypt/boulder/cmd"
+	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rpc"
 	"github.com/letsencrypt/boulder/va"
-
-	caaPB "github.com/letsencrypt/boulder/cmd/caa-checker/proto"
 )
 
 const clientName = "VA"
@@ -65,35 +59,49 @@ func main() {
 			)
 			cmd.FailOnError(err, "Failed to create CAADistributedResolver")
 		}
-		clk := clock.Default()
-		vai := va.NewValidationAuthorityImpl(pc, sbc, caaClient, cdrClient, stats, clk)
 		dnsTimeout, err := time.ParseDuration(c.Common.DNSTimeout)
 		cmd.FailOnError(err, "Couldn't parse DNS timeout")
 		dnsTries := c.VA.DNSTries
 		if dnsTries < 1 {
 			dnsTries = 1
 		}
+		clk := clock.Default()
+		var resolver bdns.DNSResolver
 		if !c.Common.DNSAllowLoopbackAddresses {
-			resolver := bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
-			resolver.LookupIPv6 = c.VA.LookupIPv6
-			vai.DNSResolver = resolver
-
+			r := bdns.NewDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
+			r.LookupIPv6 = c.VA.LookupIPv6
+			resolver = r
 		} else {
-			resolver := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
-			resolver.LookupIPv6 = c.VA.LookupIPv6
-			vai.DNSResolver = resolver
+			r := bdns.NewTestDNSResolverImpl(dnsTimeout, []string{c.Common.DNSResolver}, scoped, clk, dnsTries)
+			r.LookupIPv6 = c.VA.LookupIPv6
+			resolver = r
 		}
-		vai.UserAgent = c.VA.UserAgent
-
-		vai.IssuerDomain = c.VA.IssuerDomain
+		vai := va.NewValidationAuthorityImpl(
+			pc,
+			sbc,
+			caaClient,
+			cdrClient,
+			resolver,
+			c.VA.UserAgent,
+			c.VA.IssuerDomain,
+			stats,
+			clk,
+			logger)
 
 		amqpConf := c.VA.AMQP
-		rac, err := rpc.NewRegistrationAuthorityClient(clientName, amqpConf, stats)
-		cmd.FailOnError(err, "Unable to create RA client")
 
-		vai.RA = rac
+		if c.VA.GRPC != nil {
+			s, l, err := bgrpc.NewServer(c.VA.GRPC)
+			cmd.FailOnError(err, "Unable to setup VA gRPC server")
+			err = bgrpc.RegisterValidationAuthorityGRPCServer(s, vai)
+			cmd.FailOnError(err, "Unable to register VA gRPC server")
+			go func() {
+				err = s.Serve(l)
+				cmd.FailOnError(err, "VA gRPC service failed")
+			}()
+		}
 
-		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats)
+		vas, err := rpc.NewAmqpRPCServer(amqpConf, c.VA.MaxConcurrentRPCServerRequests, stats, logger)
 		cmd.FailOnError(err, "Unable to create VA RPC server")
 		err = rpc.NewValidationAuthorityServer(vas, vai)
 		cmd.FailOnError(err, "Unable to setup VA RPC server")

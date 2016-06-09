@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package core
 
 import (
@@ -75,9 +70,6 @@ type RegistrationAuthority interface {
 
 	// [AdminRevoker]
 	AdministrativelyRevokeCertificate(ctx context.Context, cert x509.Certificate, code RevocationCode, adminName string) error
-
-	// [ValidationAuthority]
-	OnValidationUpdate(ctx context.Context, authz Authorization) error
 }
 
 // CertificateAuthority defines the public interface for the Boulder CA
@@ -101,7 +93,6 @@ type StorageGetter interface {
 	GetValidAuthorizations(ctx context.Context, regID int64, domains []string, now time.Time) (map[string]*Authorization, error)
 	GetCertificate(ctx context.Context, serial string) (Certificate, error)
 	GetCertificateStatus(ctx context.Context, serial string) (CertificateStatus, error)
-	AlreadyDeniedCSR(ctx context.Context, names []string) (wasDenied bool, err error)
 	CountCertificatesRange(ctx context.Context, earliest, latest time.Time) (int64, error)
 	CountCertificatesByNames(ctx context.Context, domains []string, earliest, latest time.Time) (countByDomain map[string]int, err error)
 	CountRegistrationsByIP(ctx context.Context, ip net.IP, earliest, latest time.Time) (int, error)
@@ -119,7 +110,6 @@ type StorageAdder interface {
 	UpdatePendingAuthorization(ctx context.Context, authz Authorization) error
 	FinalizeAuthorization(ctx context.Context, authz Authorization) error
 	MarkCertificateRevoked(ctx context.Context, serial string, reasonCode RevocationCode) error
-	UpdateOCSP(ctx context.Context, serial string, ocspResponse []byte) error
 	AddCertificate(ctx context.Context, der []byte, regID int64) (digest string, err error)
 	AddSCTReceipt(ctx context.Context, sct SignedCertificateTimestamp) error
 	RevokeAuthorizationsByDomain(ctx context.Context, domain AcmeIdentifier) (finalized, pending int64, err error)

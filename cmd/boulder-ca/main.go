@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -131,7 +126,8 @@ func main() {
 			clock.Default(),
 			stats,
 			issuers,
-			c.KeyPolicy())
+			c.KeyPolicy(),
+			logger)
 		cmd.FailOnError(err, "Failed to create CA impl")
 		cai.PA = pa
 
@@ -150,7 +146,7 @@ func main() {
 			cmd.FailOnError(err, "Failed to create Publisher client")
 		}
 
-		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats)
+		cas, err := rpc.NewAmqpRPCServer(amqpConf, c.CA.MaxConcurrentRPCServerRequests, stats, logger)
 		cmd.FailOnError(err, "Unable to create CA RPC server")
 		err = rpc.NewCertificateAuthorityServer(cas, cai)
 		cmd.FailOnError(err, "Failed to create Certificate Authority RPC server")

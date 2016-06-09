@@ -1,8 +1,3 @@
-// Copyright 2014 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package rpc
 
 import (
@@ -135,8 +130,12 @@ const wildcardRoutingKey = "#"
 
 // NewAmqpRPCServer creates a new RPC server for the given queue and will begin
 // consuming requests from the queue. To start the server you must call Start().
-func NewAmqpRPCServer(amqpConf *cmd.AMQPConfig, maxConcurrentRPCServerRequests int64, stats statsd.Statter) (*AmqpRPCServer, error) {
-	log := blog.Get()
+func NewAmqpRPCServer(
+	amqpConf *cmd.AMQPConfig,
+	maxConcurrentRPCServerRequests int64,
+	stats statsd.Statter,
+	log blog.Logger,
+) (*AmqpRPCServer, error) {
 
 	reconnectBase := amqpConf.ReconnectTimeouts.Base.Duration
 	if reconnectBase == 0 {
@@ -352,7 +351,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	rpc.log.Debug(fmt.Sprintf(" [s<][%s][%s] received %s(%s) [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
 	if !present {
 		// AUDIT[ Misrouted Messages ] f523f21f-12d2-4c31-b2eb-ee4b7d96d60e
-		rpc.log.AuditErr(fmt.Errorf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
+		rpc.log.AuditErr(fmt.Sprintf(" [s<][%s][%s] Misrouted message: %s - %s - %s", rpc.serverQueue, msg.ReplyTo, msg.Type, safeDER(msg.Body), msg.CorrelationId))
 		return
 	}
 	var response rpcResponse
@@ -362,7 +361,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 	jsonResponse, err := json.Marshal(response)
 	if err != nil {
 		// AUDIT[ Error Conditions ] 9cc4d537-8534-4970-8665-4b382abe82f3
-		rpc.log.AuditErr(fmt.Errorf(" [s>][%s][%s] Error condition marshalling RPC response %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
+		rpc.log.AuditErr(fmt.Sprintf(" [s>][%s][%s] Error condition marshalling RPC response %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
 		return
 	}
 	rpc.log.Debug(fmt.Sprintf(" [s>][%s][%s] replying %s: %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, response.debugString(), msg.CorrelationId))
@@ -374,7 +373,7 @@ func (rpc *AmqpRPCServer) processMessage(msg amqp.Delivery) {
 		msg.Type,
 		jsonResponse)
 	if err != nil {
-		rpc.log.AuditErr(fmt.Errorf(" [s>][%s][%s] Error condition replying to RPC %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
+		rpc.log.AuditErr(fmt.Sprintf(" [s>][%s][%s] Error condition replying to RPC %s [%s]", rpc.serverQueue, msg.ReplyTo, msg.Type, msg.CorrelationId))
 	}
 }
 

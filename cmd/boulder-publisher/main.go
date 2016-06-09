@@ -1,8 +1,3 @@
-// Copyright 2015 ISRG.  All rights reserved
-// This Source Code Form is subject to the terms of the Mozilla Public
-// License, v. 2.0. If a copy of the MPL was not distributed with this
-// file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
 package main
 
 import (
@@ -33,7 +28,7 @@ func main() {
 		}
 
 		if c.Common.CT.IntermediateBundleFilename == "" {
-			logger.Err("No CT submission bundle provided")
+			logger.AuditErr("No CT submission bundle provided")
 			os.Exit(1)
 		}
 		pemBundle, err := core.LoadCertBundle(c.Common.CT.IntermediateBundleFilename)
@@ -57,17 +52,19 @@ func main() {
 			cmd.FailOnError(err, "Failed to setup gRPC server")
 			gw := bgrpc.NewPublisherServerWrapper(pubi)
 			pubPB.RegisterPublisherServer(s, gw)
-			err = s.Serve(l)
-			cmd.FailOnError(err, "gRPC service failed")
-		} else {
-			pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats)
-			cmd.FailOnError(err, "Unable to create Publisher RPC server")
-			err = rpc.NewPublisherServer(pubs, pubi)
-			cmd.FailOnError(err, "Unable to setup Publisher RPC server")
-
-			err = pubs.Start(amqpConf)
-			cmd.FailOnError(err, "Unable to run Publisher RPC server")
+			go func() {
+				err = s.Serve(l)
+				cmd.FailOnError(err, "gRPC service failed")
+			}()
 		}
+
+		pubs, err := rpc.NewAmqpRPCServer(amqpConf, c.Publisher.MaxConcurrentRPCServerRequests, stats, logger)
+		cmd.FailOnError(err, "Unable to create Publisher RPC server")
+		err = rpc.NewPublisherServer(pubs, pubi)
+		cmd.FailOnError(err, "Unable to setup Publisher RPC server")
+
+		err = pubs.Start(amqpConf)
+		cmd.FailOnError(err, "Unable to run Publisher RPC server")
 	}
 
 	app.Run()
