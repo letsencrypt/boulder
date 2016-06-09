@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/pkcs11key"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 )
 
 // Config stores configuration parameters that applications
@@ -55,13 +56,12 @@ type Config struct {
 		// UseIsSafeDomain determines whether to call VA.IsSafeDomain
 		UseIsSafeDomain bool // TODO(jmhodges): remove after va IsSafeDomain deploy
 
-		// UseNewVARPC determines whether to call VA.PerformValidation
-		UseNewVARPC bool
-
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries int
+
+		VAService *GRPCClientConfig
 
 		MaxNames     int
 		DoNotForceCN bool
@@ -201,16 +201,16 @@ type AllowedSigningAlgos struct {
 }
 
 // KeyPolicy returns a KeyPolicy reflecting the Boulder configuration.
-func (config *Config) KeyPolicy() core.KeyPolicy {
+func (config *Config) KeyPolicy() goodkey.KeyPolicy {
 	if config.AllowedSigningAlgos != nil {
-		return core.KeyPolicy{
+		return goodkey.KeyPolicy{
 			AllowRSA:           config.AllowedSigningAlgos.RSA,
 			AllowECDSANISTP256: config.AllowedSigningAlgos.ECDSANISTP256,
 			AllowECDSANISTP384: config.AllowedSigningAlgos.ECDSANISTP384,
 			AllowECDSANISTP521: config.AllowedSigningAlgos.ECDSANISTP521,
 		}
 	}
-	return core.KeyPolicy{
+	return goodkey.KeyPolicy{
 		AllowRSA: true,
 	}
 }

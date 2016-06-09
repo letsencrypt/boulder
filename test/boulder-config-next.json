@@ -2,7 +2,7 @@
   "syslog": {
     "network": "",
     "server": "",
-    "stdoutlevel": 7,
+    "stdoutlevel": 6,
     "sysloglevel": 4
   },
 
@@ -13,6 +13,7 @@
 
   "wfe": {
     "listenAddress": "0.0.0.0:4000",
+    "requestTimeout": "10s",
     "allowOrigins": ["*"],
     "certCacheDuration": "6h",
     "certNoCacheExpirationWindow": "96h",
@@ -176,6 +177,13 @@
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
     "doNotForceCN": true,
+    "vaService": {
+      "serverAddress": "boulder:9092",
+      "serverIssuerPath": "test/grpc-creds/ca.pem",
+      "clientCertificatePath": "test/grpc-creds/client.pem",
+      "clientKeyPath": "test/grpc-creds/key.pem",
+      "timeout": "90s"
+    },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
@@ -231,6 +239,12 @@
         "keepalive": "30s",
         "maxFailures": 1,
         "proxies": []
+    },
+    "grpc": {
+      "address": "boulder:9092",
+      "serverCertificatePath": "test/grpc-creds/server.pem",
+      "serverKeyPath": "test/grpc-creds/key.pem",
+      "clientIssuerPath": "test/grpc-creds/ca.pem"
     },
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
@@ -344,6 +358,7 @@
     "amqp": {
       "serverURLFile": "test/secrets/amqp_url",
       "insecure": true,
+      "serviceQueue": "Publisher.server",
       "SA": {
         "server": "SA.server",
         "rpcTimeout": "15s"

@@ -1,4 +1,4 @@
-package core
+package nonce
 
 import (
 	"crypto/aes"

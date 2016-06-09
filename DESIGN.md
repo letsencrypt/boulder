@@ -178,7 +178,6 @@ Notes:
 * 2-3: RA does the following:
   * Verify the PKCS#10 CSR in the certificate request object
   * Verify that the CSR has a non-zero number of domain names
-  * Verify that the combination of domain names has not been previously denied
   * Verify that the public key in the CSR is different from the account key
   * For each authorization referenced in the certificate request
     * Retreive the authorization from the database

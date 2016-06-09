@@ -14,8 +14,10 @@ import (
 
 	"github.com/cactus/go-statsd-client/statsd"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/net/publicsuffix"
 	"golang.org/x/net/context"
 
@@ -24,6 +26,7 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ratelimit"
+	vaPB "github.com/letsencrypt/boulder/va/proto"
 )
 
 // DefaultAuthorizationLifetime is the 10 month default authorization lifetime.
@@ -50,17 +53,15 @@ type RegistrationAuthorityImpl struct {
 	DNSResolver bdns.DNSResolver
 	clk         clock.Clock
 	log         blog.Logger
-	dc          *DomainCheck
-	keyPolicy   core.KeyPolicy
+	keyPolicy   goodkey.KeyPolicy
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
-	rlPolicies                   ratelimit.RateLimitConfig
+	rlPolicies                   ratelimit.Limits
 	tiMu                         *sync.RWMutex
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
-	useNewVARPC                  bool
 	maxNames                     int
 	forceCNFromSAN               bool
 
@@ -71,17 +72,23 @@ type RegistrationAuthorityImpl struct {
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
-func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats statsd.Statter, dc *DomainCheck, policies ratelimit.RateLimitConfig, maxContactsPerReg int, keyPolicy core.KeyPolicy, newVARPC bool, maxNames int, forceCNFromSAN bool) *RegistrationAuthorityImpl {
-	// TODO(jmhodges): making RA take a "RA" stats.Scope, not Statter
+func NewRegistrationAuthorityImpl(
+	clk clock.Clock,
+	logger blog.Logger,
+	stats statsd.Statter,
+	maxContactsPerReg int,
+	keyPolicy goodkey.KeyPolicy,
+	maxNames int,
+	forceCNFromSAN bool,
+) *RegistrationAuthorityImpl {
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
 		stats: stats,
 		clk:   clk,
 		log:   logger,
-		dc:    dc,
 		authorizationLifetime:        DefaultAuthorizationLifetime,
 		pendingAuthorizationLifetime: DefaultPendingAuthorizationLifetime,
-		rlPolicies:                   policies,
+		rlPolicies:                   ratelimit.New(),
 		tiMu:                         new(sync.RWMutex),
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
@@ -93,6 +100,19 @@ func NewRegistrationAuthorityImpl(clk clock.Clock, logger blog.Logger, stats sta
 		totalCertsStats:              scope.NewScope("RA", "RateLimit", "TotalCertificates"),
 	}
 	return ra
+}
+
+func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) error {
+	_, err := reloader.New(filename, ra.rlPolicies.LoadPolicies, ra.rateLimitPoliciesLoadError)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
+	ra.log.Err(fmt.Sprintf("error reloading rate limit policy: %s", err))
 }
 
 const (
@@ -184,11 +204,13 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount(ctx context.Context) (int,
 	ra.tiMu.Lock()
 	defer ra.tiMu.Unlock()
 
+	totalCertWindow := ra.rlPolicies.TotalCertificates().Window.Duration
+
 	now := ra.clk.Now()
 	if ra.issuanceCountInvalid(now) {
 		count, err := ra.SA.CountCertificatesRange(
 			ctx,
-			now.Add(-ra.rlPolicies.TotalCertificates.Window.Duration),
+			now.Add(-totalCertWindow),
 			now,
 		)
 		if err != nil {
@@ -205,7 +227,8 @@ func (ra *RegistrationAuthorityImpl) setIssuanceCount(ctx context.Context) (int,
 const noRegistrationID = -1
 
 func (ra *RegistrationAuthorityImpl) checkRegistrationLimit(ctx context.Context, ip net.IP) error {
-	limit := ra.rlPolicies.RegistrationsPerIP
+	limit := ra.rlPolicies.RegistrationsPerIP()
+
 	if limit.Enabled() {
 		now := ra.clk.Now()
 		count, err := ra.SA.CountRegistrationsByIP(ctx, ip, limit.WindowBegin(now), now)
@@ -286,7 +309,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 }
 
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
-	limit := ra.rlPolicies.PendingAuthorizationsPerAccount
+	limit := ra.rlPolicies.PendingAuthorizationsPerAccount()
 	if limit.Enabled() {
 		count, err := ra.SA.CountPendingAuthorizations(ctx, regID)
 		if err != nil {
@@ -327,13 +350,13 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	}
 
 	if identifier.Type == core.IdentifierDNS {
-		isSafe, err := ra.dc.IsSafe(ctx, identifier.Value)
+		isSafeResp, err := ra.VA.IsSafeDomain(ctx, &vaPB.IsSafeDomainRequest{Domain: &identifier.Value})
 		if err != nil {
 			outErr := core.InternalServerError("unable to determine if domain was safe")
 			ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), err))
 			return authz, outErr
 		}
-		if !isSafe {
+		if !isSafeResp.GetIsSafe() {
 			return authz, core.UnauthorizedError(fmt.Sprintf("%#v was considered an unsafe domain by a third-party API", identifier.Value))
 		}
 	}
@@ -535,17 +558,6 @@ func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req cor
 		return emptyCert, err
 	}
 
-	csrPreviousDenied, err := ra.SA.AlreadyDeniedCSR(ctx, names)
-	if err != nil {
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-	if csrPreviousDenied {
-		err = core.UnauthorizedError("CSR has already been revoked/denied")
-		logEvent.Error = err.Error()
-		return emptyCert, err
-	}
-
 	if core.KeyDigestEquals(csr.PublicKey, registration.Key) {
 		err = core.MalformedRequestError("Certificate public key must be different than account key")
 		return emptyCert, err
@@ -689,13 +701,13 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 }
 
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
-	limits := ra.rlPolicies
-	if limits.TotalCertificates.Enabled() {
+	totalCertLimits := ra.rlPolicies.TotalCertificates()
+	if totalCertLimits.Enabled() {
 		totalIssued, err := ra.getIssuanceCount(ctx)
 		if err != nil {
 			return err
 		}
-		if totalIssued >= ra.rlPolicies.TotalCertificates.Threshold {
+		if totalIssued >= totalCertLimits.Threshold {
 			domains := strings.Join(names, ",")
 			ra.totalCertsStats.Inc("Exceeded", 1)
 			ra.log.Info(fmt.Sprintf("Rate limit exceeded, TotalCertificates, regID: %d, domains: %s, totalIssued: %d", regID, domains, totalIssued))
@@ -703,14 +715,18 @@ func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []st
 		}
 		ra.totalCertsStats.Inc("Pass", 1)
 	}
-	if limits.CertificatesPerName.Enabled() {
-		err := ra.checkCertificatesPerNameLimit(ctx, names, limits.CertificatesPerName, regID)
+
+	certNameLimits := ra.rlPolicies.CertificatesPerName()
+	if certNameLimits.Enabled() {
+		err := ra.checkCertificatesPerNameLimit(ctx, names, certNameLimits, regID)
 		if err != nil {
 			return err
 		}
 	}
-	if limits.CertificatesPerFQDNSet.Enabled() {
-		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, limits.CertificatesPerFQDNSet, regID)
+
+	fqdnLimits := ra.rlPolicies.CertificatesPerFQDNSet()
+	if fqdnLimits.Enabled() {
+		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, fqdnLimits, regID)
 		if err != nil {
 			return err
 		}
@@ -816,7 +832,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 			prob = p
 		} else if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
-			ra.log.Err(fmt.Sprintf("Could not communicate with VA: %s", err))
+			ra.log.AuditErr(fmt.Sprintf("Could not communicate with VA: %s", err))
 		}
 
 		// Save the updated records
@@ -837,7 +853,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 		err = ra.onValidationUpdate(vaCtx, authz)
 		if err != nil {
-			ra.log.Err(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
+			ra.log.AuditErr(fmt.Sprintf("Could not record updated validation: err=[%s] regID=[%d]", err, authz.RegistrationID))
 		}
 	}()
 	ra.stats.Inc("RA.UpdatedPendingAuthorizations", 1, 1.0)
