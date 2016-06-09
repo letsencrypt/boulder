@@ -323,6 +323,7 @@
   },
 
   "common": {
+    "baseURL": "http://127.0.0.1:4000",
     "issuerCert": "test/test-ca.pem",
     "dnsResolver": "127.0.0.1:8053",
     "dnsTimeout": "10s",
