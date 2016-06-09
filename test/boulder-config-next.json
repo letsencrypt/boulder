@@ -173,6 +173,7 @@
     "hostnamePolicyFile": "test/hostname-policy.json",
     "maxNames": 1000,
     "doNotForceCN": true,
+    "reuseValidAuthz": true,
     "vaService": {
       "serverAddress": "boulder:9092",
       "serverIssuerPath": "test/grpc-creds/ca.pem",

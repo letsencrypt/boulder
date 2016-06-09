@@ -64,6 +64,7 @@ type RegistrationAuthorityImpl struct {
 	maxContactsPerReg            int
 	maxNames                     int
 	forceCNFromSAN               bool
+	reuseValidAuthz              bool
 
 	regByIPStats         metrics.Scope
 	pendAuthByRegIDStats metrics.Scope
@@ -80,6 +81,7 @@ func NewRegistrationAuthorityImpl(
 	keyPolicy goodkey.KeyPolicy,
 	maxNames int,
 	forceCNFromSAN bool,
+	reuseValidAuthz bool,
 ) *RegistrationAuthorityImpl {
 	scope := metrics.NewStatsdScope(stats, "RA")
 	ra := &RegistrationAuthorityImpl{
@@ -94,6 +96,7 @@ func NewRegistrationAuthorityImpl(
 		keyPolicy:                    keyPolicy,
 		maxNames:                     maxNames,
 		forceCNFromSAN:               forceCNFromSAN,
+		reuseValidAuthz:              reuseValidAuthz,
 		regByIPStats:                 scope.NewScope("RA", "RateLimit", "RegistrationsByIP"),
 		pendAuthByRegIDStats:         scope.NewScope("RA", "RateLimit", "PendingAuthorizationsByRegID"),
 		certsForDomainStats:          scope.NewScope("RA", "RateLimit", "CertificatesForDomain"),
@@ -361,20 +364,27 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 	}
 
-	auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
-	if existingAuthz, ok := auths[identifier.Value]; ok {
-		// Use the valid existing authorization's ID to find a fully populated version
-		// The results from `GetValidAuthorizations` are most notably missing
-		// `Challenge` values that the client expects in the result.
-		populatedAuthz, err := ra.SA.GetAuthorization(ctx, existingAuthz.ID)
+	if ra.reuseValidAuthz {
+		auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
 		if err != nil {
-			outErr := core.InternalServerError("unable to get existing authorization")
-			ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), existingAuthz.ID))
+			outErr := core.InternalServerError("unable to get existing validations")
+			ra.log.Warning(string(outErr))
 		}
 
-		ra.stats.Inc("RA.ReusedValidAuthz", 1, 1.0)
-		ra.log.Info(fmt.Sprintf("\n!!! populatedAuthz: %#v\n", populatedAuthz))
-		return populatedAuthz, nil
+		if existingAuthz, ok := auths[identifier.Value]; ok {
+			// Use the valid existing authorization's ID to find a fully populated version
+			// The results from `GetValidAuthorizations` are most notably missing
+			// `Challenge` values that the client expects in the result.
+			populatedAuthz, err := ra.SA.GetAuthorization(ctx, existingAuthz.ID)
+			if err != nil {
+				outErr := core.InternalServerError("unable to get existing authorization")
+				ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), existingAuthz.ID))
+			}
+
+			ra.stats.Inc("RA.ReusedValidAuthz", 1, 1.0)
+			ra.log.Info(fmt.Sprintf("\n!!! populatedAuthz: %#v\n", populatedAuthz))
+			return populatedAuthz, nil
+		}
 	}
 
 	// Create validations. The WFE will  update them with URIs before sending them out.
@@ -817,8 +827,9 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	}
 
 	// If the challenge is sane, and already valid then return - there is no work
-	// required by the VA or SA in this case.
-	if ch.Status == core.StatusValid {
+	// required by the VA or SA in this case. Only honoured when reuseValidAuthz
+	// is enabled.
+	if ra.reuseValidAuthz && ch.Status == core.StatusValid {
 		ra.stats.Inc("RA.ReusedValidChallenge", 1, 1.0)
 		ra.log.Info("\n! Was asked to update an already valid authz challenge, returning early")
 		return
