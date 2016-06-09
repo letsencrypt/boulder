@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:9090", "CCS address")
+	addr := flag.String("addr", "boulder:9090", "CCS address")
 	name := flag.String("name", "", "Name to check")
 	issuer := flag.String("issuerDomain", "", "Issuer domain to check against")
 	flag.Parse()

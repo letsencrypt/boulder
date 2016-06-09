@@ -509,11 +509,14 @@ type LogDescription struct {
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	ServerAddress         string
+	ServerAddresses       []string
 	ServerIssuerPath      string
 	ClientCertificatePath string
 	ClientKeyPath         string
 	Timeout               ConfigDuration
+
+	// Depreciated
+	ServerAddress string
 }
 
 // GRPCServerConfig contains the information needed to run a gRPC service

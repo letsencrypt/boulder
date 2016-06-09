@@ -35,15 +35,48 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	host, _, err := net.SplitHostPort(c.ServerAddress)
-	if err != nil {
-		return nil, err
+	clients := []tls.Certificate{clientCert}
+	var ta grpc.DialOption
+	var dialAddr string
+	var names []string
+	if len(c.ServerAddresses) > 0 {
+		configs := make(map[string]*tls.Config, len(c.ServerAddresses))
+		for _, addr := range c.ServerAddresses {
+			if dialAddr == "" {
+				dialAddr = addr
+			}
+			names = append(names, addr)
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			configs[addr] = &tls.Config{
+				ServerName:   host,
+				RootCAs:      rootCAs,
+				Certificates: clients,
+			}
+		}
+		ta = grpc.WithTransportCredentials(NewMultiNameTLS(configs))
+	} else if c.ServerAddress != "" {
+		dialAddr = c.ServerAddress
+		names = append(names, dialAddr)
+		c.ServerAddress, _, err = net.SplitHostPort(c.ServerAddress)
+		if err != nil {
+			return nil, err
+		}
+		ta = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+			ServerName:   c.ServerAddress,
+			RootCAs:      rootCAs,
+			Certificates: clients,
+		}))
+	} else {
+		return nil, fmt.Errorf("Either ServerAddresses or ServerAddress (depreciated) are required")
 	}
-	return grpc.Dial(c.ServerAddress, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
-		ServerName:   host,
-		RootCAs:      rootCAs,
-		Certificates: []tls.Certificate{clientCert},
-	})))
+	return grpc.Dial(
+		dialAddr,
+		ta,
+		grpc.WithBalancer(NameRoundRobin(names)),
+	)
 }
 
 // NewServer loads various TLS certificates and creates a

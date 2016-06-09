@@ -23,7 +23,9 @@ func NameRoundRobin(names []string) grpc.Balancer {
 	for _, n := range names {
 		addrs = append(addrs, grpc.Address{Addr: n})
 	}
-	nrr.names <- addrs
+	go func() {
+		nrr.names <- addrs
+	}()
 	return nrr
 }
 
@@ -40,7 +42,7 @@ func (nrr *nameRoundRobin) Close() error {
 	return nil
 }
 
-func (nrr *nameRoundRobin) Get(ctx context.Context, _ grpc.BalancerGetOptions) (grpc.Address, func(), error) {
+func (nrr *nameRoundRobin) Get(ctx context.Context, opts grpc.BalancerGetOptions) (grpc.Address, func(), error) {
 	nrr.mu.Lock()
 	if nrr.done {
 		nrr.mu.Unlock()

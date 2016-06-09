@@ -139,7 +139,7 @@
     },
     "maxConcurrentRPCServerRequests": 16,
     "publisherService": {
-      "serverAddress": "boulder:9091",
+      "serverAddresses": ["boulder:9091"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
@@ -174,7 +174,7 @@
     "maxNames": 1000,
     "doNotForceCN": true,
     "vaService": {
-      "serverAddress": "boulder:9092",
+      "serverAddresses": ["boulder:9092"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
@@ -225,7 +225,7 @@
     "dnsTries": 3,
     "issuerDomain": "happy-hacker-ca.invalid",
     "caaService": {
-      "serverAddress": "boulder:9090",
+      "serverAddresses": ["boulder:9090"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem"
@@ -298,7 +298,7 @@
     "signFailureBackoffMax": "30m",
     "debugAddr": "localhost:8006",
     "publisher": {
-      "serverAddress": "boulder:9091",
+      "serverAddresses": ["boulder:9091"],
       "serverIssuerPath": "test/grpc-creds/ca.pem",
       "clientCertificatePath": "test/grpc-creds/client.pem",
       "clientKeyPath": "test/grpc-creds/key.pem",
