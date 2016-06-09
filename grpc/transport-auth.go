@@ -44,7 +44,7 @@ func (mna *MultiNameAuthenticator) ClientHandshake(addr string, rawConn net.Conn
 		err = <-errChannel
 	}
 	if err != nil {
-		rawConn.Close()
+		_ = rawConn.Close()
 		return nil, nil, err
 	}
 	return conn, nil, nil
