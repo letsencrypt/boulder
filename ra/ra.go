@@ -363,6 +363,21 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 		}
 	}
 
+	auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
+	if existingAuthz, ok := auths[identifier.Value]; ok {
+		// Use the valid existing authorization's ID to find a fully populated version
+		// The results from `GetValidAuthorizations` are most notably missing
+		// `Challenge` values that the client expects in the result.
+		populatedAuthz, err := ra.SA.GetAuthorization(ctx, existingAuthz.ID)
+		if err != nil {
+			outErr := core.InternalServerError("unable to get existing authorization")
+			ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), existingAuthz.ID))
+		}
+
+		ra.log.Info(fmt.Sprintf("\n!!! populatedAuthz: %#v\n", populatedAuthz))
+		return populatedAuthz, nil
+	}
+
 	// Create validations. The WFE will  update them with URIs before sending them out.
 	challenges, combinations := ra.PA.ChallengesFor(identifier, &reg.Key)
 
@@ -790,6 +805,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 		err = core.InternalServerError("Could not compute expected key authorization value")
 		return
 	}
+
 	if expectedKeyAuthorization != ch.ProvidedKeyAuthorization {
 		err = core.MalformedRequestError("Response does not complete challenge")
 		return
@@ -798,6 +814,13 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 	// Double check before sending to VA
 	if !ch.IsSaneForValidation() {
 		err = core.MalformedRequestError("Response does not complete challenge")
+		return
+	}
+
+	// If the challenge is sane, and already valid then return - there is no work
+	// required by the VA or SA in this case.
+	if ch.Status == core.StatusValid {
+		ra.log.Info("\n! Was asked to update an already valid authz, returning early")
 		return
 	}
 
