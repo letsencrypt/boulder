@@ -239,7 +239,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, *sa.SQLStorageAut
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
 		stats,
-		1, testKeyPolicy, false, 0, true)
+		1, testKeyPolicy, 0, true)
 	ra.SA = ssa
 	ra.VA = va
 	ra.CA = ca

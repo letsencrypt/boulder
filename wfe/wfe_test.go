@@ -621,7 +621,6 @@ func TestIssueCertificate(t *testing.T) {
 		stats,
 		0,
 		testKeyPolicy,
-		false,
 		0,
 		true)
 	ra.SA = mocks.NewStorageAuthority(fc)

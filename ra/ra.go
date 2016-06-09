@@ -62,7 +62,6 @@ type RegistrationAuthorityImpl struct {
 	totalIssuedCache             int
 	lastIssuedCount              *time.Time
 	maxContactsPerReg            int
-	useNewVARPC                  bool
 	maxNames                     int
 	forceCNFromSAN               bool
 
@@ -79,7 +78,6 @@ func NewRegistrationAuthorityImpl(
 	stats statsd.Statter,
 	maxContactsPerReg int,
 	keyPolicy goodkey.KeyPolicy,
-	newVARPC bool,
 	maxNames int,
 	forceCNFromSAN bool,
 ) *RegistrationAuthorityImpl {
