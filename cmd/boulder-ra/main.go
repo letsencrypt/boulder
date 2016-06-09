@@ -57,7 +57,7 @@ func main() {
 
 		rai := ra.NewRegistrationAuthorityImpl(clock.Default(), logger, stats,
 			c.RA.MaxContactsPerRegistration, c.KeyPolicy(),
-			c.RA.UseNewVARPC, c.RA.MaxNames, c.RA.DoNotForceCN)
+			c.RA.MaxNames, c.RA.DoNotForceCN)
 		policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 		cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
 		rai.PA = pa
