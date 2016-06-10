@@ -21,7 +21,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/dns"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cdr"
@@ -494,16 +493,7 @@ func (va *ValidationAuthorityImpl) checkCAAService(ctx context.Context, ident co
 	r, err := va.caaClient.ValidForIssuance(ctx, &caaPB.Check{Name: &ident.Value, IssuerDomain: &va.issuerDomain})
 	if err != nil {
 		va.log.Warning(fmt.Sprintf("grpc: error calling ValidForIssuance: %s", err))
-		prob := &probs.ProblemDetails{Type: bgrpc.CodeToProblem(grpc.Code(err))}
-		if prob.Type == probs.ServerInternalProblem {
-			prob.Detail = "Internal communication failure"
-		} else {
-			// bgrpc.CodeToProblem can return non-gRPC errors passed back by
-			// the CAA service (i.e. not ServerInternalProblem). If we get one of these errors strip out the gRPC
-			// metadata from the error before returning it to the user.
-			prob.Detail = grpc.ErrorDesc(err)
-		}
-		return prob
+		return bgrpc.ErrorToProb(err)
 	}
 	if r.Present == nil || r.Valid == nil {
 		va.log.AuditErr("gRPC: communication failure: response is missing fields")
