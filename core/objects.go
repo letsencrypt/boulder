@@ -161,9 +161,10 @@ type Registration struct {
 // MergeUpdate copies a subset of information from the input Registration
 // into this one.
 func (r *Registration) MergeUpdate(input Registration) {
-	if len(input.Contact) > 0 {
-		r.Contact = input.Contact
-	}
+	// Note: we allow input.Contact to overwrite r.Contact even if the former is
+	// empty in order to allow users to remove the contact associated with
+	// a registration
+	r.Contact = input.Contact
 
 	if len(input.Agreement) > 0 {
 		r.Agreement = input.Agreement
