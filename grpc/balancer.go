@@ -24,9 +24,16 @@ type staticWatcher struct {
 }
 
 func (sw *staticWatcher) Next() ([]*naming.Update, error) {
-	addrs := sw.addresses
-	sw.addresses = nil
-	return addrs, nil
+	if sw.addresses != nil {
+		addrs := sw.addresses
+		sw.addresses = nil
+		return addrs, nil
+	}
+	// Since staticWatcher.Next is called in a tight loop block forever
+	// after returning the initial set of addresses
+	forever := make(chan struct{})
+	<-forever
+	return nil, nil
 }
 
 func (sw *staticWatcher) Close() {}
