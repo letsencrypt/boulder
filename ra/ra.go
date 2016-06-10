@@ -825,7 +825,7 @@ func (ra *RegistrationAuthorityImpl) UpdateAuthorization(ctx context.Context, ba
 
 	// When configured with `reuseValidAuthz` we can expect some clients to try
 	// and update a challenge for an authorization that is already valid. In this
-	// case we don't need to process the challenge update, it wouldn't be helpful,
+	// case we don't need to process the challenge update. It wouldn't be helpful,
 	// the overall authorization is already good! We increment a stat for this
 	// case and return early.
 	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
