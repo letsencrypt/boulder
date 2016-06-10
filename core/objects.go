@@ -378,8 +378,6 @@ func (ch Challenge) IsSaneForValidation() bool {
 // IsSane checks the sanity of a challenge object before issued to the client
 // (completed = false) and before validation (completed = true).
 func (ch Challenge) IsSane(completed bool) bool {
-
-	// Check that the current status of the challenge is sane.
 	if ch.Status != StatusPending {
 		return false
 	}
