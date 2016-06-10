@@ -75,7 +75,7 @@ func ClientSetup(c *cmd.GRPCClientConfig) (*grpc.ClientConn, error) {
 	return grpc.Dial(
 		dialAddr,
 		ta,
-		grpc.WithBalancer(NameRoundRobin(names)),
+		grpc.WithBalancer(grpc.RoundRobin(&staticResolver{names})),
 	)
 }
 
