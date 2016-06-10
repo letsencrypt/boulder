@@ -445,52 +445,57 @@ func TestReuseAuthorization(t *testing.T) {
 	ra.reuseValidAuthz = true
 
 	// Create one finalized authorization
-	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
+	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	finalAuthz.Expires = &exp
+	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.RegistrationID = Registration.ID
+	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
-	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
+	err = sa.FinalizeAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
 	// Now create another authorization for the same Reg.ID/domain
-	secondAuthZ, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization for secondAuthZ failed")
+	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
 
 	// The first authz should be reused as the second and thus have the same ID
-	test.AssertEquals(t, AuthzFinal.ID, secondAuthZ.ID)
+	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
 
 	// The second authz shouldn't be pending, it should be valid (that's why it
 	// was reused)
-	test.AssertEquals(t, secondAuthZ.Status, core.StatusValid)
+	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 
 	// It should have one http challenge already marked valid
 	httpIndex := ResponseIndex
-	httpChallenge := secondAuthZ.Challenges[httpIndex]
+	httpChallenge := secondAuthz.Challenges[httpIndex]
 	test.AssertEquals(t, httpChallenge.Type, core.ChallengeTypeHTTP01)
 	test.AssertEquals(t, httpChallenge.Status, core.StatusValid)
 
 	// It should have one SNI challenge that is pending
 	sniIndex := httpIndex + 1
-	sniChallenge := secondAuthZ.Challenges[sniIndex]
+	sniChallenge := secondAuthz.Challenges[sniIndex]
 	test.AssertEquals(t, sniChallenge.Type, core.ChallengeTypeTLSSNI01)
 	test.AssertEquals(t, sniChallenge.Status, core.StatusPending)
 
 	// Sending an update to this authz for an already valid challenge should do
 	// nothing (but produce no error), since it is already a valid authz
 	response, err := makeResponse(httpChallenge)
-	test.AssertNotError(t, err, "Unable to construct response to secondAuthZ http challenge")
-	secondAuthZ, err = ra.UpdateAuthorization(ctx, secondAuthZ, httpIndex, response)
-	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthZ http failed")
-	test.AssertEquals(t, AuthzFinal.ID, secondAuthZ.ID)
-	test.AssertEquals(t, secondAuthZ.Status, core.StatusValid)
+	test.AssertNotError(t, err, "Unable to construct response to secondAuthz http challenge")
+	secondAuthz, err = ra.UpdateAuthorization(ctx, secondAuthz, httpIndex, response)
+	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz http failed")
+	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
+	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 
 	// Similarly, sending an update to this authz for a pending challenge should do
 	// nothing (but produce no error), since the overall authz is already valid
 	response, err = makeResponse(sniChallenge)
-	test.AssertNotError(t, err, "Unable to construct response to secondAuthZ sni challenge")
-	secondAuthZ, err = ra.UpdateAuthorization(ctx, secondAuthZ, sniIndex, response)
-	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthZ sni failed")
-	test.AssertEquals(t, AuthzFinal.ID, secondAuthZ.ID)
-	test.AssertEquals(t, secondAuthZ.Status, core.StatusValid)
+	test.AssertNotError(t, err, "Unable to construct response to secondAuthz sni challenge")
+	secondAuthz, err = ra.UpdateAuthorization(ctx, secondAuthz, sniIndex, response)
+	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthz sni failed")
+	test.AssertEquals(t, finalAuthz.ID, secondAuthz.ID)
+	test.AssertEquals(t, secondAuthz.Status, core.StatusValid)
 }
 
 func TestReuseAuthorizationDisabled(t *testing.T) {
@@ -501,24 +506,29 @@ func TestReuseAuthorizationDisabled(t *testing.T) {
 	ra.reuseValidAuthz = false
 
 	// Create one finalized authorization
-	AuthzFinal.RegistrationID = Registration.ID
-	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
+	finalAuthz := AuthzInitial
+	finalAuthz.Status = "valid"
+	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	finalAuthz.Expires = &exp
+	finalAuthz.Challenges[0].Status = "valid"
+	finalAuthz.RegistrationID = Registration.ID
+	finalAuthz, err := sa.NewPendingAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not store test pending authorization")
-	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
+	err = sa.FinalizeAuthorization(ctx, finalAuthz)
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
 	// Now create another authorization for the same Reg.ID/domain
-	secondAuthZ, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization for secondAuthZ failed")
+	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
 
 	// The second authz should not have the same ID as the previous AuthZ,
 	// because we have set `reuseValidAuthZ` to false. It should be a fresh
 	// & unique authz
-	test.AssertNotEquals(t, AuthzFinal.ID, secondAuthZ.ID)
+	test.AssertNotEquals(t, finalAuthz.ID, secondAuthz.ID)
 
 	// The second authz shouldn't be valid, but pending since it is a brand new
 	// authz, not a reused one
-	test.AssertEquals(t, secondAuthZ.Status, core.StatusPending)
+	test.AssertEquals(t, secondAuthz.Status, core.StatusPending)
 }
 
 func TestReuseExpiringAuthorization(t *testing.T) {
@@ -541,16 +551,16 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "Could not finalize test pending authorization")
 
 	// Now create another authorization for the same Reg.ID/domain
-	secondAuthZ, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
-	test.AssertNotError(t, err, "NewAuthorization for secondAuthZ failed")
+	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthz failed")
 
 	// The second authz should not have the same ID as the previous AuthZ,
 	// because the existing valid authorization expires within 1 day from now
-	test.AssertNotEquals(t, expiringAuth.ID, secondAuthZ.ID)
+	test.AssertNotEquals(t, expiringAuth.ID, secondAuthz.ID)
 
 	// The second authz shouldn't be valid, but pending since it is a brand new
 	// authz, not a reused one
-	test.AssertEquals(t, secondAuthZ.Status, core.StatusPending)
+	test.AssertEquals(t, secondAuthz.Status, core.StatusPending)
 }
 
 func TestNewAuthorizationCapitalLetters(t *testing.T) {
