@@ -437,6 +437,90 @@ func TestNewAuthorization(t *testing.T) {
 	t.Log("DONE TestNewAuthorization")
 }
 
+func TestReuseAuthorization(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Turn on AuthZ Reuse
+	ra.reuseValidAuthz = true
+
+	// Create one finalized authorization
+	AuthzFinal.RegistrationID = Registration.ID
+	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not finalize test pending authorization")
+
+	// Now create another authorization for the same Reg.ID/domain
+	secondAuthZ, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthZ failed")
+
+	// The first authz should be reused as the second and thus have the same ID
+	test.AssertEquals(t, AuthzFinal.ID, secondAuthZ.ID)
+
+	// The second authz shouldn't be pending, it should be valid (that's why it
+	// was reused)
+	test.AssertEquals(t, secondAuthZ.Status, core.StatusValid)
+
+	// It should have one http challenge already marked valid
+	httpIndex := ResponseIndex
+	httpChallenge := secondAuthZ.Challenges[httpIndex]
+	test.AssertEquals(t, httpChallenge.Type, core.ChallengeTypeHTTP01)
+	test.AssertEquals(t, httpChallenge.Status, core.StatusValid)
+
+	// It should have one SNI challenge that is pending
+	sniIndex := httpIndex + 1
+	sniChallenge := secondAuthZ.Challenges[sniIndex]
+	test.AssertEquals(t, sniChallenge.Type, core.ChallengeTypeTLSSNI01)
+	test.AssertEquals(t, sniChallenge.Status, core.StatusPending)
+
+	// Sending an update to this authz for an already valid challenge should do
+	// nothing (but produce no error), since it is already a valid authz
+	response, err := makeResponse(httpChallenge)
+	test.AssertNotError(t, err, "Unable to construct response to secondAuthZ http challenge")
+	secondAuthZ, err = ra.UpdateAuthorization(ctx, secondAuthZ, httpIndex, response)
+	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthZ http failed")
+	test.AssertEquals(t, AuthzFinal.ID, secondAuthZ.ID)
+	test.AssertEquals(t, secondAuthZ.Status, core.StatusValid)
+
+	// Similarly, sending an update to this authz for a pending challenge should do
+	// nothing (but produce no error), since the overall authz is already valid
+	response, err = makeResponse(sniChallenge)
+	test.AssertNotError(t, err, "Unable to construct response to secondAuthZ sni challenge")
+	secondAuthZ, err = ra.UpdateAuthorization(ctx, secondAuthZ, sniIndex, response)
+	test.AssertNotError(t, err, "UpdateAuthorization on secondAuthZ sni failed")
+	test.AssertEquals(t, AuthzFinal.ID, secondAuthZ.ID)
+	test.AssertEquals(t, secondAuthZ.Status, core.StatusValid)
+}
+
+func TestReuseAuthorizationDisabled(t *testing.T) {
+	_, sa, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Turn *off* AuthZ Reuse
+	ra.reuseValidAuthz = false
+
+	// Create one finalized authorization
+	AuthzFinal.RegistrationID = Registration.ID
+	AuthzFinal, err := sa.NewPendingAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not store test pending authorization")
+	err = sa.FinalizeAuthorization(ctx, AuthzFinal)
+	test.AssertNotError(t, err, "Could not finalize test pending authorization")
+
+	// Now create another authorization for the same Reg.ID/domain
+	secondAuthZ, err := ra.NewAuthorization(ctx, AuthzRequest, Registration.ID)
+	test.AssertNotError(t, err, "NewAuthorization for secondAuthZ failed")
+
+	// The second authz should not have the same ID as the previous AuthZ,
+	// because we have set `reuseValidAuthZ` to false. It should be a fresh
+	// & unique authz
+	test.AssertNotEquals(t, AuthzFinal.ID, secondAuthZ.ID)
+
+	// The second authz shouldn't be valid, but pending since it is a brand new
+	// authz, not a reused one
+	test.AssertEquals(t, secondAuthZ.Status, core.StatusPending)
+}
+
 func TestNewAuthorizationCapitalLetters(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
