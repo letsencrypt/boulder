@@ -1,10 +1,12 @@
 package ratelimit
 
 import (
+	"io/ioutil"
 	"testing"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestEnabled(t *testing.T) {
@@ -59,4 +61,86 @@ func TestWindowBegin(t *testing.T) {
 	if actual != expected {
 		t.Errorf("Incorrect WindowBegin: %s, expected %s", actual, expected)
 	}
+}
+
+func TestLoadPolicies(t *testing.T) {
+	policy := New()
+
+	policyContent, readErr := ioutil.ReadFile("../test/rate-limit-policies.yml")
+	test.AssertNotError(t, readErr, "Failed to load rate-limit-policies.yml")
+
+	// Test that loading a good policy from YAML doesn't error
+	err := policy.LoadPolicies(policyContent)
+	test.AssertNotError(t, err, "Failed to parse rate-limit-policies.yml")
+
+	// Test that the TotalCertificates section parsed correctly
+	totalCerts := policy.TotalCertificates()
+	test.AssertEquals(t, totalCerts.Threshold, 100000)
+	test.AssertEquals(t, len(totalCerts.Overrides), 0)
+	test.AssertEquals(t, len(totalCerts.RegistrationOverrides), 0)
+
+	// Test that the CertificatesPerName section parsed correctly
+	certsPerName := policy.CertificatesPerName()
+	test.AssertEquals(t, certsPerName.Threshold, 2)
+	test.AssertDeepEquals(t, certsPerName.Overrides, map[string]int{
+		"ratelimit.me":          1,
+		"le.wtf":                10000,
+		"le1.wtf":               10000,
+		"le2.wtf":               10000,
+		"le3.wtf":               10000,
+		"nginx.wtf":             10000,
+		"good-caa-reserved.com": 10000,
+		"bad-caa-reserved.com":  10000,
+	})
+	test.AssertDeepEquals(t, certsPerName.RegistrationOverrides, map[int64]int{
+		101: 1000,
+	})
+
+	// Test that the RegistrationsPerIP section parsed correctly
+	regsPerIP := policy.RegistrationsPerIP()
+	test.AssertEquals(t, regsPerIP.Threshold, 10000)
+	test.AssertDeepEquals(t, regsPerIP.Overrides, map[string]int{
+		"127.0.0.1": 1000000,
+	})
+	test.AssertEquals(t, len(regsPerIP.RegistrationOverrides), 0)
+
+	// Test that the PendingAuthorizationsPerAccount section parsed correctly
+	pendingAuthsPerAcct := policy.PendingAuthorizationsPerAccount()
+	test.AssertEquals(t, pendingAuthsPerAcct.Threshold, 3)
+	test.AssertEquals(t, len(pendingAuthsPerAcct.Overrides), 0)
+	test.AssertEquals(t, len(pendingAuthsPerAcct.RegistrationOverrides), 0)
+
+	// Test that the CertificatesPerFQDN section parsed correctly
+	certsPerFQDN := policy.CertificatesPerFQDNSet()
+	test.AssertEquals(t, certsPerFQDN.Threshold, 5)
+	test.AssertDeepEquals(t, certsPerFQDN.Overrides, map[string]int{
+		"le.wtf":                10000,
+		"le1.wtf":               10000,
+		"le2.wtf":               10000,
+		"le3.wtf":               10000,
+		"le.wtf,le1.wtf":        10000,
+		"good-caa-reserved.com": 10000,
+		"nginx.wtf":             10000,
+	})
+	test.AssertEquals(t, len(certsPerFQDN.RegistrationOverrides), 0)
+
+	// Test that loading invalid YAML generates an error
+	err = policy.LoadPolicies([]byte("err"))
+	test.AssertError(t, err, "Failed to generate error loading invalid yaml policy file")
+	// Re-check a field of policy to make sure a LoadPolicies error doesn't
+	// corrupt the existing policies
+	test.AssertDeepEquals(t, policy.RegistrationsPerIP().Overrides, map[string]int{
+		"127.0.0.1": 1000000,
+	})
+
+	// Test that the RateLimitConfig accessors do not panic when there has been no
+	// `LoadPolicy` call, and instead return empty RateLimitPolicy objects with default
+	// values.
+	emptyPolicy := New()
+	test.AssertEquals(t, emptyPolicy.TotalCertificates().Threshold, 0)
+	test.AssertEquals(t, emptyPolicy.CertificatesPerName().Threshold, 0)
+	test.AssertEquals(t, emptyPolicy.RegistrationsPerIP().Threshold, 0)
+	test.AssertEquals(t, emptyPolicy.RegistrationsPerIP().Threshold, 0)
+	test.AssertEquals(t, emptyPolicy.PendingAuthorizationsPerAccount().Threshold, 0)
+	test.AssertEquals(t, emptyPolicy.CertificatesPerFQDNSet().Threshold, 0)
 }

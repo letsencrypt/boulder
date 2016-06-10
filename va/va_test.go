@@ -791,43 +791,6 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	test.Assert(t, prob == nil, "Should be valid.")
 }
 
-// TestDNSValidationLive is an integration test, depending on
-// the existence of some Internet resources. Because of that,
-// it asserts nothing; it is intended for coverage.
-func TestDNSValidationLive(t *testing.T) {
-	va, _, _ := setup()
-
-	goodChalDNS := core.DNSChallenge01(accountKey)
-	// The matching value LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo
-	// is set at _acme-challenge.good.bin.coffee
-	goodChalDNS.Token = expectedToken
-
-	var goodIdent = core.AcmeIdentifier{
-		Type:  core.IdentifierDNS,
-		Value: "good.bin.coffee",
-	}
-
-	var badIdent = core.AcmeIdentifier{
-		Type:  core.IdentifierType("dns"),
-		Value: "bad.bin.coffee",
-	}
-
-	_, prob := va.validateChallenge(ctx, goodIdent, goodChalDNS)
-
-	if prob != nil {
-		t.Logf("TestDNSValidationLive on Good did not succeed.")
-	}
-
-	badChalDNS := core.DNSChallenge01(accountKey)
-	// The matching value is NOT set at _acme-challenge.bad.bin.coffee
-	badChalDNS.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_w"
-
-	_, prob = va.validateChallenge(ctx, badIdent, badChalDNS)
-	if prob == nil {
-		t.Logf("TestDNSValidationLive on Bad did succeed inappropriately.")
-	}
-}
-
 func TestCAAFailure(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeTLSSNI01)
 	hs := tlssniSrv(t, chall)

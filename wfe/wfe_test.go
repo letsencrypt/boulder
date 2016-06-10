@@ -33,7 +33,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
-	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -620,10 +619,8 @@ func TestIssueCertificate(t *testing.T) {
 		fc,
 		wfe.log,
 		stats,
-		ratelimit.RateLimitConfig{},
 		0,
 		testKeyPolicy,
-		false,
 		0,
 		true)
 	ra.SA = mocks.NewStorageAuthority(fc)
