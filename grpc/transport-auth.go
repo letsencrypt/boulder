@@ -12,13 +12,13 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-// transportCredentials is a grpc/credentials.TransportAuthenticator which supports
+// transportCredentials is a grpc/credentials.TransportCredentials which supports
 // connecting to, and verifying multiple DNS names
 type transportCredentials struct {
 	configs map[string]*tls.Config
 }
 
-func newTransportCredentials(addrs []string, rootCAs *x509.CertPool, clientCerts []tls.Certificate) (credentials.TransportAuthenticator, error) {
+func newTransportCredentials(addrs []string, rootCAs *x509.CertPool, clientCerts []tls.Certificate) (credentials.TransportCredentials, error) {
 	configs := make(map[string]*tls.Config, len(addrs))
 	for _, addr := range addrs {
 		host, _, err := net.SplitHostPort(addr)

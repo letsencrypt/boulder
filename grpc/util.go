@@ -18,7 +18,7 @@ import (
 var CodedError = grpc.Errorf
 
 // ClientSetup loads various TLS certificates and creates a
-// gRPC TransportAuthenticator that presents the client certificate
+// gRPC TransportCredentials that presents the client certificate
 // and validates the certificate presented by the server is for a
 // specific hostname and issued by the provided issuer certificate
 // thens dials and returns a grpc.ClientConn to the remote service.
