@@ -367,7 +367,9 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 	if ra.reuseValidAuthz {
 		auths, err := ra.SA.GetValidAuthorizations(ctx, regID, []string{identifier.Value}, ra.clk.Now())
 		if err != nil {
-			outErr := core.InternalServerError("unable to get existing validations")
+			outErr := core.InternalServerError(
+				fmt.Sprintf("unable to get existing validations for regID: %d, identifier: %s",
+					regID, identifier.Value))
 			ra.log.Warning(string(outErr))
 		}
 
@@ -377,7 +379,9 @@ func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, reque
 			// `Challenge` values that the client expects in the result.
 			populatedAuthz, err := ra.SA.GetAuthorization(ctx, existingAuthz.ID)
 			if err != nil {
-				outErr := core.InternalServerError("unable to get existing authorization")
+				outErr := core.InternalServerError(
+					fmt.Sprintf("unable to get existing authorization for auth ID: %s",
+						existingAuthz.ID))
 				ra.log.Warning(fmt.Sprintf("%s: %s", string(outErr), existingAuthz.ID))
 			}
 
