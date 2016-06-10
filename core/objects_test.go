@@ -28,6 +28,14 @@ func TestRegistrationUpdate(t *testing.T) {
 	reg.MergeUpdate(update)
 	test.Assert(t, len(reg.Contact) == 1 && reg.Contact[0] == update.Contact[0], "Contact was not updated %v != %v")
 	test.Assert(t, reg.Agreement == update.Agreement, "Agreement was not updated")
+
+	// Test that a registration contact can be removed by updating with an empty
+	// Contact slice.
+	contactRemoveUpdate := Registration{
+		Contact: []*AcmeURL(nil),
+	}
+	reg.MergeUpdate(contactRemoveUpdate)
+	test.Assert(t, len(reg.Contact) == 0, "Contact was not deleted in update")
 }
 
 var testKey1, _ = rsa.GenerateKey(rand.Reader, 2048)
